@@ -244,8 +244,30 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         }
     }
 
+    // Pre-capture: Take snapshots of all values BEFORE any modifications
+    // This ensures we have accurate values for rollback even if baseline capture partially failed
+    let snapshots = match backup_service::capture_snapshots(&changes) {
+        Ok(s) => {
+            log::debug!("Pre-captured {} snapshots for rollback", s.len());
+            s
+        }
+        Err(e) => {
+            log::warn!("Failed to capture pre-apply snapshots: {}", e);
+            if is_debug_enabled() {
+                emit_debug_log(
+                    &app,
+                    DebugLevel::Warn,
+                    &format!("Failed to capture snapshots for {}: {}", tweak.name, e),
+                    Some("Rollback may be incomplete if apply fails"),
+                );
+            }
+            Vec::new() // Continue without snapshots - we still have baseline
+        }
+    };
+
     // Apply all registry changes with rollback on failure
     let mut applied_changes: Vec<RegistryKeyId> = Vec::new();
+    let mut applied_count = 0usize;
     let mut rollback_needed = false;
     let mut error_msg: Option<String> = None;
 
@@ -255,6 +277,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         match apply_registry_change(&app, change, &tweak.name) {
             Ok(()) => {
                 applied_changes.push(key_id);
+                applied_count += 1;
             }
             Err(e) => {
                 log::error!(
@@ -269,11 +292,11 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         }
     }
 
-    // If any change failed, rollback all applied changes
+    // If any change failed, rollback using captured snapshots
     if rollback_needed {
         log::warn!(
             "Rolling back {} changes for tweak '{}'",
-            applied_changes.len(),
+            applied_count,
             tweak.name
         );
 
@@ -282,14 +305,46 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                 &app,
                 DebugLevel::Warn,
                 &format!("Rolling back changes for: {}", tweak.name),
-                Some(&format!("{} changes to revert", applied_changes.len())),
+                Some(&format!("{} changes to revert", applied_count)),
             );
         }
 
-        // Try to restore each applied key to its baseline value
-        for key_id in &applied_changes {
-            if let Err(e) = backup_service::restore_key_to_baseline(key_id) {
-                log::error!("Failed to rollback key {}: {}", key_id, e);
+        // Use snapshot-based rollback for accuracy (only rollback what was applied)
+        let snapshots_to_rollback: Vec<_> = snapshots.into_iter().take(applied_count).collect();
+        if !snapshots_to_rollback.is_empty() {
+            let report = backup_service::rollback_from_snapshots(&snapshots_to_rollback);
+
+            if !report.all_succeeded {
+                log::error!(
+                    "Rollback partially failed: {} succeeded, {} failed",
+                    report.succeeded,
+                    report.failed
+                );
+                if is_debug_enabled() {
+                    for (key_id, error) in &report.failures {
+                        emit_debug_log(
+                            &app,
+                            DebugLevel::Error,
+                            &format!("Rollback failed for {}: {}", key_id, error),
+                            None,
+                        );
+                    }
+                }
+
+                return Err(Error::BackupFailed(format!(
+                    "Failed to apply tweak '{}': {}. Rollback partially failed ({} of {} keys restored). Manual intervention may be required.",
+                    tweak.name,
+                    error_msg.unwrap_or_default(),
+                    report.succeeded,
+                    report.succeeded + report.failed
+                )));
+            }
+        } else {
+            // Fallback to baseline-based rollback if no snapshots
+            for key_id in &applied_changes {
+                if let Err(e) = backup_service::restore_key_to_baseline(key_id) {
+                    log::error!("Failed to rollback key {}: {}", key_id, e);
+                }
             }
         }
 
@@ -298,6 +353,45 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
             tweak.name,
             error_msg.unwrap_or_default()
         )));
+    }
+
+    // Post-verification: Confirm all changes were actually written
+    let verification = backup_service::verify_changes(&changes, true);
+    match verification {
+        Ok(results) => {
+            let failed: Vec<_> = results.iter().filter(|r| !r.matches).collect();
+            if !failed.is_empty() {
+                log::warn!(
+                    "Post-verification: {} of {} changes may not have been applied correctly",
+                    failed.len(),
+                    results.len()
+                );
+                if is_debug_enabled() {
+                    for result in &failed {
+                        emit_debug_log(
+                            &app,
+                            DebugLevel::Warn,
+                            &format!(
+                                "Verification mismatch for {}: expected {:?}, got {:?}",
+                                result.key_id, result.expected, result.actual
+                            ),
+                            Some("Value may not have been written correctly"),
+                        );
+                    }
+                }
+                // Note: We don't fail here - the write may have succeeded but read-back differs
+                // (e.g., Windows normalizing values). We log the warning for investigation.
+            } else {
+                log::debug!(
+                    "Post-verification: All {} changes verified successfully",
+                    results.len()
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!("Post-verification failed: {}", e);
+            // Don't fail the operation - verification is informational
+        }
     }
 
     // Record the tweak as applied in our state
@@ -394,13 +488,36 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         );
     }
 
-    // First, record the revert to get list of orphaned keys (ref_count goes to 0)
-    let orphaned_keys = backup_service::record_tweak_reverted(&tweak_id)?;
+    // Pre-capture snapshots for rollback in case of failure
+    let snapshots = match backup_service::capture_snapshots(&changes) {
+        Ok(s) => {
+            log::debug!("Pre-captured {} snapshots for revert rollback", s.len());
+            s
+        }
+        Err(e) => {
+            log::warn!("Failed to capture pre-revert snapshots: {}", e);
+            Vec::new()
+        }
+    };
+
+    // Get list of orphaned keys (ref_count goes to 0) WITHOUT recording yet
+    // We'll only record after successful revert
+    let orphaned_keys = match backup_service::get_orphaned_keys_for_tweak(&tweak_id) {
+        Ok(keys) => keys,
+        Err(e) => {
+            log::warn!("Could not determine orphaned keys: {}", e);
+            Vec::new()
+        }
+    };
     log::debug!(
-        "Tweak '{}' revert: {} keys orphaned (will be restored to baseline)",
+        "Tweak '{}' revert: {} keys will be orphaned",
         tweak.name,
         orphaned_keys.len()
     );
+
+    // Track revert progress for rollback
+    let mut reverted_count = 0usize;
+    let mut revert_error: Option<String> = None;
 
     // For each registry change:
     // - If key is orphaned (no other tweaks use it): restore to baseline
@@ -408,78 +525,177 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
     for change in &changes {
         let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
 
-        if orphaned_keys.contains(&key_id) {
-            // This key is no longer used by any tweak - restore to baseline
-            log::debug!("Restoring key {} to baseline (orphaned)", key_id);
+        let result: std::result::Result<(), Error> = (|| {
+            if orphaned_keys.contains(&key_id) {
+                // This key is no longer used by any tweak - restore to baseline
+                log::debug!("Restoring key {} to baseline (orphaned)", key_id);
 
-            if is_debug_enabled() {
-                emit_debug_log(
-                    &app,
-                    DebugLevel::Info,
-                    &format!(
-                        "Restoring to baseline: {}\\{}\\{}",
-                        change.hive.as_str(),
-                        change.key,
-                        change.value_name
-                    ),
-                    Some("No other tweaks use this key"),
-                );
-            }
+                if is_debug_enabled() {
+                    emit_debug_log(
+                        &app,
+                        DebugLevel::Info,
+                        &format!(
+                            "Restoring to baseline: {}\\{}\\{}",
+                            change.hive.as_str(),
+                            change.key,
+                            change.value_name
+                        ),
+                        Some("No other tweaks use this key"),
+                    );
+                }
 
-            match backup_service::restore_key_to_baseline(&key_id) {
-                Ok(restored) => {
-                    if restored {
-                        log::debug!("Restored {} to baseline", key_id);
-                    } else {
-                        log::debug!(
-                            "Could not restore {} to baseline (no baseline or no original value)",
-                            key_id
-                        );
+                match backup_service::restore_key_to_baseline(&key_id) {
+                    Ok(restored) => {
+                        if restored {
+                            log::debug!("Restored {} to baseline", key_id);
+                        } else {
+                            log::debug!(
+                                "Could not restore {} to baseline (no baseline or no original value)",
+                                key_id
+                            );
+                            // Fallback to disable_value if available
+                            if let Some(disable_value) = &change.disable_value {
+                                revert_registry_change(&app, change, disable_value, &tweak.name)?;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to restore {} to baseline: {}", key_id, e);
                         // Fallback to disable_value if available
                         if let Some(disable_value) = &change.disable_value {
                             revert_registry_change(&app, change, disable_value, &tweak.name)?;
                         }
                     }
                 }
-                Err(e) => {
-                    log::warn!("Failed to restore {} to baseline: {}", key_id, e);
-                    // Fallback to disable_value if available
-                    if let Some(disable_value) = &change.disable_value {
-                        revert_registry_change(&app, change, disable_value, &tweak.name)?;
-                    }
-                }
-            }
-        } else {
-            // Other tweaks still use this key - apply disable_value only
-            // This keeps the key modified but moves it toward a "less aggressive" state
-            if let Some(disable_value) = &change.disable_value {
-                log::debug!(
-                    "Key {} still used by other tweaks, applying disable_value",
-                    key_id
-                );
+            } else {
+                // Other tweaks still use this key - apply disable_value only
+                // This keeps the key modified but moves it toward a "less aggressive" state
+                if let Some(disable_value) = &change.disable_value {
+                    log::debug!(
+                        "Key {} still used by other tweaks, applying disable_value",
+                        key_id
+                    );
 
-                if is_debug_enabled() {
-                    let other_tweaks = backup_service::load_tweak_state()
-                        .map(|s| s.get_tweaks_for_key(&key_id))
-                        .unwrap_or_default();
-                    emit_debug_log(
-                        &app,
-                        DebugLevel::Warn,
-                        &format!("Key {} still used by other tweaks", key_id),
-                        Some(&format!(
-                            "Used by: {:?}. Applying disable value instead of baseline.",
-                            other_tweaks
-                        )),
+                    if is_debug_enabled() {
+                        let other_tweaks = backup_service::load_tweak_state()
+                            .map(|s| s.get_tweaks_for_key(&key_id))
+                            .unwrap_or_default();
+                        emit_debug_log(
+                            &app,
+                            DebugLevel::Warn,
+                            &format!("Key {} still used by other tweaks", key_id),
+                            Some(&format!(
+                                "Used by: {:?}. Applying disable value instead of baseline.",
+                                other_tweaks
+                            )),
+                        );
+                    }
+
+                    revert_registry_change(&app, change, disable_value, &tweak.name)?;
+                } else {
+                    log::debug!(
+                        "Key {} has no disable_value, skipping (other tweaks still use it)",
+                        key_id
                     );
                 }
+            }
+            Ok(())
+        })();
 
-                revert_registry_change(&app, change, disable_value, &tweak.name)?;
+        if let Err(e) = result {
+            revert_error = Some(e.to_string());
+            break;
+        }
+        reverted_count += 1;
+    }
+
+    // If any revert operation failed, rollback to restore original state
+    if let Some(error) = revert_error {
+        log::warn!(
+            "Revert failed for tweak '{}' at change {}/{}",
+            tweak.name,
+            reverted_count + 1,
+            changes.len()
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Warn,
+                &format!("Rolling back failed revert for: {}", tweak.name),
+                Some(&format!("{} changes to restore", reverted_count)),
+            );
+        }
+
+        // Use snapshot-based rollback to restore original state
+        let snapshots_to_rollback: Vec<_> = snapshots.into_iter().take(reverted_count).collect();
+        if !snapshots_to_rollback.is_empty() {
+            let report = backup_service::rollback_from_snapshots(&snapshots_to_rollback);
+
+            if !report.all_succeeded {
+                log::error!(
+                    "Revert rollback partially failed: {} succeeded, {} failed",
+                    report.succeeded,
+                    report.failed
+                );
+                if is_debug_enabled() {
+                    for (key_id, err) in &report.failures {
+                        emit_debug_log(
+                            &app,
+                            DebugLevel::Error,
+                            &format!("Rollback failed for {}: {}", key_id, err),
+                            None,
+                        );
+                    }
+                }
+
+                return Err(Error::BackupFailed(format!(
+                    "Failed to revert tweak '{}': {}. Rollback partially failed ({} of {} restored). Manual intervention may be required.",
+                    tweak.name,
+                    error,
+                    report.succeeded,
+                    report.succeeded + report.failed
+                )));
+            }
+        }
+
+        return Err(Error::BackupFailed(format!(
+            "Failed to revert tweak '{}': {}. Changes have been rolled back.",
+            tweak.name, error
+        )));
+    }
+
+    // All reverts succeeded - now record the tweak as reverted in state
+    if let Err(e) = backup_service::record_tweak_reverted(&tweak_id) {
+        log::warn!(
+            "Failed to record tweak revert state for '{}': {}",
+            tweak.name,
+            e
+        );
+        // Don't fail - the registry changes were successful
+    }
+
+    // Post-verification: Confirm changes were reverted correctly
+    let verification = backup_service::verify_changes(&changes, false);
+    match verification {
+        Ok(results) => {
+            let failed: Vec<_> = results.iter().filter(|r| !r.matches).collect();
+            if !failed.is_empty() {
+                log::warn!(
+                    "Revert verification: {} of {} changes may not match expected values",
+                    failed.len(),
+                    results.len()
+                );
+                // Note: Don't fail - some keys may have been skipped intentionally
             } else {
                 log::debug!(
-                    "Key {} has no disable_value, skipping (other tweaks still use it)",
-                    key_id
+                    "Revert verification: All {} changes verified",
+                    results.len()
                 );
             }
+        }
+        Err(e) => {
+            log::trace!("Revert verification failed: {}", e);
         }
     }
 

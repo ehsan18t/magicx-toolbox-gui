@@ -9,6 +9,53 @@ pub fn make_key_id(hive: &str, key: &str, value_name: &str) -> RegistryKeyId {
     format!("{}\\{}\\{}", hive, key, value_name)
 }
 
+// ============================================================================
+// Atomic Operation Types
+// ============================================================================
+
+/// Snapshot of a registry value before modification (for rollback)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValueSnapshot {
+    /// Registry hive
+    pub hive: String,
+    /// Registry key path
+    pub key: String,
+    /// Value name
+    pub value_name: String,
+    /// Value type
+    pub value_type: String,
+    /// Value before modification (None = didn't exist)
+    pub value_before: Option<serde_json::Value>,
+    /// Whether the key existed before
+    pub key_existed: bool,
+}
+
+/// Result of verifying a single registry change
+#[derive(Debug, Clone)]
+pub struct VerifyResult {
+    /// Key identifier
+    pub key_id: RegistryKeyId,
+    /// Whether the value matches expected
+    pub matches: bool,
+    /// Expected value
+    pub expected: Option<serde_json::Value>,
+    /// Actual value found
+    pub actual: Option<serde_json::Value>,
+}
+
+/// Report from a rollback operation
+#[derive(Debug, Clone, Default)]
+pub struct RollbackReport {
+    /// Number of keys successfully rolled back
+    pub succeeded: usize,
+    /// Number of keys that failed to rollback
+    pub failed: usize,
+    /// Details of failures
+    pub failures: Vec<(RegistryKeyId, String)>,
+    /// Whether all rollbacks succeeded
+    pub all_succeeded: bool,
+}
+
 /// Parses a key ID back into components
 pub fn parse_key_id(key_id: &RegistryKeyId) -> Option<(String, String, String)> {
     let parts: Vec<&str> = key_id.splitn(3, '\\').collect();
@@ -237,6 +284,26 @@ impl TweakState {
             }
 
             self.updated_at = chrono::Local::now().to_rfc3339();
+        }
+
+        orphaned_keys
+    }
+
+    /// Get keys that would be orphaned if a tweak is reverted (read-only, doesn't modify state)
+    pub fn get_orphaned_keys_if_reverted(&self, tweak_id: &str) -> Vec<RegistryKeyId> {
+        let mut orphaned_keys = Vec::new();
+
+        if let Some(info) = self.applied_tweaks.get(tweak_id) {
+            for key_id in &info.modified_keys {
+                if let Some(ownership) = self.key_ownership.get(key_id) {
+                    // Key would be orphaned if this tweak is the only one referencing it
+                    if ownership.ref_count() == 1
+                        && ownership.tweak_ids.contains(&tweak_id.to_string())
+                    {
+                        orphaned_keys.push(key_id.clone());
+                    }
+                }
+            }
         }
 
         orphaned_keys

@@ -376,6 +376,13 @@ pub fn record_tweak_reverted(tweak_id: &str) -> Result<Vec<RegistryKeyId>, Error
     Ok(orphaned_keys)
 }
 
+/// Get keys that would be orphaned if a tweak is reverted (read-only, doesn't modify state)
+/// This is used to preview the revert operation before actually performing it
+pub fn get_orphaned_keys_for_tweak(tweak_id: &str) -> Result<Vec<RegistryKeyId>, Error> {
+    let state = load_tweak_state()?;
+    Ok(state.get_orphaned_keys_if_reverted(tweak_id))
+}
+
 /// Check if a key can be restored to baseline (ref_count == 0 after revert)
 #[allow(dead_code)]
 pub fn should_restore_to_baseline(key_id: &RegistryKeyId, tweak_id: &str) -> Result<bool, Error> {
@@ -761,6 +768,257 @@ pub fn backup_exists(tweak_id: &str) -> Result<bool, Error> {
 #[allow(dead_code)]
 pub fn list_backups() -> Result<Vec<String>, Error> {
     get_applied_tweaks()
+}
+
+// ============================================================================
+// Atomic Operation Helpers
+// ============================================================================
+
+use crate::models::{RollbackReport, ValueSnapshot, VerifyResult};
+
+/// Capture current values for a list of registry changes before modification.
+/// This creates snapshots that can be used for rollback if any write fails.
+pub fn capture_snapshots(
+    changes: &[&crate::models::RegistryChange],
+) -> Result<Vec<ValueSnapshot>, Error> {
+    log::debug!("Capturing {} registry snapshots", changes.len());
+
+    let mut snapshots = Vec::with_capacity(changes.len());
+
+    for change in changes {
+        let hive_str = change.hive.as_str().to_string();
+        let value_type_str = format!("{:?}", change.value_type).replace('"', "");
+
+        // Use the existing read_current_value function which returns (Option<Value>, bool)
+        let (value_before, key_existed) =
+            read_current_value(&hive_str, &change.key, &change.value_name, &value_type_str)?;
+
+        snapshots.push(ValueSnapshot {
+            hive: hive_str,
+            key: change.key.clone(),
+            value_name: change.value_name.clone(),
+            value_type: value_type_str,
+            value_before,
+            key_existed,
+        });
+    }
+
+    log::debug!("Captured {} snapshots successfully", snapshots.len());
+    Ok(snapshots)
+}
+
+/// Verify that all registry changes were applied correctly.
+/// Reads back the values and compares with expected values.
+pub fn verify_changes(
+    changes: &[&crate::models::RegistryChange],
+    is_enable: bool,
+) -> Result<Vec<VerifyResult>, Error> {
+    log::debug!("Verifying {} registry changes", changes.len());
+
+    let mut results = Vec::with_capacity(changes.len());
+
+    for change in changes {
+        let hive_str = change.hive.as_str().to_string();
+        let value_type_str = format!("{:?}", change.value_type).replace('"', "");
+
+        // Get expected value
+        let expected = if is_enable {
+            Some(change.enable_value.clone())
+        } else {
+            change.disable_value.clone()
+        };
+
+        // Read actual value
+        let (actual, _) =
+            read_current_value(&hive_str, &change.key, &change.value_name, &value_type_str)?;
+
+        let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
+
+        let matches = compare_values(&expected, &actual);
+
+        if !matches {
+            log::warn!(
+                "Verification failed for {}: expected {:?}, got {:?}",
+                key_id,
+                expected,
+                actual
+            );
+        }
+
+        results.push(VerifyResult {
+            key_id,
+            matches,
+            expected,
+            actual,
+        });
+    }
+
+    let failed_count = results.iter().filter(|r| !r.matches).count();
+    if failed_count > 0 {
+        log::warn!("{} of {} verifications failed", failed_count, results.len());
+    } else {
+        log::debug!("All {} verifications passed", results.len());
+    }
+
+    Ok(results)
+}
+
+/// Compare expected value with actual value from registry
+fn compare_values(
+    expected: &Option<serde_json::Value>,
+    actual: &Option<serde_json::Value>,
+) -> bool {
+    match (expected, actual) {
+        (Some(exp), Some(act)) => {
+            // Handle numeric comparison (DWORD/QWORD values may come as different integer types)
+            if let (Some(exp_num), Some(act_num)) = (exp.as_u64(), act.as_u64()) {
+                return exp_num == act_num;
+            }
+            if let (Some(exp_num), Some(act_num)) = (exp.as_i64(), act.as_i64()) {
+                return exp_num == act_num;
+            }
+            // String comparison
+            if let (Some(exp_str), Some(act_str)) = (exp.as_str(), act.as_str()) {
+                return exp_str == act_str;
+            }
+            // Array comparison (for binary values)
+            if let (Some(exp_arr), Some(act_arr)) = (exp.as_array(), act.as_array()) {
+                return exp_arr == act_arr;
+            }
+            // Fall back to direct comparison
+            exp == act
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// Rollback changes using captured snapshots.
+/// Attempts to restore all values to their pre-modification state.
+pub fn rollback_from_snapshots(snapshots: &[ValueSnapshot]) -> RollbackReport {
+    log::info!("Rolling back {} registry changes", snapshots.len());
+
+    let mut succeeded = 0;
+    let mut failed = 0;
+    let mut failures: Vec<(String, String)> = Vec::new();
+
+    for snapshot in snapshots {
+        let hive = match snapshot.hive.as_str() {
+            "HKCU" => crate::models::RegistryHive::HKCU,
+            "HKLM" => crate::models::RegistryHive::HKLM,
+            _ => {
+                log::error!("Unknown hive in snapshot: {}", snapshot.hive);
+                failed += 1;
+                let key_id = make_key_id(&snapshot.hive, &snapshot.key, &snapshot.value_name);
+                failures.push((key_id, format!("Unknown hive '{}'", snapshot.hive)));
+                continue;
+            }
+        };
+
+        let result = restore_snapshot_value(&hive, snapshot);
+        let key_id = make_key_id(&snapshot.hive, &snapshot.key, &snapshot.value_name);
+
+        match result {
+            Ok(()) => {
+                succeeded += 1;
+                log::trace!(
+                    "Rolled back {}\\{}\\{}",
+                    snapshot.hive,
+                    snapshot.key,
+                    snapshot.value_name
+                );
+            }
+            Err(e) => {
+                failed += 1;
+                log::error!("Rollback failed for {}: {}", key_id, e);
+                failures.push((key_id, e.to_string()));
+            }
+        }
+    }
+
+    let all_succeeded = failed == 0;
+    if all_succeeded {
+        log::info!(
+            "Rollback completed successfully: {} changes restored",
+            succeeded
+        );
+    } else {
+        log::error!(
+            "Rollback partially failed: {} succeeded, {} failed",
+            succeeded,
+            failed
+        );
+    }
+
+    RollbackReport {
+        succeeded,
+        failed,
+        failures,
+        all_succeeded,
+    }
+}
+
+/// Restore a single registry value from a snapshot
+fn restore_snapshot_value(
+    hive: &crate::models::RegistryHive,
+    snapshot: &ValueSnapshot,
+) -> Result<(), Error> {
+    match &snapshot.value_before {
+        Some(value) => {
+            // Restore to original value
+            if let Some(dword) = value.as_u64() {
+                super::registry_service::set_dword(
+                    hive,
+                    &snapshot.key,
+                    &snapshot.value_name,
+                    dword as u32,
+                )?;
+            } else if let Some(qword) = value.as_u64() {
+                super::registry_service::set_qword(
+                    hive,
+                    &snapshot.key,
+                    &snapshot.value_name,
+                    qword,
+                )?;
+            } else if let Some(string) = value.as_str() {
+                super::registry_service::set_string(
+                    hive,
+                    &snapshot.key,
+                    &snapshot.value_name,
+                    string,
+                )?;
+            } else if let Some(arr) = value.as_array() {
+                let bytes: Vec<u8> = arr
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|u| u as u8))
+                    .collect();
+                super::registry_service::set_binary(
+                    hive,
+                    &snapshot.key,
+                    &snapshot.value_name,
+                    &bytes,
+                )?;
+            } else {
+                return Err(Error::BackupFailed(format!(
+                    "Unsupported value type for restore: {:?}",
+                    value
+                )));
+            }
+        }
+        None => {
+            // Value didn't exist before - delete it
+            // Note: For now we log this but don't actually delete,
+            // as deleting registry values can be risky
+            log::debug!(
+                "Value {}\\{}\\{} didn't exist before, skipping deletion",
+                snapshot.hive,
+                snapshot.key,
+                snapshot.value_name
+            );
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
