@@ -1,3 +1,12 @@
+# Copilot Instructions - Common
+
+## Commits
+
+- Always commit related changes together.
+- Keep commits task-scoped (one task can touch multiple files). Avoid dumping unrelated changes together.
+- Use clear messages, e.g., `feat(ui): add settings drawer toggle` or `fix(theme): persist system preference on init`.
+- Always commit after each logical change; avoid large uncommitted work.
+
 # Copilot Instructions – Svelte Frontend
 
 ## Scope
@@ -48,11 +57,6 @@
 ## Testing & linting
 
 - Run `bun run validate` (format, lint, check) before committing frontend changes.
-
-## Commits
-
-- Keep commits task-scoped (one task can touch multiple files). Avoid dumping unrelated changes together.
-- Use clear messages, e.g., `feat(ui): add settings drawer toggle` or `fix(theme): persist system preference on init`.
 
 ---
 
@@ -242,8 +246,3 @@ pub fn my_command(arg: String) -> Result<ResponseType, Error> {
 - Run `cargo clippy` for linting (configured in `clippy.toml`).
 - Run `cargo fmt` for formatting (configured in `rustfmt.toml`).
 - Full validation: `bun run validate` from project root.
-
-## Commits
-
-- Keep commits task-scoped; avoid bundling unrelated backend/frontend changes.
-- Use clear messages, e.g., `feat(tweaks): add gaming category` or `fix(backup): handle missing directory`.
