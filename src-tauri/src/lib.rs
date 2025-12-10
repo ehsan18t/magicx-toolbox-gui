@@ -1,8 +1,11 @@
 mod commands;
 mod error;
+mod models;
 mod setup;
 mod state;
 
+pub use error::Error;
+pub use models::*;
 use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

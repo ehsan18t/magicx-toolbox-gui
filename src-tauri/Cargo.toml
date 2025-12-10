@@ -27,9 +27,19 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 log = "0.4"
 thiserror = "2"
 tauri-plugin-prevent-default = "3"
-tauri-plugin-shell = "2"
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+winreg = "0.52"
+windows = { version = "0.58", features = [
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_Security"
+] }
