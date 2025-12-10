@@ -26,7 +26,7 @@
   </div>
 
   <div class="category-filters">
-    {#each categories as cat}
+    {#each categories as cat (cat)}
       <button
         class="filter-btn"
         class:active={$selectedCategory === cat}

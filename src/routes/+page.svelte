@@ -79,7 +79,7 @@
 
       {#if $selectedCategory === "all"}
         <!-- Show all categories -->
-        {#each categories as category}
+        {#each categories as category (category)}
           {@const categoryTweaks = $tweaksByCategory[category]}
           {#if categoryTweaks.length > 0}
             <CategorySection {category} tweaks={categoryTweaks} />
