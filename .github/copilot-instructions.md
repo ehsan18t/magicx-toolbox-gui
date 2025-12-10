@@ -1,5 +1,7 @@
 # Copilot Instructions - Common
 
+**CRITICAL: These instructions are mandatory and must be followed on every task. Ignoring them will result in suboptimal code quality and project standards violations.**
+
 ## Commits
 
 - Always commit related changes together.
@@ -8,6 +10,8 @@
 - Always commit after each logical change; avoid large uncommitted work.
 
 # Copilot Instructions – Svelte Frontend
+
+**MANDATORY: Follow all rules in this section for every frontend change.**
 
 ## Scope
 
@@ -61,6 +65,8 @@
 ---
 
 # Copilot Instructions – Rust (Tauri Backend)
+
+**MANDATORY: Follow all rules in this section for every backend change.**
 
 ## Scope
 
