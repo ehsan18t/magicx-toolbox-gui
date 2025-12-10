@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod models;
+mod services;
 mod setup;
 mod state;
 
