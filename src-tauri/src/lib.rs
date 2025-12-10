@@ -1,10 +1,12 @@
 mod commands;
+pub mod debug;
 mod error;
 mod models;
 mod services;
 mod setup;
 mod state;
 
+pub use debug::{emit_debug_log, is_debug_enabled, set_debug_enabled, DebugLevel, DebugLogEntry};
 pub use error::Error;
 pub use models::*;
 use state::AppState;
@@ -24,12 +26,15 @@ pub fn run() {
             commands::general::get_theme,
             commands::system::get_system_info,
             commands::tweaks::get_available_tweaks,
+            commands::tweaks::get_available_tweaks_for_version,
             commands::tweaks::get_tweaks_by_category,
             commands::tweaks::get_tweak,
             commands::tweaks::get_tweak_status,
             commands::tweaks::apply_tweak,
             commands::tweaks::revert_tweak,
             commands::tweaks::batch_apply_tweaks,
+            commands::debug::set_debug_mode,
+            commands::debug::get_debug_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
