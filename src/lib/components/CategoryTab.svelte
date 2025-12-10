@@ -20,8 +20,8 @@
   // Get tweaks for this category
   const categoryTweaks = $derived($tweaksStore.filter((t) => t.definition.category === tab.id));
 
-  // Filter tweaks by search
-  const filteredTweaks = $derived(() => {
+  // Filter tweaks by search - use $derived.by for computed with logic
+  const filteredTweaks = $derived.by(() => {
     if (!searchQuery.trim()) return categoryTweaks;
     const query = searchQuery.toLowerCase();
     return categoryTweaks.filter(
@@ -134,7 +134,7 @@
 
   <!-- Tweaks Grid -->
   <div class="tweaks-container">
-    {#if filteredTweaks().length === 0}
+    {#if filteredTweaks.length === 0}
       <div class="empty-state">
         {#if searchQuery}
           <Icon icon="mdi:file-search-outline" width="56" />
@@ -151,7 +151,7 @@
       </div>
     {:else}
       <div class="tweaks-grid">
-        {#each filteredTweaks() as tweak (tweak.definition.id)}
+        {#each filteredTweaks as tweak (tweak.definition.id)}
           <TweakCard {tweak} />
         {/each}
       </div>

@@ -3,7 +3,7 @@
   import type { RegistryChange, RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
   import Icon from "@iconify/svelte";
-  import { derived, get } from "svelte/store";
+  import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
 
   const { tweak } = $props<{
@@ -28,8 +28,9 @@
     critical: "mdi:alert-octagon",
   };
 
-  const registryChanges = $derived(() => {
-    const system = get(systemStore);
+  // Reactively compute registry changes based on store value
+  const registryChanges = $derived.by(() => {
+    const system = $systemStore;
     if (!system) return [];
     const version = system.windows.is_windows_11 ? 11 : 10;
     return tweak.definition.registry_changes.filter((change: RegistryChange) => {
@@ -146,11 +147,11 @@
           <h4 class="section-title">
             <Icon icon="mdi:database-cog-outline" width="14" />
             Registry Modifications
-            <span class="count">{registryChanges().length}</span>
+            <span class="count">{registryChanges.length}</span>
           </h4>
 
           <div class="registry-list">
-            {#each registryChanges() as change (change.hive + change.key + change.value_name)}
+            {#each registryChanges as change (change.hive + change.key + change.value_name)}
               <div class="registry-item">
                 <div class="registry-header">
                   <Icon icon="mdi:key-variant" width="12" />
