@@ -1,7 +1,7 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::{TweakDefinition, TweakResult, TweakStatus};
-use crate::services::{registry_service, system_info_service, tweak_loader};
+use crate::services::{backup_service, registry_service, system_info_service, tweak_loader};
 use tauri::AppHandle;
 
 /// Get all available tweaks filtered by current Windows version
@@ -58,11 +58,14 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
 
     let is_applied = check_tweak_applied(changes)?;
 
+    // Check if backup exists
+    let has_backup = backup_service::backup_exists(&tweak_id).unwrap_or(false);
+
     Ok(TweakStatus {
         tweak_id,
         is_applied,
-        last_applied: None, // TODO: implement tracking
-        has_backup: false,  // TODO: check if backup exists
+        last_applied: None, // Could be enhanced by reading backup timestamp
+        has_backup,
     })
 }
 
@@ -98,7 +101,29 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         );
     }
 
-    // TODO: Create backup before applying
+    // Create backup before applying
+    if let Err(e) = backup_service::create_tweak_backup(
+        &tweak_id,
+        &tweak.name,
+        &system_info.windows.version_string,
+        changes,
+    ) {
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Warn,
+                &format!("Failed to create backup for {}: {}", tweak.name, e),
+                Some("Continuing without backup"),
+            );
+        }
+    } else if is_debug_enabled() {
+        emit_debug_log(
+            &app,
+            DebugLevel::Success,
+            &format!("Backup created for: {}", tweak.name),
+            None,
+        );
+    }
 
     // Apply all registry changes
     for change in changes {

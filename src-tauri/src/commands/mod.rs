@@ -1,4 +1,5 @@
 // This file exports all the command modules
+pub mod backup;
 pub mod debug;
 pub mod general;
 pub mod system;

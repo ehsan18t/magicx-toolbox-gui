@@ -117,3 +117,49 @@ export async function getWindowsVersion(): Promise<string> {
   const systemInfo = await getSystemInfo();
   return systemInfo.windows.version_string;
 }
+
+// ============================================================================
+// Backup API
+// ============================================================================
+
+export interface BackupInfo {
+  tweak_id: string;
+  tweak_name: string;
+  created_at: string;
+}
+
+/**
+ * Check if a backup exists for a tweak
+ */
+export async function hasBackup(tweakId: string): Promise<boolean> {
+  return await invoke<boolean>("has_backup", { tweakId });
+}
+
+/**
+ * List all backup tweak IDs
+ */
+export async function listBackups(): Promise<string[]> {
+  return await invoke<string[]>("list_backups");
+}
+
+/**
+ * Get backup information for a tweak
+ */
+export async function getBackupInfo(tweakId: string): Promise<BackupInfo | null> {
+  return await invoke<BackupInfo | null>("get_backup_info", { tweakId });
+}
+
+/**
+ * Restore a tweak from its backup (reverts to original state)
+ */
+export async function restoreFromBackup(tweakId: string): Promise<void> {
+  return await invoke<void>("restore_from_backup", { tweakId });
+}
+
+/**
+ * Delete a backup file
+ */
+export async function deleteBackup(tweakId: string): Promise<void> {
+  return await invoke<void>("delete_backup", { tweakId });
+}
+

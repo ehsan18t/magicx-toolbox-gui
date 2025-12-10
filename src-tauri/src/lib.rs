@@ -35,6 +35,11 @@ pub fn run() {
             commands::tweaks::batch_apply_tweaks,
             commands::debug::set_debug_mode,
             commands::debug::get_debug_mode,
+            commands::backup::has_backup,
+            commands::backup::list_backups,
+            commands::backup::get_backup_info,
+            commands::backup::restore_from_backup,
+            commands::backup::delete_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
