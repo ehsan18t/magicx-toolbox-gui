@@ -1,6 +1,8 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
-use crate::models::{CategoryDefinition, TweakDefinition, TweakResult, TweakStatus};
+use crate::models::{
+    make_key_id, CategoryDefinition, RegistryKeyId, TweakDefinition, TweakResult, TweakStatus,
+};
 use crate::services::{backup_service, registry_service, system_info_service, tweak_loader};
 use tauri::AppHandle;
 
@@ -95,19 +97,29 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     }
 
     let is_applied = check_tweak_applied(&changes)?;
-    let has_backup = backup_service::backup_exists(&tweak_id).unwrap_or(false);
+
+    // Check our state tracking instead of just backup existence
+    let has_backup = backup_service::is_tweak_applied(&tweak_id).unwrap_or(false);
+
+    // Get last applied timestamp if available
+    let last_applied = backup_service::load_tweak_state().ok().and_then(|state| {
+        state
+            .get_applied_tweak(&tweak_id)
+            .map(|info| info.applied_at.clone())
+    });
 
     log::trace!(
-        "Tweak {} status: applied={}, has_backup={}",
+        "Tweak {} status: applied={}, has_backup={}, last_applied={:?}",
         tweak_id,
         is_applied,
-        has_backup
+        has_backup,
+        last_applied
     );
 
     Ok(TweakStatus {
         tweak_id,
         is_applied,
-        last_applied: None, // Could be enhanced by reading backup timestamp
+        last_applied,
         has_backup,
     })
 }
@@ -168,33 +180,131 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         );
     }
 
-    // Create backup before applying
-    log::debug!("Creating backup for tweak '{}'", tweak.name);
-    if let Err(e) = backup_service::create_tweak_backup(&tweak_id, &tweak.name, version, &changes) {
-        log::warn!("Failed to create backup for '{}': {}", tweak.name, e);
+    // Prepare key info for baseline capture
+    let keys_info: Vec<(String, String, String, String)> = changes
+        .iter()
+        .map(|c| {
+            (
+                c.hive.as_str().to_string(),
+                c.key.clone(),
+                c.value_name.clone(),
+                format!("{:?}", c.value_type).replace("\"", ""),
+            )
+        })
+        .collect();
+
+    // Run preflight check to detect conflicts
+    let preflight = backup_service::preflight_check(&tweak_id, &keys_info)?;
+
+    if !preflight.conflicts.is_empty() {
+        log::warn!(
+            "Tweak '{}' has {} conflicts with other applied tweaks",
+            tweak.name,
+            preflight.conflicts.len()
+        );
         if is_debug_enabled() {
             emit_debug_log(
                 &app,
                 DebugLevel::Warn,
-                &format!("Failed to create backup for {}: {}", tweak.name, e),
-                Some("Continuing without backup"),
+                &format!(
+                    "Tweak '{}' shares registry keys with: {:?}",
+                    tweak.name,
+                    preflight
+                        .conflicts
+                        .iter()
+                        .flat_map(|c| c.conflicting_tweaks.clone())
+                        .collect::<Vec<_>>()
+                ),
+                Some("Revert order matters for shared keys"),
+            );
+        }
+    }
+
+    // Capture baseline values for any keys not already captured
+    log::debug!("Capturing baseline for tweak '{}'", tweak.name);
+    if let Err(e) = backup_service::capture_baseline_for_keys(&tweak_id, &keys_info) {
+        log::warn!("Failed to capture baseline for '{}': {}", tweak.name, e);
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Warn,
+                &format!("Failed to capture baseline for {}: {}", tweak.name, e),
+                Some("Continuing without full baseline"),
             );
         }
     } else {
-        log::debug!("Backup created for tweak '{}'", tweak.name);
+        log::debug!("Baseline captured for tweak '{}'", tweak.name);
         if is_debug_enabled() {
             emit_debug_log(
                 &app,
                 DebugLevel::Success,
-                &format!("Backup created for: {}", tweak.name),
+                &format!("Baseline captured for: {}", tweak.name),
                 None,
             );
         }
     }
 
-    // Apply all registry changes
+    // Apply all registry changes with rollback on failure
+    let mut applied_changes: Vec<RegistryKeyId> = Vec::new();
+    let mut rollback_needed = false;
+    let mut error_msg: Option<String> = None;
+
     for change in &changes {
-        apply_registry_change(&app, change, &tweak.name)?;
+        let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
+
+        match apply_registry_change(&app, change, &tweak.name) {
+            Ok(()) => {
+                applied_changes.push(key_id);
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to apply registry change for '{}': {}",
+                    tweak.name,
+                    e
+                );
+                rollback_needed = true;
+                error_msg = Some(e.to_string());
+                break;
+            }
+        }
+    }
+
+    // If any change failed, rollback all applied changes
+    if rollback_needed {
+        log::warn!(
+            "Rolling back {} changes for tweak '{}'",
+            applied_changes.len(),
+            tweak.name
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Warn,
+                &format!("Rolling back changes for: {}", tweak.name),
+                Some(&format!("{} changes to revert", applied_changes.len())),
+            );
+        }
+
+        // Try to restore each applied key to its baseline value
+        for key_id in &applied_changes {
+            if let Err(e) = backup_service::restore_key_to_baseline(key_id) {
+                log::error!("Failed to rollback key {}: {}", key_id, e);
+            }
+        }
+
+        return Err(Error::BackupFailed(format!(
+            "Failed to apply tweak '{}': {}. Changes have been rolled back.",
+            tweak.name,
+            error_msg.unwrap_or_default()
+        )));
+    }
+
+    // Record the tweak as applied in our state
+    if let Err(e) =
+        backup_service::record_tweak_applied(&tweak_id, &tweak.name, version, applied_changes)
+    {
+        log::warn!("Failed to record tweak state for '{}': {}", tweak.name, e);
     }
 
     log::info!(
@@ -228,7 +338,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     })
 }
 
-/// Revert a tweak (restore to disable values or from backup)
+/// Revert a tweak (restore to baseline or disable values with reference counting)
 #[tauri::command]
 pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
     log::info!("Command: revert_tweak({})", tweak_id);
@@ -284,10 +394,92 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         );
     }
 
-    // Restore all registry changes
+    // First, record the revert to get list of orphaned keys (ref_count goes to 0)
+    let orphaned_keys = backup_service::record_tweak_reverted(&tweak_id)?;
+    log::debug!(
+        "Tweak '{}' revert: {} keys orphaned (will be restored to baseline)",
+        tweak.name,
+        orphaned_keys.len()
+    );
+
+    // For each registry change:
+    // - If key is orphaned (no other tweaks use it): restore to baseline
+    // - If key is still used by other tweaks: apply disable_value (or skip if none)
     for change in &changes {
-        if let Some(disable_value) = &change.disable_value {
-            revert_registry_change(&app, change, disable_value, &tweak.name)?;
+        let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
+
+        if orphaned_keys.contains(&key_id) {
+            // This key is no longer used by any tweak - restore to baseline
+            log::debug!("Restoring key {} to baseline (orphaned)", key_id);
+
+            if is_debug_enabled() {
+                emit_debug_log(
+                    &app,
+                    DebugLevel::Info,
+                    &format!(
+                        "Restoring to baseline: {}\\{}\\{}",
+                        change.hive.as_str(),
+                        change.key,
+                        change.value_name
+                    ),
+                    Some("No other tweaks use this key"),
+                );
+            }
+
+            match backup_service::restore_key_to_baseline(&key_id) {
+                Ok(restored) => {
+                    if restored {
+                        log::debug!("Restored {} to baseline", key_id);
+                    } else {
+                        log::debug!(
+                            "Could not restore {} to baseline (no baseline or no original value)",
+                            key_id
+                        );
+                        // Fallback to disable_value if available
+                        if let Some(disable_value) = &change.disable_value {
+                            revert_registry_change(&app, change, disable_value, &tweak.name)?;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to restore {} to baseline: {}", key_id, e);
+                    // Fallback to disable_value if available
+                    if let Some(disable_value) = &change.disable_value {
+                        revert_registry_change(&app, change, disable_value, &tweak.name)?;
+                    }
+                }
+            }
+        } else {
+            // Other tweaks still use this key - apply disable_value only
+            // This keeps the key modified but moves it toward a "less aggressive" state
+            if let Some(disable_value) = &change.disable_value {
+                log::debug!(
+                    "Key {} still used by other tweaks, applying disable_value",
+                    key_id
+                );
+
+                if is_debug_enabled() {
+                    let other_tweaks = backup_service::load_tweak_state()
+                        .map(|s| s.get_tweaks_for_key(&key_id))
+                        .unwrap_or_default();
+                    emit_debug_log(
+                        &app,
+                        DebugLevel::Warn,
+                        &format!("Key {} still used by other tweaks", key_id),
+                        Some(&format!(
+                            "Used by: {:?}. Applying disable value instead of baseline.",
+                            other_tweaks
+                        )),
+                    );
+                }
+
+                revert_registry_change(&app, change, disable_value, &tweak.name)?;
+            } else {
+                log::debug!(
+                    "Key {} has no disable_value, skipping (other tweaks still use it)",
+                    key_id
+                );
+            }
         }
     }
 
