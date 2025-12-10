@@ -22,6 +22,14 @@ pub fn run() {
             commands::general::clear_greetings,
             commands::general::update_theme,
             commands::general::get_theme,
+            commands::system::get_system_info,
+            commands::tweaks::get_available_tweaks,
+            commands::tweaks::get_tweaks_by_category,
+            commands::tweaks::get_tweak,
+            commands::tweaks::get_tweak_status,
+            commands::tweaks::apply_tweak,
+            commands::tweaks::revert_tweak,
+            commands::tweaks::batch_apply_tweaks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

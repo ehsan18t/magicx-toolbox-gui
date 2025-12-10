@@ -126,7 +126,7 @@ pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
 }
 
 /// Get registry hive key
-fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
+fn get_hive_key(hive: &RegistryHive) -> Result<winreg::enums::HKEY, Error> {
     match hive {
         RegistryHive::HKCU => Ok(winreg::enums::HKEY_CURRENT_USER),
         RegistryHive::HKLM => Ok(winreg::enums::HKEY_LOCAL_MACHINE),

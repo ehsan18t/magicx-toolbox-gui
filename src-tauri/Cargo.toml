@@ -37,6 +37,7 @@ tauri-plugin-prevent-default = "3"
 anyhow = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 winreg = "0.52"
+chrono = "0.4"
 windows = { version = "0.58", features = [
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
