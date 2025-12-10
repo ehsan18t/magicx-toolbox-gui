@@ -1,6 +1,6 @@
 [package]
 name = "magicx-toolbox"
-version = "1.0.0"
+version = "3.0.0"
 description = "MagicX Toolbox - Windows System Optimization & Tweaking Application"
 authors = ["Ehsan Khan <ehsan18t@gmail.com>"]
 license = "MIT"
