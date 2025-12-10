@@ -6,6 +6,14 @@ use winreg::RegKey;
 use winreg::RegValue;
 use winreg::HKEY;
 
+/// Format hive name for display
+fn hive_name(hive: &RegistryHive) -> &'static str {
+    match hive {
+        RegistryHive::HKCU => "HKCU",
+        RegistryHive::HKLM => "HKLM",
+    }
+}
+
 /// Read a DWORD value from registry
 pub fn read_dword(
     hive: &RegistryHive,
