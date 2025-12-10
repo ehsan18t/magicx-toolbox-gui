@@ -17,10 +17,10 @@ A modern, full-featured starter template for building desktop applications with 
 
 1. **Clone and install**
    ```bash
-   git clone https://github.com/yourusername/tauri-sveltekit-starter-template.git
+   git clone https://github.com/ehsan18t/magicx-toolbox-gui.git
    ```
    ```bash
-   cd tauri-sveltekit-starter-template
+   cd magicx-toolbox-gui
    bun install
    ```
 

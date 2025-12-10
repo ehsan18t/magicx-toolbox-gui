@@ -1,13 +1,13 @@
 [package]
-name = "tauri-sveltekit-starter-template"
+name = "magicx-toolbox"
 version = "1.0.0"
-description = "A powerful Tauri + SvelteKit application template"
+description = "MagicX Toolbox - Windows System Optimization & Tweaking Application"
 authors = ["Ehsan Khan <ehsan18t@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/ehsan18t/tauri-sveltekit-starter-template"
-homepage = "https://github.com/ehsan18t/tauri-sveltekit-starter-template"
-keywords = ["tauri", "sveltekit", "desktop", "template"]
-categories = ["multimedia", "text-processing"]
+repository = "https://github.com/ehsan18t/magicx-toolbox-gui"
+homepage = "https://github.com/ehsan18t/magicx-toolbox-gui"
+keywords = ["tauri", "windows", "tweaks", "optimization"]
+categories = ["utilities"]
 edition = "2021"
 rust-version = "1.77.2"
 

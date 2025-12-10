@@ -2056,6 +2056,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
+name = "magicx-toolbox"
+version = "1.0.0"
+dependencies = [
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-log",
+ "tauri-plugin-opener",
+ "tauri-plugin-prevent-default",
+ "tauri-plugin-shell",
+ "thiserror 2.0.17",
+ "winreg",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4142,25 +4161,6 @@ dependencies = [
  "webview2-com",
  "windows",
  "wry",
-]
-
-[[package]]
-name = "tauri-sveltekit-starter-template"
-version = "1.0.0"
-dependencies = [
- "chrono",
- "log",
- "serde",
- "serde_json",
- "serde_yaml",
- "tauri",
- "tauri-build",
- "tauri-plugin-log",
- "tauri-plugin-opener",
- "tauri-plugin-prevent-default",
- "tauri-plugin-shell",
- "thiserror 2.0.17",
- "winreg",
 ]
 
 [[package]]

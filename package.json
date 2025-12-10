@@ -1,12 +1,12 @@
 {
-  "name": "tauri-sveltekit-starter-template",
+  "name": "magicx-toolbox",
   "version": "1.0.0",
-  "description": "A modern, full-featured starter template for building desktop applications with Tauri 2 and SvelteKit 5.",
+  "description": "MagicX Toolbox - Windows System Optimization & Tweaking Application",
   "author": "Ehsan Khan <ehsan18t@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ehsan18t/tauri-sveltekit-starter-template"
+    "url": "https://github.com/ehsan18t/magicx-toolbox-gui"
   },
   "keywords": [
     "tauri",
