@@ -1,5 +1,6 @@
 <script lang="ts">
   import { CategorySection, FilterBar, StatsCard, SystemInfoCard, TweakCard } from "$lib";
+  import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
   import {
     filteredTweaks,
     initializeStores,
@@ -73,6 +74,8 @@
         pending={$tweakStats.pending}
       />
     </section>
+
+    <PendingRebootBanner />
 
     <section class="tweaks-section">
       <FilterBar />

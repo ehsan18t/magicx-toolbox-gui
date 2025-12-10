@@ -104,11 +104,38 @@ function createErrorStore() {
   };
 }
 
+// Pending reboot store - tracks tweaks that need a reboot
+function createPendingRebootStore() {
+  const { subscribe, update, set } = writable<Set<string>>(new Set());
+
+  return {
+    subscribe,
+    addTweak(tweakId: string) {
+      update((s) => {
+        const newSet = new Set(s);
+        newSet.add(tweakId);
+        return newSet;
+      });
+    },
+    removeTweak(tweakId: string) {
+      update((s) => {
+        const newSet = new Set(s);
+        newSet.delete(tweakId);
+        return newSet;
+      });
+    },
+    clear() {
+      set(new Set());
+    },
+  };
+}
+
 // Create store instances
 export const systemStore = createSystemStore();
 export const tweaksStore = createTweaksStore();
 export const loadingStore = createLoadingStore();
 export const errorStore = createErrorStore();
+export const pendingRebootStore = createPendingRebootStore();
 
 // Selected category filter
 export const selectedCategory = writable<TweakCategory | "all">("all");
@@ -180,6 +207,16 @@ export const categoryStats = derived(tweaksByCategory, ($byCategory) => {
   return stats;
 });
 
+// Pending reboot derived stores
+export const pendingRebootCount = derived(pendingRebootStore, ($pending) => $pending.size);
+
+export const pendingRebootTweaks = derived(
+  [tweaksStore, pendingRebootStore],
+  ([$tweaks, $pending]) => {
+    return $tweaks.filter((t) => $pending.has(t.definition.id));
+  },
+);
+
 // Actions
 export async function applyTweak(tweakId: string): Promise<boolean> {
   loadingStore.startLoading(tweakId);
@@ -190,6 +227,12 @@ export async function applyTweak(tweakId: string): Promise<boolean> {
 
     if (result.success) {
       tweaksStore.updateStatus(tweakId, { is_applied: true, has_backup: true });
+
+      // Track if this tweak requires reboot
+      if (result.requires_reboot) {
+        pendingRebootStore.addTweak(tweakId);
+      }
+
       return true;
     } else {
       errorStore.setError(tweakId, result.message);
@@ -213,6 +256,15 @@ export async function revertTweak(tweakId: string): Promise<boolean> {
 
     if (result.success) {
       tweaksStore.updateStatus(tweakId, { is_applied: false });
+
+      // Remove from pending reboot if it was there
+      pendingRebootStore.removeTweak(tweakId);
+
+      // If reverting also requires reboot, add it back
+      if (result.requires_reboot) {
+        pendingRebootStore.addTweak(tweakId);
+      }
+
       return true;
     } else {
       errorStore.setError(tweakId, result.message);

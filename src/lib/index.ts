@@ -1,8 +1,10 @@
 // Components
 export { default as CategorySection } from "./components/CategorySection.svelte";
+export { default as ConfirmDialog } from "./components/ConfirmDialog.svelte";
 export { default as ControlButton } from "./components/ControlButton.svelte";
 export { default as ExternalLink } from "./components/ExternalLink.svelte";
 export { default as FilterBar } from "./components/FilterBar.svelte";
+export { default as PendingRebootBanner } from "./components/PendingRebootBanner.svelte";
 export { default as StatsCard } from "./components/StatsCard.svelte";
 export { default as SystemInfoCard } from "./components/SystemInfoCard.svelte";
 export { default as TitleBar } from "./components/TitleBar.svelte";

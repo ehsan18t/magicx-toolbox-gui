@@ -162,4 +162,3 @@ export async function restoreFromBackup(tweakId: string): Promise<void> {
 export async function deleteBackup(tweakId: string): Promise<void> {
   return await invoke<void>("delete_backup", { tweakId });
 }
-

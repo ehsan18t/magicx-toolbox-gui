@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { loadingStore, toggleTweak } from "$lib/stores/tweaks";
-  import type { RiskLevel, TweakCategory, TweakWithStatus } from "$lib/types";
+  import { loadingStore, systemStore, toggleTweak } from "$lib/stores/tweaks";
+  import type { RegistryChange, RiskLevel, TweakCategory, TweakWithStatus } from "$lib/types";
   import { CATEGORY_INFO, RISK_INFO } from "$lib/types";
   import Icon from "@iconify/svelte";
-  import { derived } from "svelte/store";
+  import { derived, get } from "svelte/store";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
 
   const { tweak, compact = false } = $props<{
     tweak: TweakWithStatus;
@@ -13,13 +14,46 @@
   const isLoading = derived(loadingStore, ($loading) => $loading.has(tweak.definition.id));
 
   let showDetails = $state(false);
+  let showConfirmDialog = $state(false);
 
   // Use $derived to make these reactive
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
   const categoryInfo = $derived(CATEGORY_INFO[tweak.definition.category as TweakCategory]);
+  const isHighRisk = $derived(
+    tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical",
+  );
 
-  async function handleToggle() {
+  // Get registry changes for current Windows version
+  const registryChanges = $derived(() => {
+    const system = get(systemStore);
+    if (!system) return [];
+    const version = system.windows.is_windows_11 ? "11" : "10";
+    return tweak.definition.registry_changes[version] || [];
+  });
+
+  function handleToggleClick() {
+    // Show confirmation for high/critical risk tweaks when applying (not reverting)
+    if (isHighRisk && !tweak.status.is_applied) {
+      showConfirmDialog = true;
+    } else {
+      executeToggle();
+    }
+  }
+
+  async function executeToggle() {
+    showConfirmDialog = false;
     await toggleTweak(tweak.definition.id, tweak.status.is_applied);
+  }
+
+  function formatRegistryPath(change: RegistryChange): string {
+    return `${change.hive}\\${change.key}`;
+  }
+
+  function formatValue(value: unknown): string {
+    if (value === null || value === undefined) return "(delete)";
+    if (typeof value === "number") return `0x${value.toString(16).toUpperCase()} (${value})`;
+    if (typeof value === "string") return value === "" ? '""' : `"${value}"`;
+    return JSON.stringify(value);
   }
 </script>
 
@@ -53,7 +87,7 @@
         class="toggle-btn"
         class:active={tweak.status.is_applied}
         disabled={$isLoading}
-        onclick={handleToggle}
+        onclick={handleToggleClick}
         title={tweak.status.is_applied ? "Click to revert" : "Click to apply"}
       >
         {#if $isLoading}
@@ -68,7 +102,7 @@
     </div>
   </div>
 
-  {#if !compact && tweak.definition.info}
+  {#if !compact}
     <button class="details-toggle" onclick={() => (showDetails = !showDetails)}>
       <Icon icon={showDetails ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
       {showDetails ? "Hide details" : "Show details"}
@@ -76,11 +110,53 @@
 
     {#if showDetails}
       <div class="details">
-        <p>{tweak.definition.info}</p>
+        {#if tweak.definition.info}
+          <p class="info-text">{tweak.definition.info}</p>
+        {/if}
+
+        <div class="registry-section">
+          <h4 class="registry-title">
+            <Icon icon="mdi:database-cog" width="14" />
+            Registry Changes
+          </h4>
+          <div class="registry-changes">
+            {#each registryChanges() as change}
+              <div class="registry-change">
+                <div class="registry-path">
+                  <Icon icon="mdi:folder-key" width="12" />
+                  <code>{formatRegistryPath(change)}</code>
+                </div>
+                <div class="registry-value">
+                  <span class="value-name">{change.value_name || "(Default)"}</span>
+                  <span class="value-type">[{change.value_type}]</span>
+                </div>
+                <div class="registry-values-row">
+                  <span class="value-label">Enable:</span>
+                  <code class="value-data">{formatValue(change.enable_value)}</code>
+                  {#if change.disable_value !== undefined}
+                    <span class="value-label">Disable:</span>
+                    <code class="value-data">{formatValue(change.disable_value)}</code>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
       </div>
     {/if}
   {/if}
 </div>
+
+<ConfirmDialog
+  open={showConfirmDialog}
+  title="Apply {tweak.definition.risk_level === 'critical' ? 'Critical' : 'High'} Risk Tweak"
+  message="'{tweak.definition.name}' is a {tweak.definition
+    .risk_level} risk tweak. {riskInfo.description}. Are you sure you want to apply it?"
+  confirmText="Apply Anyway"
+  variant={tweak.definition.risk_level === "critical" ? "danger" : "warning"}
+  onconfirm={executeToggle}
+  oncancel={() => (showConfirmDialog = false)}
+/>
 
 <style>
   .tweak-card {
@@ -255,8 +331,96 @@
     line-height: 1.5;
   }
 
-  .details p {
-    margin: 0;
+  .details .info-text {
+    margin: 0 0 12px 0;
+  }
+
+  .registry-section {
+    border-top: 1px solid hsl(var(--border) / 0.5);
+    padding-top: 8px;
+    margin-top: 8px;
+  }
+
+  .registry-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: hsl(var(--foreground) / 0.8);
+    margin: 0 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .registry-changes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .registry-change {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border) / 0.5);
+    border-radius: 4px;
+    padding: 8px;
+    font-family: "Consolas", "Monaco", monospace;
+  }
+
+  .registry-path {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: hsl(var(--primary));
+    margin-bottom: 4px;
+    word-break: break-all;
+  }
+
+  .registry-path code {
+    background: none;
+    padding: 0;
+  }
+
+  .registry-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  .value-name {
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+
+  .value-type {
+    font-size: 9px;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted));
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .registry-values-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  .value-label {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .value-data {
+    background: hsl(var(--muted) / 0.8);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: hsl(142 76% 36%);
+    font-size: 10px;
   }
 
   :global(.spin) {
