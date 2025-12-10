@@ -4,26 +4,20 @@
   import Icon from "@iconify/svelte";
   import TweakCard from "./TweakCard.svelte";
 
-  const {
-    category,
-    tweaks,
-    expanded = true,
-  } = $props<{
+  interface Props {
     category: TweakCategory;
     tweaks: TweakWithStatus[];
-    expanded?: boolean;
-  }>();
+    initialExpanded?: boolean;
+  }
 
-  let isExpanded = $state(expanded);
+  const { category, tweaks, initialExpanded = true }: Props = $props();
 
-  // Use $derived for reactive category info
-  const categoryInfo = $derived(CATEGORY_INFO[category as TweakCategory]);
+  // Use a function to initialize state to avoid state_referenced_locally warning
+  const getInitialExpanded = () => initialExpanded;
+  let isExpanded = $state(getInitialExpanded());
 
-  $effect(() => {
-    isExpanded = expanded;
-  });
-
-  const appliedCount = $derived(tweaks.filter((t: TweakWithStatus) => t.status.is_applied).length);
+  const categoryInfo = $derived(CATEGORY_INFO[category]);
+  const appliedCount = $derived(tweaks.filter((t) => t.status.is_applied).length);
 </script>
 
 <section class="category-section">

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { themeStore } from "@/lib/stores/theme";
+  import { debugState } from "$lib/stores/debug.svelte";
+  import { themeStore } from "$lib/stores/theme";
   import Icon from "@iconify/svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,12 +8,11 @@
   import ControlButton from "./ControlButton.svelte";
 
   let appWindow: ReturnType<typeof getCurrentWindow>;
-  let appName = "";
-  let appVersion = "";
-  let isMaximized = false;
-  let isLoaded = false;
-
-  let appIcon = "/tauri.svg";
+  let appName = $state("");
+  let appVersion = $state("");
+  let isMaximized = $state(false);
+  let isLoaded = $state(false);
+  let appIcon = $state("/tauri.svg");
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
@@ -21,20 +21,18 @@
       try {
         appWindow = getCurrentWindow();
 
-        // Get app info with better error handling
         const [title, version, maximized] = await Promise.allSettled([
           getName(),
           getVersion(),
           appWindow.isMaximized(),
         ]);
 
-        appName = title.status === "fulfilled" ? title.value : "Tauri + SvelteKit Starter Template";
+        appName = title.status === "fulfilled" ? title.value : "MagicX Toolbox";
         appVersion = version.status === "fulfilled" ? version.value : "1.0.0";
         isMaximized = maximized.status === "fulfilled" ? maximized.value : false;
 
         isLoaded = true;
 
-        // Listen for window state changes
         unlisten = await appWindow.onResized(async () => {
           try {
             isMaximized = await appWindow.isMaximized();
@@ -44,8 +42,7 @@
         });
       } catch (error) {
         console.error("Failed to initialize titlebar:", error);
-        // Still show the titlebar even if some things fail
-        appName = "Tauri + SvelteKit Starter Template";
+        appName = "MagicX Toolbox";
         appVersion = "1.0.0";
         isLoaded = true;
       }
@@ -53,13 +50,11 @@
 
     init();
 
-    // Cleanup listener on component destroy
     return () => {
       if (unlisten) unlisten();
     };
   });
 
-  // Window control functions with error handling
   const minimize = async () => {
     try {
       await appWindow?.minimize();
@@ -123,6 +118,36 @@
     </div>
 
     <div class="window-controls flex items-center drag-disable">
+      <!-- Debug Toggle -->
+      <button
+        title={debugState.enabled
+          ? `Debug ON (${debugState.logCounts.total} logs) - Click to open panel`
+          : "Debug OFF - Click to enable"}
+        onclick={() => {
+          if (debugState.enabled) {
+            debugState.togglePanel();
+          } else {
+            debugState.toggle();
+          }
+        }}
+        oncontextmenu={(e) => {
+          e.preventDefault();
+          debugState.toggle();
+        }}
+        class="relative flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 hover:bg-foreground/10 {debugState.enabled
+          ? 'text-warning'
+          : 'text-foreground-muted'}"
+      >
+        <Icon icon="tabler:bug" width="18" height="18" />
+        {#if debugState.enabled && debugState.logCounts.total > 0}
+          <span
+            class="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-bold text-background"
+          >
+            {debugState.logCounts.total > 99 ? "99+" : debugState.logCounts.total}
+          </span>
+        {/if}
+      </button>
+
       <ControlButton
         title="Toggle Theme"
         icon={$themeStore === "dark" ? "tabler:moon" : "tabler:sun"}
@@ -130,7 +155,7 @@
         variant="theme"
       />
 
-      <!-- Material Design divider -->
+      <!-- Divider -->
       <div class="mx-2 h-4 w-px bg-foreground-muted/20"></div>
 
       <ControlButton
