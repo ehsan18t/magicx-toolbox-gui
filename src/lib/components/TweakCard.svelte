@@ -69,43 +69,9 @@
   <div class="status-bar" class:active={tweak.status.is_applied}></div>
 
   <div class="card-content">
-    <!-- Main row: title, badges, toggle -->
-    <div class="main-row">
-      <div class="info-section">
-        <div class="title-row">
-          <h3 class="tweak-title">{tweak.definition.name}</h3>
-        </div>
-
-        <!-- Meta row: risk, admin, reboot -->
-        <div class="meta-row">
-          <!-- Risk level with icon -->
-          <div class="meta-item risk" title={riskInfo.description}>
-            <Icon icon={riskIcons[tweak.definition.risk_level as RiskLevel]} width="14" />
-            <span class="risk-label {tweak.definition.risk_level}">{riskInfo.name}</span>
-          </div>
-
-          <!-- Admin badge -->
-          {#if tweak.definition.requires_admin}
-            <div class="meta-item badge admin" title="Requires Administrator privileges to apply">
-              <Icon icon="mdi:shield-account" width="14" />
-              <span>Admin</span>
-            </div>
-          {/if}
-
-          <!-- Reboot badge -->
-          {#if tweak.definition.requires_reboot}
-            <div
-              class="meta-item badge reboot"
-              title="System restart required after applying or reverting"
-            >
-              <Icon icon="mdi:restart" width="14" />
-              <span>Reboot</span>
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <!-- Toggle Switch -->
+    <!-- Header Section: Title + Toggle -->
+    <div class="header-section">
+      <h3 class="tweak-title">{tweak.definition.name}</h3>
       <button
         class="toggle-switch"
         class:active={tweak.status.is_applied}
@@ -130,6 +96,31 @@
 
     <!-- Description -->
     <p class="description">{tweak.definition.description}</p>
+
+    <!-- Metadata Section: Risk, Admin, Reboot -->
+    <div class="metadata-section">
+      <!-- Risk level -->
+      <div class="meta-indicator" title={riskInfo.description}>
+        <Icon icon={riskIcons[tweak.definition.risk_level as RiskLevel]} width="16" />
+        <span class="meta-label {tweak.definition.risk_level}">{riskInfo.name}</span>
+      </div>
+
+      <!-- Admin required -->
+      {#if tweak.definition.requires_admin}
+        <div class="meta-indicator" title="Requires Administrator privileges to apply">
+          <Icon icon="mdi:shield-account-outline" width="16" />
+          <span class="meta-label">Admin</span>
+        </div>
+      {/if}
+
+      <!-- Reboot required -->
+      {#if tweak.definition.requires_reboot}
+        <div class="meta-indicator" title="System restart required after applying or reverting">
+          <Icon icon="mdi:restart" width="16" />
+          <span class="meta-label">Reboot</span>
+        </div>
+      {/if}
+    </div>
 
     <!-- Details toggle -->
     <button
@@ -243,24 +234,13 @@
     min-width: 0;
   }
 
-  /* Main row */
-  .main-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .info-section {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .title-row {
+  /* Header Section */
+  .header-section {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
   }
 
   .tweak-title {
@@ -269,76 +249,69 @@
     font-weight: 600;
     color: hsl(var(--foreground));
     line-height: 1.3;
+    flex: 1;
   }
 
-  /* Meta row for risk, admin, reboot */
-  .meta-row {
+  /* Description */
+  .description {
+    margin: 0 0 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Metadata Section */
+  .metadata-section {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     flex-wrap: wrap;
-    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid hsl(var(--border) / 0.3);
   }
 
-  .meta-item {
+  .meta-indicator {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     font-size: 12px;
     font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    cursor: help;
+    transition: color 0.15s ease;
   }
 
-  .meta-item.risk {
+  .meta-indicator:hover {
     color: hsl(var(--foreground));
-    cursor: help;
   }
 
-  .meta-item.risk :global(svg) {
+  .meta-indicator :global(svg) {
     flex-shrink: 0;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
   }
 
-  .meta-item.badge {
-    padding: 4px 8px;
-    border-radius: 6px;
-    color: white;
-    cursor: help;
-    transition: all 0.15s ease;
+  .meta-indicator:hover :global(svg) {
+    opacity: 1;
   }
 
-  .meta-item.badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px hsla(0, 0%, 0%, 0.15);
-  }
-
-  .meta-item.badge.admin {
-    background: hsl(217 91% 60%);
-  }
-
-  .meta-item.badge.reboot {
-    background: hsl(280 68% 60%);
-  }
-
-  .meta-item.badge :global(svg) {
-    flex-shrink: 0;
-  }
-
-  .risk-label {
-    font-size: 12px;
+  .meta-label {
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
-  .risk-label.low {
+  .meta-label.low {
     color: hsl(142 76% 36%);
   }
-  .risk-label.medium {
+  .meta-label.medium {
     color: hsl(48 96% 40%);
   }
-  .risk-label.high {
+  .meta-label.high {
     color: hsl(25 95% 53%);
   }
-  .risk-label.critical {
+  .meta-label.critical {
     color: hsl(0 84% 60%);
   }
 
@@ -349,11 +322,6 @@
     border: none;
     background: transparent;
     cursor: pointer;
-  }
-
-  .toggle-switch:disabled {
-    cursor: not-allowed;
-    opacity: 0.7;
   }
 
   .switch-track {
@@ -379,6 +347,19 @@
     background: hsl(var(--primary) / 0.85);
   }
 
+  .toggle-switch {
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .toggle-switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
   .switch-thumb {
     display: flex;
     align-items: center;
@@ -397,14 +378,6 @@
   }
 
   .toggle-switch.loading .switch-thumb {
-    color: hsl(var(--muted-foreground));
-  }
-
-  /* Description */
-  .description {
-    margin: 10px 0 0;
-    font-size: 13px;
-    line-height: 1.5;
     color: hsl(var(--muted-foreground));
   }
 
