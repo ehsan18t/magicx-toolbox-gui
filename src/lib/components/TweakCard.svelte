@@ -120,7 +120,7 @@
             Registry Changes
           </h4>
           <div class="registry-changes">
-            {#each registryChanges() as change}
+            {#each registryChanges() as change (change.hive + change.key + change.value_name)}
               <div class="registry-change">
                 <div class="registry-path">
                   <Icon icon="mdi:folder-key" width="12" />
