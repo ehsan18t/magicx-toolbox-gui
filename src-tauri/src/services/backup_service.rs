@@ -1,17 +1,16 @@
 use crate::error::Error;
-use crate::models::{RegistryHive, RegistryKeySnapshot};
+use crate::models::RegistryHive;
 use std::fs;
 use std::path::PathBuf;
-use chrono::Local;
 
 /// Get the backups directory path (in root directory as portable app)
-fn get_backups_dir() -> Result<PathBuf, Error> {
+pub fn get_backups_dir() -> Result<PathBuf, Error> {
     let exe_path = std::env::current_exe()
         .map_err(|e| Error::BackupFailed(format!("Failed to get exe path: {}", e)))?;
 
-    let root = exe_path
-        .parent()
-        .ok_or_else(|| Error::BackupFailed("Could not determine executable parent directory".to_string()))?;
+    let root = exe_path.parent().ok_or_else(|| {
+        Error::BackupFailed("Could not determine executable parent directory".to_string())
+    })?;
 
     let backups_dir = root.join("backups");
 
@@ -22,7 +21,17 @@ fn get_backups_dir() -> Result<PathBuf, Error> {
     Ok(backups_dir)
 }
 
+/// Generate a timestamp string for backup filenames
+fn get_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}", duration.as_secs())
+}
+
 /// Create a backup of a registry key
+#[allow(unused_variables)]
 pub fn backup_registry_key(
     hive: &RegistryHive,
     key_path: &str,
@@ -34,8 +43,8 @@ pub fn backup_registry_key(
     let filename = if let Some(name) = backup_name {
         format!("{}.json", name)
     } else {
-        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-        let safe_key = key_path.replace("\\", "_");
+        let timestamp = get_timestamp();
+        let safe_key = key_path.replace('\\', "_");
         format!("{}_{}.json", safe_key, timestamp)
     };
 
@@ -48,6 +57,7 @@ pub fn backup_registry_key(
 }
 
 /// Restore a registry key from a backup
+#[allow(unused_variables)]
 pub fn restore_registry_key(backup_path: &str) -> Result<(), Error> {
     // TODO: Read JSON backup file and restore registry values
     // This will require reading the backup file and applying registry changes
@@ -62,10 +72,8 @@ pub fn list_backups() -> Result<Vec<String>, Error> {
     let mut backups = Vec::new();
 
     if backups_dir.exists() {
-        for entry in fs::read_dir(&backups_dir)
-            .map_err(|e| Error::BackupFailed(e.to_string()))? {
-            let entry = entry
-                .map_err(|e| Error::BackupFailed(e.to_string()))?;
+        for entry in fs::read_dir(&backups_dir).map_err(|e| Error::BackupFailed(e.to_string()))? {
+            let entry = entry.map_err(|e| Error::BackupFailed(e.to_string()))?;
 
             if let Some(filename) = entry.file_name().to_str() {
                 if filename.ends_with(".json") {

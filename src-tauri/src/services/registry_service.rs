@@ -1,11 +1,17 @@
 use crate::error::Error;
-use crate::models::{RegistryHive, RegistryValue, RegistryValueType};
-use winreg::RegKey;
-use winreg::enums::*;
+use crate::models::RegistryHive;
 use std::io;
+use winreg::enums::*;
+use winreg::RegKey;
+use winreg::RegValue;
+use winreg::HKEY;
 
 /// Read a DWORD value from registry
-pub fn read_dword(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<Option<u32>, Error> {
+pub fn read_dword(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+) -> Result<Option<u32>, Error> {
     let hive_key = get_hive_key(hive)?;
     let reg_key = RegKey::predef(hive_key)
         .open_subkey_with_flags(key_path, KEY_READ)
@@ -71,8 +77,8 @@ pub fn read_binary(
             }
         })?;
 
-    match reg_key.get_value::<Vec<u8>, _>(value_name) {
-        Ok(v) => Ok(Some(v)),
+    match reg_key.get_raw_value(value_name) {
+        Ok(v) => Ok(Some(v.bytes)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(Error::RegistryOperation(format!(
             "Failed to read Binary from {}: {}",
@@ -104,32 +110,18 @@ pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
             }
         })?;
 
-    match reg_key.get_value::<u32, _>(value_name) {
+    match reg_key.get_raw_value(value_name) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(_) => {
-            // Try as string if DWORD failed
-            match reg_key.get_value::<String, _>(value_name) {
-                Ok(_) => Ok(true),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-                Err(_) => {
-                    // Try as binary
-                    match reg_key.get_value::<Vec<u8>, _>(value_name) {
-                        Ok(_) => Ok(true),
-                        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-                        Err(e) => Err(Error::RegistryOperation(e.to_string())),
-                    }
-                }
-            }
-        }
+        Err(e) => Err(Error::RegistryOperation(e.to_string())),
     }
 }
 
 /// Get registry hive key
-fn get_hive_key(hive: &RegistryHive) -> Result<winreg::enums::HKEY, Error> {
+fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
     match hive {
-        RegistryHive::HKCU => Ok(winreg::enums::HKEY_CURRENT_USER),
-        RegistryHive::HKLM => Ok(winreg::enums::HKEY_LOCAL_MACHINE),
+        RegistryHive::HKCU => Ok(HKEY_CURRENT_USER),
+        RegistryHive::HKLM => Ok(HKEY_LOCAL_MACHINE),
     }
 }
 
@@ -154,11 +146,9 @@ pub fn set_dword(
         .create_subkey_with_flags(key_path, KEY_WRITE)
         .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
 
-    reg_key.set_value(value_name, &value)
-        .map_err(|e| Error::RegistryOperation(format!(
-            "Failed to set DWORD {}: {}",
-            value_name, e
-        )))
+    reg_key
+        .set_value(value_name, &value)
+        .map_err(|e| Error::RegistryOperation(format!("Failed to set DWORD {}: {}", value_name, e)))
 }
 
 /// Set a String value in registry
@@ -182,11 +172,9 @@ pub fn set_string(
         .create_subkey_with_flags(key_path, KEY_WRITE)
         .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
 
-    reg_key.set_value(value_name, &value)
-        .map_err(|e| Error::RegistryOperation(format!(
-            "Failed to set String {}: {}",
-            value_name, e
-        )))
+    reg_key.set_value(value_name, &value).map_err(|e| {
+        Error::RegistryOperation(format!("Failed to set String {}: {}", value_name, e))
+    })
 }
 
 /// Set binary data in registry
@@ -210,19 +198,17 @@ pub fn set_binary(
         .create_subkey_with_flags(key_path, KEY_WRITE)
         .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
 
-    reg_key.set_value(value_name, &value.to_vec())
-        .map_err(|e| Error::RegistryOperation(format!(
-            "Failed to set Binary {}: {}",
-            value_name, e
-        )))
+    let reg_value = RegValue {
+        vtype: REG_BINARY,
+        bytes: value.to_vec(),
+    };
+    reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
+        Error::RegistryOperation(format!("Failed to set Binary {}: {}", value_name, e))
+    })
 }
 
 /// Delete a registry value
-pub fn delete_value(
-    hive: &RegistryHive,
-    key_path: &str,
-    value_name: &str,
-) -> Result<(), Error> {
+pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<(), Error> {
     let hive_key = get_hive_key(hive)?;
 
     // For HKLM, we need write permissions which typically require admin
@@ -237,17 +223,13 @@ pub fn delete_value(
         .open_subkey_with_flags(key_path, KEY_WRITE)
         .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
 
-    reg_key.delete_value(value_name)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
-            } else {
-                Error::RegistryOperation(format!(
-                    "Failed to delete {}: {}",
-                    value_name, e
-                ))
-            }
-        })
+    reg_key.delete_value(value_name).map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
+        } else {
+            Error::RegistryOperation(format!("Failed to delete {}: {}", value_name, e))
+        }
+    })
 }
 
 /// Create a registry key

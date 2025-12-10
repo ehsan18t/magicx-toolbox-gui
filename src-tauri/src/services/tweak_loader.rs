@@ -2,7 +2,6 @@ use crate::error::Error;
 use crate::models::TweakDefinition;
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 
 /// Load all tweaks from YAML files
 pub fn load_all_tweaks() -> Result<HashMap<String, TweakDefinition>, Error> {

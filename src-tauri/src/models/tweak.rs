@@ -32,12 +32,11 @@ impl RiskLevel {
 pub enum TweakCategory {
     Privacy,
     Performance,
+    #[serde(rename = "ui")]
     UI,
     Security,
     Services,
     Gaming,
-    #[serde(other)]
-    Other(String),
 }
 
 impl std::fmt::Display for TweakCategory {
@@ -49,7 +48,6 @@ impl std::fmt::Display for TweakCategory {
             TweakCategory::Security => write!(f, "Security"),
             TweakCategory::Services => write!(f, "Services"),
             TweakCategory::Gaming => write!(f, "Gaming"),
-            TweakCategory::Other(s) => write!(f, "{}", s),
         }
     }
 }
