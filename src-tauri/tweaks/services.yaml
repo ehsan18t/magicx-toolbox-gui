@@ -4,7 +4,7 @@ category:
   id: services
   name: "Services"
   description: "Manage unnecessary Windows services"
-  icon: "⚙️"
+  icon: "mdi:cogs"
   order: 5
 
 tweaks:

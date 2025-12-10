@@ -21,7 +21,7 @@ export const activeTab = writable<TabId>("overview");
 export const overviewTab: TabDefinition = {
   id: "overview",
   name: "Overview",
-  icon: "📊",
+  icon: "mdi:view-dashboard",
   description: "System information and statistics",
 };
 

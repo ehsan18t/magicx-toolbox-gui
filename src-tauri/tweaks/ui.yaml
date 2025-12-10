@@ -4,7 +4,7 @@ category:
   id: ui
   name: "UI/UX"
   description: "Customize Windows appearance and behavior"
-  icon: "🎨"
+  icon: "mdi:palette"
   order: 3
 
 tweaks:

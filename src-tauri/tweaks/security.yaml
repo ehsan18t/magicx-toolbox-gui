@@ -4,7 +4,7 @@ category:
   id: security
   name: "Security"
   description: "Improve Windows security settings"
-  icon: "🛡️"
+  icon: "mdi:security"
   order: 4
 
 tweaks:

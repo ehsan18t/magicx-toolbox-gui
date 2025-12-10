@@ -28,21 +28,6 @@
       isExpanded = false;
     }
   }
-
-  // Map category icons to Iconify icons for better visuals
-  const iconMap: Record<string, string> = {
-    overview: "mdi:view-dashboard",
-    privacy: "mdi:shield-lock",
-    performance: "mdi:speedometer",
-    ui: "mdi:palette",
-    security: "mdi:security",
-    services: "mdi:cogs",
-    gaming: "mdi:gamepad-variant",
-  };
-
-  function getIcon(tabId: string): string {
-    return iconMap[tabId] || "mdi:folder";
-  }
 </script>
 
 <aside
@@ -72,7 +57,7 @@
         title={!isExpanded && !isPinned ? tab.name : undefined}
       >
         <div class="nav-icon">
-          <Icon icon={getIcon(tab.id)} width="22" />
+          <Icon icon={tab.icon || "mdi:folder"} width="22" />
           {#if stats && stats.applied > 0 && !isExpanded && !isPinned}
             <span class="mini-badge"></span>
           {/if}

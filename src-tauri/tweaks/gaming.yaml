@@ -4,7 +4,7 @@ category:
   id: gaming
   name: "Gaming"
   description: "Optimize Windows for gaming performance"
-  icon: "🎮"
+  icon: "mdi:gamepad-variant"
   order: 6
 
 tweaks:

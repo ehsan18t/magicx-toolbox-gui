@@ -4,7 +4,7 @@ category:
   id: privacy
   name: "Privacy"
   description: "Reduce telemetry, tracking, and data collection"
-  icon: "🔒"
+  icon: "mdi:shield-lock"
   order: 1
 
 tweaks:

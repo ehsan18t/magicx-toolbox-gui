@@ -9,16 +9,6 @@
   } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
 
-  // Map category IDs to icons
-  const categoryIcons: Record<string, string> = {
-    privacy: "mdi:shield-lock",
-    performance: "mdi:speedometer",
-    ui: "mdi:palette",
-    security: "mdi:security",
-    services: "mdi:cogs",
-    gaming: "mdi:gamepad-variant",
-  };
-
   // Progress percentage
   const progressPercent = $derived(
     $tweakStats.total > 0 ? Math.round(($tweakStats.applied / $tweakStats.total) * 100) : 0,
@@ -149,7 +139,7 @@
         <button class="category-card" onclick={() => navigateToCategory(category.id)}>
           <div class="card-header">
             <div class="category-icon">
-              <Icon icon={categoryIcons[category.id] || "mdi:folder"} width="24" />
+              <Icon icon={category.icon || "mdi:folder"} width="24" />
             </div>
             <div class="category-badge" class:complete={progress === 100 && stats?.total > 0}>
               {stats?.applied ?? 0}/{stats?.total ?? 0}

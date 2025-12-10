@@ -32,6 +32,7 @@ export interface CategoryDefinition {
   id: string;
   name: string;
   description: string;
+  /** Iconify icon name (e.g., 'mdi:shield-lock') */
   icon: string;
   order: number;
 }

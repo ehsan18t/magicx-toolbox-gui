@@ -4,7 +4,7 @@ category:
   id: performance
   name: "Performance"
   description: "Optimize system speed and responsiveness"
-  icon: "⚡"
+  icon: "mdi:speedometer"
   order: 2
 
 tweaks:

@@ -17,16 +17,6 @@
   let showRevertAllDialog = $state(false);
   let isBatchProcessing = $state(false);
 
-  // Map category IDs to icons
-  const categoryIcons: Record<string, string> = {
-    privacy: "mdi:shield-lock",
-    performance: "mdi:speedometer",
-    ui: "mdi:palette",
-    security: "mdi:security",
-    services: "mdi:cogs",
-    gaming: "mdi:gamepad-variant",
-  };
-
   // Get tweaks for this category
   const categoryTweaks = $derived($tweaksStore.filter((t) => t.definition.category === tab.id));
 
@@ -83,7 +73,7 @@
   <header class="page-header">
     <div class="header-left">
       <div class="header-icon">
-        <Icon icon={categoryIcons[tab.id] || "mdi:folder"} width="28" />
+        <Icon icon={tab.icon || "mdi:folder"} width="28" />
       </div>
       <div class="header-info">
         <h1>{tab.name}</h1>
@@ -422,13 +412,23 @@
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+    padding-right: 8px;
+    margin-right: -8px;
   }
 
   .tweaks-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     padding-bottom: 16px;
+  }
+
+  @media (min-width: 1024px) {
+    .tweaks-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
   }
 
   /* Empty State */
