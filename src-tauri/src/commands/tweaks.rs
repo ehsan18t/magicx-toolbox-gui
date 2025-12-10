@@ -230,7 +230,7 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
         );
     }
 
-    // TODO: Create single backup point
+    // Each tweak creates its own backup via apply_tweak, allowing individual restore
     let mut requires_reboot = false;
 
     // Apply all tweaks
