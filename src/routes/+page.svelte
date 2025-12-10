@@ -1,15 +1,9 @@
 <script lang="ts">
-  import { CategorySection, FilterBar, StatsCard, SystemInfoCard, TweakCard } from "$lib";
-  import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
-  import {
-    categoriesStore,
-    filteredTweaks,
-    initializeStores,
-    selectedCategory,
-    systemStore,
-    tweaksByCategory,
-    tweakStats,
-  } from "$lib/stores/tweaks";
+  import CategoryTab from "$lib/components/CategoryTab.svelte";
+  import OverviewTab from "$lib/components/OverviewTab.svelte";
+  import Sidebar from "$lib/components/Sidebar.svelte";
+  import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
+  import { initializeStores } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
   import { onMount } from "svelte";
 
@@ -26,82 +20,54 @@
       loading = false;
     }
   });
+
+  // Get the current tab definition for CategoryTab
+  const currentCategoryTab = $derived(() => {
+    if ($activeTab === "overview") return null;
+    return $allTabs.find((t: TabDefinition) => t.id === $activeTab) ?? null;
+  });
 </script>
 
 <div class="page-container">
   {#if loading}
     <div class="loading-screen">
-      <Icon icon="mdi:loading" width="48" class="spin" />
-      <p>Loading tweaks...</p>
+      <div class="loading-content">
+        <div class="loading-spinner">
+          <Icon icon="mdi:loading" width="40" class="spin" />
+        </div>
+        <p class="loading-text">Loading tweaks...</p>
+      </div>
     </div>
   {:else if error}
     <div class="error-screen">
-      <Icon icon="mdi:alert-circle" width="48" class="error-icon" />
-      <h2>Failed to Load</h2>
-      <p>{error}</p>
-      <button onclick={() => window.location.reload()}>
-        <Icon icon="mdi:refresh" width="18" />
-        Retry
-      </button>
+      <div class="error-content">
+        <div class="error-icon-wrapper">
+          <Icon icon="mdi:alert-circle" width="48" />
+        </div>
+        <h2>Failed to Load</h2>
+        <p class="error-message">{error}</p>
+        <button class="retry-button" onclick={() => window.location.reload()}>
+          <Icon icon="mdi:refresh" width="18" />
+          Retry
+        </button>
+      </div>
     </div>
   {:else}
-    <header class="page-header">
-      <div class="header-content">
-        <h1>
-          <Icon icon="mdi:tune-vertical" width="28" />
-          Windows Tweaks
-        </h1>
-        <p class="subtitle">
-          Optimize your Windows experience with {$tweakStats.total} available tweaks
-        </p>
-      </div>
-    </header>
-
-    <section class="info-section">
-      <SystemInfoCard systemInfo={$systemStore} />
-      <StatsCard
-        total={$tweakStats.total}
-        applied={$tweakStats.applied}
-        pending={$tweakStats.pending}
-      />
-    </section>
-
-    <PendingRebootBanner />
-
-    <section class="tweaks-section">
-      <FilterBar />
-
-      {#if $selectedCategory === "all"}
-        <!-- Show all categories -->
-        {#each $categoriesStore as category (category.id)}
-          {@const categoryTweaks = $tweaksByCategory[category.id]}
-          {#if categoryTweaks && categoryTweaks.length > 0}
-            <CategorySection {category} tweaks={categoryTweaks} />
+    <div class="app-layout">
+      <Sidebar />
+      <main class="main-content">
+        <div class="content-area">
+          {#if $activeTab === "overview"}
+            <OverviewTab />
+          {:else}
+            {@const categoryTab = currentCategoryTab()}
+            {#if categoryTab}
+              <CategoryTab tab={categoryTab} />
+            {/if}
           {/if}
-        {/each}
-      {:else}
-        <!-- Show filtered results -->
-        {#if $filteredTweaks.length > 0}
-          <div class="filtered-tweaks">
-            {#each $filteredTweaks as tweak (tweak.definition.id)}
-              <TweakCard {tweak} />
-            {/each}
-          </div>
-        {:else}
-          <div class="no-results">
-            <Icon icon="mdi:magnify-close" width="48" class="no-results-icon" />
-            <p>No tweaks found matching your criteria</p>
-          </div>
-        {/if}
-      {/if}
-    </section>
-
-    <footer class="page-footer">
-      <p>
-        <Icon icon="mdi:information" width="14" />
-        Changes are backed up automatically. Reboot may be required for some tweaks.
-      </p>
-    </footer>
+        </div>
+      </main>
+    </div>
   {/if}
 </div>
 
@@ -109,38 +75,99 @@
   .page-container {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
-    padding: 16px;
+    height: 100%;
+    min-height: 0;
     background: hsl(var(--background));
   }
 
-  .loading-screen,
-  .error-screen {
+  /* Loading Screen */
+  .loading-screen {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     flex: 1;
+  }
+
+  .loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 16px;
+  }
+
+  .loading-spinner {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 16px;
+    color: hsl(var(--primary));
+  }
+
+  .loading-text {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
     color: hsl(var(--muted-foreground));
   }
 
-  .error-screen h2 {
-    color: hsl(var(--foreground));
-    margin: 0;
+  /* Error Screen */
+  .error-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
   }
 
-  :global(.error-icon) {
+  .error-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    max-width: 360px;
+    padding: 32px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 16px;
+  }
+
+  .error-icon-wrapper {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(0 84% 60% / 0.1);
+    border-radius: 50%;
     color: hsl(0 84% 60%);
   }
 
-  .error-screen button {
-    display: flex;
+  .error-content h2 {
+    margin: 8px 0 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+
+  .error-message {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .retry-button {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
+    margin-top: 8px;
     padding: 10px 20px;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
     font-size: 14px;
@@ -149,94 +176,34 @@
     transition: all 0.2s ease;
   }
 
-  .error-screen button:hover {
-    opacity: 0.9;
+  .retry-button:hover {
+    background: hsl(var(--primary) / 0.9);
+    transform: translateY(-1px);
   }
 
-  .page-header {
-    margin-bottom: 16px;
-  }
-
-  .header-content h1 {
+  /* Main App Layout */
+  .app-layout {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 24px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    margin: 0;
-  }
-
-  .subtitle {
-    font-size: 14px;
-    color: hsl(var(--muted-foreground));
-    margin: 4px 0 0 0;
-  }
-
-  .info-section {
-    display: grid;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  @media (min-width: 900px) {
-    .info-section {
-      grid-template-columns: 1fr auto;
-    }
-  }
-
-  .tweaks-section {
     flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
-  .filtered-tweaks {
-    display: grid;
-    gap: 8px;
-  }
-
-  @media (min-width: 768px) {
-    .filtered-tweaks {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  @media (min-width: 1200px) {
-    .filtered-tweaks {
-      grid-template-columns: repeat(3, 1fr);
-    }
-  }
-
-  .no-results {
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 48px 16px;
-    color: hsl(var(--muted-foreground));
-    text-align: center;
   }
 
-  :global(.no-results-icon) {
-    opacity: 0.5;
-    margin-bottom: 8px;
+  .content-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
-  .page-footer {
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid hsl(var(--border));
-  }
-
-  .page-footer p {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 12px;
-    color: hsl(var(--muted-foreground));
-    margin: 0;
-  }
-
+  /* Spin animation */
   :global(.spin) {
     animation: spin 1s linear infinite;
   }

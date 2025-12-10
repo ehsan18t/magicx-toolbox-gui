@@ -28,17 +28,15 @@
     const system = get(systemStore);
     if (!system) return [];
     const version = system.windows.is_windows_11 ? 11 : 10;
-    // Filter changes that apply to current version (no filter = all versions)
     return tweak.definition.registry_changes.filter((change: RegistryChange) => {
       if (!change.windows_versions || change.windows_versions.length === 0) {
-        return true; // No filter means applies to all
+        return true;
       }
       return change.windows_versions.includes(version);
     });
   });
 
   function handleToggleClick() {
-    // Show confirmation for high/critical risk tweaks when applying (not reverting)
     if (isHighRisk && !tweak.status.is_applied) {
       showConfirmDialog = true;
     } else {
@@ -63,141 +61,236 @@
   }
 </script>
 
-<div class="tweak-card" class:compact class:applied={tweak.status.is_applied}>
-  <div class="card-header">
-    <div class="card-info">
-      <div class="title-row">
-        <span class="category-icon" title={categoryInfo?.name || tweak.definition.category}
-          >{categoryInfo?.icon || "📦"}</span
-        >
-        <h3 class="tweak-name">{tweak.definition.name}</h3>
-        {#if tweak.definition.requires_admin}
-          <span class="badge admin" title="Requires Administrator">
-            <Icon icon="mdi:shield-account" width="12" />
-          </span>
-        {/if}
-        {#if tweak.definition.requires_reboot}
-          <span class="badge reboot" title="Requires Reboot">
-            <Icon icon="mdi:restart" width="12" />
-          </span>
-        {/if}
-      </div>
-      {#if !compact}
-        <p class="tweak-description">{tweak.definition.description}</p>
-      {/if}
-    </div>
+<article class="tweak-card" class:compact class:applied={tweak.status.is_applied}>
+  <!-- Status indicator bar -->
+  <div class="status-bar" class:active={tweak.status.is_applied}></div>
 
-    <div class="card-actions">
-      <span class="risk-badge {tweak.definition.risk_level}" title={riskInfo.description}>
-        {riskInfo.name}
-      </span>
-      <button
-        class="toggle-btn"
-        class:active={tweak.status.is_applied}
-        disabled={$isLoading}
-        onclick={handleToggleClick}
-        title={tweak.status.is_applied ? "Click to revert" : "Click to apply"}
-      >
-        {#if $isLoading}
-          <Icon icon="mdi:loading" width="18" class="spin" />
-        {:else}
-          <Icon
-            icon={tweak.status.is_applied ? "mdi:check-circle" : "mdi:circle-outline"}
-            width="18"
-          />
-        {/if}
-      </button>
-    </div>
-  </div>
-
-  {#if !compact}
-    <button class="details-toggle" onclick={() => (showDetails = !showDetails)}>
-      <Icon icon={showDetails ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
-      {showDetails ? "Hide details" : "Show details"}
-    </button>
-
-    {#if showDetails}
-      <div class="details">
-        {#if tweak.definition.info}
-          <p class="info-text">{tweak.definition.info}</p>
-        {/if}
-
-        <div class="registry-section">
-          <h4 class="registry-title">
-            <Icon icon="mdi:database-cog" width="14" />
-            Registry Changes
-          </h4>
-          <div class="registry-changes">
-            {#each registryChanges() as change (change.hive + change.key + change.value_name)}
-              <div class="registry-change">
-                <div class="registry-path">
-                  <Icon icon="mdi:folder-key" width="12" />
-                  <code>{formatRegistryPath(change)}</code>
-                </div>
-                <div class="registry-value">
-                  <span class="value-name">{change.value_name || "(Default)"}</span>
-                  <span class="value-type">[{change.value_type}]</span>
-                </div>
-                <div class="registry-values-row">
-                  <span class="value-label">Enable:</span>
-                  <code class="value-data">{formatValue(change.enable_value)}</code>
-                  {#if change.disable_value !== undefined}
-                    <span class="value-label">Disable:</span>
-                    <code class="value-data">{formatValue(change.disable_value)}</code>
-                  {/if}
-                </div>
-              </div>
-            {/each}
+  <div class="card-content">
+    <!-- Header section -->
+    <header class="card-header">
+      <div class="header-left">
+        <div class="icon-wrapper {tweak.definition.risk_level}">
+          <span class="category-icon">{categoryInfo?.icon || "📦"}</span>
+        </div>
+        <div class="title-section">
+          <div class="title-row">
+            <h3 class="tweak-title">{tweak.definition.name}</h3>
+            <div class="badges">
+              {#if tweak.definition.requires_admin}
+                <span class="badge admin" title="Requires Administrator">
+                  <Icon icon="mdi:shield-account" width="11" />
+                </span>
+              {/if}
+              {#if tweak.definition.requires_reboot}
+                <span class="badge reboot" title="Requires Reboot">
+                  <Icon icon="mdi:restart" width="11" />
+                </span>
+              {/if}
+            </div>
           </div>
+          <span class="risk-label {tweak.definition.risk_level}">{riskInfo.name}</span>
         </div>
       </div>
-    {/if}
-  {/if}
-</div>
 
+      <div class="header-right">
+        <button
+          class="toggle-button"
+          class:active={tweak.status.is_applied}
+          class:loading={$isLoading}
+          disabled={$isLoading}
+          onclick={handleToggleClick}
+          aria-label={tweak.status.is_applied ? "Revert tweak" : "Apply tweak"}
+        >
+          {#if $isLoading}
+            <Icon icon="mdi:loading" width="18" class="spin" />
+          {:else if tweak.status.is_applied}
+            <Icon icon="mdi:check" width="18" />
+          {:else}
+            <Icon icon="mdi:power" width="18" />
+          {/if}
+        </button>
+      </div>
+    </header>
+
+    <!-- Description -->
+    {#if !compact}
+      <p class="description">{tweak.definition.description}</p>
+    {/if}
+
+    <!-- Details toggle & section -->
+    {#if !compact}
+      <button
+        class="details-toggle"
+        onclick={() => (showDetails = !showDetails)}
+        aria-expanded={showDetails}
+      >
+        <span class="toggle-text">{showDetails ? "Hide details" : "Show details"}</span>
+        <Icon icon={showDetails ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
+      </button>
+
+      {#if showDetails}
+        <div class="details-section">
+          {#if tweak.definition.info}
+            <div class="info-box">
+              <Icon icon="mdi:information-outline" width="14" />
+              <p>{tweak.definition.info}</p>
+            </div>
+          {/if}
+
+          <div class="registry-section">
+            <h4 class="section-title">
+              <Icon icon="mdi:database-cog-outline" width="14" />
+              Registry Modifications
+              <span class="count">{registryChanges().length}</span>
+            </h4>
+
+            <div class="registry-list">
+              {#each registryChanges() as change (change.hive + change.key + change.value_name)}
+                <div class="registry-item">
+                  <div class="registry-header">
+                    <Icon icon="mdi:key-variant" width="12" />
+                    <code class="registry-path">{formatRegistryPath(change)}</code>
+                  </div>
+                  <div class="registry-body">
+                    <div class="value-row">
+                      <span class="value-name">{change.value_name || "(Default)"}</span>
+                      <span class="value-type">{change.value_type}</span>
+                    </div>
+                    <div class="value-changes">
+                      <div class="change-item enable">
+                        <span class="change-label">ON</span>
+                        <code>{formatValue(change.enable_value)}</code>
+                      </div>
+                      {#if change.disable_value !== undefined}
+                        <div class="change-item disable">
+                          <span class="change-label">OFF</span>
+                          <code>{formatValue(change.disable_value)}</code>
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+    {/if}
+  </div>
+</article>
+
+<!-- Confirmation dialog for high-risk tweaks -->
 <ConfirmDialog
   open={showConfirmDialog}
-  title="Apply {tweak.definition.risk_level === 'critical' ? 'Critical' : 'High'} Risk Tweak"
-  message="'{tweak.definition.name}' is a {tweak.definition
-    .risk_level} risk tweak. {riskInfo.description}. Are you sure you want to apply it?"
-  confirmText="Apply Anyway"
-  variant={tweak.definition.risk_level === "critical" ? "danger" : "warning"}
+  title="Apply High-Risk Tweak?"
+  message="This tweak is marked as {tweak.definition
+    .risk_level} risk. {riskInfo.description} Are you sure you want to apply it?"
+  confirmText="Yes, Apply"
+  cancelText="Cancel"
   onconfirm={executeToggle}
   oncancel={() => (showConfirmDialog = false)}
 />
 
 <style>
   .tweak-card {
-    background: var(--card-bg, hsl(var(--background)));
+    position: relative;
+    display: flex;
+    background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    border-radius: 8px;
-    padding: 12px 16px;
+    border-radius: 12px;
+    overflow: hidden;
     transition: all 0.2s ease;
   }
 
   .tweak-card:hover {
-    border-color: hsl(var(--primary) / 0.5);
-    box-shadow: 0 2px 8px hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--border-hover, var(--border)));
+    box-shadow: 0 4px 12px hsla(0, 0%, 0%, 0.08);
   }
 
   .tweak-card.applied {
-    background: hsl(var(--primary) / 0.05);
     border-color: hsl(var(--primary) / 0.3);
+    background: hsl(var(--primary) / 0.02);
   }
 
   .tweak-card.compact {
-    padding: 8px 12px;
+    border-radius: 8px;
   }
 
+  /* Status indicator bar on the left */
+  .status-bar {
+    width: 4px;
+    flex-shrink: 0;
+    background: hsl(var(--muted));
+    transition: background 0.2s ease;
+  }
+
+  .status-bar.active {
+    background: hsl(var(--primary));
+  }
+
+  /* Main content area */
+  .card-content {
+    flex: 1;
+    padding: 16px;
+    min-width: 0;
+  }
+
+  .compact .card-content {
+    padding: 12px;
+  }
+
+  /* Header */
   .card-header {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
+    justify-content: space-between;
     gap: 12px;
   }
 
-  .card-info {
+  .header-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
     flex: 1;
+  }
+
+  .icon-wrapper {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: hsl(var(--muted));
+    flex-shrink: 0;
+    font-size: 18px;
+  }
+
+  .compact .icon-wrapper {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  .icon-wrapper.low {
+    background: hsl(142 76% 36% / 0.12);
+  }
+  .icon-wrapper.medium {
+    background: hsl(48 96% 53% / 0.15);
+  }
+  .icon-wrapper.high {
+    background: hsl(25 95% 53% / 0.12);
+  }
+  .icon-wrapper.critical {
+    background: hsl(0 84% 60% / 0.12);
+  }
+
+  .title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     min-width: 0;
   }
 
@@ -208,229 +301,295 @@
     flex-wrap: wrap;
   }
 
-  .category-icon {
-    font-size: 16px;
-  }
-
-  .tweak-name {
+  .tweak-title {
+    margin: 0;
     font-size: 14px;
     font-weight: 600;
     color: hsl(var(--foreground));
-    margin: 0;
+    line-height: 1.3;
   }
 
-  .compact .tweak-name {
+  .compact .tweak-title {
     font-size: 13px;
   }
 
-  .tweak-description {
-    font-size: 12px;
-    color: hsl(var(--muted-foreground));
-    margin: 4px 0 0 0;
-    line-height: 1.4;
+  .badges {
+    display: flex;
+    gap: 4px;
   }
 
   .badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-size: 10px;
-  }
-
-  .badge.admin {
-    background: hsl(var(--warning) / 0.2);
-    color: hsl(var(--warning));
-  }
-
-  .badge.reboot {
-    background: hsl(var(--info) / 0.2);
-    color: hsl(var(--info));
-  }
-
-  .card-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .risk-badge {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 10px;
-    text-transform: uppercase;
-  }
-
-  .risk-badge.low {
-    background: hsl(142 76% 36% / 0.2);
-    color: hsl(142 76% 36%);
-  }
-
-  .risk-badge.medium {
-    background: hsl(45 93% 47% / 0.2);
-    color: hsl(45 93% 47%);
-  }
-
-  .risk-badge.high {
-    background: hsl(24 94% 50% / 0.2);
-    color: hsl(24 94% 50%);
-  }
-
-  .risk-badge.critical {
-    background: hsl(0 84% 60% / 0.2);
-    color: hsl(0 84% 60%);
-  }
-
-  .toggle-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 6px;
-    background: hsl(var(--muted));
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    color: white;
+  }
+
+  .badge.admin {
+    background: hsl(217 91% 60%);
+  }
+
+  .badge.reboot {
+    background: hsl(280 68% 60%);
+  }
+
+  .risk-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .risk-label.low {
+    color: hsl(142 76% 36%);
+  }
+  .risk-label.medium {
+    color: hsl(48 96% 40%);
+  }
+  .risk-label.high {
+    color: hsl(25 95% 53%);
+  }
+  .risk-label.critical {
+    color: hsl(0 84% 60%);
+  }
+
+  /* Toggle button */
+  .header-right {
+    flex-shrink: 0;
+  }
+
+  .toggle-button {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid hsl(var(--border));
+    border-radius: 10px;
+    background: hsl(var(--background));
     color: hsl(var(--muted-foreground));
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
-  .toggle-btn:hover:not(:disabled) {
-    background: hsl(var(--accent));
+  .compact .toggle-button {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
   }
 
-  .toggle-btn.active {
+  .toggle-button:hover:not(:disabled) {
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.05);
+  }
+
+  .toggle-button.active {
     background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
   }
 
-  .toggle-btn:disabled {
+  .toggle-button.active:hover:not(:disabled) {
+    background: hsl(var(--primary) / 0.9);
+  }
+
+  .toggle-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
 
+  .toggle-button.loading {
+    cursor: wait;
+  }
+
+  /* Description */
+  .description {
+    margin: 12px 0 0;
+    padding-left: 52px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Details toggle */
   .details-toggle {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-top: 8px;
-    padding: 4px 0;
+    margin: 12px 0 0 52px;
+    padding: 4px 8px;
     border: none;
-    background: none;
+    border-radius: 6px;
+    background: transparent;
     color: hsl(var(--muted-foreground));
-    font-size: 11px;
+    font-size: 12px;
     cursor: pointer;
-    transition: color 0.2s ease;
+    transition: all 0.15s ease;
   }
 
   .details-toggle:hover {
+    background: hsl(var(--muted) / 0.5);
     color: hsl(var(--foreground));
   }
 
-  .details {
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: hsl(var(--muted) / 0.5);
-    border-radius: 6px;
-    font-size: 12px;
-    color: hsl(var(--muted-foreground));
-    line-height: 1.5;
+  /* Details section */
+  .details-section {
+    margin: 12px 0 0 52px;
+    padding-top: 12px;
+    border-top: 1px solid hsl(var(--border) / 0.5);
   }
 
-  .details .info-text {
-    margin: 0 0 12px 0;
+  .info-box {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    background: hsl(var(--muted) / 0.3);
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .info-box p {
+    margin: 0;
+    flex: 1;
   }
 
   .registry-section {
-    border-top: 1px solid hsl(var(--border) / 0.5);
-    padding-top: 8px;
     margin-top: 8px;
   }
 
-  .registry-title {
+  .section-title {
     display: flex;
     align-items: center;
     gap: 6px;
+    margin: 0 0 10px;
     font-size: 11px;
     font-weight: 600;
-    color: hsl(var(--foreground) / 0.8);
-    margin: 0 0 8px 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    color: hsl(var(--muted-foreground));
   }
 
-  .registry-changes {
+  .section-title .count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: 4px;
+    background: hsl(var(--muted));
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+
+  .registry-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
 
-  .registry-change {
+  .registry-item {
     background: hsl(var(--background));
-    border: 1px solid hsl(var(--border) / 0.5);
-    border-radius: 4px;
-    padding: 8px;
-    font-family: "Consolas", "Monaco", monospace;
+    border: 1px solid hsl(var(--border) / 0.6);
+    border-radius: 8px;
+    overflow: hidden;
   }
 
-  .registry-path {
+  .registry-header {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 10px;
-    color: hsl(var(--primary));
-    margin-bottom: 4px;
-    word-break: break-all;
+    padding: 8px 10px;
+    background: hsl(var(--muted) / 0.3);
+    border-bottom: 1px solid hsl(var(--border) / 0.4);
+    color: hsl(var(--muted-foreground));
   }
 
-  .registry-path code {
+  .registry-path {
+    font-size: 10px;
+    font-family: "Consolas", "Monaco", "Fira Code", monospace;
+    color: hsl(var(--primary));
+    word-break: break-all;
     background: none;
     padding: 0;
   }
 
-  .registry-value {
+  .registry-body {
+    padding: 8px 10px;
+  }
+
+  .value-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
   }
 
   .value-name {
+    font-size: 12px;
     font-weight: 600;
     color: hsl(var(--foreground));
+    font-family: "Consolas", "Monaco", "Fira Code", monospace;
   }
 
   .value-type {
     font-size: 9px;
-    color: hsl(var(--muted-foreground));
+    padding: 2px 6px;
     background: hsl(var(--muted));
-    padding: 1px 4px;
-    border-radius: 3px;
+    border-radius: 4px;
+    color: hsl(var(--muted-foreground));
+    font-family: "Consolas", "Monaco", "Fira Code", monospace;
   }
 
-  .registry-values-row {
+  .value-changes {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
+    gap: 8px;
   }
 
-  .value-label {
+  .change-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .change-label {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+
+  .change-item.enable .change-label {
+    background: hsl(142 76% 36% / 0.15);
+    color: hsl(142 76% 36%);
+  }
+
+  .change-item.disable .change-label {
+    background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
   }
 
-  .value-data {
-    background: hsl(var(--muted) / 0.8);
-    padding: 2px 6px;
-    border-radius: 3px;
-    color: hsl(142 76% 36%);
+  .change-item code {
     font-size: 10px;
+    font-family: "Consolas", "Monaco", "Fira Code", monospace;
+    color: hsl(var(--foreground) / 0.8);
+    background: none;
+    padding: 0;
   }
 
+  /* Spin animation */
   :global(.spin) {
     animation: spin 1s linear infinite;
   }
