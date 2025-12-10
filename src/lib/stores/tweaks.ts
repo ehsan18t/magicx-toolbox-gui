@@ -195,7 +195,10 @@ export const tweakStats = derived(tweaksStore, ($tweaks) => {
 });
 
 export const categoryStats = derived(tweaksByCategory, ($byCategory) => {
-  const stats: Record<TweakCategory, { total: number; applied: number }> = {} as any;
+  const stats: Record<TweakCategory, { total: number; applied: number }> = {} as Record<
+    TweakCategory,
+    { total: number; applied: number }
+  >;
 
   for (const [category, tweaks] of Object.entries($byCategory)) {
     stats[category as TweakCategory] = {
