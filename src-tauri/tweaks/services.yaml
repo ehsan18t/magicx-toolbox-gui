@@ -1,152 +1,155 @@
 # Services Tweaks - Disable unnecessary Windows services
-- id: disable_print_spooler
-  name: "Disable Print Spooler"
-  description: "Disable Windows Print Spooler service"
-  category: services
-  risk_level: medium
-  requires_admin: true
-  requires_reboot: false
-  info: "Disable if you don't use printing. Spooler service can be a security risk"
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Spooler"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Spooler"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
 
-- id: disable_fax_service
-  name: "Disable Fax Service"
-  description: "Disable Windows Fax and Scan service"
-  category: services
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Fax"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Fax"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
+category:
+  id: services
+  name: "Services"
+  description: "Manage unnecessary Windows services"
+  icon: "⚙️"
+  order: 5
 
-- id: disable_remote_registry
-  name: "Disable Remote Registry"
-  description: "Disable Remote Registry service"
-  category: services
-  risk_level: medium
-  requires_admin: true
-  requires_reboot: false
-  info: "Improves security by preventing remote registry access"
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
+tweaks:
+  - id: disable_print_spooler
+    name: "Disable Print Spooler"
+    description: "Disable Windows Print Spooler service"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: "Disable if you don't use printing. Spooler service can be a security risk"
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\Spooler"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\Spooler"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
 
-- id: disable_xbox_services
-  name: "Disable Xbox Services"
-  description: "Disable Xbox Live Gaming Services"
-  category: services
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\xbgm"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\xbgm"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
+  - id: disable_fax_service
+    name: "Disable Fax Service"
+    description: "Disable Windows Fax and Scan service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\Fax"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\Fax"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
 
-- id: disable_connected_user_experiences
-  name: "Disable Connected User Experiences"
-  description: "Disable Connected User Experiences and Telemetry"
-  category: services
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\DiagTrack"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\DiagTrack"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
+  - id: disable_remote_registry
+    name: "Disable Remote Registry"
+    description: "Disable Remote Registry service"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: "Improves security by preventing remote registry access"
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
 
-- id: disable_windows_error_reporting
-  name: "Disable Windows Error Reporting"
-  description: "Disable Windows Error Reporting service"
-  category: services
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\WerSvc"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\WerSvc"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
+  - id: disable_xbox_services
+    name: "Disable Xbox Services"
+    description: "Disable Xbox Live Gaming Services"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\xbgm"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\xbgm"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+
+  - id: disable_connected_user_experiences
+    name: "Disable Connected User Experiences"
+    description: "Disable Connected User Experiences and Telemetry"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\DiagTrack"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\DiagTrack"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+
+  - id: disable_windows_error_reporting
+    name: "Disable Windows Error Reporting"
+    description: "Disable Windows Error Reporting service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\WerSvc"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\WerSvc"
+          value_name: "Start"
+          value_type: "REG_DWORD"
+          enable_value: 4
+          disable_value: 2

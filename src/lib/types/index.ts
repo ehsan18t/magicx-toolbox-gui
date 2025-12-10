@@ -3,9 +3,6 @@
 /** Risk level for tweaks */
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
-/** Categories for organizing tweaks */
-export type TweakCategory = "privacy" | "performance" | "ui" | "security" | "services" | "gaming";
-
 /** Registry hive types */
 export type RegistryHive = "HKCU" | "HKLM";
 
@@ -28,12 +25,21 @@ export interface RegistryChange {
   disable_value?: unknown;
 }
 
+/** Category definition loaded from YAML file */
+export interface CategoryDefinition {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  order: number;
+}
+
 /** A complete tweak definition loaded from YAML */
 export interface TweakDefinition {
   id: string;
   name: string;
   description: string;
-  category: TweakCategory;
+  category: string; // Dynamic category ID from YAML
   risk_level: RiskLevel;
   requires_reboot: boolean;
   requires_admin: boolean;
@@ -88,54 +94,6 @@ export interface BatchApplyResult {
   total_applied: number;
   total_failed: number;
 }
-
-/** Category display info */
-export interface CategoryInfo {
-  id: TweakCategory;
-  name: string;
-  description: string;
-  icon: string;
-}
-
-/** All category info */
-export const CATEGORY_INFO: Record<TweakCategory, CategoryInfo> = {
-  privacy: {
-    id: "privacy",
-    name: "Privacy",
-    description: "Reduce telemetry, tracking, and data collection",
-    icon: "🔒",
-  },
-  performance: {
-    id: "performance",
-    name: "Performance",
-    description: "Optimize system speed and responsiveness",
-    icon: "⚡",
-  },
-  ui: {
-    id: "ui",
-    name: "UI/UX",
-    description: "Customize Windows appearance and behavior",
-    icon: "🎨",
-  },
-  security: {
-    id: "security",
-    name: "Security",
-    description: "Improve Windows security settings",
-    icon: "🛡️",
-  },
-  services: {
-    id: "services",
-    name: "Services",
-    description: "Manage unnecessary Windows services",
-    icon: "⚙️",
-  },
-  gaming: {
-    id: "gaming",
-    name: "Gaming",
-    description: "Optimize Windows for gaming performance",
-    icon: "🎮",
-  },
-};
 
 /** Risk level display info */
 export const RISK_INFO: Record<RiskLevel, { name: string; color: string; description: string }> = {

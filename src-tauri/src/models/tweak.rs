@@ -26,30 +26,40 @@ impl RiskLevel {
     }
 }
 
-/// Categories for organizing tweaks
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum TweakCategory {
-    Privacy,
-    Performance,
-    #[serde(rename = "ui")]
-    UI,
-    Security,
-    Services,
-    Gaming,
+/// Category definition loaded from YAML file header
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryDefinition {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    #[serde(default)]
+    pub order: i32,
 }
 
-impl std::fmt::Display for TweakCategory {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TweakCategory::Privacy => write!(f, "Privacy"),
-            TweakCategory::Performance => write!(f, "Performance"),
-            TweakCategory::UI => write!(f, "UI/UX"),
-            TweakCategory::Security => write!(f, "Security"),
-            TweakCategory::Services => write!(f, "Services"),
-            TweakCategory::Gaming => write!(f, "Gaming"),
-        }
-    }
+/// Complete tweak file structure with category metadata and tweaks
+#[derive(Debug, Clone, Deserialize)]
+pub struct TweakFile {
+    pub category: CategoryDefinition,
+    pub tweaks: Vec<TweakDefinitionRaw>,
+}
+
+/// Raw tweak definition as loaded from YAML (without category field)
+#[derive(Debug, Clone, Deserialize)]
+pub struct TweakDefinitionRaw {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub risk_level: RiskLevel,
+    #[serde(default)]
+    pub requires_reboot: bool,
+    #[serde(default)]
+    pub requires_admin: bool,
+    /// Map of Windows version to registry changes
+    pub registry_changes: HashMap<String, Vec<RegistryChange>>,
+    /// Additional info/documentation
+    #[serde(default)]
+    pub info: Option<String>,
 }
 
 /// Windows version enum for version-specific tweaks
@@ -133,7 +143,7 @@ pub struct TweakDefinition {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub category: TweakCategory,
+    pub category: String, // Now a dynamic string instead of enum
     pub risk_level: RiskLevel,
     #[serde(default)]
     pub requires_reboot: bool,
@@ -147,6 +157,21 @@ pub struct TweakDefinition {
 }
 
 impl TweakDefinition {
+    /// Create from raw definition and category id
+    pub fn from_raw(raw: TweakDefinitionRaw, category_id: &str) -> Self {
+        TweakDefinition {
+            id: raw.id,
+            name: raw.name,
+            description: raw.description,
+            category: category_id.to_string(),
+            risk_level: raw.risk_level,
+            requires_reboot: raw.requires_reboot,
+            requires_admin: raw.requires_admin,
+            registry_changes: raw.registry_changes,
+            info: raw.info,
+        }
+    }
+
     /// Get registry changes for a specific Windows version
     pub fn get_changes_for_version(&self, version: &str) -> Option<&Vec<RegistryChange>> {
         self.registry_changes.get(version)

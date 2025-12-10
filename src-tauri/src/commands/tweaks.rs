@@ -1,8 +1,15 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
-use crate::models::{TweakDefinition, TweakResult, TweakStatus};
+use crate::models::{CategoryDefinition, TweakDefinition, TweakResult, TweakStatus};
 use crate::services::{backup_service, registry_service, system_info_service, tweak_loader};
 use tauri::AppHandle;
+
+/// Get all available categories (auto-discovered from YAML files)
+#[tauri::command]
+pub async fn get_categories() -> Result<Vec<CategoryDefinition>> {
+    let categories = tweak_loader::load_all_categories()?;
+    Ok(categories)
+}
 
 /// Get all available tweaks filtered by current Windows version
 #[tauri::command]

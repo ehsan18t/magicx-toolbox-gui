@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { loadingStore, systemStore, toggleTweak } from "$lib/stores/tweaks";
-  import type { RegistryChange, RiskLevel, TweakCategory, TweakWithStatus } from "$lib/types";
-  import { CATEGORY_INFO, RISK_INFO } from "$lib/types";
+  import { categoriesMap, loadingStore, systemStore, toggleTweak } from "$lib/stores/tweaks";
+  import type { RegistryChange, RiskLevel, TweakWithStatus } from "$lib/types";
+  import { RISK_INFO } from "$lib/types";
   import Icon from "@iconify/svelte";
   import { derived, get } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -18,7 +18,7 @@
 
   // Use $derived to make these reactive
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
-  const categoryInfo = $derived(CATEGORY_INFO[tweak.definition.category as TweakCategory]);
+  const categoryInfo = $derived(get(categoriesMap)[tweak.definition.category]);
   const isHighRisk = $derived(
     tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical",
   );
@@ -61,7 +61,9 @@
   <div class="card-header">
     <div class="card-info">
       <div class="title-row">
-        <span class="category-icon" title={categoryInfo.name}>{categoryInfo.icon}</span>
+        <span class="category-icon" title={categoryInfo?.name || tweak.definition.category}
+          >{categoryInfo?.icon || "📦"}</span
+        >
         <h3 class="tweak-name">{tweak.definition.name}</h3>
         {#if tweak.definition.requires_admin}
           <span class="badge admin" title="Requires Administrator">

@@ -1,186 +1,187 @@
 # Security Tweaks - Improve Windows security settings
-- id: disable_remote_desktop
-  name: "Disable Remote Desktop"
-  description: "Disable Remote Desktop Protocol (RDP) access"
-  category: security
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Control\\Terminal Server"
-        value_name: "fDenyTSConnections"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Control\\Terminal Server"
-        value_name: "fDenyTSConnections"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
 
-- id: disable_autoplay
-  name: "Disable AutoPlay"
-  description: "Disable AutoPlay for removable drives"
-  category: security
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-        value_name: "NoDriveTypeAutoRun"
-        value_type: "REG_DWORD"
-        enable_value: 255
-        disable_value: 0
-    "11":
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-        value_name: "NoDriveTypeAutoRun"
-        value_type: "REG_DWORD"
-        enable_value: 255
-        disable_value: 0
+category:
+  id: security
+  name: "Security"
+  description: "Improve Windows security settings"
+  icon: "🛡️"
+  order: 4
 
-- id: disable_autorun
-  name: "Disable AutoRun Scripts"
-  description: "Disable execution of autorun scripts"
-  category: security
-  risk_level: medium
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-        value_name: "NoAutorun"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
-    "11":
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-        value_name: "NoAutorun"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+tweaks:
+  - id: disable_remote_desktop
+    name: "Disable Remote Desktop"
+    description: "Disable Remote Desktop Protocol (RDP) access"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Control\\Terminal Server"
+          value_name: "fDenyTSConnections"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Control\\Terminal Server"
+          value_name: "fDenyTSConnections"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
 
-- id: require_ctrlaltdel
-  name: "Require Ctrl+Alt+Del to Unlock"
-  description: "Require pressing Ctrl+Alt+Del for security screen"
-  category: security
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-        value_name: "DisableCAD"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-    "11":
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-        value_name: "DisableCAD"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+  - id: disable_autoplay
+    name: "Disable AutoPlay"
+    description: "Disable AutoPlay for removable drives"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+          value_name: "NoDriveTypeAutoRun"
+          value_type: "REG_DWORD"
+          enable_value: 255
+          disable_value: 0
+      "11":
+        - hive: HKLM
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+          value_name: "NoDriveTypeAutoRun"
+          value_type: "REG_DWORD"
+          enable_value: 255
+          disable_value: 0
 
-- id: disable_guest_account
-  name: "Disable Guest Account"
-  description: "Disable the built-in Guest account"
-  category: security
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  info: "Guest account can be a security risk if left enabled"
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-        value_name: "F"
-        value_type: "REG_BINARY"
-        enable_value: null
-        disable_value: null
-    "11":
-      - hive: HKLM
-        key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-        value_name: "F"
-        value_type: "REG_BINARY"
-        enable_value: null
-        disable_value: null
+  - id: disable_autorun
+    name: "Disable AutoRun Scripts"
+    description: "Disable execution of autorun scripts"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+          value_name: "NoAutorun"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
+      "11":
+        - hive: HKLM
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+          value_name: "NoAutorun"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
 
-- id: disable_smbv1
-  name: "Disable SMBv1 Protocol"
-  description: "Disable legacy SMBv1 network protocol"
-  category: security
-  risk_level: medium
-  requires_admin: true
-  requires_reboot: true
-  info: "SMBv1 is an old protocol with security vulnerabilities"
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-        value_name: "SMB1"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-        value_name: "SMB1"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+  - id: require_ctrlaltdel
+    name: "Require Ctrl+Alt+Del to Unlock"
+    description: "Require pressing Ctrl+Alt+Del for security screen"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+          value_name: "DisableCAD"
+          value_type: "REG_DWORD"
+          enable_value: 0
+          disable_value: 1
+      "11":
+        - hive: HKLM
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+          value_name: "DisableCAD"
+          value_type: "REG_DWORD"
+          enable_value: 0
+          disable_value: 1
 
-- id: disable_netbios
-  name: "Disable NetBIOS"
-  description: "Disable NetBIOS over TCP/IP"
-  category: security
-  risk_level: medium
-  requires_admin: true
-  requires_reboot: true
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-        value_name: "NetbiosOptions"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 0
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-        value_name: "NetbiosOptions"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 0
+  - id: disable_guest_account
+    name: "Disable Guest Account"
+    description: "Disable the built-in Guest account"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Guest account can be a security risk if left enabled"
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
+          value_name: "F"
+          value_type: "REG_BINARY"
+          enable_value: null
+          disable_value: null
+      "11":
+        - hive: HKLM
+          key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
+          value_name: "F"
+          value_type: "REG_BINARY"
+          enable_value: null
+          disable_value: null
 
-- id: enforce_password_policy
-  name: "Enforce Strong Password Policy"
-  description: "Enforce strong password requirements"
-  category: security
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
-        value_name: "RequireSignOrSeal"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
-        value_name: "RequireSignOrSeal"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+  - id: disable_smbv1
+    name: "Disable SMBv1 Protocol"
+    description: "Disable legacy SMBv1 network protocol"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: "SMBv1 is an old protocol with security vulnerabilities"
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+          value_name: "SMB1"
+          value_type: "REG_DWORD"
+          enable_value: 0
+          disable_value: 1
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+          value_name: "SMB1"
+          value_type: "REG_DWORD"
+          enable_value: 0
+          disable_value: 1
+
+  - id: disable_netbios
+    name: "Disable NetBIOS"
+    description: "Disable NetBIOS over TCP/IP"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
+          value_name: "NetbiosOptions"
+          value_type: "REG_DWORD"
+          enable_value: 2
+          disable_value: 0
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
+          value_name: "NetbiosOptions"
+          value_type: "REG_DWORD"
+          enable_value: 2
+          disable_value: 0
+
+  - id: enforce_password_policy
+    name: "Enforce Strong Password Policy"
+    description: "Enforce strong password requirements"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
+          value_name: "RequireSignOrSeal"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
+          value_name: "RequireSignOrSeal"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0

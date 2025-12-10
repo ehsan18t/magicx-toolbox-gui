@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::models::TweakDefinition;
+use crate::models::{CategoryDefinition, TweakDefinition, TweakFile};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -59,31 +59,80 @@ fn get_tweaks_dir() -> Result<PathBuf, Error> {
     ))
 }
 
-/// Load all tweaks from YAML files
-pub fn load_all_tweaks() -> Result<HashMap<String, TweakDefinition>, Error> {
-    let mut tweaks = HashMap::new();
-
+/// Discover all YAML files in the tweaks directory
+fn discover_yaml_files() -> Result<Vec<PathBuf>, Error> {
     let tweaks_dir = get_tweaks_dir()?;
+    let mut yaml_files = Vec::new();
 
-    for category_file in [
-        "privacy.yaml",
-        "performance.yaml",
-        "ui.yaml",
-        "security.yaml",
-        "services.yaml",
-        "gaming.yaml",
-    ] {
-        let file_path = tweaks_dir.join(category_file);
-        if file_path.exists() {
-            match load_tweaks_from_file(file_path.to_str().unwrap()) {
-                Ok(category_tweaks) => {
-                    for tweak in category_tweaks {
-                        tweaks.insert(tweak.id.clone(), tweak);
+    let entries = fs::read_dir(&tweaks_dir)
+        .map_err(|e| Error::WindowsApi(format!("Failed to read tweaks directory: {}", e)))?;
+
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == "yaml" || ext == "yml" {
+                        yaml_files.push(path);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Warning: Failed to load {}: {}", category_file, e);
+            }
+        }
+    }
+
+    Ok(yaml_files)
+}
+
+/// Load a single tweak file and parse its structure
+fn load_tweak_file(file_path: &PathBuf) -> Result<TweakFile, Error> {
+    let content = fs::read_to_string(file_path).map_err(|e| {
+        Error::WindowsApi(format!("Failed to read tweak file {:?}: {}", file_path, e))
+    })?;
+
+    let tweak_file: TweakFile = serde_yaml::from_str(&content)
+        .map_err(|e| Error::WindowsApi(format!("Failed to parse YAML {:?}: {}", file_path, e)))?;
+
+    Ok(tweak_file)
+}
+
+/// Load all categories from YAML files
+pub fn load_all_categories() -> Result<Vec<CategoryDefinition>, Error> {
+    let yaml_files = discover_yaml_files()?;
+    let mut categories = Vec::new();
+
+    for file_path in yaml_files {
+        match load_tweak_file(&file_path) {
+            Ok(tweak_file) => {
+                categories.push(tweak_file.category);
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load {:?}: {}", file_path, e);
+            }
+        }
+    }
+
+    // Sort categories by order
+    categories.sort_by_key(|c| c.order);
+
+    Ok(categories)
+}
+
+/// Load all tweaks from all YAML files (auto-discovery)
+pub fn load_all_tweaks() -> Result<HashMap<String, TweakDefinition>, Error> {
+    let yaml_files = discover_yaml_files()?;
+    let mut tweaks = HashMap::new();
+
+    for file_path in yaml_files {
+        match load_tweak_file(&file_path) {
+            Ok(tweak_file) => {
+                let category_id = &tweak_file.category.id;
+                for raw_tweak in tweak_file.tweaks {
+                    let tweak = TweakDefinition::from_raw(raw_tweak, category_id);
+                    tweaks.insert(tweak.id.clone(), tweak);
                 }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load {:?}: {}", file_path, e);
             }
         }
     }
@@ -94,17 +143,6 @@ pub fn load_all_tweaks() -> Result<HashMap<String, TweakDefinition>, Error> {
             get_tweaks_dir().ok()
         )));
     }
-
-    Ok(tweaks)
-}
-
-/// Load tweaks from a specific YAML file
-pub fn load_tweaks_from_file(file_path: &str) -> Result<Vec<TweakDefinition>, Error> {
-    let content = fs::read_to_string(file_path)
-        .map_err(|e| Error::WindowsApi(format!("Failed to read tweak file: {}", e)))?;
-
-    let tweaks: Vec<TweakDefinition> = serde_yaml::from_str(&content)
-        .map_err(|e| Error::WindowsApi(format!("Failed to parse YAML: {}", e)))?;
 
     Ok(tweaks)
 }
@@ -133,7 +171,7 @@ pub fn get_tweaks_by_category(category: &str) -> Result<HashMap<String, TweakDef
 
     let filtered = all_tweaks
         .into_iter()
-        .filter(|(_, tweak)| tweak.category.to_string().to_lowercase() == category.to_lowercase())
+        .filter(|(_, tweak)| tweak.category.to_lowercase() == category.to_lowercase())
         .collect();
 
     Ok(filtered)

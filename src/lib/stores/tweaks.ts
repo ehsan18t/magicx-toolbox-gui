@@ -1,7 +1,7 @@
 // Svelte store for tweak state management
 import { derived, writable, type Readable } from "svelte/store";
 import * as api from "../api/tweaks";
-import type { SystemInfo, TweakCategory, TweakStatus, TweakWithStatus } from "../types";
+import type { CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "../types";
 
 // System info store
 function createSystemStore() {
@@ -20,6 +20,28 @@ function createSystemStore() {
     },
     reset() {
       set(null);
+    },
+  };
+}
+
+// Categories store - dynamic categories loaded from backend
+function createCategoriesStore() {
+  const { subscribe, set } = writable<CategoryDefinition[]>([]);
+
+  return {
+    subscribe,
+    async load() {
+      try {
+        const categories = await api.getCategories();
+        set(categories);
+        return categories;
+      } catch (error) {
+        console.error("Failed to load categories:", error);
+        return [];
+      }
+    },
+    reset() {
+      set([]);
     },
   };
 }
@@ -132,34 +154,49 @@ function createPendingRebootStore() {
 
 // Create store instances
 export const systemStore = createSystemStore();
+export const categoriesStore = createCategoriesStore();
 export const tweaksStore = createTweaksStore();
 export const loadingStore = createLoadingStore();
 export const errorStore = createErrorStore();
 export const pendingRebootStore = createPendingRebootStore();
 
-// Selected category filter
-export const selectedCategory = writable<TweakCategory | "all">("all");
+// Selected category filter (now uses string instead of enum)
+export const selectedCategory = writable<string>("all");
 
 // Search filter
 export const searchQuery = writable<string>("");
 
-// Derived stores
-export const tweaksByCategory = derived(tweaksStore, ($tweaks) => {
-  const byCategory: Record<TweakCategory, TweakWithStatus[]> = {
-    privacy: [],
-    performance: [],
-    ui: [],
-    security: [],
-    services: [],
-    gaming: [],
-  };
-
-  for (const tweak of $tweaks) {
-    byCategory[tweak.definition.category].push(tweak);
+// Categories lookup map for quick access
+export const categoriesMap = derived(categoriesStore, ($categories) => {
+  const map: Record<string, CategoryDefinition> = {};
+  for (const cat of $categories) {
+    map[cat.id] = cat;
   }
-
-  return byCategory;
+  return map;
 });
+
+// Derived stores
+export const tweaksByCategory = derived(
+  [tweaksStore, categoriesStore],
+  ([$tweaks, $categories]) => {
+    const byCategory: Record<string, TweakWithStatus[]> = {};
+
+    // Initialize with all categories
+    for (const cat of $categories) {
+      byCategory[cat.id] = [];
+    }
+
+    // Populate tweaks
+    for (const tweak of $tweaks) {
+      const categoryId = tweak.definition.category;
+      if (byCategory[categoryId]) {
+        byCategory[categoryId].push(tweak);
+      }
+    }
+
+    return byCategory;
+  },
+);
 
 export const filteredTweaks = derived(
   [tweaksStore, selectedCategory, searchQuery],
@@ -194,21 +231,22 @@ export const tweakStats = derived(tweaksStore, ($tweaks) => {
   return { total, applied, pending };
 });
 
-export const categoryStats = derived(tweaksByCategory, ($byCategory) => {
-  const stats: Record<TweakCategory, { total: number; applied: number }> = {} as Record<
-    TweakCategory,
-    { total: number; applied: number }
-  >;
+export const categoryStats = derived(
+  [tweaksByCategory, categoriesStore],
+  ([$byCategory, $categories]) => {
+    const stats: Record<string, { total: number; applied: number }> = {};
 
-  for (const [category, tweaks] of Object.entries($byCategory)) {
-    stats[category as TweakCategory] = {
-      total: tweaks.length,
-      applied: tweaks.filter((t) => t.status.is_applied).length,
-    };
-  }
+    for (const cat of $categories) {
+      const tweaks = $byCategory[cat.id] || [];
+      stats[cat.id] = {
+        total: tweaks.length,
+        applied: tweaks.filter((t) => t.status.is_applied).length,
+      };
+    }
 
-  return stats;
-});
+    return stats;
+  },
+);
 
 // Pending reboot derived stores
 export const pendingRebootCount = derived(pendingRebootStore, ($pending) => $pending.size);
@@ -292,5 +330,5 @@ export async function toggleTweak(tweakId: string, currentlyApplied: boolean): P
 
 // Initialize all stores
 export async function initializeStores(): Promise<void> {
-  await Promise.all([systemStore.load(), tweaksStore.load()]);
+  await Promise.all([systemStore.load(), categoriesStore.load(), tweaksStore.load()]);
 }

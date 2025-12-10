@@ -2,6 +2,7 @@
   import { CategorySection, FilterBar, StatsCard, SystemInfoCard, TweakCard } from "$lib";
   import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
   import {
+    categoriesStore,
     filteredTweaks,
     initializeStores,
     selectedCategory,
@@ -9,21 +10,11 @@
     tweaksByCategory,
     tweakStats,
   } from "$lib/stores/tweaks";
-  import { type TweakCategory } from "$lib/types";
   import Icon from "@iconify/svelte";
   import { onMount } from "svelte";
 
   let loading = $state(true);
   let error = $state<string | null>(null);
-
-  const categories: TweakCategory[] = [
-    "privacy",
-    "performance",
-    "ui",
-    "security",
-    "services",
-    "gaming",
-  ];
 
   onMount(async () => {
     try {
@@ -82,9 +73,9 @@
 
       {#if $selectedCategory === "all"}
         <!-- Show all categories -->
-        {#each categories as category (category)}
-          {@const categoryTweaks = $tweaksByCategory[category]}
-          {#if categoryTweaks.length > 0}
+        {#each $categoriesStore as category (category.id)}
+          {@const categoryTweaks = $tweaksByCategory[category.id]}
+          {#if categoryTweaks && categoryTweaks.length > 0}
             <CategorySection {category} tweaks={categoryTweaks} />
           {/if}
         {/each}

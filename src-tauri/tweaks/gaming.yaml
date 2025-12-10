@@ -1,167 +1,170 @@
 # Gaming Tweaks - Optimize Windows for gaming performance
-- id: enable_game_mode
-  name: "Enable Game Mode"
-  description: "Enable Windows Game Mode for optimized gaming"
-  category: gaming
-  risk_level: low
-  requires_admin: false
-  requires_reboot: false
-  info: "Game Mode reduces background processes and prioritizes gaming"
-  registry_changes:
-    "10":
-      - hive: HKCU
-        key: "Software\\Microsoft\\GameBar"
-        value_name: "UseNexusForGameMode"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
-    "11":
-      - hive: HKCU
-        key: "Software\\Microsoft\\GameBar"
-        value_name: "UseNexusForGameMode"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
 
-- id: disable_fullscreen_optimizations
-  name: "Disable Fullscreen Optimizations"
-  description: "Disable fullscreen optimizations for games"
-  category: gaming
-  risk_level: medium
-  requires_admin: false
-  requires_reboot: false
-  info: "Disabling can improve gaming performance and compatibility"
-  registry_changes:
-    "10":
-      - hive: HKCU
-        key: "System\\GameConfigStore"
-        value_name: "GameDVR_FSEBehavior"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
-    "11":
-      - hive: HKCU
-        key: "System\\GameConfigStore"
-        value_name: "GameDVR_FSEBehavior"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
+category:
+  id: gaming
+  name: "Gaming"
+  description: "Optimize Windows for gaming performance"
+  icon: "🎮"
+  order: 6
 
-- id: enable_gpu_scheduling
-  name: "Enable Hardware-Accelerated GPU Scheduling"
-  description: "Enable GPU scheduling for better gaming performance"
-  category: gaming
-  risk_level: low
-  requires_admin: true
-  requires_reboot: true
-  info: "Improves gaming performance on compatible GPUs (Windows 10 build 2004+)"
-  registry_changes:
-    "10":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
-        value_name: "HwSchMode"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
-    "11":
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
-        value_name: "HwSchMode"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
+tweaks:
+  - id: enable_game_mode
+    name: "Enable Game Mode"
+    description: "Enable Windows Game Mode for optimized gaming"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    info: "Game Mode reduces background processes and prioritizes gaming"
+    registry_changes:
+      "10":
+        - hive: HKCU
+          key: "Software\\Microsoft\\GameBar"
+          value_name: "UseNexusForGameMode"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
+      "11":
+        - hive: HKCU
+          key: "Software\\Microsoft\\GameBar"
+          value_name: "UseNexusForGameMode"
+          value_type: "REG_DWORD"
+          enable_value: 1
+          disable_value: 0
 
-- id: disable_gamebar_tips
-  name: "Disable Game Bar Tips"
-  description: "Disable Game Bar tips and notifications"
-  category: gaming
-  risk_level: low
-  requires_admin: false
-  requires_reboot: false
-  registry_changes:
-    "10":
-      - hive: HKCU
-        key: "Software\\Microsoft\\GameBar"
-        value_name: "ShowStartupPanel"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-    "11":
-      - hive: HKCU
-        key: "Software\\Microsoft\\GameBar"
-        value_name: "ShowStartupPanel"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+  - id: disable_fullscreen_optimizations
+    name: "Disable Fullscreen Optimizations"
+    description: "Disable fullscreen optimizations for games"
+    risk_level: medium
+    requires_admin: false
+    requires_reboot: false
+    info: "Disabling can improve gaming performance and compatibility"
+    registry_changes:
+      "10":
+        - hive: HKCU
+          key: "System\\GameConfigStore"
+          value_name: "GameDVR_FSEBehavior"
+          value_type: "REG_DWORD"
+          enable_value: 2
+          disable_value: 1
+      "11":
+        - hive: HKCU
+          key: "System\\GameConfigStore"
+          value_name: "GameDVR_FSEBehavior"
+          value_type: "REG_DWORD"
+          enable_value: 2
+          disable_value: 1
 
-- id: high_performance_power_plan
-  name: "Set High Performance Power Plan"
-  description: "Use high performance power plan for gaming"
-  category: gaming
-  risk_level: low
-  requires_admin: true
-  requires_reboot: false
-  info: "Maximizes CPU and GPU performance for gaming"
-  registry_changes:
-    "10":
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
-        value_name: "StartupPercentage"
-        value_type: "REG_DWORD"
-        enable_value: 100
-        disable_value: 0
-    "11":
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
-        value_name: "StartupPercentage"
-        value_type: "REG_DWORD"
-        enable_value: 100
-        disable_value: 0
+  - id: enable_gpu_scheduling
+    name: "Enable Hardware-Accelerated GPU Scheduling"
+    description: "Enable GPU scheduling for better gaming performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Improves gaming performance on compatible GPUs (Windows 10 build 2004+)"
+    registry_changes:
+      "10":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
+          value_name: "HwSchMode"
+          value_type: "REG_DWORD"
+          enable_value: 2
+          disable_value: 1
+      "11":
+        - hive: HKLM
+          key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
+          value_name: "HwSchMode"
+          value_type: "REG_DWORD"
+          enable_value: 2
+          disable_value: 1
 
-- id: disable_mouse_acceleration
-  name: "Disable Mouse Acceleration"
-  description: "Disable mouse pointer acceleration for gaming"
-  category: gaming
-  risk_level: low
-  requires_admin: false
-  requires_reboot: false
-  info: "Provides more consistent mouse movement for FPS games"
-  registry_changes:
-    "10":
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseSpeed"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "1"
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseThreshold1"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "6"
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseThreshold2"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "10"
-    "11":
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseSpeed"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "1"
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseThreshold1"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "6"
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseThreshold2"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "10"
+  - id: disable_gamebar_tips
+    name: "Disable Game Bar Tips"
+    description: "Disable Game Bar tips and notifications"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      "10":
+        - hive: HKCU
+          key: "Software\\Microsoft\\GameBar"
+          value_name: "ShowStartupPanel"
+          value_type: "REG_DWORD"
+          enable_value: 0
+          disable_value: 1
+      "11":
+        - hive: HKCU
+          key: "Software\\Microsoft\\GameBar"
+          value_name: "ShowStartupPanel"
+          value_type: "REG_DWORD"
+          enable_value: 0
+          disable_value: 1
+
+  - id: high_performance_power_plan
+    name: "Set High Performance Power Plan"
+    description: "Use high performance power plan for gaming"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Maximizes CPU and GPU performance for gaming"
+    registry_changes:
+      "10":
+        - hive: HKCU
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
+          value_name: "StartupPercentage"
+          value_type: "REG_DWORD"
+          enable_value: 100
+          disable_value: 0
+      "11":
+        - hive: HKCU
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
+          value_name: "StartupPercentage"
+          value_type: "REG_DWORD"
+          enable_value: 100
+          disable_value: 0
+
+  - id: disable_mouse_acceleration
+    name: "Disable Mouse Acceleration"
+    description: "Disable mouse pointer acceleration for gaming"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    info: "Provides more consistent mouse movement for FPS games"
+    registry_changes:
+      "10":
+        - hive: HKCU
+          key: "Control Panel\\Mouse"
+          value_name: "MouseSpeed"
+          value_type: "REG_SZ"
+          enable_value: "0"
+          disable_value: "1"
+        - hive: HKCU
+          key: "Control Panel\\Mouse"
+          value_name: "MouseThreshold1"
+          value_type: "REG_SZ"
+          enable_value: "0"
+          disable_value: "6"
+        - hive: HKCU
+          key: "Control Panel\\Mouse"
+          value_name: "MouseThreshold2"
+          value_type: "REG_SZ"
+          enable_value: "0"
+          disable_value: "10"
+      "11":
+        - hive: HKCU
+          key: "Control Panel\\Mouse"
+          value_name: "MouseSpeed"
+          value_type: "REG_SZ"
+          enable_value: "0"
+          disable_value: "1"
+        - hive: HKCU
+          key: "Control Panel\\Mouse"
+          value_name: "MouseThreshold1"
+          value_type: "REG_SZ"
+          enable_value: "0"
+          disable_value: "6"
+        - hive: HKCU
+          key: "Control Panel\\Mouse"
+          value_name: "MouseThreshold2"
+          value_type: "REG_SZ"
+          enable_value: "0"
+          disable_value: "10"

@@ -1,14 +1,13 @@
 <script lang="ts">
   import { applyTweak, loadingStore, revertTweak } from "$lib/stores/tweaks";
-  import type { TweakCategory, TweakWithStatus } from "$lib/types";
-  import { CATEGORY_INFO } from "$lib/types";
+  import type { CategoryDefinition, TweakWithStatus } from "$lib/types";
   import Icon from "@iconify/svelte";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import TweakCard from "./TweakCard.svelte";
 
   interface Props {
-    category: TweakCategory;
+    category: CategoryDefinition;
     tweaks: TweakWithStatus[];
     initialExpanded?: boolean;
   }
@@ -22,7 +21,6 @@
   let showRevertAllDialog = $state(false);
   let isBatchProcessing = $state(false);
 
-  const categoryInfo = $derived(CATEGORY_INFO[category]);
   const appliedCount = $derived(tweaks.filter((t) => t.status.is_applied).length);
   const unappliedTweaks = $derived(tweaks.filter((t) => !t.status.is_applied));
   const appliedTweaks = $derived(tweaks.filter((t) => t.status.is_applied));
@@ -73,10 +71,10 @@
   <div class="category-header">
     <button class="header-toggle" onclick={() => (isExpanded = !isExpanded)}>
       <div class="header-left">
-        <span class="category-icon">{categoryInfo.icon}</span>
+        <span class="category-icon">{category.icon}</span>
         <div class="category-info">
-          <h2 class="category-name">{categoryInfo.name}</h2>
-          <p class="category-description">{categoryInfo.description}</p>
+          <h2 class="category-name">{category.name}</h2>
+          <p class="category-description">{category.description}</p>
         </div>
       </div>
     </button>
@@ -133,10 +131,10 @@
 
 <ConfirmDialog
   open={showApplyAllDialog}
-  title="Apply All {categoryInfo.name} Tweaks"
+  title="Apply All {category.name} Tweaks"
   message="This will apply {unappliedTweaks.length} tweak{unappliedTweaks.length === 1
     ? ''
-    : 's'} in the {categoryInfo.name} category. Some tweaks may require administrator privileges or a system restart."
+    : 's'} in the {category.name} category. Some tweaks may require administrator privileges or a system restart."
   confirmText="Apply All"
   variant="warning"
   onconfirm={handleApplyAll}
@@ -145,10 +143,10 @@
 
 <ConfirmDialog
   open={showRevertAllDialog}
-  title="Revert All {categoryInfo.name} Tweaks"
+  title="Revert All {category.name} Tweaks"
   message="This will revert {appliedTweaks.length} applied tweak{appliedTweaks.length === 1
     ? ''
-    : 's'} in the {categoryInfo.name} category to their default values."
+    : 's'} in the {category.name} category to their default values."
   confirmText="Revert All"
   variant="danger"
   onconfirm={handleRevertAll}

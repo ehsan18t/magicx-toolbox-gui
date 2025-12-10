@@ -1,17 +1,6 @@
 <script lang="ts">
-  import { searchQuery, selectedCategory } from "$lib/stores/tweaks";
-  import { CATEGORY_INFO, type TweakCategory } from "$lib/types";
+  import { categoriesStore, searchQuery, selectedCategory } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
-
-  const categories: (TweakCategory | "all")[] = [
-    "all",
-    "privacy",
-    "performance",
-    "ui",
-    "security",
-    "services",
-    "gaming",
-  ];
 </script>
 
 <div class="filter-bar">
@@ -26,18 +15,21 @@
   </div>
 
   <div class="category-filters">
-    {#each categories as cat (cat)}
+    <button
+      class="filter-btn"
+      class:active={$selectedCategory === "all"}
+      onclick={() => ($selectedCategory = "all")}
+    >
+      All
+    </button>
+    {#each $categoriesStore as cat (cat.id)}
       <button
         class="filter-btn"
-        class:active={$selectedCategory === cat}
-        onclick={() => ($selectedCategory = cat)}
+        class:active={$selectedCategory === cat.id}
+        onclick={() => ($selectedCategory = cat.id)}
       >
-        {#if cat === "all"}
-          All
-        {:else}
-          <span class="cat-icon">{CATEGORY_INFO[cat].icon}</span>
-          <span class="cat-name">{CATEGORY_INFO[cat].name}</span>
-        {/if}
+        <span class="cat-icon">{cat.icon}</span>
+        <span class="cat-name">{cat.name}</span>
       </button>
     {/each}
   </div>

@@ -25,6 +25,7 @@ pub fn run() {
             commands::general::update_theme,
             commands::general::get_theme,
             commands::system::get_system_info,
+            commands::tweaks::get_categories,
             commands::tweaks::get_available_tweaks,
             commands::tweaks::get_available_tweaks_for_version,
             commands::tweaks::get_tweaks_by_category,

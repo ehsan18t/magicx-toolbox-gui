@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   BatchApplyResult,
+  CategoryDefinition,
   SystemInfo,
   TweakDefinition,
   TweakResult,
@@ -14,6 +15,13 @@ import type {
  */
 export async function getSystemInfo(): Promise<SystemInfo> {
   return await invoke<SystemInfo>("get_system_info");
+}
+
+/**
+ * Get all available categories (auto-discovered from YAML files)
+ */
+export async function getCategories(): Promise<CategoryDefinition[]> {
+  return await invoke<CategoryDefinition[]>("get_categories");
 }
 
 /**
