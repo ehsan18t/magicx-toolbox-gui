@@ -41,6 +41,28 @@ pub fn run() {
                         log::LevelFilter::Info
                     },
                 )
+                // Use colored output format with ANSI colors
+                .format(|out, message, record| {
+                    // Color codes for different log levels
+                    let color = match record.level() {
+                        log::Level::Error => "\x1b[31m", // Red
+                        log::Level::Warn => "\x1b[33m",  // Yellow
+                        log::Level::Info => "\x1b[32m",  // Green
+                        log::Level::Debug => "\x1b[36m", // Cyan
+                        log::Level::Trace => "\x1b[35m", // Magenta
+                    };
+                    let reset = "\x1b[0m";
+
+                    out.finish(format_args!(
+                        "{}[{}][{}]{}[{}] {}",
+                        color,
+                        chrono::Local::now().format("%Y-%m-%d][%H:%M:%S"),
+                        record.target(),
+                        reset,
+                        record.level(),
+                        message
+                    ))
+                })
                 .build(),
         )
         .manage(AppState(Default::default()))
