@@ -17,7 +17,8 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false
-  }
+  },
+  "exclude": ["node_modules", ".svelte-kit", "build", "src-tauri"]
   // Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
   // except $lib which is handled by https://kit.svelte.dev/docs/configuration#files
   //
