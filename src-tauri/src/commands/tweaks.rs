@@ -7,33 +7,49 @@ use tauri::AppHandle;
 /// Get all available categories (auto-discovered from YAML files)
 #[tauri::command]
 pub async fn get_categories() -> Result<Vec<CategoryDefinition>> {
+    log::debug!("Command: get_categories");
     let categories = tweak_loader::load_all_categories()?;
+    log::debug!("Returning {} categories", categories.len());
     Ok(categories)
 }
 
 /// Get all available tweaks filtered by current Windows version
 #[tauri::command]
 pub async fn get_available_tweaks() -> Result<Vec<TweakDefinition>> {
+    log::debug!("Command: get_available_tweaks");
     let windows_info = system_info_service::get_windows_info()?;
-    let tweaks = tweak_loader::get_tweaks_for_version(windows_info.version_number())?;
+    let version = windows_info.version_number();
+    log::debug!("Windows version detected: {}", version);
+
+    let tweaks = tweak_loader::get_tweaks_for_version(version)?;
+    log::debug!("Returning {} tweaks for Windows {}", tweaks.len(), version);
     Ok(tweaks.into_values().collect())
 }
 
 /// Get all available tweaks filtered by specified Windows version
 #[tauri::command]
 pub async fn get_available_tweaks_for_version(version: u32) -> Result<Vec<TweakDefinition>> {
+    log::debug!("Command: get_available_tweaks_for_version({})", version);
     let tweaks = tweak_loader::get_tweaks_for_version(version)?;
+    log::debug!("Returning {} tweaks for Windows {}", tweaks.len(), version);
     Ok(tweaks.into_values().collect())
 }
 
 /// Get tweaks by category
 #[tauri::command]
 pub async fn get_tweaks_by_category(category: String) -> Result<Vec<TweakDefinition>> {
+    log::debug!("Command: get_tweaks_by_category({})", category);
     let windows_info = system_info_service::get_windows_info()?;
     let mut category_tweaks = tweak_loader::get_tweaks_by_category(&category)?;
 
     // Filter by Windows version
-    category_tweaks.retain(|_, tweak| tweak.applies_to_version(windows_info.version_number()));
+    let version = windows_info.version_number();
+    category_tweaks.retain(|_, tweak| tweak.applies_to_version(version));
+    log::debug!(
+        "Returning {} tweaks in category '{}'",
+        category_tweaks.len(),
+        category
+    );
 
     Ok(category_tweaks.into_values().collect())
 }
@@ -41,13 +57,20 @@ pub async fn get_tweaks_by_category(category: String) -> Result<Vec<TweakDefinit
 /// Get a specific tweak by ID
 #[tauri::command]
 pub async fn get_tweak(tweak_id: String) -> Result<Option<TweakDefinition>> {
+    log::debug!("Command: get_tweak({})", tweak_id);
     let tweak = tweak_loader::get_tweak(&tweak_id)?;
+    if tweak.is_some() {
+        log::trace!("Found tweak: {}", tweak_id);
+    } else {
+        log::debug!("Tweak not found: {}", tweak_id);
+    }
     Ok(tweak)
 }
 
 /// Get status of a specific tweak (applied or not)
 #[tauri::command]
 pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
+    log::trace!("Command: get_tweak_status({})", tweak_id);
     let tweak = tweak_loader::get_tweak(&tweak_id)?
         .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
 
@@ -56,19 +79,30 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
 
     // Check if tweak applies to current Windows version
     if !tweak.applies_to_version(version) {
+        log::debug!("Tweak {} not applicable to Windows {}", tweak_id, version);
         return Err(Error::UnsupportedWindowsVersion);
     }
 
     // Check registry to see if tweak is applied
     let changes = tweak.get_changes_for_version(version);
     if changes.is_empty() {
+        log::debug!(
+            "Tweak {} has no registry changes for Windows {}",
+            tweak_id,
+            version
+        );
         return Err(Error::UnsupportedWindowsVersion);
     }
 
     let is_applied = check_tweak_applied(&changes)?;
-
-    // Check if backup exists
     let has_backup = backup_service::backup_exists(&tweak_id).unwrap_or(false);
+
+    log::trace!(
+        "Tweak {} status: applied={}, has_backup={}",
+        tweak_id,
+        is_applied,
+        has_backup
+    );
 
     Ok(TweakStatus {
         tweak_id,
@@ -81,26 +115,48 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
 /// Apply a tweak (set enable values in registry)
 #[tauri::command]
 pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
-    let tweak = tweak_loader::get_tweak(&tweak_id)?
-        .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
+    log::info!("Command: apply_tweak({})", tweak_id);
+
+    let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
+        log::error!("Tweak not found: {}", tweak_id);
+        Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
+    })?;
 
     let system_info = system_info_service::get_system_info()?;
     let version = system_info.windows.version_number();
+    log::debug!("Applying '{}' on Windows {}", tweak.name, version);
 
     // Check if tweak applies to current Windows version
     if !tweak.applies_to_version(version) {
+        log::warn!(
+            "Tweak '{}' not supported on Windows {}",
+            tweak.name,
+            version
+        );
         return Err(Error::UnsupportedWindowsVersion);
     }
 
     // Check if admin required and not running as admin
     if tweak.requires_admin && !system_info.is_admin {
+        log::warn!("Tweak '{}' requires admin privileges", tweak.name);
         return Err(Error::RequiresAdmin);
     }
 
     let changes = tweak.get_changes_for_version(version);
     if changes.is_empty() {
+        log::warn!(
+            "Tweak '{}' has no changes for Windows {}",
+            tweak.name,
+            version
+        );
         return Err(Error::UnsupportedWindowsVersion);
     }
+
+    log::debug!(
+        "Tweak '{}' has {} registry changes to apply",
+        tweak.name,
+        changes.len()
+    );
 
     // Debug: Log tweak application start
     if is_debug_enabled() {
@@ -113,7 +169,9 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     }
 
     // Create backup before applying
+    log::debug!("Creating backup for tweak '{}'", tweak.name);
     if let Err(e) = backup_service::create_tweak_backup(&tweak_id, &tweak.name, version, &changes) {
+        log::warn!("Failed to create backup for '{}': {}", tweak.name, e);
         if is_debug_enabled() {
             emit_debug_log(
                 &app,
@@ -122,19 +180,32 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                 Some("Continuing without backup"),
             );
         }
-    } else if is_debug_enabled() {
-        emit_debug_log(
-            &app,
-            DebugLevel::Success,
-            &format!("Backup created for: {}", tweak.name),
-            None,
-        );
+    } else {
+        log::debug!("Backup created for tweak '{}'", tweak.name);
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Success,
+                &format!("Backup created for: {}", tweak.name),
+                None,
+            );
+        }
     }
 
     // Apply all registry changes
     for change in &changes {
         apply_registry_change(&app, change, &tweak.name)?;
     }
+
+    log::info!(
+        "Successfully applied tweak '{}'{}",
+        tweak.name,
+        if tweak.requires_reboot {
+            " (reboot required)"
+        } else {
+            ""
+        }
+    );
 
     // Debug: Log success
     if is_debug_enabled() {
@@ -160,26 +231,48 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
 /// Revert a tweak (restore to disable values or from backup)
 #[tauri::command]
 pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
-    let tweak = tweak_loader::get_tweak(&tweak_id)?
-        .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
+    log::info!("Command: revert_tweak({})", tweak_id);
+
+    let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
+        log::error!("Tweak not found: {}", tweak_id);
+        Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
+    })?;
 
     let system_info = system_info_service::get_system_info()?;
     let version = system_info.windows.version_number();
+    log::debug!("Reverting '{}' on Windows {}", tweak.name, version);
 
     // Check if tweak applies to current Windows version
     if !tweak.applies_to_version(version) {
+        log::warn!(
+            "Tweak '{}' not supported on Windows {}",
+            tweak.name,
+            version
+        );
         return Err(Error::UnsupportedWindowsVersion);
     }
 
     // Check if admin required and not running as admin
     if tweak.requires_admin && !system_info.is_admin {
+        log::warn!("Tweak '{}' requires admin privileges", tweak.name);
         return Err(Error::RequiresAdmin);
     }
 
     let changes = tweak.get_changes_for_version(version);
     if changes.is_empty() {
+        log::warn!(
+            "Tweak '{}' has no changes for Windows {}",
+            tweak.name,
+            version
+        );
         return Err(Error::UnsupportedWindowsVersion);
     }
+
+    log::debug!(
+        "Tweak '{}' has {} registry changes to revert",
+        tweak.name,
+        changes.len()
+    );
 
     // Debug: Log tweak revert start
     if is_debug_enabled() {
@@ -197,6 +290,16 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
             revert_registry_change(&app, change, disable_value, &tweak.name)?;
         }
     }
+
+    log::info!(
+        "Successfully reverted tweak '{}'{}",
+        tweak.name,
+        if tweak.requires_reboot {
+            " (reboot required)"
+        } else {
+            ""
+        }
+    );
 
     // Debug: Log success
     if is_debug_enabled() {
@@ -222,9 +325,13 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
 /// Apply multiple tweaks at once
 #[tauri::command]
 pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Result<TweakResult> {
+    log::info!("Command: batch_apply_tweaks({} tweaks)", tweak_ids.len());
+    log::debug!("Batch tweak IDs: {:?}", tweak_ids);
+
     let system_info = system_info_service::get_system_info()?;
 
     if !system_info.is_admin {
+        log::warn!("Batch apply requires admin privileges");
         return Err(Error::RequiresAdmin);
     }
 
@@ -248,6 +355,16 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
             requires_reboot = true;
         }
     }
+
+    log::info!(
+        "Batch apply completed: {} tweaks{}",
+        tweak_ids.len(),
+        if requires_reboot {
+            " (reboot required)"
+        } else {
+            ""
+        }
+    );
 
     // Debug: Log batch success
     if is_debug_enabled() {

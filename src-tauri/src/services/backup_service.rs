@@ -36,10 +36,15 @@ pub fn get_backups_dir() -> Result<PathBuf, Error> {
     })?;
 
     let backups_dir = root.join("backups");
+    log::trace!("Backups directory: {:?}", backups_dir);
 
     // Create backups directory if it doesn't exist
-    fs::create_dir_all(&backups_dir)
-        .map_err(|e| Error::BackupFailed(format!("Failed to create backups directory: {}", e)))?;
+    if !backups_dir.exists() {
+        log::debug!("Creating backups directory: {:?}", backups_dir);
+        fs::create_dir_all(&backups_dir).map_err(|e| {
+            Error::BackupFailed(format!("Failed to create backups directory: {}", e))
+        })?;
+    }
 
     Ok(backups_dir)
 }
@@ -53,16 +58,28 @@ pub fn get_backup_path(tweak_id: &str) -> Result<PathBuf, Error> {
 /// Check if a backup exists for a tweak
 pub fn backup_exists(tweak_id: &str) -> Result<bool, Error> {
     let backup_path = get_backup_path(tweak_id)?;
-    Ok(backup_path.exists())
+    let exists = backup_path.exists();
+    log::trace!("Backup exists for '{}': {}", tweak_id, exists);
+    Ok(exists)
 }
 
 /// Read current registry values for a set of changes (for backup)
 fn read_current_values(changes: &[&RegistryChange]) -> Result<Vec<BackupEntry>, Error> {
     let mut entries = Vec::new();
+    log::trace!(
+        "Reading current values for {} registry changes",
+        changes.len()
+    );
 
     for change in changes {
         // Check if key exists first
         let key_existed = registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+        log::trace!(
+            "Registry key {:?}\\{} exists: {}",
+            change.hive,
+            change.key,
+            key_existed
+        );
 
         let original_value = if key_existed {
             match change.value_type {
@@ -94,6 +111,7 @@ fn read_current_values(changes: &[&RegistryChange]) -> Result<Vec<BackupEntry>, 
         });
     }
 
+    log::trace!("Read {} backup entries", entries.len());
     Ok(entries)
 }
 
@@ -104,6 +122,7 @@ pub fn create_tweak_backup(
     windows_version: u32,
     changes: &[&RegistryChange],
 ) -> Result<String, Error> {
+    log::info!("Creating backup for tweak '{}' ({})", tweak_id, tweak_name);
     let entries = read_current_values(changes)?;
 
     let backup = TweakBackup {
@@ -121,6 +140,7 @@ pub fn create_tweak_backup(
     fs::write(&backup_path, json)
         .map_err(|e| Error::BackupFailed(format!("Failed to write backup file: {}", e)))?;
 
+    log::debug!("Backup saved to {:?}", backup_path);
     Ok(backup_path.to_string_lossy().to_string())
 }
 
@@ -129,26 +149,44 @@ pub fn load_backup(tweak_id: &str) -> Result<Option<TweakBackup>, Error> {
     let backup_path = get_backup_path(tweak_id)?;
 
     if !backup_path.exists() {
+        log::trace!("No backup found at {:?}", backup_path);
         return Ok(None);
     }
 
+    log::trace!("Loading backup from {:?}", backup_path);
     let content = fs::read_to_string(&backup_path)
         .map_err(|e| Error::BackupFailed(format!("Failed to read backup file: {}", e)))?;
 
     let backup: TweakBackup = serde_json::from_str(&content)
         .map_err(|e| Error::BackupFailed(format!("Failed to parse backup file: {}", e)))?;
 
+    log::debug!(
+        "Loaded backup for tweak '{}' created at {}",
+        backup.tweak_id,
+        backup.created_at
+    );
     Ok(Some(backup))
 }
 
 /// Restore registry values from a backup
 pub fn restore_from_backup(tweak_id: &str) -> Result<(), Error> {
+    log::info!("Restoring from backup for tweak '{}'", tweak_id);
     let backup = load_backup(tweak_id)?
         .ok_or_else(|| Error::BackupFailed(format!("No backup found for tweak: {}", tweak_id)))?;
+
+    log::debug!("Backup has {} entries to restore", backup.entries.len());
+    let mut restored_count = 0;
+    let mut skipped_count = 0;
 
     for entry in &backup.entries {
         match &entry.original_value {
             Some(value) => {
+                log::trace!(
+                    "Restoring {:?}\\{}\\{} to original value",
+                    entry.hive,
+                    entry.key,
+                    entry.value_name
+                );
                 // Restore to original value
                 match entry.value_type {
                     RegistryValueType::DWord => {
@@ -159,6 +197,7 @@ pub fn restore_from_backup(tweak_id: &str) -> Result<(), Error> {
                                 &entry.value_name,
                                 v as u32,
                             )?;
+                            restored_count += 1;
                         }
                     }
                     RegistryValueType::String | RegistryValueType::ExpandString => {
@@ -169,6 +208,7 @@ pub fn restore_from_backup(tweak_id: &str) -> Result<(), Error> {
                                 &entry.value_name,
                                 v,
                             )?;
+                            restored_count += 1;
                         }
                     }
                     RegistryValueType::Binary => {
@@ -183,17 +223,33 @@ pub fn restore_from_backup(tweak_id: &str) -> Result<(), Error> {
                                 &entry.value_name,
                                 &binary,
                             )?;
+                            restored_count += 1;
                         }
                     }
-                    _ => {}
+                    _ => {
+                        skipped_count += 1;
+                    }
                 }
             }
             None => {
                 // Value didn't exist before - we could delete it but for safety we skip
+                log::trace!(
+                    "Skipping {:?}\\{}\\{} (no original value)",
+                    entry.hive,
+                    entry.key,
+                    entry.value_name
+                );
+                skipped_count += 1;
             }
         }
     }
 
+    log::info!(
+        "Restore complete for '{}': {} restored, {} skipped",
+        tweak_id,
+        restored_count,
+        skipped_count
+    );
     Ok(())
 }
 
@@ -202,8 +258,15 @@ pub fn delete_backup(tweak_id: &str) -> Result<(), Error> {
     let backup_path = get_backup_path(tweak_id)?;
 
     if backup_path.exists() {
+        log::debug!(
+            "Deleting backup for tweak '{}' at {:?}",
+            tweak_id,
+            backup_path
+        );
         fs::remove_file(&backup_path)
             .map_err(|e| Error::BackupFailed(format!("Failed to delete backup: {}", e)))?;
+    } else {
+        log::trace!("No backup to delete for tweak '{}'", tweak_id);
     }
 
     Ok(())
@@ -228,6 +291,7 @@ pub fn list_backups() -> Result<Vec<String>, Error> {
         }
     }
 
+    log::trace!("Found {} backups in {:?}", backups.len(), backups_dir);
     Ok(backups)
 }
 

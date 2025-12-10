@@ -6,6 +6,7 @@ use winreg::RegKey;
 
 /// Retrieve Windows version information
 pub fn get_windows_info() -> Result<WindowsInfo, Error> {
+    log::trace!("Reading Windows version info from registry");
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm
         .open_subkey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")
@@ -34,6 +35,13 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
         "10".to_string()
     };
 
+    log::info!(
+        "Detected Windows {} (build {}, {})",
+        version_string,
+        build_number,
+        display_version
+    );
+
     Ok(WindowsInfo {
         product_name,
         display_version,
@@ -45,10 +53,18 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
 
 /// Get full system information
 pub fn get_system_info() -> Result<SystemInfo, Error> {
+    log::debug!("Gathering system information");
     let windows = get_windows_info()?;
     let computer_name = env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string());
     let username = env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string());
     let is_admin = is_running_as_admin();
+
+    log::debug!(
+        "System info: computer={}, user={}, admin={}",
+        computer_name,
+        username,
+        is_admin
+    );
 
     Ok(SystemInfo {
         windows,
@@ -63,8 +79,11 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
 pub fn is_running_as_admin() -> bool {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     // Try to open SYSTEM key with write access - only admins can do this
-    hklm.open_subkey_with_flags("SYSTEM\\CurrentControlSet\\Control", KEY_WRITE)
-        .is_ok()
+    let is_admin = hklm
+        .open_subkey_with_flags("SYSTEM\\CurrentControlSet\\Control", KEY_WRITE)
+        .is_ok();
+    log::trace!("Admin check: {}", is_admin);
+    is_admin
 }
 
 #[cfg(test)]

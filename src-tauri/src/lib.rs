@@ -10,14 +10,45 @@ pub use debug::{emit_debug_log, is_debug_enabled, set_debug_enabled, DebugLevel,
 pub use error::Error;
 pub use models::*;
 use state::AppState;
+use tauri_plugin_log::{Target, TargetKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_prevent_default::debug())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    // Log to console in debug builds only
+                    Target::new(TargetKind::Stdout),
+                    // Log to webview console for frontend debugging
+                    Target::new(TargetKind::Webview),
+                ])
+                // In debug mode: show debug level and above
+                // In release mode: show warn level and above
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Warn
+                })
+                // More verbose for our own crate
+                .level_for(
+                    "app_lib",
+                    if cfg!(debug_assertions) {
+                        log::LevelFilter::Trace
+                    } else {
+                        log::LevelFilter::Info
+                    },
+                )
+                .build(),
+        )
         .manage(AppState(Default::default()))
-        .setup(setup::setup)
+        .setup(|app| {
+            log::info!("Application starting...");
+            log::debug!("Debug logging enabled");
+            setup::setup(app)
+        })
         .invoke_handler(tauri::generate_handler![
             commands::general::greet,
             commands::general::get_greetings,
