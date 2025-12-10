@@ -15,14 +15,14 @@ pub async fn get_categories() -> Result<Vec<CategoryDefinition>> {
 #[tauri::command]
 pub async fn get_available_tweaks() -> Result<Vec<TweakDefinition>> {
     let windows_info = system_info_service::get_windows_info()?;
-    let tweaks = tweak_loader::get_tweaks_for_version(&windows_info.version_string)?;
+    let tweaks = tweak_loader::get_tweaks_for_version(windows_info.version_number())?;
     Ok(tweaks.into_values().collect())
 }
 
 /// Get all available tweaks filtered by specified Windows version
 #[tauri::command]
-pub async fn get_available_tweaks_for_version(version: String) -> Result<Vec<TweakDefinition>> {
-    let tweaks = tweak_loader::get_tweaks_for_version(&version)?;
+pub async fn get_available_tweaks_for_version(version: u32) -> Result<Vec<TweakDefinition>> {
+    let tweaks = tweak_loader::get_tweaks_for_version(version)?;
     Ok(tweaks.into_values().collect())
 }
 
@@ -33,7 +33,7 @@ pub async fn get_tweaks_by_category(category: String) -> Result<Vec<TweakDefinit
     let mut category_tweaks = tweak_loader::get_tweaks_by_category(&category)?;
 
     // Filter by Windows version
-    category_tweaks.retain(|_, tweak| tweak.applies_to_version(&windows_info.version_string));
+    category_tweaks.retain(|_, tweak| tweak.applies_to_version(windows_info.version_number()));
 
     Ok(category_tweaks.into_values().collect())
 }
@@ -52,18 +52,20 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
         .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
 
     let windows_info = system_info_service::get_windows_info()?;
+    let version = windows_info.version_number();
 
     // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(&windows_info.version_string) {
+    if !tweak.applies_to_version(version) {
         return Err(Error::UnsupportedWindowsVersion);
     }
 
     // Check registry to see if tweak is applied
-    let changes = tweak
-        .get_changes_for_version(&windows_info.version_string)
-        .ok_or_else(|| Error::UnsupportedWindowsVersion)?;
+    let changes = tweak.get_changes_for_version(version);
+    if changes.is_empty() {
+        return Err(Error::UnsupportedWindowsVersion);
+    }
 
-    let is_applied = check_tweak_applied(changes)?;
+    let is_applied = check_tweak_applied(&changes)?;
 
     // Check if backup exists
     let has_backup = backup_service::backup_exists(&tweak_id).unwrap_or(false);
@@ -83,9 +85,10 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
 
     let system_info = system_info_service::get_system_info()?;
+    let version = system_info.windows.version_number();
 
     // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(&system_info.windows.version_string) {
+    if !tweak.applies_to_version(version) {
         return Err(Error::UnsupportedWindowsVersion);
     }
 
@@ -94,9 +97,10 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         return Err(Error::RequiresAdmin);
     }
 
-    let changes = tweak
-        .get_changes_for_version(&system_info.windows.version_string)
-        .ok_or_else(|| Error::UnsupportedWindowsVersion)?;
+    let changes = tweak.get_changes_for_version(version);
+    if changes.is_empty() {
+        return Err(Error::UnsupportedWindowsVersion);
+    }
 
     // Debug: Log tweak application start
     if is_debug_enabled() {
@@ -109,12 +113,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     }
 
     // Create backup before applying
-    if let Err(e) = backup_service::create_tweak_backup(
-        &tweak_id,
-        &tweak.name,
-        &system_info.windows.version_string,
-        changes,
-    ) {
+    if let Err(e) = backup_service::create_tweak_backup(&tweak_id, &tweak.name, version, &changes) {
         if is_debug_enabled() {
             emit_debug_log(
                 &app,
@@ -133,7 +132,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     }
 
     // Apply all registry changes
-    for change in changes {
+    for change in &changes {
         apply_registry_change(&app, change, &tweak.name)?;
     }
 
@@ -165,9 +164,10 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
 
     let system_info = system_info_service::get_system_info()?;
+    let version = system_info.windows.version_number();
 
     // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(&system_info.windows.version_string) {
+    if !tweak.applies_to_version(version) {
         return Err(Error::UnsupportedWindowsVersion);
     }
 
@@ -176,9 +176,10 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         return Err(Error::RequiresAdmin);
     }
 
-    let changes = tweak
-        .get_changes_for_version(&system_info.windows.version_string)
-        .ok_or_else(|| Error::UnsupportedWindowsVersion)?;
+    let changes = tweak.get_changes_for_version(version);
+    if changes.is_empty() {
+        return Err(Error::UnsupportedWindowsVersion);
+    }
 
     // Debug: Log tweak revert start
     if is_debug_enabled() {
@@ -191,7 +192,7 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
     }
 
     // Restore all registry changes
-    for change in changes {
+    for change in &changes {
         if let Some(disable_value) = &change.disable_value {
             revert_registry_change(&app, change, disable_value, &tweak.name)?;
         }
@@ -270,13 +271,13 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
 }
 
 /// Check if a tweak is currently applied by reading registry values
-fn check_tweak_applied(changes: &[crate::models::RegistryChange]) -> Result<bool> {
+fn check_tweak_applied(changes: &[&crate::models::RegistryChange]) -> Result<bool> {
     if changes.is_empty() {
         return Ok(false);
     }
 
     // Check first registry change to determine if applied
-    let first_change = &changes[0];
+    let first_change = changes[0];
 
     let current_value = match first_change.value_type {
         crate::models::RegistryValueType::DWord => registry_service::read_dword(

@@ -23,6 +23,8 @@ export interface RegistryChange {
   value_type: RegistryValueType;
   enable_value: unknown;
   disable_value?: unknown;
+  /** Optional Windows version filter. If undefined/empty, applies to all versions. */
+  windows_versions?: number[];
 }
 
 /** Category definition loaded from YAML file */
@@ -43,8 +45,8 @@ export interface TweakDefinition {
   risk_level: RiskLevel;
   requires_reboot: boolean;
   requires_admin: boolean;
-  /** Map of Windows version ("10" or "11") to registry changes */
-  registry_changes: Record<string, RegistryChange[]>;
+  /** List of registry changes (with optional windows_versions filter on each) */
+  registry_changes: RegistryChange[];
   /** Additional info/documentation */
   info?: string;
 }

@@ -27,8 +27,14 @@
   const registryChanges = $derived(() => {
     const system = get(systemStore);
     if (!system) return [];
-    const version = system.windows.is_windows_11 ? "11" : "10";
-    return tweak.definition.registry_changes[version] || [];
+    const version = system.windows.is_windows_11 ? 11 : 10;
+    // Filter changes that apply to current version (no filter = all versions)
+    return tweak.definition.registry_changes.filter((change: RegistryChange) => {
+      if (!change.windows_versions || change.windows_versions.length === 0) {
+        return true; // No filter means applies to all
+      }
+      return change.windows_versions.includes(version);
+    });
   });
 
   function handleToggleClick() {

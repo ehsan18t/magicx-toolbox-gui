@@ -16,20 +16,12 @@ tweaks:
     requires_reboot: false
     info: "Disable if you don't use printing. Spooler service can be a security risk"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\Spooler"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\Spooler"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\Spooler"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_fax_service
     name: "Disable Fax Service"
@@ -38,20 +30,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\Fax"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\Fax"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\Fax"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_remote_registry
     name: "Disable Remote Registry"
@@ -61,20 +45,12 @@ tweaks:
     requires_reboot: false
     info: "Improves security by preventing remote registry access"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_xbox_services
     name: "Disable Xbox Services"
@@ -83,32 +59,18 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\xbgm"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\xbgm"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\xbgm"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_connected_user_experiences
     name: "Disable Connected User Experiences"
@@ -117,20 +79,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\DiagTrack"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\DiagTrack"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\DiagTrack"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_windows_error_reporting
     name: "Disable Windows Error Reporting"
@@ -139,17 +93,9 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\WerSvc"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\WerSvc"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\WerSvc"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2

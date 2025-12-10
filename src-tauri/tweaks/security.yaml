@@ -15,20 +15,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\Terminal Server"
-          value_name: "fDenyTSConnections"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\Terminal Server"
-          value_name: "fDenyTSConnections"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Control\\Terminal Server"
+        value_name: "fDenyTSConnections"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
 
   - id: disable_autoplay
     name: "Disable AutoPlay"
@@ -37,20 +29,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-          value_name: "NoDriveTypeAutoRun"
-          value_type: "REG_DWORD"
-          enable_value: 255
-          disable_value: 0
-      "11":
-        - hive: HKLM
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-          value_name: "NoDriveTypeAutoRun"
-          value_type: "REG_DWORD"
-          enable_value: 255
-          disable_value: 0
+      - hive: HKLM
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+        value_name: "NoDriveTypeAutoRun"
+        value_type: "REG_DWORD"
+        enable_value: 255
+        disable_value: 0
 
   - id: disable_autorun
     name: "Disable AutoRun Scripts"
@@ -59,20 +43,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-          value_name: "NoAutorun"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
-      "11":
-        - hive: HKLM
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-          value_name: "NoAutorun"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
+      - hive: HKLM
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+        value_name: "NoAutorun"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
 
   - id: require_ctrlaltdel
     name: "Require Ctrl+Alt+Del to Unlock"
@@ -81,20 +57,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-          value_name: "DisableCAD"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKLM
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-          value_name: "DisableCAD"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKLM
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+        value_name: "DisableCAD"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_guest_account
     name: "Disable Guest Account"
@@ -104,20 +72,12 @@ tweaks:
     requires_reboot: false
     info: "Guest account can be a security risk if left enabled"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-          value_name: "F"
-          value_type: "REG_BINARY"
-          enable_value: null
-          disable_value: null
-      "11":
-        - hive: HKLM
-          key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-          value_name: "F"
-          value_type: "REG_BINARY"
-          enable_value: null
-          disable_value: null
+      - hive: HKLM
+        key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
+        value_name: "F"
+        value_type: "REG_BINARY"
+        enable_value: null
+        disable_value: null
 
   - id: disable_smbv1
     name: "Disable SMBv1 Protocol"
@@ -127,20 +87,12 @@ tweaks:
     requires_reboot: true
     info: "SMBv1 is an old protocol with security vulnerabilities"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-          value_name: "SMB1"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-          value_name: "SMB1"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+        value_name: "SMB1"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_netbios
     name: "Disable NetBIOS"
@@ -149,20 +101,12 @@ tweaks:
     requires_admin: true
     requires_reboot: true
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-          value_name: "NetbiosOptions"
-          value_type: "REG_DWORD"
-          enable_value: 2
-          disable_value: 0
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-          value_name: "NetbiosOptions"
-          value_type: "REG_DWORD"
-          enable_value: 2
-          disable_value: 0
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
+        value_name: "NetbiosOptions"
+        value_type: "REG_DWORD"
+        enable_value: 2
+        disable_value: 0
 
   - id: enforce_password_policy
     name: "Enforce Strong Password Policy"
@@ -171,17 +115,9 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
-          value_name: "RequireSignOrSeal"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
-          value_name: "RequireSignOrSeal"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
+        value_name: "RequireSignOrSeal"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0

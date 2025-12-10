@@ -16,20 +16,12 @@ tweaks:
     requires_reboot: false
     info: "Superfetch (Windows 10) / SysMain (Windows 11) pre-loads data into RAM but can cause high disk usage"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\SysMain"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\SysMain"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\SysMain"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_search_indexing
     name: "Disable Windows Search Indexing"
@@ -39,20 +31,12 @@ tweaks:
     requires_reboot: false
     info: "Disabling search indexing speeds up file operations but slows down Windows Search"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\WSearch"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\WSearch"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\WSearch"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
 
   - id: disable_windows_tips
     name: "Disable Windows Tips"
@@ -61,20 +45,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-          value_name: "SoftLandingEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-          value_name: "SoftLandingEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SoftLandingEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_background_apps
     name: "Disable Background App Permissions"
@@ -83,20 +59,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
-          value_name: "GlobalUserDisabled"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
-          value_name: "GlobalUserDisabled"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
+        value_name: "GlobalUserDisabled"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
 
   - id: reduce_startup_delay
     name: "Reduce Startup Delay"
@@ -105,20 +73,12 @@ tweaks:
     requires_admin: false
     requires_reboot: true
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize"
-          value_name: "StartupDelayInMSec"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1000
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize"
-          value_name: "StartupDelayInMSec"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1000
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize"
+        value_name: "StartupDelayInMSec"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1000
 
   - id: disable_gamebar
     name: "Disable Game Bar & DVR"
@@ -128,26 +88,21 @@ tweaks:
     requires_reboot: false
     info: "Disables Game Bar and Game DVR which consume system resources"
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "System\\GameConfigStore"
-          value_name: "GameDVR_Enabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-          value_name: "AppCaptureEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "System\\GameConfigStore"
-          value_name: "GameDVR_Enabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      # Common to both
+      - hive: HKCU
+        key: "System\\GameConfigStore"
+        value_name: "GameDVR_Enabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+      # Win10 only - AppCaptureEnabled
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+        value_name: "AppCaptureEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+        windows_versions: [10]
 
   - id: ssd_optimize_trim
     name: "Enable SSD TRIM Optimization"
@@ -156,20 +111,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\FileSystem"
-          value_name: "DisableDeleteNotification"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\FileSystem"
-          value_name: "DisableDeleteNotification"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Control\\FileSystem"
+        value_name: "DisableDeleteNotification"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_hibernation
     name: "Disable Hibernation"
@@ -179,20 +126,12 @@ tweaks:
     requires_reboot: false
     info: "Disables hibernation and frees up disk space used by hiberfil.sys"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\Power"
-          value_name: "HibernateEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\Power"
-          value_name: "HibernateEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Control\\Power"
+        value_name: "HibernateEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: optimize_visual_effects
     name: "Optimize Visual Effects"
@@ -201,20 +140,12 @@ tweaks:
     requires_admin: false
     requires_reboot: true
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects"
-          value_name: "VisualFXSetting"
-          value_type: "REG_DWORD"
-          enable_value: 2
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects"
-          value_name: "VisualFXSetting"
-          value_type: "REG_DWORD"
-          enable_value: 2
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects"
+        value_name: "VisualFXSetting"
+        value_type: "REG_DWORD"
+        enable_value: 2
+        disable_value: 1
 
   - id: disable_prefetch
     name: "Disable Prefetch"
@@ -224,17 +155,9 @@ tweaks:
     requires_reboot: true
     info: "Disables prefetch which can cause excessive disk I/O on SSDs"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-          value_name: "EnablePrefetcher"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 3
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-          value_name: "EnablePrefetcher"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 3
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+        value_name: "EnablePrefetcher"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 3

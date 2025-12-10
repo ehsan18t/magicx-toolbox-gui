@@ -23,6 +23,15 @@ impl WindowsInfo {
     pub fn display_version_full(&self) -> String {
         format!("{} (Build {})", self.product_name, self.build_number)
     }
+
+    /// Get version as u32 (10 or 11) for registry change filtering
+    pub fn version_number(&self) -> u32 {
+        if self.is_windows_11 {
+            11
+        } else {
+            10
+        }
+    }
 }
 
 /// System information

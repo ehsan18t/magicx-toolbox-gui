@@ -57,7 +57,7 @@ pub fn backup_exists(tweak_id: &str) -> Result<bool, Error> {
 }
 
 /// Read current registry values for a set of changes (for backup)
-fn read_current_values(changes: &[RegistryChange]) -> Result<Vec<BackupEntry>, Error> {
+fn read_current_values(changes: &[&RegistryChange]) -> Result<Vec<BackupEntry>, Error> {
     let mut entries = Vec::new();
 
     for change in changes {
@@ -101,8 +101,8 @@ fn read_current_values(changes: &[RegistryChange]) -> Result<Vec<BackupEntry>, E
 pub fn create_tweak_backup(
     tweak_id: &str,
     tweak_name: &str,
-    windows_version: &str,
-    changes: &[RegistryChange],
+    windows_version: u32,
+    changes: &[&RegistryChange],
 ) -> Result<String, Error> {
     let entries = read_current_values(changes)?;
 

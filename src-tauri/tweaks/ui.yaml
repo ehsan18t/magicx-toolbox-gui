@@ -15,20 +15,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-          value_name: "RotatingLockScreenEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-          value_name: "RotatingLockScreenEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "RotatingLockScreenEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: classic_context_menu_win11
     name: "Enable Classic Context Menu (Windows 11)"
@@ -37,13 +29,13 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "11":
-        - hive: HKCU
-          key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
-          value_name: ""
-          value_type: "REG_SZ"
-          enable_value: ""
-          disable_value: null
+      - hive: HKCU
+        key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
+        value_name: ""
+        value_type: "REG_SZ"
+        enable_value: ""
+        disable_value: null
+        windows_versions: [11]
 
   - id: disable_web_search
     name: "Disable Web Search in Start Menu"
@@ -52,20 +44,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
-          value_name: "BingSearchEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
-          value_name: "BingSearchEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+        value_name: "BingSearchEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: show_file_extensions
     name: "Show File Extensions"
@@ -74,20 +58,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "HideFileExt"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "HideFileExt"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "HideFileExt"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: show_hidden_files
     name: "Show Hidden Files"
@@ -96,20 +72,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "Hidden"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 2
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "Hidden"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 2
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "Hidden"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 2
 
   - id: disable_snap_suggestions
     name: "Disable Snap Assist Suggestions"
@@ -118,20 +86,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "SnapAssist"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "SnapAssist"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "SnapAssist"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_widgets_win11
     name: "Disable Widgets (Windows 11)"
@@ -140,13 +100,13 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "TaskbarDa"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "TaskbarDa"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+        windows_versions: [11]
 
   - id: disable_chat_icon_win11
     name: "Remove Chat Icon (Windows 11)"
@@ -155,13 +115,13 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "TaskbarMn"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "TaskbarMn"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+        windows_versions: [11]
 
   - id: small_taskbar_icons
     name: "Use Small Taskbar Icons"
@@ -170,20 +130,12 @@ tweaks:
     requires_admin: false
     requires_reboot: true
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "TaskbarSmallIcons"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "TaskbarSmallIcons"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "TaskbarSmallIcons"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
 
   - id: disable_animations
     name: "Disable Animation & Transition Effects"
@@ -192,17 +144,9 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Control Panel\\Desktop\\WindowMetrics"
-          value_name: "MinAnimate"
-          value_type: "REG_SZ"
-          enable_value: "0"
-          disable_value: "1"
-      "11":
-        - hive: HKCU
-          key: "Control Panel\\Desktop\\WindowMetrics"
-          value_name: "MinAnimate"
-          value_type: "REG_SZ"
-          enable_value: "0"
-          disable_value: "1"
+      - hive: HKCU
+        key: "Control Panel\\Desktop\\WindowMetrics"
+        value_name: "MinAnimate"
+        value_type: "REG_SZ"
+        enable_value: "0"
+        disable_value: "1"

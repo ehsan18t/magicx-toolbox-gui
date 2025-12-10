@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Risk level for a tweak indicating potential impact
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -55,8 +54,8 @@ pub struct TweakDefinitionRaw {
     pub requires_reboot: bool,
     #[serde(default)]
     pub requires_admin: bool,
-    /// Map of Windows version to registry changes
-    pub registry_changes: HashMap<String, Vec<RegistryChange>>,
+    /// List of registry changes (with optional windows_versions filter on each)
+    pub registry_changes: Vec<RegistryChange>,
     /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
@@ -135,6 +134,21 @@ pub struct RegistryChange {
     pub enable_value: serde_json::Value,
     #[serde(default)]
     pub disable_value: Option<serde_json::Value>,
+    /// Optional Windows version filter. If None/empty, applies to all versions.
+    /// Examples: [10], [11], [10, 11]
+    #[serde(default)]
+    pub windows_versions: Option<Vec<u32>>,
+}
+
+impl RegistryChange {
+    /// Check if this registry change applies to a given Windows version
+    pub fn applies_to_version(&self, version: u32) -> bool {
+        match &self.windows_versions {
+            None => true, // No filter = applies to all
+            Some(versions) if versions.is_empty() => true,
+            Some(versions) => versions.contains(&version),
+        }
+    }
 }
 
 /// A complete tweak definition loaded from YAML
@@ -149,8 +163,8 @@ pub struct TweakDefinition {
     pub requires_reboot: bool,
     #[serde(default)]
     pub requires_admin: bool,
-    /// Map of Windows version to registry changes
-    pub registry_changes: HashMap<String, Vec<RegistryChange>>,
+    /// List of registry changes (with optional windows_versions filter on each)
+    pub registry_changes: Vec<RegistryChange>,
     /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
@@ -172,19 +186,43 @@ impl TweakDefinition {
         }
     }
 
-    /// Get registry changes for a specific Windows version
-    pub fn get_changes_for_version(&self, version: &str) -> Option<&Vec<RegistryChange>> {
-        self.registry_changes.get(version)
+    /// Get registry changes filtered for a specific Windows version
+    pub fn get_changes_for_version(&self, version: u32) -> Vec<&RegistryChange> {
+        self.registry_changes
+            .iter()
+            .filter(|change| change.applies_to_version(version))
+            .collect()
     }
 
-    /// Check if this tweak applies to a given Windows version
-    pub fn applies_to_version(&self, version: &str) -> bool {
-        self.registry_changes.contains_key(version)
+    /// Check if this tweak has any registry changes for a given Windows version
+    pub fn applies_to_version(&self, version: u32) -> bool {
+        self.registry_changes
+            .iter()
+            .any(|change| change.applies_to_version(version))
     }
 
-    /// Get all applicable versions
-    pub fn applicable_versions(&self) -> Vec<String> {
-        self.registry_changes.keys().cloned().collect()
+    /// Get all Windows versions this tweak applies to
+    pub fn applicable_versions(&self) -> Vec<u32> {
+        let mut versions = std::collections::HashSet::new();
+        for change in &self.registry_changes {
+            match &change.windows_versions {
+                None => {
+                    // No filter = applies to both
+                    versions.insert(10);
+                    versions.insert(11);
+                }
+                Some(v) if v.is_empty() => {
+                    versions.insert(10);
+                    versions.insert(11);
+                }
+                Some(v) => {
+                    versions.extend(v.iter());
+                }
+            }
+        }
+        let mut result: Vec<_> = versions.into_iter().collect();
+        result.sort();
+        result
     }
 }
 

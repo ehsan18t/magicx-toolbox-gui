@@ -16,26 +16,21 @@ tweaks:
     requires_reboot: false
     info: "Disables DiagTrack service and associated telemetry features"
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\DiagTrack"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
-      "11":
-        - hive: HKLM
-          key: "System\\CurrentControlSet\\Services\\DiagTrack"
-          value_name: "Start"
-          value_type: "REG_DWORD"
-          enable_value: 4
-          disable_value: 2
+      # Common to both Win10 and Win11
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\DiagTrack"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
+      # Win10 only - dmwappushservice
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\dmwappushservice"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 4
+        disable_value: 2
+        windows_versions: [10]
 
   - id: disable_advertising_id
     name: "Disable Advertising ID"
@@ -44,20 +39,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
-          value_name: "Enabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
-          value_name: "Enabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
+        value_name: "Enabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_activity_history
     name: "Disable Activity History"
@@ -66,20 +53,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "ShowFrequent"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "ShowFrequent"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "ShowFrequent"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_location_tracking
     name: "Disable Location Tracking"
@@ -88,20 +67,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
-          value_name: "SensorPermissionState"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
-          value_name: "SensorPermissionState"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
+        value_name: "SensorPermissionState"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_feedback_notifications
     name: "Disable Feedback Notifications"
@@ -110,20 +81,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Siuf\\Rules"
-          value_name: "NumberOfSIUFInPeriod"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: -1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Siuf\\Rules"
-          value_name: "NumberOfSIUFInPeriod"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: -1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Siuf\\Rules"
+        value_name: "NumberOfSIUFInPeriod"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: -1
 
   - id: disable_inking_data
     name: "Disable Inking & Typing Data"
@@ -132,20 +95,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\InputPersonalization"
-          value_name: "RestrictImplicitInkCollection"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\InputPersonalization"
-          value_name: "RestrictImplicitInkCollection"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 0
+      - hive: HKCU
+        key: "Software\\Microsoft\\InputPersonalization"
+        value_name: "RestrictImplicitInkCollection"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
 
   - id: disable_app_launch_tracking
     name: "Disable App Launch Tracking"
@@ -154,20 +109,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "Software\\Policies\\Microsoft\\Windows\\System"
-          value_name: "PublishUserActivities"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKLM
-          key: "Software\\Policies\\Microsoft\\Windows\\System"
-          value_name: "PublishUserActivities"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\System"
+        value_name: "PublishUserActivities"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_suggested_content
     name: "Disable Suggested Content"
@@ -176,20 +123,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-          value_name: "ContentDeliveryAllowed"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-          value_name: "ContentDeliveryAllowed"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "ContentDeliveryAllowed"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_tailored_experiences
     name: "Disable Tailored Experiences"
@@ -198,20 +137,12 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
-          value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
-          value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
+        value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_diagnostic_data
     name: "Set Diagnostic Data to Minimum"
@@ -220,20 +151,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-          value_name: "AllowDiagnosticData"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 3
-      "11":
-        - hive: HKLM
-          key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-          value_name: "AllowDiagnosticData"
-          value_type: "REG_DWORD"
-          enable_value: 1
-          disable_value: 3
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+        value_name: "AllowDiagnosticData"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 3
 
   - id: disable_timeline
     name: "Disable Timeline/Activity History"
@@ -242,20 +165,12 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKLM
-          key: "Software\\Policies\\Microsoft\\Windows\\System"
-          value_name: "EnableActivityFeed"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKLM
-          key: "Software\\Policies\\Microsoft\\Windows\\System"
-          value_name: "EnableActivityFeed"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\System"
+        value_name: "EnableActivityFeed"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
 
   - id: disable_clipboard_sync
     name: "Disable Cloud Clipboard Sync"
@@ -264,17 +179,9 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     registry_changes:
-      "10":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Clipboard"
-          value_name: "EnableCloudSync"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
-      "11":
-        - hive: HKCU
-          key: "Software\\Microsoft\\Clipboard"
-          value_name: "EnableCloudSync"
-          value_type: "REG_DWORD"
-          enable_value: 0
-          disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Clipboard"
+        value_name: "EnableCloudSync"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1

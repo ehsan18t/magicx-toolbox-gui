@@ -153,8 +153,8 @@ pub fn get_tweak(tweak_id: &str) -> Result<Option<TweakDefinition>, Error> {
     Ok(tweaks.get(tweak_id).cloned())
 }
 
-/// Filter tweaks by Windows version
-pub fn get_tweaks_for_version(version: &str) -> Result<HashMap<String, TweakDefinition>, Error> {
+/// Filter tweaks by Windows version (u32: 10 or 11)
+pub fn get_tweaks_for_version(version: u32) -> Result<HashMap<String, TweakDefinition>, Error> {
     let all_tweaks = load_all_tweaks()?;
 
     let filtered = all_tweaks
