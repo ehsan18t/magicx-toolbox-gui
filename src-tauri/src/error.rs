@@ -5,25 +5,25 @@ use serde::{Serialize, Serializer};
 pub enum Error {
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
-    
+
     #[error("Registry key not found: {0}")]
     RegistryKeyNotFound(String),
-    
+
     #[error("Registry access denied: {0}")]
     RegistryAccessDenied(String),
-    
+
     #[error("Registry operation failed: {0}")]
     RegistryOperation(String),
-    
+
     #[error("Windows API error: {0}")]
     WindowsApi(String),
-    
+
     #[error("Backup failed: {0}")]
     BackupFailed(String),
-    
+
     #[error("Unsupported Windows version")]
     UnsupportedWindowsVersion,
-    
+
     #[error("Requires administrator privileges")]
     RequiresAdmin,
 }

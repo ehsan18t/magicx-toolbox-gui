@@ -88,15 +88,13 @@ fn discover_yaml_files() -> Result<Vec<PathBuf>, Error> {
     let entries = fs::read_dir(&tweaks_dir)
         .map_err(|e| Error::WindowsApi(format!("Failed to read tweaks directory: {}", e)))?;
 
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "yaml" || ext == "yml" {
-                        log::trace!("Found YAML file: {:?}", path.file_name());
-                        yaml_files.push(path);
-                    }
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if ext == "yaml" || ext == "yml" {
+                    log::trace!("Found YAML file: {:?}", path.file_name());
+                    yaml_files.push(path);
                 }
             }
         }

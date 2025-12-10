@@ -131,7 +131,47 @@ pub fn read_binary(
     }
 }
 
+/// Read a QWORD (u64) value from registry
+pub fn read_qword(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+) -> Result<Option<u64>, Error> {
+    log::trace!(
+        "Reading QWORD {}\\{}\\{}",
+        hive_name(hive),
+        key_path,
+        value_name
+    );
+    let hive_key = get_hive_key(hive)?;
+    let reg_key = RegKey::predef(hive_key)
+        .open_subkey_with_flags(key_path, KEY_READ)
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
+            } else {
+                Error::RegistryAccessDenied(e.to_string())
+            }
+        })?;
+
+    match reg_key.get_value::<u64, _>(value_name) {
+        Ok(v) => {
+            log::trace!("Read QWORD value: {}", v);
+            Ok(Some(v))
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            log::trace!("QWORD value not found");
+            Ok(None)
+        }
+        Err(e) => Err(Error::RegistryOperation(format!(
+            "Failed to read QWORD from {}: {}",
+            value_name, e
+        ))),
+    }
+}
+
 /// Check if a registry key exists
+#[allow(dead_code)]
 pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
     let hive_key = get_hive_key(hive)?;
     match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
@@ -142,6 +182,7 @@ pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
 }
 
 /// Check if a registry value exists
+#[allow(dead_code)]
 pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<bool, Error> {
     let hive_key = get_hive_key(hive)?;
     let reg_key = RegKey::predef(hive_key)
@@ -284,7 +325,45 @@ pub fn set_binary(
     Ok(())
 }
 
+/// Set a QWORD (u64) value in registry
+pub fn set_qword(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    value: u64,
+) -> Result<(), Error> {
+    log::debug!(
+        "Setting QWORD {}\\{}\\{} = {}",
+        hive_name(hive),
+        key_path,
+        value_name,
+        value
+    );
+    let hive_key = get_hive_key(hive)?;
+
+    // For HKLM, we need write permissions which typically require admin
+    if matches!(hive, RegistryHive::HKLM) {
+        use crate::services::system_info_service::is_running_as_admin;
+        if !is_running_as_admin() {
+            log::warn!("HKLM write requires admin privileges");
+            return Err(Error::RequiresAdmin);
+        }
+    }
+
+    let (reg_key, _) = RegKey::predef(hive_key)
+        .create_subkey_with_flags(key_path, KEY_WRITE)
+        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+
+    reg_key.set_value(value_name, &value).map_err(|e| {
+        Error::RegistryOperation(format!("Failed to set QWORD {}: {}", value_name, e))
+    })?;
+
+    log::trace!("QWORD value set successfully");
+    Ok(())
+}
+
 /// Delete a registry value
+#[allow(dead_code)]
 pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<(), Error> {
     log::debug!(
         "Deleting value {}\\{}\\{}",
@@ -320,6 +399,7 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
 }
 
 /// Create a registry key
+#[allow(dead_code)]
 pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     log::debug!("Creating key {}\\{}", hive_name(hive), key_path);
     let hive_key = get_hive_key(hive)?;
