@@ -1,139 +1,258 @@
 <script lang="ts">
-  import ExternalLink from "$lib/components/ExternalLink.svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { CategorySection, FilterBar, StatsCard, SystemInfoCard, TweakCard } from "$lib";
+  import {
+    filteredTweaks,
+    initializeStores,
+    selectedCategory,
+    systemStore,
+    tweaksByCategory,
+    tweakStats,
+  } from "$lib/stores/tweaks";
+  import { type TweakCategory } from "$lib/types";
+  import Icon from "@iconify/svelte";
+  import { onMount } from "svelte";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  let loading = $state(true);
+  let error = $state<string | null>(null);
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
+  const categories: TweakCategory[] = [
+    "privacy",
+    "performance",
+    "ui",
+    "security",
+    "services",
+    "gaming",
+  ];
+
+  onMount(async () => {
+    try {
+      await initializeStores();
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to load data";
+      console.error("Failed to initialize:", e);
+    } finally {
+      loading = false;
+    }
+  });
 </script>
 
-<div
-  class="flex h-full w-full items-center justify-center bg-background text-foreground transition-colors duration-300"
->
-  <div>
-    <h1 class="mb-8 text-4xl font-bold text-foreground select-text">Welcome to Tauri + Svelte</h1>
-
-    <div class="flex justify-center gap-4">
-      <ExternalLink href="https://vitejs.dev" class="logo-link">
-        <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-      </ExternalLink>
-      <ExternalLink href="https://tauri.app" class="logo-link">
-        <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-      </ExternalLink>
-      <ExternalLink href="https://kit.svelte.dev" class="logo-link">
-        <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-      </ExternalLink>
+<div class="page-container">
+  {#if loading}
+    <div class="loading-screen">
+      <Icon icon="mdi:loading" width="48" class="spin" />
+      <p>Loading tweaks...</p>
     </div>
-
-    <p class="mb-8 text-foreground-muted">
-      Click on the Tauri, Vite, and SvelteKit logos to learn more.
-    </p>
-
-    <form class="row mb-8" onsubmit={greet}>
-      <input
-        id="greet-input"
-        placeholder="Enter a name..."
-        bind:value={name}
-        class="greet-input mr-2 rounded-lg border border-border bg-card px-4 py-2 text-foreground transition-all duration-200 outline-none hover:border-border-hover focus:border-primary"
-      />
-      <button
-        type="submit"
-        class="greet-btn cursor-pointer rounded-lg border border-transparent bg-primary px-6 py-2 font-medium text-primary-foreground transition-all duration-200 hover:bg-primary-hover"
-      >
-        Greet
+  {:else if error}
+    <div class="error-screen">
+      <Icon icon="mdi:alert-circle" width="48" class="error-icon" />
+      <h2>Failed to Load</h2>
+      <p>{error}</p>
+      <button onclick={() => window.location.reload()}>
+        <Icon icon="mdi:refresh" width="18" />
+        Retry
       </button>
-    </form>
+    </div>
+  {:else}
+    <header class="page-header">
+      <div class="header-content">
+        <h1>
+          <Icon icon="mdi:tune-vertical" width="28" />
+          Windows Tweaks
+        </h1>
+        <p class="subtitle">
+          Optimize your Windows experience with {$tweakStats.total} available tweaks
+        </p>
+      </div>
+    </header>
 
-    {#if greetMsg}
-      <p
-        class="result-msg mx-auto max-w-md rounded-lg border border-border bg-card p-4 text-foreground"
-      >
-        {greetMsg}
+    <section class="info-section">
+      <SystemInfoCard systemInfo={$systemStore} />
+      <StatsCard
+        total={$tweakStats.total}
+        applied={$tweakStats.applied}
+        pending={$tweakStats.pending}
+      />
+    </section>
+
+    <section class="tweaks-section">
+      <FilterBar />
+
+      {#if $selectedCategory === "all"}
+        <!-- Show all categories -->
+        {#each categories as category}
+          {@const categoryTweaks = $tweaksByCategory[category]}
+          {#if categoryTweaks.length > 0}
+            <CategorySection {category} tweaks={categoryTweaks} />
+          {/if}
+        {/each}
+      {:else}
+        <!-- Show filtered results -->
+        {#if $filteredTweaks.length > 0}
+          <div class="filtered-tweaks">
+            {#each $filteredTweaks as tweak (tweak.definition.id)}
+              <TweakCard {tweak} />
+            {/each}
+          </div>
+        {:else}
+          <div class="no-results">
+            <Icon icon="mdi:magnify-close" width="48" class="no-results-icon" />
+            <p>No tweaks found matching your criteria</p>
+          </div>
+        {/if}
+      {/if}
+    </section>
+
+    <footer class="page-footer">
+      <p>
+        <Icon icon="mdi:information" width="14" />
+        Changes are backed up automatically. Reboot may be required for some tweaks.
       </p>
-    {/if}
-  </div>
+    </footer>
+  {/if}
 </div>
 
 <style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 0.3s ease;
-  }
-
-  .logo.vite:hover {
-    filter: drop-shadow(0 0 2em #747bff);
-  }
-
-  .logo.svelte-kit:hover {
-    filter: drop-shadow(0 0 2em #ff3e00);
-  }
-
-  .logo.tauri:hover {
-    filter: drop-shadow(0 0 2em #24c8db);
-  }
-
-  :global(.logo-link) {
-    display: inline-block;
-    transition: transform 0.2s ease;
-  }
-
-  :global(.logo-link:hover) {
-    transform: translateY(-2px);
-  }
-
-  .row {
+  .page-container {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    min-height: 100%;
+    padding: 16px;
+    background: hsl(var(--background));
+  }
+
+  .loading-screen,
+  .error-screen {
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
+    justify-content: center;
+    flex: 1;
+    gap: 16px;
+    color: hsl(var(--muted-foreground));
   }
 
-  .greet-input:focus {
-    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+  .error-screen h2 {
+    color: hsl(var(--foreground));
+    margin: 0;
   }
 
-  .greet-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
+  :global(.error-icon) {
+    color: hsl(0 84% 60%);
   }
 
-  .greet-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px hsl(var(--primary) / 0.2);
+  .error-screen button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
   }
 
-  .result-msg {
-    animation: fadeInUp 0.3s ease-out;
+  .error-screen button:hover {
+    opacity: 0.9;
   }
 
-  @keyframes fadeInUp {
+  .page-header {
+    margin-bottom: 16px;
+  }
+
+  .header-content h1 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 24px;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+    margin: 0;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: hsl(var(--muted-foreground));
+    margin: 4px 0 0 0;
+  }
+
+  .info-section {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  @media (min-width: 900px) {
+    .info-section {
+      grid-template-columns: 1fr auto;
+    }
+  }
+
+  .tweaks-section {
+    flex: 1;
+  }
+
+  .filtered-tweaks {
+    display: grid;
+    gap: 8px;
+  }
+
+  @media (min-width: 768px) {
+    .filtered-tweaks {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1200px) {
+    .filtered-tweaks {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 16px;
+    color: hsl(var(--muted-foreground));
+    text-align: center;
+  }
+
+  :global(.no-results-icon) {
+    opacity: 0.5;
+    margin-bottom: 8px;
+  }
+
+  .page-footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid hsl(var(--border));
+  }
+
+  .page-footer p {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+    margin: 0;
+  }
+
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
     from {
-      opacity: 0;
-      transform: translateY(10px);
+      transform: rotate(0deg);
     }
     to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* Responsive design */
-  @media (max-width: 640px) {
-    .row {
-      flex-direction: column;
-    }
-
-    .logo {
-      height: 4em;
-      padding: 1em;
+      transform: rotate(360deg);
     }
   }
 </style>

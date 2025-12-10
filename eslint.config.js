@@ -128,10 +128,7 @@ export default [
       "no-with": "error",
       // Best practices
       "no-empty-function": ["error", { allow: ["arrowFunctions", "constructors"] }],
-      "no-multi-spaces": "error",
-      "no-multiple-empty-lines": ["error", { max: 1 }],
-      "no-trailing-spaces": "error",
-      "object-curly-spacing": ["error", "always"],
+      // "object-curly-spacing": ["error", "always"],
       // Control flow
       "no-fallthrough": "error",
       "no-unreachable": "error",

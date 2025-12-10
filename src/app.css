@@ -22,11 +22,13 @@
     --surface: 224 47% 8%; /* #0f1629 */
     --card: 224 47% 11%; /* #151b2e */
     --elevated: 224 40% 15%; /* #1e2535 */
+    --muted: 224 40% 18%; /* Muted background */
 
     /* Text Colors */
     --foreground: 210 40% 98%; /* #f8fafc */
     --foreground-muted: 215 16% 65%; /* #94a3b8 */
     --foreground-subtle: 215 16% 45%; /* #64748b */
+    --muted-foreground: 215 16% 65%; /* Alias for foreground-muted */
 
     /* Border & Divider */
     --border: 224 40% 20%; /* #252b3f */
@@ -68,11 +70,13 @@
     --surface: 210 20% 98%; /* #f8fafc */
     --card: 0 0% 100%; /* #ffffff */
     --elevated: 210 20% 96%; /* #f1f5f9 */
+    --muted: 210 40% 96%; /* Muted background */
 
     /* Text Colors */
     --foreground: 222 84% 5%; /* #0f172a */
     --foreground-muted: 215 16% 47%; /* #64748b */
     --foreground-subtle: 215 20% 65%; /* #94a3b8 */
+    --muted-foreground: 215 16% 47%; /* Alias for foreground-muted */
 
     /* Border & Divider */
     --border: 214 32% 91%; /* #e2e8f0 */
