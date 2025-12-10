@@ -20,6 +20,14 @@
     tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical",
   );
 
+  // Risk level to icon mapping
+  const riskIcons: Record<RiskLevel, string> = {
+    low: "mdi:check-circle",
+    medium: "mdi:alert",
+    high: "mdi:alert-circle",
+    critical: "mdi:alert-octagon",
+  };
+
   const registryChanges = $derived(() => {
     const system = get(systemStore);
     if (!system) return [];
@@ -66,18 +74,35 @@
       <div class="info-section">
         <div class="title-row">
           <h3 class="tweak-title">{tweak.definition.name}</h3>
+        </div>
+
+        <!-- Meta row: risk, admin, reboot -->
+        <div class="meta-row">
+          <!-- Risk level with icon -->
+          <div class="meta-item risk" title={riskInfo.description}>
+            <Icon icon={riskIcons[tweak.definition.risk_level as RiskLevel]} width="14" />
+            <span class="risk-label {tweak.definition.risk_level}">{riskInfo.name}</span>
+          </div>
+
+          <!-- Admin badge -->
           {#if tweak.definition.requires_admin}
-            <span class="badge admin" title="Requires Administrator">
-              <Icon icon="mdi:shield-account" width="12" />
-            </span>
+            <div class="meta-item badge admin" title="Requires Administrator privileges to apply">
+              <Icon icon="mdi:shield-account" width="14" />
+              <span>Admin</span>
+            </div>
           {/if}
+
+          <!-- Reboot badge -->
           {#if tweak.definition.requires_reboot}
-            <span class="badge reboot" title="Requires Reboot">
-              <Icon icon="mdi:restart" width="12" />
-            </span>
+            <div
+              class="meta-item badge reboot"
+              title="System restart required after applying or reverting"
+            >
+              <Icon icon="mdi:restart" width="14" />
+              <span>Reboot</span>
+            </div>
           {/if}
         </div>
-        <span class="risk-label {tweak.definition.risk_level}">{riskInfo.name}</span>
       </div>
 
       <!-- Toggle Switch -->
@@ -246,29 +271,59 @@
     line-height: 1.3;
   }
 
-  .badge {
+  /* Meta row for risk, admin, reboot */
+  .meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .meta-item {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 5px;
-    color: white;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .meta-item.risk {
+    color: hsl(var(--foreground));
+    cursor: help;
+  }
+
+  .meta-item.risk :global(svg) {
     flex-shrink: 0;
   }
 
-  .badge.admin {
+  .meta-item.badge {
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: white;
+    cursor: help;
+    transition: all 0.15s ease;
+  }
+
+  .meta-item.badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px hsla(0, 0%, 0%, 0.15);
+  }
+
+  .meta-item.badge.admin {
     background: hsl(217 91% 60%);
   }
 
-  .badge.reboot {
+  .meta-item.badge.reboot {
     background: hsl(280 68% 60%);
   }
 
+  .meta-item.badge :global(svg) {
+    flex-shrink: 0;
+  }
+
   .risk-label {
-    display: inline-block;
-    margin-top: 4px;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
