@@ -1,0 +1,186 @@
+/* Tailwind CSS */
+@import "tailwindcss";
+@import "./assets/fonts/inter/inter.css";
+
+@layer base {
+  /*
+     * Disable selection globally by default on the body.
+	 * This can be overridden by adding
+	 * `select-text` or `select-all` class to any element.
+    */
+  body {
+    @apply select-none;
+  }
+
+  /* Dark Theme (Default) */
+  :root,
+  [data-theme="dark"] {
+    color-scheme: dark;
+
+    /* Background Colors */
+    --background: 224 71% 4%; /* #0a0f1c */
+    --surface: 224 47% 8%; /* #0f1629 */
+    --card: 224 47% 11%; /* #151b2e */
+    --elevated: 224 40% 15%; /* #1e2535 */
+
+    /* Text Colors */
+    --foreground: 210 40% 98%; /* #f8fafc */
+    --foreground-muted: 215 16% 65%; /* #94a3b8 */
+    --foreground-subtle: 215 16% 45%; /* #64748b */
+
+    /* Border & Divider */
+    --border: 224 40% 20%; /* #252b3f */
+    --border-hover: 224 40% 25%; /* #2d3448 */
+
+    /* Primary Colors */
+    --primary: 221 83% 53%; /* #3b82f6 */
+    --primary-hover: 221 83% 48%; /* #2563eb */
+    --primary-foreground: 0 0% 100%; /* #ffffff */
+
+    /* Secondary Colors */
+    --secondary: 224 40% 18%; /* #1f2937 */
+    --secondary-hover: 224 40% 22%; /* #283140 */
+    --secondary-foreground: 210 40% 98%; /* #f8fafc */
+
+    /* Accent Colors */
+    --accent: 262 83% 58%; /* #8b5cf6 */
+    --accent-hover: 262 83% 53%; /* #7c3aed */
+    --accent-foreground: 0 0% 100%; /* #ffffff */
+
+    /* Status Colors */
+    --success: 142 76% 36%; /* #10b981 */
+    --warning: 43 96% 56%; /* #f59e0b */
+    --error: 0 84% 60%; /* #ef4444 */
+    --info: 199 89% 48%; /* #0ea5e9 */
+
+    /* Scrollbar Colors */
+    --scroll-bg: var(--surface);
+    --scroll-main: var(--accent);
+    --scroll-main-hover: var(--accent-hover);
+  }
+
+  /* Light Theme */
+  [data-theme="light"] {
+    color-scheme: light;
+
+    /* Background Colors */
+    --background: 0 0% 100%; /* #ffffff */
+    --surface: 210 20% 98%; /* #f8fafc */
+    --card: 0 0% 100%; /* #ffffff */
+    --elevated: 210 20% 96%; /* #f1f5f9 */
+
+    /* Text Colors */
+    --foreground: 222 84% 5%; /* #0f172a */
+    --foreground-muted: 215 16% 47%; /* #64748b */
+    --foreground-subtle: 215 20% 65%; /* #94a3b8 */
+
+    /* Border & Divider */
+    --border: 214 32% 91%; /* #e2e8f0 */
+    --border-hover: 213 27% 84%; /* #cbd5e1 */
+
+    /* Primary Colors */
+    --primary: 221 83% 53%; /* #3b82f6 */
+    --primary-hover: 221 83% 48%; /* #2563eb */
+    --primary-foreground: 0 0% 100%; /* #ffffff */
+
+    /* Secondary Colors */
+    --secondary: 210 40% 96%; /* #f1f5f9 */
+    --secondary-hover: 210 40% 92%; /* #e2e8f0 */
+    --secondary-foreground: 222 84% 5%; /* #0f172a */
+
+    /* Accent Colors */
+    --accent: 262 83% 58%; /* #8b5cf6 */
+    --accent-hover: 262 83% 53%; /* #7c3aed */
+    --accent-foreground: 0 0% 100%; /* #ffffff */
+
+    /* Status Colors */
+    --success: 142 71% 45%; /* #059669 */
+    --warning: 32 95% 44%; /* #d97706 */
+    --error: 0 72% 51%; /* #dc2626 */
+    --info: 199 89% 48%; /* #0ea5e9 */
+
+    /* Scrollbar Colors */
+    --scroll-bg: var(--surface);
+    --scroll-main: var(--accent);
+    --scroll-main-hover: var(--accent-hover);
+  }
+}
+
+@theme {
+  --color-background: hsl(var(--background));
+  --color-surface: hsl(var(--surface));
+  --color-card: hsl(var(--card));
+  --color-elevated: hsl(var(--elevated));
+
+  --color-foreground: hsl(var(--foreground));
+  --color-foreground-muted: hsl(var(--foreground-muted));
+  --color-foreground-subtle: hsl(var(--foreground-subtle));
+
+  --color-border: hsl(var(--border));
+  --color-border-hover: hsl(var(--border-hover));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-hover: hsl(var(--primary-hover));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-hover: hsl(var(--secondary-hover));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-hover: hsl(var(--accent-hover));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-error: hsl(var(--error));
+  --color-info: hsl(var(--info));
+
+  /* Define font variable for Tailwind */
+  --font-Inter: "Inter", sans-serif;
+
+  --animate-*: initial;
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant hover (&:hover);
+
+@utility drag-enable {
+  -webkit-app-region: drag;
+}
+
+@utility drag-disable {
+  -webkit-app-region: no-drag;
+}
+
+*[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+/* Custom Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--scroll-main)) hsl(var(--scroll-bg));
+  scroll-behavior: smooth;
+}
+
+/* Chrome, Edge, and Safari */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: hsl(var(--scroll-bg));
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--scroll-main));
+  border-radius: 6px;
+  border: 2px solid hsl(var(--scroll-bg));
+  transition: background-color 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--scroll-main-hover));
+}

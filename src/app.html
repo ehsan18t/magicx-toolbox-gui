@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%sveltekit.assets%/svelte.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tauri + SvelteKit + Typescript App</title>
+
+    <script>
+      (function () {
+        // Use the build-time constant directly
+        const APP_CONFIG = __APP_CONFIG__;
+
+        // Make it available globally for consistency
+        window.APP_CONFIG = APP_CONFIG;
+
+        const config = APP_CONFIG.theme;
+        const storedTheme = localStorage.getItem(config.storageKey);
+
+        if (storedTheme) {
+          document.documentElement.setAttribute("data-theme", storedTheme);
+        } else if (config.followSystem) {
+          const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.setAttribute("data-theme", systemPrefersDark ? "dark" : "light");
+        } else {
+          document.documentElement.setAttribute("data-theme", config.default);
+        }
+      })();
+    </script>
+
+    %sveltekit.head%
+  </head>
+  <body class="overflow-hidden" data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

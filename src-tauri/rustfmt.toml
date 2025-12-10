@@ -1,0 +1,28 @@
+# Rust code formatting configuration
+# Based on Rust style guide: https://doc.rust-lang.org/1.0.0/style/
+# Using only stable rustfmt features
+
+# Edition
+edition = "2021"
+
+# Indentation
+hard_tabs = false
+tab_spaces = 4
+
+# Line length
+max_width = 100
+
+# Line endings (Auto style - adapts to platform)
+newline_style = "Auto"
+
+# Imports
+reorder_imports = true
+reorder_modules = true
+
+# Formatting options
+use_try_shorthand = true
+use_field_init_shorthand = true
+use_small_heuristics = "Default"
+
+# Other
+force_explicit_abi = true

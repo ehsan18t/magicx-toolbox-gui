@@ -1,0 +1,39 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# All files
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# JavaScript, TypeScript, JSON files
+[*.{js,mjs,ts,tsx,json,jsonc}]
+indent_style = space
+indent_size = 2
+
+# Svelte files
+[*.svelte]
+indent_style = space
+indent_size = 2
+
+# CSS, SCSS, Less files
+[*.{css,scss,less}]
+indent_style = space
+indent_size = 2
+
+# HTML files
+[*.html]
+indent_style = space
+indent_size = 2
+
+# Rust files (use Rust convention)
+[*.rs]
+indent_style = space
+indent_size = 4
+
+# Markdown files
+[*.md]
+trim_trailing_whitespace = false

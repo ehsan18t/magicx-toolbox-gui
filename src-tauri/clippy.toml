@@ -1,0 +1,29 @@
+# Clippy linting configuration
+# Clippy documentation: https://docs.rust-lang.org/clippy/
+
+# Cognitive complexity threshold for detecting overly complex functions
+cognitive-complexity-threshold = 30
+
+# Single character binding names are allowed up to this complexity level
+single-char-binding-names-threshold = 5
+
+# Allow expect/unwrap in tests
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+
+# Enforce documentation on public items
+doc-valid-idents = [
+  "SvelteKit",
+  "Tauri",
+  "GitHub",
+  "WebView",
+  "JavaScript",
+  "TypeScript",
+]
+
+# Enforce consistent error handling
+too-many-arguments-threshold = 8
+
+# Maximum length for functions
+too-many-lines-threshold = 200
+
