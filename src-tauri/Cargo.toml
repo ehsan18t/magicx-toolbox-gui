@@ -38,6 +38,7 @@ serde_yaml = "0.9"
 # Error handling & logging
 log = "0.4"
 thiserror = "2"
+chrono = "0.4"
 
 # Windows-specific (only for Windows builds)
 [target.'cfg(windows)'.dependencies]
