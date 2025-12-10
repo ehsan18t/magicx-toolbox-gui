@@ -14,6 +14,7 @@ struct TestRegistryChange {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct TestTweak {
     pub id: String,
     pub name: String,
