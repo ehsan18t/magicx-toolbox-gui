@@ -149,9 +149,11 @@ export const debugState = {
     details: string,
     data?: unknown,
   ) {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
+    const timestamp = new Date();
     const entry: DebugLogEntry = {
       id: ++logIdCounter,
-      timestamp: new Date(),
+      timestamp,
       level,
       source,
       action,
