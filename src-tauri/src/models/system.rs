@@ -3,51 +3,33 @@ use serde::{Deserialize, Serialize};
 /// Windows version information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowsInfo {
-    /// Windows version: "10" or "11"
-    pub version: String,
-    /// Build number (e.g., 22621 for Windows 11)
-    pub build: u32,
-    /// Edition: "Home", "Pro", "Enterprise", etc.
-    pub edition: String,
-    /// Architecture: "x64", "x86", "ARM64"
-    pub architecture: String,
-    /// Whether the current process is running as administrator
-    pub is_admin: bool,
+    /// Product name (e.g., "Windows 11 Pro")
+    pub product_name: String,
+    /// Display version (e.g., "23H2")
+    pub display_version: String,
+    /// Build number as string (e.g., "22631")
+    pub build_number: String,
+    /// Whether this is Windows 11 (build >= 22000)
+    pub is_windows_11: bool,
+    /// Version string: "10" or "11" for tweak filtering
+    pub version_string: String,
 }
 
 impl WindowsInfo {
     pub fn is_windows_10(&self) -> bool {
-        self.version == "10"
+        !self.is_windows_11
     }
 
-    pub fn is_windows_11(&self) -> bool {
-        self.version == "11"
-    }
-
-    pub fn is_64bit(&self) -> bool {
-        self.architecture == "x64" || self.architecture == "ARM64"
-    }
-
-    pub fn display_version(&self) -> String {
-        format!("Windows {} (Build {})", self.version, self.build)
+    pub fn display_version_full(&self) -> String {
+        format!("{} (Build {})", self.product_name, self.build_number)
     }
 }
 
-/// System information (could extend WindowsInfo later)
+/// System information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
-    pub windows_info: WindowsInfo,
-    /// Additional system info can be added here
-    pub total_ram_gb: Option<u32>,
-    pub processor_count: Option<u32>,
-}
-
-impl From<WindowsInfo> for SystemInfo {
-    fn from(windows_info: WindowsInfo) -> Self {
-        SystemInfo {
-            windows_info,
-            total_ram_gb: None,
-            processor_count: None,
-        }
-    }
+    pub windows: WindowsInfo,
+    pub computer_name: String,
+    pub username: String,
+    pub is_admin: bool,
 }

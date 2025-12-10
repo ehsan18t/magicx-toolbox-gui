@@ -171,3 +171,11 @@ pub struct TweakStatus {
     pub last_applied: Option<String>, // ISO 8601 timestamp
     pub has_backup: bool,
 }
+
+/// Result of applying or reverting a tweak
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TweakResult {
+    pub success: bool,
+    pub message: String,
+    pub requires_reboot: bool,
+}
