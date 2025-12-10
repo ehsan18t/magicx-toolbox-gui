@@ -105,9 +105,7 @@ pub fn load_all_categories() -> Result<Vec<CategoryDefinition>, Error> {
             Ok(tweak_file) => {
                 categories.push(tweak_file.category);
             }
-            Err(e) => {
-                eprintln!("Warning: Failed to load {:?}: {}", file_path, e);
-            }
+            Err(_e) => {}
         }
     }
 
@@ -131,9 +129,7 @@ pub fn load_all_tweaks() -> Result<HashMap<String, TweakDefinition>, Error> {
                     tweaks.insert(tweak.id.clone(), tweak);
                 }
             }
-            Err(e) => {
-                eprintln!("Warning: Failed to load {:?}: {}", file_path, e);
-            }
+            Err(_e) => {}
         }
     }
 

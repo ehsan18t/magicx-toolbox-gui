@@ -35,9 +35,7 @@ export async function getAvailableTweaks(): Promise<TweakDefinition[]> {
  * Get tweaks filtered by the current Windows version
  */
 export async function getTweaksForCurrentVersion(): Promise<TweakDefinition[]> {
-  const systemInfo = await getSystemInfo();
-  const version = systemInfo.windows.is_windows_11 ? "11" : "10";
-  return await invoke<TweakDefinition[]>("get_available_tweaks_for_version", { version });
+  return await invoke<TweakDefinition[]>("get_available_tweaks");
 }
 
 /**
