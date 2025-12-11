@@ -65,6 +65,12 @@ pub struct TweakDefinitionRaw {
     /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
+    /// Commands to run BEFORE registry changes (for UCPD disable, etc.)
+    #[serde(default)]
+    pub pre_commands: Option<Vec<String>>,
+    /// Commands to run AFTER registry changes are reverted
+    #[serde(default)]
+    pub post_commands: Option<Vec<String>>,
 }
 
 /// Windows version enum for version-specific tweaks
@@ -288,6 +294,12 @@ pub struct TweakDefinition {
     /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
+    /// Commands to run BEFORE registry changes
+    #[serde(default)]
+    pub pre_commands: Option<Vec<String>>,
+    /// Commands to run AFTER registry changes are reverted
+    #[serde(default)]
+    pub post_commands: Option<Vec<String>>,
 }
 
 impl TweakDefinition {
@@ -305,6 +317,8 @@ impl TweakDefinition {
             registry_changes: raw.registry_changes,
             service_changes: raw.service_changes,
             info: raw.info,
+            pre_commands: raw.pre_commands,
+            post_commands: raw.post_commands,
         }
     }
 
@@ -434,6 +448,8 @@ mod tests {
             registry_changes: changes,
             service_changes: None,
             info: None,
+            pre_commands: None,
+            post_commands: None,
         }
     }
 

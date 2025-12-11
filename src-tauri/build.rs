@@ -135,6 +135,10 @@ struct TweakDefinitionRaw {
     service_changes: Option<Vec<ServiceChange>>,
     #[serde(default)]
     info: Option<String>,
+    #[serde(default)]
+    pre_commands: Option<Vec<String>>,
+    #[serde(default)]
+    post_commands: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +159,10 @@ struct TweakDefinition {
     service_changes: Option<Vec<ServiceChange>>,
     #[serde(default)]
     info: Option<String>,
+    #[serde(default)]
+    pre_commands: Option<Vec<String>>,
+    #[serde(default)]
+    post_commands: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -235,6 +243,8 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 registry_changes: raw.registry_changes,
                 service_changes: raw.service_changes,
                 info: raw.info,
+                pre_commands: raw.pre_commands,
+                post_commands: raw.post_commands,
             };
             tweaks.insert(raw.id, tweak);
         }

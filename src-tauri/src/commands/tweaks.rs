@@ -246,7 +246,32 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         );
     }
 
-    // Step 2: Apply all registry changes atomically
+    // Step 2: Run pre_commands if defined (e.g., disable UCPD service)
+    if let Some(ref commands) = tweak.pre_commands {
+        for cmd in commands {
+            log::info!("Running pre-command: {}", cmd);
+            let output = std::process::Command::new("cmd").args(["/c", cmd]).output();
+
+            match output {
+                Ok(result) => {
+                    if !result.status.success() {
+                        log::warn!(
+                            "Pre-command returned non-zero exit code {}: {}",
+                            result.status.code().unwrap_or(-1),
+                            String::from_utf8_lossy(&result.stderr)
+                        );
+                    } else {
+                        log::debug!("Pre-command succeeded: {}", cmd);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to run pre-command: {}", e);
+                }
+            }
+        }
+    }
+
+    // Step 3: Apply all registry changes atomically
     let mut applied_values: Vec<(crate::models::RegistrySnapshot, serde_json::Value)> = Vec::new();
 
     for change in &changes {

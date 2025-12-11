@@ -99,13 +99,13 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "The UCPD (User-mode Contextual Policy Driver) service protects widget-related registry keys. This tweak disables the service first, then modifies the registry."
-    service_changes:
-      - name: "ucpd"
-        enable_startup: automatic
-        disable_startup: disabled
-        stop_on_disable: true
-        start_on_enable: false
+    info: "The UCPD (User-mode Contextual Policy Driver) service protects widget-related registry keys. This tweak disables the service and its scheduled task first, then modifies the registry."
+    pre_commands:
+      - "sc config ucpd start= disabled"
+      - 'schtasks /Change /TN "Microsoft\Windows\AppxDeploymentClient\UCPD velocity" /Disable'
+    post_commands:
+      - "sc config ucpd start= demand"
+      - 'schtasks /Change /TN "Microsoft\Windows\AppxDeploymentClient\UCPD velocity" /Enable'
     registry_changes:
       - hive: HKCU
         key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
