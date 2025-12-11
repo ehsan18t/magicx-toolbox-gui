@@ -1,13 +1,13 @@
 // API functions for Tauri commands
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  BatchApplyResult,
-  CategoryDefinition,
-  SystemInfo,
-  TweakDefinition,
-  TweakResult,
-  TweakStatus,
-  TweakWithStatus,
+    BatchApplyResult,
+    CategoryDefinition,
+    SystemInfo,
+    TweakDefinition,
+    TweakResult,
+    TweakStatus,
+    TweakWithStatus,
 } from "../types";
 
 /**
@@ -32,7 +32,9 @@ export async function getAvailableTweaks(): Promise<TweakDefinition[]> {
 }
 
 /**
- * Get tweaks filtered by the current Windows version
+ * Get tweaks filtered by the current Windows version.
+ * Note: This is identical to getAvailableTweaks() because the backend's
+ * `get_available_tweaks` command already filters by the current Windows version.
  */
 export async function getTweaksForCurrentVersion(): Promise<TweakDefinition[]> {
   return await invoke<TweakDefinition[]>("get_available_tweaks");
@@ -153,18 +155,4 @@ export async function listBackups(): Promise<string[]> {
  */
 export async function getBackupInfo(tweakId: string): Promise<BackupInfo | null> {
   return await invoke<BackupInfo | null>("get_backup_info", { tweakId });
-}
-
-/**
- * Restore a tweak from its backup (reverts to original state)
- */
-export async function restoreFromBackup(tweakId: string): Promise<void> {
-  return await invoke<void>("restore_from_backup", { tweakId });
-}
-
-/**
- * Delete a backup file
- */
-export async function deleteBackup(tweakId: string): Promise<void> {
-  return await invoke<void>("delete_backup", { tweakId });
 }
