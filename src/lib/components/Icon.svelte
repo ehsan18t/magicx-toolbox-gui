@@ -1,6 +1,8 @@
 <script lang="ts" module>
   // Pre-import all icons used in the app for build-time bundling
   // MDI Icons
+  import BiMotherboard from "~icons/bi/motherboard";
+  import MdiMinimize20Filled from "~icons/fluent/minimize-20-filled";
   import MdiAccount from "~icons/mdi/account";
   import MdiAlert from "~icons/mdi/alert";
   import MdiAlertCircle from "~icons/mdi/alert-circle";
@@ -53,6 +55,7 @@
   import MdiUndoVariant from "~icons/mdi/undo-variant";
   import MdiUpdate from "~icons/mdi/update";
   import MdiViewDashboard from "~icons/mdi/view-dashboard";
+  import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
   import TablerAppWindow from "~icons/tabler/app-window";
@@ -148,7 +151,14 @@
     "tabler:minus": TablerMinus,
 
     // Fluent icons
+    "fluent:minimize-20-filled": MdiMinimize20Filled,
     "fluent:maximize-20-filled": FluentMaximize20Filled,
+
+    // Bi icons
+    "bi:motherboard": BiMotherboard,
+
+    // Ri icons
+    "ri:ram-line": RiRamLine,
   };
 
   export function getIconComponent(name: string) {
