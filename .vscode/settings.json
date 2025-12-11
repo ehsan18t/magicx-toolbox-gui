@@ -1,6 +1,12 @@
 {
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
   "editor.tabSize": 2,
   "editor.insertSpaces": true,
   "editor.trimAutoWhitespace": true,
@@ -31,9 +37,11 @@
   },
   "cSpell.words": [
     "cdylib",
+    "clippy",
     "harddisk",
     "icns",
     "iconify",
+    "magicx",
     "rlib",
     "serde",
     "staticlib",
@@ -44,7 +52,8 @@
     "tauri",
     "thiserror",
     "unlisten",
-    "unmaximize"
+    "unmaximize",
+    "unplugin"
   ],
   "svelte.enable-ts-plugin": true,
   "typescript.tsdk": "node_modules/typescript/lib",
