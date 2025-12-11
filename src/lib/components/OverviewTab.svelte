@@ -1,18 +1,7 @@
 <script lang="ts">
   import { navigateToCategory } from "$lib/stores/navigation";
-  import {
-    categoriesStore,
-    categoryStats,
-    pendingRebootCount,
-    systemStore,
-    tweakStats,
-  } from "$lib/stores/tweaks";
+  import { categoriesStore, categoryStats, systemStore } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
-
-  // Progress percentage
-  const progressPercent = $derived(
-    $tweakStats.total > 0 ? Math.round(($tweakStats.applied / $tweakStats.total) * 100) : 0,
-  );
 
   // Format clock speed
   const formatClockSpeed = (mhz: number) => {
@@ -44,88 +33,7 @@
 
 <div class="flex h-full w-full flex-col gap-5 overflow-y-auto p-5">
   <!-- Top Section: Stats + System Info Side by Side -->
-  <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.5fr]">
-    <!-- Left: Optimization Stats -->
-    <div class="flex flex-col gap-3">
-      <!-- Header with Reboot Badge -->
-      <div class="flex items-center justify-between">
-        <h2 class="m-0 text-lg font-semibold text-foreground">Optimization</h2>
-        {#if $pendingRebootCount > 0}
-          <div
-            class="flex items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning"
-          >
-            <Icon icon="mdi:restart-alert" width="14" />
-            <span>{$pendingRebootCount} reboot</span>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Stats Grid -->
-      <div class="grid grid-cols-2 gap-2.5">
-        <!-- Progress Ring -->
-        <div class="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-card p-4">
-          <div
-            class="progress-ring relative h-16 w-16 shrink-0"
-            style="--progress: {progressPercent}"
-          >
-            <svg viewBox="0 0 100 100" class="h-full w-full -rotate-90">
-              <circle
-                class="fill-none stroke-[hsl(var(--muted))] stroke-10"
-                cx="50"
-                cy="50"
-                r="40"
-              />
-              <circle
-                class="progress-circle stroke-round fill-none stroke-accent stroke-10"
-                cx="50"
-                cy="50"
-                r="40"
-              />
-            </svg>
-            <span
-              class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-base font-bold text-foreground"
-              >{progressPercent}%</span
-            >
-          </div>
-          <div class="flex flex-col gap-0.5">
-            <span class="text-xl font-bold text-foreground"
-              >{$tweakStats.applied}/{$tweakStats.total}</span
-            >
-            <span class="text-xs text-foreground-muted">Tweaks Applied</span>
-          </div>
-        </div>
-
-        <!-- Mini stat cards -->
-        <div class="flex items-center gap-2.5 rounded-xl border border-border bg-card p-3">
-          <div
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/15 text-success"
-          >
-            <Icon icon="mdi:check-circle" width="18" />
-          </div>
-          <div class="flex flex-col">
-            <span class="text-lg leading-tight font-bold text-foreground"
-              >{$tweakStats.applied}</span
-            >
-            <span class="text-[10px] text-foreground-muted uppercase">Applied</span>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2.5 rounded-xl border border-border bg-card p-3">
-          <div
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning"
-          >
-            <Icon icon="mdi:clock-outline" width="18" />
-          </div>
-          <div class="flex flex-col">
-            <span class="text-lg leading-tight font-bold text-foreground"
-              >{$tweakStats.pending}</span
-            >
-            <span class="text-[10px] text-foreground-muted uppercase">Pending</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
+  <div class="grid grid-cols-1 gap-4">
     <!-- Right: System Overview -->
     <div class="flex flex-col gap-3">
       <h2 class="m-0 text-lg font-semibold text-foreground">System</h2>
@@ -422,13 +330,6 @@
 </div>
 
 <style>
-  .progress-circle {
-    stroke-dasharray: 251.2;
-    stroke-dashoffset: calc(251.2 * (1 - var(--progress) / 100));
-    transition: stroke-dashoffset 0.6s ease;
-    stroke-linecap: round;
-  }
-
   .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
