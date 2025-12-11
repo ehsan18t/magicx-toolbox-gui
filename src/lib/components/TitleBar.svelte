@@ -2,6 +2,7 @@
   import { debugState } from "$lib/stores/debug.svelte";
   import { systemElevation } from "$lib/stores/systemElevation";
   import { themeStore } from "$lib/stores/theme";
+  import { systemStore } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -116,13 +117,32 @@
         {/if}
       </div>
 
-      <div class="app-details flex items-center gap-1">
+      <div class="app-details flex items-center gap-2">
         <span class="font-semibold tracking-tight text-foreground">
           {appName}
           <span class="text-xs font-medium text-foreground-subtle">
             v{appVersion}
           </span>
         </span>
+
+        <!-- Admin Status Indicator -->
+        {#if $systemStore?.is_admin}
+          <span
+            class="flex items-center gap-1 rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success uppercase"
+            title="Running as Administrator"
+          >
+            <Icon icon="tabler:shield-check-filled" width="12" height="12" />
+            Admin
+          </span>
+        {:else if $systemStore !== null}
+          <span
+            class="flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold text-warning uppercase"
+            title="Running as Standard User - Some features require Administrator"
+          >
+            <Icon icon="tabler:shield-x" width="12" height="12" />
+            User
+          </span>
+        {/if}
       </div>
     </div>
 

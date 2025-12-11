@@ -421,3 +421,71 @@ pub fn delete_registry_value_as_system(
 pub fn can_use_system_elevation() -> bool {
     crate::services::system_info_service::is_running_as_admin()
 }
+
+/// Execute an arbitrary command as SYSTEM
+/// This is useful for running pre/post commands that need SYSTEM privileges
+pub fn run_command_as_system(command: &str) -> Result<i32, Error> {
+    log::info!("Running command as SYSTEM: {}", command);
+    execute_command_as_system(command)
+}
+
+/// Set a Windows service startup type as SYSTEM using sc.exe
+/// This bypasses normal permission checks for protected services
+pub fn set_service_startup_as_system(service_name: &str, startup_type: &str) -> Result<(), Error> {
+    log::info!(
+        "Setting service '{}' startup to '{}' as SYSTEM",
+        service_name,
+        startup_type
+    );
+
+    let command = format!("sc config \"{}\" start= {}", service_name, startup_type);
+    let exit_code = execute_command_as_system(&command)?;
+
+    if exit_code == 0 {
+        log::info!("Successfully set service startup as SYSTEM");
+        Ok(())
+    } else {
+        Err(Error::ServiceControl(format!(
+            "sc config failed with exit code: {}",
+            exit_code
+        )))
+    }
+}
+
+/// Stop a Windows service as SYSTEM using net stop
+pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
+    log::info!("Stopping service '{}' as SYSTEM", service_name);
+
+    let command = format!("net stop \"{}\"", service_name);
+    let exit_code = execute_command_as_system(&command)?;
+
+    // net stop returns 0 on success, 2 if already stopped
+    if exit_code == 0 || exit_code == 2 {
+        log::info!("Service stopped (or was already stopped) as SYSTEM");
+        Ok(())
+    } else {
+        Err(Error::ServiceControl(format!(
+            "net stop failed with exit code: {}",
+            exit_code
+        )))
+    }
+}
+
+/// Start a Windows service as SYSTEM using net start
+pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
+    log::info!("Starting service '{}' as SYSTEM", service_name);
+
+    let command = format!("net start \"{}\"", service_name);
+    let exit_code = execute_command_as_system(&command)?;
+
+    // net start returns 0 on success, 2 if already running
+    if exit_code == 0 || exit_code == 2 {
+        log::info!("Service started (or was already running) as SYSTEM");
+        Ok(())
+    } else {
+        Err(Error::ServiceControl(format!(
+            "net start failed with exit code: {}",
+            exit_code
+        )))
+    }
+}

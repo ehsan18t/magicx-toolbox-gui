@@ -172,18 +172,47 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         // Restore service states if any
         if let Some(ref service_changes) = tweak.service_changes {
             for sc in service_changes {
-                log::info!("Restoring service: {} -> {:?}", sc.name, sc.disable_startup);
+                log::info!(
+                    "Restoring service{}: {} -> {:?}",
+                    if tweak.requires_system {
+                        " as SYSTEM"
+                    } else {
+                        ""
+                    },
+                    sc.name,
+                    sc.disable_startup
+                );
 
                 // Restore startup type
-                if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup)
-                {
-                    log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
+                if tweak.requires_system {
+                    let start_type = sc.disable_startup.to_sc_start_type();
+                    if let Err(e) =
+                        trusted_installer::set_service_startup_as_system(&sc.name, &start_type)
+                    {
+                        log::warn!(
+                            "Failed to restore service '{}' startup as SYSTEM: {}",
+                            sc.name,
+                            e
+                        );
+                    }
+                } else {
+                    if let Err(e) =
+                        service_control::set_service_startup(&sc.name, &sc.disable_startup)
+                    {
+                        log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
+                    }
                 }
 
                 // Start service if required
                 if sc.start_on_enable {
-                    if let Err(e) = service_control::start_service(&sc.name) {
-                        log::warn!("Failed to start service '{}': {}", sc.name, e);
+                    if tweak.requires_system {
+                        if let Err(e) = trusted_installer::start_service_as_system(&sc.name) {
+                            log::warn!("Failed to start service '{}' as SYSTEM: {}", sc.name, e);
+                        }
+                    } else {
+                        if let Err(e) = service_control::start_service(&sc.name) {
+                            log::warn!("Failed to start service '{}': {}", sc.name, e);
+                        }
                     }
                 }
             }
@@ -249,27 +278,56 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     // Step 2: Run pre_commands if defined (e.g., disable UCPD service)
     if let Some(ref commands) = tweak.pre_commands {
         for cmd in commands {
-            log::info!("Running pre-command: {}", cmd);
-            // Use raw_arg to pass the command string without Rust's automatic quoting
-            use std::os::windows::process::CommandExt;
-            let output = std::process::Command::new("cmd")
-                .raw_arg(format!("/C {}", cmd))
-                .output();
+            log::info!(
+                "Running pre-command{}: {}",
+                if tweak.requires_system {
+                    " as SYSTEM"
+                } else {
+                    ""
+                },
+                cmd
+            );
 
-            match output {
-                Ok(result) => {
-                    if !result.status.success() {
-                        log::warn!(
-                            "Pre-command returned non-zero exit code {}: {}",
-                            result.status.code().unwrap_or(-1),
-                            String::from_utf8_lossy(&result.stderr)
-                        );
-                    } else {
-                        log::debug!("Pre-command succeeded: {}", cmd);
+            if tweak.requires_system {
+                // Run as SYSTEM for protected operations
+                match trusted_installer::run_command_as_system(cmd) {
+                    Ok(exit_code) => {
+                        if exit_code != 0 {
+                            log::warn!(
+                                "Pre-command returned non-zero exit code {}: {}",
+                                exit_code,
+                                cmd
+                            );
+                        } else {
+                            log::debug!("Pre-command succeeded as SYSTEM: {}", cmd);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to run pre-command as SYSTEM: {}", e);
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to run pre-command: {}", e);
+            } else {
+                // Run as current user
+                use std::os::windows::process::CommandExt;
+                let output = std::process::Command::new("cmd")
+                    .raw_arg(format!("/C {}", cmd))
+                    .output();
+
+                match output {
+                    Ok(result) => {
+                        if !result.status.success() {
+                            log::warn!(
+                                "Pre-command returned non-zero exit code {}: {}",
+                                result.status.code().unwrap_or(-1),
+                                String::from_utf8_lossy(&result.stderr)
+                            );
+                        } else {
+                            log::debug!("Pre-command succeeded: {}", cmd);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to run pre-command: {}", e);
+                    }
                 }
             }
         }
@@ -345,22 +403,47 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     if let Some(ref service_changes) = tweak.service_changes {
         for sc in service_changes {
             log::info!(
-                "Applying service change: {} -> {:?}",
+                "Applying service change{}: {} -> {:?}",
+                if tweak.requires_system {
+                    " as SYSTEM"
+                } else {
+                    ""
+                },
                 sc.name,
                 sc.enable_startup
             );
 
             // Stop service if required
             if sc.stop_on_disable {
-                if let Err(e) = service_control::stop_service(&sc.name) {
-                    log::warn!("Failed to stop service '{}': {}", sc.name, e);
+                if tweak.requires_system {
+                    if let Err(e) = trusted_installer::stop_service_as_system(&sc.name) {
+                        log::warn!("Failed to stop service '{}' as SYSTEM: {}", sc.name, e);
+                    }
+                } else {
+                    if let Err(e) = service_control::stop_service(&sc.name) {
+                        log::warn!("Failed to stop service '{}': {}", sc.name, e);
+                    }
                 }
             }
 
             // Set startup type
-            if let Err(e) = service_control::set_service_startup(&sc.name, &sc.enable_startup) {
-                log::error!("Failed to set service '{}' startup: {}", sc.name, e);
-                // Don't fail the whole operation for service errors
+            if tweak.requires_system {
+                let start_type = sc.enable_startup.to_sc_start_type();
+                if let Err(e) =
+                    trusted_installer::set_service_startup_as_system(&sc.name, &start_type)
+                {
+                    log::error!(
+                        "Failed to set service '{}' startup as SYSTEM: {}",
+                        sc.name,
+                        e
+                    );
+                    // Don't fail the whole operation for service errors
+                }
+            } else {
+                if let Err(e) = service_control::set_service_startup(&sc.name, &sc.enable_startup) {
+                    log::error!("Failed to set service '{}' startup: {}", sc.name, e);
+                    // Don't fail the whole operation for service errors
+                }
             }
         }
     }
@@ -452,24 +535,54 @@ pub async fn apply_tweak_option(
                 if let Some(ref services) = option.service_changes {
                     for svc in services {
                         log::info!(
-                            "Applying option service change: {} -> {:?}",
+                            "Applying option service change{}: {} -> {:?}",
+                            if tweak.requires_system {
+                                " as SYSTEM"
+                            } else {
+                                ""
+                            },
                             svc.name,
                             svc.startup
                         );
 
                         // Set startup type
-                        if let Err(e) =
-                            service_control::set_service_startup(&svc.name, &svc.startup)
-                        {
-                            log::warn!("Failed to set service '{}' startup: {}", svc.name, e);
+                        if tweak.requires_system {
+                            let start_type = svc.startup.to_sc_start_type();
+                            if let Err(e) = trusted_installer::set_service_startup_as_system(
+                                &svc.name,
+                                &start_type,
+                            ) {
+                                log::warn!(
+                                    "Failed to set service '{}' startup as SYSTEM: {}",
+                                    svc.name,
+                                    e
+                                );
+                            }
+                        } else {
+                            if let Err(e) =
+                                service_control::set_service_startup(&svc.name, &svc.startup)
+                            {
+                                log::warn!("Failed to set service '{}' startup: {}", svc.name, e);
+                            }
                         }
 
                         // Stop service if startup is disabled and stop_if_disabled is set
                         if svc.stop_if_disabled
                             && svc.startup == crate::models::ServiceStartupType::Disabled
                         {
-                            if let Err(e) = service_control::stop_service(&svc.name) {
-                                log::warn!("Failed to stop service '{}': {}", svc.name, e);
+                            if tweak.requires_system {
+                                if let Err(e) = trusted_installer::stop_service_as_system(&svc.name)
+                                {
+                                    log::warn!(
+                                        "Failed to stop service '{}' as SYSTEM: {}",
+                                        svc.name,
+                                        e
+                                    );
+                                }
+                            } else {
+                                if let Err(e) = service_control::stop_service(&svc.name) {
+                                    log::warn!("Failed to stop service '{}': {}", svc.name, e);
+                                }
                             }
                         }
                     }
@@ -577,27 +690,56 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         // Run pre_commands if defined (e.g., disable UCPD service)
         if let Some(ref commands) = tweak.pre_commands {
             for cmd in commands {
-                log::info!("Running pre-command: {}", cmd);
-                // Use raw_arg to pass the command string without Rust's automatic quoting
-                use std::os::windows::process::CommandExt;
-                let output = std::process::Command::new("cmd")
-                    .raw_arg(format!("/C {}", cmd))
-                    .output();
+                log::info!(
+                    "Running pre-command{}: {}",
+                    if tweak.requires_system {
+                        " as SYSTEM"
+                    } else {
+                        ""
+                    },
+                    cmd
+                );
 
-                match output {
-                    Ok(result) => {
-                        if !result.status.success() {
-                            log::warn!(
-                                "Pre-command returned non-zero exit code {}: {}",
-                                result.status.code().unwrap_or(-1),
-                                String::from_utf8_lossy(&result.stderr)
-                            );
-                        } else {
-                            log::debug!("Pre-command succeeded: {}", cmd);
+                if tweak.requires_system {
+                    // Run as SYSTEM for protected operations
+                    match trusted_installer::run_command_as_system(cmd) {
+                        Ok(exit_code) => {
+                            if exit_code != 0 {
+                                log::warn!(
+                                    "Pre-command returned non-zero exit code {}: {}",
+                                    exit_code,
+                                    cmd
+                                );
+                            } else {
+                                log::debug!("Pre-command succeeded as SYSTEM: {}", cmd);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to run pre-command as SYSTEM: {}", e);
                         }
                     }
-                    Err(e) => {
-                        log::error!("Failed to run pre-command: {}", e);
+                } else {
+                    // Run as current user
+                    use std::os::windows::process::CommandExt;
+                    let output = std::process::Command::new("cmd")
+                        .raw_arg(format!("/C {}", cmd))
+                        .output();
+
+                    match output {
+                        Ok(result) => {
+                            if !result.status.success() {
+                                log::warn!(
+                                    "Pre-command returned non-zero exit code {}: {}",
+                                    result.status.code().unwrap_or(-1),
+                                    String::from_utf8_lossy(&result.stderr)
+                                );
+                            } else {
+                                log::debug!("Pre-command succeeded: {}", cmd);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to run pre-command: {}", e);
+                        }
                     }
                 }
             }
@@ -652,17 +794,46 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
     // Revert service changes (same for both cases)
     if let Some(ref service_changes) = tweak.service_changes {
         for sc in service_changes {
-            log::info!("Reverting service: {} -> {:?}", sc.name, sc.disable_startup);
+            log::info!(
+                "Reverting service{}: {} -> {:?}",
+                if tweak.requires_system {
+                    " as SYSTEM"
+                } else {
+                    ""
+                },
+                sc.name,
+                sc.disable_startup
+            );
 
             // Restore startup type
-            if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup) {
-                log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
+            if tweak.requires_system {
+                let start_type = sc.disable_startup.to_sc_start_type();
+                if let Err(e) =
+                    trusted_installer::set_service_startup_as_system(&sc.name, &start_type)
+                {
+                    log::warn!(
+                        "Failed to restore service '{}' startup as SYSTEM: {}",
+                        sc.name,
+                        e
+                    );
+                }
+            } else {
+                if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup)
+                {
+                    log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
+                }
             }
 
             // Start service if required
             if sc.start_on_enable {
-                if let Err(e) = service_control::start_service(&sc.name) {
-                    log::warn!("Failed to start service '{}': {}", sc.name, e);
+                if tweak.requires_system {
+                    if let Err(e) = trusted_installer::start_service_as_system(&sc.name) {
+                        log::warn!("Failed to start service '{}' as SYSTEM: {}", sc.name, e);
+                    }
+                } else {
+                    if let Err(e) = service_control::start_service(&sc.name) {
+                        log::warn!("Failed to start service '{}': {}", sc.name, e);
+                    }
                 }
             }
         }

@@ -261,6 +261,17 @@
         </div>
       {/if}
 
+      <!-- SYSTEM elevation required -->
+      {#if tweak.definition.requires_system}
+        <div
+          class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground"
+          title="Requires SYSTEM elevation for protected registry keys and services"
+        >
+          <Icon icon="mdi:shield-lock" width="16" class="opacity-90" />
+          <span class="text-xs font-semibold tracking-wide uppercase">System</span>
+        </div>
+      {/if}
+
       <!-- Reboot required -->
       {#if tweak.definition.requires_reboot}
         <div

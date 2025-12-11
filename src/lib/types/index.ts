@@ -119,12 +119,67 @@ export interface WindowsInfo {
   version_string: string; // "10" or "11"
 }
 
+/** CPU information */
+export interface CpuInfo {
+  /** CPU name (e.g., "Intel Core i7-12700K") */
+  name: string;
+  /** Number of physical cores */
+  cores: number;
+  /** Number of logical processors (threads) */
+  threads: number;
+  /** CPU architecture (e.g., "x64") */
+  architecture: string;
+  /** Maximum clock speed in MHz */
+  max_clock_mhz: number;
+}
+
+/** GPU information */
+export interface GpuInfo {
+  /** GPU name (e.g., "NVIDIA GeForce RTX 3080") */
+  name: string;
+  /** GPU memory in GB */
+  memory_gb: number;
+  /** Driver version */
+  driver_version: string;
+}
+
+/** Memory (RAM) information */
+export interface MemoryInfo {
+  /** Total physical memory in GB */
+  total_gb: number;
+  /** Memory speed in MHz */
+  speed_mhz: number;
+  /** Memory type (e.g., "DDR4", "DDR5") */
+  memory_type: string;
+  /** Number of memory sticks */
+  slots_used: number;
+}
+
+/** Motherboard information */
+export interface MotherboardInfo {
+  /** Manufacturer (e.g., "ASUS", "MSI", "Gigabyte") */
+  manufacturer: string;
+  /** Product name/model */
+  product: string;
+  /** BIOS version */
+  bios_version: string;
+}
+
+/** Hardware information */
+export interface HardwareInfo {
+  cpu: CpuInfo;
+  gpu: GpuInfo[];
+  memory: MemoryInfo;
+  motherboard: MotherboardInfo;
+}
+
 /** System information */
 export interface SystemInfo {
   windows: WindowsInfo;
   computer_name: string;
   username: string;
   is_admin: boolean;
+  hardware: HardwareInfo;
 }
 
 /** Result of applying a tweak */

@@ -13,6 +13,14 @@
   const progressPercent = $derived(
     $tweakStats.total > 0 ? Math.round(($tweakStats.applied / $tweakStats.total) * 100) : 0,
   );
+
+  // Format clock speed
+  const formatClockSpeed = (mhz: number) => {
+    if (mhz >= 1000) {
+      return `${(mhz / 1000).toFixed(2)} GHz`;
+    }
+    return `${mhz} MHz`;
+  };
 </script>
 
 <div class="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
@@ -107,53 +115,135 @@
     </div>
   </section>
 
-  <!-- System Info Card -->
-  <section class="rounded-2xl border border-border bg-card p-5">
-    <div class="mb-4 flex items-center gap-2.5 text-foreground">
-      <Icon icon="mdi:monitor" width="20" />
-      <h2 class="m-0 text-base font-semibold">System Information</h2>
+  <!-- System & Hardware Info -->
+  <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <!-- System Info Card -->
+    <div class="rounded-2xl border border-border bg-card p-5">
+      <div class="mb-4 flex items-center gap-2.5 text-foreground">
+        <Icon icon="mdi:microsoft-windows" width="20" />
+        <h2 class="m-0 text-base font-semibold">System</h2>
+      </div>
+      <div class="flex flex-col gap-3">
+        <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:monitor" width="18" class="shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">Operating System</span>
+            <span class="truncate text-sm font-medium text-foreground"
+              >{$systemStore?.windows?.product_name ?? "Windows"}</span
+            >
+          </div>
+        </div>
+        <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:tag" width="18" class="shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">Version</span>
+            <span class="truncate text-sm font-medium text-foreground"
+              >{$systemStore?.windows?.display_version ?? ""} (Build {$systemStore?.windows
+                ?.build_number ?? ""})</span
+            >
+          </div>
+        </div>
+        <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:account" width="18" class="shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">User</span>
+            <span class="truncate text-sm font-medium text-foreground"
+              >{$systemStore?.username ?? ""}@{$systemStore?.computer_name ?? ""}</span
+            >
+          </div>
+        </div>
+        <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:shield-check" width="18" class="shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">Privileges</span>
+            <span
+              class="truncate text-sm font-medium {$systemStore?.is_admin
+                ? 'text-success'
+                : 'text-warning'}"
+            >
+              {$systemStore?.is_admin ? "Administrator" : "Standard User"}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-4">
-      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
-        <Icon icon="mdi:microsoft-windows" width="18" class="shrink-0 text-foreground-muted" />
-        <div class="flex min-w-0 flex-col gap-0.5">
-          <span class="text-xs tracking-wide text-foreground-muted uppercase">Operating System</span
-          >
-          <span class="truncate text-sm font-medium text-foreground"
-            >{$systemStore?.windows?.product_name ?? "Windows"}</span
-          >
-        </div>
+
+    <!-- Hardware Info Card -->
+    <div class="rounded-2xl border border-border bg-card p-5">
+      <div class="mb-4 flex items-center gap-2.5 text-foreground">
+        <Icon icon="mdi:chip" width="20" />
+        <h2 class="m-0 text-base font-semibold">Hardware</h2>
       </div>
-      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
-        <Icon icon="mdi:tag" width="18" class="shrink-0 text-foreground-muted" />
-        <div class="flex min-w-0 flex-col gap-0.5">
-          <span class="text-xs tracking-wide text-foreground-muted uppercase">Version</span>
-          <span class="truncate text-sm font-medium text-foreground"
-            >{$systemStore?.windows?.display_version ?? ""} (Build {$systemStore?.windows
-              ?.build_number ?? ""})</span
-          >
+      <div class="flex flex-col gap-3">
+        <!-- CPU -->
+        <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:cpu-64-bit" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">Processor</span>
+            <span class="truncate text-sm font-medium text-foreground">
+              {$systemStore?.hardware?.cpu?.name ?? "Unknown"}
+            </span>
+            <span class="text-xs text-foreground-muted">
+              {$systemStore?.hardware?.cpu?.cores ?? 0} Cores / {$systemStore?.hardware?.cpu?.threads ?? 0} Threads
+              • {formatClockSpeed($systemStore?.hardware?.cpu?.max_clock_mhz ?? 0)}
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
-        <Icon icon="mdi:account" width="18" class="shrink-0 text-foreground-muted" />
-        <div class="flex min-w-0 flex-col gap-0.5">
-          <span class="text-xs tracking-wide text-foreground-muted uppercase">User</span>
-          <span class="truncate text-sm font-medium text-foreground"
-            >{$systemStore?.username ?? ""}@{$systemStore?.computer_name ?? ""}</span
-          >
+
+        <!-- GPU(s) -->
+        {#if $systemStore?.hardware?.gpu && $systemStore.hardware.gpu.length > 0}
+          {#each $systemStore.hardware.gpu as gpu, i}
+            <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
+              <Icon icon="mdi:expansion-card" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span class="text-xs tracking-wide text-foreground-muted uppercase">
+                  Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ""}
+                </span>
+                <span class="truncate text-sm font-medium text-foreground">{gpu.name}</span>
+                <span class="text-xs text-foreground-muted">
+                  {gpu.memory_gb > 0 ? `${gpu.memory_gb} GB` : "Shared Memory"}
+                  {gpu.driver_version !== "Unknown" ? `• Driver: ${gpu.driver_version}` : ""}
+                </span>
+              </div>
+            </div>
+          {/each}
+        {:else}
+          <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
+            <Icon icon="mdi:expansion-card" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+            <div class="flex min-w-0 flex-col gap-0.5">
+              <span class="text-xs tracking-wide text-foreground-muted uppercase">Graphics</span>
+              <span class="truncate text-sm font-medium text-foreground">Unknown</span>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Memory -->
+        <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:memory" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">Memory</span>
+            <span class="truncate text-sm font-medium text-foreground">
+              {$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory?.memory_type ?? ""}
+            </span>
+            <span class="text-xs text-foreground-muted">
+              {$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz
+              • {$systemStore?.hardware?.memory?.slots_used ?? 0} Slot{($systemStore?.hardware?.memory?.slots_used ?? 0) !== 1 ? "s" : ""} Used
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
-        <Icon icon="mdi:shield-check" width="18" class="shrink-0 text-foreground-muted" />
-        <div class="flex min-w-0 flex-col gap-0.5">
-          <span class="text-xs tracking-wide text-foreground-muted uppercase">Privileges</span>
-          <span
-            class="truncate text-sm font-medium {$systemStore?.is_admin
-              ? 'text-success'
-              : 'text-warning'}"
-          >
-            {$systemStore?.is_admin ? "Administrator" : "Standard User"}
-          </span>
+
+        <!-- Motherboard -->
+        <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
+          <Icon icon="mdi:circuit-board" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="text-xs tracking-wide text-foreground-muted uppercase">Motherboard</span>
+            <span class="truncate text-sm font-medium text-foreground">
+              {$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"} {$systemStore?.hardware?.motherboard?.product ?? ""}
+            </span>
+            <span class="text-xs text-foreground-muted">
+              BIOS: {$systemStore?.hardware?.motherboard?.bios_version ?? "Unknown"}
+            </span>
+          </div>
         </div>
       </div>
     </div>
