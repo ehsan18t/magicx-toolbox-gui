@@ -56,6 +56,9 @@ pub struct TweakDefinitionRaw {
     pub requires_admin: bool,
     /// List of registry changes (with optional windows_versions filter on each)
     pub registry_changes: Vec<RegistryChange>,
+    /// List of Windows service changes (start/stop, enable/disable)
+    #[serde(default)]
+    pub service_changes: Option<Vec<ServiceChange>>,
     /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
@@ -172,6 +175,64 @@ impl RegistryChange {
     }
 }
 
+/// Windows service startup type
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ServiceStartupType {
+    /// Service is disabled (cannot be started)
+    Disabled,
+    /// Service must be started manually
+    Manual,
+    /// Service starts automatically at boot
+    Automatic,
+    /// Kernel device driver (boot-start)
+    Boot,
+    /// Kernel device driver (system-start)
+    System,
+}
+
+impl ServiceStartupType {
+    /// Convert to Windows SC command start type string
+    pub fn to_sc_start_type(&self) -> &'static str {
+        match self {
+            ServiceStartupType::Disabled => "disabled",
+            ServiceStartupType::Manual => "demand",
+            ServiceStartupType::Automatic => "auto",
+            ServiceStartupType::Boot => "boot",
+            ServiceStartupType::System => "system",
+        }
+    }
+
+    /// Convert from Windows registry Start value (DWORD)
+    pub fn from_registry_value(value: u32) -> Option<Self> {
+        match value {
+            0 => Some(ServiceStartupType::Boot),
+            1 => Some(ServiceStartupType::System),
+            2 => Some(ServiceStartupType::Automatic),
+            3 => Some(ServiceStartupType::Manual),
+            4 => Some(ServiceStartupType::Disabled),
+            _ => None,
+        }
+    }
+}
+
+/// Single service change operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceChange {
+    /// Service name (e.g., "wuauserv" for Windows Update)
+    pub name: String,
+    /// Startup type when tweak is enabled (applied)
+    pub enable_startup: ServiceStartupType,
+    /// Startup type when tweak is disabled (reverted)
+    pub disable_startup: ServiceStartupType,
+    /// Stop the service when applying the tweak
+    #[serde(default)]
+    pub stop_on_disable: bool,
+    /// Start the service when reverting the tweak
+    #[serde(default)]
+    pub start_on_enable: bool,
+}
+
 /// A complete tweak definition loaded from YAML
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakDefinition {
@@ -186,6 +247,9 @@ pub struct TweakDefinition {
     pub requires_admin: bool,
     /// List of registry changes (with optional windows_versions filter on each)
     pub registry_changes: Vec<RegistryChange>,
+    /// List of Windows service changes (start/stop, enable/disable)
+    #[serde(default)]
+    pub service_changes: Option<Vec<ServiceChange>>,
     /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
@@ -203,6 +267,7 @@ impl TweakDefinition {
             requires_reboot: raw.requires_reboot,
             requires_admin: raw.requires_admin,
             registry_changes: raw.registry_changes,
+            service_changes: raw.service_changes,
             info: raw.info,
         }
     }
@@ -330,6 +395,7 @@ mod tests {
             requires_reboot: false,
             requires_admin: false,
             registry_changes: changes,
+            service_changes: None,
             info: None,
         }
     }
