@@ -58,6 +58,12 @@ pub struct GpuInfo {
     pub memory_gb: f64,
     /// Driver version
     pub driver_version: String,
+    /// Video processor/chip name
+    pub processor: String,
+    /// Current refresh rate in Hz
+    pub refresh_rate: u32,
+    /// Video mode description (resolution and color depth)
+    pub video_mode: String,
 }
 
 /// Memory (RAM) information
@@ -84,6 +90,19 @@ pub struct MotherboardInfo {
     pub bios_version: String,
 }
 
+/// Disk/Storage information
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DiskInfo {
+    /// Drive model name
+    pub model: String,
+    /// Total size in GB
+    pub size_gb: f64,
+    /// Drive type (e.g., "SSD", "HDD")
+    pub drive_type: String,
+    /// Interface type (e.g., "NVMe", "SATA")
+    pub interface_type: String,
+}
+
 /// Hardware information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HardwareInfo {
@@ -91,6 +110,7 @@ pub struct HardwareInfo {
     pub gpu: Vec<GpuInfo>,
     pub memory: MemoryInfo,
     pub motherboard: MotherboardInfo,
+    pub disks: Vec<DiskInfo>,
 }
 
 /// System information

@@ -141,6 +141,24 @@ export interface GpuInfo {
   memory_gb: number;
   /** Driver version */
   driver_version: string;
+  /** Video processor/chip name */
+  processor: string;
+  /** Current refresh rate in Hz */
+  refresh_rate: number;
+  /** Video mode description (resolution + color depth) */
+  video_mode: string;
+}
+
+/** Disk drive information */
+export interface DiskInfo {
+  /** Disk model name */
+  model: string;
+  /** Size in GB */
+  size_gb: number;
+  /** Drive type (e.g., "SSD", "HDD") */
+  drive_type: string;
+  /** Interface type (e.g., "NVMe", "SATA") */
+  interface_type: string;
 }
 
 /** Memory (RAM) information */
@@ -171,6 +189,7 @@ export interface HardwareInfo {
   gpu: GpuInfo[];
   memory: MemoryInfo;
   motherboard: MotherboardInfo;
+  disks: DiskInfo[];
 }
 
 /** System information */

@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::models::{
-    CpuInfo, GpuInfo, HardwareInfo, MemoryInfo, MotherboardInfo, SystemInfo, WindowsInfo,
+    CpuInfo, DiskInfo, GpuInfo, HardwareInfo, MemoryInfo, MotherboardInfo, SystemInfo, WindowsInfo,
 };
 use serde::Deserialize;
 use std::env;
@@ -27,6 +27,9 @@ struct Win32VideoController {
     name: Option<String>,
     adapter_ram: Option<u64>,
     driver_version: Option<String>,
+    video_processor: Option<String>,
+    current_refresh_rate: Option<u32>,
+    video_mode_description: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -53,6 +56,16 @@ struct Win32BaseBoard {
 struct Win32Bios {
     #[serde(rename = "SMBIOSBIOSVersion")]
     smbios_bios_version: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_DiskDrive")]
+#[serde(rename_all = "PascalCase")]
+struct Win32DiskDrive {
+    model: Option<String>,
+    size: Option<String>,
+    media_type: Option<String>,
+    interface_type: Option<String>,
 }
 
 /// Retrieve Windows version information
@@ -122,12 +135,14 @@ fn get_hardware_info() -> HardwareInfo {
     let gpu = get_gpu_info(&wmi_con);
     let memory = get_memory_info(&wmi_con);
     let motherboard = get_motherboard_info(&wmi_con);
+    let disks = get_disk_info(&wmi_con);
 
     HardwareInfo {
         cpu,
         gpu,
         memory,
         motherboard,
+        disks,
     }
 }
 
@@ -182,12 +197,23 @@ fn get_gpu_info(wmi_con: &WMIConnection) -> Vec<GpuInfo> {
         })
         .map(|gpu| {
             let memory_bytes = gpu.adapter_ram.unwrap_or(0);
-            let memory_gb = memory_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+            // Better precision: use proper rounding only at display time
+            let memory_gb = if memory_bytes > 0 {
+                // Convert to GB with better precision
+                let gb = memory_bytes as f64 / 1_073_741_824.0; // 1024^3
+                                                                // Round to 2 decimal places for better accuracy
+                (gb * 100.0).round() / 100.0
+            } else {
+                0.0
+            };
 
             GpuInfo {
                 name: gpu.name.unwrap_or_else(|| "Unknown".to_string()),
-                memory_gb: (memory_gb * 10.0).round() / 10.0, // Round to 1 decimal
+                memory_gb,
                 driver_version: gpu.driver_version.unwrap_or_else(|| "Unknown".to_string()),
+                processor: gpu.video_processor.unwrap_or_else(String::new),
+                refresh_rate: gpu.current_refresh_rate.unwrap_or(0),
+                video_mode: gpu.video_mode_description.unwrap_or_else(String::new),
             }
         })
         .collect()
@@ -269,6 +295,63 @@ fn get_motherboard_info(wmi_con: &WMIConnection) -> MotherboardInfo {
         product,
         bios_version,
     }
+}
+
+/// Get disk drive information from WMI
+fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
+    log::trace!("Querying Win32_DiskDrive");
+    let disk_query: Vec<Win32DiskDrive> = wmi_con.query().unwrap_or_default();
+
+    disk_query
+        .into_iter()
+        .map(|disk| {
+            let model = disk.model.unwrap_or_else(|| "Unknown Drive".to_string());
+
+            // Convert size from string to bytes, then to GB
+            let size_gb = disk
+                .size
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(|bytes| {
+                    let gb = bytes as f64 / 1_073_741_824.0;
+                    (gb * 100.0).round() / 100.0
+                })
+                .unwrap_or(0.0);
+
+            // Determine drive type (SSD/HDD)
+            let drive_type = disk
+                .media_type
+                .map(|mt| {
+                    if mt.contains("SSD") || mt.contains("Fixed hard disk") {
+                        // Try to determine if it's SSD or HDD based on media type
+                        if mt.contains("SSD") {
+                            "SSD".to_string()
+                        } else {
+                            "HDD".to_string()
+                        }
+                    } else {
+                        mt
+                    }
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let interface_type = disk.interface_type.unwrap_or_else(|| "Unknown".to_string());
+
+            log::debug!(
+                "Disk found: model={}, size_gb={:.2}, type={}, interface={}",
+                model,
+                size_gb,
+                drive_type,
+                interface_type
+            );
+
+            DiskInfo {
+                model,
+                size_gb,
+                drive_type,
+                interface_type,
+            }
+        })
+        .collect()
 }
 
 /// Get full system information

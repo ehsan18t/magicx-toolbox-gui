@@ -21,6 +21,14 @@
     }
     return `${mhz} MHz`;
   };
+
+  // Format storage size
+  const formatStorage = (gb: number) => {
+    if (gb >= 1000) {
+      return `${(gb / 1000).toFixed(2)} TB`;
+    }
+    return `${gb.toFixed(0)} GB`;
+  };
 </script>
 
 <div class="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
@@ -208,10 +216,22 @@
                   Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ""}
                 </span>
                 <span class="truncate text-sm font-medium text-foreground">{gpu.name}</span>
-                <span class="text-xs text-foreground-muted">
-                  {gpu.memory_gb > 0 ? `${gpu.memory_gb} GB` : "Shared Memory"}
-                  {gpu.driver_version !== "Unknown" ? `• Driver: ${gpu.driver_version}` : ""}
-                </span>
+                <div class="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-foreground-muted">
+                  {#if gpu.memory_gb > 0}
+                    <span>{gpu.memory_gb} GB VRAM</span>
+                  {:else}
+                    <span>Shared Memory</span>
+                  {/if}
+                  {#if gpu.processor && gpu.processor !== "Unknown"}
+                    <span>• {gpu.processor}</span>
+                  {/if}
+                  {#if gpu.refresh_rate > 0}
+                    <span>• {gpu.refresh_rate}Hz</span>
+                  {/if}
+                  {#if gpu.video_mode && gpu.video_mode !== "Unknown"}
+                    <span>• {gpu.video_mode}</span>
+                  {/if}
+                </div>
               </div>
             </div>
           {/each}
@@ -261,6 +281,30 @@
             </span>
           </div>
         </div>
+
+        <!-- Storage Drives -->
+        {#if $systemStore?.hardware?.disks && $systemStore.hardware.disks.length > 0}
+          {#each $systemStore.hardware.disks as disk, i (i)}
+            <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
+              <Icon icon="mdi:harddisk" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span class="text-xs tracking-wide text-foreground-muted uppercase">
+                  Storage{$systemStore.hardware.disks.length > 1 ? ` ${i + 1}` : ""}
+                </span>
+                <span class="truncate text-sm font-medium text-foreground">{disk.model}</span>
+                <div class="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-foreground-muted">
+                  <span>{formatStorage(disk.size_gb)}</span>
+                  {#if disk.drive_type && disk.drive_type !== "Unknown"}
+                    <span>• {disk.drive_type}</span>
+                  {/if}
+                  {#if disk.interface_type && disk.interface_type !== "Unknown"}
+                    <span>• {disk.interface_type}</span>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/each}
+        {/if}
       </div>
     </div>
   </section>
