@@ -305,6 +305,35 @@ fn execute_command_as_system(command_line: &str) -> Result<i32, Error> {
     }
 }
 
+/// Get the current user's SID (for converting HKCU to HKU\<SID>)
+fn get_current_user_sid() -> Result<String, Error> {
+    use std::process::Command;
+
+    // Use whoami /user to get the SID - cleaner than Windows API
+    let output = Command::new("whoami")
+        .args(["/user", "/fo", "csv", "/nh"])
+        .output()
+        .map_err(|e| Error::ServiceControl(format!("Failed to run whoami: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(Error::ServiceControl("whoami failed".to_string()));
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    // Output format: "DOMAIN\User","S-1-5-21-..."
+    let parts: Vec<&str> = output_str.trim().split(',').collect();
+    if parts.len() >= 2 {
+        let sid = parts[1].trim_matches('"').to_string();
+        log::debug!("Current user SID: {}", sid);
+        Ok(sid)
+    } else {
+        Err(Error::ServiceControl(format!(
+            "Failed to parse SID from whoami output: {}",
+            output_str
+        )))
+    }
+}
+
 /// Set a registry value as SYSTEM using reg.exe
 /// This bypasses normal permission checks by running reg.exe as SYSTEM
 pub fn set_registry_value_as_system(
@@ -323,9 +352,17 @@ pub fn set_registry_value_as_system(
         value_type
     );
 
+    // For HKCU, we need to use HKU\<SID> since SYSTEM's HKCU is different
+    let full_key = if hive.eq_ignore_ascii_case("HKCU") {
+        let sid = get_current_user_sid()?;
+        log::debug!("Converting HKCU to HKU\\{}", sid);
+        format!("HKU\\{}\\{}", sid, key)
+    } else {
+        format!("{}\\{}", hive, key)
+    };
+
     // Build reg.exe command
     // reg add "HKLM\Software\..." /v "ValueName" /t REG_DWORD /d 1 /f
-    let full_key = format!("{}\\{}", hive, key);
     let command = format!(
         "reg add \"{}\" /v \"{}\" /t {} /d {} /f",
         full_key, value_name, value_type, value_data
@@ -357,7 +394,14 @@ pub fn delete_registry_value_as_system(
         value_name
     );
 
-    let full_key = format!("{}\\{}", hive, key);
+    // For HKCU, we need to use HKU\<SID> since SYSTEM's HKCU is different
+    let full_key = if hive.eq_ignore_ascii_case("HKCU") {
+        let sid = get_current_user_sid()?;
+        format!("HKU\\{}\\{}", sid, key)
+    } else {
+        format!("{}\\{}", hive, key)
+    };
+
     let command = format!("reg delete \"{}\" /v \"{}\" /f", full_key, value_name);
 
     let exit_code = execute_command_as_system(&command)?;
