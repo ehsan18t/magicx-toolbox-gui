@@ -348,14 +348,6 @@
     background: hsl(var(--primary) / 0.85);
   }
 
-  .toggle-switch {
-    flex-shrink: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-  }
-
   .toggle-switch:disabled {
     cursor: not-allowed;
     opacity: 0.7;

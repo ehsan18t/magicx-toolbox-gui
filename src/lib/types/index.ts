@@ -99,25 +99,21 @@ export interface BatchApplyResult {
 }
 
 /** Risk level display info */
-export const RISK_INFO: Record<RiskLevel, { name: string; color: string; description: string }> = {
+export const RISK_INFO: Record<RiskLevel, { name: string; description: string }> = {
   low: {
     name: "Low",
-    color: "text-green-500",
     description: "Safe to apply/revert without issues",
   },
   medium: {
     name: "Medium",
-    color: "text-yellow-500",
     description: "May require restart or have minor side effects",
   },
   high: {
     name: "High",
-    color: "text-orange-500",
     description: "Could significantly impact system",
   },
   critical: {
     name: "Critical",
-    color: "text-red-500",
     description: "Could break Windows, use with caution",
   },
 };
