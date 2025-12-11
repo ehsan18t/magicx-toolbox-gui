@@ -278,7 +278,7 @@ pub fn preflight_check(
     let mut needs_baseline = Vec::new();
     let mut conflicts = Vec::new();
 
-    for (hive, key, value_name, _value_type) in keys {
+    for (hive, key, value_name, value_type) in keys {
         let key_id = make_key_id(hive, key, value_name);
 
         // Check if we need to capture baseline
@@ -289,7 +289,7 @@ pub fn preflight_check(
         // Check for conflicts with other applied tweaks
         let other_tweaks = state.get_tweaks_for_key(&key_id);
         if !other_tweaks.is_empty() && !other_tweaks.contains(&tweak_id.to_string()) {
-            let current_value = read_current_value(hive, key, value_name, "REG_DWORD")
+            let current_value = read_current_value(hive, key, value_name, value_type)
                 .ok()
                 .and_then(|(v, _)| v);
             let baseline_value = baseline
@@ -507,7 +507,12 @@ pub fn detect_conflicts(
             .collect();
 
         if !other_tweaks.is_empty() {
-            let current_value = read_current_value(hive, key, value_name, "REG_DWORD")
+            // Use stored value_type from baseline if available, otherwise try REG_DWORD
+            let value_type = baseline
+                .get_entry(&key_id)
+                .map(|e| e.value_type.as_str())
+                .unwrap_or("REG_DWORD");
+            let current_value = read_current_value(hive, key, value_name, value_type)
                 .ok()
                 .and_then(|(v, _)| v);
             let baseline_value = baseline
