@@ -795,42 +795,62 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
     })
 }
 
-/// Check if a tweak is currently applied by reading registry values
+/// Check if a tweak is currently applied by reading registry values.
+/// Returns true only if ALL registry changes match their enable_value.
 fn check_tweak_applied(changes: &[&crate::models::RegistryChange]) -> Result<bool> {
     if changes.is_empty() {
         return Ok(false);
     }
 
-    // Check first registry change to determine if applied
-    let first_change = changes[0];
+    // Check ALL registry changes - tweak is applied only if all values match
+    for change in changes {
+        let current_value = match change.value_type {
+            crate::models::RegistryValueType::DWord => registry_service::read_dword(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+            )?
+            .map(|v| serde_json::json!(v)),
+            crate::models::RegistryValueType::String
+            | crate::models::RegistryValueType::ExpandString => registry_service::read_string(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+            )?
+            .map(|v| serde_json::json!(v)),
+            crate::models::RegistryValueType::Binary => registry_service::read_binary(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+            )?
+            .map(|v| serde_json::json!(v)),
+            crate::models::RegistryValueType::QWord => registry_service::read_qword(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+            )?
+            .map(|v| serde_json::json!(v)),
+            crate::models::RegistryValueType::MultiString => {
+                // MultiString is not commonly used, treat as not matching
+                log::trace!("MultiString type not supported in status check");
+                None
+            }
+        };
 
-    let current_value = match first_change.value_type {
-        crate::models::RegistryValueType::DWord => registry_service::read_dword(
-            &first_change.hive,
-            &first_change.key,
-            &first_change.value_name,
-        )?
-        .map(|v| serde_json::json!(v)),
-        crate::models::RegistryValueType::String => registry_service::read_string(
-            &first_change.hive,
-            &first_change.key,
-            &first_change.value_name,
-        )?
-        .map(|v| serde_json::json!(v)),
-        crate::models::RegistryValueType::Binary => registry_service::read_binary(
-            &first_change.hive,
-            &first_change.key,
-            &first_change.value_name,
-        )?
-        .map(|v| serde_json::json!(v)),
-        _ => None,
-    };
-
-    if let Some(current) = current_value {
-        Ok(current == first_change.enable_value)
-    } else {
-        Ok(false)
+        match current_value {
+            Some(current) if current == change.enable_value => {
+                // This change matches, continue checking others
+                continue;
+            }
+            _ => {
+                // Value doesn't match or couldn't be read - tweak is not fully applied
+                return Ok(false);
+            }
+        }
     }
+
+    // All changes match their enable_value
+    Ok(true)
 }
 
 /// Apply a single registry change
@@ -865,7 +885,8 @@ fn apply_registry_change(
                 )?;
             }
         }
-        crate::models::RegistryValueType::String => {
+        crate::models::RegistryValueType::String
+        | crate::models::RegistryValueType::ExpandString => {
             if let Some(value) = change.enable_value.as_str() {
                 // Debug: Log registry change
                 if is_debug_enabled() {
@@ -902,7 +923,30 @@ fn apply_registry_change(
                 )?;
             }
         }
-        _ => {}
+        crate::models::RegistryValueType::QWord => {
+            if let Some(value) = change.enable_value.as_u64() {
+                if is_debug_enabled() {
+                    emit_debug_log(
+                        app,
+                        DebugLevel::Info,
+                        &format!("Setting QWORD: {} = {}", full_path, value),
+                        Some(tweak_name),
+                    );
+                }
+                registry_service::set_qword(
+                    &change.hive,
+                    &change.key,
+                    &change.value_name,
+                    value,
+                )?;
+            }
+        }
+        crate::models::RegistryValueType::MultiString => {
+            log::warn!(
+                "MultiString registry type not supported for apply: {}",
+                full_path
+            );
+        }
     }
 
     Ok(())
@@ -941,7 +985,8 @@ fn revert_registry_change(
                 )?;
             }
         }
-        crate::models::RegistryValueType::String => {
+        crate::models::RegistryValueType::String
+        | crate::models::RegistryValueType::ExpandString => {
             if let Some(value) = disable_value.as_str() {
                 // Debug: Log registry change
                 if is_debug_enabled() {
@@ -978,7 +1023,30 @@ fn revert_registry_change(
                 )?;
             }
         }
-        _ => {}
+        crate::models::RegistryValueType::QWord => {
+            if let Some(value) = disable_value.as_u64() {
+                if is_debug_enabled() {
+                    emit_debug_log(
+                        app,
+                        DebugLevel::Info,
+                        &format!("Reverting QWORD: {} = {}", full_path, value),
+                        Some(tweak_name),
+                    );
+                }
+                registry_service::set_qword(
+                    &change.hive,
+                    &change.key,
+                    &change.value_name,
+                    value,
+                )?;
+            }
+        }
+        crate::models::RegistryValueType::MultiString => {
+            log::warn!(
+                "MultiString registry type not supported for revert: {}",
+                full_path
+            );
+        }
     }
 
     Ok(())
