@@ -84,6 +84,29 @@ struct RegistryChange {
     options: Option<Vec<TweakOption>>,
 }
 
+/// Windows service startup type
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum ServiceStartupType {
+    Disabled,
+    Manual,
+    Automatic,
+    Boot,
+    System,
+}
+
+/// Single service change operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ServiceChange {
+    name: String,
+    enable_startup: ServiceStartupType,
+    disable_startup: ServiceStartupType,
+    #[serde(default)]
+    stop_on_disable: bool,
+    #[serde(default)]
+    start_on_enable: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct TweakDefinitionRaw {
     id: String,
@@ -95,6 +118,8 @@ struct TweakDefinitionRaw {
     #[serde(default)]
     requires_admin: bool,
     registry_changes: Vec<RegistryChange>,
+    #[serde(default)]
+    service_changes: Option<Vec<ServiceChange>>,
     #[serde(default)]
     info: Option<String>,
 }
@@ -111,6 +136,8 @@ struct TweakDefinition {
     #[serde(default)]
     requires_admin: bool,
     registry_changes: Vec<RegistryChange>,
+    #[serde(default)]
+    service_changes: Option<Vec<ServiceChange>>,
     #[serde(default)]
     info: Option<String>,
 }
@@ -190,6 +217,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 requires_reboot: raw.requires_reboot,
                 requires_admin: raw.requires_admin,
                 registry_changes: raw.registry_changes,
+                service_changes: raw.service_changes,
                 info: raw.info,
             };
             tweaks.insert(raw.id, tweak);
