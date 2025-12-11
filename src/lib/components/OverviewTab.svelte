@@ -118,9 +118,6 @@
   <div class="flex flex-col gap-3">
     <div class="flex items-center justify-between">
       <h2 class="m-0 text-lg font-semibold text-foreground">Hardware</h2>
-      <span class="text-xs text-foreground-muted">
-        Total Storage: {formatStorage($systemStore?.hardware?.total_storage_gb ?? 0)}
-      </span>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -179,7 +176,7 @@
       <div class="rounded-xl border border-border bg-card p-4">
         <div class="mb-3 flex items-center gap-2">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-success/15">
-            <Icon icon="mdi:memory" width="18" class="text-success" />
+            <Icon icon="ri:ram-line" width="18" class="text-success" />
           </div>
           <span class="text-xs font-medium text-foreground-muted uppercase">RAM</span>
         </div>
@@ -249,7 +246,7 @@
       <div class="rounded-xl border border-border bg-card p-4">
         <div class="mb-3 flex items-center gap-2">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15">
-            <Icon icon="mdi:circuit-board" width="18" class="text-accent" />
+            <Icon icon="bi:motherboard" width="18" class="text-accent" />
           </div>
           <span class="text-xs font-medium text-foreground-muted uppercase">Board</span>
         </div>
@@ -270,7 +267,7 @@
   <!-- Categories Section -->
   <div class="flex flex-col gap-3">
     <div class="flex items-center justify-between">
-      <h2 class="m-0 text-lg font-semibold text-foreground">Categories</h2>
+      <h2 class="m-0 text-lg font-semibold text-foreground">Tweak Categories</h2>
       <span class="text-xs text-foreground-muted">{$categoriesStore.length} available</span>
     </div>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
