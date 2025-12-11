@@ -79,9 +79,6 @@ pub fn run() {
             setup::setup(app)
         })
         .invoke_handler(tauri::generate_handler![
-            commands::general::greet,
-            commands::general::get_greetings,
-            commands::general::clear_greetings,
             commands::general::update_theme,
             commands::general::get_theme,
             commands::system::get_system_info,

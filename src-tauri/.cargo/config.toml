@@ -1,0 +1,14 @@
+[build]
+# Treat warnings as errors in CI
+# rustflags = ["-D", "warnings"]
+
+[target.'cfg(all())']
+rustflags = [
+    # Enable common clippy lints
+    "-W", "clippy::all",
+    # Allow some pedantic lints that are too noisy
+    "-A", "clippy::module_name_repetitions",
+    "-A", "clippy::must_use_candidate",
+    "-A", "clippy::missing_errors_doc",
+    "-A", "clippy::missing_panics_doc",
+]

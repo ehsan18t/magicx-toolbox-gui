@@ -853,103 +853,94 @@ fn check_tweak_applied(changes: &[&crate::models::RegistryChange]) -> Result<boo
     Ok(true)
 }
 
-/// Apply a single registry change
-fn apply_registry_change(
+/// Write a registry value based on type (unified helper for apply/revert)
+fn write_registry_value(
     app: &AppHandle,
     change: &crate::models::RegistryChange,
+    value: &serde_json::Value,
+    operation: &str,
     tweak_name: &str,
 ) -> Result<()> {
-    let hive_name = match change.hive {
-        crate::models::RegistryHive::HKCU => "HKCU",
-        crate::models::RegistryHive::HKLM => "HKLM",
-    };
+    let hive_name = change.hive.as_str();
     let full_path = format!("{}\\{}\\{}", hive_name, change.key, change.value_name);
 
     match change.value_type {
         crate::models::RegistryValueType::DWord => {
-            if let Some(value) = change.enable_value.as_u64() {
-                // Debug: Log registry change
+            if let Some(v) = value.as_u64() {
                 if is_debug_enabled() {
                     emit_debug_log(
                         app,
                         DebugLevel::Info,
-                        &format!("Setting DWORD: {} = {}", full_path, value),
+                        &format!("{} DWORD: {} = {}", operation, full_path, v),
                         Some(tweak_name),
                     );
                 }
-                registry_service::set_dword(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    value as u32,
-                )?;
+                registry_service::set_dword(&change.hive, &change.key, &change.value_name, v as u32)?;
             }
         }
         crate::models::RegistryValueType::String
         | crate::models::RegistryValueType::ExpandString => {
-            if let Some(value) = change.enable_value.as_str() {
-                // Debug: Log registry change
+            if let Some(v) = value.as_str() {
                 if is_debug_enabled() {
                     emit_debug_log(
                         app,
                         DebugLevel::Info,
-                        &format!("Setting String: {} = \"{}\"", full_path, value),
+                        &format!("{} String: {} = \"{}\"", operation, full_path, v),
                         Some(tweak_name),
                     );
                 }
-                registry_service::set_string(&change.hive, &change.key, &change.value_name, value)?;
+                registry_service::set_string(&change.hive, &change.key, &change.value_name, v)?;
             }
         }
         crate::models::RegistryValueType::Binary => {
-            if let Some(value) = change.enable_value.as_array() {
-                let binary: Vec<u8> = value
+            if let Some(arr) = value.as_array() {
+                let binary: Vec<u8> = arr
                     .iter()
                     .filter_map(|v| v.as_u64().map(|u| u as u8))
                     .collect();
-                // Debug: Log registry change
                 if is_debug_enabled() {
                     emit_debug_log(
                         app,
                         DebugLevel::Info,
-                        &format!("Setting Binary: {} ({} bytes)", full_path, binary.len()),
+                        &format!("{} Binary: {} ({} bytes)", operation, full_path, binary.len()),
                         Some(tweak_name),
                     );
                 }
-                registry_service::set_binary(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    &binary,
-                )?;
+                registry_service::set_binary(&change.hive, &change.key, &change.value_name, &binary)?;
             }
         }
         crate::models::RegistryValueType::QWord => {
-            if let Some(value) = change.enable_value.as_u64() {
+            if let Some(v) = value.as_u64() {
                 if is_debug_enabled() {
                     emit_debug_log(
                         app,
                         DebugLevel::Info,
-                        &format!("Setting QWORD: {} = {}", full_path, value),
+                        &format!("{} QWORD: {} = {}", operation, full_path, v),
                         Some(tweak_name),
                     );
                 }
-                registry_service::set_qword(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    value,
-                )?;
+                registry_service::set_qword(&change.hive, &change.key, &change.value_name, v)?;
             }
         }
         crate::models::RegistryValueType::MultiString => {
             log::warn!(
-                "MultiString registry type not supported for apply: {}",
+                "MultiString registry type not supported for {}: {}",
+                operation.to_lowercase(),
                 full_path
             );
         }
     }
 
     Ok(())
+}
+
+/// Apply a single registry change
+fn apply_registry_change(
+    app: &AppHandle,
+    change: &crate::models::RegistryChange,
+    tweak_name: &str,
+) -> Result<()> {
+    write_registry_value(app, change, &change.enable_value, "Setting", tweak_name)
 }
 
 /// Revert a registry change to disable value
@@ -959,95 +950,5 @@ fn revert_registry_change(
     disable_value: &serde_json::Value,
     tweak_name: &str,
 ) -> Result<()> {
-    let hive_name = match change.hive {
-        crate::models::RegistryHive::HKCU => "HKCU",
-        crate::models::RegistryHive::HKLM => "HKLM",
-    };
-    let full_path = format!("{}\\{}\\{}", hive_name, change.key, change.value_name);
-
-    match change.value_type {
-        crate::models::RegistryValueType::DWord => {
-            if let Some(value) = disable_value.as_u64() {
-                // Debug: Log registry change
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("Reverting DWORD: {} = {}", full_path, value),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_dword(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    value as u32,
-                )?;
-            }
-        }
-        crate::models::RegistryValueType::String
-        | crate::models::RegistryValueType::ExpandString => {
-            if let Some(value) = disable_value.as_str() {
-                // Debug: Log registry change
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("Reverting String: {} = \"{}\"", full_path, value),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_string(&change.hive, &change.key, &change.value_name, value)?;
-            }
-        }
-        crate::models::RegistryValueType::Binary => {
-            if let Some(value) = disable_value.as_array() {
-                let binary: Vec<u8> = value
-                    .iter()
-                    .filter_map(|v| v.as_u64().map(|u| u as u8))
-                    .collect();
-                // Debug: Log registry change
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("Reverting Binary: {} ({} bytes)", full_path, binary.len()),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_binary(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    &binary,
-                )?;
-            }
-        }
-        crate::models::RegistryValueType::QWord => {
-            if let Some(value) = disable_value.as_u64() {
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("Reverting QWORD: {} = {}", full_path, value),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_qword(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    value,
-                )?;
-            }
-        }
-        crate::models::RegistryValueType::MultiString => {
-            log::warn!(
-                "MultiString registry type not supported for revert: {}",
-                full_path
-            );
-        }
-    }
-
-    Ok(())
+    write_registry_value(app, change, disable_value, "Reverting", tweak_name)
 }
