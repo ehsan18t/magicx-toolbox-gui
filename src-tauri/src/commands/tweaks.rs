@@ -154,7 +154,19 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         }
 
         // Restore registry values from snapshot
-        backup_service::restore_from_snapshot(&existing_snapshot)?;
+        if let Err(e) = backup_service::restore_from_snapshot(&existing_snapshot) {
+            log::error!(
+                "Failed to restore from snapshot for '{}': {}",
+                tweak.name,
+                e
+            );
+
+            // Delete the snapshot since restore failed - user likely lacks permissions
+            // and keeping it would just show the tweak as "applied" when it's not
+            let _ = backup_service::delete_snapshot(&tweak_id);
+
+            return Err(e);
+        }
 
         // Restore service states if any
         if let Some(ref service_changes) = tweak.service_changes {
