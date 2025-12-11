@@ -36,6 +36,23 @@ export interface RegistryChange {
   options?: TweakOption[];
 }
 
+/** Windows service startup type */
+export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
+
+/** Single service change operation */
+export interface ServiceChange {
+  /** Service name (e.g., "wuauserv" for Windows Update) */
+  name: string;
+  /** Startup type when tweak is enabled (applied) */
+  enable_startup: ServiceStartupType;
+  /** Startup type when tweak is disabled (reverted) */
+  disable_startup: ServiceStartupType;
+  /** Stop the service when applying the tweak */
+  stop_on_disable?: boolean;
+  /** Start the service when reverting the tweak */
+  start_on_enable?: boolean;
+}
+
 /** Category definition loaded from YAML file */
 export interface CategoryDefinition {
   id: string;
@@ -57,6 +74,8 @@ export interface TweakDefinition {
   requires_admin: boolean;
   /** List of registry changes (with optional windows_versions filter on each) */
   registry_changes: RegistryChange[];
+  /** List of Windows service changes (start/stop, enable/disable) */
+  service_changes?: ServiceChange[];
   /** Additional info/documentation */
   info?: string;
 }
