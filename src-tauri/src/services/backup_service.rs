@@ -455,26 +455,19 @@ pub fn detect_tweak_state(tweak: &TweakDefinition) -> Result<(bool, Option<usize
     Ok((all_match_enabled, detected_option))
 }
 
-/// Compare two JSON values for equality
+/// Compare two JSON values for equality (handles numeric type variations)
 fn values_match(a: &Option<serde_json::Value>, b: &Option<serde_json::Value>) -> bool {
     match (a, b) {
         (Some(va), Some(vb)) => {
-            // Numeric comparison
-            if let (Some(na), Some(nb)) = (va.as_u64(), vb.as_u64()) {
-                return na == nb;
+            // Direct equality works for most cases
+            if va == vb {
+                return true;
             }
+            // Fallback: numeric comparison (i64/u64 may differ in JSON)
             if let (Some(na), Some(nb)) = (va.as_i64(), vb.as_i64()) {
                 return na == nb;
             }
-            // String comparison
-            if let (Some(sa), Some(sb)) = (va.as_str(), vb.as_str()) {
-                return sa == sb;
-            }
-            // Array comparison
-            if let (Some(aa), Some(ab)) = (va.as_array(), vb.as_array()) {
-                return aa == ab;
-            }
-            va == vb
+            false
         }
         (None, None) => true,
         _ => false,

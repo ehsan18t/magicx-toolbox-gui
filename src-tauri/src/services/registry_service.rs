@@ -210,6 +210,17 @@ fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
     }
 }
 
+/// Check if write access is allowed for the given hive
+/// HKLM modifications require admin privileges
+fn require_write_access(hive: &RegistryHive) -> Result<(), Error> {
+    use crate::services::system_info_service::is_running_as_admin;
+    if matches!(hive, RegistryHive::HKLM) && !is_running_as_admin() {
+        log::warn!("HKLM modification requires admin privileges");
+        return Err(Error::RequiresAdmin);
+    }
+    Ok(())
+}
+
 /// Set a DWORD value in registry
 pub fn set_dword(
     hive: &RegistryHive,
@@ -224,16 +235,8 @@ pub fn set_dword(
         value_name,
         value
     );
+    require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
-
-    // For HKLM, we need write permissions which typically require admin
-    if matches!(hive, RegistryHive::HKLM) {
-        use crate::services::system_info_service::is_running_as_admin;
-        if !is_running_as_admin() {
-            log::warn!("HKLM write requires admin privileges");
-            return Err(Error::RequiresAdmin);
-        }
-    }
 
     let (reg_key, _) = RegKey::predef(hive_key)
         .create_subkey_with_flags(key_path, KEY_WRITE)
@@ -261,16 +264,8 @@ pub fn set_string(
         value_name,
         value
     );
+    require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
-
-    // For HKLM, we need write permissions which typically require admin
-    if matches!(hive, RegistryHive::HKLM) {
-        use crate::services::system_info_service::is_running_as_admin;
-        if !is_running_as_admin() {
-            log::warn!("HKLM write requires admin privileges");
-            return Err(Error::RequiresAdmin);
-        }
-    }
 
     let (reg_key, _) = RegKey::predef(hive_key)
         .create_subkey_with_flags(key_path, KEY_WRITE)
@@ -298,16 +293,8 @@ pub fn set_binary(
         value_name,
         value.len()
     );
+    require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
-
-    // For HKLM, we need write permissions which typically require admin
-    if matches!(hive, RegistryHive::HKLM) {
-        use crate::services::system_info_service::is_running_as_admin;
-        if !is_running_as_admin() {
-            log::warn!("HKLM write requires admin privileges");
-            return Err(Error::RequiresAdmin);
-        }
-    }
 
     let (reg_key, _) = RegKey::predef(hive_key)
         .create_subkey_with_flags(key_path, KEY_WRITE)
@@ -339,16 +326,8 @@ pub fn set_qword(
         value_name,
         value
     );
+    require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
-
-    // For HKLM, we need write permissions which typically require admin
-    if matches!(hive, RegistryHive::HKLM) {
-        use crate::services::system_info_service::is_running_as_admin;
-        if !is_running_as_admin() {
-            log::warn!("HKLM write requires admin privileges");
-            return Err(Error::RequiresAdmin);
-        }
-    }
 
     let (reg_key, _) = RegKey::predef(hive_key)
         .create_subkey_with_flags(key_path, KEY_WRITE)
@@ -371,16 +350,8 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
         key_path,
         value_name
     );
+    require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
-
-    // For HKLM, we need write permissions which typically require admin
-    if matches!(hive, RegistryHive::HKLM) {
-        use crate::services::system_info_service::is_running_as_admin;
-        if !is_running_as_admin() {
-            log::warn!("HKLM delete requires admin privileges");
-            return Err(Error::RequiresAdmin);
-        }
-    }
 
     let reg_key = RegKey::predef(hive_key)
         .open_subkey_with_flags(key_path, KEY_WRITE)
@@ -402,16 +373,8 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
 #[allow(dead_code)]
 pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     log::debug!("Creating key {}\\{}", hive_name(hive), key_path);
+    require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
-
-    // For HKLM, we need write permissions which typically require admin
-    if matches!(hive, RegistryHive::HKLM) {
-        use crate::services::system_info_service::is_running_as_admin;
-        if !is_running_as_admin() {
-            log::warn!("HKLM create requires admin privileges");
-            return Err(Error::RequiresAdmin);
-        }
-    }
 
     RegKey::predef(hive_key)
         .create_subkey_with_flags(key_path, KEY_WRITE)
