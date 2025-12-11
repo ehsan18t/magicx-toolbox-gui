@@ -1,6 +1,7 @@
 <script lang="ts">
   import { navigateToCategory } from "$lib/stores/navigation";
   import { categoriesStore, categoryStats, systemStore } from "$lib/stores/tweaks";
+  import HardwareItem from "./HardwareItem.svelte";
   import Icon from "./Icon.svelte";
 
   // Format clock speed
@@ -120,153 +121,94 @@
 
     <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
       <!-- CPU -->
-      <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-          <Icon icon="mdi:cpu-64-bit" width="20" class="text-accent" />
-        </div>
-        <div class="flex min-w-0 flex-1 flex-col">
-          <span class="text-xs font-medium text-foreground-muted uppercase">Processor</span>
-          <div class="flex items-center justify-between gap-2">
-            <h3 class="line-clamp-1 text-sm font-semibold text-foreground" title={$systemStore?.hardware?.cpu?.name}>
-              {$systemStore?.hardware?.cpu?.name ?? "Unknown CPU"}
-            </h3>
-          </div>
-          <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
-            <span>{$systemStore?.hardware?.cpu?.cores ?? 0} Cores</span>
-            <span class="h-1 w-1 rounded-full bg-border"></span>
-            <span>{formatClockSpeed($systemStore?.hardware?.cpu?.max_clock_mhz ?? 0)}</span>
-          </div>
-        </div>
-      </div>
+      <HardwareItem icon="mdi:cpu-64-bit" label="Processor" title={$systemStore?.hardware?.cpu?.name ?? "Unknown CPU"}>
+        <span>{$systemStore?.hardware?.cpu?.cores ?? 0} Cores</span>
+        <span class="h-1 w-1 rounded-full bg-border"></span>
+        <span>{formatClockSpeed($systemStore?.hardware?.cpu?.max_clock_mhz ?? 0)}</span>
+      </HardwareItem>
 
       <!-- GPU(s) -->
       {#if $systemStore?.hardware?.gpu && $systemStore.hardware.gpu.length > 0}
         {#each $systemStore.hardware.gpu as gpu, i (i)}
-          <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-              <Icon icon="mdi:expansion-card" width="20" class="text-accent" />
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col">
-              <span class="text-xs font-medium text-foreground-muted uppercase">
-                Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ""}
-              </span>
-              <h3 class="line-clamp-1 text-sm font-semibold text-foreground" title={gpu.name}>
-                {gpu.name}
-              </h3>
-              <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
-                <span
-                  >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
-                >
-                {#if gpu.refresh_rate > 0}
-                  <span class="h-1 w-1 rounded-full bg-border"></span>
-                  <span>{gpu.refresh_rate}Hz</span>
-                {/if}
-              </div>
-            </div>
-          </div>
+          <HardwareItem
+            icon="mdi:expansion-card"
+            label="Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
+            title={gpu.name}
+          >
+            <span
+              >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
+            >
+            {#if gpu.refresh_rate > 0}
+              <span class="h-1 w-1 rounded-full bg-border"></span>
+              <span>{gpu.refresh_rate}Hz</span>
+            {/if}
+          </HardwareItem>
         {/each}
       {/if}
 
       <!-- Memory -->
-      <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-          <Icon icon="ri:ram-line" width="20" class="text-accent" />
-        </div>
-        <div class="flex min-w-0 flex-1 flex-col">
-          <span class="text-xs font-medium text-foreground-muted uppercase">Memory</span>
-          <h3 class="truncate text-sm font-semibold text-foreground">
-            {$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory?.memory_type ?? ""}
-          </h3>
-          <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
-            <span>{$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz</span>
-            <span class="h-1 w-1 rounded-full bg-border"></span>
-            <span>{$systemStore?.hardware?.memory?.slots_used ?? 0} / 4 Slots</span>
-          </div>
-        </div>
-      </div>
+      <HardwareItem
+        icon="ri:ram-line"
+        label="Memory"
+        title="{$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory?.memory_type ?? ''}"
+      >
+        <span>{$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz</span>
+        <span class="h-1 w-1 rounded-full bg-border"></span>
+        <span>{$systemStore?.hardware?.memory?.slots_used ?? 0} / 4 Slots</span>
+      </HardwareItem>
 
       <!-- Storage Drives -->
       {#if $systemStore?.hardware?.disks && $systemStore.hardware.disks.length > 0}
         {#each $systemStore.hardware.disks as disk, i (i)}
-          <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-              <Icon
-                icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
-                width="20"
-                class="text-accent"
-              />
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-foreground-muted uppercase">
-                  Storage{$systemStore.hardware.disks.length > 1 ? ` ${i + 1}` : ""}
+          <HardwareItem
+            icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
+            label="Storage{$systemStore.hardware.disks.length > 1 ? ` ${i + 1}` : ''}"
+            title={disk.model}
+          >
+            {#snippet headerExtra()}
+              {#if disk.health_status}
+                <span class="text-xs font-medium {disk.health_status === 'Healthy' ? 'text-success' : 'text-warning'}">
+                  {disk.health_status}
                 </span>
-                {#if disk.health_status}
-                  <span
-                    class="text-[10px] font-medium {disk.health_status === 'Healthy' ? 'text-success' : 'text-warning'}"
-                  >
-                    {disk.health_status}
-                  </span>
-                {/if}
-              </div>
-              <h3 class="truncate text-sm font-semibold text-foreground" title={disk.model}>
-                {disk.model}
-              </h3>
-              <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
-                <span>{formatStorage(disk.size_gb)}</span>
-                {#if disk.interface_type && disk.interface_type !== "Unknown"}
-                  <span class="h-1 w-1 rounded-full bg-border"></span>
-                  <span>{disk.interface_type}</span>
-                {/if}
-              </div>
-            </div>
-          </div>
+              {/if}
+            {/snippet}
+
+            <span>{formatStorage(disk.size_gb)}</span>
+            {#if disk.interface_type && disk.interface_type !== "Unknown"}
+              <span class="h-1 w-1 rounded-full bg-border"></span>
+              <span>{disk.interface_type}</span>
+            {/if}
+          </HardwareItem>
         {/each}
       {/if}
 
       <!-- Network -->
       {#if $systemStore?.hardware?.network && $systemStore.hardware.network.length > 0}
         {#each $systemStore.hardware.network as net, i (i)}
-          <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-              <Icon icon="mdi:ethernet" width="20" class="text-accent" />
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col">
-              <span class="text-xs font-medium text-foreground-muted uppercase">
-                Network{$systemStore.hardware.network.length > 1 ? ` ${i + 1}` : ""}
-              </span>
-              <h3 class="line-clamp-1 text-sm font-semibold text-foreground" title={net.name}>
-                {net.name}
-              </h3>
-              <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
-                <span>{net.ip_address}</span>
-                <span class="h-1 w-1 rounded-full bg-border"></span>
-                <span class="truncate font-mono text-[10px] uppercase">{net.mac_address}</span>
-              </div>
-            </div>
-          </div>
+          <HardwareItem
+            icon="mdi:ethernet"
+            label="Network{$systemStore.hardware.network.length > 1 ? ` ${i + 1}` : ''}"
+            title={net.name}
+          >
+            <span>{net.ip_address}</span>
+            <span class="h-1 w-1 rounded-full bg-border"></span>
+            <span class="truncate font-mono text-[10px] uppercase">{net.mac_address}</span>
+          </HardwareItem>
         {/each}
       {/if}
 
       <!-- Motherboard -->
-      <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-          <Icon icon="bi:motherboard" width="20" class="text-accent" />
-        </div>
-        <div class="flex min-w-0 flex-1 flex-col">
-          <span class="text-xs font-medium text-foreground-muted uppercase">Motherboard</span>
-          <h3 class="truncate text-sm font-semibold text-foreground">
-            {$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
-          </h3>
-          <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
-            <span class="truncate">{$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
-            {#if $systemStore?.hardware?.motherboard?.bios_version}
-              <span class="h-1 w-1 rounded-full bg-border"></span>
-              <span class="truncate">BIOS: {$systemStore?.hardware?.motherboard?.bios_version}</span>
-            {/if}
-          </div>
-        </div>
-      </div>
+      <HardwareItem
+        icon="bi:motherboard"
+        label="Motherboard"
+        title={$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
+      >
+        <span class="truncate">{$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
+        {#if $systemStore?.hardware?.motherboard?.bios_version}
+          <span class="h-1 w-1 rounded-full bg-border"></span>
+          <span class="truncate">BIOS: {$systemStore?.hardware?.motherboard?.bios_version}</span>
+        {/if}
+      </HardwareItem>
     </div>
   </div>
 
