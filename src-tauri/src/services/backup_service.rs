@@ -507,17 +507,27 @@ pub fn detect_conflicts(
             .collect();
 
         if !other_tweaks.is_empty() {
-            // Use stored value_type from baseline if available, otherwise try REG_DWORD
-            let value_type = baseline
-                .get_entry(&key_id)
-                .map(|e| e.value_type.as_str())
-                .unwrap_or("REG_DWORD");
-            let current_value = read_current_value(hive, key, value_name, value_type)
-                .ok()
-                .and_then(|(v, _)| v);
-            let baseline_value = baseline
-                .get_entry(&key_id)
-                .and_then(|e| e.original_value.clone());
+            // Get baseline entry - it MUST exist if other tweaks have modified this key
+            let baseline_entry = baseline.get_entry(&key_id);
+
+            let (current_value, baseline_value) = match baseline_entry {
+                Some(entry) => {
+                    // Read current value using the correct type from baseline
+                    let current = read_current_value(hive, key, value_name, &entry.value_type)
+                        .ok()
+                        .and_then(|(v, _)| v);
+                    let original = entry.original_value.clone();
+                    (current, original)
+                }
+                None => {
+                    // This is a data integrity issue - baseline should exist for any modified key
+                    log::error!(
+                        "Baseline entry missing for conflicting key '{}' - data integrity issue",
+                        key_id
+                    );
+                    (None, None)
+                }
+            };
 
             conflicts.push(KeyConflict {
                 key_id: key_id.clone(),
