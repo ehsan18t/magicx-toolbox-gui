@@ -504,10 +504,21 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         }
 
         // Apply disable_value for each registry change
+        // Track if any writes fail so we can clean up
+        let mut write_failed = false;
+        let mut write_error: Option<Error> = None;
+
         for change in &changes {
             if let Some(ref disable_value) = change.disable_value {
                 // Use disable_value from YAML
-                write_registry_value(&app, change, disable_value, "Disabling", &tweak.name)?;
+                if let Err(e) =
+                    write_registry_value(&app, change, disable_value, "Disabling", &tweak.name)
+                {
+                    log::error!("Failed to write disable_value: {}", e);
+                    write_failed = true;
+                    write_error = Some(e);
+                    break;
+                }
             } else {
                 // No disable_value - delete the key (restore to "not configured")
                 log::debug!(
@@ -519,6 +530,17 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
                 let _ =
                     registry_service::delete_value(&change.hive, &change.key, &change.value_name);
             }
+        }
+
+        // If any write failed, delete the snapshot we just created and return error
+        if write_failed {
+            log::error!(
+                "Failed to apply disable_value for '{}' - deleting snapshot",
+                tweak.name
+            );
+            let _ = backup_service::delete_snapshot(&tweak_id);
+            return Err(write_error
+                .unwrap_or_else(|| Error::RegistryOperation("Unknown error".to_string())));
         }
     }
 
