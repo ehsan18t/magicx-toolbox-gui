@@ -103,7 +103,9 @@ tweaks:
     pre_commands:
       - "sc config ucpd start= disabled"
       - "schtasks /Change /TN \"Microsoft\\Windows\\AppxDeploymentClient\\UCPD velocity\" /Disable"
+      - "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" /v TaskbarDa /t REG_DWORD /d 0 /f"
     post_commands:
+      - "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" /v TaskbarDa /t REG_DWORD /d 1 /f"
       - "sc config ucpd start= demand"
       - "schtasks /Change /TN \"Microsoft\\Windows\\AppxDeploymentClient\\UCPD velocity\" /Enable"
     registry_changes:

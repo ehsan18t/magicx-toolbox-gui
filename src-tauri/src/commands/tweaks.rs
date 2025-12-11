@@ -250,7 +250,11 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     if let Some(ref commands) = tweak.pre_commands {
         for cmd in commands {
             log::info!("Running pre-command: {}", cmd);
-            let output = std::process::Command::new("cmd").args(["/c", cmd]).output();
+            // Use raw_arg to pass the command string without Rust's automatic quoting
+            use std::os::windows::process::CommandExt;
+            let output = std::process::Command::new("cmd")
+                .raw_arg(format!("/C {}", cmd))
+                .output();
 
             match output {
                 Ok(result) => {
@@ -574,7 +578,11 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         if let Some(ref commands) = tweak.pre_commands {
             for cmd in commands {
                 log::info!("Running pre-command: {}", cmd);
-                let output = std::process::Command::new("cmd").args(["/c", cmd]).output();
+                // Use raw_arg to pass the command string without Rust's automatic quoting
+                use std::os::windows::process::CommandExt;
+                let output = std::process::Command::new("cmd")
+                    .raw_arg(format!("/C {}", cmd))
+                    .output();
 
                 match output {
                     Ok(result) => {
