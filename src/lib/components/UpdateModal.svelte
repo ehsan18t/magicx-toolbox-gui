@@ -1,20 +1,22 @@
 <script lang="ts">
   import { closeModal, modalStore } from "$lib/stores/modal";
   import { settingsStore } from "$lib/stores/settings";
-  import type { UpdateInfo } from "$lib/types";
+  import { updateStore } from "$lib/stores/update";
   import { getVersion } from "@tauri-apps/api/app";
-  import { invoke } from "@tauri-apps/api/core";
+  import { exit } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
   import ExternalLink from "./ExternalLink.svelte";
   import Icon from "./Icon.svelte";
 
   let appVersion = $state("1.0.0");
-  let isChecking = $state(false);
-  let isInstalling = $state(false);
-  let updateInfo = $state<UpdateInfo | null>(null);
-  let error = $state<string | null>(null);
 
   const isOpen = $derived($modalStore === "update");
+
+  // Get state from store
+  const isChecking = $derived($updateStore.isChecking);
+  const isInstalling = $derived($updateStore.isInstalling);
+  const updateInfo = $derived($updateStore.updateInfo);
+  const error = $derived($updateStore.error);
 
   // Get settings from store
   let autoCheckUpdates = $state(true);
@@ -59,42 +61,30 @@
 
   async function checkForUpdate() {
     if (isChecking) return;
-    isChecking = true;
-    error = null;
-
-    try {
-      const result = await invoke<UpdateInfo>("check_for_update");
-      updateInfo = result;
+    updateStore.clearError();
+    const result = await updateStore.checkForUpdate(false);
+    if (result) {
       settingsStore.setLastUpdateCheck(new Date().toISOString());
-    } catch (err) {
-      console.error("Update check failed:", err);
-      error = err instanceof Error ? err.message : String(err);
-      // Fallback: show current version as up to date
-      updateInfo = {
-        available: false,
-        currentVersion: appVersion,
-      };
-    } finally {
-      isChecking = false;
     }
   }
 
   async function installUpdate() {
     if (isInstalling || !updateInfo?.available) return;
-    isInstalling = true;
-    error = null;
-
-    try {
-      await invoke("install_update");
-    } catch (err) {
-      console.error("Update installation failed:", err);
-      error = err instanceof Error ? err.message : String(err);
-    } finally {
-      isInstalling = false;
+    const success = await updateStore.installUpdate();
+    if (success) {
+      // Exit the app after a short delay to allow the installer to start
+      setTimeout(async () => {
+        try {
+          await exit(0);
+        } catch {
+          // If exit fails, just close the modal
+          closeModal();
+        }
+      }, 1000);
     }
   }
 
-  function formatDate(dateString: string | undefined): string {
+  function formatDate(dateString: string | undefined | null): string {
     if (!dateString) return "Unknown";
     try {
       return new Date(dateString).toLocaleDateString(undefined, {
@@ -105,6 +95,12 @@
     } catch {
       return dateString;
     }
+  }
+
+  function formatBytes(bytes: number | undefined): string {
+    if (!bytes) return "";
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(1)} MB`;
   }
 </script>
 
@@ -146,9 +142,17 @@
       <div class="space-y-5 px-5 py-5">
         <!-- Error Message -->
         {#if error}
-          <div class="flex items-center gap-2 rounded-lg bg-error/15 p-3 text-error">
-            <Icon icon="mdi:alert-circle" width="18" />
-            <span class="text-sm">{error}</span>
+          <div class="flex items-start gap-2 rounded-lg bg-error/15 p-3 text-error">
+            <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0" />
+            <div class="flex-1">
+              <span class="text-sm">{error}</span>
+              <button
+                class="ml-2 text-xs underline opacity-70 hover:opacity-100"
+                onclick={() => updateStore.clearError()}
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         {/if}
 
@@ -170,6 +174,11 @@
                     (released {formatDate(updateInfo.publishedAt)})
                   {/if}
                 </p>
+                {#if updateInfo.assetSize}
+                  <p class="m-0 mt-0.5 text-xs text-foreground-subtle">
+                    Download size: {formatBytes(updateInfo.assetSize)}
+                  </p>
+                {/if}
               </div>
             </div>
 
@@ -185,23 +194,30 @@
             {/if}
 
             <div class="flex gap-2">
-              <button
-                class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
-                onclick={installUpdate}
-                disabled={isInstalling}
-              >
-                {#if isInstalling}
-                  <Icon icon="mdi:loading" width="18" class="animate-spin" />
-                  Installing...
-                {:else}
-                  <Icon icon="mdi:download" width="18" />
-                  Install Update
-                {/if}
-              </button>
+              {#if updateInfo.downloadUrl && updateInfo.assetName}
+                <button
+                  class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  onclick={installUpdate}
+                  disabled={isInstalling}
+                >
+                  {#if isInstalling}
+                    <Icon icon="mdi:loading" width="18" class="animate-spin" />
+                    Downloading...
+                  {:else}
+                    <Icon icon="mdi:download" width="18" />
+                    Install Update
+                  {/if}
+                </button>
+              {:else}
+                <span class="flex-1 text-center text-sm text-foreground-muted">
+                  No compatible installer found
+                </span>
+              {/if}
               {#if updateInfo.downloadUrl}
                 <ExternalLink
                   href={updateInfo.downloadUrl}
                   class="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-[hsl(var(--muted))] px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted)/0.8)]"
+                  title="Download manually"
                 >
                   <Icon icon="mdi:open-in-new" width="16" />
                 </ExternalLink>
@@ -238,20 +254,22 @@
           {/if}
         </div>
 
-        <!-- Check for Updates Button -->
-        <button
-          class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-[hsl(var(--muted))] px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted)/0.8)] disabled:cursor-not-allowed disabled:opacity-50"
-          onclick={checkForUpdate}
-          disabled={isChecking}
-        >
-          {#if isChecking}
-            <Icon icon="mdi:loading" width="18" class="animate-spin" />
-            Checking for updates...
-          {:else}
-            <Icon icon="mdi:refresh" width="18" />
-            Check for Updates
-          {/if}
-        </button>
+        <!-- Check for Updates Button (only show if no update available or never checked) -->
+        {#if !updateInfo?.available}
+          <button
+            class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-[hsl(var(--muted))] px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted)/0.8)] disabled:cursor-not-allowed disabled:opacity-50"
+            onclick={checkForUpdate}
+            disabled={isChecking}
+          >
+            {#if isChecking}
+              <Icon icon="mdi:loading" width="18" class="animate-spin" />
+              Checking for updates...
+            {:else}
+              <Icon icon="mdi:refresh" width="18" />
+              Check for Updates
+            {/if}
+          </button>
+        {/if}
 
         <!-- Settings Section -->
         <div class="rounded-lg border border-border bg-surface p-4">
@@ -296,7 +314,7 @@
                   Automatically install updates
                 </span>
                 <span class="block text-xs text-foreground-muted">
-                  Download and install updates automatically
+                  Download and install updates automatically (coming soon)
                 </span>
               </div>
               <button
@@ -304,7 +322,8 @@
                 role="switch"
                 aria-checked={autoInstallUpdates}
                 aria-label="Toggle automatic update installation"
-                class="relative h-6 w-11 shrink-0 cursor-pointer rounded-full border-0 transition-colors {autoInstallUpdates
+                disabled
+                class="relative h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-0 opacity-50 transition-colors {autoInstallUpdates
                   ? 'bg-accent'
                   : 'bg-[hsl(var(--muted))]'}"
                 onclick={handleAutoInstallToggle}
@@ -344,14 +363,5 @@
 
   .animate-in {
     animation: zoom-in-95 0.2s ease-out;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

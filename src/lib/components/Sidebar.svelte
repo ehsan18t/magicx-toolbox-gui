@@ -2,6 +2,7 @@
   import { openAboutModal, openSettingsModal, openUpdateModal } from "$lib/stores/modal";
   import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
   import { categoryStats, tweakStats } from "$lib/stores/tweaks";
+  import { isUpdateAvailable } from "$lib/stores/update";
   import { onMount } from "svelte";
   import ColorSchemePicker from "./ColorSchemePicker.svelte";
   import Icon from "./Icon.svelte";
@@ -68,7 +69,7 @@
   </div>
 
   <!-- Navigation -->
-  <nav class="flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2">
+  <nav class="nav-scrollbar flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2">
     {#each $allTabs as tab (tab.id)}
       {@const stats = tab.id !== "overview" ? $categoryStats[tab.id] : null}
       {@const isActive = $activeTab === tab.id}
@@ -86,17 +87,13 @@
         >
           <Icon icon={tab.icon || "mdi:folder"} width="22" />
           {#if stats && stats.applied > 0 && !sidebarExpanded}
-            <span
-              class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-surface bg-success"
-            ></span>
+            <span class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-surface bg-success"></span>
           {/if}
         </div>
         <span
           class="flex-1 text-left text-sm font-medium whitespace-nowrap transition-all duration-200 {isActive
             ? 'text-accent'
-            : 'text-foreground'} {sidebarExpanded
-            ? 'translate-x-0 opacity-100'
-            : '-translate-x-2.5 opacity-0'}"
+            : 'text-foreground'} {sidebarExpanded ? 'translate-x-0 opacity-100' : '-translate-x-2.5 opacity-0'}"
         >
           {tab.name}
         </span>
@@ -112,9 +109,7 @@
           </span>
         {/if}
         {#if isActive}
-          <div
-            class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm bg-accent"
-          ></div>
+          <div class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm bg-accent"></div>
         {/if}
       </button>
     {/each}
@@ -126,16 +121,12 @@
       <div class="flex items-center justify-center gap-4 py-2">
         <div class="flex flex-col items-center gap-0.5">
           <span class="text-lg font-bold text-foreground">{$tweakStats.applied}</span>
-          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase"
-            >Applied</span
-          >
+          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Applied</span>
         </div>
         <div class="h-6 w-px bg-border"></div>
         <div class="flex flex-col items-center gap-0.5">
           <span class="text-lg font-bold text-foreground">{$tweakStats.total}</span>
-          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase"
-            >Total</span
-          >
+          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Total</span>
         </div>
       </div>
 
@@ -163,28 +154,23 @@
 
       <!-- Update button -->
       <button
-        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
+        class="relative {$isUpdateAvailable ? 'text-success' : 'text-foreground-muted'} {sidebarExpanded ? 'shrink-0' : 'w-full'}"
         onclick={openUpdateModal}
-        title="Updates"
+        title={$isUpdateAvailable ? "Update available!" : "Updates"}
       >
         <Icon icon="mdi:update" width="22" />
+        {#if $isUpdateAvailable}
+          <span class="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success"></span>
+        {/if}
       </button>
 
       <!-- Settings button -->
-      <button
-        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
-        onclick={openSettingsModal}
-        title="Settings"
-      >
+      <button class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}" onclick={openSettingsModal} title="Settings">
         <Icon icon="mdi:settings-outline" width="22" />
       </button>
 
       <!-- About button -->
-      <button
-        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
-        onclick={openAboutModal}
-        title="About"
-      >
+      <button class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}" onclick={openAboutModal} title="About">
         <Icon icon="mdi:information-outline" width="22" />
       </button>
     </div>
@@ -197,6 +183,16 @@
   .sidebar-controls {
     & > button {
       @apply flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-accent/10 hover:text-accent;
+    }
+  }
+
+  /* Hide scrollbar but keep scrolling */
+  .nav-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+
+    &::-webkit-scrollbar {
+      display: none; /* Chrome/Safari/Opera */
     }
   }
 </style>

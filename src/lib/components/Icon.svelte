@@ -41,6 +41,7 @@
   import MdiInformationOutline from "~icons/mdi/information-outline";
   import MdiKeyVariant from "~icons/mdi/key-variant";
   import MdiLaptop from "~icons/mdi/laptop";
+  import MdiLicense from "~icons/mdi/license";
   import MdiLightbulbOutline from "~icons/mdi/lightbulb-outline";
   import MdiLoading from "~icons/mdi/loading";
   import MdiMagicStaff from "~icons/mdi/magic-staff";
@@ -150,6 +151,7 @@
     "mdi:github": MdiGithub,
     "mdi:import": MdiImport,
     "mdi:information": MdiInformation,
+    "mdi:license": MdiLicense,
     "mdi:open-in-new": MdiOpenInNew,
     "mdi:web": MdiWeb,
     "mdi:account-circle": MdiAccountCircle,

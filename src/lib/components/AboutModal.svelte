@@ -1,22 +1,20 @@
 <script lang="ts">
+  import { APP_CONFIG } from "$lib/config/app";
   import { closeModal, modalStore } from "$lib/stores/modal";
-  import { getName, getVersion } from "@tauri-apps/api/app";
+  import { getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
   import ExternalLink from "./ExternalLink.svelte";
   import Icon from "./Icon.svelte";
 
-  let appName = $state("MagicX Toolbox");
   let appVersion = $state("1.0.0");
 
   const isOpen = $derived($modalStore === "about");
 
   onMount(async () => {
     try {
-      const [name, version] = await Promise.all([getName(), getVersion()]);
-      appName = name;
-      appVersion = version;
+      appVersion = await getVersion();
     } catch (error) {
-      console.error("Failed to get app info:", error);
+      console.error("Failed to get app version:", error);
     }
   });
 
@@ -40,9 +38,10 @@
   };
 
   const links = {
-    repository: "https://github.com/ehsan18t/magicx-toolbox-gui",
-    issues: "https://github.com/ehsan18t/magicx-toolbox-gui/issues",
-    releases: "https://github.com/ehsan18t/magicx-toolbox-gui/releases",
+    repository: APP_CONFIG.githubRepo,
+    issues: `${APP_CONFIG.githubRepo}/issues`,
+    releases: `${APP_CONFIG.githubRepo}/releases`,
+    license: `${APP_CONFIG.githubRepo}/blob/main/LICENSE`,
   };
 </script>
 
@@ -55,103 +54,122 @@
     onclick={handleBackdropClick}
   >
     <div
-      class="animate-in zoom-in-95 w-[min(90vw,480px)] rounded-xl border border-border bg-card shadow-xl duration-200"
+      class="animate-in zoom-in-95 w-[min(90vw,420px)] overflow-hidden rounded-xl border border-border bg-card shadow-2xl duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="about-title"
     >
-      <!-- Header -->
-      <div class="flex items-center justify-between border-b border-border px-5 py-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
-            <Icon icon="mdi:magic-staff" width="24" class="text-accent" />
-          </div>
-          <div>
-            <h2 id="about-title" class="m-0 text-lg font-bold text-foreground">{appName}</h2>
-            <span class="text-sm text-foreground-muted">v{appVersion}</span>
-          </div>
-        </div>
+      <!-- Header with gradient accent -->
+      <div
+        class="relative bg-linear-to-br from-accent/20 via-accent/10 to-transparent px-6 pt-6 pb-4"
+      >
+        <!-- Close button -->
         <button
-          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:bg-[hsl(var(--muted))] hover:text-foreground"
+          class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-black/10 text-foreground-muted transition-colors hover:bg-black/20 hover:text-foreground"
           onclick={closeModal}
           aria-label="Close"
         >
-          <Icon icon="mdi:close" width="20" />
+          <Icon icon="mdi:close" width="18" />
         </button>
+
+        <!-- App branding -->
+        <div class="flex flex-col items-center text-center">
+          <div
+            class="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/20 shadow-lg"
+          >
+            <Icon icon="mdi:magic-staff" width="36" class="text-accent" />
+          </div>
+          <h2 id="about-title" class="m-0 text-xl font-bold text-foreground">
+            {APP_CONFIG.appName}
+          </h2>
+          <div class="mt-1 flex items-center gap-2">
+            <span class="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent">
+              v{appVersion}
+            </span>
+          </div>
+        </div>
       </div>
 
       <!-- Body -->
-      <div class="space-y-5 px-5 py-5">
+      <div class="space-y-4 px-6 py-5">
         <!-- Description -->
-        <p class="m-0 text-sm leading-relaxed text-foreground-muted">
-          A powerful Windows system optimization and tweaking application. Customize your Windows
-          experience with easy-to-use tweaks for privacy, performance, and UI enhancements.
+        <p class="m-0 text-center text-sm leading-relaxed text-foreground-muted">
+          A powerful Windows system optimization and tweaking application for privacy, performance,
+          and customization.
         </p>
 
-        <!-- Developer Section -->
-        <div class="rounded-lg border border-border bg-surface p-4">
-          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Icon icon="mdi:account-circle" width="18" class="text-accent" />
-            Developer
-          </h3>
-          <div class="space-y-2">
-            <div class="flex items-center gap-2">
-              <Icon icon="mdi:account" width="16" class="text-foreground-muted" />
-              <span class="text-sm text-foreground">{developer.name}</span>
+        <!-- Quick Links -->
+        <div class="grid grid-cols-2 gap-2">
+          <ExternalLink
+            href={links.repository}
+            class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+          >
+            <Icon icon="mdi:github" width="18" />
+            <span>Source</span>
+          </ExternalLink>
+          <ExternalLink
+            href={links.releases}
+            class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+          >
+            <Icon icon="mdi:download" width="18" />
+            <span>Releases</span>
+          </ExternalLink>
+          <ExternalLink
+            href={links.issues}
+            class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+          >
+            <Icon icon="mdi:bug" width="18" />
+            <span>Report Bug</span>
+          </ExternalLink>
+          <ExternalLink
+            href={links.license}
+            class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+          >
+            <Icon icon="mdi:license" width="18" />
+            <span>MIT License</span>
+          </ExternalLink>
+        </div>
+
+        <!-- Developer Card -->
+        <div class="rounded-lg border border-border bg-surface/50 p-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent/15">
+              <Icon icon="mdi:account" width="20" class="text-accent" />
             </div>
-            <div class="flex items-center gap-2">
-              <Icon icon="mdi:email" width="16" class="text-foreground-muted" />
-              <a href="mailto:{developer.email}" class="text-sm text-accent hover:underline">
-                {developer.email}
+            <div class="flex-1">
+              <span class="block text-sm font-semibold text-foreground">{developer.name}</span>
+              <span class="text-xs text-foreground-muted">Developer</span>
+            </div>
+            <div class="flex gap-1">
+              <ExternalLink
+                href={developer.github}
+                class="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-accent/10 hover:text-accent"
+                title="GitHub"
+              >
+                <Icon icon="mdi:github" width="18" />
+              </ExternalLink>
+              <ExternalLink
+                href={developer.website}
+                class="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-accent/10 hover:text-accent"
+                title="Website"
+              >
+                <Icon icon="mdi:web" width="18" />
+              </ExternalLink>
+              <a
+                href="mailto:{developer.email}"
+                class="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-accent/10 hover:text-accent"
+                title="Email"
+              >
+                <Icon icon="mdi:email" width="18" />
               </a>
-            </div>
-            <div class="flex items-center gap-2">
-              <Icon icon="mdi:github" width="16" class="text-foreground-muted" />
-              <ExternalLink href={developer.github} class="text-sm text-accent hover:underline">
-                @ehsan18t
-              </ExternalLink>
-            </div>
-            <div class="flex items-center gap-2">
-              <Icon icon="mdi:web" width="16" class="text-foreground-muted" />
-              <ExternalLink href={developer.website} class="text-sm text-accent hover:underline">
-                ehsankhan.me
-              </ExternalLink>
             </div>
           </div>
         </div>
 
-        <!-- Links Section -->
-        <div class="flex flex-wrap gap-2">
-          <ExternalLink
-            href={links.repository}
-            class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
-          >
-            <Icon icon="mdi:github" width="16" />
-            Repository
-          </ExternalLink>
-          <ExternalLink
-            href={links.issues}
-            class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
-          >
-            <Icon icon="mdi:bug" width="16" />
-            Report Issue
-          </ExternalLink>
-          <ExternalLink
-            href={links.releases}
-            class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
-          >
-            <Icon icon="mdi:download" width="16" />
-            Releases
-          </ExternalLink>
-        </div>
-
-        <!-- License & Copyright -->
-        <div class="border-t border-border pt-4 text-center">
-          <p class="m-0 text-xs text-foreground-muted">Licensed under MIT License</p>
-          <p class="m-0 mt-1 text-xs text-foreground-subtle">
-            Copyright © 2025 Ehsan Khan. All rights reserved.
-          </p>
-        </div>
+        <!-- Footer -->
+        <p class="m-0 text-center text-[11px] text-foreground-subtle">
+          © 2025 {developer.name}. Made with ❤️ for Windows users.
+        </p>
       </div>
     </div>
   </div>

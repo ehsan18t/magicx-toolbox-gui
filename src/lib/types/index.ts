@@ -312,6 +312,10 @@ export interface UpdateInfo {
   releaseNotes?: string;
   downloadUrl?: string;
   publishedAt?: string;
+  /** Asset file name for download */
+  assetName?: string;
+  /** Asset size in bytes */
+  assetSize?: number;
 }
 
 /** Update check result */

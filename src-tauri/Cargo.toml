@@ -34,6 +34,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-prevent-default = "4"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-process = "2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -43,6 +44,10 @@ serde_json = "1"
 log = "0.4"
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# HTTP client for update checking
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+regex = "1"
 
 # Windows-specific (only for Windows builds)
 [target.'cfg(windows)'.dependencies]

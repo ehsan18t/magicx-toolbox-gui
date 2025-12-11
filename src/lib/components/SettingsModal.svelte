@@ -250,13 +250,4 @@
   .animate-in {
     animation: zoom-in-95 0.2s ease-out;
   }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
 </style>

@@ -30,6 +30,9 @@ pub enum Error {
     #[error("Service control failed: {0}")]
     ServiceControl(String),
 
+    #[error("Update error: {0}")]
+    Update(String),
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }
