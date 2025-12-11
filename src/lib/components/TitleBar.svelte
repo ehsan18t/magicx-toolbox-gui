@@ -3,6 +3,7 @@
   import { themeStore } from "$lib/stores/theme";
   import Icon from "@iconify/svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
+  import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import ControlButton from "./ControlButton.svelte";
@@ -13,6 +14,8 @@
   let isMaximized = $state(false);
   let isLoaded = $state(false);
   let appIcon = $state("/icons/Toolbox.ico");
+  let canElevate = $state(false);
+  let isElevating = $state(false);
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
@@ -21,15 +24,17 @@
       try {
         appWindow = getCurrentWindow();
 
-        const [title, version, maximized] = await Promise.allSettled([
+        const [title, version, maximized, elevate] = await Promise.allSettled([
           getName(),
           getVersion(),
           appWindow.isMaximized(),
+          invoke<boolean>("can_elevate_to_trusted_installer"),
         ]);
 
         appName = title.status === "fulfilled" ? title.value : "MagicX Toolbox";
         appVersion = version.status === "fulfilled" ? version.value : "1.0.0";
         isMaximized = maximized.status === "fulfilled" ? maximized.value : false;
+        canElevate = elevate.status === "fulfilled" ? elevate.value : false;
 
         isLoaded = true;
 
@@ -83,6 +88,29 @@
   // Use theme store for theme toggling
   const toggleTheme = () => {
     themeStore.toggle();
+  };
+
+  // Restart as TrustedInstaller
+  const restartAsTrustedInstaller = async () => {
+    if (isElevating) return;
+
+    const confirmed = confirm(
+      "Restart as TrustedInstaller?\n\n" +
+        "This will restart the application with elevated privileges, " +
+        "allowing modification of protected registry keys.\n\n" +
+        "The current application will close.",
+    );
+
+    if (!confirmed) return;
+
+    isElevating = true;
+    try {
+      await invoke("restart_as_trusted_installer");
+    } catch (error) {
+      console.error("Failed to restart as TrustedInstaller:", error);
+      alert(`Failed to elevate: ${error}`);
+      isElevating = false;
+    }
   };
 </script>
 
@@ -147,6 +175,22 @@
           </span>
         {/if}
       </button>
+
+      <!-- TrustedInstaller Elevation Button (only shown if can elevate) -->
+      {#if canElevate}
+        <button
+          title={isElevating
+            ? "Restarting..."
+            : "Restart as TrustedInstaller (modify protected keys)"}
+          onclick={restartAsTrustedInstaller}
+          disabled={isElevating}
+          class="relative flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 hover:bg-foreground/10 {isElevating
+            ? 'animate-pulse text-accent'
+            : 'text-foreground-muted hover:text-accent'}"
+        >
+          <Icon icon="tabler:shield-up" width="18" height="18" />
+        </button>
+      {/if}
 
       <ControlButton
         title="Toggle Theme"

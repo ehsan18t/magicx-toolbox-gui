@@ -101,6 +101,9 @@ pub fn run() {
             commands::backup::get_backup_system_status,
             commands::backup::cleanup_old_backups,
             commands::backup::validate_snapshots,
+            // Elevation commands
+            commands::elevation::restart_as_trusted_installer,
+            commands::elevation::can_elevate_to_trusted_installer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
