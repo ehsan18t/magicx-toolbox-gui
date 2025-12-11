@@ -234,8 +234,12 @@
           <h3 class="truncate text-sm font-semibold text-foreground">
             {$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
           </h3>
-          <div class="mt-0.5 truncate text-xs text-foreground-muted">
-            {$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}
+          <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
+            <span class="truncate">{$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
+            {#if $systemStore?.hardware?.motherboard?.bios_version}
+              <span class="h-1 w-1 rounded-full bg-border"></span>
+              <span class="truncate">BIOS: {$systemStore?.hardware?.motherboard?.bios_version}</span>
+            {/if}
           </div>
         </div>
       </div>
