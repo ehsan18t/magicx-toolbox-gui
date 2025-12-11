@@ -1,7 +1,13 @@
 // Svelte store for tweak state management
-import { derived, writable, type Readable } from "svelte/store";
+import { derived, get, writable, type Readable } from "svelte/store";
 import * as api from "../api/tweaks";
-import type { CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "../types";
+import type {
+  CategoryDefinition,
+  PendingChange,
+  SystemInfo,
+  TweakStatus,
+  TweakWithStatus,
+} from "../types";
 
 // System info store
 function createSystemStore() {
@@ -152,6 +158,35 @@ function createPendingRebootStore() {
   };
 }
 
+// Pending changes store - tracks desired state before applying
+function createPendingChangesStore() {
+  const { subscribe, update, set } = writable<Map<string, PendingChange>>(new Map());
+
+  return {
+    subscribe,
+    setPending(tweakId: string, change: PendingChange) {
+      update((map) => {
+        const newMap = new Map(map);
+        newMap.set(tweakId, change);
+        return newMap;
+      });
+    },
+    clearPending(tweakId: string) {
+      update((map) => {
+        const newMap = new Map(map);
+        newMap.delete(tweakId);
+        return newMap;
+      });
+    },
+    clearAll() {
+      set(new Map());
+    },
+    getPending(tweakId: string): PendingChange | undefined {
+      return get({ subscribe }).get(tweakId);
+    },
+  };
+}
+
 // Create store instances
 export const systemStore = createSystemStore();
 export const categoriesStore = createCategoriesStore();
@@ -159,6 +194,7 @@ export const tweaksStore = createTweaksStore();
 export const loadingStore = createLoadingStore();
 export const errorStore = createErrorStore();
 export const pendingRebootStore = createPendingRebootStore();
+export const pendingChangesStore = createPendingChangesStore();
 
 // Selected category filter (now uses string instead of enum)
 export const selectedCategory = writable<string>("all");
@@ -362,6 +398,70 @@ export async function applyTweakOption(
   } finally {
     loadingStore.stopLoading(tweakId);
   }
+}
+
+// Stage a change (doesn't apply yet, just marks it pending)
+export function stageChange(tweakId: string, change: PendingChange): void {
+  pendingChangesStore.setPending(tweakId, change);
+}
+
+// Clear a pending change
+export function unstageChange(tweakId: string): void {
+  pendingChangesStore.clearPending(tweakId);
+}
+
+// Apply all pending changes
+export async function applyPendingChanges(): Promise<{ success: number; failed: number }> {
+  const pending = get(pendingChangesStore);
+  const tweaks = get(tweaksStore);
+  let success = 0;
+  let failed = 0;
+
+  for (const [tweakId, change] of pending) {
+    const tweak = tweaks.find((t) => t.definition.id === tweakId);
+    if (!tweak) continue;
+
+    let result = false;
+    if (change.type === "binary") {
+      if (change.enabled) {
+        result = await applyTweak(tweakId);
+      } else {
+        result = await revertTweak(tweakId);
+      }
+    } else if (change.type === "multistate") {
+      result = await applyTweakOption(
+        tweakId,
+        change.optionIndex,
+        tweak.definition.requires_reboot,
+      );
+    }
+
+    if (result) {
+      success++;
+      pendingChangesStore.clearPending(tweakId);
+    } else {
+      failed++;
+    }
+  }
+
+  return { success, failed };
+}
+
+// Derived: count of pending changes
+export const pendingChangesCount = derived(pendingChangesStore, ($pending) => $pending.size);
+
+// Derived: pending changes for a specific category
+export function getPendingForCategory(categoryId: string): Readable<Map<string, PendingChange>> {
+  return derived([pendingChangesStore, tweaksStore], ([$pending, $tweaks]) => {
+    const result = new Map<string, PendingChange>();
+    for (const [tweakId, change] of $pending) {
+      const tweak = $tweaks.find((t) => t.definition.id === tweakId);
+      if (tweak?.definition.category === categoryId) {
+        result.set(tweakId, change);
+      }
+    }
+    return result;
+  });
 }
 
 // Initialize all stores

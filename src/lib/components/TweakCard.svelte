@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { applyTweakOption, loadingStore, systemStore, toggleTweak } from "$lib/stores/tweaks";
+  import {
+    loadingStore,
+    pendingChangesStore,
+    stageChange,
+    systemStore,
+    unstageChange,
+  } from "$lib/stores/tweaks";
   import type { RegistryChange, RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
   import Icon from "@iconify/svelte";
@@ -53,26 +59,64 @@
     return firstChange?.options || [];
   });
 
-  // Current option index
+  // Current option index from registry (actual applied state)
   const currentOptionIndex = $derived(tweak.status.current_option_index ?? 0);
 
+  // Get pending change for this tweak
+  const pendingChange = derived(pendingChangesStore, ($pending) =>
+    $pending.get(tweak.definition.id),
+  );
+
+  // Determine if there's a pending change
+  const hasPending = $derived($pendingChange !== undefined);
+
+  // Calculate the effective state (what the user sees in the UI)
+  const effectiveEnabled = $derived.by(() => {
+    const pending = $pendingChange;
+    if (pending?.type === "binary") {
+      return pending.enabled;
+    }
+    return tweak.status.is_applied;
+  });
+
+  const effectiveOptionIndex = $derived.by(() => {
+    const pending = $pendingChange;
+    if (pending?.type === "multistate") {
+      return pending.optionIndex;
+    }
+    return currentOptionIndex;
+  });
+
   function handleToggleClick() {
-    if (isHighRisk && !tweak.status.is_applied) {
+    if (isHighRisk && !effectiveEnabled) {
       showConfirmDialog = true;
     } else {
       executeToggle();
     }
   }
 
-  async function executeToggle() {
+  function executeToggle() {
     showConfirmDialog = false;
-    await toggleTweak(tweak.definition.id, tweak.status.is_applied);
+    const newEnabled = !effectiveEnabled;
+
+    // If toggling back to current registry state, clear pending
+    if (newEnabled === tweak.status.is_applied) {
+      unstageChange(tweak.definition.id);
+    } else {
+      stageChange(tweak.definition.id, { type: "binary", enabled: newEnabled });
+    }
   }
 
-  async function handleOptionChange(event: Event) {
+  function handleOptionChange(event: Event) {
     const select = event.target as HTMLSelectElement;
     const optionIndex = parseInt(select.value, 10);
-    await applyTweakOption(tweak.definition.id, optionIndex, tweak.definition.requires_reboot);
+
+    // If selecting current registry state, clear pending
+    if (optionIndex === currentOptionIndex) {
+      unstageChange(tweak.definition.id);
+    } else {
+      stageChange(tweak.definition.id, { type: "multistate", optionIndex });
+    }
   }
 
   function formatRegistryPath(change: RegistryChange): string {
@@ -87,21 +131,27 @@
   }
 </script>
 
-<article class="tweak-card" class:applied={tweak.status.is_applied}>
-  <div class="status-bar" class:active={tweak.status.is_applied}></div>
+<article class="tweak-card" class:applied={tweak.status.is_applied} class:pending={hasPending}>
+  <div class="status-bar" class:active={tweak.status.is_applied} class:pending={hasPending}></div>
 
   <div class="card-content">
     <!-- Header Section: Title + Control (Toggle or Dropdown) -->
     <div class="header-section">
-      <h3 class="tweak-title">{tweak.definition.name}</h3>
+      <h3 class="tweak-title">
+        {tweak.definition.name}
+        {#if hasPending}
+          <span class="pending-badge">pending</span>
+        {/if}
+      </h3>
 
       {#if isMultiState}
         <!-- Multi-state: Dropdown -->
         <select
           class="option-select"
           class:loading={$isLoading}
+          class:pending={hasPending}
           disabled={$isLoading}
-          value={currentOptionIndex}
+          value={effectiveOptionIndex}
           onchange={handleOptionChange}
         >
           {#each options as option, i (i)}
@@ -112,13 +162,14 @@
         <!-- Binary: Toggle Switch -->
         <button
           class="toggle-switch"
-          class:active={tweak.status.is_applied}
+          class:active={effectiveEnabled}
+          class:pending={hasPending}
           class:loading={$isLoading}
           disabled={$isLoading}
           onclick={handleToggleClick}
-          aria-label={tweak.status.is_applied ? "Revert tweak" : "Apply tweak"}
+          aria-label={effectiveEnabled ? "Will revert tweak" : "Will apply tweak"}
           role="switch"
-          aria-checked={tweak.status.is_applied}
+          aria-checked={effectiveEnabled}
         >
           <span class="switch-track">
             <span class="switch-thumb">
@@ -254,6 +305,11 @@
     background: hsl(var(--primary) / 0.03);
   }
 
+  .tweak-card.pending {
+    border-color: hsl(var(--warning, 45 100% 50%) / 0.5);
+    background: hsl(var(--warning, 45 100% 50%) / 0.05);
+  }
+
   /* Status bar */
   .status-bar {
     width: 3px;
@@ -264,6 +320,10 @@
 
   .status-bar.active {
     background: hsl(var(--primary));
+  }
+
+  .status-bar.pending {
+    background: hsl(var(--warning, 45 100% 50%));
   }
 
   /* Card content */
@@ -289,6 +349,21 @@
     color: hsl(var(--foreground));
     line-height: 1.3;
     flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pending-badge {
+    display: inline-flex;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: hsl(var(--warning, 45 100% 35%));
+    background: hsl(var(--warning, 45 100% 50%) / 0.15);
+    border-radius: 4px;
+    letter-spacing: 0.5px;
   }
 
   /* Description */
@@ -395,6 +470,11 @@
     background-image: none;
   }
 
+  .option-select.pending {
+    border-color: hsl(var(--warning, 45 100% 50%));
+    background-color: hsl(var(--warning, 45 100% 50%) / 0.1);
+  }
+
   /* Toggle Switch */
   .toggle-switch {
     flex-shrink: 0;
@@ -425,6 +505,10 @@
 
   .toggle-switch.active:hover:not(:disabled) .switch-track {
     background: hsl(var(--primary) / 0.85);
+  }
+
+  .toggle-switch.pending .switch-track {
+    background: hsl(var(--warning, 45 100% 50%));
   }
 
   .toggle-switch:disabled {

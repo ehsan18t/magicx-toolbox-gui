@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { TabDefinition } from "$lib/stores/navigation";
-  import { applyTweak, loadingStore, revertTweak, tweaksStore } from "$lib/stores/tweaks";
+  import {
+    applyPendingChanges,
+    loadingStore,
+    pendingChangesStore,
+    revertTweak,
+    tweaksStore,
+  } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -33,11 +39,27 @@
 
   // Stats
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
-  const unappliedTweaks = $derived(categoryTweaks.filter((t) => !t.status.is_applied));
   const appliedTweaks = $derived(categoryTweaks.filter((t) => t.status.is_applied));
   const totalCount = $derived(categoryTweaks.length);
   const progressPercent = $derived(
     totalCount > 0 ? Math.round((appliedCount / totalCount) * 100) : 0,
+  );
+
+  // Pending changes for this category
+  const categoryPendingCount = derived(
+    [pendingChangesStore, tweaksStore],
+    ([$pending, $tweaks]) => {
+      let count = 0;
+      for (const [tweakId] of $pending) {
+        const tweak = $tweaks.find(
+          (t: { definition: { id: string } }) => t.definition.id === tweakId,
+        );
+        if (tweak?.definition.category === tab.id) {
+          count++;
+        }
+      }
+      return count;
+    },
   );
 
   // Loading state
@@ -45,18 +67,14 @@
     categoryTweaks.some((t) => $loading.has(t.definition.id)),
   );
 
-  async function handleApplyAll() {
+  async function handleApplyChanges() {
     showApplyAllDialog = false;
     isBatchProcessing = true;
-
-    for (const tweak of unappliedTweaks) {
-      await applyTweak(tweak.definition.id);
-    }
-
+    await applyPendingChanges();
     isBatchProcessing = false;
   }
 
-  async function handleRevertAll() {
+  async function handleRestoreDefaults() {
     showRevertAllDialog = false;
     isBatchProcessing = true;
 
@@ -111,23 +129,27 @@
     <div class="toolbar-actions">
       <button
         class="action-btn apply"
+        class:has-pending={$categoryPendingCount > 0}
         onclick={() => (showApplyAllDialog = true)}
-        disabled={unappliedTweaks.length === 0 || $isLoading || isBatchProcessing}
+        disabled={$categoryPendingCount === 0 || $isLoading || isBatchProcessing}
       >
         {#if isBatchProcessing}
           <Icon icon="mdi:loading" width="18" class="spin" />
         {:else}
           <Icon icon="mdi:check-all" width="18" />
         {/if}
-        <span>Apply All</span>
+        <span>Apply Changes</span>
+        {#if $categoryPendingCount > 0}
+          <span class="pending-count">{$categoryPendingCount}</span>
+        {/if}
       </button>
       <button
         class="action-btn revert"
         onclick={() => (showRevertAllDialog = true)}
         disabled={appliedTweaks.length === 0 || $isLoading || isBatchProcessing}
       >
-        <Icon icon="mdi:undo-variant" width="18" />
-        <span>Revert All</span>
+        <Icon icon="mdi:restore" width="18" />
+        <span>Restore Defaults</span>
       </button>
     </div>
   </div>
@@ -162,21 +184,21 @@
 <!-- Dialogs -->
 <ConfirmDialog
   open={showApplyAllDialog}
-  title="Apply All Tweaks"
-  message="Are you sure you want to apply all {unappliedTweaks.length} unapplied tweaks? Some may require a system restart."
-  confirmText="Apply All"
+  title="Apply Pending Changes"
+  message="Apply {$categoryPendingCount} pending change(s)? Some tweaks may require a system restart."
+  confirmText="Apply Changes"
   variant="default"
-  onconfirm={handleApplyAll}
+  onconfirm={handleApplyChanges}
   oncancel={() => (showApplyAllDialog = false)}
 />
 
 <ConfirmDialog
   open={showRevertAllDialog}
-  title="Revert All Tweaks"
-  message="Are you sure you want to revert all {appliedTweaks.length} applied tweaks to default values?"
-  confirmText="Revert All"
+  title="Restore System Defaults"
+  message="Restore all {appliedTweaks.length} applied tweak(s) to their original system values?"
+  confirmText="Restore Defaults"
   variant="danger"
-  onconfirm={handleRevertAll}
+  onconfirm={handleRestoreDefaults}
   oncancel={() => (showRevertAllDialog = false)}
 />
 
@@ -405,6 +427,26 @@
     .action-btn span {
       display: inline;
     }
+  }
+
+  .action-btn.has-pending {
+    background: hsl(var(--warning, 45 100% 50%) / 0.15);
+    border-color: hsl(var(--warning, 45 100% 50%));
+    color: hsl(var(--warning, 45 100% 35%));
+  }
+
+  .pending-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+    background: hsl(var(--warning, 45 100% 50%));
+    border-radius: 10px;
   }
 
   /* Tweaks Container */

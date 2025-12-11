@@ -109,6 +109,11 @@ export interface BatchApplyResult {
   total_failed: number;
 }
 
+/** Pending change for staged apply pattern */
+export type PendingChange =
+  | { type: "binary"; enabled: boolean }
+  | { type: "multistate"; optionIndex: number };
+
 /**
  * UI display information for risk levels.
  * These are presentation-layer constants for displaying risk level metadata to users.
