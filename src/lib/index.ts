@@ -16,8 +16,8 @@ export { default as TitleBar } from "./components/TitleBar.svelte";
 export { default as TweakCard } from "./components/TweakCard.svelte";
 
 // Stores
+export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme";
 export * from "./stores/navigation";
-export { colorSchemeStore, COLOR_SCHEMES, type ColorSchemeId } from "./stores/colorScheme";
 export { themeStore, type Theme } from "./stores/theme";
 export * from "./stores/tweaks";
 

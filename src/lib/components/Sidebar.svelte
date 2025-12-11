@@ -1,9 +1,9 @@
 <script lang="ts">
   import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
   import { categoryStats, tweakStats } from "$lib/stores/tweaks";
-  import ColorSchemePicker from "./ColorSchemePicker.svelte";
   import Icon from "@iconify/svelte";
   import { onMount } from "svelte";
+  import ColorSchemePicker from "./ColorSchemePicker.svelte";
 
   const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
 

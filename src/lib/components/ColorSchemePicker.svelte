@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { colorSchemeStore, COLOR_SCHEMES, type ColorSchemeId } from "$lib/stores/colorScheme";
+  import { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "$lib/stores/colorScheme";
   import { cn } from "@/utils";
 
   interface Props {
