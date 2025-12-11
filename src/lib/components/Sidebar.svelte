@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openAboutModal, openSettingsModal, openUpdateModal } from "$lib/stores/modal";
   import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
   import { categoryStats, tweakStats } from "$lib/stores/tweaks";
   import { onMount } from "svelte";
@@ -144,7 +145,7 @@
       </div>
     {/if}
 
-    <!-- Control buttons: Pin, Settings, About -->
+    <!-- Control buttons: Pin, Update, Settings, About -->
     <div
       class="sidebar-controls flex items-center gap-2 transition-all duration-200 {sidebarExpanded
         ? 'flex-row-reverse justify-center'
@@ -161,13 +162,30 @@
         <Icon icon={isPinned ? "mdi:pin" : "mdi:pin-outline"} width="22" />
       </button>
 
+      <!-- Update button -->
+      <button
+        class={sidebarExpanded ? "shrink-0" : "w-full"}
+        onclick={openUpdateModal}
+        title="Updates"
+      >
+        <Icon icon="mdi:update" width="22" />
+      </button>
+
       <!-- Settings button -->
-      <button class={sidebarExpanded ? "shrink-0" : "w-full"} title="Settings">
+      <button
+        class={sidebarExpanded ? "shrink-0" : "w-full"}
+        onclick={openSettingsModal}
+        title="Settings"
+      >
         <Icon icon="mdi:settings-outline" width="22" />
       </button>
 
       <!-- About button -->
-      <button class={sidebarExpanded ? "shrink-0" : "w-full"} title="About">
+      <button
+        class={sidebarExpanded ? "shrink-0" : "w-full"}
+        onclick={openAboutModal}
+        title="About"
+      >
         <Icon icon="mdi:information-outline" width="22" />
       </button>
     </div>

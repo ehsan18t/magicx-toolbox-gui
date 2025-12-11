@@ -4,9 +4,12 @@
   import BiMotherboard from "~icons/bi/motherboard";
   import MdiMinimize20Filled from "~icons/fluent/minimize-20-filled";
   import MdiAccount from "~icons/mdi/account";
+  import MdiAccountCircle from "~icons/mdi/account-circle";
   import MdiAlert from "~icons/mdi/alert";
   import MdiAlertCircle from "~icons/mdi/alert-circle";
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
+  import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
+  import MdiBug from "~icons/mdi/bug";
   import MdiCheck from "~icons/mdi/check";
   import MdiCheckAll from "~icons/mdi/check-all";
   import MdiCheckCircle from "~icons/mdi/check-circle";
@@ -16,17 +19,25 @@
   import MdiCircleOutline from "~icons/mdi/circle-outline";
   import MdiClose from "~icons/mdi/close";
   import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
+  import MdiCog from "~icons/mdi/cog";
   import MdiCogs from "~icons/mdi/cogs";
   import MdiCpu64Bit from "~icons/mdi/cpu-64-bit";
   import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
+  import MdiDatabaseExport from "~icons/mdi/database-export";
   import MdiDesktopTowerMonitor from "~icons/mdi/desktop-tower-monitor";
+  import MdiDownload from "~icons/mdi/download";
+  import MdiEmail from "~icons/mdi/email";
   import MdiExpansionCard from "~icons/mdi/expansion-card";
+  import MdiExport from "~icons/mdi/export";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
   import MdiFolder from "~icons/mdi/folder";
   import MdiGamepadVariant from "~icons/mdi/gamepad-variant";
+  import MdiGithub from "~icons/mdi/github";
   import MdiHarddisk from "~icons/mdi/harddisk";
   import MdiHarddiskPlus from "~icons/mdi/harddisk-plus";
   import MdiHelpCircle from "~icons/mdi/help-circle";
+  import MdiImport from "~icons/mdi/import";
+  import MdiInformation from "~icons/mdi/information";
   import MdiInformationOutline from "~icons/mdi/information-outline";
   import MdiKeyVariant from "~icons/mdi/key-variant";
   import MdiLaptop from "~icons/mdi/laptop";
@@ -36,6 +47,7 @@
   import MdiMagnify from "~icons/mdi/magnify";
   import MdiMemory from "~icons/mdi/memory";
   import MdiMicrosoftWindows from "~icons/mdi/microsoft-windows";
+  import MdiOpenInNew from "~icons/mdi/open-in-new";
   import MdiPackageVariant from "~icons/mdi/package-variant";
   import MdiPalette from "~icons/mdi/palette";
   import MdiPin from "~icons/mdi/pin";
@@ -56,6 +68,7 @@
   import MdiUndoVariant from "~icons/mdi/undo-variant";
   import MdiUpdate from "~icons/mdi/update";
   import MdiViewDashboard from "~icons/mdi/view-dashboard";
+  import MdiWeb from "~icons/mdi/web";
   import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
@@ -127,6 +140,19 @@
     "mdi:help-circle": MdiHelpCircle,
     "mdi:alert": MdiAlert,
     "mdi:alert-octagon": MdiAlertOctagon,
+    "mdi:arrow-up-circle": MdiArrowUpCircle,
+    "mdi:bug": MdiBug,
+    "mdi:cog": MdiCog,
+    "mdi:database-export": MdiDatabaseExport,
+    "mdi:download": MdiDownload,
+    "mdi:email": MdiEmail,
+    "mdi:export": MdiExport,
+    "mdi:github": MdiGithub,
+    "mdi:import": MdiImport,
+    "mdi:information": MdiInformation,
+    "mdi:open-in-new": MdiOpenInNew,
+    "mdi:web": MdiWeb,
+    "mdi:account-circle": MdiAccountCircle,
 
     // Category icons (used in sidebar/navigation)
     "mdi:view-dashboard": MdiViewDashboard,

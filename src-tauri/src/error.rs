@@ -29,6 +29,9 @@ pub enum Error {
 
     #[error("Service control failed: {0}")]
     ServiceControl(String),
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 impl Serialize for Error {

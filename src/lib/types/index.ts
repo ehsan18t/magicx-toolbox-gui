@@ -267,3 +267,56 @@ export const RISK_INFO: Record<RiskLevel, { name: string; description: string }>
     description: "Could break Windows, use with caution",
   },
 };
+
+// ============================================
+// App Settings & Export/Import Types
+// ============================================
+
+/** App settings stored in localStorage */
+export interface AppSettings {
+  /** Whether to automatically check for updates */
+  autoCheckUpdates: boolean;
+  /** Whether to automatically install updates when available */
+  autoInstallUpdates: boolean;
+  /** Interval in hours between update checks */
+  checkUpdateInterval: number;
+  /** Last time an update check was performed (ISO 8601) */
+  lastUpdateCheck: string | null;
+}
+
+/** Tweak snapshot for export - captures current registry state */
+export interface TweakSnapshot {
+  tweakId: string;
+  tweakName: string;
+  isApplied: boolean;
+  /** Current registry values at time of snapshot */
+  registryValues: Record<string, unknown>;
+  /** Timestamp of snapshot */
+  snapshotTime: string;
+}
+
+/** Export data structure for settings/tweaks */
+export interface ExportData {
+  version: string;
+  exportTime: string;
+  appVersion: string;
+  settings: AppSettings;
+  tweakSnapshots: TweakSnapshot[];
+}
+
+/** Update information from the backend */
+export interface UpdateInfo {
+  available: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  releaseNotes?: string;
+  downloadUrl?: string;
+  publishedAt?: string;
+}
+
+/** Update check result */
+export interface UpdateCheckResult {
+  success: boolean;
+  update?: UpdateInfo;
+  error?: string;
+}

@@ -24,6 +24,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_prevent_default::debug())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -106,6 +108,9 @@ pub fn run() {
             commands::elevation::delete_registry_as_system,
             commands::elevation::can_use_system_elevation,
             commands::elevation::restart_as_admin,
+            // Update commands
+            commands::update::check_for_update,
+            commands::update::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
