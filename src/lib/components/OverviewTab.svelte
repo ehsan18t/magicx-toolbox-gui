@@ -146,6 +146,19 @@
         {/each}
       {/if}
 
+      <!-- Motherboard -->
+      <HardwareItem
+        icon="bi:motherboard"
+        label="Motherboard"
+        title={$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
+      >
+        <span class="truncate">{$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
+        {#if $systemStore?.hardware?.motherboard?.bios_version}
+          <span class="h-1 w-1 rounded-full bg-border"></span>
+          <span class="truncate">BIOS: {$systemStore?.hardware?.motherboard?.bios_version}</span>
+        {/if}
+      </HardwareItem>
+
       <!-- Memory -->
       <HardwareItem
         icon="ri:ram-line"
@@ -196,19 +209,6 @@
           </HardwareItem>
         {/each}
       {/if}
-
-      <!-- Motherboard -->
-      <HardwareItem
-        icon="bi:motherboard"
-        label="Motherboard"
-        title={$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
-      >
-        <span class="truncate">{$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
-        {#if $systemStore?.hardware?.motherboard?.bios_version}
-          <span class="h-1 w-1 rounded-full bg-border"></span>
-          <span class="truncate">BIOS: {$systemStore?.hardware?.motherboard?.bios_version}</span>
-        {/if}
-      </HardwareItem>
     </div>
   </div>
 
