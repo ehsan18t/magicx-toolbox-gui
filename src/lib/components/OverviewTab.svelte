@@ -49,8 +49,7 @@
               {$systemStore?.windows?.product_name?.replace("Windows ", "Win ") ?? "Windows"}
             </span>
             <span class="text-xs text-foreground-muted">
-              {$systemStore?.windows?.display_version ?? ""} ({$systemStore?.windows
-                ?.build_number ?? ""})
+              {$systemStore?.windows?.display_version ?? ""} ({$systemStore?.windows?.build_number ?? ""})
             </span>
           </div>
         </div>
@@ -59,9 +58,7 @@
         <div class="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
           <div class="flex items-center gap-2">
             <Icon
-              icon={$systemStore?.device?.pc_type === "Laptop"
-                ? "mdi:laptop"
-                : "mdi:desktop-tower-monitor"}
+              icon={$systemStore?.device?.pc_type === "Laptop" ? "mdi:laptop" : "mdi:desktop-tower-monitor"}
               width="16"
               class="text-accent"
             />
@@ -134,8 +131,7 @@
         </h3>
         <div class="flex flex-wrap gap-2">
           <span class="rounded-md bg-surface px-2 py-1 text-xs font-medium text-foreground">
-            {$systemStore?.hardware?.cpu?.cores ?? 0}C / {$systemStore?.hardware?.cpu?.threads ??
-              0}T
+            {$systemStore?.hardware?.cpu?.cores ?? 0}C / {$systemStore?.hardware?.cpu?.threads ?? 0}T
           </span>
           <span class="rounded-md bg-surface px-2 py-1 text-xs font-medium text-foreground">
             {formatClockSpeed($systemStore?.hardware?.cpu?.max_clock_mhz ?? 0)}
@@ -175,22 +171,21 @@
       <!-- Memory -->
       <div class="rounded-xl border border-border bg-card p-4">
         <div class="mb-3 flex items-center gap-2">
-          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-success/15">
-            <Icon icon="ri:ram-line" width="18" class="text-success" />
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15">
+            <Icon icon="ri:ram-line" width="18" class="text-accent" />
           </div>
           <span class="text-xs font-medium text-foreground-muted uppercase">RAM</span>
         </div>
         <h3 class="m-0 mb-2 text-sm leading-snug font-semibold text-foreground">
-          {$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory
-            ?.memory_type ?? ""}
+          {$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory?.memory_type ?? ""}
         </h3>
         <div class="flex flex-wrap gap-2">
           <span class="rounded-md bg-surface px-2 py-1 text-xs font-medium text-foreground">
             {$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz
           </span>
           <span class="rounded-md bg-surface px-2 py-1 text-xs font-medium text-foreground">
-            {$systemStore?.hardware?.memory?.slots_used ?? 0} slot{($systemStore?.hardware?.memory
-              ?.slots_used ?? 0) !== 1
+            {$systemStore?.hardware?.memory?.slots_used ?? 0} slot{($systemStore?.hardware?.memory?.slots_used ?? 0) !==
+            1
               ? "s"
               : ""}
           </span>
@@ -203,11 +198,11 @@
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="mb-3 flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/15">
+                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15">
                   <Icon
                     icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
                     width="18"
-                    class="text-warning"
+                    class="text-accent"
                   />
                 </div>
                 <span class="text-xs font-medium text-foreground-muted uppercase">
@@ -216,8 +211,7 @@
               </div>
               {#if disk.health_status}
                 <span
-                  class="rounded-full px-2 py-0.5 text-[10px] font-medium {disk.health_status ===
-                  'Healthy'
+                  class="rounded-full px-2 py-0.5 text-[10px] font-medium {disk.health_status === 'Healthy'
                     ? 'bg-success/15 text-success'
                     : 'bg-warning/15 text-warning'}"
                 >
@@ -248,15 +242,13 @@
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15">
             <Icon icon="bi:motherboard" width="18" class="text-accent" />
           </div>
-          <span class="text-xs font-medium text-foreground-muted uppercase">Board</span>
+          <span class="text-xs font-medium text-foreground-muted uppercase">Motherboard</span>
         </div>
         <h3 class="m-0 mb-2 truncate text-sm leading-snug font-semibold text-foreground">
           {$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
         </h3>
         <div class="flex flex-wrap gap-2">
-          <span
-            class="max-w-full truncate rounded-md bg-surface px-2 py-1 text-xs font-medium text-foreground"
-          >
+          <span class="max-w-full truncate rounded-md bg-surface px-2 py-1 text-xs font-medium text-foreground">
             {$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}
           </span>
         </div>
@@ -278,9 +270,7 @@
           class="group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-accent/50 hover:shadow-md"
           onclick={() => navigateToCategory(category.id)}
         >
-          <div
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"
-          >
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
             <Icon icon={category.icon || "mdi:folder"} width="20" />
           </div>
           <div class="min-w-0 flex-1">
@@ -315,13 +305,10 @@
   </div>
 
   <!-- Footer Tip -->
-  <div
-    class="mt-auto flex items-center gap-2.5 rounded-lg bg-surface/50 px-3 py-2.5 text-xs text-foreground-muted"
-  >
+  <div class="mt-auto flex items-center gap-2.5 rounded-lg bg-surface/50 px-3 py-2.5 text-xs text-foreground-muted">
     <Icon icon="mdi:lightbulb-outline" width="14" class="shrink-0 text-accent" />
     <span>
-      <strong class="text-foreground">Tip:</strong> Changes are backed up automatically. Hover the sidebar
-      to expand.
+      <strong class="text-foreground">Tip:</strong> Changes are backed up automatically. Hover the sidebar to expand.
     </span>
   </div>
 </div>
