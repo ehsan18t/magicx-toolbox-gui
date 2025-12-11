@@ -81,11 +81,12 @@ struct MsftPhysicalDisk {
     health_status: Option<u16>, // 0=Healthy, 1=Warning, 2=Unhealthy
 }
 
-/// Win32_OperatingSystem for uptime and install date
+/// Win32_OperatingSystem for uptime, install date, and name
 #[derive(Deserialize, Debug)]
 #[serde(rename = "Win32_OperatingSystem")]
 #[serde(rename_all = "PascalCase")]
 struct Win32OperatingSystem {
+    caption: Option<String>,
     last_boot_up_time: Option<String>,
     install_date: Option<String>,
 }
@@ -110,8 +111,8 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
         .open_subkey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")
         .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
 
-    // Read product name
-    let product_name: String = key
+    // Read product name (Legacy/Fallback)
+    let registry_product_name: String = key
         .get_value("ProductName")
         .unwrap_or_else(|_| "Windows".to_string());
 
@@ -125,10 +126,8 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
         .get_value("CurrentBuildNumber")
         .unwrap_or_else(|_| "0".to_string());
 
-    // Windows 11 starts at build 22000. This is a stable, well-documented threshold.
-    // Both Windows 10 and 11 report CurrentMajorVersionNumber=10, so we use build number
-    // to distinguish them. This threshold is for released versions and is unlikely to change.
     let build: u32 = build_number.parse().unwrap_or(0);
+    // Is Windows 11? (Build >= 22000)
     let is_windows_11 = build >= 22000;
     let version_string = if is_windows_11 {
         "11".to_string()
@@ -136,8 +135,15 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
         "10".to_string()
     };
 
-    // Get uptime and install date from WMI
-    let (uptime_seconds, install_date) = get_os_info();
+    // Get uptime, install date, and caption from WMI
+    let (uptime_seconds, install_date, os_caption) = get_os_info();
+
+    // Use WMI caption as product name (more accurate for LTSC/IoT) or fallback to registry
+    let mut product_name = os_caption.unwrap_or(registry_product_name);
+
+    if product_name.starts_with("Microsoft ") {
+        product_name = product_name.replacen("Microsoft ", "", 1);
+    }
 
     log::info!(
         "Detected Windows {} (build {}, {}), uptime={}s",
@@ -158,13 +164,13 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
     })
 }
 
-/// Get uptime and install date from Win32_OperatingSystem
-fn get_os_info() -> (u64, Option<String>) {
+/// Get uptime, install date, and caption from Win32_OperatingSystem
+fn get_os_info() -> (u64, Option<String>, Option<String>) {
     let wmi_con = match WMIConnection::new() {
         Ok(con) => con,
         Err(e) => {
             log::warn!("Failed to create WMI connection for OS info: {}", e);
-            return (0, None);
+            return (0, None, None);
         }
     };
 
@@ -183,9 +189,11 @@ fn get_os_info() -> (u64, Option<String>) {
             .as_ref()
             .map(|d| parse_wmi_datetime_to_iso(d));
 
-        (uptime_seconds, install_date)
+        let caption = os.caption.clone();
+
+        (uptime_seconds, install_date, caption)
     } else {
-        (0, None)
+        (0, None, None)
     }
 }
 
