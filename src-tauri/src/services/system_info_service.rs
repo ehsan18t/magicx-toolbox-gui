@@ -400,7 +400,12 @@ fn get_gpu_info(wmi_con: &WMIConnection) -> Vec<GpuInfo> {
                 && !name.is_empty()
         })
         .map(|gpu| {
-            let memory_bytes = gpu.adapter_ram.unwrap_or(0);
+            let driver_desc = gpu.name.as_deref().unwrap_or("");
+            let wmi_ram = gpu.adapter_ram.unwrap_or(0) as u64;
+
+            // Try to get 64-bit VRAM size from Registry (fixes 4GB cap)
+            let memory_bytes = get_gpu_vram_from_registry(driver_desc).unwrap_or(wmi_ram);
+
             // Better precision: use proper rounding only at display time
             let memory_gb = if memory_bytes > 0 {
                 // Convert to GB with better precision
@@ -421,6 +426,37 @@ fn get_gpu_info(wmi_con: &WMIConnection) -> Vec<GpuInfo> {
             }
         })
         .collect()
+}
+
+/// Helper: Get GPU VRAM size from Registry (handles value > 4GB)
+fn get_gpu_vram_from_registry(driver_desc: &str) -> Option<u64> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let video_class = hklm
+        .open_subkey(
+            "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}",
+        )
+        .ok()?;
+
+    for key_name in video_class.enum_keys().map(|x| x.unwrap_or_default()) {
+        if let Ok(sub_key) = video_class.open_subkey(&key_name) {
+            // Check if this subkey matches the driver description
+            let desc: String = sub_key.get_value("DriverDesc").unwrap_or_default();
+            if desc == driver_desc {
+                // Try reading HardwareInformation.qwMemorySize (QWORD, 64-bit)
+                if let Ok(qw_size) = sub_key.get_value::<u64, _>("HardwareInformation.qwMemorySize")
+                {
+                    return Some(qw_size);
+                }
+
+                // Fallback: Try HardwareInformation.MemorySize (DWORD or Binary)
+                // Note: Binary values might need distinct handling, but typical fallback is DWORD
+                if let Ok(dw_size) = sub_key.get_value::<u32, _>("HardwareInformation.MemorySize") {
+                    return Some(dw_size as u64);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Get memory information from WMI
