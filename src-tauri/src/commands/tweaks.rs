@@ -3,7 +3,9 @@ use crate::error::{Error, Result};
 use crate::models::{
     make_key_id, CategoryDefinition, RegistryKeyId, TweakDefinition, TweakResult, TweakStatus,
 };
-use crate::services::{backup_service, registry_service, system_info_service, tweak_loader};
+use crate::services::{
+    backup_service, registry_service, service_control, system_info_service, tweak_loader,
+};
 use tauri::AppHandle;
 
 /// Get all available categories (auto-discovered from YAML files)
@@ -395,6 +397,35 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         Err(e) => {
             log::warn!("Post-verification failed: {}", e);
             // Don't fail the operation - verification is informational
+        }
+    }
+
+    // Apply service changes if any
+    if let Some(ref service_changes) = tweak.service_changes {
+        for sc in service_changes {
+            log::info!(
+                "Applying service change for '{}': {} -> {:?}",
+                tweak.name,
+                sc.name,
+                sc.enable_startup
+            );
+
+            // Stop service first if required
+            if sc.stop_on_disable {
+                if let Err(e) = service_control::stop_service(&sc.name) {
+                    log::warn!("Failed to stop service '{}': {}", sc.name, e);
+                    // Continue anyway - service might already be stopped
+                }
+            }
+
+            // Set startup type
+            if let Err(e) = service_control::set_service_startup(&sc.name, &sc.enable_startup) {
+                log::error!("Failed to set service '{}' startup: {}", sc.name, e);
+                return Err(Error::ServiceControl(format!(
+                    "Failed to configure service '{}': {}",
+                    sc.name, e
+                )));
+            }
         }
     }
 
@@ -790,6 +821,32 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
             "Failed to revert tweak '{}': {}. Changes have been rolled back.",
             tweak.name, error
         )));
+    }
+
+    // Revert service changes if any (restore original startup type and start services)
+    if let Some(ref service_changes) = tweak.service_changes {
+        for sc in service_changes {
+            log::info!(
+                "Reverting service change for '{}': {} -> {:?}",
+                tweak.name,
+                sc.name,
+                sc.disable_startup
+            );
+
+            // Set startup type back to original
+            if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup) {
+                log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
+                // Continue anyway - don't fail the whole revert
+            }
+
+            // Start service if required
+            if sc.start_on_enable {
+                if let Err(e) = service_control::start_service(&sc.name) {
+                    log::warn!("Failed to start service '{}': {}", sc.name, e);
+                    // Continue anyway - service might need manual start
+                }
+            }
+        }
     }
 
     // All reverts succeeded - now record the tweak as reverted in state
