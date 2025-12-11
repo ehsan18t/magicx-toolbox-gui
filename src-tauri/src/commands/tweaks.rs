@@ -342,7 +342,7 @@ pub async fn apply_tweak_option(
     })
 }
 
-/// Revert a tweak (restore to snapshot state)
+/// Revert a tweak (restore to snapshot state, or use disable_value if no snapshot)
 #[tauri::command]
 pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
     log::info!("Command: revert_tweak({})", tweak_id);
@@ -352,37 +352,86 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
     })?;
 
-    // Load the snapshot
-    let snapshot = backup_service::load_snapshot(&tweak_id)?.ok_or_else(|| {
-        log::error!("No snapshot found for tweak '{}'", tweak_id);
-        Error::BackupFailed(format!(
-            "No snapshot found for tweak '{}'. Cannot revert.",
-            tweak_id
-        ))
-    })?;
+    let system_info = system_info_service::get_system_info()?;
+    let version = system_info.windows.version_number();
 
-    log::info!(
-        "Reverting '{}' using snapshot from {}",
-        tweak.name,
-        snapshot.applied_at
-    );
-
-    if is_debug_enabled() {
-        emit_debug_log(
-            &app,
-            DebugLevel::Info,
-            &format!("Reverting: {}", tweak.name),
-            Some(&format!(
-                "{} registry values to restore",
-                snapshot.registry_snapshots.len()
-            )),
-        );
+    // Check admin if required
+    if tweak.requires_admin && !system_info.is_admin {
+        log::warn!("Tweak '{}' requires admin, but running as user", tweak.name);
+        return Err(Error::RequiresAdmin);
     }
 
-    // Restore registry values from snapshot (atomic)
-    backup_service::restore_from_snapshot(&snapshot)?;
+    let changes = tweak.get_changes_for_version(version);
 
-    // Revert service changes
+    // Try to load existing snapshot
+    let snapshot = backup_service::load_snapshot(&tweak_id)?;
+
+    if let Some(snap) = snapshot {
+        // CASE 1: We have a snapshot - restore from it
+        log::info!(
+            "Reverting '{}' using snapshot from {}",
+            tweak.name,
+            snap.applied_at
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Info,
+                &format!("Reverting: {}", tweak.name),
+                Some(&format!(
+                    "{} registry values to restore",
+                    snap.registry_snapshots.len()
+                )),
+            );
+        }
+
+        // Restore registry values from snapshot (atomic)
+        backup_service::restore_from_snapshot(&snap)?;
+
+        // Delete snapshot after successful revert
+        backup_service::delete_snapshot(&tweak_id)?;
+    } else {
+        // CASE 2: No snapshot exists (tweak was enabled before app was installed)
+        // Capture current state FIRST, then apply disable_value from YAML
+        log::info!(
+            "No snapshot found for '{}' - capturing current state and using disable_value",
+            tweak.name
+        );
+
+        // Capture current state so user can undo this revert later
+        let snapshot = backup_service::capture_snapshot(&tweak, version)?;
+        backup_service::save_snapshot(&snapshot)?;
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Info,
+                &format!("Disabling: {} (no previous snapshot)", tweak.name),
+                Some(&format!("{} registry values to set", changes.len())),
+            );
+        }
+
+        // Apply disable_value for each registry change
+        for change in &changes {
+            if let Some(ref disable_value) = change.disable_value {
+                // Use disable_value from YAML
+                write_registry_value(&app, change, disable_value, "Disabling", &tweak.name)?;
+            } else {
+                // No disable_value - delete the key (restore to "not configured")
+                log::debug!(
+                    "No disable_value for {}\\{}\\{} - deleting key",
+                    change.hive.as_str(),
+                    change.key,
+                    change.value_name
+                );
+                let _ =
+                    registry_service::delete_value(&change.hive, &change.key, &change.value_name);
+            }
+        }
+    }
+
+    // Revert service changes (same for both cases)
     if let Some(ref service_changes) = tweak.service_changes {
         for sc in service_changes {
             log::info!("Reverting service: {} -> {:?}", sc.name, sc.disable_startup);
@@ -400,9 +449,6 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
             }
         }
     }
-
-    // Delete snapshot after successful revert
-    backup_service::delete_snapshot(&tweak_id)?;
 
     log::info!(
         "Successfully reverted tweak '{}'{}",
