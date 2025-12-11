@@ -236,3 +236,124 @@ pub struct TweakResult {
     pub message: String,
     pub requires_reboot: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to create a RegistryChange for testing
+    fn make_registry_change(windows_versions: Option<Vec<u32>>) -> RegistryChange {
+        RegistryChange {
+            hive: RegistryHive::HKCU,
+            key: "SOFTWARE\\Test".to_string(),
+            value_name: "Value".to_string(),
+            value_type: RegistryValueType::DWord,
+            enable_value: serde_json::json!(1),
+            disable_value: Some(serde_json::json!(0)),
+            windows_versions,
+        }
+    }
+
+    // Tests for RegistryChange::applies_to_version
+    #[test]
+    fn test_registry_change_applies_to_version_none() {
+        let change = make_registry_change(None);
+        assert!(change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
+        assert!(change.applies_to_version(12)); // Future version
+    }
+
+    #[test]
+    fn test_registry_change_applies_to_version_empty() {
+        let change = make_registry_change(Some(vec![]));
+        assert!(change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
+    }
+
+    #[test]
+    fn test_registry_change_applies_to_version_specific() {
+        let change = make_registry_change(Some(vec![11]));
+        assert!(!change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
+    }
+
+    #[test]
+    fn test_registry_change_applies_to_version_multiple() {
+        let change = make_registry_change(Some(vec![10, 11]));
+        assert!(change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
+        assert!(!change.applies_to_version(12));
+    }
+
+    // Helper to create TweakDefinition for testing
+    fn make_tweak_definition(changes: Vec<RegistryChange>) -> TweakDefinition {
+        TweakDefinition {
+            id: "test_tweak".to_string(),
+            name: "Test Tweak".to_string(),
+            description: "A test tweak".to_string(),
+            category: "test".to_string(),
+            risk_level: RiskLevel::Low,
+            requires_reboot: false,
+            requires_admin: false,
+            registry_changes: changes,
+            info: None,
+        }
+    }
+
+    #[test]
+    fn test_tweak_applies_to_version_universal() {
+        let tweak = make_tweak_definition(vec![make_registry_change(None)]);
+        assert!(tweak.applies_to_version(10));
+        assert!(tweak.applies_to_version(11));
+    }
+
+    #[test]
+    fn test_tweak_applies_to_version_specific() {
+        let tweak = make_tweak_definition(vec![make_registry_change(Some(vec![11]))]);
+        assert!(!tweak.applies_to_version(10));
+        assert!(tweak.applies_to_version(11));
+    }
+
+    #[test]
+    fn test_applicable_versions_universal() {
+        let tweak = make_tweak_definition(vec![make_registry_change(None)]);
+        let versions = tweak.applicable_versions();
+        assert!(versions.is_empty()); // Empty = all versions
+    }
+
+    #[test]
+    fn test_applicable_versions_specific() {
+        let tweak = make_tweak_definition(vec![
+            make_registry_change(Some(vec![10])),
+            make_registry_change(Some(vec![11])),
+        ]);
+        let versions = tweak.applicable_versions();
+        assert_eq!(versions, vec![10, 11]);
+    }
+
+    #[test]
+    fn test_get_changes_for_version() {
+        let tweak = make_tweak_definition(vec![
+            make_registry_change(Some(vec![10])),
+            make_registry_change(Some(vec![11])),
+            make_registry_change(None), // universal
+        ]);
+        let win10_changes = tweak.get_changes_for_version(10);
+        assert_eq!(win10_changes.len(), 2); // specific + universal
+
+        let win11_changes = tweak.get_changes_for_version(11);
+        assert_eq!(win11_changes.len(), 2); // specific + universal
+    }
+
+    #[test]
+    fn test_applicable_versions_mixed() {
+        // Mix of universal and specific changes
+        let tweak = make_tweak_definition(vec![
+            make_registry_change(None),           // universal
+            make_registry_change(Some(vec![11])), // Win11 only
+        ]);
+        // Since there's a universal change, tweak applies to all versions
+        assert!(tweak.applies_to_version(10));
+        assert!(tweak.applies_to_version(11));
+    }
+}
