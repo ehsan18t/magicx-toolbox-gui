@@ -98,7 +98,13 @@ export interface BatchApplyResult {
   total_failed: number;
 }
 
-/** Risk level display info */
+/**
+ * UI display information for risk levels.
+ * These are presentation-layer constants for displaying risk level metadata to users.
+ * The risk level identifiers (low, medium, high, critical) must match the backend RiskLevel enum.
+ * These descriptions are intentionally kept in the frontend as they are purely for UI display
+ * and do not affect any backend logic or tweak behavior.
+ */
 export const RISK_INFO: Record<RiskLevel, { name: string; description: string }> = {
   low: {
     name: "Low",

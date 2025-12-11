@@ -192,25 +192,28 @@ impl TweakDefinition {
             .any(|change| change.applies_to_version(version))
     }
 
-    /// Get all Windows versions this tweak applies to
+    /// Get all Windows versions this tweak applies to.
+    /// Returns an empty Vec if the tweak applies to ALL Windows versions (no version filtering).
+    /// Returns specific versions if any registry change specifies windows_versions.
     pub fn applicable_versions(&self) -> Vec<u32> {
         let mut versions = std::collections::HashSet::new();
+        let mut has_specific_versions = false;
+
         for change in &self.registry_changes {
-            match &change.windows_versions {
-                None => {
-                    // No filter = applies to both
-                    versions.insert(10);
-                    versions.insert(11);
-                }
-                Some(v) if v.is_empty() => {
-                    versions.insert(10);
-                    versions.insert(11);
-                }
-                Some(v) => {
+            if let Some(v) = &change.windows_versions {
+                if !v.is_empty() {
+                    has_specific_versions = true;
                     versions.extend(v.iter());
                 }
             }
+            // None or empty windows_versions = applies to all versions (no filtering)
         }
+
+        // If no specific versions were found, return empty Vec to indicate "all versions"
+        if !has_specific_versions {
+            return Vec::new();
+        }
+
         let mut result: Vec<_> = versions.into_iter().collect();
         result.sort();
         result

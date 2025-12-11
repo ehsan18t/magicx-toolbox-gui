@@ -25,9 +25,12 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
     // Read build number
     let build_number: String = key
         .get_value("CurrentBuildNumber")
-        .unwrap_or_else(|_| "19045".to_string());
+        .unwrap_or_else(|_| "0".to_string());
 
-    let build: u32 = build_number.parse().unwrap_or(19045);
+    // Windows 11 starts at build 22000. This is a stable, well-documented threshold.
+    // Both Windows 10 and 11 report CurrentMajorVersionNumber=10, so we use build number
+    // to distinguish them. This threshold is for released versions and is unlikely to change.
+    let build: u32 = build_number.parse().unwrap_or(0);
     let is_windows_11 = build >= 22000;
     let version_string = if is_windows_11 {
         "11".to_string()
