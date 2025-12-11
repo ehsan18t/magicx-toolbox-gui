@@ -66,3 +66,11 @@ pub fn get_backup_system_status() -> Result<BackupSystemStatus> {
 pub fn cleanup_old_backups() -> Result<()> {
     backup_service::cleanup_old_backups()
 }
+
+/// Validate all snapshots on app startup
+/// Removes stale snapshots where current registry state matches the snapshot state
+/// Returns the number of stale snapshots removed
+#[tauri::command]
+pub fn validate_snapshots() -> Result<u32> {
+    backup_service::validate_all_snapshots()
+}

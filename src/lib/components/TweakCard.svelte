@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    errorStore,
     loadingStore,
     pendingChangesStore,
     stageChange,
@@ -17,6 +18,7 @@
   }>();
 
   const isLoading = derived(loadingStore, ($loading) => $loading.has(tweak.definition.id));
+  const tweakError = derived(errorStore, ($errors) => $errors.get(tweak.definition.id));
 
   let showDetails = $state(false);
   let showConfirmDialog = $state(false);
@@ -186,6 +188,17 @@
 
     <!-- Description -->
     <p class="description">{tweak.definition.description}</p>
+
+    <!-- Error message -->
+    {#if $tweakError}
+      <div class="error-message">
+        <Icon icon="mdi:alert-circle" width="16" />
+        <span>{$tweakError}</span>
+        <button class="error-close" onclick={() => errorStore.clearError(tweak.definition.id)}>
+          <Icon icon="mdi:close" width="14" />
+        </button>
+      </div>
+    {/if}
 
     <!-- Metadata Section: Risk, Admin, Reboot -->
     <div class="metadata-section">
@@ -372,6 +385,49 @@
     font-size: 13px;
     line-height: 1.5;
     color: hsl(var(--muted-foreground));
+  }
+
+  /* Error message */
+  .error-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: hsl(0 84% 60% / 0.1);
+    border: 1px solid hsl(0 84% 60% / 0.3);
+    border-radius: 8px;
+    color: hsl(0 84% 50%);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .error-message :global(svg) {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .error-message span {
+    flex: 1;
+    word-break: break-word;
+  }
+
+  .error-close {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: hsl(0 84% 50%);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+  }
+
+  .error-close:hover {
+    background: hsl(0 84% 60% / 0.2);
   }
 
   /* Metadata Section */

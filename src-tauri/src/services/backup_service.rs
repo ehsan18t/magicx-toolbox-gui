@@ -513,3 +513,82 @@ pub fn cleanup_old_backups() -> Result<(), Error> {
 
     Ok(())
 }
+
+// ============================================================================
+// Snapshot Validation
+// ============================================================================
+
+/// Validate a single snapshot against current registry state
+/// Returns true if snapshot is still valid (current state differs from snapshot state)
+/// Returns false if snapshot is stale (current state matches snapshot state)
+pub fn validate_snapshot(snapshot: &TweakSnapshot) -> Result<bool, Error> {
+    log::debug!("Validating snapshot for tweak '{}'", snapshot.tweak_name);
+
+    // Check each registry value in the snapshot
+    for reg in &snapshot.registry_snapshots {
+        let (current_value, current_exists) =
+            read_registry_value(&reg.hive, &reg.key, &reg.value_name, &reg.value_type)?;
+
+        // If current state matches snapshot state, tweak was externally reverted
+        let snapshot_matches_current = if !reg.existed && !current_exists {
+            // Both don't exist - matches
+            true
+        } else if reg.existed && current_exists {
+            // Both exist - compare values
+            values_match(&reg.value, &current_value)
+        } else {
+            // One exists, one doesn't - doesn't match
+            false
+        };
+
+        if !snapshot_matches_current {
+            // Current state differs from snapshot - snapshot is valid
+            log::trace!(
+                "Snapshot valid: {}\\{}\\{} differs from snapshot",
+                reg.hive,
+                reg.key,
+                reg.value_name
+            );
+            return Ok(true);
+        }
+    }
+
+    // All values match snapshot - tweak was reverted externally, snapshot is stale
+    log::info!(
+        "Snapshot stale for '{}': current state matches snapshot state",
+        snapshot.tweak_name
+    );
+    Ok(false)
+}
+
+/// Validate all snapshots on app startup
+/// Removes stale snapshots where current registry state matches the snapshot state
+pub fn validate_all_snapshots() -> Result<u32, Error> {
+    log::info!("Validating all snapshots on startup");
+
+    let applied_tweaks = get_applied_tweaks()?;
+    let mut removed_count = 0;
+
+    for tweak_id in applied_tweaks {
+        if let Some(snapshot) = load_snapshot(&tweak_id)? {
+            let is_valid = validate_snapshot(&snapshot)?;
+
+            if !is_valid {
+                log::info!(
+                    "Removing stale snapshot for '{}' - tweak was externally reverted",
+                    snapshot.tweak_name
+                );
+                delete_snapshot(&tweak_id)?;
+                removed_count += 1;
+            }
+        }
+    }
+
+    if removed_count > 0 {
+        log::info!("Removed {} stale snapshots", removed_count);
+    } else {
+        log::debug!("All snapshots are valid");
+    }
+
+    Ok(removed_count)
+}

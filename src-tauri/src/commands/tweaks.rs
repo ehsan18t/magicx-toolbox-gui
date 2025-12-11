@@ -103,6 +103,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
 }
 
 /// Apply a tweak (set enable values in registry)
+/// If a snapshot already exists (tweak is applied), this will TOGGLE it off (restore from snapshot)
 #[tauri::command]
 pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
     log::info!("Command: apply_tweak({})", tweak_id);
@@ -114,7 +115,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
 
     let system_info = system_info_service::get_system_info()?;
     let version = system_info.windows.version_number();
-    log::debug!("Applying '{}' on Windows {}", tweak.name, version);
+    log::debug!("Processing '{}' on Windows {}", tweak.name, version);
 
     // Check admin if required
     if tweak.requires_admin && !system_info.is_admin {
@@ -132,6 +133,84 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         );
         return Err(Error::UnsupportedWindowsVersion);
     }
+
+    // Check if snapshot exists - if so, this is a TOGGLE OFF operation
+    if let Some(existing_snapshot) = backup_service::load_snapshot(&tweak_id)? {
+        log::info!(
+            "Snapshot exists for '{}' - toggling OFF (restoring from snapshot)",
+            tweak.name
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Info,
+                &format!("Toggling OFF: {}", tweak.name),
+                Some(&format!(
+                    "Restoring {} registry values from snapshot",
+                    existing_snapshot.registry_snapshots.len()
+                )),
+            );
+        }
+
+        // Restore registry values from snapshot
+        backup_service::restore_from_snapshot(&existing_snapshot)?;
+
+        // Restore service states if any
+        if let Some(ref service_changes) = tweak.service_changes {
+            for sc in service_changes {
+                log::info!("Restoring service: {} -> {:?}", sc.name, sc.disable_startup);
+
+                // Restore startup type
+                if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup)
+                {
+                    log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
+                }
+
+                // Start service if required
+                if sc.start_on_enable {
+                    if let Err(e) = service_control::start_service(&sc.name) {
+                        log::warn!("Failed to start service '{}': {}", sc.name, e);
+                    }
+                }
+            }
+        }
+
+        // Delete snapshot after successful restore
+        backup_service::delete_snapshot(&tweak_id)?;
+
+        log::info!(
+            "Successfully toggled OFF tweak '{}'{}",
+            tweak.name,
+            if tweak.requires_reboot {
+                " (reboot required)"
+            } else {
+                ""
+            }
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Success,
+                &format!("Successfully toggled OFF: {}", tweak.name),
+                if tweak.requires_reboot {
+                    Some("Reboot required")
+                } else {
+                    None
+                },
+            );
+        }
+
+        return Ok(TweakResult {
+            success: true,
+            message: format!("Successfully reverted: {}", tweak.name),
+            requires_reboot: tweak.requires_reboot,
+        });
+    }
+
+    // No snapshot exists - this is a regular APPLY operation
+    log::info!("No snapshot for '{}' - applying tweak", tweak.name);
 
     // Step 1: Capture snapshot BEFORE making any changes
     let snapshot = backup_service::capture_snapshot(&tweak, version)?;
