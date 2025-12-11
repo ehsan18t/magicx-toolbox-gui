@@ -8,7 +8,7 @@
 
 use crate::error::Error;
 use crate::models::{RegistrySnapshot, ServiceSnapshot, TweakDefinition, TweakSnapshot};
-use crate::services::registry_service;
+use crate::services::{registry_service, trusted_installer};
 use std::fs;
 use std::path::PathBuf;
 
@@ -54,7 +54,12 @@ pub fn capture_snapshot(
 ) -> Result<TweakSnapshot, Error> {
     log::info!("Capturing snapshot for tweak '{}'", tweak.name);
 
-    let mut snapshot = TweakSnapshot::new(&tweak.id, &tweak.name, windows_version);
+    let mut snapshot = TweakSnapshot::new(
+        &tweak.id,
+        &tweak.name,
+        windows_version,
+        tweak.requires_system,
+    );
 
     // Capture registry values
     for change in &tweak.registry_changes {
@@ -271,8 +276,8 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
         let (current_value, current_exists) =
             read_registry_value(op.hive.as_str(), &op.key, &op.value_name, &op.value_type)?;
 
-        // Execute the restore
-        match execute_restore_operation(op) {
+        // Execute the restore (use SYSTEM elevation if configured)
+        match execute_restore_operation(op, snapshot.requires_system) {
             Ok(()) => {
                 completed.push((op.clone(), current_value, current_exists));
             }
@@ -316,7 +321,7 @@ struct RestoreOperation {
 }
 
 /// Execute a single restore operation
-fn execute_restore_operation(op: &RestoreOperation) -> Result<(), Error> {
+fn execute_restore_operation(op: &RestoreOperation, use_system: bool) -> Result<(), Error> {
     if !op.existed {
         // Value didn't exist - delete it
         log::debug!(
@@ -326,54 +331,99 @@ fn execute_restore_operation(op: &RestoreOperation) -> Result<(), Error> {
             op.value_name
         );
 
-        match registry_service::delete_value(&op.hive, &op.key, &op.value_name) {
-            Ok(()) => Ok(()),
-            Err(Error::RegistryKeyNotFound(_)) => Ok(()), // Already gone
-            Err(e) => Err(e),
+        if use_system {
+            // Use SYSTEM elevation for delete
+            match trusted_installer::delete_registry_value_as_system(
+                op.hive.as_str(),
+                &op.key,
+                &op.value_name,
+            ) {
+                Ok(()) => Ok(()),
+                Err(_) => Ok(()), // Ignore delete failures (key may already be gone)
+            }
+        } else {
+            match registry_service::delete_value(&op.hive, &op.key, &op.value_name) {
+                Ok(()) => Ok(()),
+                Err(Error::RegistryKeyNotFound(_)) => Ok(()), // Already gone
+                Err(e) => Err(e),
+            }
         }
     } else if let Some(value) = &op.value {
         // Restore the original value
         log::debug!(
-            "Restoring {}\\{}\\{} = {:?}",
+            "Restoring {}\\{}\\{} = {:?} (use_system: {})",
             op.hive.as_str(),
             op.key,
             op.value_name,
-            value
+            value,
+            use_system
         );
 
-        match op.value_type.as_str() {
-            "REG_DWORD" => {
-                if let Some(v) = value.as_u64() {
-                    registry_service::set_dword(&op.hive, &op.key, &op.value_name, v as u32)?;
+        if use_system {
+            // Use SYSTEM elevation via reg.exe
+            let value_data = match op.value_type.as_str() {
+                "REG_DWORD" | "REG_QWORD" => value.as_u64().map(|v| v.to_string()),
+                "REG_SZ" | "REG_EXPAND_SZ" => value.as_str().map(|s| format!("\"{}\"", s)),
+                _ => {
+                    log::warn!("SYSTEM elevation not supported for {}", op.value_type);
+                    return Ok(());
+                }
+            };
+
+            if let Some(data) = value_data {
+                log::info!(
+                    "[SYSTEM] Restoring {}: {}\\{}\\{} = {}",
+                    op.value_type,
+                    op.hive.as_str(),
+                    op.key,
+                    op.value_name,
+                    data
+                );
+                trusted_installer::set_registry_value_as_system(
+                    op.hive.as_str(),
+                    &op.key,
+                    &op.value_name,
+                    &op.value_type,
+                    &data,
+                )?;
+            }
+            Ok(())
+        } else {
+            // Normal registry writes
+            match op.value_type.as_str() {
+                "REG_DWORD" => {
+                    if let Some(v) = value.as_u64() {
+                        registry_service::set_dword(&op.hive, &op.key, &op.value_name, v as u32)?;
+                    }
+                }
+                "REG_SZ" | "REG_EXPAND_SZ" => {
+                    if let Some(v) = value.as_str() {
+                        registry_service::set_string(&op.hive, &op.key, &op.value_name, v)?;
+                    }
+                }
+                "REG_BINARY" => {
+                    if let Some(arr) = value.as_array() {
+                        let binary: Vec<u8> = arr
+                            .iter()
+                            .filter_map(|v| v.as_u64().map(|u| u as u8))
+                            .collect();
+                        registry_service::set_binary(&op.hive, &op.key, &op.value_name, &binary)?;
+                    }
+                }
+                "REG_QWORD" => {
+                    if let Some(v) = value.as_u64() {
+                        registry_service::set_qword(&op.hive, &op.key, &op.value_name, v)?;
+                    }
+                }
+                _ => {
+                    return Err(Error::BackupFailed(format!(
+                        "Unsupported value type: {}",
+                        op.value_type
+                    )));
                 }
             }
-            "REG_SZ" | "REG_EXPAND_SZ" => {
-                if let Some(v) = value.as_str() {
-                    registry_service::set_string(&op.hive, &op.key, &op.value_name, v)?;
-                }
-            }
-            "REG_BINARY" => {
-                if let Some(arr) = value.as_array() {
-                    let binary: Vec<u8> = arr
-                        .iter()
-                        .filter_map(|v| v.as_u64().map(|u| u as u8))
-                        .collect();
-                    registry_service::set_binary(&op.hive, &op.key, &op.value_name, &binary)?;
-                }
-            }
-            "REG_QWORD" => {
-                if let Some(v) = value.as_u64() {
-                    registry_service::set_qword(&op.hive, &op.key, &op.value_name, v)?;
-                }
-            }
-            _ => {
-                return Err(Error::BackupFailed(format!(
-                    "Unsupported value type: {}",
-                    op.value_type
-                )));
-            }
+            Ok(())
         }
-        Ok(())
     } else {
         // Existed but was null? Shouldn't happen, but delete to be safe
         log::warn!(
@@ -401,7 +451,8 @@ fn rollback_operations(completed: &[(RestoreOperation, Option<serde_json::Value>
             existed: *original_existed,
         };
 
-        if let Err(e) = execute_restore_operation(&rollback_op) {
+        // Rollback uses normal registry writes (if SYSTEM was needed, we probably can't rollback anyway)
+        if let Err(e) = execute_restore_operation(&rollback_op, false) {
             log::error!(
                 "Failed to rollback {}\\{}\\{}: {}",
                 op.hive.as_str(),

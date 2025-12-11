@@ -34,18 +34,27 @@ pub struct TweakSnapshot {
     pub tweak_name: String,
     pub applied_at: String,
     pub windows_version: u32,
+    /// Whether this tweak requires SYSTEM elevation for restore
+    #[serde(default)]
+    pub requires_system: bool,
     pub registry_snapshots: Vec<RegistrySnapshot>,
     pub service_snapshots: Vec<ServiceSnapshot>,
 }
 
 impl TweakSnapshot {
     /// Create a new empty snapshot for a tweak
-    pub fn new(tweak_id: &str, tweak_name: &str, windows_version: u32) -> Self {
+    pub fn new(
+        tweak_id: &str,
+        tweak_name: &str,
+        windows_version: u32,
+        requires_system: bool,
+    ) -> Self {
         Self {
             tweak_id: tweak_id.to_string(),
             tweak_name: tweak_name.to_string(),
             applied_at: chrono::Local::now().to_rfc3339(),
             windows_version,
+            requires_system,
             registry_snapshots: Vec::new(),
             service_snapshots: Vec::new(),
         }
