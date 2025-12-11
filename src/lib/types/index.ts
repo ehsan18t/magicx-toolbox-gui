@@ -210,9 +210,16 @@ export interface NetworkInfo {
 }
 
 /** Hardware information */
+export interface MonitorInfo {
+  name: string;
+  resolution: string;
+  refresh_rate: number;
+}
+
 export interface HardwareInfo {
   cpu: CpuInfo;
   gpu: GpuInfo[];
+  monitors: MonitorInfo[];
   memory: MemoryInfo;
   motherboard: MotherboardInfo;
   disks: DiskInfo[];

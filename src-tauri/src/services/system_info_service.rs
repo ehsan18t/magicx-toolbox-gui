@@ -31,6 +31,10 @@ struct Win32VideoController {
     video_processor: Option<String>,
     current_refresh_rate: Option<u32>,
     video_mode_description: Option<String>,
+    #[serde(rename = "CurrentHorizontalResolution")]
+    current_horizontal_resolution: Option<u32>,
+    #[serde(rename = "CurrentVerticalResolution")]
+    current_vertical_resolution: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -280,25 +284,108 @@ fn get_hardware_info() -> HardwareInfo {
         }
     };
 
-    let cpu = get_cpu_info(&wmi_con);
-    let gpu = get_gpu_info(&wmi_con);
-    let memory = get_memory_info(&wmi_con);
-    let motherboard = get_motherboard_info(&wmi_con);
     let disks = get_disk_info(&wmi_con);
-    let network = get_network_info(&wmi_con);
 
     // Calculate total storage
     let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
 
     HardwareInfo {
-        cpu,
-        gpu,
-        memory,
-        motherboard,
+        cpu: get_cpu_info(&wmi_con),
+        gpu: get_gpu_info(&wmi_con),
+        monitors: get_monitor_info(&wmi_con),
+        memory: get_memory_info(&wmi_con),
+        motherboard: get_motherboard_info(&wmi_con),
         disks,
-        network,
-        total_storage_gb: (total_storage_gb * 100.0).round() / 100.0,
+        network: get_network_info(&wmi_con),
+        total_storage_gb,
     }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename = "WmiMonitorID")]
+#[serde(rename_all = "PascalCase")]
+struct WmiMonitorID {
+    user_friendly_name: Option<Vec<u16>>,
+    // We could add more fields if needed
+}
+
+/// Get monitor information from WMI
+fn get_monitor_info(wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo> {
+    // We need to connect to the "root\\wmi" namespace for WmiMonitorID
+    let wmi_monitor_con = match WMIConnection::with_namespace_path("root\\wmi") {
+        Ok(con) => con,
+        Err(e) => {
+            log::warn!("Failed to connect to root\\wmi: {}", e);
+            // Fallback: Return empty list or try to get basic info from Win32_DesktopMonitor
+            return vec![];
+        }
+    };
+
+    let query: Vec<WmiMonitorID> = match wmi_monitor_con.query() {
+        Ok(results) => results,
+        Err(e) => {
+            log::warn!("Failed to query WmiMonitorID: {}", e);
+            return vec![];
+        }
+    };
+
+    // Get resolutions from Win32_VideoController (root\cimv2)
+    // We try to grab the current resolution from the main GPU(s)
+    let video_controllers: Vec<Win32VideoController> = wmi_con.query().unwrap_or_default();
+
+    // Collect resolutions and refresh rates from active controllers
+    // We do NOT sort/dedup to preserve index alignment with WmiMonitorID as best effort.
+    let mut resolutions_and_rates = Vec::new();
+    for vc in video_controllers {
+        // Filter out basic/driverless adapters to match real monitors better
+        let name = vc.name.as_deref().unwrap_or("").to_lowercase();
+        if name.contains("basic") || name.contains("microsoft") {
+            continue;
+        }
+
+        if let (Some(w), Some(h)) = (
+            vc.current_horizontal_resolution,
+            vc.current_vertical_resolution,
+        ) {
+            if w > 0 && h > 0 {
+                let hz = vc.current_refresh_rate.unwrap_or(60);
+                resolutions_and_rates.push((format!("{}x{}", w, h), hz));
+            }
+        }
+    }
+
+    // Map WmiMonitorID to MonitorInfo
+    query
+        .into_iter()
+        .enumerate()
+        .map(|(i, monitor)| {
+            let name = if let Some(raw) = monitor.user_friendly_name {
+                // WmiMonitorID UserFriendlyName is uint16[].
+                // Filter out nulls first (0).
+                let chars: Vec<u16> = raw.into_iter().filter(|&c| c != 0).collect();
+                String::from_utf16_lossy(&chars)
+            } else {
+                "Generic Monitor".to_string()
+            };
+
+            // Try to match resolution/hz by index
+            // If we run out of video controllers, reuse the first one or default
+            let (resolution, refresh_rate) =
+                resolutions_and_rates.get(i).cloned().unwrap_or_else(|| {
+                    // Fallback to first if available
+                    resolutions_and_rates
+                        .first()
+                        .cloned()
+                        .unwrap_or(("Unknown".to_string(), 0))
+                });
+
+            crate::models::MonitorInfo {
+                name,
+                resolution,
+                refresh_rate,
+            }
+        })
+        .collect()
 }
 
 #[derive(Deserialize, Debug)]

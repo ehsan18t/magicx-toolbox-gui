@@ -135,11 +135,23 @@ pub struct DiskInfo {
     pub health_status: Option<String>,
 }
 
+/// Monitor/Display information
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MonitorInfo {
+    /// Monitor name (e.g., "Dell U2415")
+    pub name: String,
+    /// Resolution (e.g., "1920x1080")
+    pub resolution: String,
+    /// Refresh rate in Hz
+    pub refresh_rate: u32,
+}
+
 /// Hardware information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HardwareInfo {
     pub cpu: CpuInfo,
     pub gpu: Vec<GpuInfo>,
+    pub monitors: Vec<MonitorInfo>,
     pub memory: MemoryInfo,
     pub motherboard: MotherboardInfo,
     pub disks: Vec<DiskInfo>,
