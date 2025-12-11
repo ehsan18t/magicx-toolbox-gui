@@ -36,6 +36,7 @@ struct CategoryDefinition {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
+#[allow(clippy::upper_case_acronyms)]
 enum RegistryHive {
     HKCU,
     HKLM,

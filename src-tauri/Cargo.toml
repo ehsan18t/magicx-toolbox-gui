@@ -9,7 +9,7 @@ homepage = "https://github.com/ehsan18t/magicx-toolbox-gui"
 keywords = ["tauri", "windows", "tweaks", "optimization"]
 categories = ["utilities"]
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
