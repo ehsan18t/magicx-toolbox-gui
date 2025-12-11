@@ -99,6 +99,7 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
+    requires_system: true
     registry_changes:
       - hive: HKCU
         key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"

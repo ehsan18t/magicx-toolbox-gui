@@ -84,6 +84,8 @@ export interface TweakDefinition {
   risk_level: RiskLevel;
   requires_reboot: boolean;
   requires_admin: boolean;
+  /** Requires SYSTEM elevation for protected registry keys */
+  requires_system: boolean;
   /** List of registry changes (with optional windows_versions filter on each) */
   registry_changes: RegistryChange[];
   /** List of Windows service changes (start/stop, enable/disable) */

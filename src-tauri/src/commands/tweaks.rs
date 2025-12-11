@@ -2,7 +2,8 @@ use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::{CategoryDefinition, TweakDefinition, TweakResult, TweakStatus};
 use crate::services::{
-    backup_service, registry_service, service_control, system_info_service, tweak_loader,
+    backup_service, registry_service, service_control, system_info_service, trusted_installer,
+    tweak_loader,
 };
 use tauri::AppHandle;
 
@@ -265,9 +266,14 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         };
 
         // Try to write the value
-        if let Err(e) =
-            write_registry_value(&app, change, &change.enable_value, "Setting", &tweak.name)
-        {
+        if let Err(e) = write_registry_value(
+            &app,
+            change,
+            &change.enable_value,
+            "Setting",
+            &tweak.name,
+            tweak.requires_system,
+        ) {
             log::error!("Failed to apply {}: {}", full_path, e);
 
             // Rollback all applied values
@@ -404,7 +410,14 @@ pub async fn apply_tweak_option(
                 let option = &options[option_index];
 
                 // Apply registry value
-                write_registry_value(&app, change, &option.value, "Setting option", &tweak.name)?;
+                write_registry_value(
+                    &app,
+                    change,
+                    &option.value,
+                    "Setting option",
+                    &tweak.name,
+                    tweak.requires_system,
+                )?;
 
                 // Apply per-option service changes if defined
                 if let Some(ref services) = option.service_changes {
@@ -540,9 +553,14 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         for change in &changes {
             if let Some(ref disable_value) = change.disable_value {
                 // Use disable_value from YAML
-                if let Err(e) =
-                    write_registry_value(&app, change, disable_value, "Disabling", &tweak.name)
-                {
+                if let Err(e) = write_registry_value(
+                    &app,
+                    change,
+                    disable_value,
+                    "Disabling",
+                    &tweak.name,
+                    tweak.requires_system,
+                ) {
                     log::error!("Failed to write disable_value: {}", e);
                     write_failed = true;
                     write_error = Some(e);
@@ -721,15 +739,22 @@ fn read_current_value(change: &crate::models::RegistryChange) -> Result<Option<s
 }
 
 /// Write a registry value based on type
+/// If use_system is true, uses SYSTEM elevation via reg.exe
 fn write_registry_value(
     app: &AppHandle,
     change: &crate::models::RegistryChange,
     value: &serde_json::Value,
     operation: &str,
     tweak_name: &str,
+    use_system: bool,
 ) -> Result<()> {
     let hive_name = change.hive.as_str();
     let full_path = format!("{}\\{}\\{}", hive_name, change.key, change.value_name);
+
+    // If SYSTEM elevation requested, use reg.exe via trusted_installer
+    if use_system {
+        return write_registry_value_as_system(change, value, operation, &full_path);
+    }
 
     match change.value_type {
         crate::models::RegistryValueType::DWord => {
@@ -811,6 +836,55 @@ fn write_registry_value(
                 full_path
             );
         }
+    }
+
+    Ok(())
+}
+
+/// Write a registry value as SYSTEM using reg.exe
+fn write_registry_value_as_system(
+    change: &crate::models::RegistryChange,
+    value: &serde_json::Value,
+    operation: &str,
+    full_path: &str,
+) -> Result<()> {
+    let hive_name = change.hive.as_str();
+    let value_type = change.value_type.as_str();
+
+    // Convert value to string for reg.exe
+    let value_data = match change.value_type {
+        crate::models::RegistryValueType::DWord | crate::models::RegistryValueType::QWord => {
+            value.as_u64().map(|v| v.to_string())
+        }
+        crate::models::RegistryValueType::String
+        | crate::models::RegistryValueType::ExpandString => {
+            value.as_str().map(|s| format!("\"{}\"", s))
+        }
+        _ => {
+            log::warn!(
+                "SYSTEM elevation not supported for type {:?}: {}",
+                change.value_type,
+                full_path
+            );
+            return Ok(());
+        }
+    };
+
+    if let Some(data) = value_data {
+        log::info!(
+            "[SYSTEM] {} {}: {} = {}",
+            operation,
+            value_type,
+            full_path,
+            data
+        );
+        trusted_installer::set_registry_value_as_system(
+            hive_name,
+            &change.key,
+            &change.value_name,
+            value_type,
+            &data,
+        )?;
     }
 
     Ok(())

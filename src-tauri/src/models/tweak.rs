@@ -54,6 +54,9 @@ pub struct TweakDefinitionRaw {
     pub requires_reboot: bool,
     #[serde(default)]
     pub requires_admin: bool,
+    /// Requires SYSTEM elevation for TrustedInstaller-protected keys
+    #[serde(default)]
+    pub requires_system: bool,
     /// List of registry changes (with optional windows_versions filter on each)
     pub registry_changes: Vec<RegistryChange>,
     /// List of Windows service changes (start/stop, enable/disable)
@@ -274,6 +277,9 @@ pub struct TweakDefinition {
     pub requires_reboot: bool,
     #[serde(default)]
     pub requires_admin: bool,
+    /// Requires SYSTEM elevation for TrustedInstaller-protected keys
+    #[serde(default)]
+    pub requires_system: bool,
     /// List of registry changes (with optional windows_versions filter on each)
     pub registry_changes: Vec<RegistryChange>,
     /// List of Windows service changes (start/stop, enable/disable)
@@ -295,6 +301,7 @@ impl TweakDefinition {
             risk_level: raw.risk_level,
             requires_reboot: raw.requires_reboot,
             requires_admin: raw.requires_admin,
+            requires_system: raw.requires_system,
             registry_changes: raw.registry_changes,
             service_changes: raw.service_changes,
             info: raw.info,
@@ -423,6 +430,7 @@ mod tests {
             risk_level: RiskLevel::Low,
             requires_reboot: false,
             requires_admin: false,
+            requires_system: false,
             registry_changes: changes,
             service_changes: None,
             info: None,
