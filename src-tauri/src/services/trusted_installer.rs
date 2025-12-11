@@ -1,8 +1,8 @@
-//! TrustedInstaller Elevation Service
+//! SYSTEM Elevation Service
 //!
-//! Provides functionality to restart the application with SYSTEM privileges.
+//! Provides functionality to execute commands as SYSTEM without restarting the app.
 //! Uses winlogon.exe token (not a Protected Process) and CreateProcessWithTokenW
-//! which only requires SeImpersonatePrivilege (available to admin processes).
+//! to launch hidden cmd.exe processes that can modify protected registry keys.
 
 use crate::error::Error;
 use std::ffi::OsStr;
@@ -19,8 +19,8 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows_sys::Win32::System::Threading::{
-    CreateProcessWithTokenW, GetCurrentProcess, OpenProcess, OpenProcessToken, LOGON_WITH_PROFILE,
-    PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+    CreateProcessWithTokenW, GetCurrentProcess, OpenProcess, OpenProcessToken, CREATE_NO_WINDOW,
+    LOGON_WITH_PROFILE, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
 };
 
 const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
@@ -134,7 +134,7 @@ fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
         }
 
         let target_wide = to_wide_string(target_name);
-        let target_len = target_wide.len() - 1; // Exclude null terminator
+        let target_len = target_wide.len() - 1;
 
         loop {
             let process_name: Vec<u16> = entry
@@ -153,7 +153,6 @@ fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
                 if matches {
                     let pid = entry.th32ProcessID;
                     CloseHandle(snapshot);
-                    log::info!("Found {} with PID: {}", target_name, pid);
                     return Ok(pid);
                 }
             }
@@ -217,27 +216,23 @@ fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
     }
 }
 
-/// Restart the current application with SYSTEM privileges
-/// Uses winlogon.exe token (runs as SYSTEM in user's session, not protected)
-/// Uses CreateProcessWithTokenW which only requires SeImpersonatePrivilege
-pub fn restart_as_trusted_installer() -> Result<(), Error> {
-    log::info!("Attempting to restart as SYSTEM (via winlogon.exe)");
-
-    // Enable debug privilege
+/// Get SYSTEM token from winlogon.exe
+fn get_system_token() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
-
-    // Find winlogon.exe - it runs as SYSTEM in the user's session and is NOT a PPL
     let pid = find_process_by_name("winlogon.exe")?;
+    log::debug!("Found winlogon.exe with PID: {}", pid);
+    get_process_token(pid)
+}
 
-    // Get token from winlogon
-    let token = get_process_token(pid)?;
-    log::info!("Successfully obtained SYSTEM token from winlogon.exe");
+/// Execute a command as SYSTEM and wait for it to complete
+/// Returns the exit code
+fn execute_command_as_system(command_line: &str) -> Result<i32, Error> {
+    let token = get_system_token()?;
+    log::debug!("Got SYSTEM token, executing command: {}", command_line);
 
-    // Get our executable path
-    let exe_path = std::env::current_exe()
-        .map_err(|e| Error::ServiceControl(format!("Failed to get executable path: {}", e)))?;
-
-    let mut command_line = to_wide_string(exe_path.to_string_lossy().as_ref());
+    // Build command line: cmd.exe /c <command>
+    let full_command = format!("cmd.exe /c {}", command_line);
+    let mut command_wide = to_wide_string(&full_command);
 
     unsafe {
         let startup_info = STARTUPINFOW {
@@ -268,15 +263,14 @@ pub fn restart_as_trusted_installer() -> Result<(), Error> {
             dwThreadId: 0,
         };
 
-        // CreateProcessWithTokenW only requires SeImpersonatePrivilege (admin has this)
         let result = CreateProcessWithTokenW(
             token,
             LOGON_WITH_PROFILE,
-            ptr::null(),               // lpApplicationName
-            command_line.as_mut_ptr(), // lpCommandLine (must be mutable)
-            0,                         // dwCreationFlags
-            ptr::null(),               // lpEnvironment
-            ptr::null(),               // lpCurrentDirectory
+            ptr::null(),
+            command_wide.as_mut_ptr(),
+            CREATE_NO_WINDOW,
+            ptr::null(),
+            ptr::null(),
             &startup_info,
             &mut process_info,
         );
@@ -290,20 +284,96 @@ pub fn restart_as_trusted_installer() -> Result<(), Error> {
             )));
         }
 
+        // Wait for the process to complete
+        windows_sys::Win32::System::Threading::WaitForSingleObject(
+            process_info.hProcess,
+            0xFFFFFFFF, // INFINITE
+        );
+
+        // Get exit code
+        let mut exit_code: u32 = 0;
+        windows_sys::Win32::System::Threading::GetExitCodeProcess(
+            process_info.hProcess,
+            &mut exit_code,
+        );
+
         CloseHandle(process_info.hProcess);
         CloseHandle(process_info.hThread);
 
-        log::info!(
-            "Successfully launched new process as SYSTEM (PID: {})",
-            process_info.dwProcessId
-        );
-
-        std::process::exit(0);
+        log::debug!("SYSTEM command completed with exit code: {}", exit_code);
+        Ok(exit_code as i32)
     }
 }
 
-/// Check if we might be running with elevated privileges
-#[allow(dead_code)]
-pub fn is_elevated() -> bool {
+/// Set a registry value as SYSTEM using reg.exe
+/// This bypasses normal permission checks by running reg.exe as SYSTEM
+pub fn set_registry_value_as_system(
+    hive: &str,
+    key: &str,
+    value_name: &str,
+    value_type: &str,
+    value_data: &str,
+) -> Result<(), Error> {
+    log::info!(
+        "Setting registry value as SYSTEM: {}\\{}\\{} = {} ({})",
+        hive,
+        key,
+        value_name,
+        value_data,
+        value_type
+    );
+
+    // Build reg.exe command
+    // reg add "HKLM\Software\..." /v "ValueName" /t REG_DWORD /d 1 /f
+    let full_key = format!("{}\\{}", hive, key);
+    let command = format!(
+        "reg add \"{}\" /v \"{}\" /t {} /d {} /f",
+        full_key, value_name, value_type, value_data
+    );
+
+    let exit_code = execute_command_as_system(&command)?;
+
+    if exit_code == 0 {
+        log::info!("Successfully set registry value as SYSTEM");
+        Ok(())
+    } else {
+        Err(Error::ServiceControl(format!(
+            "reg.exe failed with exit code: {}",
+            exit_code
+        )))
+    }
+}
+
+/// Delete a registry value as SYSTEM using reg.exe
+pub fn delete_registry_value_as_system(
+    hive: &str,
+    key: &str,
+    value_name: &str,
+) -> Result<(), Error> {
+    log::info!(
+        "Deleting registry value as SYSTEM: {}\\{}\\{}",
+        hive,
+        key,
+        value_name
+    );
+
+    let full_key = format!("{}\\{}", hive, key);
+    let command = format!("reg delete \"{}\" /v \"{}\" /f", full_key, value_name);
+
+    let exit_code = execute_command_as_system(&command)?;
+
+    if exit_code == 0 {
+        log::info!("Successfully deleted registry value as SYSTEM");
+        Ok(())
+    } else {
+        Err(Error::ServiceControl(format!(
+            "reg.exe delete failed with exit code: {}",
+            exit_code
+        )))
+    }
+}
+
+/// Check if SYSTEM elevation is available (running as admin)
+pub fn can_use_system_elevation() -> bool {
     crate::services::system_info_service::is_running_as_admin()
 }

@@ -1,28 +1,54 @@
 //! Elevation Commands
 //!
-//! Commands for elevating the application to TrustedInstaller privileges.
+//! Commands for SYSTEM elevation to modify protected registry keys.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::services::trusted_installer;
-use tauri::AppHandle;
 
-/// Restart the application with TrustedInstaller privileges
+/// Apply a registry change as SYSTEM
 #[tauri::command]
-pub async fn restart_as_trusted_installer(_app: AppHandle) -> Result<()> {
-    log::info!("Command: restart_as_trusted_installer");
+pub async fn apply_registry_as_system(
+    hive: String,
+    key: String,
+    value_name: String,
+    value_type: String,
+    value_data: String,
+) -> Result<()> {
+    log::info!(
+        "Command: apply_registry_as_system - {}\\{}\\{}",
+        hive,
+        key,
+        value_name
+    );
 
-    // Check if running as admin first
-    if !crate::services::system_info_service::is_running_as_admin() {
-        log::warn!("Cannot elevate to TrustedInstaller without admin privileges");
-        return Err(Error::RequiresAdmin);
-    }
-
-    trusted_installer::restart_as_trusted_installer()
+    trusted_installer::set_registry_value_as_system(
+        &hive,
+        &key,
+        &value_name,
+        &value_type,
+        &value_data,
+    )
 }
 
-/// Check if elevation to TrustedInstaller is possible
+/// Delete a registry value as SYSTEM
 #[tauri::command]
-pub async fn can_elevate_to_trusted_installer() -> Result<bool> {
-    // Can only elevate if running as admin
-    Ok(crate::services::system_info_service::is_running_as_admin())
+pub async fn delete_registry_as_system(
+    hive: String,
+    key: String,
+    value_name: String,
+) -> Result<()> {
+    log::info!(
+        "Command: delete_registry_as_system - {}\\{}\\{}",
+        hive,
+        key,
+        value_name
+    );
+
+    trusted_installer::delete_registry_value_as_system(&hive, &key, &value_name)
+}
+
+/// Check if SYSTEM elevation is available
+#[tauri::command]
+pub async fn can_use_system_elevation() -> Result<bool> {
+    Ok(trusted_installer::can_use_system_elevation())
 }
