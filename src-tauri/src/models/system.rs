@@ -13,6 +13,23 @@ pub struct WindowsInfo {
     pub is_windows_11: bool,
     /// Version string: "10" or "11" for tweak filtering
     pub version_string: String,
+    /// System uptime in seconds
+    pub uptime_seconds: u64,
+    /// OS install date as ISO 8601 string
+    pub install_date: Option<String>,
+}
+
+/// System/device information from Win32_ComputerSystem
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DeviceInfo {
+    /// System manufacturer (e.g., "Dell Inc.", "ASUS")
+    pub manufacturer: String,
+    /// System model (e.g., "XPS 15 9520", "ROG Strix G15")
+    pub model: String,
+    /// System type (e.g., "x64-based PC")
+    pub system_type: String,
+    /// PC type: Desktop, Mobile (laptop), Workstation, etc.
+    pub pc_type: String,
 }
 
 impl WindowsInfo {
@@ -97,10 +114,12 @@ pub struct DiskInfo {
     pub model: String,
     /// Total size in GB
     pub size_gb: f64,
-    /// Drive type (e.g., "SSD", "HDD")
+    /// Drive type (e.g., "SSD", "HDD", "NVMe")
     pub drive_type: String,
-    /// Interface type (e.g., "NVMe", "SATA")
+    /// Interface/bus type (e.g., "NVMe", "SATA", "USB")
     pub interface_type: String,
+    /// Health status (Healthy, Warning, Unhealthy)
+    pub health_status: Option<String>,
 }
 
 /// Hardware information
@@ -111,6 +130,8 @@ pub struct HardwareInfo {
     pub memory: MemoryInfo,
     pub motherboard: MotherboardInfo,
     pub disks: Vec<DiskInfo>,
+    /// Total storage across all disks in GB
+    pub total_storage_gb: f64,
 }
 
 /// System information
@@ -121,4 +142,6 @@ pub struct SystemInfo {
     pub username: String,
     pub is_admin: bool,
     pub hardware: HardwareInfo,
+    /// Device information (manufacturer, model)
+    pub device: DeviceInfo,
 }

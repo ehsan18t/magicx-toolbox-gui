@@ -1,6 +1,7 @@
 use crate::error::Error;
 use crate::models::{
-    CpuInfo, DiskInfo, GpuInfo, HardwareInfo, MemoryInfo, MotherboardInfo, SystemInfo, WindowsInfo,
+    CpuInfo, DeviceInfo, DiskInfo, GpuInfo, HardwareInfo, MemoryInfo, MotherboardInfo, SystemInfo,
+    WindowsInfo,
 };
 use serde::Deserialize;
 use std::env;
@@ -68,6 +69,39 @@ struct Win32DiskDrive {
     interface_type: Option<String>,
 }
 
+/// MSFT_PhysicalDisk from storage namespace for reliable SSD/HDD detection
+#[derive(Deserialize, Debug)]
+#[serde(rename = "MSFT_PhysicalDisk")]
+#[serde(rename_all = "PascalCase")]
+struct MsftPhysicalDisk {
+    friendly_name: Option<String>,
+    size: Option<u64>,
+    media_type: Option<u16>,    // 0=Unspecified, 3=HDD, 4=SSD, 5=SCM
+    bus_type: Option<u16>,      // 11=SATA, 17=NVMe
+    health_status: Option<u16>, // 0=Healthy, 1=Warning, 2=Unhealthy
+}
+
+/// Win32_OperatingSystem for uptime and install date
+#[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_OperatingSystem")]
+#[serde(rename_all = "PascalCase")]
+struct Win32OperatingSystem {
+    last_boot_up_time: Option<String>,
+    install_date: Option<String>,
+}
+
+/// Win32_ComputerSystem for device manufacturer/model
+#[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_ComputerSystem")]
+#[serde(rename_all = "PascalCase")]
+struct Win32ComputerSystem {
+    manufacturer: Option<String>,
+    model: Option<String>,
+    system_type: Option<String>,
+    #[serde(rename = "PCSystemType")]
+    pc_system_type: Option<u16>, // 1=Desktop, 2=Mobile, 3=Workstation, etc.
+}
+
 /// Retrieve Windows version information
 pub fn get_windows_info() -> Result<WindowsInfo, Error> {
     log::trace!("Reading Windows version info from registry");
@@ -102,11 +136,15 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
         "10".to_string()
     };
 
+    // Get uptime and install date from WMI
+    let (uptime_seconds, install_date) = get_os_info();
+
     log::info!(
-        "Detected Windows {} (build {}, {})",
+        "Detected Windows {} (build {}, {}), uptime={}s",
         version_string,
         build_number,
-        display_version
+        display_version,
+        uptime_seconds
     );
 
     Ok(WindowsInfo {
@@ -115,7 +153,110 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
         build_number,
         is_windows_11,
         version_string,
+        uptime_seconds,
+        install_date,
     })
+}
+
+/// Get uptime and install date from Win32_OperatingSystem
+fn get_os_info() -> (u64, Option<String>) {
+    let wmi_con = match WMIConnection::new() {
+        Ok(con) => con,
+        Err(e) => {
+            log::warn!("Failed to create WMI connection for OS info: {}", e);
+            return (0, None);
+        }
+    };
+
+    let query: Vec<Win32OperatingSystem> = wmi_con.query().unwrap_or_default();
+    if let Some(os) = query.first() {
+        // Parse WMI datetime format: "20240115123456.000000+000"
+        let uptime_seconds = os
+            .last_boot_up_time
+            .as_ref()
+            .map(|boot_time| parse_wmi_datetime_to_uptime(boot_time))
+            .unwrap_or(0);
+
+        // Convert install date to ISO 8601
+        let install_date = os
+            .install_date
+            .as_ref()
+            .map(|d| parse_wmi_datetime_to_iso(d));
+
+        (uptime_seconds, install_date)
+    } else {
+        (0, None)
+    }
+}
+
+/// Parse WMI datetime format to uptime in seconds
+fn parse_wmi_datetime_to_uptime(wmi_datetime: &str) -> u64 {
+    // WMI format: "20240115123456.123456+000"
+    // Extract: YYYYMMDDHHMMSS
+    if wmi_datetime.len() < 14 {
+        return 0;
+    }
+
+    let year: i32 = wmi_datetime[0..4].parse().unwrap_or(0);
+    let month: u32 = wmi_datetime[4..6].parse().unwrap_or(1);
+    let day: u32 = wmi_datetime[6..8].parse().unwrap_or(1);
+    let hour: u32 = wmi_datetime[8..10].parse().unwrap_or(0);
+    let min: u32 = wmi_datetime[10..12].parse().unwrap_or(0);
+    let sec: u32 = wmi_datetime[12..14].parse().unwrap_or(0);
+
+    // Calculate seconds since boot using simple date arithmetic
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Convert boot time to approximate Unix timestamp
+    // This is a simplified calculation - for display purposes only
+    let days_since_epoch = (year - 1970) * 365 + (year - 1969) / 4 - (year - 1901) / 100
+        + (year - 1601) / 400
+        + days_before_month(month, is_leap_year(year))
+        + day as i32
+        - 1;
+    let boot_secs =
+        days_since_epoch as u64 * 86400 + hour as u64 * 3600 + min as u64 * 60 + sec as u64;
+
+    // Get current time
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    now_secs.saturating_sub(boot_secs)
+}
+
+fn days_before_month(month: u32, leap: bool) -> i32 {
+    let days = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let base = days
+        .get(month.saturating_sub(1) as usize)
+        .copied()
+        .unwrap_or(0);
+    if leap && month > 2 {
+        base + 1
+    } else {
+        base
+    }
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+/// Parse WMI datetime to ISO 8601 format
+fn parse_wmi_datetime_to_iso(wmi_datetime: &str) -> String {
+    if wmi_datetime.len() < 14 {
+        return wmi_datetime.to_string();
+    }
+    format!(
+        "{}-{}-{}T{}:{}:{}",
+        &wmi_datetime[0..4],
+        &wmi_datetime[4..6],
+        &wmi_datetime[6..8],
+        &wmi_datetime[8..10],
+        &wmi_datetime[10..12],
+        &wmi_datetime[12..14]
+    )
 }
 
 /// Get hardware information using WMI queries
@@ -137,12 +278,16 @@ fn get_hardware_info() -> HardwareInfo {
     let motherboard = get_motherboard_info(&wmi_con);
     let disks = get_disk_info(&wmi_con);
 
+    // Calculate total storage
+    let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
+
     HardwareInfo {
         cpu,
         gpu,
         memory,
         motherboard,
         disks,
+        total_storage_gb: (total_storage_gb * 100.0).round() / 100.0,
     }
 }
 
@@ -297,17 +442,84 @@ fn get_motherboard_info(wmi_con: &WMIConnection) -> MotherboardInfo {
     }
 }
 
-/// Get disk drive information from WMI
+/// Get disk drive information using MSFT_PhysicalDisk for reliable SSD/HDD detection
+/// Falls back to Win32_DiskDrive if storage namespace is unavailable
 fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
-    log::trace!("Querying Win32_DiskDrive");
+    log::trace!("Querying MSFT_PhysicalDisk from storage namespace");
+
+    // Try MSFT_PhysicalDisk first (more reliable for SSD/HDD detection)
+    if let Ok(storage_con) = WMIConnection::with_namespace_path("Root\\Microsoft\\Windows\\Storage")
+    {
+        let query: Vec<MsftPhysicalDisk> = storage_con.query().unwrap_or_default();
+        if !query.is_empty() {
+            return query
+                .into_iter()
+                .map(|disk| {
+                    let model = disk
+                        .friendly_name
+                        .unwrap_or_else(|| "Unknown Drive".to_string());
+                    let size_gb = disk
+                        .size
+                        .map(|s| {
+                            let gb = s as f64 / 1_073_741_824.0;
+                            (gb * 100.0).round() / 100.0
+                        })
+                        .unwrap_or(0.0);
+
+                    // MediaType: 0=Unspecified, 3=HDD, 4=SSD, 5=SCM
+                    let drive_type = match disk.media_type {
+                        Some(3) => "HDD".to_string(),
+                        Some(4) => "SSD".to_string(),
+                        Some(5) => "SCM".to_string(), // Storage Class Memory (e.g., Intel Optane)
+                        _ => "Unknown".to_string(),
+                    };
+
+                    // BusType: 7=USB, 10=SAS, 11=SATA, 17=NVMe
+                    let interface_type = match disk.bus_type {
+                        Some(7) => "USB".to_string(),
+                        Some(10) => "SAS".to_string(),
+                        Some(11) => "SATA".to_string(),
+                        Some(17) => "NVMe".to_string(),
+                        _ => "Unknown".to_string(),
+                    };
+
+                    // HealthStatus: 0=Healthy, 1=Warning, 2=Unhealthy
+                    let health_status = disk.health_status.map(|h| match h {
+                        0 => "Healthy".to_string(),
+                        1 => "Warning".to_string(),
+                        2 => "Unhealthy".to_string(),
+                        _ => "Unknown".to_string(),
+                    });
+
+                    log::debug!(
+                        "Disk (MSFT): model={}, size_gb={:.2}, type={}, interface={}, health={:?}",
+                        model,
+                        size_gb,
+                        drive_type,
+                        interface_type,
+                        health_status
+                    );
+
+                    DiskInfo {
+                        model,
+                        size_gb,
+                        drive_type,
+                        interface_type,
+                        health_status,
+                    }
+                })
+                .collect();
+        }
+    }
+
+    // Fallback to Win32_DiskDrive
+    log::trace!("Falling back to Win32_DiskDrive");
     let disk_query: Vec<Win32DiskDrive> = wmi_con.query().unwrap_or_default();
 
     disk_query
         .into_iter()
         .map(|disk| {
             let model = disk.model.unwrap_or_else(|| "Unknown Drive".to_string());
-
-            // Convert size from string to bytes, then to GB
             let size_gb = disk
                 .size
                 .and_then(|s| s.parse::<u64>().ok())
@@ -317,17 +529,14 @@ fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
                 })
                 .unwrap_or(0.0);
 
-            // Determine drive type (SSD/HDD)
+            // Best effort drive type detection from Win32_DiskDrive
             let drive_type = disk
                 .media_type
                 .map(|mt| {
-                    if mt.contains("SSD") || mt.contains("Fixed hard disk") {
-                        // Try to determine if it's SSD or HDD based on media type
-                        if mt.contains("SSD") {
-                            "SSD".to_string()
-                        } else {
-                            "HDD".to_string()
-                        }
+                    if mt.contains("SSD") {
+                        "SSD".to_string()
+                    } else if mt.contains("Fixed hard disk") {
+                        "HDD".to_string() // May be wrong for SSDs
                     } else {
                         mt
                     }
@@ -337,7 +546,7 @@ fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
             let interface_type = disk.interface_type.unwrap_or_else(|| "Unknown".to_string());
 
             log::debug!(
-                "Disk found: model={}, size_gb={:.2}, type={}, interface={}",
+                "Disk (Win32): model={}, size_gb={:.2}, type={}, interface={}",
                 model,
                 size_gb,
                 drive_type,
@@ -349,9 +558,56 @@ fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
                 size_gb,
                 drive_type,
                 interface_type,
+                health_status: None,
             }
         })
         .collect()
+}
+
+/// Get device information from Win32_ComputerSystem
+fn get_device_info(wmi_con: &WMIConnection) -> DeviceInfo {
+    let query: Vec<Win32ComputerSystem> = wmi_con.query().unwrap_or_default();
+
+    if let Some(cs) = query.first() {
+        let manufacturer = cs
+            .manufacturer
+            .clone()
+            .unwrap_or_else(|| "Unknown".to_string());
+        let model = cs.model.clone().unwrap_or_else(|| "Unknown".to_string());
+        let system_type = cs
+            .system_type
+            .clone()
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        // PCSystemType: 1=Desktop, 2=Mobile, 3=Workstation, 4=Enterprise Server, etc.
+        let pc_type = match cs.pc_system_type {
+            Some(1) => "Desktop".to_string(),
+            Some(2) => "Laptop".to_string(),
+            Some(3) => "Workstation".to_string(),
+            Some(4) => "Enterprise Server".to_string(),
+            Some(5) => "SOHO Server".to_string(),
+            Some(6) => "Appliance PC".to_string(),
+            Some(7) => "Performance Server".to_string(),
+            Some(8) => "Slate/Tablet".to_string(),
+            _ => "Unknown".to_string(),
+        };
+
+        log::debug!(
+            "Device info: manufacturer={}, model={}, type={}",
+            manufacturer,
+            model,
+            pc_type
+        );
+
+        DeviceInfo {
+            manufacturer,
+            model,
+            system_type,
+            pc_type,
+        }
+    } else {
+        DeviceInfo::default()
+    }
 }
 
 /// Get full system information
@@ -361,13 +617,18 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
     let computer_name = env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string());
     let username = env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string());
     let is_admin = is_running_as_admin();
+
+    // Get hardware and device info using the same WMI connection
+    let wmi_con = WMIConnection::new().ok();
     let hardware = get_hardware_info();
+    let device = wmi_con.as_ref().map(get_device_info).unwrap_or_default();
 
     log::debug!(
-        "System info: computer={}, user={}, admin={}",
+        "System info: computer={}, user={}, admin={}, device={}",
         computer_name,
         username,
-        is_admin
+        is_admin,
+        device.model
     );
 
     Ok(SystemInfo {
@@ -376,6 +637,7 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
         username,
         is_admin,
         hardware,
+        device,
     })
 }
 

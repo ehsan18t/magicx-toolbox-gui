@@ -202,7 +202,7 @@ impl RegistryChange {
 
     /// Check if this is a multi-state tweak (has options)
     pub fn is_multi_state(&self) -> bool {
-        self.options.as_ref().map_or(false, |opts| opts.len() > 1)
+        self.options.as_ref().is_some_and(|opts| opts.len() > 1)
     }
 
     /// Get the default option index (0 if not specified)

@@ -107,8 +107,8 @@ fn get_service_startup_type(service_name: &str) -> Result<ServiceStartupType, Er
         if line.contains("Start") && line.contains("REG_DWORD") {
             if let Some(value_str) = line.split_whitespace().last() {
                 // Parse hex value (e.g., "0x4")
-                let value = if value_str.starts_with("0x") {
-                    u32::from_str_radix(&value_str[2..], 16).ok()
+                let value = if let Some(stripped) = value_str.strip_prefix("0x") {
+                    u32::from_str_radix(stripped, 16).ok()
                 } else {
                     value_str.parse::<u32>().ok()
                 };

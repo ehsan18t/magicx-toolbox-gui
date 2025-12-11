@@ -187,7 +187,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                 if tweak.requires_system {
                     let start_type = sc.disable_startup.to_sc_start_type();
                     if let Err(e) =
-                        trusted_installer::set_service_startup_as_system(&sc.name, &start_type)
+                        trusted_installer::set_service_startup_as_system(&sc.name, start_type)
                     {
                         log::warn!(
                             "Failed to restore service '{}' startup as SYSTEM: {}",
@@ -195,12 +195,10 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                             e
                         );
                     }
-                } else {
-                    if let Err(e) =
-                        service_control::set_service_startup(&sc.name, &sc.disable_startup)
-                    {
-                        log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
-                    }
+                } else if let Err(e) =
+                    service_control::set_service_startup(&sc.name, &sc.disable_startup)
+                {
+                    log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
                 }
 
                 // Start service if required
@@ -209,10 +207,8 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                         if let Err(e) = trusted_installer::start_service_as_system(&sc.name) {
                             log::warn!("Failed to start service '{}' as SYSTEM: {}", sc.name, e);
                         }
-                    } else {
-                        if let Err(e) = service_control::start_service(&sc.name) {
-                            log::warn!("Failed to start service '{}': {}", sc.name, e);
-                        }
+                    } else if let Err(e) = service_control::start_service(&sc.name) {
+                        log::warn!("Failed to start service '{}': {}", sc.name, e);
                     }
                 }
             }
@@ -419,10 +415,8 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                     if let Err(e) = trusted_installer::stop_service_as_system(&sc.name) {
                         log::warn!("Failed to stop service '{}' as SYSTEM: {}", sc.name, e);
                     }
-                } else {
-                    if let Err(e) = service_control::stop_service(&sc.name) {
-                        log::warn!("Failed to stop service '{}': {}", sc.name, e);
-                    }
+                } else if let Err(e) = service_control::stop_service(&sc.name) {
+                    log::warn!("Failed to stop service '{}': {}", sc.name, e);
                 }
             }
 
@@ -430,7 +424,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
             if tweak.requires_system {
                 let start_type = sc.enable_startup.to_sc_start_type();
                 if let Err(e) =
-                    trusted_installer::set_service_startup_as_system(&sc.name, &start_type)
+                    trusted_installer::set_service_startup_as_system(&sc.name, start_type)
                 {
                     log::error!(
                         "Failed to set service '{}' startup as SYSTEM: {}",
@@ -439,11 +433,11 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
                     );
                     // Don't fail the whole operation for service errors
                 }
-            } else {
-                if let Err(e) = service_control::set_service_startup(&sc.name, &sc.enable_startup) {
-                    log::error!("Failed to set service '{}' startup: {}", sc.name, e);
-                    // Don't fail the whole operation for service errors
-                }
+            } else if let Err(e) =
+                service_control::set_service_startup(&sc.name, &sc.enable_startup)
+            {
+                log::error!("Failed to set service '{}' startup: {}", sc.name, e);
+                // Don't fail the whole operation for service errors
             }
         }
     }
@@ -549,8 +543,7 @@ pub async fn apply_tweak_option(
                         if tweak.requires_system {
                             let start_type = svc.startup.to_sc_start_type();
                             if let Err(e) = trusted_installer::set_service_startup_as_system(
-                                &svc.name,
-                                &start_type,
+                                &svc.name, start_type,
                             ) {
                                 log::warn!(
                                     "Failed to set service '{}' startup as SYSTEM: {}",
@@ -558,12 +551,10 @@ pub async fn apply_tweak_option(
                                     e
                                 );
                             }
-                        } else {
-                            if let Err(e) =
-                                service_control::set_service_startup(&svc.name, &svc.startup)
-                            {
-                                log::warn!("Failed to set service '{}' startup: {}", svc.name, e);
-                            }
+                        } else if let Err(e) =
+                            service_control::set_service_startup(&svc.name, &svc.startup)
+                        {
+                            log::warn!("Failed to set service '{}' startup: {}", svc.name, e);
                         }
 
                         // Stop service if startup is disabled and stop_if_disabled is set
@@ -579,10 +570,8 @@ pub async fn apply_tweak_option(
                                         e
                                     );
                                 }
-                            } else {
-                                if let Err(e) = service_control::stop_service(&svc.name) {
-                                    log::warn!("Failed to stop service '{}': {}", svc.name, e);
-                                }
+                            } else if let Err(e) = service_control::stop_service(&svc.name) {
+                                log::warn!("Failed to stop service '{}': {}", svc.name, e);
                             }
                         }
                     }
@@ -809,7 +798,7 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
             if tweak.requires_system {
                 let start_type = sc.disable_startup.to_sc_start_type();
                 if let Err(e) =
-                    trusted_installer::set_service_startup_as_system(&sc.name, &start_type)
+                    trusted_installer::set_service_startup_as_system(&sc.name, start_type)
                 {
                     log::warn!(
                         "Failed to restore service '{}' startup as SYSTEM: {}",
@@ -817,11 +806,10 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
                         e
                     );
                 }
-            } else {
-                if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup)
-                {
-                    log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
-                }
+            } else if let Err(e) =
+                service_control::set_service_startup(&sc.name, &sc.disable_startup)
+            {
+                log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
             }
 
             // Start service if required
@@ -830,10 +818,8 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
                     if let Err(e) = trusted_installer::start_service_as_system(&sc.name) {
                         log::warn!("Failed to start service '{}' as SYSTEM: {}", sc.name, e);
                     }
-                } else {
-                    if let Err(e) = service_control::start_service(&sc.name) {
-                        log::warn!("Failed to start service '{}': {}", sc.name, e);
-                    }
+                } else if let Err(e) = service_control::start_service(&sc.name) {
+                    log::warn!("Failed to start service '{}': {}", sc.name, e);
                 }
             }
         }

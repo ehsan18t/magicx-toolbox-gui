@@ -117,6 +117,22 @@ export interface WindowsInfo {
   build_number: string;
   is_windows_11: boolean;
   version_string: string; // "10" or "11"
+  /** System uptime in seconds */
+  uptime_seconds: number;
+  /** OS install date as ISO 8601 string */
+  install_date: string | null;
+}
+
+/** Device/system information from Win32_ComputerSystem */
+export interface DeviceInfo {
+  /** System manufacturer (e.g., "Dell Inc.", "ASUS") */
+  manufacturer: string;
+  /** System model (e.g., "XPS 15 9520") */
+  model: string;
+  /** System type (e.g., "x64-based PC") */
+  system_type: string;
+  /** PC type: Desktop, Laptop, Workstation, etc. */
+  pc_type: string;
 }
 
 /** CPU information */
@@ -159,6 +175,8 @@ export interface DiskInfo {
   drive_type: string;
   /** Interface type (e.g., "NVMe", "SATA") */
   interface_type: string;
+  /** Disk health status (e.g., "Healthy", "Warning") */
+  health_status: string | null;
 }
 
 /** Memory (RAM) information */
@@ -190,6 +208,8 @@ export interface HardwareInfo {
   memory: MemoryInfo;
   motherboard: MotherboardInfo;
   disks: DiskInfo[];
+  /** Total storage across all disks in GB */
+  total_storage_gb: number;
 }
 
 /** System information */
@@ -199,6 +219,7 @@ export interface SystemInfo {
   username: string;
   is_admin: boolean;
   hardware: HardwareInfo;
+  device: DeviceInfo;
 }
 
 /** Result of applying a tweak */
