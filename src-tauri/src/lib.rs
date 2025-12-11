@@ -98,13 +98,8 @@ pub fn run() {
             commands::backup::has_backup,
             commands::backup::list_backups,
             commands::backup::get_backup_info,
-            commands::backup::restore_key_to_baseline,
-            commands::backup::get_tweak_conflicts,
-            commands::backup::run_backup_diagnostics,
-            commands::backup::migrate_legacy_backups,
-            commands::backup::reset_backup_state,
-            commands::backup::get_baseline_entry,
             commands::backup::get_backup_system_status,
+            commands::backup::cleanup_old_backups,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

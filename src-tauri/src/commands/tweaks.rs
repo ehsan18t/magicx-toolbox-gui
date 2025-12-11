@@ -1,8 +1,6 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
-use crate::models::{
-    make_key_id, CategoryDefinition, RegistryKeyId, TweakDefinition, TweakResult, TweakStatus,
-};
+use crate::models::{CategoryDefinition, TweakDefinition, TweakResult, TweakStatus};
 use crate::services::{
     backup_service, registry_service, service_control, system_info_service, tweak_loader,
 };
@@ -78,40 +76,14 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     let tweak = tweak_loader::get_tweak(&tweak_id)?
         .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
 
-    let windows_info = system_info_service::get_windows_info()?;
-    let version = windows_info.version_number();
+    // Check if snapshot exists (means tweak is applied by us)
+    let has_backup = backup_service::snapshot_exists(&tweak_id)?;
 
-    // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(version) {
-        log::debug!("Tweak {} not applicable to Windows {}", tweak_id, version);
-        return Err(Error::UnsupportedWindowsVersion);
-    }
+    // Detect current state from registry
+    let (is_applied, current_option_index) = backup_service::detect_tweak_state(&tweak)?;
 
-    // Check registry to see if tweak is applied
-    let changes = tweak.get_changes_for_version(version);
-    if changes.is_empty() {
-        log::debug!(
-            "Tweak {} has no registry changes for Windows {}",
-            tweak_id,
-            version
-        );
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    let is_applied = check_tweak_applied(&changes)?;
-
-    // Check our state tracking instead of just backup existence
-    let has_backup = backup_service::is_tweak_applied(&tweak_id).unwrap_or(false);
-
-    // Get last applied timestamp if available
-    let last_applied = backup_service::load_tweak_state().ok().and_then(|state| {
-        state
-            .get_applied_tweak(&tweak_id)
-            .map(|info| info.applied_at.clone())
-    });
-
-    // Check for multi-state tweaks and detect current option
-    let current_option_index = detect_current_option(&changes)?;
+    // Get last applied timestamp from snapshot if exists
+    let last_applied = backup_service::load_snapshot(&tweak_id)?.map(|s| s.applied_at);
 
     log::trace!(
         "Tweak {} status: applied={}, has_backup={}, option_index={:?}",
@@ -144,296 +116,127 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     let version = system_info.windows.version_number();
     log::debug!("Applying '{}' on Windows {}", tweak.name, version);
 
-    // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(version) {
-        log::warn!(
-            "Tweak '{}' not supported on Windows {}",
-            tweak.name,
-            version
-        );
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    // Check if admin required and not running as admin
+    // Check admin if required
     if tweak.requires_admin && !system_info.is_admin {
-        log::warn!("Tweak '{}' requires admin privileges", tweak.name);
+        log::warn!("Tweak '{}' requires admin, but running as user", tweak.name);
         return Err(Error::RequiresAdmin);
     }
 
+    // Get version-specific changes
     let changes = tweak.get_changes_for_version(version);
     if changes.is_empty() {
         log::warn!(
-            "Tweak '{}' has no changes for Windows {}",
-            tweak.name,
-            version
+            "No registry changes for Windows {} in tweak '{}'",
+            version,
+            tweak.name
         );
         return Err(Error::UnsupportedWindowsVersion);
     }
 
-    log::debug!(
-        "Tweak '{}' has {} registry changes to apply",
+    // Step 1: Capture snapshot BEFORE making any changes
+    let snapshot = backup_service::capture_snapshot(&tweak, version)?;
+    backup_service::save_snapshot(&snapshot)?;
+    log::info!(
+        "Captured snapshot for '{}' with {} registry values",
         tweak.name,
-        changes.len()
+        snapshot.registry_snapshots.len()
     );
 
-    // Debug: Log tweak application start
     if is_debug_enabled() {
         emit_debug_log(
             &app,
             DebugLevel::Info,
-            &format!("Applying tweak: {} ({})", tweak.name, tweak_id),
-            Some(&format!("{} registry changes to apply", changes.len())),
+            &format!("Captured snapshot for: {}", tweak.name),
+            Some(&format!(
+                "{} registry values",
+                snapshot.registry_snapshots.len()
+            )),
         );
     }
 
-    // Prepare key info for baseline capture
-    let keys_info: Vec<(String, String, String, String)> = changes
-        .iter()
-        .map(|c| {
-            (
-                c.hive.as_str().to_string(),
-                c.key.clone(),
-                c.value_name.clone(),
-                format!("{:?}", c.value_type).replace("\"", ""),
-            )
-        })
-        .collect();
-
-    // Run preflight check to detect conflicts
-    let preflight = backup_service::preflight_check(&tweak_id, &keys_info)?;
-
-    if !preflight.conflicts.is_empty() {
-        log::warn!(
-            "Tweak '{}' has {} conflicts with other applied tweaks",
-            tweak.name,
-            preflight.conflicts.len()
-        );
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Warn,
-                &format!(
-                    "Tweak '{}' shares registry keys with: {:?}",
-                    tweak.name,
-                    preflight
-                        .conflicts
-                        .iter()
-                        .flat_map(|c| c.conflicting_tweaks.clone())
-                        .collect::<Vec<_>>()
-                ),
-                Some("Revert order matters for shared keys"),
-            );
-        }
-    }
-
-    // Capture baseline values for any keys not already captured
-    log::debug!("Capturing baseline for tweak '{}'", tweak.name);
-    if let Err(e) = backup_service::capture_baseline_for_keys(&tweak_id, &keys_info) {
-        log::warn!("Failed to capture baseline for '{}': {}", tweak.name, e);
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Warn,
-                &format!("Failed to capture baseline for {}: {}", tweak.name, e),
-                Some("Continuing without full baseline"),
-            );
-        }
-    } else {
-        log::debug!("Baseline captured for tweak '{}'", tweak.name);
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Success,
-                &format!("Baseline captured for: {}", tweak.name),
-                None,
-            );
-        }
-    }
-
-    // Pre-capture: Take snapshots of all values BEFORE any modifications
-    // This ensures we have accurate values for rollback even if baseline capture partially failed
-    let snapshots = match backup_service::capture_snapshots(&changes) {
-        Ok(s) => {
-            log::debug!("Pre-captured {} snapshots for rollback", s.len());
-            s
-        }
-        Err(e) => {
-            log::warn!("Failed to capture pre-apply snapshots: {}", e);
-            if is_debug_enabled() {
-                emit_debug_log(
-                    &app,
-                    DebugLevel::Warn,
-                    &format!("Failed to capture snapshots for {}: {}", tweak.name, e),
-                    Some("Rollback may be incomplete if apply fails"),
-                );
-            }
-            Vec::new() // Continue without snapshots - we still have baseline
-        }
-    };
-
-    // Apply all registry changes with rollback on failure
-    let mut applied_changes: Vec<RegistryKeyId> = Vec::new();
-    let mut applied_count = 0usize;
-    let mut rollback_needed = false;
-    let mut error_msg: Option<String> = None;
+    // Step 2: Apply all registry changes atomically
+    let mut applied_values: Vec<(crate::models::RegistrySnapshot, serde_json::Value)> = Vec::new();
 
     for change in &changes {
-        let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
+        let hive_str = change.hive.as_str();
+        let full_path = format!("{}\\{}\\{}", hive_str, change.key, change.value_name);
 
-        match apply_registry_change(&app, change, &tweak.name) {
-            Ok(()) => {
-                applied_changes.push(key_id);
-                applied_count += 1;
-            }
-            Err(e) => {
-                log::error!(
-                    "Failed to apply registry change for '{}': {}",
-                    tweak.name,
-                    e
-                );
-                rollback_needed = true;
-                error_msg = Some(e.to_string());
-                break;
-            }
-        }
-    }
+        log::debug!("Setting {} = {:?}", full_path, change.enable_value);
 
-    // If any change failed, rollback using captured snapshots
-    if rollback_needed {
-        log::warn!(
-            "Rolling back {} changes for tweak '{}'",
-            applied_count,
-            tweak.name
-        );
+        // Capture current value for potential rollback
+        let current_snapshot = crate::models::RegistrySnapshot {
+            hive: hive_str.to_string(),
+            key: change.key.clone(),
+            value_name: change.value_name.clone(),
+            value_type: change.value_type.as_str().to_string(),
+            value: read_current_value(change)?,
+            existed: true, // We'll set the value, so it will exist
+        };
 
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Warn,
-                &format!("Rolling back changes for: {}", tweak.name),
-                Some(&format!("{} changes to revert", applied_count)),
-            );
-        }
+        // Try to write the value
+        if let Err(e) =
+            write_registry_value(&app, change, &change.enable_value, "Setting", &tweak.name)
+        {
+            log::error!("Failed to apply {}: {}", full_path, e);
 
-        // Use snapshot-based rollback for accuracy (only rollback what was applied)
-        let snapshots_to_rollback: Vec<_> = snapshots.into_iter().take(applied_count).collect();
-        if !snapshots_to_rollback.is_empty() {
-            let report = backup_service::rollback_from_snapshots(&snapshots_to_rollback);
+            // Rollback all applied values
+            log::warn!("Rolling back {} applied changes", applied_values.len());
+            for (snap, _original) in applied_values.iter().rev() {
+                let hive_enum = match snap.hive.as_str() {
+                    "HKCU" => crate::models::RegistryHive::HKCU,
+                    "HKLM" => crate::models::RegistryHive::HKLM,
+                    _ => continue,
+                };
 
-            if !report.all_succeeded {
-                log::error!(
-                    "Rollback partially failed: {} succeeded, {} failed",
-                    report.succeeded,
-                    report.failed
-                );
-                if is_debug_enabled() {
-                    for (key_id, error) in &report.failures {
-                        emit_debug_log(
-                            &app,
-                            DebugLevel::Error,
-                            &format!("Rollback failed for {}: {}", key_id, error),
-                            None,
-                        );
-                    }
-                }
-
-                return Err(Error::BackupFailed(format!(
-                    "Failed to apply tweak '{}': {}. Rollback partially failed ({} of {} keys restored). Manual intervention may be required.",
-                    tweak.name,
-                    error_msg.unwrap_or_default(),
-                    report.succeeded,
-                    report.succeeded + report.failed
-                )));
-            }
-        } else {
-            // Fallback to baseline-based rollback if no snapshots
-            for key_id in &applied_changes {
-                if let Err(e) = backup_service::restore_key_to_baseline(key_id) {
-                    log::error!("Failed to rollback key {}: {}", key_id, e);
+                if let Some(ref val) = snap.value {
+                    let _ = restore_value(
+                        &hive_enum,
+                        &snap.key,
+                        &snap.value_name,
+                        &snap.value_type,
+                        val,
+                    );
+                } else {
+                    let _ = registry_service::delete_value(&hive_enum, &snap.key, &snap.value_name);
                 }
             }
+
+            // Delete the snapshot since apply failed
+            let _ = backup_service::delete_snapshot(&tweak_id);
+
+            return Err(Error::RegistryOperation(format!(
+                "Failed to apply '{}': {}. Rolled back {} changes.",
+                tweak.name,
+                e,
+                applied_values.len()
+            )));
         }
 
-        return Err(Error::BackupFailed(format!(
-            "Failed to apply tweak '{}': {}. Changes have been rolled back.",
-            tweak.name,
-            error_msg.unwrap_or_default()
-        )));
+        applied_values.push((current_snapshot, change.enable_value.clone()));
     }
 
-    // Post-verification: Confirm all changes were actually written
-    let verification = backup_service::verify_changes(&changes, true);
-    match verification {
-        Ok(results) => {
-            let failed: Vec<_> = results.iter().filter(|r| !r.matches).collect();
-            if !failed.is_empty() {
-                log::warn!(
-                    "Post-verification: {} of {} changes may not have been applied correctly",
-                    failed.len(),
-                    results.len()
-                );
-                if is_debug_enabled() {
-                    for result in &failed {
-                        emit_debug_log(
-                            &app,
-                            DebugLevel::Warn,
-                            &format!(
-                                "Verification mismatch for {}: expected {:?}, got {:?}",
-                                result.key_id, result.expected, result.actual
-                            ),
-                            Some("Value may not have been written correctly"),
-                        );
-                    }
-                }
-                // Note: We don't fail here - the write may have succeeded but read-back differs
-                // (e.g., Windows normalizing values). We log the warning for investigation.
-            } else {
-                log::debug!(
-                    "Post-verification: All {} changes verified successfully",
-                    results.len()
-                );
-            }
-        }
-        Err(e) => {
-            log::warn!("Post-verification failed: {}", e);
-            // Don't fail the operation - verification is informational
-        }
-    }
-
-    // Apply service changes if any
+    // Step 3: Apply service changes
     if let Some(ref service_changes) = tweak.service_changes {
         for sc in service_changes {
             log::info!(
-                "Applying service change for '{}': {} -> {:?}",
-                tweak.name,
+                "Applying service change: {} -> {:?}",
                 sc.name,
                 sc.enable_startup
             );
 
-            // Stop service first if required
+            // Stop service if required
             if sc.stop_on_disable {
                 if let Err(e) = service_control::stop_service(&sc.name) {
                     log::warn!("Failed to stop service '{}': {}", sc.name, e);
-                    // Continue anyway - service might already be stopped
                 }
             }
 
             // Set startup type
             if let Err(e) = service_control::set_service_startup(&sc.name, &sc.enable_startup) {
                 log::error!("Failed to set service '{}' startup: {}", sc.name, e);
-                return Err(Error::ServiceControl(format!(
-                    "Failed to configure service '{}': {}",
-                    sc.name, e
-                )));
+                // Don't fail the whole operation for service errors
             }
         }
-    }
-
-    // Record the tweak as applied in our state
-    if let Err(e) =
-        backup_service::record_tweak_applied(&tweak_id, &tweak.name, version, applied_changes)
-    {
-        log::warn!("Failed to record tweak state for '{}': {}", tweak.name, e);
     }
 
     log::info!(
@@ -446,7 +249,6 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         }
     );
 
-    // Debug: Log success
     if is_debug_enabled() {
         emit_debug_log(
             &app,
@@ -488,85 +290,35 @@ pub async fn apply_tweak_option(
     let system_info = system_info_service::get_system_info()?;
     let version = system_info.windows.version_number();
 
-    // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(version) {
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    // Check if admin required
+    // Check admin if required
     if tweak.requires_admin && !system_info.is_admin {
         return Err(Error::RequiresAdmin);
     }
 
     let changes = tweak.get_changes_for_version(version);
     if changes.is_empty() {
-        return Err(Error::WindowsApi(
-            "No registry changes for this Windows version".to_string(),
-        ));
+        return Err(Error::UnsupportedWindowsVersion);
     }
 
-    // Get the first change (multi-state typically has one key)
-    let change = changes
-        .first()
-        .ok_or_else(|| Error::WindowsApi("No registry changes available".to_string()))?;
-
-    // Get options
-    let options = change
-        .options
-        .as_ref()
-        .ok_or_else(|| Error::WindowsApi("Tweak does not have multiple options".to_string()))?;
-
-    // Validate option index
-    if option_index >= options.len() {
-        return Err(Error::WindowsApi(format!(
-            "Invalid option index: {} (max: {})",
-            option_index,
-            options.len() - 1
-        )));
+    // Capture snapshot if not already exists
+    if !backup_service::snapshot_exists(&tweak_id)? {
+        let snapshot = backup_service::capture_snapshot(&tweak, version)?;
+        backup_service::save_snapshot(&snapshot)?;
     }
 
-    let option = &options[option_index];
-    log::debug!(
-        "Applying option '{}' (index {}) for '{}'",
-        option.label,
-        option_index,
-        tweak.name
-    );
-
-    // Debug log
-    if is_debug_enabled() {
-        emit_debug_log(
-            &app,
-            DebugLevel::Info,
-            &format!("Applying option '{}' for: {}", option.label, tweak.name),
-            None,
-        );
-    }
-
-    // Capture baseline
-    let keys_info = vec![(
-        change.hive.as_str().to_string(),
-        change.key.clone(),
-        change.value_name.clone(),
-        format!("{:?}", change.value_type).replace("\"", ""),
-    )];
-
-    let _ = backup_service::capture_baseline_for_keys(&tweak_id, &keys_info);
-
-    // Apply the option value
-    write_registry_value(&app, change, &option.value, "Setting", &tweak.name)?;
-
-    // Record as applied
-    let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
-    if let Err(e) =
-        backup_service::record_tweak_applied(&tweak_id, &tweak.name, version, vec![key_id])
-    {
-        log::warn!("Failed to record tweak state: {}", e);
+    // Apply the selected option for each registry change
+    for change in &changes {
+        if let Some(ref options) = change.options {
+            if option_index < options.len() {
+                let option = &options[option_index];
+                write_registry_value(&app, change, &option.value, "Setting option", &tweak.name)?;
+            }
+        }
     }
 
     log::info!(
-        "Successfully applied option '{}' for tweak '{}'",
-        option.label,
+        "Successfully applied option {} for '{}'",
+        option_index,
         tweak.name
     );
 
@@ -574,7 +326,7 @@ pub async fn apply_tweak_option(
         emit_debug_log(
             &app,
             DebugLevel::Success,
-            &format!("Applied option '{}': {}", option.label, tweak.name),
+            &format!("Applied option for: {}", tweak.name),
             if tweak.requires_reboot {
                 Some("Reboot required")
             } else {
@@ -585,12 +337,12 @@ pub async fn apply_tweak_option(
 
     Ok(TweakResult {
         success: true,
-        message: format!("Applied '{}' for {}", option.label, tweak.name),
+        message: format!("Applied option {} for {}", option_index, tweak.name),
         requires_reboot: tweak.requires_reboot,
     })
 }
 
-/// Revert a tweak (restore to baseline or disable values with reference counting)
+/// Revert a tweak (restore to snapshot state)
 #[tauri::command]
 pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
     log::info!("Command: revert_tweak({})", tweak_id);
@@ -600,288 +352,57 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
     })?;
 
-    let system_info = system_info_service::get_system_info()?;
-    let version = system_info.windows.version_number();
-    log::debug!("Reverting '{}' on Windows {}", tweak.name, version);
+    // Load the snapshot
+    let snapshot = backup_service::load_snapshot(&tweak_id)?.ok_or_else(|| {
+        log::error!("No snapshot found for tweak '{}'", tweak_id);
+        Error::BackupFailed(format!(
+            "No snapshot found for tweak '{}'. Cannot revert.",
+            tweak_id
+        ))
+    })?;
 
-    // Check if tweak applies to current Windows version
-    if !tweak.applies_to_version(version) {
-        log::warn!(
-            "Tweak '{}' not supported on Windows {}",
-            tweak.name,
-            version
-        );
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    // Check if admin required and not running as admin
-    if tweak.requires_admin && !system_info.is_admin {
-        log::warn!("Tweak '{}' requires admin privileges", tweak.name);
-        return Err(Error::RequiresAdmin);
-    }
-
-    let changes = tweak.get_changes_for_version(version);
-    if changes.is_empty() {
-        log::warn!(
-            "Tweak '{}' has no changes for Windows {}",
-            tweak.name,
-            version
-        );
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    log::debug!(
-        "Tweak '{}' has {} registry changes to revert",
+    log::info!(
+        "Reverting '{}' using snapshot from {}",
         tweak.name,
-        changes.len()
+        snapshot.applied_at
     );
 
-    // Debug: Log tweak revert start
     if is_debug_enabled() {
         emit_debug_log(
             &app,
             DebugLevel::Info,
-            &format!("Reverting tweak: {} ({})", tweak.name, tweak_id),
-            Some(&format!("{} registry changes to revert", changes.len())),
+            &format!("Reverting: {}", tweak.name),
+            Some(&format!(
+                "{} registry values to restore",
+                snapshot.registry_snapshots.len()
+            )),
         );
     }
 
-    // Pre-capture snapshots for rollback in case of failure
-    let snapshots = match backup_service::capture_snapshots(&changes) {
-        Ok(s) => {
-            log::debug!("Pre-captured {} snapshots for revert rollback", s.len());
-            s
-        }
-        Err(e) => {
-            log::warn!("Failed to capture pre-revert snapshots: {}", e);
-            Vec::new()
-        }
-    };
+    // Restore registry values from snapshot (atomic)
+    backup_service::restore_from_snapshot(&snapshot)?;
 
-    // Get list of orphaned keys (ref_count goes to 0) WITHOUT recording yet
-    // We'll only record after successful revert
-    let orphaned_keys = match backup_service::get_orphaned_keys_for_tweak(&tweak_id) {
-        Ok(keys) => keys,
-        Err(e) => {
-            log::warn!("Could not determine orphaned keys: {}", e);
-            Vec::new()
-        }
-    };
-    log::debug!(
-        "Tweak '{}' revert: {} keys will be orphaned",
-        tweak.name,
-        orphaned_keys.len()
-    );
-
-    // Track revert progress for rollback
-    let mut reverted_count = 0usize;
-    let mut revert_error: Option<String> = None;
-
-    // For each registry change:
-    // - If key is orphaned (no other tweaks use it): restore to baseline
-    // - If key is still used by other tweaks: apply disable_value (or skip if none)
-    for change in &changes {
-        let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
-
-        let result: std::result::Result<(), Error> = (|| {
-            if orphaned_keys.contains(&key_id) {
-                // This key is no longer used by any tweak - restore to baseline
-                log::debug!("Restoring key {} to baseline (orphaned)", key_id);
-
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        &app,
-                        DebugLevel::Info,
-                        &format!(
-                            "Restoring to baseline: {}\\{}\\{}",
-                            change.hive.as_str(),
-                            change.key,
-                            change.value_name
-                        ),
-                        Some("No other tweaks use this key"),
-                    );
-                }
-
-                match backup_service::restore_key_to_baseline(&key_id) {
-                    Ok(restored) => {
-                        if restored {
-                            log::debug!("Restored {} to baseline", key_id);
-                        } else {
-                            log::debug!(
-                                "Could not restore {} to baseline (no baseline or no original value)",
-                                key_id
-                            );
-                            // Fallback to disable_value if available
-                            if let Some(disable_value) = &change.disable_value {
-                                revert_registry_change(&app, change, disable_value, &tweak.name)?;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to restore {} to baseline: {}", key_id, e);
-                        // Fallback to disable_value if available
-                        if let Some(disable_value) = &change.disable_value {
-                            revert_registry_change(&app, change, disable_value, &tweak.name)?;
-                        }
-                    }
-                }
-            } else {
-                // Other tweaks still use this key - apply disable_value only
-                // This keeps the key modified but moves it toward a "less aggressive" state
-                if let Some(disable_value) = &change.disable_value {
-                    log::debug!(
-                        "Key {} still used by other tweaks, applying disable_value",
-                        key_id
-                    );
-
-                    if is_debug_enabled() {
-                        let other_tweaks = backup_service::load_tweak_state()
-                            .map(|s| s.get_tweaks_for_key(&key_id))
-                            .unwrap_or_default();
-                        emit_debug_log(
-                            &app,
-                            DebugLevel::Warn,
-                            &format!("Key {} still used by other tweaks", key_id),
-                            Some(&format!(
-                                "Used by: {:?}. Applying disable value instead of baseline.",
-                                other_tweaks
-                            )),
-                        );
-                    }
-
-                    revert_registry_change(&app, change, disable_value, &tweak.name)?;
-                } else {
-                    log::debug!(
-                        "Key {} has no disable_value, skipping (other tweaks still use it)",
-                        key_id
-                    );
-                }
-            }
-            Ok(())
-        })();
-
-        if let Err(e) = result {
-            revert_error = Some(e.to_string());
-            break;
-        }
-        reverted_count += 1;
-    }
-
-    // If any revert operation failed, rollback to restore original state
-    if let Some(error) = revert_error {
-        log::warn!(
-            "Revert failed for tweak '{}' at change {}/{}",
-            tweak.name,
-            reverted_count + 1,
-            changes.len()
-        );
-
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Warn,
-                &format!("Rolling back failed revert for: {}", tweak.name),
-                Some(&format!("{} changes to restore", reverted_count)),
-            );
-        }
-
-        // Use snapshot-based rollback to restore original state
-        let snapshots_to_rollback: Vec<_> = snapshots.into_iter().take(reverted_count).collect();
-        if !snapshots_to_rollback.is_empty() {
-            let report = backup_service::rollback_from_snapshots(&snapshots_to_rollback);
-
-            if !report.all_succeeded {
-                log::error!(
-                    "Revert rollback partially failed: {} succeeded, {} failed",
-                    report.succeeded,
-                    report.failed
-                );
-                if is_debug_enabled() {
-                    for (key_id, err) in &report.failures {
-                        emit_debug_log(
-                            &app,
-                            DebugLevel::Error,
-                            &format!("Rollback failed for {}: {}", key_id, err),
-                            None,
-                        );
-                    }
-                }
-
-                return Err(Error::BackupFailed(format!(
-                    "Failed to revert tweak '{}': {}. Rollback partially failed ({} of {} restored). Manual intervention may be required.",
-                    tweak.name,
-                    error,
-                    report.succeeded,
-                    report.succeeded + report.failed
-                )));
-            }
-        }
-
-        return Err(Error::BackupFailed(format!(
-            "Failed to revert tweak '{}': {}. Changes have been rolled back.",
-            tweak.name, error
-        )));
-    }
-
-    // Revert service changes if any (restore original startup type and start services)
+    // Revert service changes
     if let Some(ref service_changes) = tweak.service_changes {
         for sc in service_changes {
-            log::info!(
-                "Reverting service change for '{}': {} -> {:?}",
-                tweak.name,
-                sc.name,
-                sc.disable_startup
-            );
+            log::info!("Reverting service: {} -> {:?}", sc.name, sc.disable_startup);
 
-            // Set startup type back to original
+            // Restore startup type
             if let Err(e) = service_control::set_service_startup(&sc.name, &sc.disable_startup) {
                 log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
-                // Continue anyway - don't fail the whole revert
             }
 
             // Start service if required
             if sc.start_on_enable {
                 if let Err(e) = service_control::start_service(&sc.name) {
                     log::warn!("Failed to start service '{}': {}", sc.name, e);
-                    // Continue anyway - service might need manual start
                 }
             }
         }
     }
 
-    // All reverts succeeded - now record the tweak as reverted in state
-    if let Err(e) = backup_service::record_tweak_reverted(&tweak_id) {
-        log::warn!(
-            "Failed to record tweak revert state for '{}': {}",
-            tweak.name,
-            e
-        );
-        // Don't fail - the registry changes were successful
-    }
-
-    // Post-verification: Confirm changes were reverted correctly
-    let verification = backup_service::verify_changes(&changes, false);
-    match verification {
-        Ok(results) => {
-            let failed: Vec<_> = results.iter().filter(|r| !r.matches).collect();
-            if !failed.is_empty() {
-                log::warn!(
-                    "Revert verification: {} of {} changes may not match expected values",
-                    failed.len(),
-                    results.len()
-                );
-                // Note: Don't fail - some keys may have been skipped intentionally
-            } else {
-                log::debug!(
-                    "Revert verification: All {} changes verified",
-                    results.len()
-                );
-            }
-        }
-        Err(e) => {
-            log::trace!("Revert verification failed: {}", e);
-        }
-    }
+    // Delete snapshot after successful revert
+    backup_service::delete_snapshot(&tweak_id)?;
 
     log::info!(
         "Successfully reverted tweak '{}'{}",
@@ -893,14 +414,13 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         }
     );
 
-    // Debug: Log success
     if is_debug_enabled() {
         emit_debug_log(
             &app,
             DebugLevel::Success,
             &format!("Successfully reverted: {}", tweak.name),
             if tweak.requires_reboot {
-                Some("Reboot required for changes to take effect")
+                Some("Reboot required")
             } else {
                 None
             },
@@ -927,24 +447,27 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
         return Err(Error::RequiresAdmin);
     }
 
-    // Debug: Log batch apply start
     if is_debug_enabled() {
         emit_debug_log(
             &app,
             DebugLevel::Info,
             &format!("Batch applying {} tweaks", tweak_ids.len()),
-            Some(&tweak_ids.join(", ")),
+            None,
         );
     }
 
-    // Each tweak creates its own backup via apply_tweak, allowing individual restore
     let mut requires_reboot = false;
 
-    // Apply all tweaks
     for tweak_id in &tweak_ids {
-        let result = apply_tweak(app.clone(), tweak_id.clone()).await?;
-        if result.requires_reboot {
-            requires_reboot = true;
+        let result = Box::pin(apply_tweak(app.clone(), tweak_id.clone())).await;
+
+        if let Err(e) = result {
+            log::warn!("Failed to apply tweak '{}' in batch: {}", tweak_id, e);
+            // Continue with other tweaks
+        } else if let Ok(res) = result {
+            if res.requires_reboot {
+                requires_reboot = true;
+            }
         }
     }
 
@@ -958,7 +481,6 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
         }
     );
 
-    // Debug: Log batch success
     if is_debug_enabled() {
         emit_debug_log(
             &app,
@@ -979,55 +501,9 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
     })
 }
 
-/// Check if a tweak is currently applied by reading registry values.
-/// Returns true only if ALL registry changes match their enable_value.
-fn check_tweak_applied(changes: &[&crate::models::RegistryChange]) -> Result<bool> {
-    if changes.is_empty() {
-        return Ok(false);
-    }
-
-    // Check ALL registry changes - tweak is applied only if all values match
-    for change in changes {
-        let current_value = match change.value_type {
-            crate::models::RegistryValueType::DWord => {
-                registry_service::read_dword(&change.hive, &change.key, &change.value_name)?
-                    .map(|v| serde_json::json!(v))
-            }
-            crate::models::RegistryValueType::String
-            | crate::models::RegistryValueType::ExpandString => {
-                registry_service::read_string(&change.hive, &change.key, &change.value_name)?
-                    .map(|v| serde_json::json!(v))
-            }
-            crate::models::RegistryValueType::Binary => {
-                registry_service::read_binary(&change.hive, &change.key, &change.value_name)?
-                    .map(|v| serde_json::json!(v))
-            }
-            crate::models::RegistryValueType::QWord => {
-                registry_service::read_qword(&change.hive, &change.key, &change.value_name)?
-                    .map(|v| serde_json::json!(v))
-            }
-            crate::models::RegistryValueType::MultiString => {
-                // MultiString is not commonly used, treat as not matching
-                log::trace!("MultiString type not supported in status check");
-                None
-            }
-        };
-
-        match current_value {
-            Some(current) if current == change.enable_value => {
-                // This change matches, continue checking others
-                continue;
-            }
-            _ => {
-                // Value doesn't match or couldn't be read - tweak is not fully applied
-                return Ok(false);
-            }
-        }
-    }
-
-    // All changes match their enable_value
-    Ok(true)
-}
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /// Read current registry value for a change
 fn read_current_value(change: &crate::models::RegistryChange) -> Result<Option<serde_json::Value>> {
@@ -1056,39 +532,7 @@ fn read_current_value(change: &crate::models::RegistryChange) -> Result<Option<s
     }
 }
 
-/// Detect which option is currently active for multi-state tweaks.
-/// Returns None for binary tweaks or if no matching option is found.
-fn detect_current_option(changes: &[&crate::models::RegistryChange]) -> Result<Option<usize>> {
-    // Only check the first change for multi-state (usually there's just one)
-    let first_change = match changes.first() {
-        Some(c) => c,
-        None => return Ok(None),
-    };
-
-    // Check if this is a multi-state tweak
-    let options = match &first_change.options {
-        Some(opts) if opts.len() > 1 => opts,
-        _ => return Ok(None), // Binary tweak or no options
-    };
-
-    // Read current value
-    let current_value = match read_current_value(first_change)? {
-        Some(v) => v,
-        None => return Ok(None),
-    };
-
-    // Find which option matches
-    for (index, option) in options.iter().enumerate() {
-        if current_value == option.value {
-            return Ok(Some(index));
-        }
-    }
-
-    // No matching option found (might be a custom value)
-    Ok(None)
-}
-
-/// Write a registry value based on type (unified helper for apply/revert)
+/// Write a registry value based on type
 fn write_registry_value(
     app: &AppHandle,
     change: &crate::models::RegistryChange,
@@ -1125,7 +569,7 @@ fn write_registry_value(
                     emit_debug_log(
                         app,
                         DebugLevel::Info,
-                        &format!("{} String: {} = \"{}\"", operation, full_path, v),
+                        &format!("{} String: {} = {}", operation, full_path, v),
                         Some(tweak_name),
                     );
                 }
@@ -1184,21 +628,40 @@ fn write_registry_value(
     Ok(())
 }
 
-/// Apply a single registry change
-fn apply_registry_change(
-    app: &AppHandle,
-    change: &crate::models::RegistryChange,
-    tweak_name: &str,
+/// Restore a value to the registry
+fn restore_value(
+    hive: &crate::models::RegistryHive,
+    key: &str,
+    value_name: &str,
+    value_type: &str,
+    value: &serde_json::Value,
 ) -> Result<()> {
-    write_registry_value(app, change, &change.enable_value, "Setting", tweak_name)
-}
-
-/// Revert a registry change to disable value
-fn revert_registry_change(
-    app: &AppHandle,
-    change: &crate::models::RegistryChange,
-    disable_value: &serde_json::Value,
-    tweak_name: &str,
-) -> Result<()> {
-    write_registry_value(app, change, disable_value, "Reverting", tweak_name)
+    match value_type {
+        "REG_DWORD" => {
+            if let Some(v) = value.as_u64() {
+                registry_service::set_dword(hive, key, value_name, v as u32)?;
+            }
+        }
+        "REG_SZ" | "REG_EXPAND_SZ" => {
+            if let Some(v) = value.as_str() {
+                registry_service::set_string(hive, key, value_name, v)?;
+            }
+        }
+        "REG_BINARY" => {
+            if let Some(arr) = value.as_array() {
+                let binary: Vec<u8> = arr
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|u| u as u8))
+                    .collect();
+                registry_service::set_binary(hive, key, value_name, &binary)?;
+            }
+        }
+        "REG_QWORD" => {
+            if let Some(v) = value.as_u64() {
+                registry_service::set_qword(hive, key, value_name, v)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
