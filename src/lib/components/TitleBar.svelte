@@ -1,10 +1,10 @@
 <script lang="ts">
   import { debugState } from "$lib/stores/debug.svelte";
-  import { systemElevation } from "$lib/stores/systemElevation";
   import { themeStore } from "$lib/stores/theme";
   import { systemStore } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
+  import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import ControlButton from "./ControlButton.svelte";
@@ -15,6 +15,7 @@
   let isMaximized = $state(false);
   let isLoaded = $state(false);
   let appIcon = $state("/icons/Toolbox.ico");
+  let isRestarting = $state(false);
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
@@ -32,9 +33,6 @@
         appName = title.status === "fulfilled" ? title.value : "MagicX Toolbox";
         appVersion = version.status === "fulfilled" ? version.value : "1.0.0";
         isMaximized = maximized.status === "fulfilled" ? maximized.value : false;
-
-        // Initialize system elevation store
-        await systemElevation.init();
 
         isLoaded = true;
 
@@ -90,9 +88,16 @@
     themeStore.toggle();
   };
 
-  // Toggle SYSTEM elevation mode
-  const toggleSystemElevation = () => {
-    systemElevation.toggle();
+  // Restart the app as admin
+  const restartAsAdmin = async () => {
+    if (isRestarting) return;
+    isRestarting = true;
+    try {
+      await invoke("restart_as_admin");
+    } catch (error) {
+      console.error("Failed to restart as admin:", error);
+      isRestarting = false;
+    }
   };
 </script>
 
@@ -177,21 +182,21 @@
         {/if}
       </button>
 
-      <!-- SYSTEM Elevation Mode Toggle (only shown if available) -->
-      {#if $systemElevation.available}
+      <!-- Restart as Admin button (only shown if not running as admin) -->
+      {#if $systemStore !== null && !$systemStore.is_admin}
         <button
-          title={$systemElevation.enabled
-            ? "SYSTEM Mode ON - Click to disable"
-            : "Enable SYSTEM Mode (modify protected keys)"}
-          onclick={toggleSystemElevation}
-          class="relative flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 hover:bg-foreground/10 {$systemElevation.enabled
-            ? 'text-accent'
-            : 'text-foreground-muted hover:text-accent'}"
+          title="Restart as Administrator"
+          onclick={restartAsAdmin}
+          disabled={isRestarting}
+          class="relative flex h-8 w-8 items-center justify-center rounded-md text-warning transition-all duration-150 hover:bg-foreground/10 hover:text-warning {isRestarting
+            ? 'cursor-not-allowed opacity-50'
+            : ''}"
         >
           <Icon
-            icon={$systemElevation.enabled ? "tabler:shield-check" : "tabler:shield"}
+            icon={isRestarting ? "tabler:loader-2" : "tabler:shield-up"}
             width="18"
             height="18"
+            class={isRestarting ? "animate-spin" : ""}
           />
         </button>
       {/if}

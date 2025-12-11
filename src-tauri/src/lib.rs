@@ -105,6 +105,7 @@ pub fn run() {
             commands::elevation::apply_registry_as_system,
             commands::elevation::delete_registry_as_system,
             commands::elevation::can_use_system_elevation,
+            commands::elevation::restart_as_admin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
