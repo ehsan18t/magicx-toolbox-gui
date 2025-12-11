@@ -128,6 +128,8 @@ struct TweakDefinitionRaw {
     requires_reboot: bool,
     #[serde(default)]
     requires_admin: bool,
+    #[serde(default)]
+    requires_system: bool,
     registry_changes: Vec<RegistryChange>,
     #[serde(default)]
     service_changes: Option<Vec<ServiceChange>>,
@@ -146,6 +148,8 @@ struct TweakDefinition {
     requires_reboot: bool,
     #[serde(default)]
     requires_admin: bool,
+    #[serde(default)]
+    requires_system: bool,
     registry_changes: Vec<RegistryChange>,
     #[serde(default)]
     service_changes: Option<Vec<ServiceChange>>,
@@ -227,6 +231,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 risk_level: raw.risk_level,
                 requires_reboot: raw.requires_reboot,
                 requires_admin: raw.requires_admin,
+                requires_system: raw.requires_system,
                 registry_changes: raw.registry_changes,
                 service_changes: raw.service_changes,
                 info: raw.info,
