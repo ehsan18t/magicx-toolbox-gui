@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::env;
 use winreg::enums::*;
 use winreg::RegKey;
-use wmi::{COMLibrary, WMIConnection};
+use wmi::WMIConnection;
 
 // WMI query structs
 #[derive(Deserialize, Debug)]
@@ -104,16 +104,8 @@ pub fn get_windows_info() -> Result<WindowsInfo, Error> {
 fn get_hardware_info() -> HardwareInfo {
     log::debug!("Gathering hardware information via WMI");
 
-    // Initialize COM library and WMI connection
-    let com_lib = match COMLibrary::new() {
-        Ok(lib) => lib,
-        Err(e) => {
-            log::warn!("Failed to initialize COM library: {}", e);
-            return HardwareInfo::default();
-        }
-    };
-
-    let wmi_con = match WMIConnection::new(com_lib) {
+    // Initialize WMI connection
+    let wmi_con = match WMIConnection::new() {
         Ok(con) => con,
         Err(e) => {
             log::warn!("Failed to create WMI connection: {}", e);
