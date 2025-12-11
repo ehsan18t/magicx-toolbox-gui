@@ -1,6 +1,7 @@
 <script lang="ts">
   import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
   import { categoryStats, tweakStats } from "$lib/stores/tweaks";
+  import ColorSchemePicker from "./ColorSchemePicker.svelte";
   import Icon from "@iconify/svelte";
   import { onMount } from "svelte";
 
@@ -137,6 +138,16 @@
         </div>
       </div>
     {/if}
+
+    <!-- Color Scheme Picker -->
+    <div
+      class="flex items-center justify-center transition-all duration-200 {sidebarExpanded
+        ? 'gap-2 py-1'
+        : 'py-1'}"
+      title="Color Scheme"
+    >
+      <ColorSchemePicker />
+    </div>
 
     <!-- Pin toggle button -->
     <button

@@ -2,12 +2,14 @@
   import "@/app.css";
   import DebugPanel from "@/lib/components/DebugPanel.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
+  import { colorSchemeStore } from "@/lib/stores/colorScheme";
   import { themeStore } from "@/lib/stores/theme";
   import { onMount } from "svelte";
 
   const { children } = $props();
   onMount(() => {
     themeStore.init();
+    colorSchemeStore.init();
   });
 </script>
 

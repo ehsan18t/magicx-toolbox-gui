@@ -1,0 +1,61 @@
+/**
+ * Color Scheme Store
+ *
+ * Manages the accent color scheme independently from light/dark theme.
+ * Each scheme can be used with both light and dark modes.
+ */
+
+import { browser } from "$app/environment";
+import { writable } from "svelte/store";
+
+/** Available color schemes */
+export const COLOR_SCHEMES = [
+  { id: "purple", name: "Purple", color: "#8b5cf6" },
+  { id: "blue", name: "Blue", color: "#3b82f6" },
+  { id: "green", name: "Green", color: "#10b981" },
+  { id: "orange", name: "Orange", color: "#f97316" },
+  { id: "pink", name: "Pink", color: "#ec4899" },
+  { id: "red", name: "Red", color: "#ef4444" },
+  { id: "cyan", name: "Cyan", color: "#06b6d4" },
+] as const;
+
+export type ColorSchemeId = (typeof COLOR_SCHEMES)[number]["id"];
+
+const STORAGE_KEY = "magicx-color-scheme";
+const DEFAULT_SCHEME: ColorSchemeId = "purple";
+
+function createColorSchemeStore() {
+  const { subscribe, set } = writable<ColorSchemeId>(DEFAULT_SCHEME);
+
+  return {
+    subscribe,
+
+    /** Initialize the store - load from localStorage and apply */
+    init: () => {
+      if (!browser) return;
+
+      const stored = localStorage.getItem(STORAGE_KEY) as ColorSchemeId | null;
+      const validScheme = COLOR_SCHEMES.find((s) => s.id === stored);
+      const initialScheme = validScheme ? stored! : DEFAULT_SCHEME;
+
+      set(initialScheme);
+      document.documentElement.setAttribute("data-scheme", initialScheme);
+    },
+
+    /** Set a specific color scheme */
+    setScheme: (scheme: ColorSchemeId) => {
+      if (!COLOR_SCHEMES.find((s) => s.id === scheme)) return;
+
+      set(scheme);
+      if (browser) {
+        localStorage.setItem(STORAGE_KEY, scheme);
+        document.documentElement.setAttribute("data-scheme", scheme);
+      }
+    },
+
+    /** Get all available schemes */
+    getSchemes: () => COLOR_SCHEMES,
+  };
+}
+
+export const colorSchemeStore = createColorSchemeStore();

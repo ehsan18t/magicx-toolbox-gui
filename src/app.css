@@ -108,6 +108,54 @@
     --scroll-main: var(--accent);
     --scroll-main-hover: var(--accent-hover);
   }
+
+  /*
+   * Color Schemes (Accent Colors)
+   * Works with both light and dark themes.
+   * Default scheme is purple (defined above in :root).
+   */
+
+  /* Purple Scheme (Default) - already defined in :root */
+  [data-scheme="purple"] {
+    --accent: 262 83% 58%; /* #8b5cf6 */
+    --accent-hover: 262 83% 53%; /* #7c3aed */
+  }
+
+  /* Blue Scheme */
+  [data-scheme="blue"] {
+    --accent: 221 83% 53%; /* #3b82f6 */
+    --accent-hover: 221 83% 48%; /* #2563eb */
+  }
+
+  /* Green Scheme */
+  [data-scheme="green"] {
+    --accent: 160 84% 39%; /* #10b981 */
+    --accent-hover: 160 84% 34%; /* #0d9668 */
+  }
+
+  /* Orange Scheme */
+  [data-scheme="orange"] {
+    --accent: 25 95% 53%; /* #f97316 */
+    --accent-hover: 25 95% 48%; /* #ea6c0c */
+  }
+
+  /* Pink Scheme */
+  [data-scheme="pink"] {
+    --accent: 330 81% 60%; /* #ec4899 */
+    --accent-hover: 330 81% 55%; /* #e4268a */
+  }
+
+  /* Red Scheme */
+  [data-scheme="red"] {
+    --accent: 0 84% 60%; /* #ef4444 */
+    --accent-hover: 0 84% 55%; /* #e93030 */
+  }
+
+  /* Cyan Scheme */
+  [data-scheme="cyan"] {
+    --accent: 188 94% 43%; /* #06b6d4 */
+    --accent-hover: 188 94% 38%; /* #05a0ba */
+  }
 }
 
 @theme {

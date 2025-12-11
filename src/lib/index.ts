@@ -1,6 +1,7 @@
 // Components
 export { default as CategorySection } from "./components/CategorySection.svelte";
 export { default as CategoryTab } from "./components/CategoryTab.svelte";
+export { default as ColorSchemePicker } from "./components/ColorSchemePicker.svelte";
 export { default as ConfirmDialog } from "./components/ConfirmDialog.svelte";
 export { default as ControlButton } from "./components/ControlButton.svelte";
 export { default as DebugPanel } from "./components/DebugPanel.svelte";
@@ -16,6 +17,7 @@ export { default as TweakCard } from "./components/TweakCard.svelte";
 
 // Stores
 export * from "./stores/navigation";
+export { colorSchemeStore, COLOR_SCHEMES, type ColorSchemeId } from "./stores/colorScheme";
 export { themeStore, type Theme } from "./stores/theme";
 export * from "./stores/tweaks";
 
