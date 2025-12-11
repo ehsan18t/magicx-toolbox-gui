@@ -95,11 +95,17 @@ tweaks:
 
   - id: disable_widgets_win11
     name: "Disable Widgets (Windows 11)"
-    description: "Disable the widgets dashboard in Windows 11"
+    description: "Disable the widgets dashboard in Windows 11 (requires disabling UCPD service)"
     risk_level: low
-    requires_admin: false
+    requires_admin: true
     requires_reboot: false
-    requires_system: true
+    info: "The UCPD (User-mode Contextual Policy Driver) service protects widget-related registry keys. This tweak disables the service first, then modifies the registry."
+    service_changes:
+      - name: "ucpd"
+        enable_startup: automatic
+        disable_startup: disabled
+        stop_on_disable: true
+        start_on_enable: false
     registry_changes:
       - hive: HKCU
         key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
