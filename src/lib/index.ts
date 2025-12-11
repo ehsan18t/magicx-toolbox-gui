@@ -27,14 +27,13 @@ export * from "./types";
 
 // API - explicitly export to avoid conflicts with stores
 export {
-    batchApplyTweaks,
-    getAllTweaksWithStatus,
-    getAvailableTweaks,
-    getSystemInfo,
-    getTweakStatus,
-    getTweakStatuses,
-    getTweaksForCurrentVersion,
-    getWindowsVersion,
-    isAdmin
+  batchApplyTweaks,
+  getAllTweaksWithStatus,
+  getAvailableTweaks,
+  getSystemInfo,
+  getTweakStatus,
+  getTweakStatuses,
+  getTweaksForCurrentVersion,
+  getWindowsVersion,
+  isAdmin,
 } from "./api";
-

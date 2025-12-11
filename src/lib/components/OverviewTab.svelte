@@ -127,7 +127,9 @@
         <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
           <Icon icon="mdi:monitor" width="18" class="shrink-0 text-foreground-muted" />
           <div class="flex min-w-0 flex-col gap-0.5">
-            <span class="text-xs tracking-wide text-foreground-muted uppercase">Operating System</span>
+            <span class="text-xs tracking-wide text-foreground-muted uppercase"
+              >Operating System</span
+            >
             <span class="truncate text-sm font-medium text-foreground"
               >{$systemStore?.windows?.product_name ?? "Windows"}</span
             >
@@ -184,17 +186,23 @@
               {$systemStore?.hardware?.cpu?.name ?? "Unknown"}
             </span>
             <span class="text-xs text-foreground-muted">
-              {$systemStore?.hardware?.cpu?.cores ?? 0} Cores / {$systemStore?.hardware?.cpu?.threads ?? 0} Threads
-              • {formatClockSpeed($systemStore?.hardware?.cpu?.max_clock_mhz ?? 0)}
+              {$systemStore?.hardware?.cpu?.cores ?? 0} Cores / {$systemStore?.hardware?.cpu
+                ?.threads ?? 0} Threads • {formatClockSpeed(
+                $systemStore?.hardware?.cpu?.max_clock_mhz ?? 0,
+              )}
             </span>
           </div>
         </div>
 
         <!-- GPU(s) -->
         {#if $systemStore?.hardware?.gpu && $systemStore.hardware.gpu.length > 0}
-          {#each $systemStore.hardware.gpu as gpu, i}
+          {#each $systemStore.hardware.gpu as gpu, i (i)}
             <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
-              <Icon icon="mdi:expansion-card" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+              <Icon
+                icon="mdi:expansion-card"
+                width="18"
+                class="mt-0.5 shrink-0 text-foreground-muted"
+              />
               <div class="flex min-w-0 flex-col gap-0.5">
                 <span class="text-xs tracking-wide text-foreground-muted uppercase">
                   Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ""}
@@ -209,7 +217,11 @@
           {/each}
         {:else}
           <div class="flex items-start gap-3 rounded-lg bg-surface p-3">
-            <Icon icon="mdi:expansion-card" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+            <Icon
+              icon="mdi:expansion-card"
+              width="18"
+              class="mt-0.5 shrink-0 text-foreground-muted"
+            />
             <div class="flex min-w-0 flex-col gap-0.5">
               <span class="text-xs tracking-wide text-foreground-muted uppercase">Graphics</span>
               <span class="truncate text-sm font-medium text-foreground">Unknown</span>
@@ -223,11 +235,14 @@
           <div class="flex min-w-0 flex-col gap-0.5">
             <span class="text-xs tracking-wide text-foreground-muted uppercase">Memory</span>
             <span class="truncate text-sm font-medium text-foreground">
-              {$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory?.memory_type ?? ""}
+              {$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory
+                ?.memory_type ?? ""}
             </span>
             <span class="text-xs text-foreground-muted">
-              {$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz
-              • {$systemStore?.hardware?.memory?.slots_used ?? 0} Slot{($systemStore?.hardware?.memory?.slots_used ?? 0) !== 1 ? "s" : ""} Used
+              {$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz • {$systemStore?.hardware?.memory
+                ?.slots_used ?? 0} Slot{($systemStore?.hardware?.memory?.slots_used ?? 0) !== 1
+                ? "s"
+                : ""} Used
             </span>
           </div>
         </div>
@@ -238,7 +253,8 @@
           <div class="flex min-w-0 flex-col gap-0.5">
             <span class="text-xs tracking-wide text-foreground-muted uppercase">Motherboard</span>
             <span class="truncate text-sm font-medium text-foreground">
-              {$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"} {$systemStore?.hardware?.motherboard?.product ?? ""}
+              {$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}
+              {$systemStore?.hardware?.motherboard?.product ?? ""}
             </span>
             <span class="text-xs text-foreground-muted">
               BIOS: {$systemStore?.hardware?.motherboard?.bios_version ?? "Unknown"}

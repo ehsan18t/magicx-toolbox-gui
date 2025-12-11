@@ -10,6 +10,7 @@ use wmi::WMIConnection;
 
 // WMI query structs
 #[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_Processor")]
 #[serde(rename_all = "PascalCase")]
 struct Win32Processor {
     name: Option<String>,
@@ -20,6 +21,7 @@ struct Win32Processor {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_VideoController")]
 #[serde(rename_all = "PascalCase")]
 struct Win32VideoController {
     name: Option<String>,
@@ -28,6 +30,7 @@ struct Win32VideoController {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_PhysicalMemory")]
 #[serde(rename_all = "PascalCase")]
 struct Win32PhysicalMemory {
     capacity: Option<u64>,
@@ -37,6 +40,7 @@ struct Win32PhysicalMemory {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_BaseBoard")]
 #[serde(rename_all = "PascalCase")]
 struct Win32BaseBoard {
     manufacturer: Option<String>,
@@ -44,6 +48,7 @@ struct Win32BaseBoard {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_BIOS")]
 #[serde(rename_all = "PascalCase")]
 struct Win32Bios {
     #[serde(rename = "SMBIOSBIOSVersion")]
