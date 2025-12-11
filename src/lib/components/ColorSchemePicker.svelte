@@ -27,7 +27,7 @@
       type="button"
       onclick={() => handleSchemeChange(scheme.id)}
       class={cn(
-        "flex items-center justify-center rounded-full transition-all duration-200",
+        "flex cursor-pointer items-center justify-center rounded-full transition-all duration-200",
         "hover:scale-110 hover:ring-2 hover:ring-white/30",
         "focus:ring-2 focus:ring-white/50 focus:outline-none",
         sizeClasses[size],

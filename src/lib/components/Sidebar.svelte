@@ -147,38 +147,38 @@
     <!-- Control buttons: Pin, Settings, About -->
     <div
       class="flex items-center gap-2 transition-all duration-200 {sidebarExpanded
-        ? 'flex-row justify-center'
+        ? 'flex-row-reverse justify-center'
         : 'flex-col justify-center'}"
     >
       <!-- Pin toggle button -->
       <button
-        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground {isPinned
+        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 text-foreground-muted transition-all duration-150 hover:bg-accent/10 hover:text-accent {isPinned
           ? 'text-accent'
           : 'text-foreground-muted'} {sidebarExpanded ? 'shrink-0' : 'w-full'}"
         onclick={togglePin}
         title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
       >
-        <Icon icon={isPinned ? "mdi:pin" : "mdi:pin-outline"} width="18" />
+        <Icon icon={isPinned ? "mdi:pin" : "mdi:pin-outline"} width="22" />
       </button>
 
       <!-- Settings button -->
       <button
-        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground text-foreground-muted {sidebarExpanded
+        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 text-foreground-muted transition-all duration-150 hover:bg-accent/10 hover:text-accent {sidebarExpanded
           ? 'shrink-0'
           : 'w-full'}"
         title="Settings"
       >
-        <Icon icon="mdi:cog" width="18" />
+        <Icon icon="mdi:settings-outline" width="22" />
       </button>
 
       <!-- About button -->
       <button
-        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground text-foreground-muted {sidebarExpanded
+        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 text-foreground-muted transition-all duration-150 hover:bg-accent/10 hover:text-accent {sidebarExpanded
           ? 'shrink-0'
           : 'w-full'}"
         title="About"
       >
-        <Icon icon="mdi:information-outline" width="18" />
+        <Icon icon="mdi:information-outline" width="22" />
       </button>
     </div>
   </div>

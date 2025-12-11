@@ -45,6 +45,7 @@
   import MdiRestartAlert from "~icons/mdi/restart-alert";
   import MdiRestore from "~icons/mdi/restore";
   import MdiSecurity from "~icons/mdi/security";
+  import MdiSettingsOutline from "~icons/mdi/settings-outline";
   import MdiShieldAccountOutline from "~icons/mdi/shield-account-outline";
   import MdiShieldAlert from "~icons/mdi/shield-alert";
   import MdiShieldCheck from "~icons/mdi/shield-check";
@@ -94,6 +95,7 @@
     "mdi:restart-alert": MdiRestartAlert,
     "mdi:information-outline": MdiInformationOutline,
     "mdi:database-cog-outline": MdiDatabaseCogOutline,
+    "mdi:settings-outline": MdiSettingsOutline,
     "mdi:key-variant": MdiKeyVariant,
     "mdi:chevron-up": MdiChevronUp,
     "mdi:chevron-down": MdiChevronDown,
