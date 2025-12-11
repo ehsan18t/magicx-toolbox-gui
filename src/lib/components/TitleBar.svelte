@@ -12,7 +12,7 @@
   let appVersion = $state("");
   let isMaximized = $state(false);
   let isLoaded = $state(false);
-  let appIcon = $state("/tauri.svg");
+  let appIcon = $state("/icons/Toolbox.ico");
 
   onMount(() => {
     let unlisten: (() => void) | undefined;

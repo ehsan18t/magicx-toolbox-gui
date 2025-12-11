@@ -22,7 +22,7 @@
     "build": "tauri build",
     "build:debug": "tauri build --debug",
     "prepare": "svelte-kit sync || echo ''",
-    "copy-icons": "cpx \"src-tauri/icons/32x32.png\" \"static/icons\"",
+    "copy-icons": "cpx \"src-tauri/icons/Toolbox.ico\" \"static/icons\"",
     "postinstall": "bun run copy-icons",
     "clean": "rimraf .svelte-kit dist src-tauri/target",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
