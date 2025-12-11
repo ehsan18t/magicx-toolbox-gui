@@ -2,9 +2,20 @@
   import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
   import { categoryStats, tweakStats } from "$lib/stores/tweaks";
   import Icon from "@iconify/svelte";
+  import { onMount } from "svelte";
+
+  const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
 
   let isExpanded = $state(false);
   let isPinned = $state(false);
+
+  // Load pin state from localStorage on mount
+  onMount(() => {
+    const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
+    if (savedPinState === "true") {
+      isPinned = true;
+    }
+  });
 
   function handleNavClick(tab: TabDefinition) {
     activeTab.set(tab.id);
@@ -12,6 +23,8 @@
 
   function togglePin() {
     isPinned = !isPinned;
+    // Save to localStorage
+    localStorage.setItem(SIDEBAR_PIN_KEY, isPinned.toString());
     if (!isPinned) {
       isExpanded = false;
     }
