@@ -132,6 +132,18 @@ impl RegistryValueType {
     }
 }
 
+/// Service change for a specific option (simplified: just target state)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionServiceChange {
+    /// Service name (e.g., "SysMain", "DiagTrack")
+    pub name: String,
+    /// Target startup type when this option is selected
+    pub startup: ServiceStartupType,
+    /// Stop the service if startup is disabled
+    #[serde(default)]
+    pub stop_if_disabled: bool,
+}
+
 /// Option for multi-state tweaks (displayed as dropdown in UI)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakOption {
@@ -142,6 +154,9 @@ pub struct TweakOption {
     /// Whether this is the default/original Windows value
     #[serde(default)]
     pub is_default: bool,
+    /// Service changes specific to this option
+    #[serde(default)]
+    pub service_changes: Option<Vec<OptionServiceChange>>,
 }
 
 /// Single registry change operation

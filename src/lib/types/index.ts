@@ -15,11 +15,26 @@ export type RegistryValueType =
   | "REG_MULTI_SZ"
   | "REG_QWORD";
 
+/** Windows service startup type */
+export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
+
+/** Service change for a specific option (simplified: just target state) */
+export interface OptionServiceChange {
+  /** Service name (e.g., "SysMain", "DiagTrack") */
+  name: string;
+  /** Target startup type when this option is selected */
+  startup: ServiceStartupType;
+  /** Stop the service if startup is disabled */
+  stop_if_disabled?: boolean;
+}
+
 /** Option for multi-state tweaks (displayed as dropdown) */
 export interface TweakOption {
   label: string;
   value: unknown;
   is_default?: boolean;
+  /** Service changes specific to this option */
+  service_changes?: OptionServiceChange[];
 }
 
 /** Single registry change operation */
@@ -35,9 +50,6 @@ export interface RegistryChange {
   /** Multi-state options (if present, displayed as dropdown instead of toggle) */
   options?: TweakOption[];
 }
-
-/** Windows service startup type */
-export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
 
 /** Single service change operation */
 export interface ServiceChange {

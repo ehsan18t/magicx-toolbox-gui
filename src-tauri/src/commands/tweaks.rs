@@ -402,7 +402,36 @@ pub async fn apply_tweak_option(
         if let Some(ref options) = change.options {
             if option_index < options.len() {
                 let option = &options[option_index];
+
+                // Apply registry value
                 write_registry_value(&app, change, &option.value, "Setting option", &tweak.name)?;
+
+                // Apply per-option service changes if defined
+                if let Some(ref services) = option.service_changes {
+                    for svc in services {
+                        log::info!(
+                            "Applying option service change: {} -> {:?}",
+                            svc.name,
+                            svc.startup
+                        );
+
+                        // Set startup type
+                        if let Err(e) =
+                            service_control::set_service_startup(&svc.name, &svc.startup)
+                        {
+                            log::warn!("Failed to set service '{}' startup: {}", svc.name, e);
+                        }
+
+                        // Stop service if startup is disabled and stop_if_disabled is set
+                        if svc.stop_if_disabled
+                            && svc.startup == crate::models::ServiceStartupType::Disabled
+                        {
+                            if let Err(e) = service_control::stop_service(&svc.name) {
+                                log::warn!("Failed to stop service '{}': {}", svc.name, e);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

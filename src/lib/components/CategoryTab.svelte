@@ -84,6 +84,10 @@
 
     isBatchProcessing = false;
   }
+
+  function handleDiscardChanges() {
+    pendingChangesStore.clearCategory(tab.id, $tweaksStore);
+  }
 </script>
 
 <div class="flex h-full flex-col gap-5 overflow-hidden p-6">
@@ -167,6 +171,15 @@
             >{$categoryPendingCount}</span
           >
         {/if}
+      </button>
+      <button
+        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+        onclick={handleDiscardChanges}
+        disabled={$categoryPendingCount === 0 || $isLoading || isBatchProcessing}
+        title="Discard all pending changes in this category"
+      >
+        <Icon icon="mdi:close-circle-outline" width="18" />
+        <span class="hidden sm:inline">Discard</span>
       </button>
       <button
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"

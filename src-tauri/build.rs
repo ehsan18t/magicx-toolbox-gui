@@ -59,6 +59,15 @@ enum RegistryValueType {
     QWord,
 }
 
+/// Service change for a specific option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OptionServiceChange {
+    name: String,
+    startup: ServiceStartupType,
+    #[serde(default)]
+    stop_if_disabled: bool,
+}
+
 /// Option for multi-state tweaks (displayed as dropdown in UI)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TweakOption {
@@ -66,6 +75,8 @@ struct TweakOption {
     value: serde_json::Value,
     #[serde(default)]
     is_default: bool,
+    #[serde(default)]
+    service_changes: Option<Vec<OptionServiceChange>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -181,6 +181,19 @@ function createPendingChangesStore() {
     clearAll() {
       set(new Map());
     },
+    clearCategory(categoryId: string, tweaks: TweakWithStatus[]) {
+      // Clear pending changes only for tweaks in the specified category
+      const categoryTweakIds = new Set(
+        tweaks.filter((t) => t.definition.category === categoryId).map((t) => t.definition.id),
+      );
+      update((map) => {
+        const newMap = new Map(map);
+        for (const tweakId of categoryTweakIds) {
+          newMap.delete(tweakId);
+        }
+        return newMap;
+      });
+    },
     getPending(tweakId: string): PendingChange | undefined {
       return get({ subscribe }).get(tweakId);
     },
