@@ -1,5 +1,6 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
+import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite";
 import { APP_CONFIG } from "./src/lib/config/app";
 
@@ -7,7 +8,14 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [sveltekit(), tailwindcss()],
+  plugins: [
+    sveltekit(),
+    tailwindcss(),
+    Icons({
+      compiler: "svelte",
+      autoInstall: false,
+    }),
+  ],
 
   // Define the config as build-time constants
   define: {

@@ -1,10 +1,10 @@
 <script lang="ts">
   import CategoryTab from "$lib/components/CategoryTab.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
   import { initializeStores } from "$lib/stores/tweaks";
-  import Icon from "@iconify/svelte";
   import { onMount } from "svelte";
 
   let loading = $state(true);

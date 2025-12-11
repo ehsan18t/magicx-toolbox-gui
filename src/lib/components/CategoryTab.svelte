@@ -7,9 +7,9 @@
     revertTweak,
     tweaksStore,
   } from "$lib/stores/tweaks";
-  import Icon from "@iconify/svelte";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import Icon from "./Icon.svelte";
   import TweakCard from "./TweakCard.svelte";
 
   interface Props {

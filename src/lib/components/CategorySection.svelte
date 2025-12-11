@@ -1,9 +1,9 @@
 <script lang="ts">
   import { applyTweak, loadingStore, revertTweak } from "$lib/stores/tweaks";
   import type { CategoryDefinition, TweakWithStatus } from "$lib/types";
-  import Icon from "@iconify/svelte";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import Icon from "./Icon.svelte";
   import TweakCard from "./TweakCard.svelte";
 
   interface Props {
@@ -70,7 +70,7 @@
 <section class="mb-4">
   <!-- Header -->
   <div
-    class="flex w-full items-center justify-between rounded-lg border border-border bg-card p-0 transition-all duration-200 hover:border-primary/30 hover:bg-accent/5"
+    class="flex w-full items-center justify-between rounded-lg border border-border bg-card p-0 transition-all duration-200 hover:border-accent/30 hover:bg-accent/5"
   >
     <button
       class="flex flex-1 cursor-pointer items-center border-0 bg-transparent px-4 py-3 text-left"

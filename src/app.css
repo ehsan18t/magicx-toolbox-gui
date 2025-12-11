@@ -44,10 +44,15 @@
     --secondary-hover: 224 40% 22%; /* #283140 */
     --secondary-foreground: 210 40% 98%; /* #f8fafc */
 
-    /* Accent Colors */
+    /* Accent Colors - Updated by color scheme */
     --accent: 262 83% 58%; /* #8b5cf6 */
     --accent-hover: 262 83% 53%; /* #7c3aed */
     --accent-foreground: 0 0% 100%; /* #ffffff */
+    --accent-muted: 262 50% 30%; /* Darker muted for dark theme */
+    --accent-subtle: 262 50% 20%; /* Very subtle for backgrounds */
+
+    /* Ring/Focus Colors - derived from accent */
+    --ring: var(--accent);
 
     /* Status Colors */
     --success: 142 76% 36%; /* #10b981 */
@@ -92,10 +97,15 @@
     --secondary-hover: 210 40% 92%; /* #e2e8f0 */
     --secondary-foreground: 222 84% 5%; /* #0f172a */
 
-    /* Accent Colors */
+    /* Accent Colors - Updated by color scheme */
     --accent: 262 83% 58%; /* #8b5cf6 */
     --accent-hover: 262 83% 53%; /* #7c3aed */
     --accent-foreground: 0 0% 100%; /* #ffffff */
+    --accent-muted: 262 70% 75%; /* Lighter muted for light theme */
+    --accent-subtle: 262 70% 95%; /* Very subtle for backgrounds */
+
+    /* Ring/Focus Colors - derived from accent */
+    --ring: var(--accent);
 
     /* Status Colors */
     --success: 142 71% 45%; /* #059669 */
@@ -120,11 +130,29 @@
     --accent: 262 83% 58%; /* #8b5cf6 */
     --accent-hover: 262 83% 53%; /* #7c3aed */
   }
+  [data-theme="dark"][data-scheme="purple"],
+  :root[data-scheme="purple"] {
+    --accent-muted: 262 50% 30%;
+    --accent-subtle: 262 50% 20%;
+  }
+  [data-theme="light"][data-scheme="purple"] {
+    --accent-muted: 262 70% 75%;
+    --accent-subtle: 262 70% 95%;
+  }
 
   /* Blue Scheme */
   [data-scheme="blue"] {
     --accent: 221 83% 53%; /* #3b82f6 */
     --accent-hover: 221 83% 48%; /* #2563eb */
+  }
+  [data-theme="dark"][data-scheme="blue"],
+  :root[data-scheme="blue"] {
+    --accent-muted: 221 50% 30%;
+    --accent-subtle: 221 50% 20%;
+  }
+  [data-theme="light"][data-scheme="blue"] {
+    --accent-muted: 221 70% 75%;
+    --accent-subtle: 221 70% 95%;
   }
 
   /* Green Scheme */
@@ -132,11 +160,29 @@
     --accent: 160 84% 39%; /* #10b981 */
     --accent-hover: 160 84% 34%; /* #0d9668 */
   }
+  [data-theme="dark"][data-scheme="green"],
+  :root[data-scheme="green"] {
+    --accent-muted: 160 50% 25%;
+    --accent-subtle: 160 50% 15%;
+  }
+  [data-theme="light"][data-scheme="green"] {
+    --accent-muted: 160 60% 70%;
+    --accent-subtle: 160 60% 92%;
+  }
 
   /* Orange Scheme */
   [data-scheme="orange"] {
     --accent: 25 95% 53%; /* #f97316 */
     --accent-hover: 25 95% 48%; /* #ea6c0c */
+  }
+  [data-theme="dark"][data-scheme="orange"],
+  :root[data-scheme="orange"] {
+    --accent-muted: 25 60% 30%;
+    --accent-subtle: 25 60% 18%;
+  }
+  [data-theme="light"][data-scheme="orange"] {
+    --accent-muted: 25 80% 75%;
+    --accent-subtle: 25 80% 93%;
   }
 
   /* Pink Scheme */
@@ -144,17 +190,44 @@
     --accent: 330 81% 60%; /* #ec4899 */
     --accent-hover: 330 81% 55%; /* #e4268a */
   }
+  [data-theme="dark"][data-scheme="pink"],
+  :root[data-scheme="pink"] {
+    --accent-muted: 330 50% 30%;
+    --accent-subtle: 330 50% 18%;
+  }
+  [data-theme="light"][data-scheme="pink"] {
+    --accent-muted: 330 70% 78%;
+    --accent-subtle: 330 70% 95%;
+  }
 
   /* Red Scheme */
   [data-scheme="red"] {
     --accent: 0 84% 60%; /* #ef4444 */
     --accent-hover: 0 84% 55%; /* #e93030 */
   }
+  [data-theme="dark"][data-scheme="red"],
+  :root[data-scheme="red"] {
+    --accent-muted: 0 50% 30%;
+    --accent-subtle: 0 50% 18%;
+  }
+  [data-theme="light"][data-scheme="red"] {
+    --accent-muted: 0 70% 78%;
+    --accent-subtle: 0 70% 95%;
+  }
 
   /* Cyan Scheme */
   [data-scheme="cyan"] {
     --accent: 188 94% 43%; /* #06b6d4 */
     --accent-hover: 188 94% 38%; /* #05a0ba */
+  }
+  [data-theme="dark"][data-scheme="cyan"],
+  :root[data-scheme="cyan"] {
+    --accent-muted: 188 50% 25%;
+    --accent-subtle: 188 50% 15%;
+  }
+  [data-theme="light"][data-scheme="cyan"] {
+    --accent-muted: 188 60% 70%;
+    --accent-subtle: 188 60% 92%;
   }
 }
 
@@ -182,6 +255,11 @@
   --color-accent: hsl(var(--accent));
   --color-accent-hover: hsl(var(--accent-hover));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-muted: hsl(var(--accent-muted));
+  --color-accent-subtle: hsl(var(--accent-subtle));
+
+  /* Ring color for focus states */
+  --color-ring: hsl(var(--ring));
 
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from "@iconify/svelte";
+  import Icon from "./Icon.svelte";
 
   type Variant = "default" | "warning" | "danger";
 
@@ -38,13 +38,13 @@
   }
 
   const iconClasses: Record<Variant, { icon: string; color: string }> = {
-    default: { icon: "mdi:help-circle", color: "text-primary" },
+    default: { icon: "mdi:help-circle", color: "text-accent" },
     warning: { icon: "mdi:alert", color: "text-warning" },
     danger: { icon: "mdi:alert-octagon", color: "text-error" },
   };
 
   const confirmBtnClasses: Record<Variant, string> = {
-    default: "bg-primary text-primary-foreground hover:bg-primary/90",
+    default: "bg-accent text-accent-foreground hover:bg-accent/90",
     warning: "bg-warning text-black hover:bg-warning/90",
     danger: "bg-error text-white hover:bg-error/90",
   };

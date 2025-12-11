@@ -1,6 +1,6 @@
 <script lang="ts">
   import { categoriesStore, searchQuery, selectedCategory } from "$lib/stores/tweaks";
-  import Icon from "@iconify/svelte";
+  import Icon from "./Icon.svelte";
 </script>
 
 <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -15,7 +15,7 @@
       type="text"
       placeholder="Search tweaks..."
       bind:value={$searchQuery}
-      class="w-full rounded-lg border border-border bg-background py-2.5 pr-9 pl-10 text-sm text-foreground transition-colors duration-200 placeholder:text-foreground-muted focus:border-primary focus:outline-none"
+      class="w-full rounded-lg border border-border bg-background py-2.5 pr-9 pl-10 text-sm text-foreground transition-colors duration-200 placeholder:text-foreground-muted focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none"
     />
     {#if $searchQuery}
       <button
@@ -30,9 +30,9 @@
   <!-- Category filters -->
   <div class="flex flex-wrap gap-2">
     <button
-      class="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground-muted transition-all duration-200 hover:border-primary/50 hover:text-foreground {$selectedCategory ===
+      class="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground-muted transition-all duration-200 hover:border-accent/50 hover:text-foreground {$selectedCategory ===
       'all'
-        ? 'border-primary bg-primary text-primary-foreground'
+        ? 'border-accent bg-accent text-accent-foreground'
         : ''}"
       onclick={() => ($selectedCategory = "all")}
     >
@@ -40,9 +40,9 @@
     </button>
     {#each $categoriesStore as cat (cat.id)}
       <button
-        class="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground-muted transition-all duration-200 hover:border-primary/50 hover:text-foreground {$selectedCategory ===
+        class="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground-muted transition-all duration-200 hover:border-accent/50 hover:text-foreground {$selectedCategory ===
         cat.id
-          ? 'border-primary bg-primary text-primary-foreground'
+          ? 'border-accent bg-accent text-accent-foreground'
           : ''}"
         onclick={() => ($selectedCategory = cat.id)}
       >

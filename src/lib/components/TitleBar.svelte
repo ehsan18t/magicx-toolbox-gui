@@ -2,12 +2,12 @@
   import { debugState } from "$lib/stores/debug.svelte";
   import { themeStore } from "$lib/stores/theme";
   import { systemStore } from "$lib/stores/tweaks";
-  import Icon from "@iconify/svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import ControlButton from "./ControlButton.svelte";
+  import Icon from "./Icon.svelte";
 
   let appWindow: ReturnType<typeof getCurrentWindow>;
   let appName = $state("");

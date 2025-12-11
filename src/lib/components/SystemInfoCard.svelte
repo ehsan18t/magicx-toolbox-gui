@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SystemInfo } from "$lib/types";
-  import Icon from "@iconify/svelte";
+  import Icon from "./Icon.svelte";
 
   const { systemInfo } = $props<{
     systemInfo: SystemInfo | null;
@@ -11,7 +11,7 @@
   {#if systemInfo}
     <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
       <div class="flex items-start gap-2.5">
-        <Icon icon="mdi:microsoft-windows" width="20" class="mt-0.5 shrink-0 text-primary" />
+        <Icon icon="mdi:microsoft-windows" width="20" class="mt-0.5 shrink-0 text-accent" />
         <div class="flex min-w-0 flex-col">
           <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase"
             >Windows</span
@@ -23,7 +23,7 @@
       </div>
 
       <div class="flex items-start gap-2.5">
-        <Icon icon="mdi:update" width="20" class="mt-0.5 shrink-0 text-primary" />
+        <Icon icon="mdi:update" width="20" class="mt-0.5 shrink-0 text-accent" />
         <div class="flex min-w-0 flex-col">
           <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase"
             >Version</span
@@ -35,7 +35,7 @@
       </div>
 
       <div class="flex items-start gap-2.5">
-        <Icon icon="mdi:account" width="20" class="mt-0.5 shrink-0 text-primary" />
+        <Icon icon="mdi:account" width="20" class="mt-0.5 shrink-0 text-accent" />
         <div class="flex min-w-0 flex-col">
           <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase">User</span
           >

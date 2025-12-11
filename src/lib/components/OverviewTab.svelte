@@ -1,7 +1,7 @@
 <script lang="ts">
   import { navigateToCategory } from "$lib/stores/navigation";
   import { categoriesStore, categoryStats, systemStore } from "$lib/stores/tweaks";
-  import Icon from "@iconify/svelte";
+  import Icon from "./Icon.svelte";
 
   // Format clock speed
   const formatClockSpeed = (mhz: number) => {
@@ -63,7 +63,7 @@
                 ? "mdi:laptop"
                 : "mdi:desktop-tower-monitor"}
               width="16"
-              class="text-primary"
+              class="text-accent"
             />
             <span class="text-[10px] font-medium text-foreground-muted uppercase">Device</span>
           </div>
@@ -148,8 +148,8 @@
         {#each $systemStore.hardware.gpu as gpu, i (i)}
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="mb-3 flex items-center gap-2">
-              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15">
-                <Icon icon="mdi:expansion-card" width="18" class="text-primary" />
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15">
+                <Icon icon="mdi:expansion-card" width="18" class="text-accent" />
               </div>
               <span class="text-xs font-medium text-foreground-muted uppercase">
                 GPU{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ""}

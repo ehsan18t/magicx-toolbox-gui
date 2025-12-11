@@ -1,0 +1,183 @@
+<script lang="ts" module>
+  // Pre-import all icons used in the app for build-time bundling
+  // MDI Icons
+  import MdiAccount from "~icons/mdi/account";
+  import MdiAlert from "~icons/mdi/alert";
+  import MdiAlertCircle from "~icons/mdi/alert-circle";
+  import MdiAlertOctagon from "~icons/mdi/alert-octagon";
+  import MdiCheck from "~icons/mdi/check";
+  import MdiCheckAll from "~icons/mdi/check-all";
+  import MdiCheckCircle from "~icons/mdi/check-circle";
+  import MdiChevronDown from "~icons/mdi/chevron-down";
+  import MdiChevronRight from "~icons/mdi/chevron-right";
+  import MdiChevronUp from "~icons/mdi/chevron-up";
+  import MdiCircleOutline from "~icons/mdi/circle-outline";
+  import MdiClose from "~icons/mdi/close";
+  import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
+  import MdiCogs from "~icons/mdi/cogs";
+  import MdiCpu64Bit from "~icons/mdi/cpu-64-bit";
+  import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
+  import MdiDesktopTowerMonitor from "~icons/mdi/desktop-tower-monitor";
+  import MdiExpansionCard from "~icons/mdi/expansion-card";
+  import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
+  import MdiFolder from "~icons/mdi/folder";
+  import MdiGamepadVariant from "~icons/mdi/gamepad-variant";
+  import MdiHarddisk from "~icons/mdi/harddisk";
+  import MdiHarddiskPlus from "~icons/mdi/harddisk-plus";
+  import MdiHelpCircle from "~icons/mdi/help-circle";
+  import MdiInformationOutline from "~icons/mdi/information-outline";
+  import MdiKeyVariant from "~icons/mdi/key-variant";
+  import MdiLaptop from "~icons/mdi/laptop";
+  import MdiLightbulbOutline from "~icons/mdi/lightbulb-outline";
+  import MdiLoading from "~icons/mdi/loading";
+  import MdiMagicStaff from "~icons/mdi/magic-staff";
+  import MdiMagnify from "~icons/mdi/magnify";
+  import MdiMemory from "~icons/mdi/memory";
+  import MdiMicrosoftWindows from "~icons/mdi/microsoft-windows";
+  import MdiPackageVariant from "~icons/mdi/package-variant";
+  import MdiPalette from "~icons/mdi/palette";
+  import MdiPin from "~icons/mdi/pin";
+  import MdiPinOutline from "~icons/mdi/pin-outline";
+  import MdiRefresh from "~icons/mdi/refresh";
+  import MdiRestart from "~icons/mdi/restart";
+  import MdiRestartAlert from "~icons/mdi/restart-alert";
+  import MdiRestore from "~icons/mdi/restore";
+  import MdiSecurity from "~icons/mdi/security";
+  import MdiShieldAccountOutline from "~icons/mdi/shield-account-outline";
+  import MdiShieldAlert from "~icons/mdi/shield-alert";
+  import MdiShieldCheck from "~icons/mdi/shield-check";
+  import MdiShieldLock from "~icons/mdi/shield-lock";
+  import MdiSpeedometer from "~icons/mdi/speedometer";
+  import MdiTimerOutline from "~icons/mdi/timer-outline";
+  import MdiTuneVertical from "~icons/mdi/tune-vertical";
+  import MdiUndoVariant from "~icons/mdi/undo-variant";
+  import MdiUpdate from "~icons/mdi/update";
+  import MdiViewDashboard from "~icons/mdi/view-dashboard";
+
+  // Tabler Icons
+  import TablerAppWindow from "~icons/tabler/app-window";
+  import TablerArrowBarToDown from "~icons/tabler/arrow-bar-to-down";
+  import TablerBug from "~icons/tabler/bug";
+  import TablerCopy from "~icons/tabler/copy";
+  import TablerFileSearch from "~icons/tabler/file-search";
+  import TablerLoader2 from "~icons/tabler/loader-2";
+  import TablerMinus from "~icons/tabler/minus";
+  import TablerMoon from "~icons/tabler/moon";
+  import TablerShieldCheckFilled from "~icons/tabler/shield-check-filled";
+  import TablerShieldUp from "~icons/tabler/shield-up";
+  import TablerShieldX from "~icons/tabler/shield-x";
+  import TablerSun from "~icons/tabler/sun";
+  import TablerTrash from "~icons/tabler/trash";
+  import TablerX from "~icons/tabler/x";
+
+  // Fluent Icons
+  import FluentMaximize20Filled from "~icons/fluent/maximize-20-filled";
+
+  // Icon registry mapping icon names to components
+  const iconRegistry: Record<string, typeof MdiLoading> = {
+    // MDI icons
+    "mdi:loading": MdiLoading,
+    "mdi:alert-circle": MdiAlertCircle,
+    "mdi:refresh": MdiRefresh,
+    "mdi:magic-staff": MdiMagicStaff,
+    "mdi:tune-vertical": MdiTuneVertical,
+    "mdi:check-circle": MdiCheckCircle,
+    "mdi:circle-outline": MdiCircleOutline,
+    "mdi:check": MdiCheck,
+    "mdi:close": MdiClose,
+    "mdi:shield-account-outline": MdiShieldAccountOutline,
+    "mdi:shield-lock": MdiShieldLock,
+    "mdi:restart": MdiRestart,
+    "mdi:restart-alert": MdiRestartAlert,
+    "mdi:information-outline": MdiInformationOutline,
+    "mdi:database-cog-outline": MdiDatabaseCogOutline,
+    "mdi:key-variant": MdiKeyVariant,
+    "mdi:chevron-up": MdiChevronUp,
+    "mdi:chevron-down": MdiChevronDown,
+    "mdi:chevron-right": MdiChevronRight,
+    "mdi:magnify": MdiMagnify,
+    "mdi:microsoft-windows": MdiMicrosoftWindows,
+    "mdi:update": MdiUpdate,
+    "mdi:account": MdiAccount,
+    "mdi:shield-check": MdiShieldCheck,
+    "mdi:shield-alert": MdiShieldAlert,
+    "mdi:cpu-64-bit": MdiCpu64Bit,
+    "mdi:expansion-card": MdiExpansionCard,
+    "mdi:timer-outline": MdiTimerOutline,
+    "mdi:laptop": MdiLaptop,
+    "mdi:desktop-tower-monitor": MdiDesktopTowerMonitor,
+    "mdi:harddisk": MdiHarddisk,
+    "mdi:harddisk-plus": MdiHarddiskPlus,
+    "mdi:memory": MdiMemory,
+    "mdi:folder": MdiFolder,
+    "mdi:check-all": MdiCheckAll,
+    "mdi:undo-variant": MdiUndoVariant,
+    "mdi:file-search-outline": MdiFileSearchOutline,
+    "mdi:package-variant": MdiPackageVariant,
+    "mdi:close-circle-outline": MdiCloseCircleOutline,
+    "mdi:restore": MdiRestore,
+    "mdi:lightbulb-outline": MdiLightbulbOutline,
+    "mdi:pin": MdiPin,
+    "mdi:pin-outline": MdiPinOutline,
+    "mdi:help-circle": MdiHelpCircle,
+    "mdi:alert": MdiAlert,
+    "mdi:alert-octagon": MdiAlertOctagon,
+
+    // Category icons (used in sidebar/navigation)
+    "mdi:view-dashboard": MdiViewDashboard,
+    "mdi:security": MdiSecurity,
+    "mdi:speedometer": MdiSpeedometer,
+    "mdi:gamepad-variant": MdiGamepadVariant,
+    "mdi:cogs": MdiCogs,
+    "mdi:palette": MdiPalette,
+
+    // Tabler icons
+    "tabler:bug": TablerBug,
+    "tabler:arrow-bar-to-down": TablerArrowBarToDown,
+    "tabler:trash": TablerTrash,
+    "tabler:x": TablerX,
+    "tabler:file-search": TablerFileSearch,
+    "tabler:app-window": TablerAppWindow,
+    "tabler:shield-check-filled": TablerShieldCheckFilled,
+    "tabler:shield-x": TablerShieldX,
+    "tabler:shield-up": TablerShieldUp,
+    "tabler:loader-2": TablerLoader2,
+    "tabler:moon": TablerMoon,
+    "tabler:sun": TablerSun,
+    "tabler:copy": TablerCopy,
+    "tabler:minus": TablerMinus,
+
+    // Fluent icons
+    "fluent:maximize-20-filled": FluentMaximize20Filled,
+  };
+
+  export function getIconComponent(name: string) {
+    return iconRegistry[name];
+  }
+</script>
+
+<script lang="ts">
+  interface Props {
+    icon: string;
+    width?: number | string;
+    height?: number | string;
+    class?: string;
+  }
+
+  const { icon, width = 24, height, class: className = "" }: Props = $props();
+
+  const IconComponent = $derived(iconRegistry[icon]);
+  const computedHeight = $derived(height ?? width);
+</script>
+
+{#if IconComponent}
+  <IconComponent {width} height={computedHeight} class={className} />
+{:else}
+  <!-- Fallback: show nothing or a placeholder for unregistered icons -->
+  <span
+    class="inline-flex items-center justify-center {className}"
+    style="width: {width}px; height: {computedHeight}px;"
+  >
+    ?
+  </span>
+{/if}

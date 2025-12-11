@@ -9,9 +9,9 @@
   } from "$lib/stores/tweaks";
   import type { RegistryChange, RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
-  import Icon from "@iconify/svelte";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import Icon from "./Icon.svelte";
 
   const { tweak } = $props<{
     tweak: TweakWithStatus;
@@ -134,7 +134,7 @@
 <article
   class="relative flex overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md {tweak
     .status.is_applied
-    ? 'border-primary/40 bg-primary/3'
+    ? 'border-accent/40 bg-accent/5'
     : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''}"
 >
   <!-- Status bar -->
@@ -142,7 +142,7 @@
     class="w-0.75 shrink-0 transition-colors duration-200 {hasPending
       ? 'bg-warning'
       : tweak.status.is_applied
-        ? 'bg-primary'
+        ? 'bg-accent'
         : 'bg-[hsl(var(--muted))]'}"
   ></div>
 
@@ -164,7 +164,7 @@
       {#if isMultiState}
         <!-- Dropdown for multi-state -->
         <select
-          class="max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[hsl(var(--muted))] bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-primary focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
+          class="max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[hsl(var(--muted))] bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
             ? 'border-warning bg-warning/10'
             : ''} {$isLoading ? 'opacity-70' : ''}"
           disabled={$isLoading}
@@ -191,13 +191,13 @@
             class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-colors duration-200 {effectiveEnabled
               ? hasPending
                 ? 'bg-warning'
-                : 'bg-primary'
+                : 'bg-accent'
               : 'bg-[hsl(var(--muted))]'} hover:not-disabled:brightness-95"
           >
             <span
               class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
                 ? 'translate-x-5'
-                : 'translate-x-0'} {$isLoading ? 'text-foreground-muted' : 'text-primary'}"
+                : 'translate-x-0'} {$isLoading ? 'text-foreground-muted' : 'text-accent'}"
             >
               {#if $isLoading}
                 <Icon icon="mdi:loading" width="14" class="animate-spin" />

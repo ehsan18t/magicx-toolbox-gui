@@ -1,6 +1,6 @@
 <script lang="ts">
   import { debugState, type DebugLogEntry } from "$lib/stores/debug.svelte";
-  import Icon from "@iconify/svelte";
+  import Icon from "./Icon.svelte";
 
   let filterLevel = $state<"all" | DebugLogEntry["level"]>("all");
   let autoScroll = $state(true);

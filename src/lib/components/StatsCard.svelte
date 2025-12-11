@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from "@iconify/svelte";
+  import Icon from "./Icon.svelte";
 
   const { total, applied, pending } = $props<{
     total: number;
@@ -82,7 +82,7 @@
 
   .circle {
     fill: none;
-    stroke: hsl(var(--primary));
+    stroke: hsl(var(--accent));
     stroke-width: 3;
     stroke-linecap: round;
     transform: rotate(-90deg);
