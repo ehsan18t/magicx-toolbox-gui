@@ -150,3 +150,61 @@ tweaks:
         value_type: "REG_SZ"
         enable_value: "0"
         disable_value: "1"
+
+  - id: enable_do_this_for_all
+    name: "Enable 'Do This For All' by Default"
+    description: "Check 'Do this for all current items' checkbox by default in file operations"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\OperationStatusManager"
+        value_name: "ConfirmationCheckBoxDoForAll"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
+
+  - id: disable_action_center
+    name: "Disable Action Center (Windows 10)"
+    description: "Disable the Action Center/Notification Center"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+        value_name: "DisableNotificationCenter"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
+        windows_versions: [10]
+
+  - id: disable_explorer_ads
+    name: "Disable File Explorer Sync Ads"
+    description: "Disable sync provider notifications/ads in File Explorer"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+        value_name: "ShowSyncProviderNotifications"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_downloaded_files_block
+    name: "Disable Downloaded Files Block"
+    description: "Prevent Windows from blocking downloaded files from the internet"
+    risk_level: medium
+    requires_admin: false
+    requires_reboot: false
+    info: "Removes the 'This file came from another computer' security warning"
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"
+        value_name: "SaveZoneInformation"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 2

@@ -59,6 +59,15 @@ enum RegistryValueType {
     QWord,
 }
 
+/// Option for multi-state tweaks (displayed as dropdown in UI)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TweakOption {
+    label: String,
+    value: serde_json::Value,
+    #[serde(default)]
+    is_default: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RegistryChange {
     hive: RegistryHive,
@@ -70,6 +79,9 @@ struct RegistryChange {
     disable_value: Option<serde_json::Value>,
     #[serde(default)]
     windows_versions: Option<Vec<u32>>,
+    /// Multi-state options (if present, displayed as dropdown instead of toggle)
+    #[serde(default)]
+    options: Option<Vec<TweakOption>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

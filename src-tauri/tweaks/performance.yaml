@@ -161,3 +161,74 @@ tweaks:
         value_type: "REG_DWORD"
         enable_value: 0
         disable_value: 3
+
+  - id: enable_large_system_cache
+    name: "Enable Large System Cache"
+    description: "Enable large system cache for improved performance (recommended for 8GB+ RAM)"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: "Uses more RAM for file system cache, improving disk performance on systems with 8GB+ RAM"
+    registry_changes:
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+        value_name: "LargeSystemCache"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
+
+  - id: icon_cache_size
+    name: "Icon Cache Size"
+    description: "Adjust icon cache size for faster icon loading in File Explorer"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Larger icon cache reduces disk I/O when browsing folders with many icons"
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+        value_name: "Max Cached Icons"
+        value_type: "REG_SZ"
+        enable_value: "500"
+        options:
+          - label: "Default (500KB)"
+            value: "500"
+            is_default: true
+          - label: "4MB"
+            value: "4096"
+          - label: "8MB"
+            value: "8192"
+
+  - id: disable_autologger
+    name: "Disable Diagnostic Autologger"
+    description: "Disable DiagTrack autologger for reduced disk I/O and telemetry"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      - hive: HKLM
+        key: "System\\ControlSet001\\Control\\WMI\\Autologger\\AutoLogger-Diagtrack-Listener"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_map_auto_download
+    name: "Disable Map Data Auto Download"
+    description: "Prevent Windows from automatically downloading map data"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\Maps"
+        value_name: "AutoDownloadAndUpdateMapData"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\Maps"
+        value_name: "AllowUntriggeredNetworkTrafficOnSettingsPage"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1

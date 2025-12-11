@@ -108,12 +108,15 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
             .map(|info| info.applied_at.clone())
     });
 
+    // Check for multi-state tweaks and detect current option
+    let current_option_index = detect_current_option(&changes)?;
+
     log::trace!(
-        "Tweak {} status: applied={}, has_backup={}, last_applied={:?}",
+        "Tweak {} status: applied={}, has_backup={}, option_index={:?}",
         tweak_id,
         is_applied,
         has_backup,
-        last_applied
+        current_option_index
     );
 
     Ok(TweakStatus {
@@ -121,6 +124,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
         is_applied,
         last_applied,
         has_backup,
+        current_option_index,
     })
 }
 
@@ -428,6 +432,129 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
     Ok(TweakResult {
         success: true,
         message: format!("Successfully applied: {}", tweak.name),
+        requires_reboot: tweak.requires_reboot,
+    })
+}
+
+/// Apply a specific option for a multi-state tweak
+#[tauri::command]
+pub async fn apply_tweak_option(
+    app: AppHandle,
+    tweak_id: String,
+    option_index: usize,
+) -> Result<TweakResult> {
+    log::info!(
+        "Command: apply_tweak_option({}, option={})",
+        tweak_id,
+        option_index
+    );
+
+    let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
+        log::error!("Tweak not found: {}", tweak_id);
+        Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
+    })?;
+
+    let system_info = system_info_service::get_system_info()?;
+    let version = system_info.windows.version_number();
+
+    // Check if tweak applies to current Windows version
+    if !tweak.applies_to_version(version) {
+        return Err(Error::UnsupportedWindowsVersion);
+    }
+
+    // Check if admin required
+    if tweak.requires_admin && !system_info.is_admin {
+        return Err(Error::RequiresAdmin);
+    }
+
+    let changes = tweak.get_changes_for_version(version);
+    if changes.is_empty() {
+        return Err(Error::WindowsApi(
+            "No registry changes for this Windows version".to_string(),
+        ));
+    }
+
+    // Get the first change (multi-state typically has one key)
+    let change = changes
+        .first()
+        .ok_or_else(|| Error::WindowsApi("No registry changes available".to_string()))?;
+
+    // Get options
+    let options = change
+        .options
+        .as_ref()
+        .ok_or_else(|| Error::WindowsApi("Tweak does not have multiple options".to_string()))?;
+
+    // Validate option index
+    if option_index >= options.len() {
+        return Err(Error::WindowsApi(format!(
+            "Invalid option index: {} (max: {})",
+            option_index,
+            options.len() - 1
+        )));
+    }
+
+    let option = &options[option_index];
+    log::debug!(
+        "Applying option '{}' (index {}) for '{}'",
+        option.label,
+        option_index,
+        tweak.name
+    );
+
+    // Debug log
+    if is_debug_enabled() {
+        emit_debug_log(
+            &app,
+            DebugLevel::Info,
+            &format!("Applying option '{}' for: {}", option.label, tweak.name),
+            None,
+        );
+    }
+
+    // Capture baseline
+    let keys_info = vec![(
+        change.hive.as_str().to_string(),
+        change.key.clone(),
+        change.value_name.clone(),
+        format!("{:?}", change.value_type).replace("\"", ""),
+    )];
+
+    let _ = backup_service::capture_baseline_for_keys(&tweak_id, &keys_info);
+
+    // Apply the option value
+    write_registry_value(&app, change, &option.value, "Setting", &tweak.name)?;
+
+    // Record as applied
+    let key_id = make_key_id(change.hive.as_str(), &change.key, &change.value_name);
+    if let Err(e) =
+        backup_service::record_tweak_applied(&tweak_id, &tweak.name, version, vec![key_id])
+    {
+        log::warn!("Failed to record tweak state: {}", e);
+    }
+
+    log::info!(
+        "Successfully applied option '{}' for tweak '{}'",
+        option.label,
+        tweak.name
+    );
+
+    if is_debug_enabled() {
+        emit_debug_log(
+            &app,
+            DebugLevel::Success,
+            &format!("Applied option '{}': {}", option.label, tweak.name),
+            if tweak.requires_reboot {
+                Some("Reboot required")
+            } else {
+                None
+            },
+        );
+    }
+
+    Ok(TweakResult {
+        success: true,
+        message: format!("Applied '{}' for {}", option.label, tweak.name),
         requires_reboot: tweak.requires_reboot,
     })
 }
@@ -805,31 +932,23 @@ fn check_tweak_applied(changes: &[&crate::models::RegistryChange]) -> Result<boo
     // Check ALL registry changes - tweak is applied only if all values match
     for change in changes {
         let current_value = match change.value_type {
-            crate::models::RegistryValueType::DWord => registry_service::read_dword(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-            )?
-            .map(|v| serde_json::json!(v)),
+            crate::models::RegistryValueType::DWord => {
+                registry_service::read_dword(&change.hive, &change.key, &change.value_name)?
+                    .map(|v| serde_json::json!(v))
+            }
             crate::models::RegistryValueType::String
-            | crate::models::RegistryValueType::ExpandString => registry_service::read_string(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-            )?
-            .map(|v| serde_json::json!(v)),
-            crate::models::RegistryValueType::Binary => registry_service::read_binary(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-            )?
-            .map(|v| serde_json::json!(v)),
-            crate::models::RegistryValueType::QWord => registry_service::read_qword(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-            )?
-            .map(|v| serde_json::json!(v)),
+            | crate::models::RegistryValueType::ExpandString => {
+                registry_service::read_string(&change.hive, &change.key, &change.value_name)?
+                    .map(|v| serde_json::json!(v))
+            }
+            crate::models::RegistryValueType::Binary => {
+                registry_service::read_binary(&change.hive, &change.key, &change.value_name)?
+                    .map(|v| serde_json::json!(v))
+            }
+            crate::models::RegistryValueType::QWord => {
+                registry_service::read_qword(&change.hive, &change.key, &change.value_name)?
+                    .map(|v| serde_json::json!(v))
+            }
             crate::models::RegistryValueType::MultiString => {
                 // MultiString is not commonly used, treat as not matching
                 log::trace!("MultiString type not supported in status check");
@@ -851,6 +970,65 @@ fn check_tweak_applied(changes: &[&crate::models::RegistryChange]) -> Result<boo
 
     // All changes match their enable_value
     Ok(true)
+}
+
+/// Read current registry value for a change
+fn read_current_value(change: &crate::models::RegistryChange) -> Result<Option<serde_json::Value>> {
+    match change.value_type {
+        crate::models::RegistryValueType::DWord => {
+            registry_service::read_dword(&change.hive, &change.key, &change.value_name)
+                .map(|v| v.map(|val| serde_json::json!(val)))
+        }
+        crate::models::RegistryValueType::String
+        | crate::models::RegistryValueType::ExpandString => {
+            registry_service::read_string(&change.hive, &change.key, &change.value_name)
+                .map(|v| v.map(|val| serde_json::json!(val)))
+        }
+        crate::models::RegistryValueType::Binary => {
+            registry_service::read_binary(&change.hive, &change.key, &change.value_name)
+                .map(|v| v.map(|val| serde_json::json!(val)))
+        }
+        crate::models::RegistryValueType::QWord => {
+            registry_service::read_qword(&change.hive, &change.key, &change.value_name)
+                .map(|v| v.map(|val| serde_json::json!(val)))
+        }
+        crate::models::RegistryValueType::MultiString => {
+            log::trace!("MultiString type not supported");
+            Ok(None)
+        }
+    }
+}
+
+/// Detect which option is currently active for multi-state tweaks.
+/// Returns None for binary tweaks or if no matching option is found.
+fn detect_current_option(changes: &[&crate::models::RegistryChange]) -> Result<Option<usize>> {
+    // Only check the first change for multi-state (usually there's just one)
+    let first_change = match changes.first() {
+        Some(c) => c,
+        None => return Ok(None),
+    };
+
+    // Check if this is a multi-state tweak
+    let options = match &first_change.options {
+        Some(opts) if opts.len() > 1 => opts,
+        _ => return Ok(None), // Binary tweak or no options
+    };
+
+    // Read current value
+    let current_value = match read_current_value(first_change)? {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    // Find which option matches
+    for (index, option) in options.iter().enumerate() {
+        if current_value == option.value {
+            return Ok(Some(index));
+        }
+    }
+
+    // No matching option found (might be a custom value)
+    Ok(None)
 }
 
 /// Write a registry value based on type (unified helper for apply/revert)
@@ -875,7 +1053,12 @@ fn write_registry_value(
                         Some(tweak_name),
                     );
                 }
-                registry_service::set_dword(&change.hive, &change.key, &change.value_name, v as u32)?;
+                registry_service::set_dword(
+                    &change.hive,
+                    &change.key,
+                    &change.value_name,
+                    v as u32,
+                )?;
             }
         }
         crate::models::RegistryValueType::String
@@ -902,11 +1085,21 @@ fn write_registry_value(
                     emit_debug_log(
                         app,
                         DebugLevel::Info,
-                        &format!("{} Binary: {} ({} bytes)", operation, full_path, binary.len()),
+                        &format!(
+                            "{} Binary: {} ({} bytes)",
+                            operation,
+                            full_path,
+                            binary.len()
+                        ),
                         Some(tweak_name),
                     );
                 }
-                registry_service::set_binary(&change.hive, &change.key, &change.value_name, &binary)?;
+                registry_service::set_binary(
+                    &change.hive,
+                    &change.key,
+                    &change.value_name,
+                    &binary,
+                )?;
             }
         }
         crate::models::RegistryValueType::QWord => {

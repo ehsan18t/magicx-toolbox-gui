@@ -15,6 +15,13 @@ export type RegistryValueType =
   | "REG_MULTI_SZ"
   | "REG_QWORD";
 
+/** Option for multi-state tweaks (displayed as dropdown) */
+export interface TweakOption {
+  label: string;
+  value: unknown;
+  is_default?: boolean;
+}
+
 /** Single registry change operation */
 export interface RegistryChange {
   hive: RegistryHive;
@@ -25,6 +32,8 @@ export interface RegistryChange {
   disable_value?: unknown;
   /** Optional Windows version filter. If undefined/empty, applies to all versions. */
   windows_versions?: number[];
+  /** Multi-state options (if present, displayed as dropdown instead of toggle) */
+  options?: TweakOption[];
 }
 
 /** Category definition loaded from YAML file */
@@ -58,6 +67,8 @@ export interface TweakStatus {
   is_applied: boolean;
   last_applied?: string; // ISO 8601 timestamp
   has_backup: boolean;
+  /** Current selected option index for multi-state tweaks */
+  current_option_index?: number;
 }
 
 /** Combined tweak info for UI display */

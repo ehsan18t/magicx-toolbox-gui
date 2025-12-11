@@ -1,13 +1,13 @@
 // API functions for Tauri commands
 import { invoke } from "@tauri-apps/api/core";
 import type {
-    BatchApplyResult,
-    CategoryDefinition,
-    SystemInfo,
-    TweakDefinition,
-    TweakResult,
-    TweakStatus,
-    TweakWithStatus,
+  BatchApplyResult,
+  CategoryDefinition,
+  SystemInfo,
+  TweakDefinition,
+  TweakResult,
+  TweakStatus,
+  TweakWithStatus,
 } from "../types";
 
 /**
@@ -101,6 +101,13 @@ export async function applyTweak(tweakId: string): Promise<TweakResult> {
  */
 export async function revertTweak(tweakId: string): Promise<TweakResult> {
   return await invoke<TweakResult>("revert_tweak", { tweakId });
+}
+
+/**
+ * Apply a specific option for a multi-state tweak
+ */
+export async function applyTweakOption(tweakId: string, optionIndex: number): Promise<TweakResult> {
+  return await invoke<TweakResult>("apply_tweak_option", { tweakId, optionIndex });
 }
 
 /**

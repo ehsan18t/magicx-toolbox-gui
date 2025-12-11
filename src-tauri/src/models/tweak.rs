@@ -115,6 +115,18 @@ pub enum RegistryValueType {
     QWord,
 }
 
+/// Option for multi-state tweaks (displayed as dropdown in UI)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TweakOption {
+    /// Display label for the option
+    pub label: String,
+    /// Registry value for this option
+    pub value: serde_json::Value,
+    /// Whether this is the default/original Windows value
+    #[serde(default)]
+    pub is_default: bool,
+}
+
 /// Single registry change operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryChange {
@@ -122,13 +134,19 @@ pub struct RegistryChange {
     pub key: String,
     pub value_name: String,
     pub value_type: RegistryValueType,
+    /// Value when tweak is enabled (for binary tweaks)
     pub enable_value: serde_json::Value,
+    /// Value when tweak is disabled (for binary tweaks)
     #[serde(default)]
     pub disable_value: Option<serde_json::Value>,
     /// Optional Windows version filter. If None/empty, applies to all versions.
     /// Examples: [10], [11], [10, 11]
     #[serde(default)]
     pub windows_versions: Option<Vec<u32>>,
+    /// Multi-state options (if present, displayed as dropdown instead of toggle)
+    /// When options are present, enable_value/disable_value are ignored
+    #[serde(default)]
+    pub options: Option<Vec<TweakOption>>,
 }
 
 impl RegistryChange {
@@ -139,6 +157,18 @@ impl RegistryChange {
             Some(versions) if versions.is_empty() => true,
             Some(versions) => versions.contains(&version),
         }
+    }
+
+    /// Check if this is a multi-state tweak (has options)
+    pub fn is_multi_state(&self) -> bool {
+        self.options.as_ref().map_or(false, |opts| opts.len() > 1)
+    }
+
+    /// Get the default option index (0 if not specified)
+    pub fn default_option_index(&self) -> Option<usize> {
+        self.options
+            .as_ref()
+            .and_then(|opts| opts.iter().position(|o| o.is_default).or(Some(0)))
     }
 }
 
@@ -227,6 +257,9 @@ pub struct TweakStatus {
     pub is_applied: bool,
     pub last_applied: Option<String>, // ISO 8601 timestamp
     pub has_backup: bool,
+    /// Current selected option index for multi-state tweaks (None for binary tweaks)
+    #[serde(default)]
+    pub current_option_index: Option<usize>,
 }
 
 /// Result of applying or reverting a tweak
@@ -251,6 +284,7 @@ mod tests {
             enable_value: serde_json::json!(1),
             disable_value: Some(serde_json::json!(0)),
             windows_versions,
+            options: None,
         }
     }
 

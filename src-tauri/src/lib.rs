@@ -89,6 +89,7 @@ pub fn run() {
             commands::tweaks::get_tweak,
             commands::tweaks::get_tweak_status,
             commands::tweaks::apply_tweak,
+            commands::tweaks::apply_tweak_option,
             commands::tweaks::revert_tweak,
             commands::tweaks::batch_apply_tweaks,
             commands::debug::set_debug_mode,

@@ -185,3 +185,127 @@ tweaks:
         value_type: "REG_DWORD"
         enable_value: 0
         disable_value: 1
+
+  - id: disable_store_app_suggestions
+    name: "Disable Store App Auto Install"
+    description: "Prevent Windows from automatically installing suggested apps from the Store"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SilentInstalledAppsEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_windows_welcome_experience
+    name: "Disable Windows Welcome Experience"
+    description: "Disable Windows welcome experience after updates"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SubscribedContent-310093Enabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_windows_spotlight
+    name: "Disable Windows Spotlight Ads"
+    description: "Disable Windows Spotlight lockscreen tips and advertisements"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "RotatingLockScreenOverlayEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SubscribedContent-338387Enabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_tips_about_windows
+    name: "Disable Tips About Windows"
+    description: "Disable 'Show me tips about Windows' notifications"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SubscribedContent-338389Enabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_start_suggestions
+    name: "Disable Start Menu Suggestions"
+    description: "Disable suggestions in Start menu"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SubscribedContent-338388Enabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+        value_name: "SystemPaneSuggestionsEnabled"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_handwriting_data
+    name: "Disable Handwriting Data Sharing"
+    description: "Prevent sharing handwriting data with Microsoft"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\TabletPC"
+        value_name: "PreventHandwritingDataSharing"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
+
+  - id: disable_handwriting_errors
+    name: "Disable Handwriting Error Reports"
+    description: "Prevent sending handwriting error reports to Microsoft"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports"
+        value_name: "PreventHandwritingErrorReports"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0
+
+  - id: disable_thumbsdb_network
+    name: "Disable Thumbs.db on Network Drives"
+    description: "Prevent creation of thumbs.db files on network folders"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+        value_name: "DisableThumbsDBOnNetworkFolders"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0

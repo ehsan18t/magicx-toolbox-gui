@@ -1,0 +1,68 @@
+# Windows Update Tweaks - Control Windows Update behavior and delivery
+
+category:
+  id: windows_update
+  name: "Windows Update"
+  description: "Control Windows Update behavior and delivery optimization"
+  icon: "mdi:update"
+  order: 7
+
+tweaks:
+  - id: disable_store_auto_updates
+    name: "Disable Store Auto Updates"
+    description: "Prevent Microsoft Store from automatically updating apps"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Apps will only update when you manually check for updates in the Store"
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\WindowsStore"
+        value_name: "AutoDownload"
+        value_type: "REG_DWORD"
+        enable_value: 2
+        disable_value: 4
+
+  - id: disable_peer_update_delivery
+    name: "Disable P2P Update Delivery"
+    description: "Disable Windows Update peer-to-peer delivery optimization"
+    risk_level: low
+    requires_admin: false
+    requires_reboot: false
+    info: "Prevents Windows from downloading/uploading updates from/to other PCs"
+    registry_changes:
+      - hive: HKCU
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization"
+        value_name: "SystemSettingsDownloadMode"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 3
+
+  - id: disable_ms_products_auto_update
+    name: "Disable MS Products Auto Update"
+    description: "Disable automatic updates for other Microsoft products via Windows Update"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Services\\7971f918-a847-4430-9279-4a52d1efe18d"
+        value_name: "RegisteredWithAU"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_driver_updates
+    name: "Disable Driver Updates via Windows Update"
+    description: "Prevent Windows Update from automatically installing driver updates"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: "Useful if you prefer to install drivers manually from manufacturer"
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+        value_name: "ExcludeWUDriversInQualityUpdate"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0

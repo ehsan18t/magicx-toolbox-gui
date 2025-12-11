@@ -328,6 +328,42 @@ export async function toggleTweak(tweakId: string, currentlyApplied: boolean): P
   }
 }
 
+export async function applyTweakOption(
+  tweakId: string,
+  optionIndex: number,
+  requiresReboot: boolean = false,
+): Promise<boolean> {
+  loadingStore.startLoading(tweakId);
+  errorStore.clearError(tweakId);
+
+  try {
+    const result = await api.applyTweakOption(tweakId, optionIndex);
+
+    if (result.success) {
+      tweaksStore.updateStatus(tweakId, {
+        is_applied: true,
+        has_backup: true,
+        current_option_index: optionIndex,
+      });
+
+      if (result.requires_reboot || requiresReboot) {
+        pendingRebootStore.addTweak(tweakId);
+      }
+
+      return true;
+    } else {
+      errorStore.setError(tweakId, result.message);
+      return false;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to apply tweak option";
+    errorStore.setError(tweakId, message);
+    return false;
+  } finally {
+    loadingStore.stopLoading(tweakId);
+  }
+}
+
 // Initialize all stores
 export async function initializeStores(): Promise<void> {
   await Promise.all([systemStore.load(), categoriesStore.load(), tweaksStore.load()]);

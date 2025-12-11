@@ -121,3 +121,47 @@ tweaks:
         value_type: "REG_DWORD"
         enable_value: 1
         disable_value: 0
+
+  - id: disable_smartscreen
+    name: "Disable SmartScreen"
+    description: "Disable Windows SmartScreen filter"
+    risk_level: high
+    requires_admin: true
+    requires_reboot: false
+    info: "WARNING: Reduces security. Only disable if you know what you're doing"
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\System"
+        value_name: "EnableSmartScreen"
+        value_type: "REG_DWORD"
+        enable_value: 0
+        disable_value: 1
+
+  - id: disable_defender_sample_submit
+    name: "Disable Defender Sample Submission"
+    description: "Prevent Windows Defender from automatically sending sample files to Microsoft"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: "Prevents automatic upload of suspicious files to Microsoft"
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows Defender\\Spynet"
+        value_name: "SubmitSamplesConsent"
+        value_type: "REG_DWORD"
+        enable_value: 2
+        disable_value: 1
+
+  - id: disable_defender_malware_report
+    name: "Disable Defender Malware Reporting"
+    description: "Disable automatic malware reporting to Microsoft"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\MRT"
+        value_name: "DontReportInfectionInformation"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 0

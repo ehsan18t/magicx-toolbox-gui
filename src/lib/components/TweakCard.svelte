@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { loadingStore, systemStore, toggleTweak } from "$lib/stores/tweaks";
+  import { applyTweakOption, loadingStore, systemStore, toggleTweak } from "$lib/stores/tweaks";
   import type { RegistryChange, RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
   import Icon from "@iconify/svelte";
@@ -41,6 +41,21 @@
     });
   });
 
+  // Check if this is a multi-state tweak (has options)
+  const isMultiState = $derived.by(() => {
+    const firstChange = registryChanges[0];
+    return firstChange?.options && firstChange.options.length > 1;
+  });
+
+  // Get options for multi-state tweaks
+  const options = $derived.by(() => {
+    const firstChange = registryChanges[0];
+    return firstChange?.options || [];
+  });
+
+  // Current option index
+  const currentOptionIndex = $derived(tweak.status.current_option_index ?? 0);
+
   function handleToggleClick() {
     if (isHighRisk && !tweak.status.is_applied) {
       showConfirmDialog = true;
@@ -52,6 +67,12 @@
   async function executeToggle() {
     showConfirmDialog = false;
     await toggleTweak(tweak.definition.id, tweak.status.is_applied);
+  }
+
+  async function handleOptionChange(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const optionIndex = parseInt(select.value, 10);
+    await applyTweakOption(tweak.definition.id, optionIndex, tweak.definition.requires_reboot);
   }
 
   function formatRegistryPath(change: RegistryChange): string {
@@ -70,29 +91,46 @@
   <div class="status-bar" class:active={tweak.status.is_applied}></div>
 
   <div class="card-content">
-    <!-- Header Section: Title + Toggle -->
+    <!-- Header Section: Title + Control (Toggle or Dropdown) -->
     <div class="header-section">
       <h3 class="tweak-title">{tweak.definition.name}</h3>
-      <button
-        class="toggle-switch"
-        class:active={tweak.status.is_applied}
-        class:loading={$isLoading}
-        disabled={$isLoading}
-        onclick={handleToggleClick}
-        aria-label={tweak.status.is_applied ? "Revert tweak" : "Apply tweak"}
-        role="switch"
-        aria-checked={tweak.status.is_applied}
-      >
-        <span class="switch-track">
-          <span class="switch-thumb">
-            {#if $isLoading}
-              <Icon icon="mdi:loading" width="14" class="spin" />
-            {:else if tweak.status.is_applied}
-              <Icon icon="mdi:check" width="14" />
-            {/if}
+
+      {#if isMultiState}
+        <!-- Multi-state: Dropdown -->
+        <select
+          class="option-select"
+          class:loading={$isLoading}
+          disabled={$isLoading}
+          value={currentOptionIndex}
+          onchange={handleOptionChange}
+        >
+          {#each options as option, i (i)}
+            <option value={i}>{option.label}</option>
+          {/each}
+        </select>
+      {:else}
+        <!-- Binary: Toggle Switch -->
+        <button
+          class="toggle-switch"
+          class:active={tweak.status.is_applied}
+          class:loading={$isLoading}
+          disabled={$isLoading}
+          onclick={handleToggleClick}
+          aria-label={tweak.status.is_applied ? "Revert tweak" : "Apply tweak"}
+          role="switch"
+          aria-checked={tweak.status.is_applied}
+        >
+          <span class="switch-track">
+            <span class="switch-thumb">
+              {#if $isLoading}
+                <Icon icon="mdi:loading" width="14" class="spin" />
+              {:else if tweak.status.is_applied}
+                <Icon icon="mdi:check" width="14" />
+              {/if}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+      {/if}
     </div>
 
     <!-- Description -->
@@ -314,6 +352,47 @@
   }
   .meta-label.critical {
     color: hsl(0 84% 60%);
+  }
+
+  /* Option Select (Dropdown for multi-state) */
+  .option-select {
+    flex-shrink: 0;
+    min-width: 120px;
+    max-width: 180px;
+    padding: 6px 28px 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23888' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+
+  .option-select:hover:not(:disabled) {
+    border-color: hsl(var(--primary));
+    background-color: hsl(var(--muted) / 0.8);
+  }
+
+  .option-select:focus {
+    outline: none;
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+  }
+
+  .option-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .option-select.loading {
+    opacity: 0.7;
+    background-image: none;
   }
 
   /* Toggle Switch */
