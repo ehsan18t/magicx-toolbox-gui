@@ -153,9 +153,8 @@
     >
       <!-- Pin toggle button -->
       <button
-        class="{isPinned ? 'text-accent' : 'text-foreground-muted'} {sidebarExpanded
-          ? 'shrink-0'
-          : 'w-full'}"
+        class="{isPinned ? 'text-accent' : 'text-foreground-muted'}
+        {sidebarExpanded ? 'shrink-0' : 'w-full'}"
         onclick={togglePin}
         title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
       >
@@ -164,7 +163,7 @@
 
       <!-- Update button -->
       <button
-        class={sidebarExpanded ? "shrink-0" : "w-full"}
+        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
         onclick={openUpdateModal}
         title="Updates"
       >
@@ -173,7 +172,7 @@
 
       <!-- Settings button -->
       <button
-        class={sidebarExpanded ? "shrink-0" : "w-full"}
+        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
         onclick={openSettingsModal}
         title="Settings"
       >
@@ -182,7 +181,7 @@
 
       <!-- About button -->
       <button
-        class={sidebarExpanded ? "shrink-0" : "w-full"}
+        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
         onclick={openAboutModal}
         title="About"
       >
@@ -197,7 +196,7 @@
 
   .sidebar-controls {
     & > button {
-      @apply flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 text-foreground-muted transition-all duration-150 hover:bg-accent/10 hover:text-accent;
+      @apply flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-accent/10 hover:text-accent;
     }
   }
 </style>
