@@ -26,6 +26,9 @@ pub enum Error {
 
     #[error("Requires administrator privileges")]
     RequiresAdmin,
+
+    #[error("Service control failed: {0}")]
+    ServiceControl(String),
 }
 
 impl Serialize for Error {
