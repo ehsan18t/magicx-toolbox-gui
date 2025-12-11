@@ -137,27 +137,49 @@
           >
         </div>
       </div>
+
+      <!-- Color Scheme Picker (only visible when expanded) -->
+      <div class="flex items-center justify-center gap-2 py-1" title="Color Scheme">
+        <ColorSchemePicker />
+      </div>
     {/if}
 
-    <!-- Color Scheme Picker -->
+    <!-- Control buttons: Pin, Settings, About -->
     <div
-      class="flex items-center justify-center transition-all duration-200 {sidebarExpanded
-        ? 'gap-2 py-1'
-        : 'py-1'}"
-      title="Color Scheme"
+      class="flex items-center gap-2 transition-all duration-200 {sidebarExpanded
+        ? 'flex-row justify-center'
+        : 'flex-col justify-center'}"
     >
-      <ColorSchemePicker />
-    </div>
+      <!-- Pin toggle button -->
+      <button
+        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground {isPinned
+          ? 'text-accent'
+          : 'text-foreground-muted'} {sidebarExpanded ? 'shrink-0' : 'w-full'}"
+        onclick={togglePin}
+        title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
+      >
+        <Icon icon={isPinned ? "mdi:pin" : "mdi:pin-outline"} width="18" />
+      </button>
 
-    <!-- Pin toggle button -->
-    <button
-      class="flex w-full cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground {isPinned
-        ? 'text-accent'
-        : 'text-foreground-muted'}"
-      onclick={togglePin}
-      title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
-    >
-      <Icon icon={isPinned ? "mdi:pin" : "mdi:pin-outline"} width="18" />
-    </button>
+      <!-- Settings button -->
+      <button
+        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground text-foreground-muted {sidebarExpanded
+          ? 'shrink-0'
+          : 'w-full'}"
+        title="Settings"
+      >
+        <Icon icon="mdi:cog" width="18" />
+      </button>
+
+      <!-- About button -->
+      <button
+        class="flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground text-foreground-muted {sidebarExpanded
+          ? 'shrink-0'
+          : 'w-full'}"
+        title="About"
+      >
+        <Icon icon="mdi:information-outline" width="18" />
+      </button>
+    </div>
   </div>
 </aside>
