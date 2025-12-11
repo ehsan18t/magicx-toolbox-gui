@@ -26,7 +26,7 @@
   // Get tweaks for this category
   const categoryTweaks = $derived($tweaksStore.filter((t) => t.definition.category === tab.id));
 
-  // Filter tweaks by search - use $derived.by for computed with logic
+  // Filter tweaks by search
   const filteredTweaks = $derived.by(() => {
     if (!searchQuery.trim()) return categoryTweaks;
     const query = searchQuery.toLowerCase();
@@ -86,93 +86,123 @@
   }
 </script>
 
-<div class="category-page">
+<div class="flex h-full flex-col gap-5 overflow-hidden p-6">
   <!-- Header -->
-  <header class="page-header">
-    <div class="header-left">
-      <div class="header-icon">
+  <header class="flex flex-wrap items-center justify-between gap-6">
+    <div class="flex items-center gap-4">
+      <div
+        class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent"
+      >
         <Icon icon={tab.icon || "mdi:folder"} width="28" />
       </div>
-      <div class="header-info">
-        <h1>{tab.name}</h1>
-        <p>{tab.description}</p>
+      <div>
+        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">{tab.name}</h1>
+        <p class="mt-1 mb-0 text-sm text-foreground-muted">{tab.description}</p>
       </div>
     </div>
 
-    <div class="header-stats">
-      <div class="stat-ring" style="--progress: {progressPercent}">
-        <svg viewBox="0 0 36 36">
-          <circle class="bg" cx="18" cy="18" r="14" />
-          <circle class="progress" cx="18" cy="18" r="14" />
+    <div class="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-3">
+      <div class="stat-ring relative h-10 w-10" style="--progress: {progressPercent}">
+        <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
+          <circle class="fill-none stroke-[hsl(var(--muted))] stroke-3" cx="18" cy="18" r="14" />
+          <circle
+            class="stat-progress stroke-round fill-none stroke-accent stroke-3"
+            cx="18"
+            cy="18"
+            r="14"
+          />
         </svg>
-        <span>{progressPercent}%</span>
+        <span
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-bold text-foreground"
+          >{progressPercent}%</span
+        >
       </div>
-      <div class="stat-text">
-        <span class="stat-main">{appliedCount} / {totalCount}</span>
-        <span class="stat-label">Applied</span>
+      <div class="flex flex-col gap-0.5">
+        <span class="text-base font-bold text-foreground">{appliedCount} / {totalCount}</span>
+        <span class="text-xs text-foreground-muted">Applied</span>
       </div>
     </div>
   </header>
 
   <!-- Toolbar -->
-  <div class="toolbar">
-    <div class="search-box">
-      <Icon icon="mdi:magnify" width="20" />
-      <input type="text" placeholder="Search tweaks..." bind:value={searchQuery} />
+  <div class="flex flex-wrap items-center gap-4">
+    <div
+      class="flex max-w-[400px] min-w-60 flex-1 items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-2.5 transition-all duration-200 focus-within:border-accent focus-within:bg-card"
+    >
+      <Icon icon="mdi:magnify" width="20" class="shrink-0 text-foreground-muted" />
+      <input
+        type="text"
+        placeholder="Search tweaks..."
+        bind:value={searchQuery}
+        class="flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-subtle"
+      />
       {#if searchQuery}
-        <button class="clear-btn" onclick={() => (searchQuery = "")}>
+        <button
+          class="flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground"
+          onclick={() => (searchQuery = "")}
+        >
           <Icon icon="mdi:close" width="16" />
         </button>
       {/if}
     </div>
 
-    <div class="toolbar-actions">
+    <div class="flex gap-2.5">
       <button
-        class="action-btn apply"
-        class:has-pending={$categoryPendingCount > 0}
+        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {$categoryPendingCount >
+        0
+          ? 'border-warning bg-warning/15 text-warning'
+          : ''} hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success"
         onclick={() => (showApplyAllDialog = true)}
         disabled={$categoryPendingCount === 0 || $isLoading || isBatchProcessing}
       >
         {#if isBatchProcessing}
-          <Icon icon="mdi:loading" width="18" class="spin" />
+          <Icon icon="mdi:loading" width="18" class="animate-spin" />
         {:else}
           <Icon icon="mdi:check-all" width="18" />
         {/if}
-        <span>Apply Changes</span>
+        <span class="hidden sm:inline">Apply Changes</span>
         {#if $categoryPendingCount > 0}
-          <span class="pending-count">{$categoryPendingCount}</span>
+          <span
+            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-white"
+            >{$categoryPendingCount}</span
+          >
         {/if}
       </button>
       <button
-        class="action-btn revert"
+        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
         onclick={() => (showRevertAllDialog = true)}
         disabled={appliedTweaks.length === 0 || $isLoading || isBatchProcessing}
       >
         <Icon icon="mdi:restore" width="18" />
-        <span>Restore Defaults</span>
+        <span class="hidden sm:inline">Restore Defaults</span>
       </button>
     </div>
   </div>
 
   <!-- Tweaks Grid -->
-  <div class="tweaks-container">
+  <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if filteredTweaks.length === 0}
-      <div class="empty-state">
+      <div
+        class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted"
+      >
         {#if searchQuery}
           <Icon icon="mdi:file-search-outline" width="56" />
-          <h3>No results found</h3>
-          <p>No tweaks match "{searchQuery}"</p>
-          <button class="clear-search-btn" onclick={() => (searchQuery = "")}>
+          <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>
+          <p class="m-0 text-sm">No tweaks match "{searchQuery}"</p>
+          <button
+            class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
+            onclick={() => (searchQuery = "")}
+          >
             Clear search
           </button>
         {:else}
           <Icon icon="mdi:package-variant" width="56" />
-          <h3>No tweaks available</h3>
-          <p>This category has no tweaks for your system</p>
+          <h3 class="m-0 text-lg font-semibold text-foreground">No tweaks available</h3>
+          <p class="m-0 text-sm">This category has no tweaks for your system</p>
         {/if}
       </div>
     {:else}
-      <div class="tweaks-grid">
+      <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
         {#each filteredTweaks as tweak (tweak.definition.id)}
           <TweakCard {tweak} />
         {/each}
@@ -203,346 +233,10 @@
 />
 
 <style>
-  .category-page {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 24px;
-    gap: 20px;
-    overflow: hidden;
-  }
-
-  /* Header */
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    flex-wrap: wrap;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .header-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    background: hsl(var(--accent) / 0.15);
-    color: hsl(var(--accent));
-    border-radius: 16px;
-    flex-shrink: 0;
-  }
-
-  .header-info h1 {
-    font-size: 24px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    margin: 0;
-    letter-spacing: -0.3px;
-  }
-
-  .header-info p {
-    font-size: 14px;
-    color: hsl(var(--foreground-muted));
-    margin: 4px 0 0 0;
-  }
-
-  .header-stats {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
-  }
-
-  .stat-ring {
-    position: relative;
-    width: 40px;
-    height: 40px;
-  }
-
-  .stat-ring svg {
-    transform: rotate(-90deg);
-    width: 100%;
-    height: 100%;
-  }
-
-  .stat-ring circle {
-    fill: none;
-    stroke-width: 3;
-    stroke-linecap: round;
-  }
-
-  .stat-ring .bg {
-    stroke: hsl(var(--muted));
-  }
-
-  .stat-ring .progress {
-    stroke: hsl(var(--accent));
+  .stat-progress {
     stroke-dasharray: 88;
     stroke-dashoffset: calc(88 * (1 - var(--progress) / 100));
     transition: stroke-dashoffset 0.4s ease;
-  }
-
-  .stat-ring span {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 10px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-  }
-
-  .stat-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .stat-main {
-    font-size: 16px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-  }
-
-  .stat-label {
-    font-size: 11px;
-    color: hsl(var(--foreground-muted));
-  }
-
-  /* Toolbar */
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1;
-    min-width: 240px;
-    max-width: 400px;
-    padding: 10px 16px;
-    background: hsl(var(--surface));
-    border: 1px solid hsl(var(--border));
-    border-radius: 10px;
-    transition: all 0.2s ease;
-  }
-
-  .search-box:focus-within {
-    border-color: hsl(var(--accent));
-    background: hsl(var(--card));
-  }
-
-  .search-box > :global(svg) {
-    color: hsl(var(--foreground-muted));
-    flex-shrink: 0;
-  }
-
-  .search-box input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: hsl(var(--foreground));
-    font-size: 14px;
-    outline: none;
-  }
-
-  .search-box input::placeholder {
-    color: hsl(var(--foreground-subtle));
-  }
-
-  .clear-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    background: transparent;
-    border: none;
-    color: hsl(var(--foreground-muted));
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-  }
-
-  .clear-btn:hover {
-    color: hsl(var(--foreground));
-    background: hsl(var(--muted));
-  }
-
-  .toolbar-actions {
-    display: flex;
-    gap: 10px;
-  }
-
-  .action-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    border: 1px solid hsl(var(--border));
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-  }
-
-  .action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .action-btn.apply:not(:disabled):hover {
-    background: hsl(var(--success) / 0.15);
-    border-color: hsl(var(--success));
-    color: hsl(var(--success));
-  }
-
-  .action-btn.revert:not(:disabled):hover {
-    background: hsl(var(--error) / 0.15);
-    border-color: hsl(var(--error));
-    color: hsl(var(--error));
-  }
-
-  .action-btn span {
-    display: none;
-  }
-
-  @media (min-width: 640px) {
-    .action-btn span {
-      display: inline;
-    }
-  }
-
-  .action-btn.has-pending {
-    background: hsl(var(--warning, 45 100% 50%) / 0.15);
-    border-color: hsl(var(--warning, 45 100% 50%));
-    color: hsl(var(--warning, 45 100% 35%));
-  }
-
-  .pending-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: white;
-    background: hsl(var(--warning, 45 100% 50%));
-    border-radius: 10px;
-  }
-
-  /* Tweaks Container */
-  .tweaks-container {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
-    padding-right: 8px;
-    margin-right: -8px;
-  }
-
-  .tweaks-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding-bottom: 16px;
-  }
-
-  @media (min-width: 1024px) {
-    .tweaks-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-    }
-  }
-
-  /* Empty State */
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 60px 24px;
-    text-align: center;
-    color: hsl(var(--foreground-muted));
-  }
-
-  .empty-state h3 {
-    font-size: 18px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-    margin: 0;
-  }
-
-  .empty-state p {
-    font-size: 14px;
-    margin: 0;
-  }
-
-  .clear-search-btn {
-    margin-top: 8px;
-    padding: 10px 20px;
-    background: hsl(var(--accent));
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .clear-search-btn:hover {
-    filter: brightness(1.1);
-  }
-
-  /* Animations */
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  /* Scrollbar */
-  .tweaks-container::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .tweaks-container::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .tweaks-container::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
-    border-radius: 3px;
-  }
-
-  .tweaks-container::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--foreground-muted));
+    stroke-linecap: round;
   }
 </style>

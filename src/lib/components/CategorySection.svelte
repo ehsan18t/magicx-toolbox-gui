@@ -67,61 +67,79 @@
   }
 </script>
 
-<section class="category-section">
-  <div class="category-header">
-    <button class="header-toggle" onclick={() => (isExpanded = !isExpanded)}>
-      <div class="header-left">
-        <span class="category-icon">{category.icon}</span>
-        <div class="category-info">
-          <h2 class="category-name">{category.name}</h2>
-          <p class="category-description">{category.description}</p>
+<section class="mb-4">
+  <!-- Header -->
+  <div
+    class="flex w-full items-center justify-between rounded-lg border border-border bg-card p-0 transition-all duration-200 hover:border-primary/30 hover:bg-accent/5"
+  >
+    <button
+      class="flex flex-1 cursor-pointer items-center border-0 bg-transparent px-4 py-3 text-left"
+      onclick={() => (isExpanded = !isExpanded)}
+    >
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">{category.icon}</span>
+        <div class="text-left">
+          <h2 class="m-0 text-base font-semibold text-foreground">{category.name}</h2>
+          <p class="mt-0.5 mb-0 text-xs text-foreground-muted">{category.description}</p>
         </div>
       </div>
     </button>
-    <div class="header-right">
-      <div class="batch-actions">
+
+    <div class="flex items-center gap-3">
+      <!-- Batch actions -->
+      <div class="flex gap-1.5">
         <button
-          class="batch-btn apply"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-md border border-success/30 bg-success/15 px-2.5 py-1 text-xs font-medium text-success transition-all duration-150 hover:bg-success/25 disabled:cursor-not-allowed disabled:opacity-50"
           onclick={onApplyAllClick}
           disabled={unappliedTweaks.length === 0 || $isLoading || isBatchProcessing}
           title="Apply all unapplied tweaks in this category"
         >
           {#if isBatchProcessing}
-            <Icon icon="mdi:loading" width="14" class="spin" />
+            <Icon icon="mdi:loading" width="14" class="animate-spin" />
           {:else}
             <Icon icon="mdi:check-all" width="14" />
           {/if}
           Apply All
         </button>
         <button
-          class="batch-btn revert"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-md border border-error/30 bg-error/15 px-2.5 py-1 text-xs font-medium text-error transition-all duration-150 hover:bg-error/25 disabled:cursor-not-allowed disabled:opacity-50"
           onclick={onRevertAllClick}
           disabled={appliedTweaks.length === 0 || $isLoading || isBatchProcessing}
           title="Revert all applied tweaks in this category"
         >
           {#if isBatchProcessing}
-            <Icon icon="mdi:loading" width="14" class="spin" />
+            <Icon icon="mdi:loading" width="14" class="animate-spin" />
           {:else}
             <Icon icon="mdi:undo-variant" width="14" />
           {/if}
           Revert All
         </button>
       </div>
-      <span class="tweak-count">
+
+      <!-- Count badge -->
+      <span
+        class="rounded-full bg-[hsl(var(--muted))] px-2.5 py-1 text-xs font-medium text-foreground-muted"
+      >
         {appliedCount}/{tweaks.length} applied
       </span>
-      <button class="expand-btn" onclick={() => (isExpanded = !isExpanded)}>
+
+      <!-- Expand button -->
+      <button
+        class="mr-2 flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-2 text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground"
+        onclick={() => (isExpanded = !isExpanded)}
+      >
         <Icon
           icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"}
           width="20"
-          class="expand-icon"
+          class="transition-transform duration-200"
         />
       </button>
     </div>
   </div>
 
+  <!-- Tweaks grid -->
   {#if isExpanded}
-    <div class="tweaks-grid">
+    <div class="mt-2 grid gap-2 pl-4 md:grid-cols-2 xl:grid-cols-3">
       {#each tweaks as tweak (tweak.definition.id)}
         <TweakCard {tweak} />
       {/each}
@@ -152,178 +170,3 @@
   onconfirm={handleRevertAll}
   oncancel={() => (showRevertAllDialog = false)}
 />
-
-<style>
-  .category-section {
-    margin-bottom: 16px;
-  }
-
-  .category-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    padding: 0;
-    border: 1px solid hsl(var(--border));
-    border-radius: 8px;
-    background: hsl(var(--card));
-    transition: all 0.2s ease;
-  }
-
-  .category-header:hover {
-    border-color: hsl(var(--primary) / 0.3);
-    background: hsl(var(--accent) / 0.5);
-  }
-
-  .header-toggle {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    padding: 12px 16px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .category-icon {
-    font-size: 24px;
-  }
-
-  .category-info {
-    text-align: left;
-  }
-
-  .category-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-    margin: 0;
-  }
-
-  .category-description {
-    font-size: 12px;
-    color: hsl(var(--muted-foreground));
-    margin: 2px 0 0 0;
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .batch-actions {
-    display: flex;
-    gap: 6px;
-  }
-
-  .batch-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: 6px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .batch-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .batch-btn.apply {
-    background: hsl(142 76% 36% / 0.15);
-    color: hsl(142 76% 36%);
-    border-color: hsl(142 76% 36% / 0.3);
-  }
-
-  .batch-btn.apply:hover:not(:disabled) {
-    background: hsl(142 76% 36% / 0.25);
-  }
-
-  .batch-btn.revert {
-    background: hsl(0 84% 60% / 0.15);
-    color: hsl(0 84% 60%);
-    border-color: hsl(0 84% 60% / 0.3);
-  }
-
-  .batch-btn.revert:hover:not(:disabled) {
-    background: hsl(0 84% 60% / 0.25);
-  }
-
-  :global(.batch-btn .spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .tweak-count {
-    font-size: 12px;
-    font-weight: 500;
-    color: hsl(var(--muted-foreground));
-    background: hsl(var(--muted));
-    padding: 4px 10px;
-    border-radius: 12px;
-  }
-
-  .expand-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 8px;
-    margin-right: 8px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    border-radius: 4px;
-    color: hsl(var(--muted-foreground));
-    transition: all 0.15s ease;
-  }
-
-  .expand-btn:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-
-  :global(.expand-icon) {
-    color: currentColor;
-    transition: transform 0.2s ease;
-  }
-
-  .tweaks-grid {
-    display: grid;
-    gap: 8px;
-    margin-top: 8px;
-    padding-left: 16px;
-  }
-
-  @media (min-width: 768px) {
-    .tweaks-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  @media (min-width: 1200px) {
-    .tweaks-grid {
-      grid-template-columns: repeat(3, 1fr);
-    }
-  }
-</style>

@@ -3,154 +3,52 @@
   import Icon from "@iconify/svelte";
 </script>
 
-<div class="filter-bar">
-  <div class="search-box">
-    <Icon icon="mdi:magnify" width="18" class="search-icon" />
-    <input type="text" placeholder="Search tweaks..." bind:value={$searchQuery} />
+<div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+  <!-- Search box -->
+  <div class="relative flex items-center md:w-75 md:flex-none">
+    <Icon
+      icon="mdi:magnify"
+      width="18"
+      class="pointer-events-none absolute left-3 text-foreground-muted"
+    />
+    <input
+      type="text"
+      placeholder="Search tweaks..."
+      bind:value={$searchQuery}
+      class="w-full rounded-lg border border-border bg-background py-2.5 pr-9 pl-10 text-sm text-foreground transition-colors duration-200 placeholder:text-foreground-muted focus:border-primary focus:outline-none"
+    />
     {#if $searchQuery}
-      <button class="clear-btn" onclick={() => ($searchQuery = "")}>
+      <button
+        class="absolute right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-all duration-200 hover:bg-[hsl(var(--muted))] hover:text-foreground"
+        onclick={() => ($searchQuery = "")}
+      >
         <Icon icon="mdi:close" width="16" />
       </button>
     {/if}
   </div>
 
-  <div class="category-filters">
+  <!-- Category filters -->
+  <div class="flex flex-wrap gap-2">
     <button
-      class="filter-btn"
-      class:active={$selectedCategory === "all"}
+      class="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground-muted transition-all duration-200 hover:border-primary/50 hover:text-foreground {$selectedCategory ===
+      'all'
+        ? 'border-primary bg-primary text-primary-foreground'
+        : ''}"
       onclick={() => ($selectedCategory = "all")}
     >
       All
     </button>
     {#each $categoriesStore as cat (cat.id)}
       <button
-        class="filter-btn"
-        class:active={$selectedCategory === cat.id}
+        class="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground-muted transition-all duration-200 hover:border-primary/50 hover:text-foreground {$selectedCategory ===
+        cat.id
+          ? 'border-primary bg-primary text-primary-foreground'
+          : ''}"
         onclick={() => ($selectedCategory = cat.id)}
       >
-        <span class="cat-icon">{cat.icon}</span>
-        <span class="cat-name">{cat.name}</span>
+        <span class="text-sm">{cat.icon}</span>
+        <span class="hidden sm:inline">{cat.name}</span>
       </button>
     {/each}
   </div>
 </div>
-
-<style>
-  .filter-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-
-  .search-box {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  :global(.search-icon) {
-    position: absolute;
-    left: 12px;
-    color: hsl(var(--muted-foreground));
-    pointer-events: none;
-  }
-
-  .search-box input {
-    width: 100%;
-    padding: 10px 36px 10px 40px;
-    border: 1px solid hsl(var(--border));
-    border-radius: 8px;
-    background: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-size: 14px;
-    transition: border-color 0.2s ease;
-  }
-
-  .search-box input:focus {
-    outline: none;
-    border-color: hsl(var(--primary));
-  }
-
-  .search-box input::placeholder {
-    color: hsl(var(--muted-foreground));
-  }
-
-  .clear-btn {
-    position: absolute;
-    right: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .clear-btn:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-
-  .category-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .filter-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: 1px solid hsl(var(--border));
-    border-radius: 20px;
-    background: hsl(var(--background));
-    color: hsl(var(--muted-foreground));
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .filter-btn:hover {
-    border-color: hsl(var(--primary) / 0.5);
-    color: hsl(var(--foreground));
-  }
-
-  .filter-btn.active {
-    background: hsl(var(--primary));
-    border-color: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-  }
-
-  .cat-icon {
-    font-size: 14px;
-  }
-
-  .cat-name {
-    display: none;
-  }
-
-  @media (min-width: 640px) {
-    .cat-name {
-      display: inline;
-    }
-  }
-
-  @media (min-width: 768px) {
-    .filter-bar {
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .search-box {
-      flex: 0 0 300px;
-    }
-  }
-</style>

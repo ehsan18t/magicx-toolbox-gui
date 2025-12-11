@@ -10,10 +10,13 @@
   const percentage = $derived(total > 0 ? Math.round((applied / total) * 100) : 0);
 </script>
 
-<div class="stats-card">
-  <div class="stat-item main">
-    <div class="stat-circle">
-      <svg viewBox="0 0 36 36" class="circular-chart">
+<div
+  class="flex items-center gap-5 rounded-lg border border-border bg-card px-5 py-4 max-sm:flex-col max-sm:p-4"
+>
+  <!-- Main circular stat -->
+  <div class="flex flex-col items-center gap-1">
+    <div class="stat-circle relative h-15 w-15">
+      <svg viewBox="0 0 36 36" class="h-full w-full">
         <path
           class="circle-bg"
           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
@@ -24,67 +27,51 @@
           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
         />
       </svg>
-      <span class="percentage">{percentage}%</span>
+      <span
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-bold text-foreground"
+        >{percentage}%</span
+      >
     </div>
-    <div class="stat-label">Applied</div>
+    <div class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Applied</div>
   </div>
 
-  <div class="stat-divider"></div>
+  <!-- Divider -->
+  <div class="h-12 w-px bg-border max-sm:h-px max-sm:w-full"></div>
 
-  <div class="stat-group">
-    <div class="stat-item">
-      <div class="stat-value total">
+  <!-- Stats group -->
+  <div class="flex gap-6 max-sm:flex-wrap max-sm:justify-center">
+    <div class="flex flex-col gap-0.5">
+      <div class="flex items-center gap-1.5 text-lg font-semibold text-foreground-muted">
         <Icon icon="mdi:tune-vertical" width="16" />
         {total}
       </div>
-      <div class="stat-label">Total Tweaks</div>
+      <div class="text-xs font-medium tracking-wide text-foreground-muted uppercase">
+        Total Tweaks
+      </div>
     </div>
 
-    <div class="stat-item">
-      <div class="stat-value applied">
+    <div class="flex flex-col gap-0.5">
+      <div class="flex items-center gap-1.5 text-lg font-semibold text-success">
         <Icon icon="mdi:check-circle" width="16" />
         {applied}
       </div>
-      <div class="stat-label">Applied</div>
+      <div class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Applied</div>
     </div>
 
-    <div class="stat-item">
-      <div class="stat-value pending">
+    <div class="flex flex-col gap-0.5">
+      <div class="flex items-center gap-1.5 text-lg font-semibold text-foreground-muted">
         <Icon icon="mdi:circle-outline" width="16" />
         {pending}
       </div>
-      <div class="stat-label">Pending</div>
+      <div class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Pending</div>
     </div>
   </div>
 </div>
 
 <style>
-  .stats-card {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 8px;
-    padding: 16px 20px;
-  }
-
-  .stat-item.main {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-
   .stat-circle {
-    position: relative;
     width: 60px;
     height: 60px;
-  }
-
-  .circular-chart {
-    width: 100%;
-    height: 100%;
   }
 
   .circle-bg {
@@ -101,78 +88,5 @@
     transform: rotate(-90deg);
     transform-origin: center;
     transition: stroke-dasharray 0.5s ease;
-  }
-
-  .percentage {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 14px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-  }
-
-  .stat-divider {
-    width: 1px;
-    height: 50px;
-    background: hsl(var(--border));
-  }
-
-  .stat-group {
-    display: flex;
-    gap: 24px;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .stat-value {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 18px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-  }
-
-  .stat-value.total {
-    color: hsl(var(--muted-foreground));
-  }
-
-  .stat-value.applied {
-    color: hsl(142 76% 36%);
-  }
-
-  .stat-value.pending {
-    color: hsl(var(--muted-foreground));
-  }
-
-  .stat-label {
-    font-size: 11px;
-    font-weight: 500;
-    color: hsl(var(--muted-foreground));
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  @media (max-width: 640px) {
-    .stats-card {
-      flex-direction: column;
-      padding: 16px;
-    }
-
-    .stat-divider {
-      width: 100%;
-      height: 1px;
-    }
-
-    .stat-group {
-      flex-wrap: wrap;
-      justify-content: center;
-    }
   }
 </style>

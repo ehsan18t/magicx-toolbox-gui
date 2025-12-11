@@ -15,15 +15,19 @@
   );
 </script>
 
-<div class="overview">
+<div class="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
   <!-- Welcome Header -->
-  <header class="welcome-header">
-    <div class="welcome-text">
-      <h1>Welcome back!</h1>
-      <p>Manage your Windows tweaks and optimizations</p>
+  <header class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h1 class="m-0 text-3xl font-bold tracking-tight text-foreground">Welcome back!</h1>
+      <p class="mt-1 mb-0 text-sm text-foreground-muted">
+        Manage your Windows tweaks and optimizations
+      </p>
     </div>
     {#if $pendingRebootCount > 0}
-      <div class="reboot-alert">
+      <div
+        class="flex items-center gap-2 rounded-lg bg-warning/15 px-4 py-2 text-sm font-medium text-warning"
+      >
         <Icon icon="mdi:restart-alert" width="20" />
         <span>{$pendingRebootCount} pending reboot</span>
       </div>
@@ -31,94 +35,123 @@
   </header>
 
   <!-- Stats Cards Row -->
-  <section class="stats-row">
+  <section class="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
     <!-- Progress Ring Card -->
-    <div class="stat-card progress-card">
-      <div class="progress-ring" style="--progress: {progressPercent}">
-        <svg viewBox="0 0 100 100">
-          <circle class="bg" cx="50" cy="50" r="40" />
-          <circle class="progress" cx="50" cy="50" r="40" />
+    <div
+      class="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card p-5 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-lg"
+    >
+      <div class="progress-ring relative h-20 w-20" style="--progress: {progressPercent}">
+        <svg viewBox="0 0 100 100" class="h-full w-full -rotate-90">
+          <circle class="fill-none stroke-[hsl(var(--muted))] stroke-8" cx="50" cy="50" r="40" />
+          <circle
+            class="progress-circle stroke-round fill-none stroke-accent stroke-8"
+            cx="50"
+            cy="50"
+            r="40"
+          />
         </svg>
-        <span class="progress-value">{progressPercent}%</span>
+        <span
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-lg font-bold text-foreground"
+          >{progressPercent}%</span
+        >
       </div>
-      <div class="progress-label">
-        <span class="label-main">Optimization</span>
-        <span class="label-sub">Progress</span>
+      <div class="flex flex-col gap-0.5">
+        <span class="text-sm font-semibold text-foreground">Optimization</span>
+        <span class="text-xs text-foreground-muted">Progress</span>
       </div>
     </div>
 
     <!-- Total Tweaks -->
-    <div class="stat-card">
-      <div class="stat-icon total">
+    <div
+      class="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-lg"
+    >
+      <div
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"
+      >
         <Icon icon="mdi:tune-vertical" width="24" />
       </div>
-      <div class="stat-content">
-        <span class="stat-number">{$tweakStats.total}</span>
-        <span class="stat-label">Total Tweaks</span>
+      <div class="flex flex-col gap-0.5">
+        <span class="text-2xl leading-none font-bold text-foreground">{$tweakStats.total}</span>
+        <span class="text-xs text-foreground-muted">Total Tweaks</span>
       </div>
     </div>
 
     <!-- Applied Tweaks -->
-    <div class="stat-card">
-      <div class="stat-icon applied">
+    <div
+      class="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-lg"
+    >
+      <div
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success"
+      >
         <Icon icon="mdi:check-circle" width="24" />
       </div>
-      <div class="stat-content">
-        <span class="stat-number">{$tweakStats.applied}</span>
-        <span class="stat-label">Applied</span>
+      <div class="flex flex-col gap-0.5">
+        <span class="text-2xl leading-none font-bold text-foreground">{$tweakStats.applied}</span>
+        <span class="text-xs text-foreground-muted">Applied</span>
       </div>
     </div>
 
     <!-- Pending Tweaks -->
-    <div class="stat-card">
-      <div class="stat-icon pending">
+    <div
+      class="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-lg"
+    >
+      <div
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning"
+      >
         <Icon icon="mdi:clock-outline" width="24" />
       </div>
-      <div class="stat-content">
-        <span class="stat-number">{$tweakStats.pending}</span>
-        <span class="stat-label">Pending</span>
+      <div class="flex flex-col gap-0.5">
+        <span class="text-2xl leading-none font-bold text-foreground">{$tweakStats.pending}</span>
+        <span class="text-xs text-foreground-muted">Pending</span>
       </div>
     </div>
   </section>
 
   <!-- System Info Card -->
-  <section class="system-card">
-    <div class="system-header">
+  <section class="rounded-2xl border border-border bg-card p-5">
+    <div class="mb-4 flex items-center gap-2.5 text-foreground">
       <Icon icon="mdi:monitor" width="20" />
-      <h2>System Information</h2>
+      <h2 class="m-0 text-base font-semibold">System Information</h2>
     </div>
-    <div class="system-grid">
-      <div class="system-item">
-        <Icon icon="mdi:microsoft-windows" width="18" />
-        <div class="system-info">
-          <span class="info-label">Operating System</span>
-          <span class="info-value">{$systemStore?.windows?.product_name ?? "Windows"}</span>
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-4">
+      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+        <Icon icon="mdi:microsoft-windows" width="18" class="shrink-0 text-foreground-muted" />
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-xs tracking-wide text-foreground-muted uppercase">Operating System</span
+          >
+          <span class="truncate text-sm font-medium text-foreground"
+            >{$systemStore?.windows?.product_name ?? "Windows"}</span
+          >
         </div>
       </div>
-      <div class="system-item">
-        <Icon icon="mdi:tag" width="18" />
-        <div class="system-info">
-          <span class="info-label">Version</span>
-          <span class="info-value"
+      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+        <Icon icon="mdi:tag" width="18" class="shrink-0 text-foreground-muted" />
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-xs tracking-wide text-foreground-muted uppercase">Version</span>
+          <span class="truncate text-sm font-medium text-foreground"
             >{$systemStore?.windows?.display_version ?? ""} (Build {$systemStore?.windows
               ?.build_number ?? ""})</span
           >
         </div>
       </div>
-      <div class="system-item">
-        <Icon icon="mdi:account" width="18" />
-        <div class="system-info">
-          <span class="info-label">User</span>
-          <span class="info-value"
+      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+        <Icon icon="mdi:account" width="18" class="shrink-0 text-foreground-muted" />
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-xs tracking-wide text-foreground-muted uppercase">User</span>
+          <span class="truncate text-sm font-medium text-foreground"
             >{$systemStore?.username ?? ""}@{$systemStore?.computer_name ?? ""}</span
           >
         </div>
       </div>
-      <div class="system-item">
-        <Icon icon="mdi:shield-check" width="18" />
-        <div class="system-info">
-          <span class="info-label">Privileges</span>
-          <span class="info-value privilege" class:admin={$systemStore?.is_admin}>
+      <div class="flex items-center gap-3 rounded-lg bg-surface p-3">
+        <Icon icon="mdi:shield-check" width="18" class="shrink-0 text-foreground-muted" />
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-xs tracking-wide text-foreground-muted uppercase">Privileges</span>
+          <span
+            class="truncate text-sm font-medium {$systemStore?.is_admin
+              ? 'text-success'
+              : 'text-warning'}"
+          >
             {$systemStore?.is_admin ? "Administrator" : "Standard User"}
           </span>
         </div>
@@ -127,34 +160,51 @@
   </section>
 
   <!-- Categories Grid -->
-  <section class="categories-section">
-    <div class="section-header">
-      <h2>Categories</h2>
-      <span class="section-subtitle">{$categoriesStore.length} available</span>
+  <section class="flex flex-col gap-4">
+    <div class="flex items-baseline gap-3">
+      <h2 class="m-0 text-lg font-semibold text-foreground">Categories</h2>
+      <span class="text-sm text-foreground-muted">{$categoriesStore.length} available</span>
     </div>
-    <div class="categories-grid">
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
       {#each $categoriesStore as category (category.id)}
         {@const stats = $categoryStats[category.id]}
         {@const progress = stats?.total > 0 ? (stats.applied / stats.total) * 100 : 0}
-        <button class="category-card" onclick={() => navigateToCategory(category.id)}>
-          <div class="card-header">
-            <div class="category-icon">
+        <button
+          class="group relative flex cursor-pointer flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-card p-5 text-left transition-all duration-250 hover:-translate-y-1 hover:border-accent/50 hover:shadow-xl"
+          onclick={() => navigateToCategory(category.id)}
+        >
+          <div class="flex items-center justify-between">
+            <div
+              class="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/15 text-accent"
+            >
               <Icon icon={category.icon || "mdi:folder"} width="24" />
             </div>
-            <div class="category-badge" class:complete={progress === 100 && stats?.total > 0}>
+            <span
+              class="rounded-full px-2.5 py-1 text-xs font-semibold {progress === 100 &&
+              stats?.total > 0
+                ? 'bg-success/15 text-success'
+                : 'bg-[hsl(var(--muted))] text-foreground-muted'}"
+            >
               {stats?.applied ?? 0}/{stats?.total ?? 0}
+            </span>
+          </div>
+          <div>
+            <h3 class="m-0 text-base font-semibold text-foreground">{category.name}</h3>
+            <p class="mt-1 mb-0 text-sm leading-relaxed text-foreground-muted">
+              {category.description}
+            </p>
+          </div>
+          <div class="mt-auto">
+            <div class="h-1 overflow-hidden rounded-sm bg-[hsl(var(--muted))]">
+              <div
+                class="h-full rounded-sm bg-linear-to-r from-accent to-primary transition-[width] duration-400"
+                style="width: {progress}%"
+              ></div>
             </div>
           </div>
-          <div class="card-content">
-            <h3>{category.name}</h3>
-            <p>{category.description}</p>
-          </div>
-          <div class="card-progress">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: {progress}%"></div>
-            </div>
-          </div>
-          <div class="card-arrow">
+          <div
+            class="absolute right-4 bottom-4 flex h-8 w-8 -translate-x-2 items-center justify-center rounded-lg bg-accent text-white opacity-0 transition-all duration-250 group-hover:translate-x-0 group-hover:opacity-100"
+          >
             <Icon icon="mdi:arrow-right" width="18" />
           </div>
         </button>
@@ -163,446 +213,24 @@
   </section>
 
   <!-- Footer Info -->
-  <footer class="overview-footer">
-    <div class="footer-tip">
-      <Icon icon="mdi:lightbulb-outline" width="18" />
-      <p>
-        <strong>Tip:</strong> Changes are backed up automatically. Hover over the sidebar to expand it.
+  <footer class="mt-auto pt-4">
+    <div
+      class="flex items-center gap-3 rounded-xl bg-surface px-4 py-3 text-sm text-foreground-muted"
+    >
+      <Icon icon="mdi:lightbulb-outline" width="18" class="shrink-0 text-accent" />
+      <p class="m-0 leading-relaxed">
+        <strong class="text-foreground">Tip:</strong> Changes are backed up automatically. Hover over
+        the sidebar to expand it.
       </p>
     </div>
   </footer>
 </div>
 
 <style>
-  .overview {
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    max-width: 1400px;
-    margin: 0 auto;
-    width: 100%;
-  }
-
-  /* Welcome Header */
-  .welcome-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-
-  .welcome-text h1 {
-    font-size: 28px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    margin: 0;
-    letter-spacing: -0.5px;
-  }
-
-  .welcome-text p {
-    font-size: 14px;
-    color: hsl(var(--foreground-muted));
-    margin: 4px 0 0 0;
-  }
-
-  .reboot-alert {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: hsl(var(--warning) / 0.15);
-    color: hsl(var(--warning));
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-  }
-
-  /* Stats Row */
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 16px;
-  }
-
-  .stat-card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 20px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 16px;
-    transition: all 0.2s ease;
-  }
-
-  .stat-card:hover {
-    border-color: hsl(var(--border-hover));
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px hsl(var(--background) / 0.4);
-  }
-
-  .progress-card {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 12px;
-  }
-
-  .progress-ring {
-    position: relative;
-    width: 80px;
-    height: 80px;
-  }
-
-  .progress-ring svg {
-    transform: rotate(-90deg);
-    width: 100%;
-    height: 100%;
-  }
-
-  .progress-ring circle {
-    fill: none;
-    stroke-width: 8;
-    stroke-linecap: round;
-  }
-
-  .progress-ring .bg {
-    stroke: hsl(var(--muted));
-  }
-
-  .progress-ring .progress {
-    stroke: hsl(var(--accent));
+  .progress-circle {
     stroke-dasharray: 251.2;
     stroke-dashoffset: calc(251.2 * (1 - var(--progress) / 100));
     transition: stroke-dashoffset 0.6s ease;
-  }
-
-  .progress-value {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 18px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-  }
-
-  .progress-label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .label-main {
-    font-size: 14px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-  }
-
-  .label-sub {
-    font-size: 12px;
-    color: hsl(var(--foreground-muted));
-  }
-
-  .stat-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    flex-shrink: 0;
-  }
-
-  .stat-icon.total {
-    background: hsl(var(--primary) / 0.15);
-    color: hsl(var(--primary));
-  }
-
-  .stat-icon.applied {
-    background: hsl(var(--success) / 0.15);
-    color: hsl(var(--success));
-  }
-
-  .stat-icon.pending {
-    background: hsl(var(--warning) / 0.15);
-    color: hsl(var(--warning));
-  }
-
-  .stat-content {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .stat-number {
-    font-size: 24px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    line-height: 1;
-  }
-
-  .stat-label {
-    font-size: 12px;
-    color: hsl(var(--foreground-muted));
-  }
-
-  /* System Card */
-  .system-card {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 16px;
-    padding: 20px;
-  }
-
-  .system-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-    color: hsl(var(--foreground));
-  }
-
-  .system-header h2 {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0;
-  }
-
-  .system-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 16px;
-  }
-
-  .system-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: hsl(var(--surface));
-    border-radius: 10px;
-  }
-
-  .system-item > :global(svg) {
-    color: hsl(var(--foreground-muted));
-    flex-shrink: 0;
-  }
-
-  .system-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .info-label {
-    font-size: 11px;
-    color: hsl(var(--foreground-muted));
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .info-value {
-    font-size: 13px;
-    font-weight: 500;
-    color: hsl(var(--foreground));
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .info-value.privilege.admin {
-    color: hsl(var(--success));
-  }
-
-  /* Categories Section */
-  .categories-section {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .section-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-  }
-
-  .section-header h2 {
-    font-size: 18px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-    margin: 0;
-  }
-
-  .section-subtitle {
-    font-size: 13px;
-    color: hsl(var(--foreground-muted));
-  }
-
-  .categories-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-  }
-
-  .category-card {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 20px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 16px;
-    cursor: pointer;
-    transition: all 0.25s ease;
-    text-align: left;
-    overflow: hidden;
-  }
-
-  .category-card:hover {
-    border-color: hsl(var(--accent) / 0.5);
-    transform: translateY(-4px);
-    box-shadow: 0 12px 32px hsl(var(--background) / 0.5);
-  }
-
-  .category-card:hover .card-arrow {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .category-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    background: hsl(var(--accent) / 0.15);
-    color: hsl(var(--accent));
-    border-radius: 12px;
-  }
-
-  .category-badge {
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: 600;
-    border-radius: 20px;
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground-muted));
-  }
-
-  .category-badge.complete {
-    background: hsl(var(--success) / 0.15);
-    color: hsl(var(--success));
-  }
-
-  .card-content h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-    margin: 0;
-  }
-
-  .card-content p {
-    font-size: 13px;
-    color: hsl(var(--foreground-muted));
-    margin: 4px 0 0 0;
-    line-height: 1.4;
-  }
-
-  .card-progress {
-    margin-top: auto;
-  }
-
-  .progress-bar {
-    height: 4px;
-    background: hsl(var(--muted));
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, hsl(var(--accent)), hsl(var(--primary)));
-    border-radius: 2px;
-    transition: width 0.4s ease;
-  }
-
-  .card-arrow {
-    position: absolute;
-    right: 16px;
-    bottom: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: hsl(var(--accent));
-    color: white;
-    border-radius: 8px;
-    opacity: 0;
-    transform: translateX(-8px);
-    transition: all 0.25s ease;
-  }
-
-  /* Footer */
-  .overview-footer {
-    margin-top: auto;
-    padding-top: 16px;
-  }
-
-  .footer-tip {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
-    background: hsl(var(--surface));
-    border-radius: 12px;
-    font-size: 13px;
-    color: hsl(var(--foreground-muted));
-  }
-
-  .footer-tip > :global(svg) {
-    color: hsl(var(--accent));
-    flex-shrink: 0;
-  }
-
-  .footer-tip p {
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .footer-tip strong {
-    color: hsl(var(--foreground));
-  }
-
-  /* Responsive */
-  @media (max-width: 768px) {
-    .overview {
-      padding: 16px;
-      gap: 16px;
-    }
-
-    .welcome-text h1 {
-      font-size: 24px;
-    }
-
-    .stats-row {
-      grid-template-columns: repeat(2, 1fr);
-    }
-
-    .progress-card {
-      grid-column: span 2;
-    }
+    stroke-linecap: round;
   }
 </style>

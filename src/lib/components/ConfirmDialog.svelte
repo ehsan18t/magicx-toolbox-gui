@@ -1,13 +1,15 @@
 <script lang="ts">
   import Icon from "@iconify/svelte";
 
+  type Variant = "default" | "warning" | "danger";
+
   interface Props {
     open: boolean;
     title: string;
     message: string;
     confirmText?: string;
     cancelText?: string;
-    variant?: "default" | "warning" | "danger";
+    variant?: Variant;
     onconfirm: () => void;
     oncancel: () => void;
   }
@@ -34,33 +36,65 @@
       oncancel();
     }
   }
+
+  const iconClasses: Record<Variant, { icon: string; color: string }> = {
+    default: { icon: "mdi:help-circle", color: "text-primary" },
+    warning: { icon: "mdi:alert", color: "text-warning" },
+    danger: { icon: "mdi:alert-octagon", color: "text-error" },
+  };
+
+  const confirmBtnClasses: Record<Variant, string> = {
+    default: "bg-primary text-primary-foreground hover:bg-primary/90",
+    warning: "bg-warning text-black hover:bg-warning/90",
+    danger: "bg-error text-white hover:bg-error/90",
+  };
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open}
-  <div class="dialog-backdrop" role="presentation" onclick={handleBackdropClick}>
-    <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title">
-      <div class="dialog-header">
-        {#if variant === "warning"}
-          <Icon icon="mdi:alert" width="24" class="icon warning" />
-        {:else if variant === "danger"}
-          <Icon icon="mdi:alert-octagon" width="24" class="icon danger" />
-        {:else}
-          <Icon icon="mdi:help-circle" width="24" class="icon default" />
-        {/if}
-        <h2 id="dialog-title" class="dialog-title">{title}</h2>
+  <div
+    class="fixed inset-0 z-1000 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    role="presentation"
+    onclick={handleBackdropClick}
+  >
+    <div
+      class="animate-in zoom-in-95 w-[min(90vw,400px)] rounded-xl border border-border bg-card shadow-xl duration-200"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="dialog-title"
+    >
+      <!-- Header -->
+      <div class="flex items-center gap-3 border-b border-border px-5 py-4">
+        <Icon
+          icon={iconClasses[variant].icon}
+          width="24"
+          class="shrink-0 {iconClasses[variant].color}"
+        />
+        <h2 id="dialog-title" class="m-0 text-base font-semibold text-foreground">{title}</h2>
       </div>
 
-      <div class="dialog-body">
-        <p>{message}</p>
+      <!-- Body -->
+      <div class="px-5 py-4">
+        <p class="m-0 text-sm leading-relaxed text-foreground-muted">{message}</p>
       </div>
 
-      <div class="dialog-actions">
-        <button class="btn btn-secondary" onclick={oncancel}>
+      <!-- Actions -->
+      <div
+        class="flex justify-end gap-2 rounded-b-xl border-t border-border bg-[hsl(var(--muted)/0.3)] px-5 py-3"
+      >
+        <button
+          class="cursor-pointer rounded-md border-0 bg-[hsl(var(--muted))] px-4 py-2 text-sm font-medium text-foreground transition-all duration-150 hover:bg-[hsl(var(--muted)/0.8)]"
+          onclick={oncancel}
+        >
           {cancelText}
         </button>
-        <button class="btn btn-{variant}" onclick={onconfirm}>
+        <button
+          class="cursor-pointer rounded-md border-0 px-4 py-2 text-sm font-medium transition-all duration-150 {confirmBtnClasses[
+            variant
+          ]}"
+          onclick={onconfirm}
+        >
           {confirmText}
         </button>
       </div>
@@ -69,29 +103,7 @@
 {/if}
 
 <style>
-  .dialog-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(2px);
-  }
-
-  .dialog {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
-    width: min(90vw, 400px);
-    box-shadow:
-      0 20px 25px -5px rgb(0 0 0 / 0.1),
-      0 8px 10px -6px rgb(0 0 0 / 0.1);
-    animation: dialog-enter 0.2s ease-out;
-  }
-
-  @keyframes dialog-enter {
+  @keyframes zoom-in-95 {
     from {
       opacity: 0;
       transform: scale(0.95);
@@ -102,101 +114,7 @@
     }
   }
 
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 20px;
-    border-bottom: 1px solid hsl(var(--border));
-  }
-
-  .dialog-header :global(.icon) {
-    flex-shrink: 0;
-  }
-
-  .dialog-header :global(.icon.warning) {
-    color: hsl(45 93% 47%);
-  }
-
-  .dialog-header :global(.icon.danger) {
-    color: hsl(0 84% 60%);
-  }
-
-  .dialog-header :global(.icon.default) {
-    color: hsl(var(--primary));
-  }
-
-  .dialog-title {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0;
-    color: hsl(var(--foreground));
-  }
-
-  .dialog-body {
-    padding: 16px 20px;
-  }
-
-  .dialog-body p {
-    margin: 0;
-    font-size: 14px;
-    color: hsl(var(--muted-foreground));
-    line-height: 1.5;
-  }
-
-  .dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 12px 20px;
-    border-top: 1px solid hsl(var(--border));
-    background: hsl(var(--muted) / 0.3);
-    border-radius: 0 0 12px 12px;
-  }
-
-  .btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    border: none;
-  }
-
-  .btn-secondary {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-
-  .btn-secondary:hover {
-    background: hsl(var(--muted) / 0.8);
-  }
-
-  .btn-default {
-    background: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-  }
-
-  .btn-default:hover {
-    background: hsl(var(--primary) / 0.9);
-  }
-
-  .btn-warning {
-    background: hsl(45 93% 47%);
-    color: hsl(0 0% 0%);
-  }
-
-  .btn-warning:hover {
-    background: hsl(45 93% 40%);
-  }
-
-  .btn-danger {
-    background: hsl(0 84% 60%);
-    color: white;
-  }
-
-  .btn-danger:hover {
-    background: hsl(0 84% 50%);
+  .animate-in {
+    animation: zoom-in-95 0.2s ease-out;
   }
 </style>

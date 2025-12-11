@@ -6,27 +6,34 @@
 </script>
 
 {#if $pendingRebootCount > 0}
-  <div class="reboot-banner">
-    <div class="banner-content">
-      <div class="banner-icon">
+  <div
+    class="mb-4 flex items-center justify-between gap-4 rounded-lg border border-[hsl(24_94%_50%/0.3)] bg-linear-to-br from-[hsl(24_94%_50%/0.15)] to-[hsl(45_93%_47%/0.1)] px-4 py-3"
+  >
+    <div class="flex items-center gap-3">
+      <div
+        class="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(24_94%_50%/0.2)] text-[hsl(24_94%_50%)]"
+      >
         <Icon icon="mdi:restart-alert" width="24" />
       </div>
-      <div class="banner-text">
-        <span class="banner-title">Restart Required</span>
-        <span class="banner-subtitle">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-sm font-semibold text-foreground">Restart Required</span>
+        <span class="text-xs text-foreground-muted">
           {$pendingRebootCount} tweak{$pendingRebootCount === 1 ? "" : "s"} need a system restart to take
           effect
         </span>
       </div>
     </div>
 
-    <div class="banner-actions">
-      <button class="details-btn" onclick={() => (showDetails = !showDetails)}>
+    <div class="flex items-center gap-2">
+      <button
+        class="flex cursor-pointer items-center gap-1 rounded-md border-0 bg-[hsl(var(--muted))] px-3 py-1.5 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-[hsl(var(--muted)/0.8)]"
+        onclick={() => (showDetails = !showDetails)}
+      >
         <Icon icon={showDetails ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
         {showDetails ? "Hide" : "Details"}
       </button>
       <button
-        class="dismiss-btn"
+        class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground"
         onclick={() => pendingRebootStore.clear()}
         title="Dismiss (changes still apply after restart)"
       >
@@ -36,11 +43,11 @@
   </div>
 
   {#if showDetails}
-    <div class="pending-list">
-      <ul>
+    <div class="-mt-2 mb-4 rounded-md border border-border bg-[hsl(var(--muted)/0.3)] px-4 py-3">
+      <ul class="m-0 flex list-none flex-col gap-1.5 p-0">
         {#each $pendingRebootTweaks as tweak (tweak.definition.id)}
-          <li>
-            <Icon icon="mdi:restart" width="14" />
+          <li class="flex items-center gap-2 text-xs text-foreground/80">
+            <Icon icon="mdi:restart" width="14" class="text-[hsl(24_94%_50%)]" />
             {tweak.definition.name}
           </li>
         {/each}
@@ -48,125 +55,3 @@
     </div>
   {/if}
 {/if}
-
-<style>
-  .reboot-banner {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, hsl(24 94% 50% / 0.15), hsl(45 93% 47% / 0.1));
-    border: 1px solid hsl(24 94% 50% / 0.3);
-    border-radius: 8px;
-    margin-bottom: 16px;
-  }
-
-  .banner-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .banner-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    background: hsl(24 94% 50% / 0.2);
-    border-radius: 8px;
-    color: hsl(24 94% 50%);
-  }
-
-  .banner-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .banner-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-  }
-
-  .banner-subtitle {
-    font-size: 12px;
-    color: hsl(var(--muted-foreground));
-  }
-
-  .banner-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .details-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    background: hsl(var(--muted));
-    border: none;
-    border-radius: 6px;
-    color: hsl(var(--foreground));
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-
-  .details-btn:hover {
-    background: hsl(var(--muted) / 0.8);
-  }
-
-  .dismiss-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .dismiss-btn:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-
-  .pending-list {
-    background: hsl(var(--muted) / 0.3);
-    border: 1px solid hsl(var(--border));
-    border-radius: 6px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    margin-top: -8px;
-  }
-
-  .pending-list ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .pending-list li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: hsl(var(--foreground) / 0.8);
-  }
-
-  .pending-list li :global(svg) {
-    color: hsl(24 94% 50%);
-  }
-</style>

@@ -9,6 +9,8 @@
   let isExpanded = $state(false);
   let isPinned = $state(false);
 
+  const sidebarExpanded = $derived(isExpanded || isPinned);
+
   // Load pin state from localStorage on mount
   onMount(() => {
     const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
@@ -23,7 +25,6 @@
 
   function togglePin() {
     isPinned = !isPinned;
-    // Save to localStorage
     localStorage.setItem(SIDEBAR_PIN_KEY, isPinned.toString());
     if (!isPinned) {
       isExpanded = false;
@@ -44,328 +45,108 @@
 </script>
 
 <aside
-  class="sidebar"
-  class:expanded={isExpanded || isPinned}
-  class:pinned={isPinned}
+  class="relative z-100 flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-250 ease-out {sidebarExpanded
+    ? 'w-60'
+    : 'w-16'}"
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
 >
   <!-- Logo / Brand -->
-  <div class="sidebar-header">
-    <div class="logo">
+  <div class="flex min-h-16 items-center gap-3 border-b border-border p-4">
+    <div class="flex h-8 w-8 shrink-0 items-center justify-center text-accent">
       <Icon icon="mdi:magic-staff" width="28" />
     </div>
-    <span class="brand-text">MagicX</span>
+    <span
+      class="text-lg font-bold whitespace-nowrap text-foreground transition-all duration-200 {sidebarExpanded
+        ? 'translate-x-0 opacity-100'
+        : '-translate-x-2.5 opacity-0'}"
+    >
+      MagicX
+    </span>
   </div>
 
   <!-- Navigation -->
-  <nav class="sidebar-nav">
+  <nav class="flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2">
     {#each $allTabs as tab (tab.id)}
       {@const stats = tab.id !== "overview" ? $categoryStats[tab.id] : null}
       {@const isActive = $activeTab === tab.id}
       <button
-        class="nav-item"
-        class:active={isActive}
+        class="group relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 transition-all duration-150 {isActive
+          ? 'bg-accent/15'
+          : 'hover:bg-[hsl(var(--muted))]'}"
         onclick={() => handleNavClick(tab)}
-        title={!isExpanded && !isPinned ? tab.name : undefined}
+        title={!sidebarExpanded ? tab.name : undefined}
       >
-        <div class="nav-icon">
+        <div
+          class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
+            ? 'text-accent'
+            : 'text-foreground-muted group-hover:text-accent'}"
+        >
           <Icon icon={tab.icon || "mdi:folder"} width="22" />
-          {#if stats && stats.applied > 0 && !isExpanded && !isPinned}
-            <span class="mini-badge"></span>
+          {#if stats && stats.applied > 0 && !sidebarExpanded}
+            <span
+              class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-surface bg-success"
+            ></span>
           {/if}
         </div>
-        <span class="nav-text">{tab.name}</span>
+        <span
+          class="flex-1 text-left text-sm font-medium whitespace-nowrap transition-all duration-200 {isActive
+            ? 'text-accent'
+            : 'text-foreground'} {sidebarExpanded
+            ? 'translate-x-0 opacity-100'
+            : '-translate-x-2.5 opacity-0'}"
+        >
+          {tab.name}
+        </span>
         {#if stats}
-          <span class="nav-badge" class:all-done={stats.applied === stats.total && stats.total > 0}>
+          <span
+            class="rounded-full px-2 py-0.5 text-xs font-semibold transition-all duration-200 {sidebarExpanded
+              ? 'translate-x-0 opacity-100'
+              : '-translate-x-2.5 opacity-0'} {stats.applied === stats.total && stats.total > 0
+              ? 'bg-success/15 text-success'
+              : 'bg-[hsl(var(--muted))] text-foreground-muted'}"
+          >
             {stats.applied}/{stats.total}
           </span>
         {/if}
         {#if isActive}
-          <div class="active-indicator"></div>
+          <div
+            class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm bg-accent"
+          ></div>
         {/if}
       </button>
     {/each}
   </nav>
 
   <!-- Sidebar Footer -->
-  <div class="sidebar-footer">
-    <!-- Stats summary when expanded -->
-    {#if isExpanded || isPinned}
-      <div class="stats-summary">
-        <div class="stat-item">
-          <span class="stat-value">{$tweakStats.applied}</span>
-          <span class="stat-label">Applied</span>
+  <div class="flex flex-col gap-3 border-t border-border p-3">
+    {#if sidebarExpanded}
+      <div class="flex items-center justify-center gap-4 py-2">
+        <div class="flex flex-col items-center gap-0.5">
+          <span class="text-lg font-bold text-foreground">{$tweakStats.applied}</span>
+          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase"
+            >Applied</span
+          >
         </div>
-        <div class="stat-divider"></div>
-        <div class="stat-item">
-          <span class="stat-value">{$tweakStats.total}</span>
-          <span class="stat-label">Total</span>
+        <div class="h-6 w-px bg-border"></div>
+        <div class="flex flex-col items-center gap-0.5">
+          <span class="text-lg font-bold text-foreground">{$tweakStats.total}</span>
+          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase"
+            >Total</span
+          >
         </div>
       </div>
     {/if}
 
     <!-- Pin toggle button -->
-    <button class="pin-btn" onclick={togglePin} title={isPinned ? "Unpin sidebar" : "Pin sidebar"}>
+    <button
+      class="flex w-full cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground {isPinned
+        ? 'text-accent'
+        : 'text-foreground-muted'}"
+      onclick={togglePin}
+      title={isPinned ? "Unpin sidebar" : "Pin sidebar"}
+    >
       <Icon icon={isPinned ? "mdi:pin" : "mdi:pin-outline"} width="18" />
     </button>
   </div>
 </aside>
-
-<style>
-  .sidebar {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    width: 64px;
-    height: 100%;
-    background: hsl(var(--surface));
-    border-right: 1px solid hsl(var(--border));
-    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-    z-index: 100;
-    flex-shrink: 0;
-  }
-
-  .sidebar.expanded {
-    width: 240px;
-  }
-
-  .sidebar.pinned {
-    width: 240px;
-  }
-
-  /* Header */
-  .sidebar-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px;
-    border-bottom: 1px solid hsl(var(--border));
-    min-height: 64px;
-  }
-
-  .logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    flex-shrink: 0;
-    color: hsl(var(--accent));
-  }
-
-  .brand-text {
-    font-size: 18px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    white-space: nowrap;
-    opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.2s ease;
-  }
-
-  .sidebar.expanded .brand-text,
-  .sidebar.pinned .brand-text {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  /* Navigation */
-  .sidebar-nav {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 12px 8px;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-
-  .nav-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border: none;
-    background: transparent;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    min-height: 44px;
-  }
-
-  .nav-item:hover {
-    background: hsl(var(--muted));
-  }
-
-  .nav-item.active {
-    background: hsl(var(--accent) / 0.15);
-  }
-
-  .nav-icon {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    flex-shrink: 0;
-    color: hsl(var(--foreground-muted));
-    transition: color 0.15s ease;
-  }
-
-  .nav-item:hover .nav-icon,
-  .nav-item.active .nav-icon {
-    color: hsl(var(--accent));
-  }
-
-  .mini-badge {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 8px;
-    height: 8px;
-    background: hsl(var(--success));
-    border-radius: 50%;
-    border: 2px solid hsl(var(--surface));
-  }
-
-  .nav-text {
-    flex: 1;
-    font-size: 14px;
-    font-weight: 500;
-    color: hsl(var(--foreground));
-    white-space: nowrap;
-    opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.2s ease;
-    text-align: left;
-  }
-
-  .sidebar.expanded .nav-text,
-  .sidebar.pinned .nav-text {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  .nav-item.active .nav-text {
-    color: hsl(var(--accent));
-  }
-
-  .nav-badge {
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 12px;
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground-muted));
-    opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.2s ease;
-  }
-
-  .sidebar.expanded .nav-badge,
-  .sidebar.pinned .nav-badge {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  .nav-badge.all-done {
-    background: hsl(var(--success) / 0.15);
-    color: hsl(var(--success));
-  }
-
-  .active-indicator {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 20px;
-    background: hsl(var(--accent));
-    border-radius: 0 3px 3px 0;
-  }
-
-  /* Footer */
-  .sidebar-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 12px;
-    border-top: 1px solid hsl(var(--border));
-  }
-
-  .stats-summary {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 8px 0;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-  }
-
-  .stat-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-  }
-
-  .stat-label {
-    font-size: 10px;
-    font-weight: 500;
-    color: hsl(var(--foreground-muted));
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .stat-divider {
-    width: 1px;
-    height: 24px;
-    background: hsl(var(--border));
-  }
-
-  .pin-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    padding: 8px;
-    border: none;
-    background: transparent;
-    color: hsl(var(--foreground-muted));
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .pin-btn:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-
-  .sidebar.pinned .pin-btn {
-    color: hsl(var(--accent));
-  }
-
-  /* Scrollbar for nav */
-  .sidebar-nav::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .sidebar-nav::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .sidebar-nav::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
-    border-radius: 2px;
-  }
-</style>
