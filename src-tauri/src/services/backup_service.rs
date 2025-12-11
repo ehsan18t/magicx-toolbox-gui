@@ -474,12 +474,30 @@ pub fn restore_key_to_baseline(key_id: &RegistryKeyId) -> Result<bool, Error> {
             Ok(true)
         }
         None => {
-            // Value didn't exist originally - for safety, we don't delete it
+            // Value didn't exist originally - delete it to restore baseline
             log::debug!(
-                "Key {} had no original value, skipping delete for safety",
+                "Key {} had no original value, deleting to restore baseline",
                 key_id
             );
-            Ok(false)
+
+            match registry_service::delete_value(&hive_enum, &entry.key, &entry.value_name) {
+                Ok(()) => {
+                    log::info!(
+                        "Deleted {} to restore baseline (value didn't exist originally)",
+                        key_id
+                    );
+                    Ok(true)
+                }
+                Err(Error::RegistryKeyNotFound(_)) => {
+                    // Value already doesn't exist - that's fine
+                    log::debug!("Key {} already doesn't exist", key_id);
+                    Ok(true)
+                }
+                Err(e) => {
+                    log::warn!("Failed to delete {}: {}", key_id, e);
+                    Err(e)
+                }
+            }
         }
     }
 }
