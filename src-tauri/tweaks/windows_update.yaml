@@ -66,3 +66,34 @@ tweaks:
         value_type: "REG_DWORD"
         enable_value: 1
         disable_value: 0
+
+  - id: disable_windows_update_complete
+    name: "Disable Windows Update (Complete)"
+    description: "Completely disable the Windows Update service and automatic updates"
+    risk_level: high
+    requires_admin: true
+    requires_reboot: false
+    info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
+    registry_changes:
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+        value_name: "AUOptions"
+        value_type: "REG_DWORD"
+        enable_value: 1
+        disable_value: 2
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+        value_name: "NoAutoUpdate"
+        value_type: "REG_DWORD"
+        enable_value: 1
+      - hive: HKLM
+        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+        value_name: "SetDisableUXWUAccess"
+        value_type: "REG_DWORD"
+        enable_value: 1
+    service_changes:
+      - name: "wuauserv"
+        enable_startup: disabled
+        disable_startup: manual
+        stop_on_disable: true
+        start_on_enable: true
