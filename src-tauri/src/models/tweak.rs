@@ -97,15 +97,6 @@ impl RegistryHive {
     }
 }
 
-/// Single registry value change
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryValueChange {
-    pub key: String,
-    pub value_name: String,
-    pub value_type: RegistryValueType,
-    pub value_data: serde_json::Value,
-}
-
 /// Registry value types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
