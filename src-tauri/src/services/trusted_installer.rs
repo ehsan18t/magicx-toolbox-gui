@@ -1,10 +1,8 @@
 //! TrustedInstaller Elevation Service
 //!
 //! Provides functionality to restart the application with SYSTEM privileges.
-//! Uses winlogon.exe token (not a Protected Process) and launches in user's session.
-//!
-//! Note: Full TrustedInstaller elevation is complex due to session 0 isolation.
-//! This implementation elevates to SYSTEM which works for most protected registry keys.
+//! Uses winlogon.exe token (not a Protected Process) and CreateProcessWithTokenW
+//! which only requires SeImpersonatePrivilege (available to admin processes).
 
 use crate::error::Error;
 use std::ffi::OsStr;
@@ -21,8 +19,8 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows_sys::Win32::System::Threading::{
-    CreateProcessAsUserW, GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+    CreateProcessWithTokenW, GetCurrentProcess, OpenProcess, OpenProcessToken, LOGON_WITH_PROFILE,
+    PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
 };
 
 const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
@@ -221,6 +219,7 @@ fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
 
 /// Restart the current application with SYSTEM privileges
 /// Uses winlogon.exe token (runs as SYSTEM in user's session, not protected)
+/// Uses CreateProcessWithTokenW which only requires SeImpersonatePrivilege
 pub fn restart_as_trusted_installer() -> Result<(), Error> {
     log::info!("Attempting to restart as SYSTEM (via winlogon.exe)");
 
@@ -238,7 +237,7 @@ pub fn restart_as_trusted_installer() -> Result<(), Error> {
     let exe_path = std::env::current_exe()
         .map_err(|e| Error::ServiceControl(format!("Failed to get executable path: {}", e)))?;
 
-    let exe_path_wide = to_wide_string(exe_path.to_string_lossy().as_ref());
+    let mut command_line = to_wide_string(exe_path.to_string_lossy().as_ref());
 
     unsafe {
         let startup_info = STARTUPINFOW {
@@ -269,16 +268,15 @@ pub fn restart_as_trusted_installer() -> Result<(), Error> {
             dwThreadId: 0,
         };
 
-        let result = CreateProcessAsUserW(
+        // CreateProcessWithTokenW only requires SeImpersonatePrivilege (admin has this)
+        let result = CreateProcessWithTokenW(
             token,
-            exe_path_wide.as_ptr(),
-            ptr::null_mut(),
-            ptr::null(),
-            ptr::null(),
-            FALSE,
-            0,
-            ptr::null(),
-            ptr::null(),
+            LOGON_WITH_PROFILE,
+            ptr::null(),               // lpApplicationName
+            command_line.as_mut_ptr(), // lpCommandLine (must be mutable)
+            0,                         // dwCreationFlags
+            ptr::null(),               // lpEnvironment
+            ptr::null(),               // lpCurrentDirectory
             &startup_info,
             &mut process_info,
         );
