@@ -27,6 +27,7 @@
   import MdiDesktopTowerMonitor from "~icons/mdi/desktop-tower-monitor";
   import MdiDownload from "~icons/mdi/download";
   import MdiEmail from "~icons/mdi/email";
+  import MdiEthernet from "~icons/mdi/ethernet";
   import MdiExpansionCard from "~icons/mdi/expansion-card";
   import MdiExport from "~icons/mdi/export";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
@@ -127,6 +128,7 @@
     "mdi:desktop-tower-monitor": MdiDesktopTowerMonitor,
     "mdi:harddisk": MdiHarddisk,
     "mdi:harddisk-plus": MdiHarddiskPlus,
+    "mdi:ethernet": MdiEthernet,
     "mdi:memory": MdiMemory,
     "mdi:folder": MdiFolder,
     "mdi:check-all": MdiCheckAll,

@@ -277,6 +277,7 @@ fn get_hardware_info() -> HardwareInfo {
     let memory = get_memory_info(&wmi_con);
     let motherboard = get_motherboard_info(&wmi_con);
     let disks = get_disk_info(&wmi_con);
+    let network = get_network_info(&wmi_con);
 
     // Calculate total storage
     let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
@@ -287,8 +288,58 @@ fn get_hardware_info() -> HardwareInfo {
         memory,
         motherboard,
         disks,
+        network,
         total_storage_gb: (total_storage_gb * 100.0).round() / 100.0,
     }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_NetworkAdapterConfiguration")]
+#[serde(rename_all = "PascalCase")]
+struct Win32NetworkAdapterConfiguration {
+    description: Option<String>,
+    #[serde(rename = "MACAddress")]
+    mac_address: Option<String>,
+    #[serde(rename = "IPAddress")]
+    ip_address: Option<Vec<String>>,
+    #[serde(rename = "IPEnabled")]
+    ip_enabled: Option<bool>,
+    #[serde(rename = "DHCPEnabled")]
+    dhcp_enabled: Option<bool>,
+}
+
+/// Get network information from WMI
+fn get_network_info(wmi_con: &WMIConnection) -> Vec<crate::models::NetworkInfo> {
+    let query: Vec<Win32NetworkAdapterConfiguration> = match wmi_con.query() {
+        Ok(results) => results,
+        Err(e) => {
+            log::warn!("Failed to query network info: {}", e);
+            return vec![];
+        }
+    };
+
+    query
+        .into_iter()
+        .filter(|adapter| adapter.ip_enabled.unwrap_or(false))
+        .map(|adapter| {
+            // Get first IPv4 address (usually the main one)
+            let ip_address = adapter
+                .ip_address
+                .as_ref()
+                .and_then(|ips| ips.first())
+                .cloned()
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            crate::models::NetworkInfo {
+                name: adapter
+                    .description
+                    .unwrap_or_else(|| "Unknown Adapter".to_string()),
+                mac_address: adapter.mac_address.unwrap_or_else(|| "Unknown".to_string()),
+                ip_address,
+                dhcp_enabled: adapter.dhcp_enabled.unwrap_or(false),
+            }
+        })
+        .collect()
 }
 
 /// Get CPU information from WMI

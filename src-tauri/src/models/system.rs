@@ -107,6 +107,19 @@ pub struct MotherboardInfo {
     pub bios_version: String,
 }
 
+/// Network adapter information
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NetworkInfo {
+    /// Adapter name / description
+    pub name: String,
+    /// MAC Address
+    pub mac_address: String,
+    /// IPv4 Address
+    pub ip_address: String,
+    /// DHCP Enabled
+    pub dhcp_enabled: bool,
+}
+
 /// Disk/Storage information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DiskInfo {
@@ -130,6 +143,7 @@ pub struct HardwareInfo {
     pub memory: MemoryInfo,
     pub motherboard: MotherboardInfo,
     pub disks: Vec<DiskInfo>,
+    pub network: Vec<NetworkInfo>,
     /// Total storage across all disks in GB
     pub total_storage_gb: f64,
 }

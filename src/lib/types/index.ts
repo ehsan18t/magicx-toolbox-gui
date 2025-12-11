@@ -201,6 +201,14 @@ export interface MotherboardInfo {
   bios_version: string;
 }
 
+/** Network adapter information */
+export interface NetworkInfo {
+  name: string;
+  mac_address: string;
+  ip_address: string;
+  dhcp_enabled: boolean;
+}
+
 /** Hardware information */
 export interface HardwareInfo {
   cpu: CpuInfo;
@@ -208,6 +216,7 @@ export interface HardwareInfo {
   memory: MemoryInfo;
   motherboard: MotherboardInfo;
   disks: DiskInfo[];
+  network: NetworkInfo[];
   /** Total storage across all disks in GB */
   total_storage_gb: number;
 }

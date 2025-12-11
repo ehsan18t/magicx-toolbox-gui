@@ -224,6 +224,30 @@
         {/each}
       {/if}
 
+      <!-- Network -->
+      {#if $systemStore?.hardware?.network && $systemStore.hardware.network.length > 0}
+        {#each $systemStore.hardware.network as net, i (i)}
+          <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
+              <Icon icon="mdi:ethernet" width="20" class="text-accent" />
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col">
+              <span class="text-xs font-medium text-foreground-muted uppercase">
+                Network{$systemStore.hardware.network.length > 1 ? ` ${i + 1}` : ""}
+              </span>
+              <h3 class="line-clamp-1 text-sm font-semibold text-foreground" title={net.name}>
+                {net.name}
+              </h3>
+              <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
+                <span>{net.ip_address}</span>
+                <span class="h-1 w-1 rounded-full bg-border"></span>
+                <span class="truncate font-mono text-[10px] uppercase">{net.mac_address}</span>
+              </div>
+            </div>
+          </div>
+        {/each}
+      {/if}
+
       <!-- Motherboard -->
       <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
         <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
