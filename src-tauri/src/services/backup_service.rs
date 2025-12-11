@@ -834,7 +834,7 @@ pub fn verify_changes(
 
     for change in changes {
         let hive_str = change.hive.as_str().to_string();
-        let value_type_str = format!("{:?}", change.value_type).replace('"', "");
+        let value_type_str = change.value_type.as_str().to_string();
 
         // Get expected value
         let expected = if is_enable {

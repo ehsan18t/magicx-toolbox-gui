@@ -118,6 +118,20 @@ pub enum RegistryValueType {
     QWord,
 }
 
+impl RegistryValueType {
+    /// Get the registry type string (e.g., "REG_DWORD")
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::DWord => "REG_DWORD",
+            Self::String => "REG_SZ",
+            Self::ExpandString => "REG_EXPAND_SZ",
+            Self::Binary => "REG_BINARY",
+            Self::MultiString => "REG_MULTI_SZ",
+            Self::QWord => "REG_QWORD",
+        }
+    }
+}
+
 /// Option for multi-state tweaks (displayed as dropdown in UI)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakOption {
