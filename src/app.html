@@ -8,13 +8,14 @@
 
     <script>
       (function () {
-        // Use the build-time constant directly
-        const APP_CONFIG = __APP_CONFIG__;
+        // Hardcoded theme config to avoid "ReferenceError: __APP_CONFIG__ is not defined"
+        // if Vite replacement fails in HTML.
+        const config = {
+          default: "dark",
+          storageKey: "theme",
+          followSystem: true,
+        };
 
-        // Make it available globally for consistency
-        window.APP_CONFIG = APP_CONFIG;
-
-        const config = APP_CONFIG.theme;
         const storedTheme = localStorage.getItem(config.storageKey);
 
         if (storedTheme) {
