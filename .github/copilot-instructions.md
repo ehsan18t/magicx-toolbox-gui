@@ -4,8 +4,9 @@
 
 ## Commits
 
-- Always commit related changes together.
-- Keep commits task-scoped (one task can touch multiple files). Avoid dumping unrelated changes together.
+- **Commit by TASK, not by FILE.** One task may involve multiple files.
+- **Do NOT group unrelated changes.** If you have fixed a bug and added a feature, commit them separately.
+- **Partially stage files if needed.** If a file contains changes for two different tasks, select only the relevant lines/hunks for the current commit.
 - Use clear messages, e.g., `feat(ui): add settings drawer toggle` or `fix(theme): persist system preference on init`.
 - Always commit after each logical change; avoid large uncommitted work.
 
