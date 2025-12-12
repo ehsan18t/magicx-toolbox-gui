@@ -182,6 +182,144 @@ pub fn capture_snapshot(
     Ok(snapshot)
 }
 
+/// Capture CURRENT system state for ALL items across ALL options of a tweak.
+/// Used for rollback when switching between options - restores to the state
+/// BEFORE the current apply operation started (not the original pre-tweak state).
+pub fn capture_current_state(
+    tweak: &TweakDefinition,
+    windows_version: u32,
+) -> Result<TweakSnapshot, Error> {
+    log::info!(
+        "Capturing current state for tweak '{}' (all options)",
+        tweak.name
+    );
+
+    // We create a snapshot but option_index/label don't matter here since this is temporary
+    let mut snapshot = TweakSnapshot::new(
+        &tweak.id,
+        &tweak.name,
+        usize::MAX, // Marker for "current state" snapshot
+        "_current_state_",
+        windows_version,
+        tweak.requires_system,
+    );
+
+    // Use HashSet to avoid duplicates across options
+    use std::collections::HashSet;
+    let mut captured_registry: HashSet<String> = HashSet::new();
+    let mut captured_services: HashSet<String> = HashSet::new();
+    let mut captured_tasks: HashSet<String> = HashSet::new();
+
+    // Iterate ALL options to capture all potentially affected items
+    for option in &tweak.options {
+        // Capture registry values
+        for change in &option.registry_changes {
+            if !change.applies_to_version(windows_version) {
+                continue;
+            }
+
+            let key_id = format!(
+                "{}\\{}\\{}",
+                change.hive.as_str(),
+                change.key,
+                change.value_name
+            );
+            if captured_registry.contains(&key_id) {
+                continue;
+            }
+            captured_registry.insert(key_id);
+
+            let (value, existed) = read_registry_value(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+                &change.value_type,
+            )?;
+
+            let reg_snapshot = RegistrySnapshot {
+                hive: change.hive.as_str().to_string(),
+                key: change.key.clone(),
+                value_name: change.value_name.clone(),
+                value_type: if existed {
+                    Some(change.value_type.as_str().to_string())
+                } else {
+                    None
+                },
+                value,
+                existed,
+            };
+
+            snapshot.add_registry_snapshot(reg_snapshot);
+        }
+
+        // Capture service states
+        for sc in &option.service_changes {
+            if captured_services.contains(&sc.name) {
+                continue;
+            }
+            captured_services.insert(sc.name.clone());
+
+            let service_snapshot = capture_service_state(&sc.name)?;
+            snapshot.add_service_snapshot(service_snapshot);
+        }
+
+        // Capture scheduled task states
+        for task_change in &option.scheduler_changes {
+            if let Some(ref pattern) = task_change.task_name_pattern {
+                // Pattern-based matching
+                let matching_tasks =
+                    scheduler_service::find_tasks_by_pattern(&task_change.task_path, pattern)?;
+
+                for task in matching_tasks {
+                    let task_id = format!("{}\\{}", task_change.task_path, task.name);
+                    if captured_tasks.contains(&task_id) {
+                        continue;
+                    }
+                    captured_tasks.insert(task_id);
+
+                    let task_snapshot = SchedulerSnapshot {
+                        task_path: task_change.task_path.clone(),
+                        task_name: task.name.clone(),
+                        original_state: task.state.as_str().to_string(),
+                    };
+                    snapshot.add_scheduler_snapshot(task_snapshot);
+                }
+            } else if let Some(ref task_name) = task_change.task_name {
+                let task_id = format!("{}\\{}", task_change.task_path, task_name);
+                if captured_tasks.contains(&task_id) {
+                    continue;
+                }
+                captured_tasks.insert(task_id);
+
+                // Don't fail if task doesn't exist during current state capture
+                match capture_scheduler_state(&task_change.task_path, task_name) {
+                    Ok(task_snapshot) => {
+                        snapshot.add_scheduler_snapshot(task_snapshot);
+                    }
+                    Err(e) => {
+                        log::debug!(
+                            "Could not capture state for task {}\\{}: {} (may not exist)",
+                            task_change.task_path,
+                            task_name,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    log::info!(
+        "Captured current state: {} registry values, {} services, {} tasks for '{}'",
+        snapshot.registry_snapshots.len(),
+        snapshot.service_snapshots.len(),
+        snapshot.scheduler_snapshots.len(),
+        tweak.name
+    );
+
+    Ok(snapshot)
+}
+
 /// Capture current service state
 fn capture_service_state(service_name: &str) -> Result<ServiceSnapshot, Error> {
     let status = service_control::get_service_status(service_name)?;
@@ -258,6 +396,53 @@ pub fn save_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
         .map_err(|e| Error::BackupFailed(format!("Failed to write snapshot: {}", e)))?;
 
     log::debug!("Saved snapshot to {:?}", path);
+    Ok(())
+}
+
+/// Update the snapshot metadata (option index/label) after successfully switching options.
+/// The original registry/service/scheduler values are preserved (for full revert capability).
+pub fn update_snapshot_metadata(
+    tweak_id: &str,
+    new_option_index: usize,
+    new_option_label: &str,
+) -> Result<(), Error> {
+    let path = get_snapshot_path(tweak_id)?;
+
+    if !path.exists() {
+        return Err(Error::BackupFailed(format!(
+            "No snapshot found for tweak '{}'",
+            tweak_id
+        )));
+    }
+
+    let content = fs::read_to_string(&path)
+        .map_err(|e| Error::BackupFailed(format!("Failed to read snapshot: {}", e)))?;
+
+    let mut snapshot: TweakSnapshot = serde_json::from_str(&content)
+        .map_err(|e| Error::BackupFailed(format!("Failed to parse snapshot: {}", e)))?;
+
+    log::debug!(
+        "Updating snapshot metadata: option {} '{}' → {} '{}'",
+        snapshot.applied_option_index,
+        snapshot.applied_option_label,
+        new_option_index,
+        new_option_label
+    );
+
+    snapshot.applied_option_index = new_option_index;
+    snapshot.applied_option_label = new_option_label.to_string();
+
+    let json = serde_json::to_string_pretty(&snapshot)
+        .map_err(|e| Error::BackupFailed(format!("Failed to serialize snapshot: {}", e)))?;
+
+    fs::write(&path, json)
+        .map_err(|e| Error::BackupFailed(format!("Failed to write snapshot: {}", e)))?;
+
+    log::info!(
+        "Updated snapshot metadata for '{}' to option '{}'",
+        tweak_id,
+        new_option_label
+    );
     Ok(())
 }
 

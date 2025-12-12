@@ -830,21 +830,46 @@ When reverting:
 
 ```
 First Apply:
-  1. Capture snapshot (original state)
+  1. Capture snapshot (original pre-tweak state)
   2. Save snapshot to disk
   3. Apply option changes
+  4. On FAILURE: Restore snapshot, delete it
 
-Subsequent Applies (switching options):
-  1. Snapshot already exists, skip capture
+Switching Options (snapshot exists):
+  1. Capture current system state (pre-apply state)
   2. Apply new option changes
+  3. On SUCCESS: Update snapshot metadata (option index/label)
+  4. On FAILURE: Restore to pre-apply state (previous option)
+     - Original snapshot is PRESERVED
+     - Tweak stays at the previous option
 
 Revert:
   1. Load snapshot
-  2. Restore original state
+  2. Restore original pre-tweak state
   3. Delete snapshot
 ```
 
-**Important:** Once a snapshot exists, it's not updated. This preserves the true "original" state even if you switch between options multiple times.
+### Rollback Behavior
+
+The rollback system handles failures differently based on context:
+
+| Scenario                    | Failure Behavior                          | Result                                                       |
+| --------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| **First apply fails**       | Restore from original snapshot, delete it | System returns to original state, tweak not applied          |
+| **Switching options fails** | Restore from pre-apply state              | System stays at previous option, original snapshot preserved |
+| **Revert**                  | Restore from original snapshot            | System returns to original pre-tweak state                   |
+
+**Key Insight:** When switching between options (e.g., "Disabled" → "Enabled"), if the apply fails midway, the system rolls back to the **previous option state**, not the original pre-tweak state. This prevents losing your current configuration due to a partial failure.
+
+### Snapshot Contents
+
+The snapshot stores:
+- `applied_option_index` / `applied_option_label`: Which option was last successfully applied
+- `registry_snapshots`: Original registry values before first apply
+- `service_snapshots`: Original service states before first apply
+- `scheduler_snapshots`: Original task states before first apply
+
+**Important:** The registry/service/scheduler values in the snapshot represent the **original pre-tweak state**, not the current option's state. The snapshot metadata (option index/label) is updated when switching options successfully.
 
 ---
 

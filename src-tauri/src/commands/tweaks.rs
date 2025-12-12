@@ -239,22 +239,30 @@ pub async fn apply_tweak(
         );
     }
 
-    // Step 1: Capture snapshot BEFORE making any changes (only if no snapshot exists)
-    if !backup_service::snapshot_exists(&tweak_id)? {
+    // Step 1: Snapshot handling
+    // - If no snapshot exists: capture original state (for future revert)
+    // - If snapshot exists: capture CURRENT state (for rollback on failure)
+    let is_switching_options = backup_service::snapshot_exists(&tweak_id)?;
+    let pre_apply_state = if is_switching_options {
+        // Switching options: capture current state BEFORE making changes
+        // This allows rollback to the PREVIOUS option state, not original pre-tweak state
+        log::info!(
+            "Switching options for '{}': capturing current state for potential rollback",
+            tweak.name
+        );
+        Some(backup_service::capture_current_state(&tweak, version)?)
+    } else {
+        // First apply: capture original state for the snapshot
         let snapshot = backup_service::capture_snapshot(&tweak, option_index, version)?;
         backup_service::save_snapshot(&snapshot)?;
         log::info!(
-            "Captured snapshot for '{}' with {} registry values, {} services",
+            "Captured original snapshot for '{}' with {} registry values, {} services",
             tweak.name,
             snapshot.registry_snapshots.len(),
             snapshot.service_snapshots.len()
         );
-    } else {
-        log::debug!(
-            "Snapshot already exists for '{}', skipping capture",
-            tweak.name
-        );
-    }
+        None
+    };
 
     // Step 2: Run pre_commands if defined (non-reversible, fail-fast)
     for cmd in &option.pre_commands {
@@ -279,18 +287,33 @@ pub async fn apply_tweak(
     }
 
     // Steps 4-6: Apply all core changes ATOMICALLY (registry, services, scheduler)
-    // If any step fails, rollback ALL previously successful steps from snapshot
+    // If any step fails, rollback ALL previously successful steps
     if let Err(e) = apply_all_changes_atomically(&app, &tweak, option, version) {
         log::error!("Failed to apply changes for '{}': {}", tweak.name, e);
 
-        // Restore from snapshot on failure
-        if let Some(snapshot) = backup_service::load_snapshot(&tweak_id)? {
-            log::warn!("Rolling back ALL changes to snapshot...");
-            let _ = backup_service::restore_from_snapshot(&snapshot);
+        // Rollback based on context:
+        // - If switching options: restore to pre-apply state (previous option's state)
+        // - If first apply: restore to original snapshot
+        if let Some(ref current_state) = pre_apply_state {
+            // Switching options: restore to the state BEFORE this apply started
+            log::warn!("Rolling back to previous option state (switching options failed)...");
+            let _ = backup_service::restore_from_snapshot(current_state);
+            // Keep the original snapshot intact - the tweak is still "applied" at previous option
+        } else {
+            // First apply: restore from original snapshot and delete it
+            if let Some(snapshot) = backup_service::load_snapshot(&tweak_id)? {
+                log::warn!("Rolling back ALL changes to original state (first apply failed)...");
+                let _ = backup_service::restore_from_snapshot(&snapshot);
+            }
+            backup_service::delete_snapshot(&tweak_id)?;
         }
-        backup_service::delete_snapshot(&tweak_id)?;
 
         return Err(e);
+    }
+
+    // Step 7: If switching options succeeded, update the snapshot metadata
+    if is_switching_options {
+        backup_service::update_snapshot_metadata(&tweak_id, option_index, &option.label)?;
     }
 
     // Step 7: Run post_commands (non-fatal, no rollback)
