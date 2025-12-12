@@ -139,6 +139,7 @@ tweaks:
         service_changes:
           - name: "wuauserv"
             startup: disabled
+            skip_validation: true
           - name: "WaaSMedicSvc"
             startup: disabled
           - name: "UsoSvc"
@@ -165,6 +166,7 @@ tweaks:
         service_changes:
           - name: "wuauserv"
             startup: manual
+            skip_validation: true
           - name: "WaaSMedicSvc"
             startup: manual
           - name: "UsoSvc"
