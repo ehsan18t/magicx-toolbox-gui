@@ -122,9 +122,53 @@ pub fn capture_snapshot(
 
     // Capture scheduled task states for this option
     for task_change in &option.scheduler_changes {
-        let task_snapshot =
-            capture_scheduler_state(&task_change.task_path, &task_change.task_name)?;
-        snapshot.add_scheduler_snapshot(task_snapshot);
+        // Handle pattern matching vs exact task name
+        if let Some(ref pattern) = task_change.task_name_pattern {
+            // Pattern-based: capture state for all matching tasks
+            let matching_tasks =
+                scheduler_service::find_tasks_by_pattern(&task_change.task_path, pattern)?;
+
+            if matching_tasks.is_empty() {
+                // If ignore_not_found, just skip capturing
+                if task_change.ignore_not_found {
+                    log::debug!(
+                        "No tasks found matching pattern '{}' in '{}' (ignore_not_found)",
+                        pattern,
+                        task_change.task_path
+                    );
+                    continue;
+                }
+                // Otherwise, still continue - we don't fail snapshot capture
+                log::warn!(
+                    "No tasks found matching pattern '{}' in '{}'",
+                    pattern,
+                    task_change.task_path
+                );
+                continue;
+            }
+
+            for task in matching_tasks {
+                let task_snapshot = SchedulerSnapshot {
+                    task_path: task_change.task_path.clone(),
+                    task_name: task.name.clone(),
+                    original_state: task.state.as_str().to_string(),
+                };
+                snapshot.add_scheduler_snapshot(task_snapshot);
+                log::trace!(
+                    "Captured pattern task: {}\\{} (state: {})",
+                    task_change.task_path,
+                    task.name,
+                    task.state.as_str()
+                );
+            }
+        } else if let Some(ref task_name) = task_change.task_name {
+            // Exact task name: capture single task state
+            let task_snapshot = capture_scheduler_state(&task_change.task_path, task_name)?;
+            snapshot.add_scheduler_snapshot(task_snapshot);
+        } else {
+            // Neither pattern nor name specified - skip with warning
+            log::warn!("Scheduler change has neither task_name nor task_name_pattern, skipping");
+        }
     }
 
     log::info!(
@@ -621,7 +665,7 @@ pub fn detect_tweak_state(
     })
 }
 
-/// Check if all registry/service changes in an option match current state
+/// Check if all registry/service/scheduler changes in an option match current state
 /// Items with skip_validation=true are excluded from this check
 fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> Result<bool, Error> {
     // Count only validatable changes (those without skip_validation)
@@ -635,9 +679,17 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         .iter()
         .filter(|c| !c.skip_validation)
         .collect();
+    let validatable_scheduler: Vec<_> = option
+        .scheduler_changes
+        .iter()
+        .filter(|c| !c.skip_validation)
+        .collect();
 
     // If option has no validatable changes, it can't match
-    if validatable_registry.is_empty() && validatable_services.is_empty() {
+    if validatable_registry.is_empty()
+        && validatable_services.is_empty()
+        && validatable_scheduler.is_empty()
+    {
         return Ok(false);
     }
 
@@ -669,6 +721,56 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         }
     }
 
+    // Check all validatable scheduler task states
+    for change in validatable_scheduler {
+        // Determine expected state based on action
+        let expected_state = match change.action {
+            crate::models::tweak::SchedulerAction::Enable => scheduler_service::TaskState::Ready,
+            crate::models::tweak::SchedulerAction::Disable => {
+                scheduler_service::TaskState::Disabled
+            }
+            crate::models::tweak::SchedulerAction::Delete => scheduler_service::TaskState::NotFound,
+        };
+
+        // Handle pattern vs exact name
+        if let Some(ref pattern) = change.task_name_pattern {
+            // For patterns, find all matching tasks and check each
+            let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)
+                .unwrap_or_default();
+
+            if tasks.is_empty() {
+                // No tasks found - only matches if we expected deletion or ignore_not_found
+                if expected_state != scheduler_service::TaskState::NotFound
+                    && !change.ignore_not_found
+                {
+                    return Ok(false);
+                }
+            } else {
+                // Check that all matching tasks have expected state
+                for task in tasks {
+                    if !task_state_matches(&task.state, &expected_state) {
+                        return Ok(false);
+                    }
+                }
+            }
+        } else if let Some(ref task_name) = change.task_name {
+            // Exact task name - check single task
+            let current_state = scheduler_service::get_task_state(&change.task_path, task_name)
+                .unwrap_or(scheduler_service::TaskState::NotFound);
+
+            // Handle ignore_not_found for exact names
+            if current_state == scheduler_service::TaskState::NotFound && change.ignore_not_found {
+                // Task not found but ignore_not_found is set - consider this as matching
+                continue;
+            }
+
+            if !task_state_matches(&current_state, &expected_state) {
+                return Ok(false);
+            }
+        }
+        // If neither pattern nor name, skip validation for this change
+    }
+
     // All validatable checks passed
     Ok(true)
 }
@@ -692,6 +794,30 @@ fn values_match(a: &Option<serde_json::Value>, b: &Option<serde_json::Value>) ->
         (None, None) => true,
         _ => false,
     }
+}
+
+/// Check if a task's current state matches the expected state
+/// Running is considered equivalent to Ready (both mean enabled)
+fn task_state_matches(
+    current: &scheduler_service::TaskState,
+    expected: &scheduler_service::TaskState,
+) -> bool {
+    matches!(
+        (current, expected),
+        (
+            scheduler_service::TaskState::Ready,
+            scheduler_service::TaskState::Ready
+        ) | (
+            scheduler_service::TaskState::Running,
+            scheduler_service::TaskState::Ready
+        ) | (
+            scheduler_service::TaskState::Disabled,
+            scheduler_service::TaskState::Disabled
+        ) | (
+            scheduler_service::TaskState::NotFound,
+            scheduler_service::TaskState::NotFound
+        )
+    )
 }
 
 // ============================================================================

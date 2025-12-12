@@ -107,10 +107,15 @@ struct ServiceChange {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SchedulerChange {
     task_path: String,
-    task_name: String,
+    #[serde(default)]
+    task_name: Option<String>,
+    #[serde(default)]
+    task_name_pattern: Option<String>,
     action: SchedulerAction,
     #[serde(default)]
     skip_validation: bool,
+    #[serde(default)]
+    ignore_not_found: bool,
 }
 
 /// A single option within a tweak - contains all changes for that state

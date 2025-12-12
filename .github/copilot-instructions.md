@@ -193,6 +193,12 @@ tweaks:
             task_name: "Microsoft Compatibility Appraiser"
             action: disable # enable | disable | delete
             skip_validation: false # Optional: if true, ignore for status check & failure
+            ignore_not_found: false # Optional: if true, ignore if task doesn't exist
+          # Or use pattern matching for multiple tasks:
+          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+            task_name_pattern: "USO|MusNotification|Reboot" # Regex pattern
+            action: disable
+            ignore_not_found: true # Some tasks may not exist on all systems
         pre_commands: [] # Shell commands before changes
         pre_powershell: [] # PowerShell before changes (after pre_commands)
         post_commands: [] # Shell commands after changes

@@ -222,13 +222,21 @@ pub struct ServiceChange {
 pub struct SchedulerChange {
     /// Task path (e.g., "\\Microsoft\\Windows\\Customer Experience Improvement Program")
     pub task_path: String,
-    /// Task name (e.g., "Consolidator")
-    pub task_name: String,
-    /// Action to perform on the task
+    /// Exact task name (e.g., "Consolidator"). Mutually exclusive with task_name_pattern.
+    #[serde(default)]
+    pub task_name: Option<String>,
+    /// Regex pattern to match multiple task names (e.g., "USO|Reboot|Refresh").
+    /// Mutually exclusive with task_name. All matching tasks will have the action applied.
+    #[serde(default)]
+    pub task_name_pattern: Option<String>,
+    /// Action to perform on the task(s)
     pub action: SchedulerAction,
     /// If true, skip this change for tweak status validation and ignore failures during apply
     #[serde(default)]
     pub skip_validation: bool,
+    /// If true, don't error if task/path not found (useful for optional tasks)
+    #[serde(default)]
+    pub ignore_not_found: bool,
 }
 
 /// A single option within a tweak - contains all changes for that state

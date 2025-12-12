@@ -436,24 +436,37 @@ service_changes:
 
 ### Scheduler Changes
 
-Modify Windows Task Scheduler tasks.
+Modify Windows Task Scheduler tasks. Supports both exact task names and regex patterns for bulk operations.
 
 ```yaml
 scheduler_changes:
+  # Option 1: Exact task name
   - task_path: string            # Required: Task folder path
-    task_name: string            # Required: Task name
+    task_name: string            # Required (if no pattern): Exact task name
     action: string               # Required: enable, disable, or delete
     skip_validation: boolean     # Optional: Exclude from status check
+    ignore_not_found: boolean    # Optional: Don't error if task doesn't exist
+
+  # Option 2: Pattern matching (regex)
+  - task_path: string            # Required: Task folder path
+    task_name_pattern: string    # Required (if no name): Regex pattern to match task names
+    action: string               # Required: enable, disable, or delete
+    skip_validation: boolean     # Optional: Exclude from status check
+    ignore_not_found: boolean    # Optional: Don't error if no tasks match
 ```
 
 #### Scheduler Field Details
 
-| Field             | Type    | Required | Description                                                                |
-| ----------------- | ------- | -------- | -------------------------------------------------------------------------- |
-| `task_path`       | string  | ✅        | Folder path in Task Scheduler. Use `\\` prefix.                            |
-| `task_name`       | string  | ✅        | Name of the scheduled task.                                                |
-| `action`          | enum    | ✅        | `enable`, `disable`, or `delete`.                                          |
-| `skip_validation` | boolean | ❌        | Default `false`. See [skip_validation section](#the-skip_validation-flag). |
+| Field               | Type    | Required | Description                                                                    |
+| ------------------- | ------- | -------- | ------------------------------------------------------------------------------ |
+| `task_path`         | string  | ✅        | Folder path in Task Scheduler. Use `\\` prefix.                                |
+| `task_name`         | string  | ⚠️        | Exact name of the scheduled task. **Required if `task_name_pattern` not set.** |
+| `task_name_pattern` | string  | ⚠️        | Regex pattern to match multiple tasks. **Required if `task_name` not set.**    |
+| `action`            | enum    | ✅        | `enable`, `disable`, or `delete`.                                              |
+| `skip_validation`   | boolean | ❌        | Default `false`. See [skip_validation section](#the-skip_validation-flag).     |
+| `ignore_not_found`  | boolean | ❌        | Default `false`. See [ignore_not_found section](#the-ignore_not_found-flag).   |
+
+> **Note:** You must specify either `task_name` OR `task_name_pattern`, but not both.
 
 #### Scheduler Actions
 
@@ -465,6 +478,47 @@ scheduler_changes:
 
 **Warning:** `delete` is irreversible. The task cannot be restored by reverting the tweak. Use `disable` unless you're certain.
 
+#### The `ignore_not_found` Flag
+
+Controls behavior when a task (or all tasks matching a pattern) doesn't exist:
+
+| Scenario                          | `ignore_not_found: false` (default) | `ignore_not_found: true`        |
+| --------------------------------- | ----------------------------------- | ------------------------------- |
+| Exact task doesn't exist          | ❌ Error (rollback)                  | ⚠️ Warning (continue)            |
+| Pattern matches no tasks          | ❌ Error (rollback)                  | ⚠️ Warning (continue)            |
+| Status detection (task not found) | ❌ Doesn't match                     | ✅ Matches (treated as expected) |
+
+**Use case:** Optional tasks that may not exist on all Windows versions or editions.
+
+#### Pattern Matching with `task_name_pattern`
+
+Use regex patterns to target multiple tasks in a folder:
+
+```yaml
+# Match all tasks containing these keywords
+scheduler_changes:
+  - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+    task_name_pattern: "USO|MusNotification|Reboot|Refresh"
+    action: disable
+    ignore_not_found: true   # Some tasks may not exist on all systems
+```
+
+The pattern uses Rust regex syntax. Common patterns:
+- `|` - Alternation (OR): `"Task1|Task2|Task3"`
+- `.` - Any character: `"Schedule.*"`
+- `^` - Start of name: `"^Backup"`
+- `$` - End of name: `"Report$"`
+- `.*` - Match anything: `"Microsoft.*Update"`
+
+#### Behavior Matrix (Scheduler)
+
+| Flag Combination         | Task Not Found       | Action Failed        | Status Detection       |
+| ------------------------ | -------------------- | -------------------- | ---------------------- |
+| Default (both false)     | ❌ Error → rollback   | ❌ Error → rollback   | ✅ Included             |
+| `ignore_not_found: true` | ✅ Warning → continue | ❌ Error → rollback   | ✅ Matches if not found |
+| `skip_validation: true`  | ❌ Error → rollback   | ✅ Warning → continue | ❌ Excluded             |
+| Both `true`              | ✅ Warning → continue | ✅ Warning → continue | ❌ Excluded             |
+
 #### Finding Task Paths
 
 Open Task Scheduler (`taskschd.msc`) and navigate to the task. The path is shown in the folder tree.
@@ -473,20 +527,29 @@ Common paths:
 - `\Microsoft\Windows\Customer Experience Improvement Program`
 - `\Microsoft\Windows\Application Experience`
 - `\Microsoft\Windows\UpdateOrchestrator`
+- `\Microsoft\Windows\WindowsUpdate`
 
 #### Scheduler Examples
 
 ```yaml
-# Disable telemetry tasks
+# Exact task name - disable single task
 - task_path: "\\Microsoft\\Windows\\Customer Experience Improvement Program"
   task_name: "Consolidator"
   action: disable
 
-- task_path: "\\Microsoft\\Windows\\Customer Experience Improvement Program"
-  task_name: "UsbCeip"
+# Pattern matching - disable all update-related tasks in a folder
+- task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+  task_name_pattern: "Schedule|USO|MusNotification|Reboot"
   action: disable
+  ignore_not_found: true   # Not all tasks exist on every system
 
-# Delete a task permanently
+# Optional task - don't fail if it doesn't exist
+- task_path: "\\Microsoft\\Windows\\Application Experience"
+  task_name: "MareBackup"
+  action: disable
+  ignore_not_found: true
+
+# Delete tasks permanently (use with caution)
 - task_path: "\\Microsoft\\Windows\\Application Experience"
   task_name: "ProgramDataUpdater"
   action: delete

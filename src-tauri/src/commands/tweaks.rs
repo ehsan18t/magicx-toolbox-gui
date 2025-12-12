@@ -783,72 +783,232 @@ fn apply_scheduler_changes_atomic(
     use_system: bool,
 ) -> Result<()> {
     for change in &option.scheduler_changes {
-        let task_path = format!("{}\\{}", change.task_path, change.task_name);
-        log::info!(
-            "Applying scheduler change{}{}: {} → {:?}",
-            if use_system { " (SYSTEM)" } else { "" },
+        // Determine if using pattern or exact name
+        let is_pattern = change.task_name_pattern.is_some();
+        let identifier = if let Some(ref pattern) = change.task_name_pattern {
+            pattern.clone()
+        } else if let Some(ref name) = change.task_name {
+            name.clone()
+        } else {
+            log::error!("Scheduler change has neither task_name nor task_name_pattern");
+            return Err(Error::CommandExecution(
+                "Scheduler change requires either task_name or task_name_pattern".to_string(),
+            ));
+        };
+
+        let flags_str = {
+            let mut flags = Vec::new();
             if change.skip_validation {
-                " (skip_validation)"
+                flags.push("skip_validation");
+            }
+            if change.ignore_not_found {
+                flags.push("ignore_not_found");
+            }
+            if is_pattern {
+                flags.push("pattern");
+            }
+            if flags.is_empty() {
+                String::new()
             } else {
-                ""
-            },
-            task_path,
+                format!(" ({})", flags.join(", "))
+            }
+        };
+
+        log::info!(
+            "Applying scheduler change{}{}: {}\\{} → {:?}",
+            if use_system { " (SYSTEM)" } else { "" },
+            flags_str,
+            change.task_path,
+            identifier,
             change.action
         );
 
-        let result = if use_system {
-            // Use schtasks via trusted_installer for SYSTEM-level operations
-            let schtasks_args = match change.action {
-                SchedulerAction::Enable => {
-                    format!("/Change /TN \"{}\" /Enable", task_path)
-                }
-                SchedulerAction::Disable => {
-                    format!("/Change /TN \"{}\" /Disable", task_path)
-                }
-                SchedulerAction::Delete => {
-                    format!("/Delete /TN \"{}\" /F", task_path)
-                }
-            };
-            trusted_installer::run_schtasks_as_system(&schtasks_args)
-                .map(|_| ())
-                .map_err(|e| Error::CommandExecution(e.to_string()))
-        } else {
-            // Use scheduler_service directly
-            scheduler_service::apply_scheduler_change(
-                &change.task_path,
-                &change.task_name,
-                change.action,
-            )
-        };
+        // Handle pattern vs exact name
+        if is_pattern {
+            let pattern = change.task_name_pattern.as_ref().unwrap();
 
-        if let Err(e) = result {
-            if change.skip_validation {
-                // For skip_validation items, log warning but continue
-                log::warn!(
-                    "Failed to apply scheduler change for '{}' (skip_validation, continuing): {}",
-                    task_path,
-                    e
-                );
-                continue;
+            // For pattern matching, we need to find all matching tasks and apply action to each
+            if use_system {
+                // When using SYSTEM elevation, we need to list tasks first, then apply to each
+                let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)?;
+
+                if tasks.is_empty() {
+                    if change.ignore_not_found {
+                        log::warn!(
+                            "No tasks found matching pattern '{}' in '{}' (ignore_not_found)",
+                            pattern,
+                            change.task_path
+                        );
+                        continue;
+                    } else if change.skip_validation {
+                        log::warn!(
+                            "No tasks found matching pattern '{}' in '{}' (skip_validation)",
+                            pattern,
+                            change.task_path
+                        );
+                        continue;
+                    } else {
+                        return Err(Error::CommandExecution(format!(
+                            "No tasks found matching pattern '{}' in '{}'",
+                            pattern, change.task_path
+                        )));
+                    }
+                }
+
+                // Apply action to each matching task with SYSTEM elevation
+                for task in tasks {
+                    let full_path = format!("{}\\{}", change.task_path, task.name);
+                    let schtasks_args = match change.action {
+                        SchedulerAction::Enable => {
+                            format!("/Change /TN \"{}\" /Enable", full_path)
+                        }
+                        SchedulerAction::Disable => {
+                            format!("/Change /TN \"{}\" /Disable", full_path)
+                        }
+                        SchedulerAction::Delete => {
+                            format!("/Delete /TN \"{}\" /F", full_path)
+                        }
+                    };
+
+                    let result = trusted_installer::run_schtasks_as_system(&schtasks_args)
+                        .map(|_| ())
+                        .map_err(|e| Error::CommandExecution(e.to_string()));
+
+                    if let Err(e) = result {
+                        if change.skip_validation {
+                            log::warn!(
+                                "Failed to apply scheduler change for '{}' (skip_validation, continuing): {}",
+                                full_path,
+                                e
+                            );
+                            continue;
+                        }
+                        return Err(Error::CommandExecution(format!(
+                            "Failed to apply scheduler change for '{}': {}",
+                            full_path, e
+                        )));
+                    }
+
+                    if is_debug_enabled() {
+                        emit_debug_log(
+                            app,
+                            DebugLevel::Info,
+                            &format!(
+                                "Scheduler{}: {} → {:?}",
+                                flags_str, full_path, change.action
+                            ),
+                            None,
+                        );
+                    }
+                }
+            } else {
+                // Use scheduler_service's pattern matching function
+                let (success_count, error_count, errors) =
+                    scheduler_service::apply_action_to_pattern(
+                        &change.task_path,
+                        pattern,
+                        change.action,
+                        change.ignore_not_found,
+                    )?;
+
+                if error_count > 0 {
+                    if change.skip_validation {
+                        log::warn!(
+                            "Pattern '{}': {} succeeded, {} failed (skip_validation): {:?}",
+                            pattern,
+                            success_count,
+                            error_count,
+                            errors
+                        );
+                    } else {
+                        return Err(Error::CommandExecution(format!(
+                            "Pattern '{}': {} succeeded, {} failed: {:?}",
+                            pattern, success_count, error_count, errors
+                        )));
+                    }
+                }
+
+                if is_debug_enabled() {
+                    emit_debug_log(
+                        app,
+                        DebugLevel::Info,
+                        &format!(
+                            "Scheduler{}: {}\\[{}] → {:?} ({} tasks)",
+                            flags_str, change.task_path, pattern, change.action, success_count
+                        ),
+                        None,
+                    );
+                }
             }
-            return Err(Error::CommandExecution(format!(
-                "Failed to apply scheduler change for '{}': {}",
-                task_path, e
-            )));
-        }
+        } else {
+            // Exact task name
+            let task_name = change.task_name.as_ref().unwrap();
+            let full_path = format!("{}\\{}", change.task_path, task_name);
 
-        if is_debug_enabled() {
-            emit_debug_log(
-                app,
-                DebugLevel::Info,
-                &format!(
-                    "Scheduler{}: {} → {:?}",
-                    if change.skip_validation { " [sv]" } else { "" },
-                    task_path,
-                    change.action
-                ),
-                None,
-            );
+            let result = if use_system {
+                // Use schtasks via trusted_installer for SYSTEM-level operations
+                let schtasks_args = match change.action {
+                    SchedulerAction::Enable => {
+                        format!("/Change /TN \"{}\" /Enable", full_path)
+                    }
+                    SchedulerAction::Disable => {
+                        format!("/Change /TN \"{}\" /Disable", full_path)
+                    }
+                    SchedulerAction::Delete => {
+                        format!("/Delete /TN \"{}\" /F", full_path)
+                    }
+                };
+                trusted_installer::run_schtasks_as_system(&schtasks_args)
+                    .map(|_| ())
+                    .map_err(|e| Error::CommandExecution(e.to_string()))
+            } else {
+                // Use scheduler_service directly
+                scheduler_service::apply_scheduler_change(
+                    &change.task_path,
+                    task_name,
+                    change.action,
+                )
+            };
+
+            // Handle errors with flag-based behavior
+            if let Err(e) = result {
+                let is_not_found = e.to_string().contains("does not exist")
+                    || e.to_string().contains("cannot find");
+
+                if is_not_found && change.ignore_not_found {
+                    // Task not found but ignore_not_found is set - continue
+                    log::warn!(
+                        "Task '{}' not found (ignore_not_found, continuing)",
+                        full_path
+                    );
+                    continue;
+                } else if change.skip_validation {
+                    // Any error with skip_validation - log and continue
+                    log::warn!(
+                        "Failed to apply scheduler change for '{}' (skip_validation, continuing): {}",
+                        full_path,
+                        e
+                    );
+                    continue;
+                } else {
+                    return Err(Error::CommandExecution(format!(
+                        "Failed to apply scheduler change for '{}': {}",
+                        full_path, e
+                    )));
+                }
+            }
+
+            if is_debug_enabled() {
+                emit_debug_log(
+                    app,
+                    DebugLevel::Info,
+                    &format!(
+                        "Scheduler{}: {} → {:?}",
+                        flags_str, full_path, change.action
+                    ),
+                    None,
+                );
+            }
         }
     }
     Ok(())

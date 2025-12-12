@@ -2,9 +2,12 @@
 //!
 //! Provides functionality to enable, disable, and delete scheduled tasks
 //! using the Windows `schtasks.exe` command-line tool.
+//!
+//! Supports both exact task names and regex patterns for matching multiple tasks.
 
 use crate::error::Error;
 use crate::models::tweak::SchedulerAction;
+use regex::Regex;
 use std::process::Command;
 
 /// State of a scheduled task
@@ -175,6 +178,156 @@ pub fn apply_scheduler_change(
         SchedulerAction::Disable => disable_task(task_path, task_name),
         SchedulerAction::Delete => delete_task(task_path, task_name),
     }
+}
+
+/// Represents a task found in a folder
+#[derive(Debug, Clone)]
+pub struct TaskInfo {
+    pub name: String,
+    pub state: TaskState,
+}
+
+/// List all tasks in a folder path
+pub fn list_tasks_in_folder(task_path: &str) -> Result<Vec<TaskInfo>, Error> {
+    let path = task_path.trim_end_matches('\\');
+    log::debug!("Listing tasks in folder: {}", path);
+
+    let output = Command::new("schtasks")
+        .args(["/Query", "/TN", &format!("{}\\", path), "/FO", "LIST", "/V"])
+        .output()
+        .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
+
+    // If folder doesn't exist, return empty list
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not exist") || stderr.contains("cannot find") {
+            log::debug!("Task folder not found: {}", path);
+            return Ok(Vec::new());
+        }
+        return Err(Error::CommandExecution(format!(
+            "Failed to list tasks in '{}': {}",
+            path, stderr
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut tasks = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_state: Option<TaskState> = None;
+
+    // Parse the LIST /V output which contains multiple tasks
+    // Each task has "TaskName:" and "Status:" fields
+    for line in stdout.lines() {
+        let line = line.trim();
+
+        if line.starts_with("TaskName:") {
+            // Save previous task if we have one
+            if let (Some(name), Some(state)) = (current_name.take(), current_state.take()) {
+                tasks.push(TaskInfo { name, state });
+            }
+
+            // Extract task name (full path, we just want the name part)
+            let full_name = line.strip_prefix("TaskName:").unwrap_or("").trim();
+            // Get just the task name from full path like \Microsoft\Windows\Folder\TaskName
+            if let Some(name) = full_name.rsplit('\\').next() {
+                if !name.is_empty() {
+                    current_name = Some(name.to_string());
+                }
+            }
+        } else if line.starts_with("Status:") {
+            let state_str = line.strip_prefix("Status:").unwrap_or("").trim();
+            current_state = Some(TaskState::from_str(state_str));
+        }
+    }
+
+    // Don't forget the last task
+    if let (Some(name), Some(state)) = (current_name, current_state) {
+        tasks.push(TaskInfo { name, state });
+    }
+
+    log::debug!("Found {} tasks in folder '{}'", tasks.len(), path);
+    Ok(tasks)
+}
+
+/// Find tasks matching a regex pattern in a folder
+pub fn find_tasks_by_pattern(task_path: &str, pattern: &str) -> Result<Vec<TaskInfo>, Error> {
+    log::debug!(
+        "Finding tasks matching pattern '{}' in '{}'",
+        pattern,
+        task_path
+    );
+
+    let regex = Regex::new(pattern).map_err(|e| {
+        Error::CommandExecution(format!("Invalid regex pattern '{}': {}", pattern, e))
+    })?;
+
+    let all_tasks = list_tasks_in_folder(task_path)?;
+    let matching: Vec<TaskInfo> = all_tasks
+        .into_iter()
+        .filter(|t| regex.is_match(&t.name))
+        .collect();
+
+    log::debug!(
+        "Found {} tasks matching pattern '{}' in '{}'",
+        matching.len(),
+        pattern,
+        task_path
+    );
+
+    Ok(matching)
+}
+
+/// Apply action to multiple tasks found by pattern
+/// Returns (success_count, error_count, errors)
+pub fn apply_action_to_pattern(
+    task_path: &str,
+    pattern: &str,
+    action: SchedulerAction,
+    ignore_not_found: bool,
+) -> Result<(usize, usize, Vec<String>), Error> {
+    let tasks = find_tasks_by_pattern(task_path, pattern)?;
+
+    if tasks.is_empty() {
+        if ignore_not_found {
+            log::warn!(
+                "No tasks found matching pattern '{}' in '{}' (ignore_not_found=true)",
+                pattern,
+                task_path
+            );
+            return Ok((0, 0, Vec::new()));
+        } else {
+            return Err(Error::CommandExecution(format!(
+                "No tasks found matching pattern '{}' in '{}'",
+                pattern, task_path
+            )));
+        }
+    }
+
+    let mut success_count = 0;
+    let mut error_count = 0;
+    let mut errors = Vec::new();
+
+    for task in tasks {
+        log::info!(
+            "Applying {:?} to task '{}\\{}'",
+            action,
+            task_path,
+            task.name
+        );
+
+        match apply_scheduler_change(task_path, &task.name, action) {
+            Ok(()) => {
+                success_count += 1;
+            }
+            Err(e) => {
+                error_count += 1;
+                let err_msg = format!("{}\\{}: {}", task_path, task.name, e);
+                errors.push(err_msg);
+            }
+        }
+    }
+
+    Ok((success_count, error_count, errors))
 }
 
 #[cfg(test)]

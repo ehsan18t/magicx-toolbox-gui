@@ -47,12 +47,16 @@ export type SchedulerAction = "enable" | "disable" | "delete";
 export interface SchedulerChange {
   /** Task path in Task Scheduler (e.g., "\\Microsoft\\Windows\\Application Experience") */
   task_path: string;
-  /** Task name (e.g., "Microsoft Compatibility Appraiser") */
-  task_name: string;
-  /** Action to perform on the task */
+  /** Exact task name (e.g., "Microsoft Compatibility Appraiser"). Mutually exclusive with task_name_pattern. */
+  task_name?: string;
+  /** Regex pattern to match multiple task names (e.g., "USO|Reboot|Refresh"). Mutually exclusive with task_name. */
+  task_name_pattern?: string;
+  /** Action to perform on the task(s) */
   action: SchedulerAction;
   /** If true, skip this change for tweak status validation and ignore failures during apply */
   skip_validation?: boolean;
+  /** If true, don't error if task/path not found (useful for optional tasks) */
+  ignore_not_found?: boolean;
 }
 
 /** A single option within a tweak - contains all changes for that state */
