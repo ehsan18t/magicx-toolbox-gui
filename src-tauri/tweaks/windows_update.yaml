@@ -118,8 +118,11 @@ tweaks:
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
     options:
       - label: "Windows Update Disabled"
-        post_powershell:
-          - "$path='\\Microsoft\\Windows\\UpdateOrchestrator\\'; $fail=0; Get-ScheduledTask -TaskPath $path -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -match 'Schedule Scan|USO|MusNotification|Reboot|Refresh'} | ForEach-Object { try { Disable-ScheduledTask -InputObject $_ -ErrorAction Stop; if ((Get-ScheduledTask -InputObject $_).State -ne 'Disabled') { $fail=1 } } catch { $fail=1 } }; exit $fail"
+        schedule_changes:
+          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+            task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
+            action: disable
+            ignore_not_found: true # Not all tasks exist on every system
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
@@ -145,8 +148,11 @@ tweaks:
           - name: "UsoSvc"
             startup: disabled
       - label: "Windows Update Enabled"
-        post_powershell:
-          - "$path='\\Microsoft\\Windows\\UpdateOrchestrator\\'; $fail=0; Get-ScheduledTask -TaskPath $path -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -match 'Schedule Scan|USO|MusNotification|Reboot|Refresh'} | ForEach-Object { try { Enable-ScheduledTask -InputObject $_ -ErrorAction Stop; if ((Get-ScheduledTask -InputObject $_).State -ne 'Ready') { $fail=1 } } catch { $fail=1 } }; exit $fail"
+        schedule_changes:
+          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+            task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
+            action: enable
+            ignore_not_found: true # Not all tasks exist on every system
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
@@ -166,8 +172,10 @@ tweaks:
         service_changes:
           - name: "wuauserv"
             startup: manual
+            start_service: false
             skip_validation: true
           - name: "WaaSMedicSvc"
             startup: manual
+            start_service: false
           - name: "UsoSvc"
             startup: automatic
