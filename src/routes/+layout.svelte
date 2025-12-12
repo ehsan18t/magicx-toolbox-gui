@@ -1,6 +1,7 @@
 <script lang="ts">
   import "@/app.css";
   import AboutModal from "@/lib/components/AboutModal.svelte";
+  import ApplyingOverlay from "@/lib/components/ApplyingOverlay.svelte";
   import DebugPanel from "@/lib/components/DebugPanel.svelte";
   import SettingsModal from "@/lib/components/SettingsModal.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
@@ -50,3 +51,5 @@
 <AboutModal />
 <SettingsModal />
 <UpdateModal />
+
+<ApplyingOverlay />
