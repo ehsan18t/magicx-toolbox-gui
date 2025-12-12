@@ -5,6 +5,7 @@
   import DebugPanel from "@/lib/components/DebugPanel.svelte";
   import SettingsModal from "@/lib/components/SettingsModal.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
+  import TweakDetailsModal from "@/lib/components/TweakDetailsModal.svelte";
   import UpdateModal from "@/lib/components/UpdateModal.svelte";
   import { colorSchemeStore } from "@/lib/stores/colorScheme";
   import { settingsStore } from "@/lib/stores/settings";
@@ -51,5 +52,6 @@
 <AboutModal />
 <SettingsModal />
 <UpdateModal />
+<TweakDetailsModal />
 
 <ApplyingOverlay />

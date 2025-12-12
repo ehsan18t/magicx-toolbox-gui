@@ -1,13 +1,7 @@
 <script lang="ts">
-  import {
-    errorStore,
-    loadingStore,
-    pendingChangesStore,
-    stageChange,
-    systemStore,
-    unstageChange,
-  } from "$lib/stores/tweaks";
-  import type { RegistryChange, RiskLevel, TweakWithStatus } from "$lib/types";
+  import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal";
+  import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks";
+  import type { RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -20,7 +14,6 @@
   const isLoading = derived(loadingStore, ($loading) => $loading.has(tweak.definition.id));
   const tweakError = derived(errorStore, ($errors) => $errors.get(tweak.definition.id));
 
-  let showDetails = $state(false);
   let showConfirmDialog = $state(false);
 
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
@@ -39,34 +32,6 @@
 
   // Check if this is a toggle (2 options) or dropdown (3+ options)
   const isToggle = $derived(tweak.definition.is_toggle);
-
-  // Get all registry changes for the details display (from all options, filtered by Windows version)
-  const allRegistryChanges = $derived.by(() => {
-    const system = $systemStore;
-    if (!system) return [];
-    const version = system.windows.is_windows_11 ? 11 : 10;
-
-    // Collect registry changes from all options
-    const changes: RegistryChange[] = [];
-    for (const option of options) {
-      for (const change of option.registry_changes) {
-        if (!change.windows_versions || change.windows_versions.length === 0) {
-          changes.push(change);
-        } else if (change.windows_versions.includes(version)) {
-          changes.push(change);
-        }
-      }
-    }
-
-    // Deduplicate by hive+key+value_name using an object map
-    const seen: Record<string, boolean> = {};
-    return changes.filter((change) => {
-      const key = `${change.hive}\\${change.key}\\${change.value_name}`;
-      if (seen[key]) return false;
-      seen[key] = true;
-      return true;
-    });
-  });
 
   // Current option index from registry (actual applied state, null if no match = system default)
   const currentOptionIndex = $derived(tweak.status.current_option_index);
@@ -127,17 +92,6 @@
     } else {
       stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex });
     }
-  }
-
-  function formatRegistryPath(change: RegistryChange): string {
-    return `${change.hive}\\${change.key}`;
-  }
-
-  function formatValue(value: unknown): string {
-    if (value === null || value === undefined) return "(delete)";
-    if (typeof value === "number") return `0x${value.toString(16).toUpperCase()} (${value})`;
-    if (typeof value === "string") return value === "" ? '""' : `"${value}"`;
-    return JSON.stringify(value);
   }
 </script>
 
@@ -243,129 +197,68 @@
     {/if}
 
     <!-- Metadata Section -->
-    <div class="flex flex-wrap items-center gap-3 border-t border-border/30 pt-2">
-      <!-- Risk level -->
-      <div
-        class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
-        title={riskInfo.description}
-      >
-        <Icon
-          icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon}
-          width="16"
-          class="opacity-70 {riskConfig[tweak.definition.risk_level as RiskLevel].color}"
-        />
-        <span
-          class="text-xs font-semibold tracking-wide uppercase {riskConfig[tweak.definition.risk_level as RiskLevel]
-            .color}">{riskInfo.name}</span
-        >
-      </div>
-
-      <!-- Admin required -->
-      {#if tweak.definition.requires_admin}
+    <div class="flex items-center justify-between border-t border-border/30 pt-2">
+      <div class="flex items-center gap-3">
+        <!-- Risk level -->
         <div
           class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
-          title="Requires Administrator privileges to apply"
+          title={riskInfo.description}
         >
-          <Icon icon="mdi:shield-account-outline" width="16" class="opacity-70" />
-          <span class="text-xs font-semibold tracking-wide uppercase">Admin</span>
-        </div>
-      {/if}
-
-      <!-- SYSTEM elevation required -->
-      {#if tweak.definition.requires_system}
-        <div
-          class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground"
-          title="Requires SYSTEM elevation for protected registry keys and services"
-        >
-          <Icon icon="mdi:shield-lock" width="16" class="opacity-90" />
-          <span class="text-xs font-semibold tracking-wide uppercase">System</span>
-        </div>
-      {/if}
-
-      <!-- Reboot required -->
-      {#if tweak.definition.requires_reboot}
-        <div
-          class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
-          title="System restart required after applying or reverting"
-        >
-          <Icon icon="mdi:restart" width="16" class="opacity-70" />
-          <span class="text-xs font-semibold tracking-wide uppercase">Reboot</span>
-        </div>
-      {/if}
-    </div>
-
-    <!-- Details toggle -->
-    <button
-      class="mt-2.5 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted)/0.5)] hover:text-foreground"
-      onclick={() => (showDetails = !showDetails)}
-      aria-expanded={showDetails}
-    >
-      <span>{showDetails ? "Hide details" : "Show details"}</span>
-      <Icon icon={showDetails ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
-    </button>
-
-    <!-- Details section -->
-    {#if showDetails}
-      <div class="mt-3 border-t border-border/50 pt-3">
-        {#if tweak.definition.info}
-          <div
-            class="mb-3 flex gap-2 rounded-lg bg-[hsl(var(--muted)/0.3)] px-3 py-2.5 text-xs leading-relaxed text-foreground-muted"
+          <Icon
+            icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon}
+            width="16"
+            class="opacity-70 {riskConfig[tweak.definition.risk_level as RiskLevel].color}"
+          />
+          <span
+            class="text-xs font-semibold tracking-wide uppercase {riskConfig[tweak.definition.risk_level as RiskLevel]
+              .color}">{riskInfo.name}</span
           >
-            <Icon icon="mdi:information-outline" width="14" class="shrink-0" />
-            <p class="m-0 flex-1">{tweak.definition.info}</p>
+        </div>
+
+        <!-- Admin required -->
+        {#if tweak.definition.requires_admin}
+          <div
+            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
+            title="Requires Administrator privileges to apply"
+          >
+            <Icon icon="mdi:shield-account-outline" width="16" class="opacity-70" />
+            <span class="text-xs font-semibold tracking-wide uppercase">Admin</span>
           </div>
         {/if}
 
-        <div class="mt-2">
-          <h4
-            class="m-0 mb-2.5 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
+        <!-- SYSTEM elevation required -->
+        {#if tweak.definition.requires_system}
+          <div
+            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground"
+            title="Requires SYSTEM elevation for protected registry keys and services"
           >
-            <Icon icon="mdi:database-cog-outline" width="14" />
-            Registry Modifications
-            <span
-              class="ml-1 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-[hsl(var(--muted))] px-1.5 text-[10px] font-semibold text-foreground"
-              >{allRegistryChanges.length}</span
-            >
-          </h4>
-
-          <div class="flex flex-col gap-2">
-            {#each allRegistryChanges as change (change.hive + change.key + change.value_name)}
-              <div class="overflow-hidden rounded-lg border border-border/60 bg-background">
-                <div
-                  class="flex items-center gap-1.5 border-b border-border/40 bg-[hsl(var(--muted)/0.3)] px-2.5 py-2 text-foreground-muted"
-                >
-                  <Icon icon="mdi:key-variant" width="12" />
-                  <code class="bg-transparent p-0 font-mono text-[10px] break-all text-primary"
-                    >{formatRegistryPath(change)}</code
-                  >
-                </div>
-                <div class="px-2.5 py-2">
-                  <div class="mb-1.5 flex items-center gap-2">
-                    <span class="font-mono text-xs font-semibold text-foreground"
-                      >{change.value_name || "(Default)"}</span
-                    >
-                    <span
-                      class="rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 font-mono text-[9px] text-foreground-muted"
-                      >{change.value_type}</span
-                    >
-                  </div>
-                  <div class="flex flex-wrap gap-2">
-                    <div class="flex items-center gap-1.5 text-xs">
-                      <span class="rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent uppercase"
-                        >Value</span
-                      >
-                      <code class="bg-transparent p-0 font-mono text-[10px] text-foreground/80"
-                        >{formatValue(change.value)}</code
-                      >
-                    </div>
-                  </div>
-                </div>
-              </div>
-            {/each}
+            <Icon icon="mdi:shield-lock" width="16" class="opacity-90" />
+            <span class="text-xs font-semibold tracking-wide uppercase">System</span>
           </div>
-        </div>
+        {/if}
+
+        <!-- Reboot required -->
+        {#if tweak.definition.requires_reboot}
+          <div
+            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
+            title="System restart required after applying or reverting"
+          >
+            <Icon icon="mdi:restart" width="16" class="opacity-70" />
+            <span class="text-xs font-semibold tracking-wide uppercase">Reboot</span>
+          </div>
+        {/if}
       </div>
-    {/if}
+
+      <!-- Details (modal) -->
+      <button
+        class="inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted)/0.5)] hover:text-foreground"
+        onclick={() => openTweakDetailsModal(tweak.definition.id)}
+        aria-label="Open tweak details"
+      >
+        <span>Details</span>
+        <Icon icon="mdi:open-in-new" width="16" />
+      </button>
+    </div>
   </div>
 </article>
 
