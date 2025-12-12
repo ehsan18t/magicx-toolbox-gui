@@ -115,6 +115,149 @@ struct ServiceSnapshot {
 }
 ```
 
+## Tweak Format Examples
+
+### 1. Simple Binary Tweak
+A standard toggle that changes a registry value between two states.
+
+```yaml
+- id: disable_game_dvr
+  name: "Disable Game DVR"
+  description: "Disables Windows Game Recording and Broadcasting features."
+  risk_level: low
+  requires_admin: false
+  registry_changes:
+    - hive: HKCU
+      key: "System\\GameConfigStore"
+      value_name: "GameDVR_Enabled"
+      value_type: REG_DWORD
+      enable_value: 0
+      disable_value: 1
+```
+
+### 2. Multi-State Tweak (Dropdown)
+A tweak that offers multiple choices instead of a simple toggle.
+
+```yaml
+- id: icon_cache_size
+  name: "Icon Cache Size"
+  description: "Increase icon cache size to prevent icon corruption."
+  risk_level: low
+  registry_changes:
+    - hive: HKLM
+      key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+      value_name: "Max Cached Icons"
+      value_type: REG_SZ
+      options:
+        - label: "Standard (500KB)"
+          value: "500"
+          is_default: true
+        - label: "Medium (2MB)"
+          value: "2048"
+        - label: "Large (4MB)"
+          value: "4096"
+```
+
+### 3. Service Management Tweak
+A tweak that primarily manages Windows services.
+
+```yaml
+- id: disable_print_spooler
+  name: "Disable Print Spooler"
+  description: "Disables printing services. Useful if you don't use a printer."
+  risk_level: medium
+  requires_admin: true
+  service_changes:
+    - name: "Spooler"
+      enable_startup: disabled
+      disable_startup: automatic
+      stop_on_disable: true
+      start_on_enable: true
+  registry_changes: [] # Can be empty if only services are modified
+```
+
+### 4. Hybrid Tweak (Registry + Services)
+Combines registry changes with service management.
+
+```yaml
+- id: disable_diag_track
+  name: "Disable Telemetry"
+  description: "Disables Windows telemetry and data collection."
+  risk_level: medium
+  requires_admin: true
+  registry_changes:
+    - hive: HKLM
+      key: "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+      value_name: "AllowTelemetry"
+      value_type: REG_DWORD
+      enable_value: 0
+      disable_value: 1
+  service_changes:
+    - name: "DiagTrack"
+      enable_startup: disabled
+      disable_startup: automatic
+      stop_on_disable: true
+```
+
+### 5. Version-Specific Tweak
+Applies different changes based on Windows version.
+
+```yaml
+- id: taskbar_alignment
+  name: "Taskbar Alignment"
+  description: "Align taskbar icons to the left (Windows 11 only)."
+  risk_level: low
+  registry_changes:
+    - hive: HKCU
+      key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+      value_name: "TaskbarAl"
+      value_type: REG_DWORD
+      enable_value: 0
+      disable_value: 1
+      windows_versions: [11] # Only applies to Windows 11
+```
+
+### 6. System-Protected Tweak (TrustedInstaller)
+Requires `requires_system: true` to modify protected keys.
+
+```yaml
+- id: disable_defender
+  name: "Disable Windows Defender"
+  description: "Completely disables Windows Defender Antivirus."
+  risk_level: critical
+  requires_admin: true
+  requires_system: true # Uses TrustedInstaller impersonation
+  requires_reboot: true
+  registry_changes:
+    - hive: HKLM
+      key: "SOFTWARE\\Policies\\Microsoft\\Windows Defender"
+      value_name: "DisableAntiSpyware"
+      value_type: REG_DWORD
+      enable_value: 1
+      disable_value: 0
+```
+
+### 7. Command-Based Tweak
+Runs shell commands before or after applying changes.
+
+```yaml
+- id: remove_onedrive
+  name: "Remove OneDrive"
+  description: "Uninstalls OneDrive and removes integration."
+  risk_level: high
+  pre_commands:
+    - "taskkill /f /im OneDrive.exe"
+  post_commands:
+    - "%SystemRoot%\\SysWOW64\\OneDriveSetup.exe /uninstall"
+  registry_changes:
+    - hive: HKCU
+      key: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+      value_name: "OneDrive"
+      value_type: REG_SZ
+      enable_value: "" # Remove value
+      disable_value: "\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background"
+```
+
 ---
 
 ## Backend Services
