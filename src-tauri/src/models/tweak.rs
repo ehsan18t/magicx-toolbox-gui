@@ -303,6 +303,9 @@ pub struct TweakDefinitionRaw {
     pub requires_admin: bool,
     #[serde(default)]
     pub requires_system: bool,
+    /// If true, run as TrustedInstaller (for protected services like WaaSMedicSvc)
+    #[serde(default)]
+    pub requires_ti: bool,
     #[serde(default)]
     pub requires_reboot: bool,
     /// If true, display as toggle switch (must have exactly 2 options)
@@ -326,6 +329,9 @@ pub struct TweakDefinition {
     pub requires_admin: bool,
     #[serde(default)]
     pub requires_system: bool,
+    /// If true, run as TrustedInstaller (for protected services like WaaSMedicSvc)
+    #[serde(default)]
+    pub requires_ti: bool,
     #[serde(default)]
     pub requires_reboot: bool,
     /// If true, display as toggle switch (must have exactly 2 options)
@@ -350,6 +356,7 @@ impl TweakDefinition {
             risk_level: raw.risk_level,
             requires_admin: raw.requires_admin,
             requires_system: raw.requires_system,
+            requires_ti: raw.requires_ti,
             requires_reboot: raw.requires_reboot,
             is_toggle: raw.is_toggle,
             options: raw.options,
@@ -522,6 +529,7 @@ mod tests {
             risk_level: RiskLevel::Low,
             requires_admin: false,
             requires_system: false,
+            requires_ti: false,
             requires_reboot: false,
             is_toggle,
             options,

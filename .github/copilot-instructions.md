@@ -170,6 +170,7 @@ tweaks:
     risk_level: low # low | medium | high | critical
     requires_admin: true
     requires_system: false # Requires SYSTEM elevation for protected keys
+    requires_ti: false # Requires TrustedInstaller (for WaaSMedicSvc, etc.)
     requires_reboot: false
     is_toggle: true # true = 2 options (toggle switch), false = dropdown
     info: "Optional documentation"

@@ -74,6 +74,7 @@ tweaks:
     requires_admin: false
     requires_reboot: false
     requires_system: false
+    requires_ti: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -176,6 +177,7 @@ Each tweak defines a configurable Windows setting.
   risk_level: low|medium|high|critical  # Required: Impact level
   requires_admin: boolean       # Required: Needs admin privileges
   requires_system: boolean      # Required: Needs SYSTEM elevation
+  requires_ti: boolean          # Optional: Needs TrustedInstaller elevation
   requires_reboot: boolean      # Required: Needs restart to take effect
   is_toggle: boolean            # Required: true = switch UI, false = dropdown
   options: []                   # Required: Array of option definitions
@@ -191,7 +193,8 @@ Each tweak defines a configurable Windows setting.
 | `info`            | string  | ❌        | -       | Extended documentation shown in info popup.                         |
 | `risk_level`      | enum    | ✅        | -       | One of: `low`, `medium`, `high`, `critical`.                        |
 | `requires_admin`  | boolean | ✅        | `false` | Requires running as Administrator.                                  |
-| `requires_system` | boolean | ✅        | `false` | Requires SYSTEM elevation (TrustedInstaller).                       |
+| `requires_system` | boolean | ✅        | `false` | Requires SYSTEM elevation for protected resources.                  |
+| `requires_ti`     | boolean | ❌        | `false` | Requires TrustedInstaller elevation (for WaaSMedicSvc, etc.)        |
 | `requires_reboot` | boolean | ✅        | `false` | Changes require restart to fully apply.                             |
 | `is_toggle`       | boolean | ✅        | `false` | `true` = 2-option switch, `false` = dropdown.                       |
 | `options`         | array   | ✅        | -       | Array of available states for this tweak.                           |
@@ -211,14 +214,22 @@ Each tweak defines a configurable Windows setting.
 # No special privileges (HKCU changes only)
 requires_admin: false
 requires_system: false
+requires_ti: false
 
 # Administrator required (HKLM changes)
 requires_admin: true
 requires_system: false
+requires_ti: false
 
 # SYSTEM elevation required (protected registry keys/services)
 requires_admin: true
 requires_system: true
+requires_ti: false
+
+# TrustedInstaller required (heavily protected services like WaaSMedicSvc)
+requires_admin: true
+requires_system: true
+requires_ti: true
 ```
 
 **When is `requires_system: true` needed?**
@@ -226,6 +237,12 @@ requires_system: true
 - Protected scheduled tasks
 - Some Windows services that resist changes
 - Generally: If normal admin elevation fails, try SYSTEM elevation
+
+**When is `requires_ti: true` needed?**
+- Services owned by TrustedInstaller that cannot be modified even as SYSTEM
+- Primary example: **WaaSMedicSvc** (Windows Update Medic Service)
+- Any resource with an ACL that grants access only to TrustedInstaller
+- Generally: If SYSTEM elevation still fails with "Access Denied", use TrustedInstaller
 
 ---
 

@@ -114,6 +114,7 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     requires_system: false
+    requires_ti: true
     is_toggle: true
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
     options:

@@ -737,13 +737,15 @@ fn apply_all_changes_atomically(
     apply_registry_changes(app, tweak, option, windows_version)?;
 
     // Step 2: Apply service changes - fail-fast, return error for full rollback
-    if let Err(e) = apply_service_changes_atomic(option, tweak.requires_system) {
+    if let Err(e) = apply_service_changes_atomic(option, tweak.requires_system, tweak.requires_ti) {
         log::error!("Service changes failed, need full rollback: {}", e);
         return Err(e);
     }
 
     // Step 3: Apply scheduler changes - fail-fast, return error for full rollback
-    if let Err(e) = apply_scheduler_changes_atomic(app, option, tweak.requires_system) {
+    if let Err(e) =
+        apply_scheduler_changes_atomic(app, option, tweak.requires_system, tweak.requires_ti)
+    {
         log::error!("Scheduler changes failed, need full rollback: {}", e);
         return Err(e);
     }
@@ -752,11 +754,23 @@ fn apply_all_changes_atomically(
 }
 
 /// Apply all service changes for an option atomically (fail on first error for non-skip_validation items)
-fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Result<()> {
+fn apply_service_changes_atomic(
+    option: &TweakOption,
+    use_system: bool,
+    use_ti: bool,
+) -> Result<()> {
     for change in &option.service_changes {
+        let elevation = if use_ti {
+            " (TrustedInstaller)"
+        } else if use_system {
+            " (SYSTEM)"
+        } else {
+            ""
+        };
+
         log::info!(
             "Setting service{}{} '{}' startup to {:?}",
-            if use_system { " (SYSTEM)" } else { "" },
+            elevation,
             if change.skip_validation {
                 " (skip_validation)"
             } else {
@@ -766,10 +780,15 @@ fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Resul
             change.startup
         );
 
-        let result = if use_system {
-            let start_type = change.startup.to_sc_start_type();
+        let start_type = change.startup.to_sc_start_type();
+        let result = if use_ti {
+            // TrustedInstaller elevation for protected services like WaaSMedicSvc
+            trusted_installer::set_service_startup_as_ti(&change.name, start_type)
+        } else if use_system {
+            // SYSTEM elevation
             trusted_installer::set_service_startup_as_system(&change.name, start_type)
         } else {
+            // Normal admin elevation
             service_control::set_service_startup(&change.name, &change.startup)
         };
 
@@ -791,7 +810,9 @@ fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Resul
 
         // Stop service if setting to Disabled
         if change.startup == crate::models::ServiceStartupType::Disabled {
-            if use_system {
+            if use_ti {
+                let _ = trusted_installer::stop_service_as_ti(&change.name);
+            } else if use_system {
                 let _ = trusted_installer::stop_service_as_system(&change.name);
             } else {
                 let _ = service_control::stop_service(&change.name);
@@ -806,7 +827,11 @@ fn apply_scheduler_changes_atomic(
     app: &AppHandle,
     option: &TweakOption,
     use_system: bool,
+    use_ti: bool,
 ) -> Result<()> {
+    // Determine which elevation to use
+    let use_elevated = use_ti || use_system;
+
     for change in &option.scheduler_changes {
         // Determine if using pattern or exact name
         let is_pattern = change.task_name_pattern.is_some();
@@ -819,6 +844,14 @@ fn apply_scheduler_changes_atomic(
             return Err(Error::CommandExecution(
                 "Scheduler change requires either task_name or task_name_pattern".to_string(),
             ));
+        };
+
+        let elevation_str = if use_ti {
+            " (TrustedInstaller)"
+        } else if use_system {
+            " (SYSTEM)"
+        } else {
+            ""
         };
 
         let flags_str = {
@@ -841,7 +874,7 @@ fn apply_scheduler_changes_atomic(
 
         log::info!(
             "Applying scheduler change{}{}: {}\\{} → {:?}",
-            if use_system { " (SYSTEM)" } else { "" },
+            elevation_str,
             flags_str,
             change.task_path,
             identifier,
@@ -853,8 +886,8 @@ fn apply_scheduler_changes_atomic(
             let pattern = change.task_name_pattern.as_ref().unwrap();
 
             // For pattern matching, we need to find all matching tasks and apply action to each
-            if use_system {
-                // When using SYSTEM elevation, we need to list tasks first, then apply to each
+            if use_elevated {
+                // When using elevated elevation, we need to list tasks first, then apply to each
                 let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)?;
 
                 if tasks.is_empty() {
@@ -880,7 +913,7 @@ fn apply_scheduler_changes_atomic(
                     }
                 }
 
-                // Apply action to each matching task with SYSTEM elevation
+                // Apply action to each matching task with elevated elevation
                 for task in tasks {
                     let full_path = format!("{}\\{}", change.task_path, task.name);
                     let schtasks_args = match change.action {
@@ -895,9 +928,13 @@ fn apply_scheduler_changes_atomic(
                         }
                     };
 
-                    let result = trusted_installer::run_schtasks_as_system(&schtasks_args)
-                        .map(|_| ())
-                        .map_err(|e| Error::CommandExecution(e.to_string()));
+                    let result = if use_ti {
+                        trusted_installer::run_schtasks_as_ti(&schtasks_args)
+                    } else {
+                        trusted_installer::run_schtasks_as_system(&schtasks_args)
+                    }
+                    .map(|_| ())
+                    .map_err(|e| Error::CommandExecution(e.to_string()));
 
                     if let Err(e) = result {
                         if change.skip_validation {
@@ -970,8 +1007,8 @@ fn apply_scheduler_changes_atomic(
             let task_name = change.task_name.as_ref().unwrap();
             let full_path = format!("{}\\{}", change.task_path, task_name);
 
-            let result = if use_system {
-                // Use schtasks via trusted_installer for SYSTEM-level operations
+            let result = if use_elevated {
+                // Use schtasks via trusted_installer for elevated operations
                 let schtasks_args = match change.action {
                     SchedulerAction::Enable => {
                         format!("/Change /TN \"{}\" /Enable", full_path)
@@ -983,9 +1020,13 @@ fn apply_scheduler_changes_atomic(
                         format!("/Delete /TN \"{}\" /F", full_path)
                     }
                 };
-                trusted_installer::run_schtasks_as_system(&schtasks_args)
-                    .map(|_| ())
-                    .map_err(|e| Error::CommandExecution(e.to_string()))
+                if use_ti {
+                    trusted_installer::run_schtasks_as_ti(&schtasks_args)
+                } else {
+                    trusted_installer::run_schtasks_as_system(&schtasks_args)
+                }
+                .map(|_| ())
+                .map_err(|e| Error::CommandExecution(e.to_string()))
             } else {
                 // Use scheduler_service directly
                 scheduler_service::apply_scheduler_change(

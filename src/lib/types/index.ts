@@ -101,6 +101,8 @@ export interface TweakDefinition {
   requires_admin: boolean;
   /** Requires SYSTEM elevation for protected registry keys */
   requires_system: boolean;
+  /** Requires TrustedInstaller elevation for protected services (e.g., WaaSMedicSvc) */
+  requires_ti: boolean;
   /** Additional info/documentation */
   info?: string;
   /** True = render as toggle switch (exactly 2 options), False = render as dropdown */
