@@ -919,6 +919,26 @@ pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
     }
 }
 
+/// Start a Windows service as TrustedInstaller
+#[allow(dead_code)]
+pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
+    log::info!("Starting service '{}' as TrustedInstaller", service_name);
+
+    let command = format!("net start \"{}\"", service_name);
+    let exit_code = execute_command_as_trusted_installer(&command)?;
+
+    // net start returns 0 on success, 2 if already running
+    if exit_code == 0 || exit_code == 2 {
+        log::info!("Service started (or was already running) as TrustedInstaller");
+        Ok(())
+    } else {
+        Err(Error::ServiceControl(format!(
+            "net start failed with exit code: {}",
+            exit_code
+        )))
+    }
+}
+
 /// Run an arbitrary command as TrustedInstaller
 #[allow(dead_code)]
 pub fn run_command_as_ti(command: &str) -> Result<i32, Error> {

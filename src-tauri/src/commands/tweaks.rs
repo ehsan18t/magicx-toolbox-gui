@@ -760,6 +760,29 @@ fn apply_service_changes_atomic(
     use_ti: bool,
 ) -> Result<()> {
     for change in &option.service_changes {
+        // Check current startup/state so we can skip redundant work
+        let status = match service_control::get_service_status(&change.name) {
+            Ok(status) => Some(status),
+            Err(e) => {
+                log::warn!(
+                    "Could not query service '{}' status (continuing anyway): {}",
+                    change.name,
+                    e
+                );
+                None
+            }
+        };
+
+        let current_startup = status.as_ref().and_then(|s| s.startup_type);
+        let current_state = status.as_ref().map(|s| &s.state);
+
+        let desired_stop =
+            change.startup == crate::models::ServiceStartupType::Disabled || change.stop_service;
+        // Only start when explicitly requested and not also requesting a stop
+        let desired_start = change.start_service && !desired_stop;
+
+        let startup_matches = current_startup == Some(change.startup);
+
         let elevation = if use_ti {
             " (TrustedInstaller)"
         } else if use_system {
@@ -768,20 +791,32 @@ fn apply_service_changes_atomic(
             ""
         };
 
-        log::info!(
-            "Setting service{}{} '{}' startup to {:?}",
-            elevation,
-            if change.skip_validation {
-                " (skip_validation)"
-            } else {
-                ""
-            },
-            change.name,
-            change.startup
-        );
-
         let start_type = change.startup.to_sc_start_type();
-        let result = if use_ti {
+
+        // 1) Startup config (skip if already matching)
+        if startup_matches {
+            log::info!(
+                "Service '{}' already at startup '{:?}', skipping config",
+                change.name,
+                change.startup
+            );
+        } else {
+            log::info!(
+                "Setting service{}{} '{}' startup to {:?}",
+                elevation,
+                if change.skip_validation {
+                    " (skip_validation)"
+                } else {
+                    ""
+                },
+                change.name,
+                change.startup
+            );
+        }
+
+        let result = if startup_matches {
+            Ok(())
+        } else if use_ti {
             // TrustedInstaller elevation for protected services like WaaSMedicSvc
             trusted_installer::set_service_startup_as_ti(&change.name, start_type)
         } else if use_system {
@@ -808,8 +843,8 @@ fn apply_service_changes_atomic(
             )));
         }
 
-        // Stop service if setting to Disabled
-        if change.startup == crate::models::ServiceStartupType::Disabled {
+        // 2) Stop if desired (skip if already stopped)
+        if desired_stop && !matches!(current_state, Some(service_control::ServiceState::Stopped)) {
             if use_ti {
                 let _ = trusted_installer::stop_service_as_ti(&change.name);
             } else if use_system {
@@ -817,6 +852,30 @@ fn apply_service_changes_atomic(
             } else {
                 let _ = service_control::stop_service(&change.name);
             }
+        }
+
+        // 3) Start if explicitly requested (skip if already running)
+        if desired_start && !matches!(current_state, Some(service_control::ServiceState::Running)) {
+            if use_ti {
+                let _ = trusted_installer::start_service_as_ti(&change.name);
+            } else if use_system {
+                let _ = trusted_installer::start_service_as_system(&change.name);
+            } else {
+                let _ = service_control::start_service(&change.name);
+            }
+        }
+
+        // If we got here and everything was already aligned, say so once.
+        if startup_matches
+            && (!desired_stop
+                || matches!(current_state, Some(service_control::ServiceState::Stopped)))
+            && (!desired_start
+                || matches!(current_state, Some(service_control::ServiceState::Running)))
+        {
+            log::info!(
+                "Service '{}' already matches requested startup/state; skipping",
+                change.name
+            );
         }
     }
     Ok(())
