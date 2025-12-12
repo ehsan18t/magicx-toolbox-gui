@@ -1,4 +1,14 @@
+//! Tweak model definitions for the unified option-based tweak system.
+//!
+//! Every tweak has an array of options, each containing its own registry changes,
+//! service changes, and commands. `is_toggle: true` renders as a switch (2 options),
+//! otherwise as a dropdown.
+
 use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// ENUMS
+// ============================================================================
 
 /// Risk level for a tweak indicating potential impact
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -17,204 +27,64 @@ pub enum RiskLevel {
 impl RiskLevel {
     pub fn as_str(&self) -> &'static str {
         match self {
-            RiskLevel::Low => "Low",
-            RiskLevel::Medium => "Medium",
-            RiskLevel::High => "High",
-            RiskLevel::Critical => "Critical",
-        }
-    }
-}
-
-/// Category definition loaded from YAML file header
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CategoryDefinition {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub icon: String,
-    #[serde(default)]
-    pub order: i32,
-}
-
-/// Complete tweak file structure with category metadata and tweaks
-#[derive(Debug, Clone, Deserialize)]
-pub struct TweakFile {
-    pub category: CategoryDefinition,
-    pub tweaks: Vec<TweakDefinitionRaw>,
-}
-
-/// Raw tweak definition as loaded from YAML (without category field)
-#[derive(Debug, Clone, Deserialize)]
-pub struct TweakDefinitionRaw {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub risk_level: RiskLevel,
-    #[serde(default)]
-    pub requires_reboot: bool,
-    #[serde(default)]
-    pub requires_admin: bool,
-    /// Requires SYSTEM elevation for TrustedInstaller-protected keys
-    #[serde(default)]
-    pub requires_system: bool,
-    /// List of registry changes (with optional windows_versions filter on each)
-    pub registry_changes: Vec<RegistryChange>,
-    /// List of Windows service changes (start/stop, enable/disable)
-    #[serde(default)]
-    pub service_changes: Option<Vec<ServiceChange>>,
-    /// Additional info/documentation
-    #[serde(default)]
-    pub info: Option<String>,
-    /// Commands to run BEFORE registry changes (for UCPD disable, etc.)
-    #[serde(default)]
-    pub pre_commands: Option<Vec<String>>,
-    /// Commands to run AFTER registry changes are reverted
-    #[serde(default)]
-    pub post_commands: Option<Vec<String>>,
-}
-
-/// Windows version enum for version-specific tweaks
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum WindowsVersionTarget {
-    #[serde(rename = "10")]
-    Win10,
-    #[serde(rename = "11")]
-    Win11,
-}
-
-impl WindowsVersionTarget {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            WindowsVersionTarget::Win10 => "10",
-            WindowsVersionTarget::Win11 => "11",
+            RiskLevel::Low => "low",
+            RiskLevel::Medium => "medium",
+            RiskLevel::High => "high",
+            RiskLevel::Critical => "critical",
         }
     }
 }
 
 /// Registry hive types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum RegistryHive {
-    HKCU, // HKEY_CURRENT_USER
-    HKLM, // HKEY_LOCAL_MACHINE
+    #[serde(rename = "HKCU")]
+    Hkcu,
+    #[serde(rename = "HKLM")]
+    Hklm,
 }
 
 impl RegistryHive {
     pub fn as_str(&self) -> &'static str {
         match self {
-            RegistryHive::HKCU => "HKCU",
-            RegistryHive::HKLM => "HKLM",
+            RegistryHive::Hkcu => "HKCU",
+            RegistryHive::Hklm => "HKLM",
         }
     }
 }
 
 /// Registry value types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum RegistryValueType {
     #[serde(rename = "REG_DWORD")]
-    DWord,
+    Dword,
+    #[serde(rename = "REG_QWORD")]
+    Qword,
     #[serde(rename = "REG_SZ")]
     String,
     #[serde(rename = "REG_EXPAND_SZ")]
     ExpandString,
-    #[serde(rename = "REG_BINARY")]
-    Binary,
     #[serde(rename = "REG_MULTI_SZ")]
     MultiString,
-    #[serde(rename = "REG_QWORD")]
-    QWord,
+    #[serde(rename = "REG_BINARY")]
+    Binary,
 }
 
 impl RegistryValueType {
-    /// Get the registry type string (e.g., "REG_DWORD")
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::DWord => "REG_DWORD",
-            Self::String => "REG_SZ",
-            Self::ExpandString => "REG_EXPAND_SZ",
-            Self::Binary => "REG_BINARY",
-            Self::MultiString => "REG_MULTI_SZ",
-            Self::QWord => "REG_QWORD",
+            RegistryValueType::Dword => "REG_DWORD",
+            RegistryValueType::Qword => "REG_QWORD",
+            RegistryValueType::String => "REG_SZ",
+            RegistryValueType::ExpandString => "REG_EXPAND_SZ",
+            RegistryValueType::MultiString => "REG_MULTI_SZ",
+            RegistryValueType::Binary => "REG_BINARY",
         }
-    }
-}
-
-/// Service change for a specific option (simplified: just target state)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OptionServiceChange {
-    /// Service name (e.g., "SysMain", "DiagTrack")
-    pub name: String,
-    /// Target startup type when this option is selected
-    pub startup: ServiceStartupType,
-    /// Stop the service if startup is disabled
-    #[serde(default)]
-    pub stop_if_disabled: bool,
-}
-
-/// Option for multi-state tweaks (displayed as dropdown in UI)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TweakOption {
-    /// Display label for the option
-    pub label: String,
-    /// Registry value for this option
-    pub value: serde_json::Value,
-    /// Whether this is the default/original Windows value
-    #[serde(default)]
-    pub is_default: bool,
-    /// Service changes specific to this option
-    #[serde(default)]
-    pub service_changes: Option<Vec<OptionServiceChange>>,
-}
-
-/// Single registry change operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryChange {
-    pub hive: RegistryHive,
-    pub key: String,
-    pub value_name: String,
-    pub value_type: RegistryValueType,
-    /// Value when tweak is enabled (for binary tweaks)
-    pub enable_value: serde_json::Value,
-    /// Value when tweak is disabled (for binary tweaks)
-    #[serde(default)]
-    pub disable_value: Option<serde_json::Value>,
-    /// Optional Windows version filter. If None/empty, applies to all versions.
-    /// Examples: [10], [11], [10, 11]
-    #[serde(default)]
-    pub windows_versions: Option<Vec<u32>>,
-    /// Multi-state options (if present, displayed as dropdown instead of toggle)
-    /// When options are present, enable_value/disable_value are ignored
-    #[serde(default)]
-    pub options: Option<Vec<TweakOption>>,
-}
-
-impl RegistryChange {
-    /// Check if this registry change applies to a given Windows version
-    pub fn applies_to_version(&self, version: u32) -> bool {
-        match &self.windows_versions {
-            None => true, // No filter = applies to all
-            Some(versions) if versions.is_empty() => true,
-            Some(versions) => versions.contains(&version),
-        }
-    }
-
-    /// Check if this is a multi-state tweak (has options)
-    pub fn is_multi_state(&self) -> bool {
-        self.options.as_ref().is_some_and(|opts| opts.len() > 1)
-    }
-
-    /// Get the default option index (0 if not specified)
-    pub fn default_option_index(&self) -> Option<usize> {
-        self.options
-            .as_ref()
-            .and_then(|opts| opts.iter().position(|o| o.is_default).or(Some(0)))
     }
 }
 
 /// Windows service startup type
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ServiceStartupType {
     /// Service is disabled (cannot be started)
@@ -252,54 +122,160 @@ impl ServiceStartupType {
             _ => None,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ServiceStartupType::Disabled => "disabled",
+            ServiceStartupType::Manual => "manual",
+            ServiceStartupType::Automatic => "automatic",
+            ServiceStartupType::Boot => "boot",
+            ServiceStartupType::System => "system",
+        }
+    }
 }
 
-/// Single service change operation
+// ============================================================================
+// CORE STRUCTURES
+// ============================================================================
+
+/// Category definition from YAML header
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryDefinition {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    #[serde(default)]
+    pub order: i32,
+}
+
+/// Single registry modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryChange {
+    pub hive: RegistryHive,
+    pub key: String,
+    pub value_name: String,
+    pub value_type: RegistryValueType,
+    /// Target value for this registry entry
+    pub value: serde_json::Value,
+    /// Optional Windows version filter [10], [11], or [10, 11]
+    #[serde(default)]
+    pub windows_versions: Option<Vec<u32>>,
+}
+
+impl RegistryChange {
+    /// Check if this registry change applies to a given Windows version
+    pub fn applies_to_version(&self, version: u32) -> bool {
+        match &self.windows_versions {
+            None => true,
+            Some(versions) if versions.is_empty() => true,
+            Some(versions) => versions.contains(&version),
+        }
+    }
+}
+
+/// Single service modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceChange {
-    /// Service name (e.g., "wuauserv" for Windows Update)
+    /// Service name (e.g., "DiagTrack", "Spooler")
     pub name: String,
-    /// Startup type when tweak is enabled (applied)
-    pub enable_startup: ServiceStartupType,
-    /// Startup type when tweak is disabled (reverted)
-    pub disable_startup: ServiceStartupType,
-    /// Stop the service when applying the tweak
+    /// Target startup type
+    pub startup: ServiceStartupType,
+    /// Stop the service after changing startup type
     #[serde(default)]
-    pub stop_on_disable: bool,
-    /// Start the service when reverting the tweak
+    pub stop_service: bool,
+    /// Start the service after changing startup type
     #[serde(default)]
-    pub start_on_enable: bool,
+    pub start_service: bool,
 }
 
-/// A complete tweak definition loaded from YAML
+/// A single option within a tweak - contains all changes for that state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TweakOption {
+    /// Display label (e.g., "Enabled", "Disabled", "4MB")
+    pub label: String,
+    /// Registry modifications for this option
+    #[serde(default)]
+    pub registry_changes: Vec<RegistryChange>,
+    /// Service modifications for this option
+    #[serde(default)]
+    pub service_changes: Vec<ServiceChange>,
+    /// Shell commands to run BEFORE applying changes
+    #[serde(default)]
+    pub pre_commands: Vec<String>,
+    /// Shell commands to run AFTER applying changes
+    #[serde(default)]
+    pub post_commands: Vec<String>,
+}
+
+impl TweakOption {
+    /// Get registry changes filtered for a specific Windows version
+    pub fn get_registry_changes_for_version(&self, version: u32) -> Vec<&RegistryChange> {
+        self.registry_changes
+            .iter()
+            .filter(|change| change.applies_to_version(version))
+            .collect()
+    }
+
+    /// Check if this option has any effective changes for the given Windows version
+    pub fn has_changes_for_version(&self, version: u32) -> bool {
+        let has_registry = self
+            .registry_changes
+            .iter()
+            .any(|c| c.applies_to_version(version));
+        let has_services = !self.service_changes.is_empty();
+        let has_commands = !self.pre_commands.is_empty() || !self.post_commands.is_empty();
+        has_registry || has_services || has_commands
+    }
+}
+
+/// Raw tweak definition as loaded from YAML (before category assignment)
+#[derive(Debug, Clone, Deserialize)]
+pub struct TweakDefinitionRaw {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub info: Option<String>,
+    pub risk_level: RiskLevel,
+    #[serde(default)]
+    pub requires_admin: bool,
+    #[serde(default)]
+    pub requires_system: bool,
+    #[serde(default)]
+    pub requires_reboot: bool,
+    /// If true, display as toggle switch (must have exactly 2 options)
+    /// If false, display as dropdown
+    #[serde(default)]
+    pub is_toggle: bool,
+    /// Array of available states/options
+    pub options: Vec<TweakOption>,
+}
+
+/// Complete tweak definition with category assignment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakDefinition {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub category: String, // Now a dynamic string instead of enum
-    pub risk_level: RiskLevel,
-    #[serde(default)]
-    pub requires_reboot: bool,
-    #[serde(default)]
-    pub requires_admin: bool,
-    /// Requires SYSTEM elevation for TrustedInstaller-protected keys
-    #[serde(default)]
-    pub requires_system: bool,
-    /// List of registry changes (with optional windows_versions filter on each)
-    pub registry_changes: Vec<RegistryChange>,
-    /// List of Windows service changes (start/stop, enable/disable)
-    #[serde(default)]
-    pub service_changes: Option<Vec<ServiceChange>>,
-    /// Additional info/documentation
     #[serde(default)]
     pub info: Option<String>,
-    /// Commands to run BEFORE registry changes
+    pub risk_level: RiskLevel,
     #[serde(default)]
-    pub pre_commands: Option<Vec<String>>,
-    /// Commands to run AFTER registry changes are reverted
+    pub requires_admin: bool,
     #[serde(default)]
-    pub post_commands: Option<Vec<String>>,
+    pub requires_system: bool,
+    #[serde(default)]
+    pub requires_reboot: bool,
+    /// If true, display as toggle switch (must have exactly 2 options)
+    /// If false, display as dropdown
+    #[serde(default)]
+    pub is_toggle: bool,
+    /// Array of available states/options
+    pub options: Vec<TweakOption>,
+    /// Category this tweak belongs to
+    #[serde(default)]
+    pub category_id: String,
 }
 
 impl TweakDefinition {
@@ -309,53 +285,85 @@ impl TweakDefinition {
             id: raw.id,
             name: raw.name,
             description: raw.description,
-            category: category_id.to_string(),
+            info: raw.info,
             risk_level: raw.risk_level,
-            requires_reboot: raw.requires_reboot,
             requires_admin: raw.requires_admin,
             requires_system: raw.requires_system,
-            registry_changes: raw.registry_changes,
-            service_changes: raw.service_changes,
-            info: raw.info,
-            pre_commands: raw.pre_commands,
-            post_commands: raw.post_commands,
+            requires_reboot: raw.requires_reboot,
+            is_toggle: raw.is_toggle,
+            options: raw.options,
+            category_id: category_id.to_string(),
         }
     }
 
-    /// Get registry changes filtered for a specific Windows version
-    pub fn get_changes_for_version(&self, version: u32) -> Vec<&RegistryChange> {
-        self.registry_changes
-            .iter()
-            .filter(|change| change.applies_to_version(version))
-            .collect()
+    /// Validate tweak structure
+    pub fn validate(&self) -> Result<(), String> {
+        if self.options.is_empty() {
+            return Err(format!("Tweak '{}' must have at least 1 option", self.id));
+        }
+        if self.is_toggle && self.options.len() != 2 {
+            return Err(format!(
+                "Toggle tweak '{}' must have exactly 2 options, found {}",
+                self.id,
+                self.options.len()
+            ));
+        }
+        Ok(())
     }
 
-    /// Check if this tweak has any registry changes for a given Windows version
-    pub fn applies_to_version(&self, version: u32) -> bool {
-        self.registry_changes
-            .iter()
-            .any(|change| change.applies_to_version(version))
-    }
-
-    /// Get all Windows versions this tweak applies to.
-    /// Returns an empty Vec if the tweak applies to ALL Windows versions (no version filtering).
-    /// Returns specific versions if any registry change specifies windows_versions.
-    pub fn applicable_versions(&self) -> Vec<u32> {
-        let mut versions = std::collections::HashSet::new();
-        let mut has_specific_versions = false;
-
-        for change in &self.registry_changes {
-            if let Some(v) = &change.windows_versions {
-                if !v.is_empty() {
-                    has_specific_versions = true;
-                    versions.extend(v.iter());
+    /// Get all unique registry keys across all options (for state detection)
+    pub fn all_registry_keys(&self) -> Vec<(RegistryHive, String, String)> {
+        let mut keys = Vec::new();
+        for option in &self.options {
+            for change in &option.registry_changes {
+                let key = (change.hive, change.key.clone(), change.value_name.clone());
+                if !keys.contains(&key) {
+                    keys.push(key);
                 }
             }
-            // None or empty windows_versions = applies to all versions (no filtering)
+        }
+        keys
+    }
+
+    /// Get all unique service names across all options
+    pub fn all_service_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for option in &self.options {
+            for change in &option.service_changes {
+                if !names.contains(&change.name) {
+                    names.push(change.name.clone());
+                }
+            }
+        }
+        names
+    }
+
+    /// Check if this tweak applies to a given Windows version
+    /// (has at least one option with changes for that version)
+    pub fn applies_to_version(&self, version: u32) -> bool {
+        self.options
+            .iter()
+            .any(|opt| opt.has_changes_for_version(version))
+    }
+
+    /// Get all Windows versions this tweak applies to
+    /// Returns empty Vec if applies to all versions
+    pub fn applicable_versions(&self) -> Vec<u32> {
+        let mut versions = std::collections::HashSet::new();
+        let mut has_specific = false;
+
+        for option in &self.options {
+            for change in &option.registry_changes {
+                if let Some(v) = &change.windows_versions {
+                    if !v.is_empty() {
+                        has_specific = true;
+                        versions.extend(v.iter());
+                    }
+                }
+            }
         }
 
-        // If no specific versions were found, return empty Vec to indicate "all versions"
-        if !has_specific_versions {
+        if !has_specific {
             return Vec::new();
         }
 
@@ -365,16 +373,28 @@ impl TweakDefinition {
     }
 }
 
-/// Status of a tweak in the system
+/// YAML file structure with category and tweaks
+#[derive(Debug, Clone, Deserialize)]
+pub struct TweakFile {
+    pub category: CategoryDefinition,
+    pub tweaks: Vec<TweakDefinitionRaw>,
+}
+
+// ============================================================================
+// STATUS/RESULT TYPES
+// ============================================================================
+
+/// Current state of a tweak in the system
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TweakStatus {
+pub struct TweakState {
     pub tweak_id: String,
-    pub is_applied: bool,
-    pub last_applied: Option<String>, // ISO 8601 timestamp
-    pub has_backup: bool,
-    /// Current selected option index for multi-state tweaks (None for binary tweaks)
-    #[serde(default)]
+    /// Index of matching option, or None if no match (System Default)
     pub current_option_index: Option<usize>,
+    /// True if a snapshot exists (tweak was applied by this app)
+    pub has_snapshot: bool,
+    /// The option index from snapshot (if exists)
+    #[serde(default)]
+    pub snapshot_option_index: Option<usize>,
 }
 
 /// Result of applying or reverting a tweak
@@ -385,128 +405,151 @@ pub struct TweakResult {
     pub requires_reboot: bool,
 }
 
+/// Status of a specific tweak (returned to frontend)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TweakStatus {
+    pub tweak_id: String,
+    /// Whether the tweak has been applied by this app (has snapshot)
+    pub is_applied: bool,
+    /// When the tweak was last applied (if snapshot exists)
+    pub last_applied: Option<String>,
+    /// Whether a snapshot exists for reverting
+    pub has_backup: bool,
+    /// Index of current matching option, or None if System Default
+    pub current_option_index: Option<usize>,
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Helper to create a RegistryChange for testing
-    fn make_registry_change(windows_versions: Option<Vec<u32>>) -> RegistryChange {
+    fn make_registry_change(value: i32, windows_versions: Option<Vec<u32>>) -> RegistryChange {
         RegistryChange {
-            hive: RegistryHive::HKCU,
+            hive: RegistryHive::Hkcu,
             key: "SOFTWARE\\Test".to_string(),
             value_name: "Value".to_string(),
-            value_type: RegistryValueType::DWord,
-            enable_value: serde_json::json!(1),
-            disable_value: Some(serde_json::json!(0)),
+            value_type: RegistryValueType::Dword,
+            value: serde_json::json!(value),
             windows_versions,
-            options: None,
         }
     }
 
-    // Tests for RegistryChange::applies_to_version
-    #[test]
-    fn test_registry_change_applies_to_version_none() {
-        let change = make_registry_change(None);
-        assert!(change.applies_to_version(10));
-        assert!(change.applies_to_version(11));
-        assert!(change.applies_to_version(12)); // Future version
+    fn make_option(registry_changes: Vec<RegistryChange>) -> TweakOption {
+        TweakOption {
+            label: "Test".to_string(),
+            registry_changes,
+            service_changes: Vec::new(),
+            pre_commands: Vec::new(),
+            post_commands: Vec::new(),
+        }
     }
 
-    #[test]
-    fn test_registry_change_applies_to_version_empty() {
-        let change = make_registry_change(Some(vec![]));
-        assert!(change.applies_to_version(10));
-        assert!(change.applies_to_version(11));
-    }
-
-    #[test]
-    fn test_registry_change_applies_to_version_specific() {
-        let change = make_registry_change(Some(vec![11]));
-        assert!(!change.applies_to_version(10));
-        assert!(change.applies_to_version(11));
-    }
-
-    #[test]
-    fn test_registry_change_applies_to_version_multiple() {
-        let change = make_registry_change(Some(vec![10, 11]));
-        assert!(change.applies_to_version(10));
-        assert!(change.applies_to_version(11));
-        assert!(!change.applies_to_version(12));
-    }
-
-    // Helper to create TweakDefinition for testing
-    fn make_tweak_definition(changes: Vec<RegistryChange>) -> TweakDefinition {
+    fn make_tweak(is_toggle: bool, options: Vec<TweakOption>) -> TweakDefinition {
         TweakDefinition {
             id: "test_tweak".to_string(),
             name: "Test Tweak".to_string(),
             description: "A test tweak".to_string(),
-            category: "test".to_string(),
+            info: None,
             risk_level: RiskLevel::Low,
-            requires_reboot: false,
             requires_admin: false,
             requires_system: false,
-            registry_changes: changes,
-            service_changes: None,
-            info: None,
-            pre_commands: None,
-            post_commands: None,
+            requires_reboot: false,
+            is_toggle,
+            options,
+            category_id: "test".to_string(),
         }
     }
 
     #[test]
-    fn test_tweak_applies_to_version_universal() {
-        let tweak = make_tweak_definition(vec![make_registry_change(None)]);
-        assert!(tweak.applies_to_version(10));
-        assert!(tweak.applies_to_version(11));
+    fn test_registry_change_applies_to_version() {
+        let change = make_registry_change(1, None);
+        assert!(change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
+
+        let change = make_registry_change(1, Some(vec![11]));
+        assert!(!change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
+
+        let change = make_registry_change(1, Some(vec![10, 11]));
+        assert!(change.applies_to_version(10));
+        assert!(change.applies_to_version(11));
     }
 
     #[test]
-    fn test_tweak_applies_to_version_specific() {
-        let tweak = make_tweak_definition(vec![make_registry_change(Some(vec![11]))]);
-        assert!(!tweak.applies_to_version(10));
-        assert!(tweak.applies_to_version(11));
+    fn test_toggle_validation() {
+        let tweak = make_tweak(
+            true,
+            vec![
+                make_option(vec![make_registry_change(1, None)]),
+                make_option(vec![make_registry_change(0, None)]),
+            ],
+        );
+        assert!(tweak.validate().is_ok());
+
+        let tweak = make_tweak(true, vec![make_option(vec![make_registry_change(1, None)])]);
+        assert!(tweak.validate().is_err());
     }
 
     #[test]
-    fn test_applicable_versions_universal() {
-        let tweak = make_tweak_definition(vec![make_registry_change(None)]);
-        let versions = tweak.applicable_versions();
-        assert!(versions.is_empty()); // Empty = all versions
+    fn test_dropdown_validation() {
+        let tweak = make_tweak(
+            false,
+            vec![
+                make_option(vec![make_registry_change(1, None)]),
+                make_option(vec![make_registry_change(2, None)]),
+                make_option(vec![make_registry_change(3, None)]),
+            ],
+        );
+        assert!(tweak.validate().is_ok());
     }
 
     #[test]
-    fn test_applicable_versions_specific() {
-        let tweak = make_tweak_definition(vec![
-            make_registry_change(Some(vec![10])),
-            make_registry_change(Some(vec![11])),
-        ]);
-        let versions = tweak.applicable_versions();
-        assert_eq!(versions, vec![10, 11]);
+    fn test_all_registry_keys() {
+        let tweak = make_tweak(
+            false,
+            vec![
+                make_option(vec![
+                    make_registry_change(1, None),
+                    RegistryChange {
+                        hive: RegistryHive::Hklm,
+                        key: "SOFTWARE\\Other".to_string(),
+                        value_name: "Other".to_string(),
+                        value_type: RegistryValueType::Dword,
+                        value: serde_json::json!(1),
+                        windows_versions: None,
+                    },
+                ]),
+                make_option(vec![make_registry_change(2, None)]),
+            ],
+        );
+        let keys = tweak.all_registry_keys();
+        assert_eq!(keys.len(), 2);
     }
 
     #[test]
-    fn test_get_changes_for_version() {
-        let tweak = make_tweak_definition(vec![
-            make_registry_change(Some(vec![10])),
-            make_registry_change(Some(vec![11])),
-            make_registry_change(None), // universal
-        ]);
-        let win10_changes = tweak.get_changes_for_version(10);
-        assert_eq!(win10_changes.len(), 2); // specific + universal
+    fn test_applicable_versions() {
+        // Universal tweak
+        let tweak = make_tweak(
+            true,
+            vec![
+                make_option(vec![make_registry_change(1, None)]),
+                make_option(vec![make_registry_change(0, None)]),
+            ],
+        );
+        assert!(tweak.applicable_versions().is_empty());
 
-        let win11_changes = tweak.get_changes_for_version(11);
-        assert_eq!(win11_changes.len(), 2); // specific + universal
-    }
-
-    #[test]
-    fn test_applicable_versions_mixed() {
-        // Mix of universal and specific changes
-        let tweak = make_tweak_definition(vec![
-            make_registry_change(None),           // universal
-            make_registry_change(Some(vec![11])), // Win11 only
-        ]);
-        // Since there's a universal change, tweak applies to all versions
-        assert!(tweak.applies_to_version(10));
-        assert!(tweak.applies_to_version(11));
+        // Version-specific tweak
+        let tweak = make_tweak(
+            true,
+            vec![
+                make_option(vec![make_registry_change(1, Some(vec![11]))]),
+                make_option(vec![make_registry_change(0, Some(vec![11]))]),
+            ],
+        );
+        assert_eq!(tweak.applicable_versions(), vec![11]);
     }
 }

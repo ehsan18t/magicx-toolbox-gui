@@ -1,14 +1,17 @@
 //! Snapshot-Based Backup Service
 //!
-//! Simple, atomic backup system for registry tweaks.
+//! Unified option-based backup system for registry tweaks.
 //! Key features:
-//! - Capture complete state before applying any tweak
+//! - Capture complete state before applying any tweak option
 //! - Atomic rollback on failure
-//! - Simple snapshot-based restore
+//! - State detection by matching current state against all options
 
 use crate::error::Error;
-use crate::models::{RegistrySnapshot, ServiceSnapshot, TweakDefinition, TweakSnapshot};
-use crate::services::{registry_service, trusted_installer};
+use crate::models::{
+    RegistryHive, RegistrySnapshot, RegistryValueType, ServiceSnapshot, TweakDefinition,
+    TweakOption, TweakSnapshot, TweakState,
+};
+use crate::services::{registry_service, service_control, trusted_installer};
 use std::fs;
 use std::path::PathBuf;
 
@@ -47,54 +50,74 @@ fn get_snapshot_path(tweak_id: &str) -> Result<PathBuf, Error> {
 // Snapshot Operations
 // ============================================================================
 
-/// Capture complete state of all registry keys affected by a tweak
+/// Capture complete state before applying a tweak option
 pub fn capture_snapshot(
     tweak: &TweakDefinition,
+    option_index: usize,
     windows_version: u32,
 ) -> Result<TweakSnapshot, Error> {
-    log::info!("Capturing snapshot for tweak '{}'", tweak.name);
+    let option = tweak
+        .options
+        .get(option_index)
+        .ok_or_else(|| Error::BackupFailed(format!("Invalid option index: {}", option_index)))?;
+
+    log::info!(
+        "Capturing snapshot for tweak '{}' option '{}' (index {})",
+        tweak.name,
+        option.label,
+        option_index
+    );
 
     let mut snapshot = TweakSnapshot::new(
         &tweak.id,
         &tweak.name,
+        option_index,
+        &option.label,
         windows_version,
         tweak.requires_system,
     );
 
-    // Capture registry values
-    for change in &tweak.registry_changes {
-        let hive_str = change.hive.as_str();
-        let value_type_str = change.value_type.as_str();
+    // Capture registry values for this option
+    for change in &option.registry_changes {
+        // Skip if version doesn't apply
+        if !change.applies_to_version(windows_version) {
+            continue;
+        }
 
-        let (value, existed) =
-            read_registry_value(hive_str, &change.key, &change.value_name, value_type_str)?;
+        let (value, existed) = read_registry_value(
+            &change.hive,
+            &change.key,
+            &change.value_name,
+            &change.value_type,
+        )?;
 
         let reg_snapshot = RegistrySnapshot {
-            hive: hive_str.to_string(),
+            hive: change.hive.as_str().to_string(),
             key: change.key.clone(),
             value_name: change.value_name.clone(),
-            value_type: value_type_str.to_string(),
+            value_type: if existed {
+                Some(change.value_type.as_str().to_string())
+            } else {
+                None
+            },
             value,
             existed,
         };
 
-        snapshot.registry_snapshots.push(reg_snapshot);
+        snapshot.add_registry_snapshot(reg_snapshot);
         log::trace!(
-            "Captured: {}\\{}\\{} = {:?} (existed: {})",
-            hive_str,
+            "Captured: {}\\{}\\{} (existed: {})",
+            change.hive.as_str(),
             change.key,
             change.value_name,
-            snapshot.registry_snapshots.last().unwrap().value,
             existed
         );
     }
 
-    // Capture service states
-    if let Some(ref service_changes) = tweak.service_changes {
-        for sc in service_changes {
-            let service_snapshot = capture_service_state(&sc.name)?;
-            snapshot.service_snapshots.push(service_snapshot);
-        }
+    // Capture service states for this option
+    for sc in &option.service_changes {
+        let service_snapshot = capture_service_state(&sc.name)?;
+        snapshot.add_service_snapshot(service_snapshot);
     }
 
     log::info!(
@@ -109,8 +132,6 @@ pub fn capture_snapshot(
 
 /// Capture current service state
 fn capture_service_state(service_name: &str) -> Result<ServiceSnapshot, Error> {
-    use crate::services::service_control;
-
     let status = service_control::get_service_status(service_name)?;
     let startup_type = status
         .startup_type
@@ -126,30 +147,24 @@ fn capture_service_state(service_name: &str) -> Result<ServiceSnapshot, Error> {
 
 /// Read a registry value (returns value and whether it existed)
 fn read_registry_value(
-    hive: &str,
+    hive: &RegistryHive,
     key: &str,
     value_name: &str,
-    value_type: &str,
+    value_type: &RegistryValueType,
 ) -> Result<(Option<serde_json::Value>, bool), Error> {
-    let hive_enum = match hive {
-        "HKCU" => crate::models::RegistryHive::HKCU,
-        "HKLM" => crate::models::RegistryHive::HKLM,
-        _ => return Err(Error::BackupFailed(format!("Unknown hive: {}", hive))),
-    };
-
     let result = match value_type {
-        "REG_DWORD" => registry_service::read_dword(&hive_enum, key, value_name)
+        RegistryValueType::Dword => registry_service::read_dword(hive, key, value_name)
             .map(|v| v.map(|val| serde_json::json!(val))),
-        "REG_SZ" | "REG_EXPAND_SZ" => registry_service::read_string(&hive_enum, key, value_name)
+        RegistryValueType::String | RegistryValueType::ExpandString => {
+            registry_service::read_string(hive, key, value_name)
+                .map(|v| v.map(|val| serde_json::json!(val)))
+        }
+        RegistryValueType::Binary => registry_service::read_binary(hive, key, value_name)
             .map(|v| v.map(|val| serde_json::json!(val))),
-        "REG_BINARY" => registry_service::read_binary(&hive_enum, key, value_name)
+        RegistryValueType::Qword => registry_service::read_qword(hive, key, value_name)
             .map(|v| v.map(|val| serde_json::json!(val))),
-        "REG_QWORD" => registry_service::read_qword(&hive_enum, key, value_name)
+        RegistryValueType::MultiString => registry_service::read_string(hive, key, value_name)
             .map(|v| v.map(|val| serde_json::json!(val))),
-        _ => Err(Error::BackupFailed(format!(
-            "Unsupported value type: {}",
-            value_type
-        ))),
     };
 
     match result {
@@ -157,7 +172,13 @@ fn read_registry_value(
         Ok(None) => Ok((None, false)),
         Err(Error::RegistryKeyNotFound(_)) => Ok((None, false)),
         Err(e) => {
-            log::warn!("Failed to read {}\\{}\\{}: {}", hive, key, value_name, e);
+            log::warn!(
+                "Failed to read {}\\{}\\{}: {}",
+                hive.as_str(),
+                key,
+                value_name,
+                e
+            );
             Ok((None, false))
         }
     }
@@ -239,89 +260,92 @@ pub fn get_applied_tweaks() -> Result<Vec<String>, Error> {
 // Restore Operations
 // ============================================================================
 
-/// Restore all registry values from snapshot (atomic - all or nothing)
+/// Restore all registry/service values from snapshot (atomic - all or nothing)
 pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
     log::info!(
-        "Restoring from snapshot for tweak '{}'",
-        snapshot.tweak_name
+        "Restoring from snapshot for tweak '{}' (was option '{}')",
+        snapshot.tweak_name,
+        snapshot.applied_option_label
     );
 
-    // First, collect all write operations we need to do
-    let mut operations: Vec<RestoreOperation> = Vec::new();
+    // Restore registry values
+    let mut completed_registry: Vec<(RegistryRestoreOp, Option<serde_json::Value>, bool)> =
+        Vec::new();
 
     for reg in &snapshot.registry_snapshots {
-        let hive_enum = match reg.hive.as_str() {
-            "HKCU" => crate::models::RegistryHive::HKCU,
-            "HKLM" => crate::models::RegistryHive::HKLM,
-            _ => {
-                return Err(Error::BackupFailed(format!("Unknown hive: {}", reg.hive)));
-            }
-        };
+        let hive = parse_hive(&reg.hive)?;
 
-        operations.push(RestoreOperation {
-            hive: hive_enum,
+        // Capture current value for rollback
+        let value_type = reg
+            .value_type
+            .as_ref()
+            .map(|t| parse_value_type(t))
+            .transpose()?
+            .unwrap_or(RegistryValueType::Dword);
+
+        let (current_value, current_exists) =
+            read_registry_value(&hive, &reg.key, &reg.value_name, &value_type)?;
+
+        let op = RegistryRestoreOp {
+            hive,
             key: reg.key.clone(),
             value_name: reg.value_name.clone(),
             value_type: reg.value_type.clone(),
             value: reg.value.clone(),
             existed: reg.existed,
-        });
-    }
+        };
 
-    // Execute all operations, tracking what we've done for rollback
-    let mut completed: Vec<(RestoreOperation, Option<serde_json::Value>, bool)> = Vec::new();
-
-    for op in &operations {
-        // Capture current value for rollback
-        let (current_value, current_exists) =
-            read_registry_value(op.hive.as_str(), &op.key, &op.value_name, &op.value_type)?;
-
-        // Execute the restore (use SYSTEM elevation if configured)
-        match execute_restore_operation(op, snapshot.requires_system) {
+        match execute_registry_restore(&op, snapshot.requires_system) {
             Ok(()) => {
-                completed.push((op.clone(), current_value, current_exists));
+                completed_registry.push((op, current_value, current_exists));
             }
             Err(e) => {
                 log::error!(
                     "Restore failed for {}\\{}\\{}: {}",
-                    op.hive.as_str(),
-                    op.key,
-                    op.value_name,
+                    reg.hive,
+                    reg.key,
+                    reg.value_name,
                     e
                 );
-
-                // Rollback everything we've done
-                rollback_operations(&completed);
-
+                rollback_registry_operations(&completed_registry);
                 return Err(Error::BackupFailed(format!(
-                    "Failed to restore registry value, rolled back {} changes: {}",
-                    completed.len(),
+                    "Failed to restore, rolled back {} changes: {}",
+                    completed_registry.len(),
                     e
                 )));
             }
         }
     }
 
+    // Restore service states
+    for svc in &snapshot.service_snapshots {
+        if let Err(e) = restore_service_state(svc) {
+            log::warn!("Failed to restore service '{}': {}", svc.name, e);
+            // Continue with other services - service restore failures are non-fatal
+        }
+    }
+
     log::info!(
-        "Successfully restored {} registry values from snapshot",
-        completed.len()
+        "Successfully restored {} registry values and {} services",
+        completed_registry.len(),
+        snapshot.service_snapshots.len()
     );
 
     Ok(())
 }
 
 #[derive(Clone)]
-struct RestoreOperation {
-    hive: crate::models::RegistryHive,
+struct RegistryRestoreOp {
+    hive: RegistryHive,
     key: String,
     value_name: String,
-    value_type: String,
+    value_type: Option<String>,
     value: Option<serde_json::Value>,
     existed: bool,
 }
 
-/// Execute a single restore operation
-fn execute_restore_operation(op: &RestoreOperation, use_system: bool) -> Result<(), Error> {
+/// Execute a single registry restore operation
+fn execute_registry_restore(op: &RegistryRestoreOp, use_system: bool) -> Result<(), Error> {
     if !op.existed {
         // Value didn't exist - delete it
         log::debug!(
@@ -332,118 +356,144 @@ fn execute_restore_operation(op: &RestoreOperation, use_system: bool) -> Result<
         );
 
         if use_system {
-            // Use SYSTEM elevation for delete
-            match trusted_installer::delete_registry_value_as_system(
+            let _ = trusted_installer::delete_registry_value_as_system(
                 op.hive.as_str(),
                 &op.key,
                 &op.value_name,
-            ) {
-                Ok(()) => Ok(()),
-                Err(_) => Ok(()), // Ignore delete failures (key may already be gone)
-            }
+            );
         } else {
-            match registry_service::delete_value(&op.hive, &op.key, &op.value_name) {
-                Ok(()) => Ok(()),
-                Err(Error::RegistryKeyNotFound(_)) => Ok(()), // Already gone
-                Err(e) => Err(e),
-            }
+            let _ = registry_service::delete_value(&op.hive, &op.key, &op.value_name);
         }
-    } else if let Some(value) = &op.value {
+        Ok(())
+    } else if let (Some(value), Some(value_type)) = (&op.value, &op.value_type) {
         // Restore the original value
         log::debug!(
-            "Restoring {}\\{}\\{} = {:?} (use_system: {})",
+            "Restoring {}\\{}\\{} = {:?}",
             op.hive.as_str(),
             op.key,
             op.value_name,
-            value,
-            use_system
+            value
         );
 
         if use_system {
-            // Use SYSTEM elevation via reg.exe
-            let value_data = match op.value_type.as_str() {
-                "REG_DWORD" | "REG_QWORD" => value.as_u64().map(|v| v.to_string()),
-                "REG_SZ" | "REG_EXPAND_SZ" => value.as_str().map(|s| format!("\"{}\"", s)),
-                _ => {
-                    log::warn!("SYSTEM elevation not supported for {}", op.value_type);
-                    return Ok(());
-                }
-            };
-
-            if let Some(data) = value_data {
-                log::info!(
-                    "[SYSTEM] Restoring {}: {}\\{}\\{} = {}",
-                    op.value_type,
-                    op.hive.as_str(),
-                    op.key,
-                    op.value_name,
-                    data
-                );
-                trusted_installer::set_registry_value_as_system(
-                    op.hive.as_str(),
-                    &op.key,
-                    &op.value_name,
-                    &op.value_type,
-                    &data,
-                )?;
-            }
-            Ok(())
+            restore_registry_with_system(&op.hive, &op.key, &op.value_name, value_type, value)
         } else {
-            // Normal registry writes
-            match op.value_type.as_str() {
-                "REG_DWORD" => {
-                    if let Some(v) = value.as_u64() {
-                        registry_service::set_dword(&op.hive, &op.key, &op.value_name, v as u32)?;
-                    }
-                }
-                "REG_SZ" | "REG_EXPAND_SZ" => {
-                    if let Some(v) = value.as_str() {
-                        registry_service::set_string(&op.hive, &op.key, &op.value_name, v)?;
-                    }
-                }
-                "REG_BINARY" => {
-                    if let Some(arr) = value.as_array() {
-                        let binary: Vec<u8> = arr
-                            .iter()
-                            .filter_map(|v| v.as_u64().map(|u| u as u8))
-                            .collect();
-                        registry_service::set_binary(&op.hive, &op.key, &op.value_name, &binary)?;
-                    }
-                }
-                "REG_QWORD" => {
-                    if let Some(v) = value.as_u64() {
-                        registry_service::set_qword(&op.hive, &op.key, &op.value_name, v)?;
-                    }
-                }
-                _ => {
-                    return Err(Error::BackupFailed(format!(
-                        "Unsupported value type: {}",
-                        op.value_type
-                    )));
-                }
-            }
-            Ok(())
+            restore_registry_normal(&op.hive, &op.key, &op.value_name, value_type, value)
         }
     } else {
-        // Existed but was null? Shouldn't happen, but delete to be safe
         log::warn!(
-            "Value existed but was None: {}\\{}\\{}",
+            "Skipping restore for {}\\{}\\{}: existed but no value/type",
             op.hive.as_str(),
             op.key,
             op.value_name
         );
-        let _ = registry_service::delete_value(&op.hive, &op.key, &op.value_name);
         Ok(())
     }
 }
 
-/// Rollback completed operations on failure
-fn rollback_operations(completed: &[(RestoreOperation, Option<serde_json::Value>, bool)]) {
+fn restore_registry_normal(
+    hive: &RegistryHive,
+    key: &str,
+    value_name: &str,
+    value_type: &str,
+    value: &serde_json::Value,
+) -> Result<(), Error> {
+    match value_type {
+        "REG_DWORD" => {
+            if let Some(v) = value.as_u64() {
+                registry_service::set_dword(hive, key, value_name, v as u32)?;
+            }
+        }
+        "REG_SZ" | "REG_EXPAND_SZ" => {
+            if let Some(v) = value.as_str() {
+                registry_service::set_string(hive, key, value_name, v)?;
+            }
+        }
+        "REG_BINARY" => {
+            if let Some(arr) = value.as_array() {
+                let binary: Vec<u8> = arr
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|u| u as u8))
+                    .collect();
+                registry_service::set_binary(hive, key, value_name, &binary)?;
+            }
+        }
+        "REG_QWORD" => {
+            if let Some(v) = value.as_u64() {
+                registry_service::set_qword(hive, key, value_name, v)?;
+            }
+        }
+        _ => {
+            return Err(Error::BackupFailed(format!(
+                "Unsupported value type: {}",
+                value_type
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn restore_registry_with_system(
+    hive: &RegistryHive,
+    key: &str,
+    value_name: &str,
+    value_type: &str,
+    value: &serde_json::Value,
+) -> Result<(), Error> {
+    let value_data = match value_type {
+        "REG_DWORD" | "REG_QWORD" => value.as_u64().map(|v| v.to_string()),
+        "REG_SZ" | "REG_EXPAND_SZ" => value.as_str().map(|s| format!("\"{}\"", s)),
+        _ => {
+            log::warn!("SYSTEM elevation not supported for {}", value_type);
+            return Ok(());
+        }
+    };
+
+    if let Some(data) = value_data {
+        trusted_installer::set_registry_value_as_system(
+            hive.as_str(),
+            key,
+            value_name,
+            value_type,
+            &data,
+        )?;
+    }
+    Ok(())
+}
+
+fn restore_service_state(snapshot: &ServiceSnapshot) -> Result<(), Error> {
+    let startup = match snapshot.startup_type.as_str() {
+        "disabled" => crate::models::ServiceStartupType::Disabled,
+        "manual" => crate::models::ServiceStartupType::Manual,
+        "automatic" => crate::models::ServiceStartupType::Automatic,
+        "boot" => crate::models::ServiceStartupType::Boot,
+        "system" => crate::models::ServiceStartupType::System,
+        _ => {
+            log::warn!("Unknown startup type: {}", snapshot.startup_type);
+            return Ok(());
+        }
+    };
+
+    service_control::set_service_startup(&snapshot.name, &startup)?;
+
+    if snapshot.was_running {
+        let _ = service_control::start_service(&snapshot.name);
+    } else {
+        let _ = service_control::stop_service(&snapshot.name);
+    }
+
+    Ok(())
+}
+
+/// Rollback completed registry operations on failure
+fn rollback_registry_operations(
+    completed: &[(RegistryRestoreOp, Option<serde_json::Value>, bool)],
+) {
     log::warn!("Rolling back {} registry operations", completed.len());
 
     for (op, original_value, original_existed) in completed.iter().rev() {
-        let rollback_op = RestoreOperation {
-            hive: op.hive.clone(),
+        let rollback_op = RegistryRestoreOp {
+            hive: op.hive,
             key: op.key.clone(),
             value_name: op.value_name.clone(),
             value_type: op.value_type.clone(),
@@ -451,8 +501,7 @@ fn rollback_operations(completed: &[(RestoreOperation, Option<serde_json::Value>
             existed: *original_existed,
         };
 
-        // Rollback uses normal registry writes (if SYSTEM was needed, we probably can't rollback anyway)
-        if let Err(e) = execute_restore_operation(&rollback_op, false) {
+        if let Err(e) = execute_registry_restore(&rollback_op, false) {
             log::error!(
                 "Failed to rollback {}\\{}\\{}: {}",
                 op.hive.as_str(),
@@ -468,54 +517,95 @@ fn rollback_operations(completed: &[(RestoreOperation, Option<serde_json::Value>
 // State Detection
 // ============================================================================
 
-/// Detect current state of a tweak by reading registry values
-/// Returns: (is_applied, current_option_index)
-pub fn detect_tweak_state(tweak: &TweakDefinition) -> Result<(bool, Option<usize>), Error> {
-    if tweak.registry_changes.is_empty() {
-        return Ok((false, None));
+/// Detect current state of a tweak by comparing against all options
+/// Returns TweakState with current_option_index = None if no option matches
+pub fn detect_tweak_state(
+    tweak: &TweakDefinition,
+    windows_version: u32,
+) -> Result<TweakState, Error> {
+    let has_snapshot = snapshot_exists(&tweak.id)?;
+    let snapshot_option_index = if has_snapshot {
+        load_snapshot(&tweak.id)?.map(|s| s.applied_option_index)
+    } else {
+        None
+    };
+
+    // Try to match current state against each option
+    for (index, option) in tweak.options.iter().enumerate() {
+        if option_matches_current_state(option, windows_version)? {
+            return Ok(TweakState {
+                tweak_id: tweak.id.clone(),
+                current_option_index: Some(index),
+                has_snapshot,
+                snapshot_option_index,
+            });
+        }
     }
 
-    let mut all_match_enabled = true;
-    let mut detected_option: Option<usize> = None;
+    // No option matches - system is in custom/default state
+    Ok(TweakState {
+        tweak_id: tweak.id.clone(),
+        current_option_index: None,
+        has_snapshot,
+        snapshot_option_index,
+    })
+}
 
-    // Read all current values and compare
-    for change in &tweak.registry_changes {
-        let (current_value, _existed) = read_registry_value(
-            change.hive.as_str(),
+/// Check if all registry/service changes in an option match current state
+fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> Result<bool, Error> {
+    // If option has no changes, it can't match
+    if option.registry_changes.is_empty() && option.service_changes.is_empty() {
+        return Ok(false);
+    }
+
+    // Check all registry values
+    for change in &option.registry_changes {
+        if !change.applies_to_version(windows_version) {
+            continue;
+        }
+
+        let (current_value, existed) = read_registry_value(
+            &change.hive,
             &change.key,
             &change.value_name,
-            change.value_type.as_str(),
+            &change.value_type,
         )?;
 
-        // Check if matches enable_value
-        if !values_match(&current_value, &Some(change.enable_value.clone())) {
-            all_match_enabled = false;
+        if !existed {
+            return Ok(false);
         }
 
-        // Check multi-state options
-        if let Some(ref options) = change.options {
-            for (idx, opt) in options.iter().enumerate() {
-                if values_match(&current_value, &Some(opt.value.clone())) {
-                    detected_option = Some(idx);
-                    break;
-                }
-            }
+        if !values_match(&current_value, &Some(change.value.clone())) {
+            return Ok(false);
         }
     }
 
-    Ok((all_match_enabled, detected_option))
+    // Check all service states
+    for change in &option.service_changes {
+        let status = service_control::get_service_status(&change.name)?;
+        let current_startup = status.startup_type;
+
+        if current_startup != Some(change.startup) {
+            return Ok(false);
+        }
+    }
+
+    // All checks passed
+    Ok(true)
 }
 
 /// Compare two JSON values for equality (handles numeric type variations)
 fn values_match(a: &Option<serde_json::Value>, b: &Option<serde_json::Value>) -> bool {
     match (a, b) {
         (Some(va), Some(vb)) => {
-            // Direct equality works for most cases
             if va == vb {
                 return true;
             }
-            // Fallback: numeric comparison (i64/u64 may differ in JSON)
+            // Numeric comparison fallback
             if let (Some(na), Some(nb)) = (va.as_i64(), vb.as_i64()) {
+                return na == nb;
+            }
+            if let (Some(na), Some(nb)) = (va.as_u64(), vb.as_u64()) {
                 return na == nb;
             }
             false
@@ -526,7 +616,34 @@ fn values_match(a: &Option<serde_json::Value>, b: &Option<serde_json::Value>) ->
 }
 
 // ============================================================================
-// Migration
+// Helper Parsers
+// ============================================================================
+
+fn parse_hive(hive: &str) -> Result<RegistryHive, Error> {
+    match hive {
+        "HKCU" => Ok(RegistryHive::Hkcu),
+        "HKLM" => Ok(RegistryHive::Hklm),
+        _ => Err(Error::BackupFailed(format!("Unknown hive: {}", hive))),
+    }
+}
+
+fn parse_value_type(value_type: &str) -> Result<RegistryValueType, Error> {
+    match value_type {
+        "REG_DWORD" => Ok(RegistryValueType::Dword),
+        "REG_QWORD" => Ok(RegistryValueType::Qword),
+        "REG_SZ" => Ok(RegistryValueType::String),
+        "REG_EXPAND_SZ" => Ok(RegistryValueType::ExpandString),
+        "REG_MULTI_SZ" => Ok(RegistryValueType::MultiString),
+        "REG_BINARY" => Ok(RegistryValueType::Binary),
+        _ => Err(Error::BackupFailed(format!(
+            "Unknown value type: {}",
+            value_type
+        ))),
+    }
+}
+
+// ============================================================================
+// Migration & Validation
 // ============================================================================
 
 /// Clean up old backup files (one-time migration)
@@ -541,72 +658,20 @@ pub fn cleanup_old_backups() -> Result<(), Error> {
 
     if old_backups_dir.exists() {
         log::info!("Cleaning up old backup files from {:?}", old_backups_dir);
-
-        // Remove all files in old backups directory
         if let Ok(entries) = fs::read_dir(&old_backups_dir) {
             for entry in entries.flatten() {
                 let _ = fs::remove_file(entry.path());
             }
         }
-
-        // Try to remove the directory itself
         let _ = fs::remove_dir(&old_backups_dir);
-
         log::info!("Old backup cleanup complete");
     }
 
     Ok(())
 }
 
-// ============================================================================
-// Snapshot Validation
-// ============================================================================
-
-/// Validate a single snapshot against current registry state
-/// Returns true if snapshot is still valid (current state differs from snapshot state)
-/// Returns false if snapshot is stale (current state matches snapshot state)
-pub fn validate_snapshot(snapshot: &TweakSnapshot) -> Result<bool, Error> {
-    log::debug!("Validating snapshot for tweak '{}'", snapshot.tweak_name);
-
-    // Check each registry value in the snapshot
-    for reg in &snapshot.registry_snapshots {
-        let (current_value, current_exists) =
-            read_registry_value(&reg.hive, &reg.key, &reg.value_name, &reg.value_type)?;
-
-        // If current state matches snapshot state, tweak was externally reverted
-        let snapshot_matches_current = if !reg.existed && !current_exists {
-            // Both don't exist - matches
-            true
-        } else if reg.existed && current_exists {
-            // Both exist - compare values
-            values_match(&reg.value, &current_value)
-        } else {
-            // One exists, one doesn't - doesn't match
-            false
-        };
-
-        if !snapshot_matches_current {
-            // Current state differs from snapshot - snapshot is valid
-            log::trace!(
-                "Snapshot valid: {}\\{}\\{} differs from snapshot",
-                reg.hive,
-                reg.key,
-                reg.value_name
-            );
-            return Ok(true);
-        }
-    }
-
-    // All values match snapshot - tweak was reverted externally, snapshot is stale
-    log::info!(
-        "Snapshot stale for '{}': current state matches snapshot state",
-        snapshot.tweak_name
-    );
-    Ok(false)
-}
-
 /// Validate all snapshots on app startup
-/// Removes stale snapshots where current registry state matches the snapshot state
+/// Removes stale snapshots where tweak was externally reverted
 pub fn validate_all_snapshots() -> Result<u32, Error> {
     log::info!("Validating all snapshots on startup");
 
@@ -615,9 +680,11 @@ pub fn validate_all_snapshots() -> Result<u32, Error> {
 
     for tweak_id in applied_tweaks {
         if let Some(snapshot) = load_snapshot(&tweak_id)? {
-            let is_valid = validate_snapshot(&snapshot)?;
+            // A snapshot is stale if current state matches the original snapshot state
+            // (meaning the tweak was externally reverted)
+            let is_stale = snapshot_matches_current_state(&snapshot)?;
 
-            if !is_valid {
+            if is_stale {
                 log::info!(
                     "Removing stale snapshot for '{}' - tweak was externally reverted",
                     snapshot.tweak_name
@@ -630,9 +697,40 @@ pub fn validate_all_snapshots() -> Result<u32, Error> {
 
     if removed_count > 0 {
         log::info!("Removed {} stale snapshots", removed_count);
-    } else {
-        log::debug!("All snapshots are valid");
     }
 
     Ok(removed_count)
+}
+
+/// Check if current registry state matches the snapshot state
+/// (indicating tweak was externally reverted)
+fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Error> {
+    for reg in &snapshot.registry_snapshots {
+        let hive = parse_hive(&reg.hive)?;
+        let value_type = reg
+            .value_type
+            .as_ref()
+            .map(|t| parse_value_type(t))
+            .transpose()?
+            .unwrap_or(RegistryValueType::Dword);
+
+        let (current_value, current_exists) =
+            read_registry_value(&hive, &reg.key, &reg.value_name, &value_type)?;
+
+        // Check if current state matches snapshot state
+        let matches = if !reg.existed && !current_exists {
+            true
+        } else if reg.existed && current_exists {
+            values_match(&reg.value, &current_value)
+        } else {
+            false
+        };
+
+        if !matches {
+            return Ok(false);
+        }
+    }
+
+    // All values match snapshot - tweak was reverted
+    Ok(true)
 }

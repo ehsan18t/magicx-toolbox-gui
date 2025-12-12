@@ -1,13 +1,7 @@
 // Svelte store for tweak state management
 import { derived, get, writable, type Readable } from "svelte/store";
 import * as api from "../api/tweaks";
-import type {
-  CategoryDefinition,
-  PendingChange,
-  SystemInfo,
-  TweakStatus,
-  TweakWithStatus,
-} from "../types";
+import type { CategoryDefinition, PendingChange, SystemInfo, TweakStatus, TweakWithStatus } from "../types";
 
 // System info store
 function createSystemStore() {
@@ -70,9 +64,7 @@ function createTweaksStore() {
     },
     updateStatus(tweakId: string, status: Partial<TweakStatus>) {
       update((tweaks) =>
-        tweaks.map((t) =>
-          t.definition.id === tweakId ? { ...t, status: { ...t.status, ...status } } : t,
-        ),
+        tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: { ...t.status, ...status } } : t)),
       );
     },
     reset() {
@@ -184,7 +176,7 @@ function createPendingChangesStore() {
     clearCategory(categoryId: string, tweaks: TweakWithStatus[]) {
       // Clear pending changes only for tweaks in the specified category
       const categoryTweakIds = new Set(
-        tweaks.filter((t) => t.definition.category === categoryId).map((t) => t.definition.id),
+        tweaks.filter((t) => t.definition.category_id === categoryId).map((t) => t.definition.id),
       );
       update((map) => {
         const newMap = new Map(map);
@@ -225,52 +217,46 @@ export const categoriesMap = derived(categoriesStore, ($categories) => {
 });
 
 // Derived stores
-export const tweaksByCategory = derived(
-  [tweaksStore, categoriesStore],
-  ([$tweaks, $categories]) => {
-    const byCategory: Record<string, TweakWithStatus[]> = {};
+export const tweaksByCategory = derived([tweaksStore, categoriesStore], ([$tweaks, $categories]) => {
+  const byCategory: Record<string, TweakWithStatus[]> = {};
 
-    // Initialize with all categories
-    for (const cat of $categories) {
-      byCategory[cat.id] = [];
+  // Initialize with all categories
+  for (const cat of $categories) {
+    byCategory[cat.id] = [];
+  }
+
+  // Populate tweaks
+  for (const tweak of $tweaks) {
+    const categoryId = tweak.definition.category_id;
+    if (byCategory[categoryId]) {
+      byCategory[categoryId].push(tweak);
     }
+  }
 
-    // Populate tweaks
-    for (const tweak of $tweaks) {
-      const categoryId = tweak.definition.category;
-      if (byCategory[categoryId]) {
-        byCategory[categoryId].push(tweak);
-      }
-    }
+  return byCategory;
+});
 
-    return byCategory;
-  },
-);
+export const filteredTweaks = derived([tweaksStore, selectedCategory, searchQuery], ([$tweaks, $category, $query]) => {
+  let filtered = $tweaks;
 
-export const filteredTweaks = derived(
-  [tweaksStore, selectedCategory, searchQuery],
-  ([$tweaks, $category, $query]) => {
-    let filtered = $tweaks;
+  // Filter by category
+  if ($category !== "all") {
+    filtered = filtered.filter((t) => t.definition.category_id === $category);
+  }
 
-    // Filter by category
-    if ($category !== "all") {
-      filtered = filtered.filter((t) => t.definition.category === $category);
-    }
+  // Filter by search query
+  if ($query.trim()) {
+    const q = $query.toLowerCase();
+    filtered = filtered.filter(
+      (t) =>
+        t.definition.name.toLowerCase().includes(q) ||
+        t.definition.description.toLowerCase().includes(q) ||
+        t.definition.id.toLowerCase().includes(q),
+    );
+  }
 
-    // Filter by search query
-    if ($query.trim()) {
-      const q = $query.toLowerCase();
-      filtered = filtered.filter(
-        (t) =>
-          t.definition.name.toLowerCase().includes(q) ||
-          t.definition.description.toLowerCase().includes(q) ||
-          t.definition.id.toLowerCase().includes(q),
-      );
-    }
-
-    return filtered;
-  },
-);
+  return filtered;
+});
 
 export const tweakStats = derived(tweaksStore, ($tweaks) => {
   const total = $tweaks.length;
@@ -280,46 +266,48 @@ export const tweakStats = derived(tweaksStore, ($tweaks) => {
   return { total, applied, pending };
 });
 
-export const categoryStats = derived(
-  [tweaksByCategory, categoriesStore],
-  ([$byCategory, $categories]) => {
-    const stats: Record<string, { total: number; applied: number }> = {};
+export const categoryStats = derived([tweaksByCategory, categoriesStore], ([$byCategory, $categories]) => {
+  const stats: Record<string, { total: number; applied: number }> = {};
 
-    for (const cat of $categories) {
-      const tweaks = $byCategory[cat.id] || [];
-      stats[cat.id] = {
-        total: tweaks.length,
-        applied: tweaks.filter((t) => t.status.is_applied).length,
-      };
-    }
+  for (const cat of $categories) {
+    const tweaks = $byCategory[cat.id] || [];
+    stats[cat.id] = {
+      total: tweaks.length,
+      applied: tweaks.filter((t) => t.status.is_applied).length,
+    };
+  }
 
-    return stats;
-  },
-);
+  return stats;
+});
 
 // Pending reboot derived stores
 export const pendingRebootCount = derived(pendingRebootStore, ($pending) => $pending.size);
 
-export const pendingRebootTweaks = derived(
-  [tweaksStore, pendingRebootStore],
-  ([$tweaks, $pending]) => {
-    return $tweaks.filter((t) => $pending.has(t.definition.id));
-  },
-);
+export const pendingRebootTweaks = derived([tweaksStore, pendingRebootStore], ([$tweaks, $pending]) => {
+  return $tweaks.filter((t) => $pending.has(t.definition.id));
+});
 
 // Actions
-export async function applyTweak(tweakId: string): Promise<boolean> {
+export async function applyTweak(
+  tweakId: string,
+  optionIndex: number,
+  requiresReboot: boolean = false,
+): Promise<boolean> {
   loadingStore.startLoading(tweakId);
   errorStore.clearError(tweakId);
 
   try {
-    const result = await api.applyTweak(tweakId);
+    const result = await api.applyTweak(tweakId, optionIndex);
 
     if (result.success) {
-      tweaksStore.updateStatus(tweakId, { is_applied: true, has_backup: true });
+      tweaksStore.updateStatus(tweakId, {
+        is_applied: true,
+        has_backup: true,
+        current_option_index: optionIndex,
+      });
 
       // Track if this tweak requires reboot
-      if (result.requires_reboot) {
+      if (result.requires_reboot || requiresReboot) {
         pendingRebootStore.addTweak(tweakId);
       }
 
@@ -369,47 +357,16 @@ export async function revertTweak(tweakId: string): Promise<boolean> {
   }
 }
 
-export async function toggleTweak(tweakId: string, currentlyApplied: boolean): Promise<boolean> {
+export async function toggleTweak(
+  tweakId: string,
+  currentlyApplied: boolean,
+  tweak: TweakWithStatus,
+): Promise<boolean> {
   if (currentlyApplied) {
     return revertTweak(tweakId);
   } else {
-    return applyTweak(tweakId);
-  }
-}
-
-export async function applyTweakOption(
-  tweakId: string,
-  optionIndex: number,
-  requiresReboot: boolean = false,
-): Promise<boolean> {
-  loadingStore.startLoading(tweakId);
-  errorStore.clearError(tweakId);
-
-  try {
-    const result = await api.applyTweakOption(tweakId, optionIndex);
-
-    if (result.success) {
-      tweaksStore.updateStatus(tweakId, {
-        is_applied: true,
-        has_backup: true,
-        current_option_index: optionIndex,
-      });
-
-      if (result.requires_reboot || requiresReboot) {
-        pendingRebootStore.addTweak(tweakId);
-      }
-
-      return true;
-    } else {
-      errorStore.setError(tweakId, result.message);
-      return false;
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to apply tweak option";
-    errorStore.setError(tweakId, message);
-    return false;
-  } finally {
-    loadingStore.stopLoading(tweakId);
+    // For toggles, option 0 is the "applied" state
+    return applyTweak(tweakId, 0, tweak.definition.requires_reboot);
   }
 }
 
@@ -434,20 +391,7 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
     const tweak = tweaks.find((t) => t.definition.id === tweakId);
     if (!tweak) continue;
 
-    let result = false;
-    if (change.type === "binary") {
-      if (change.enabled) {
-        result = await applyTweak(tweakId);
-      } else {
-        result = await revertTweak(tweakId);
-      }
-    } else if (change.type === "multistate") {
-      result = await applyTweakOption(
-        tweakId,
-        change.optionIndex,
-        tweak.definition.requires_reboot,
-      );
-    }
+    const result = await applyTweak(change.tweakId, change.optionIndex, tweak.definition.requires_reboot);
 
     if (result) {
       success++;
@@ -469,7 +413,7 @@ export function getPendingForCategory(categoryId: string): Readable<Map<string, 
     const result = new Map<string, PendingChange>();
     for (const [tweakId, change] of $pending) {
       const tweak = $tweaks.find((t) => t.definition.id === tweakId);
-      if (tweak?.definition.category === categoryId) {
+      if (tweak?.definition.category_id === categoryId) {
         result.set(tweakId, change);
       }
     }

@@ -1,7 +1,6 @@
 // API functions for Tauri commands
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  BatchApplyResult,
   CategoryDefinition,
   SystemInfo,
   TweakDefinition,
@@ -48,6 +47,13 @@ export async function getTweakStatus(tweakId: string): Promise<TweakStatus> {
 }
 
 /**
+ * Get statuses for all tweaks at once (more efficient than individual calls)
+ */
+export async function getAllTweakStatuses(): Promise<TweakStatus[]> {
+  return await invoke<TweakStatus[]>("get_all_tweak_statuses");
+}
+
+/**
  * Get statuses for multiple tweaks at once
  */
 export async function getTweakStatuses(tweakIds: string[]): Promise<Record<string, TweakStatus>> {
@@ -90,10 +96,12 @@ export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
 }
 
 /**
- * Apply a specific tweak
+ * Apply a specific tweak option
+ * @param tweakId - The tweak ID
+ * @param optionIndex - Index of the option to apply (0 for first option, 1 for second, etc.)
  */
-export async function applyTweak(tweakId: string): Promise<TweakResult> {
-  return await invoke<TweakResult>("apply_tweak", { tweakId });
+export async function applyTweak(tweakId: string, optionIndex: number): Promise<TweakResult> {
+  return await invoke<TweakResult>("apply_tweak", { tweakId, optionIndex });
 }
 
 /**
@@ -104,17 +112,18 @@ export async function revertTweak(tweakId: string): Promise<TweakResult> {
 }
 
 /**
- * Apply a specific option for a multi-state tweak
+ * Apply multiple tweak options at once
+ * @param operations - Array of [tweakId, optionIndex] tuples
  */
-export async function applyTweakOption(tweakId: string, optionIndex: number): Promise<TweakResult> {
-  return await invoke<TweakResult>("apply_tweak_option", { tweakId, optionIndex });
+export async function batchApplyTweaks(operations: [string, number][]): Promise<TweakResult> {
+  return await invoke<TweakResult>("batch_apply_tweaks", { operations });
 }
 
 /**
- * Apply multiple tweaks at once
+ * Revert multiple tweaks at once
  */
-export async function batchApplyTweaks(tweakIds: string[]): Promise<BatchApplyResult> {
-  return await invoke<BatchApplyResult>("batch_apply_tweaks", { tweakIds });
+export async function batchRevertTweaks(tweakIds: string[]): Promise<TweakResult> {
+  return await invoke<TweakResult>("batch_revert_tweaks", { tweakIds });
 }
 
 /**

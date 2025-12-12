@@ -154,7 +154,9 @@
 
       <!-- Update button -->
       <button
-        class="relative {$isUpdateAvailable ? 'text-success' : 'text-foreground-muted'} {sidebarExpanded ? 'shrink-0' : 'w-full'}"
+        class="relative {$isUpdateAvailable ? 'text-success' : 'text-foreground-muted'} {sidebarExpanded
+          ? 'shrink-0'
+          : 'w-full'}"
         onclick={openUpdateModal}
         title={$isUpdateAvailable ? "Update available!" : "Updates"}
       >
@@ -165,12 +167,20 @@
       </button>
 
       <!-- Settings button -->
-      <button class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}" onclick={openSettingsModal} title="Settings">
+      <button
+        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
+        onclick={openSettingsModal}
+        title="Settings"
+      >
         <Icon icon="mdi:settings-outline" width="22" />
       </button>
 
       <!-- About button -->
-      <button class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}" onclick={openAboutModal} title="About">
+      <button
+        class="text-foreground-muted {sidebarExpanded ? 'shrink-0' : 'w-full'}"
+        onclick={openAboutModal}
+        title="About"
+      >
         <Icon icon="mdi:information-outline" width="22" />
       </button>
     </div>

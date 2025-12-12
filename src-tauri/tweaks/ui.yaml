@@ -14,13 +14,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "RotatingLockScreenEnabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Ads Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "RotatingLockScreenEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Ads Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "RotatingLockScreenEnabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: classic_context_menu_win11
     name: "Enable Classic Context Menu (Windows 11)"
@@ -28,14 +38,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
-        value_name: ""
-        value_type: "REG_SZ"
-        enable_value: ""
-        disable_value: null
-        windows_versions: [11]
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Classic Menu Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
+            value_name: ""
+            value_type: "REG_SZ"
+            value: ""
+            windows_versions: [11]
+      - label: "Modern Menu (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
+            value_name: ""
+            value_type: "REG_SZ"
+            value: null
+            windows_versions: [11]
 
   - id: disable_web_search
     name: "Disable Web Search in Start Menu"
@@ -43,13 +64,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
-        value_name: "BingSearchEnabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Web Search Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+            value_name: "BingSearchEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Web Search Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+            value_name: "BingSearchEnabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: show_file_extensions
     name: "Show File Extensions"
@@ -57,13 +88,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "HideFileExt"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Extensions Visible"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "HideFileExt"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Extensions Hidden (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "HideFileExt"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: show_hidden_files
     name: "Show Hidden Files"
@@ -71,13 +112,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "Hidden"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 2
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Hidden Files Visible"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Hidden"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Hidden Files Hidden (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Hidden"
+            value_type: "REG_DWORD"
+            value: 2
 
   - id: disable_snap_suggestions
     name: "Disable Snap Assist Suggestions"
@@ -85,13 +136,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "SnapAssist"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Snap Assist Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "SnapAssist"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Snap Assist Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "SnapAssist"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_widgets_win11
     name: "Disable Widgets (Windows 11)"
@@ -100,6 +161,7 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     requires_system: true
+    is_toggle: true
     info: "The UCPD (User-mode Contextual Policy Driver) service protects widget-related registry keys. This tweak disables the service and its scheduled task first, then modifies the registry."
     # pre_commands:
     #   - "sc config ucpd start= disabled"
@@ -109,14 +171,23 @@ tweaks:
     #   - "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" /v TaskbarDa /t REG_DWORD /d 1 /f"
     #   - "sc config ucpd start= demand"
     #   - "schtasks /Change /TN \"Microsoft\\Windows\\AppxDeploymentClient\\UCPD velocity\" /Enable"
-    registry_changes:
-      - hive: HKLM
-        key: "SOFTWARE\\Policies\\Microsoft\\Dsh"
-        value_name: "AllowNewsAndInterests"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-        windows_versions: [11]
+    options:
+      - label: "Widgets Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "SOFTWARE\\Policies\\Microsoft\\Dsh"
+            value_name: "AllowNewsAndInterests"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Widgets Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "SOFTWARE\\Policies\\Microsoft\\Dsh"
+            value_name: "AllowNewsAndInterests"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
 
   - id: disable_chat_icon_win11
     name: "Remove Chat Icon (Windows 11)"
@@ -124,14 +195,25 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "TaskbarMn"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-        windows_versions: [11]
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Chat Icon Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "TaskbarMn"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Chat Icon Visible (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "TaskbarMn"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
 
   - id: small_taskbar_icons
     name: "Use Small Taskbar Icons"
@@ -139,13 +221,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: true
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "TaskbarSmallIcons"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Small Icons"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "TaskbarSmallIcons"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Large Icons (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "TaskbarSmallIcons"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_animations
     name: "Disable Animation & Transition Effects"
@@ -153,13 +245,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Control Panel\\Desktop\\WindowMetrics"
-        value_name: "MinAnimate"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "1"
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Animations Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop\\WindowMetrics"
+            value_name: "MinAnimate"
+            value_type: "REG_SZ"
+            value: "0"
+      - label: "Animations Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop\\WindowMetrics"
+            value_name: "MinAnimate"
+            value_type: "REG_SZ"
+            value: "1"
 
   - id: enable_do_this_for_all
     name: "Enable 'Do This For All' by Default"
@@ -167,13 +269,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\OperationStatusManager"
-        value_name: "ConfirmationCheckBoxDoForAll"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Checkbox Pre-checked"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\OperationStatusManager"
+            value_name: "ConfirmationCheckBoxDoForAll"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Checkbox Unchecked (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\OperationStatusManager"
+            value_name: "ConfirmationCheckBoxDoForAll"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_action_center
     name: "Disable Action Center (Windows 10)"
@@ -181,14 +293,25 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
-        value_name: "DisableNotificationCenter"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
-        windows_versions: [10]
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Action Center Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+            value_name: "DisableNotificationCenter"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [10]
+      - label: "Action Center Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+            value_name: "DisableNotificationCenter"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [10]
 
   - id: disable_explorer_ads
     name: "Disable File Explorer Sync Ads"
@@ -196,13 +319,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "ShowSyncProviderNotifications"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Sync Ads Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowSyncProviderNotifications"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Sync Ads Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowSyncProviderNotifications"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_downloaded_files_block
     name: "Disable Downloaded Files Block"
@@ -210,11 +343,21 @@ tweaks:
     risk_level: medium
     requires_admin: false
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Removes the 'This file came from another computer' security warning"
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"
-        value_name: "SaveZoneInformation"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 2
+    options:
+      - label: "File Blocking Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"
+            value_name: "SaveZoneInformation"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "File Blocking Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"
+            value_name: "SaveZoneInformation"
+            value_type: "REG_DWORD"
+            value: 2

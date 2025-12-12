@@ -35,6 +35,9 @@ pub enum Error {
 
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+
+    #[error("Command execution failed: {0}")]
+    CommandExecution(String),
 }
 
 impl Serialize for Error {

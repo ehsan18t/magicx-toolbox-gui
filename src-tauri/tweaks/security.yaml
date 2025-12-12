@@ -14,13 +14,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Control\\Terminal Server"
-        value_name: "fDenyTSConnections"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Remote Desktop Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server"
+            value_name: "fDenyTSConnections"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Remote Desktop Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server"
+            value_name: "fDenyTSConnections"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_autoplay
     name: "Disable AutoPlay"
@@ -28,13 +38,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-        value_name: "NoDriveTypeAutoRun"
-        value_type: "REG_DWORD"
-        enable_value: 255
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "AutoPlay Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoDriveTypeAutoRun"
+            value_type: "REG_DWORD"
+            value: 255
+      - label: "AutoPlay Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoDriveTypeAutoRun"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_autorun
     name: "Disable AutoRun Scripts"
@@ -42,13 +62,23 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
-        value_name: "NoAutorun"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "AutoRun Scripts Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoAutorun"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "AutoRun Scripts Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoAutorun"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: require_ctrlaltdel
     name: "Require Ctrl+Alt+Del to Unlock"
@@ -56,13 +86,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-        value_name: "DisableCAD"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Ctrl+Alt+Del Required"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "DisableCAD"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Ctrl+Alt+Del Not Required"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "DisableCAD"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_guest_account
     name: "Disable Guest Account"
@@ -70,14 +110,24 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Guest account can be a security risk if left enabled"
-    registry_changes:
-      - hive: HKLM
-        key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-        value_name: "F"
-        value_type: "REG_BINARY"
-        enable_value: null
-        disable_value: null
+    options:
+      - label: "Guest Account Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
+            value_name: "F"
+            value_type: "REG_BINARY"
+            value: null
+      - label: "Guest Account Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
+            value_name: "F"
+            value_type: "REG_BINARY"
+            value: null
 
   - id: disable_smbv1
     name: "Disable SMBv1 Protocol"
@@ -85,14 +135,24 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
+    requires_system: false
+    is_toggle: true
     info: "SMBv1 is an old protocol with security vulnerabilities"
-    registry_changes:
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-        value_name: "SMB1"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    options:
+      - label: "SMBv1 Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "SMB1"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "SMBv1 Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "SMB1"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_netbios
     name: "Disable NetBIOS"
@@ -100,13 +160,23 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    registry_changes:
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-        value_name: "NetbiosOptions"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "NetBIOS Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
+            value_name: "NetbiosOptions"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "NetBIOS Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
+            value_name: "NetbiosOptions"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: enforce_password_policy
     name: "Enforce Strong Password Policy"
@@ -114,13 +184,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
-        value_name: "RequireSignOrSeal"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Strong Password Policy Enforced"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
+            value_name: "RequireSignOrSeal"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Standard Password Policy"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
+            value_name: "RequireSignOrSeal"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_smartscreen
     name: "Disable SmartScreen"
@@ -128,14 +208,24 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "WARNING: Reduces security. Only disable if you know what you're doing"
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\System"
-        value_name: "EnableSmartScreen"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    options:
+      - label: "SmartScreen Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "EnableSmartScreen"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "SmartScreen Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "EnableSmartScreen"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_defender_sample_submit
     name: "Disable Defender Sample Submission"
@@ -143,14 +233,24 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Prevents automatic upload of suspicious files to Microsoft"
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows Defender\\Spynet"
-        value_name: "SubmitSamplesConsent"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
+    options:
+      - label: "Sample Submission Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows Defender\\Spynet"
+            value_name: "SubmitSamplesConsent"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "Sample Submission Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows Defender\\Spynet"
+            value_name: "SubmitSamplesConsent"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_defender_malware_report
     name: "Disable Defender Malware Reporting"
@@ -158,10 +258,20 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\MRT"
-        value_name: "DontReportInfectionInformation"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Malware Reporting Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\MRT"
+            value_name: "DontReportInfectionInformation"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Malware Reporting Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\MRT"
+            value_name: "DontReportInfectionInformation"
+            value_type: "REG_DWORD"
+            value: 0

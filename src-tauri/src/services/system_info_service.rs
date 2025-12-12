@@ -417,9 +417,10 @@ fn get_monitor_info(_wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo>
 
                         // Match Name
                         if let Some(wmi_match) = monitor_names.iter().find_map(|(k, v)| {
-                            if !hardware_id.is_empty() && k.contains(hardware_id) {
-                                Some(v.clone())
-                            } else if k.contains(&device_id) || device_id.contains(k) {
+                            if (!hardware_id.is_empty() && k.contains(hardware_id))
+                                || k.contains(&device_id)
+                                || device_id.contains(k)
+                            {
                                 Some(v.clone())
                             } else {
                                 None
@@ -501,9 +502,7 @@ fn get_all_monitor_names() -> std::collections::HashMap<String, String> {
                 // Only add if not already present (WmiMonitorID is better)
                 // We use check against map keys containing the hardware ID
                 // But PnPEntity DeviceID IS the InstanceID usually.
-                if !map.contains_key(&dev_id) {
-                    map.insert(dev_id, name);
-                }
+                map.entry(dev_id).or_insert(name);
             }
         }
     }
@@ -611,7 +610,7 @@ fn get_gpu_info(wmi_con: &WMIConnection) -> Vec<GpuInfo> {
         })
         .map(|gpu| {
             let driver_desc = gpu.name.as_deref().unwrap_or("");
-            let wmi_ram = gpu.adapter_ram.unwrap_or(0) as u64;
+            let wmi_ram = gpu.adapter_ram.unwrap_or(0);
 
             // Try to get 64-bit VRAM size from Registry (fixes 4GB cap)
             let memory_bytes = get_gpu_vram_from_registry(driver_desc).unwrap_or(wmi_ram);

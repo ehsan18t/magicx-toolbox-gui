@@ -24,9 +24,7 @@
   let showConfirmDialog = $state(false);
 
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
-  const isHighRisk = $derived(
-    tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical",
-  );
+  const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
 
   // Risk level config
   const riskConfig: Record<RiskLevel, { icon: string; color: string }> = {
@@ -36,54 +34,64 @@
     critical: { icon: "mdi:alert-octagon", color: "text-error" },
   };
 
-  // Reactively compute registry changes based on store value
-  const registryChanges = $derived.by(() => {
+  // Get options from tweak definition
+  const options = $derived(tweak.definition.options);
+
+  // Check if this is a toggle (2 options) or dropdown (3+ options)
+  const isToggle = $derived(tweak.definition.is_toggle);
+
+  // Get all registry changes for the details display (from all options, filtered by Windows version)
+  const allRegistryChanges = $derived.by(() => {
     const system = $systemStore;
     if (!system) return [];
     const version = system.windows.is_windows_11 ? 11 : 10;
-    return tweak.definition.registry_changes.filter((change: RegistryChange) => {
-      if (!change.windows_versions || change.windows_versions.length === 0) {
-        return true;
+
+    // Collect registry changes from all options
+    const changes: RegistryChange[] = [];
+    for (const option of options) {
+      for (const change of option.registry_changes) {
+        if (!change.windows_versions || change.windows_versions.length === 0) {
+          changes.push(change);
+        } else if (change.windows_versions.includes(version)) {
+          changes.push(change);
+        }
       }
-      return change.windows_versions.includes(version);
+    }
+
+    // Deduplicate by hive+key+value_name using an object map
+    const seen: Record<string, boolean> = {};
+    return changes.filter((change) => {
+      const key = `${change.hive}\\${change.key}\\${change.value_name}`;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
     });
   });
 
-  // Check if this is a multi-state tweak (has options)
-  const isMultiState = $derived.by(() => {
-    const firstChange = registryChanges[0];
-    return firstChange?.options && firstChange.options.length > 1;
-  });
-
-  // Get options for multi-state tweaks
-  const options = $derived.by(() => {
-    const firstChange = registryChanges[0];
-    return firstChange?.options || [];
-  });
-
-  // Current option index from registry (actual applied state)
-  const currentOptionIndex = $derived(tweak.status.current_option_index ?? 0);
+  // Current option index from registry (actual applied state, null if no match = system default)
+  const currentOptionIndex = $derived(tweak.status.current_option_index);
 
   // Get pending change for this tweak
-  const pendingChange = derived(pendingChangesStore, ($pending) =>
-    $pending.get(tweak.definition.id),
-  );
+  const pendingChange = derived(pendingChangesStore, ($pending) => $pending.get(tweak.definition.id));
 
   // Determine if there's a pending change
   const hasPending = $derived($pendingChange !== undefined);
 
-  // Calculate the effective state (what the user sees in the UI)
+  // Calculate the effective state for toggle (what the user sees in the UI)
+  // For toggles: option 0 = enabled, option 1 = disabled
   const effectiveEnabled = $derived.by(() => {
     const pending = $pendingChange;
-    if (pending?.type === "binary") {
-      return pending.enabled;
+    if (pending !== undefined) {
+      return pending.optionIndex === 0;
     }
-    return tweak.status.is_applied;
+    // If no current option matches (system default), treat as disabled
+    return currentOptionIndex === 0;
   });
 
+  // Calculate effective option index for dropdowns
   const effectiveOptionIndex = $derived.by(() => {
     const pending = $pendingChange;
-    if (pending?.type === "multistate") {
+    if (pending !== undefined) {
       return pending.optionIndex;
     }
     return currentOptionIndex;
@@ -100,11 +108,13 @@
   function executeToggle() {
     showConfirmDialog = false;
     const newEnabled = !effectiveEnabled;
+    // For toggles: option 0 = enabled, option 1 = disabled
+    const newOptionIndex = newEnabled ? 0 : 1;
 
-    if (newEnabled === tweak.status.is_applied) {
+    if (newOptionIndex === currentOptionIndex) {
       unstageChange(tweak.definition.id);
     } else {
-      stageChange(tweak.definition.id, { type: "binary", enabled: newEnabled });
+      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex: newOptionIndex });
     }
   }
 
@@ -115,7 +125,7 @@
     if (optionIndex === currentOptionIndex) {
       unstageChange(tweak.definition.id);
     } else {
-      stageChange(tweak.definition.id, { type: "multistate", optionIndex });
+      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex });
     }
   }
 
@@ -149,9 +159,7 @@
   <div class="min-w-0 flex-1 px-4 py-3.5">
     <!-- Header Section -->
     <div class="mb-2 flex items-center justify-between gap-3">
-      <h3
-        class="m-0 flex flex-1 items-center gap-2 text-sm leading-tight font-semibold text-foreground"
-      >
+      <h3 class="m-0 flex flex-1 items-center gap-2 text-sm leading-tight font-semibold text-foreground">
         {tweak.definition.name}
         {#if hasPending}
           <span
@@ -161,16 +169,19 @@
         {/if}
       </h3>
 
-      {#if isMultiState}
-        <!-- Dropdown for multi-state -->
+      {#if !isToggle}
+        <!-- Dropdown for multi-option tweaks -->
         <select
           class="max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[hsl(var(--muted))] bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
             ? 'border-warning bg-warning/10'
             : ''} {$isLoading ? 'opacity-70' : ''}"
           disabled={$isLoading}
-          value={effectiveOptionIndex}
+          value={effectiveOptionIndex ?? -1}
           onchange={handleOptionChange}
         >
+          {#if currentOptionIndex === null}
+            <option value={-1} disabled>System Default</option>
+          {/if}
           {#each options as option, i (i)}
             <option value={i}>{option.label}</option>
           {/each}
@@ -244,9 +255,8 @@
           class="opacity-70 {riskConfig[tweak.definition.risk_level as RiskLevel].color}"
         />
         <span
-          class="text-xs font-semibold tracking-wide uppercase {riskConfig[
-            tweak.definition.risk_level as RiskLevel
-          ].color}">{riskInfo.name}</span
+          class="text-xs font-semibold tracking-wide uppercase {riskConfig[tweak.definition.risk_level as RiskLevel]
+            .color}">{riskInfo.name}</span
         >
       </div>
 
@@ -314,12 +324,12 @@
             Registry Modifications
             <span
               class="ml-1 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-[hsl(var(--muted))] px-1.5 text-[10px] font-semibold text-foreground"
-              >{registryChanges.length}</span
+              >{allRegistryChanges.length}</span
             >
           </h4>
 
           <div class="flex flex-col gap-2">
-            {#each registryChanges as change (change.hive + change.key + change.value_name)}
+            {#each allRegistryChanges as change (change.hive + change.key + change.value_name)}
               <div class="overflow-hidden rounded-lg border border-border/60 bg-background">
                 <div
                   class="flex items-center gap-1.5 border-b border-border/40 bg-[hsl(var(--muted)/0.3)] px-2.5 py-2 text-foreground-muted"
@@ -341,25 +351,13 @@
                   </div>
                   <div class="flex flex-wrap gap-2">
                     <div class="flex items-center gap-1.5 text-xs">
-                      <span
-                        class="rounded bg-success/15 px-1.5 py-0.5 text-[9px] font-bold text-success uppercase"
-                        >ON</span
+                      <span class="rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent uppercase"
+                        >Value</span
                       >
                       <code class="bg-transparent p-0 font-mono text-[10px] text-foreground/80"
-                        >{formatValue(change.enable_value)}</code
+                        >{formatValue(change.value)}</code
                       >
                     </div>
-                    {#if change.disable_value !== undefined}
-                      <div class="flex items-center gap-1.5 text-xs">
-                        <span
-                          class="rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 text-[9px] font-bold text-foreground-muted uppercase"
-                          >OFF</span
-                        >
-                        <code class="bg-transparent p-0 font-mono text-[10px] text-foreground/80"
-                          >{formatValue(change.disable_value)}</code
-                        >
-                      </div>
-                    {/if}
                   </div>
                 </div>
               </div>

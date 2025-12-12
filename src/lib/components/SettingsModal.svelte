@@ -170,10 +170,7 @@
               ? 'bg-success/15 text-success'
               : 'bg-error/15 text-error'}"
           >
-            <Icon
-              icon={statusMessage.type === "success" ? "mdi:check-circle" : "mdi:alert-circle"}
-              width="18"
-            />
+            <Icon icon={statusMessage.type === "success" ? "mdi:check-circle" : "mdi:alert-circle"} width="18" />
             <span class="text-sm">{statusMessage.text}</span>
           </div>
         {/if}
@@ -185,9 +182,8 @@
             Backup & Restore
           </h3>
           <p class="mb-4 text-sm text-foreground-muted">
-            Export your current settings and tweak states to a backup file, or import from a
-            previous backup. Tweaks are snapshotted as they currently are, regardless of whether
-            they were applied by this app.
+            Export your current settings and tweak states to a backup file, or import from a previous backup. Tweaks are
+            snapshotted as they currently are, regardless of whether they were applied by this app.
           </p>
 
           <div class="flex flex-wrap gap-3">
@@ -225,9 +221,8 @@
         <div class="flex items-start gap-3 rounded-lg border border-border/50 bg-surface/50 p-3">
           <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
           <p class="m-0 text-xs leading-relaxed text-foreground-muted">
-            Backup files contain your app settings and a snapshot of all tweak states. When
-            importing, settings will be restored immediately. Tweak states can be used to restore
-            registry values to their previous configuration.
+            Backup files contain your app settings and a snapshot of all tweak states. When importing, settings will be
+            restored immediately. Tweak states can be used to restore registry values to their previous configuration.
           </p>
         </div>
       </div>

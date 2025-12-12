@@ -11,8 +11,7 @@ use std::path::Path;
 
 // ============================================================================
 // Mirror types from models/tweak.rs for build-time parsing
-// These must stay in sync with runtime types, but that's intentional:
-// if you change the model, you'll get a compile error here reminding you to update.
+// These must stay in sync with runtime types.
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -34,69 +33,31 @@ struct CategoryDefinition {
     order: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
-#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 enum RegistryHive {
-    HKCU,
-    HKLM,
+    #[serde(rename = "HKCU")]
+    Hkcu,
+    #[serde(rename = "HKLM")]
+    Hklm,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "UPPERCASE")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 enum RegistryValueType {
     #[serde(rename = "REG_DWORD")]
-    DWord,
+    Dword,
+    #[serde(rename = "REG_QWORD")]
+    Qword,
     #[serde(rename = "REG_SZ")]
     String,
     #[serde(rename = "REG_EXPAND_SZ")]
     ExpandString,
-    #[serde(rename = "REG_BINARY")]
-    Binary,
     #[serde(rename = "REG_MULTI_SZ")]
     MultiString,
-    #[serde(rename = "REG_QWORD")]
-    QWord,
+    #[serde(rename = "REG_BINARY")]
+    Binary,
 }
 
-/// Service change for a specific option
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OptionServiceChange {
-    name: String,
-    startup: ServiceStartupType,
-    #[serde(default)]
-    stop_if_disabled: bool,
-}
-
-/// Option for multi-state tweaks (displayed as dropdown in UI)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TweakOption {
-    label: String,
-    value: serde_json::Value,
-    #[serde(default)]
-    is_default: bool,
-    #[serde(default)]
-    service_changes: Option<Vec<OptionServiceChange>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RegistryChange {
-    hive: RegistryHive,
-    key: String,
-    value_name: String,
-    value_type: RegistryValueType,
-    enable_value: serde_json::Value,
-    #[serde(default)]
-    disable_value: Option<serde_json::Value>,
-    #[serde(default)]
-    windows_versions: Option<Vec<u32>>,
-    /// Multi-state options (if present, displayed as dropdown instead of toggle)
-    #[serde(default)]
-    options: Option<Vec<TweakOption>>,
-}
-
-/// Windows service startup type
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 enum ServiceStartupType {
     Disabled,
@@ -106,65 +67,85 @@ enum ServiceStartupType {
     System,
 }
 
-/// Single service change operation
+/// Single registry modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RegistryChange {
+    hive: RegistryHive,
+    key: String,
+    value_name: String,
+    value_type: RegistryValueType,
+    value: serde_json::Value,
+    #[serde(default)]
+    windows_versions: Option<Vec<u32>>,
+}
+
+/// Single service modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ServiceChange {
     name: String,
-    enable_startup: ServiceStartupType,
-    disable_startup: ServiceStartupType,
+    startup: ServiceStartupType,
     #[serde(default)]
-    stop_on_disable: bool,
+    stop_service: bool,
     #[serde(default)]
-    start_on_enable: bool,
+    start_service: bool,
 }
 
+/// A single option within a tweak - contains all changes for that state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TweakOption {
+    label: String,
+    #[serde(default)]
+    registry_changes: Vec<RegistryChange>,
+    #[serde(default)]
+    service_changes: Vec<ServiceChange>,
+    #[serde(default)]
+    pre_commands: Vec<String>,
+    #[serde(default)]
+    post_commands: Vec<String>,
+}
+
+/// Raw tweak definition as loaded from YAML
 #[derive(Debug, Clone, Deserialize)]
 struct TweakDefinitionRaw {
     id: String,
     name: String,
     description: String,
-    risk_level: RiskLevel,
     #[serde(default)]
-    requires_reboot: bool,
+    info: Option<String>,
+    risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
     #[serde(default)]
     requires_system: bool,
-    registry_changes: Vec<RegistryChange>,
     #[serde(default)]
-    service_changes: Option<Vec<ServiceChange>>,
+    requires_reboot: bool,
     #[serde(default)]
-    info: Option<String>,
-    #[serde(default)]
-    pre_commands: Option<Vec<String>>,
-    #[serde(default)]
-    post_commands: Option<Vec<String>>,
+    is_toggle: bool,
+    options: Vec<TweakOption>,
 }
 
+/// Complete tweak definition with category assignment (for serialization)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TweakDefinition {
     id: String,
     name: String,
     description: String,
-    category: String,
-    risk_level: RiskLevel,
     #[serde(default)]
-    requires_reboot: bool,
+    info: Option<String>,
+    risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
     #[serde(default)]
     requires_system: bool,
-    registry_changes: Vec<RegistryChange>,
     #[serde(default)]
-    service_changes: Option<Vec<ServiceChange>>,
+    requires_reboot: bool,
     #[serde(default)]
-    info: Option<String>,
-    #[serde(default)]
-    pre_commands: Option<Vec<String>>,
-    #[serde(default)]
-    post_commands: Option<Vec<String>>,
+    is_toggle: bool,
+    options: Vec<TweakOption>,
+    category_id: String,
 }
 
+/// YAML file structure with category and tweaks
 #[derive(Debug, Clone, Deserialize)]
 struct TweakFile {
     category: CategoryDefinition,
@@ -204,6 +185,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
     // Collect all categories and tweaks
     let mut categories: Vec<CategoryDefinition> = Vec::new();
     let mut tweaks: HashMap<String, TweakDefinition> = HashMap::new();
+    let mut errors: Vec<String> = Vec::new();
 
     for entry in fs::read_dir(&tweaks_dir)? {
         let entry = entry?;
@@ -218,36 +200,62 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
+        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
         let content = fs::read_to_string(&path)?;
-        let tweak_file: TweakFile = serde_yml::from_str(&content).map_err(|e| {
-            format!(
-                "Failed to parse {}: {}",
-                path.file_name().unwrap().to_string_lossy(),
-                e
-            )
-        })?;
+
+        let tweak_file: TweakFile = match serde_yml::from_str(&content) {
+            Ok(tf) => tf,
+            Err(e) => {
+                errors.push(format!("Failed to parse {}: {}", file_name, e));
+                continue;
+            }
+        };
 
         let category_id = tweak_file.category.id.clone();
         categories.push(tweak_file.category);
 
         for raw in tweak_file.tweaks {
+            // Validate tweak structure
+            if raw.options.is_empty() {
+                errors.push(format!(
+                    "Tweak '{}' in {} must have at least 1 option",
+                    raw.id, file_name
+                ));
+                continue;
+            }
+            if raw.is_toggle && raw.options.len() != 2 {
+                errors.push(format!(
+                    "Toggle tweak '{}' in {} must have exactly 2 options, found {}",
+                    raw.id,
+                    file_name,
+                    raw.options.len()
+                ));
+                continue;
+            }
+
             let tweak = TweakDefinition {
                 id: raw.id.clone(),
                 name: raw.name,
                 description: raw.description,
-                category: category_id.clone(),
+                info: raw.info,
                 risk_level: raw.risk_level,
-                requires_reboot: raw.requires_reboot,
                 requires_admin: raw.requires_admin,
                 requires_system: raw.requires_system,
-                registry_changes: raw.registry_changes,
-                service_changes: raw.service_changes,
-                info: raw.info,
-                pre_commands: raw.pre_commands,
-                post_commands: raw.post_commands,
+                requires_reboot: raw.requires_reboot,
+                is_toggle: raw.is_toggle,
+                options: raw.options,
+                category_id: category_id.clone(),
             };
             tweaks.insert(raw.id, tweak);
         }
+    }
+
+    // Report any validation errors
+    if !errors.is_empty() {
+        for error in &errors {
+            println!("cargo:warning={}", error);
+        }
+        return Err(format!("{} validation error(s) in YAML files", errors.len()).into());
     }
 
     // Sort categories by order

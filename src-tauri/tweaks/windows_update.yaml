@@ -14,14 +14,24 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Apps will only update when you manually check for updates in the Store"
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\WindowsStore"
-        value_name: "AutoDownload"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 4
+    options:
+      - label: "Auto Updates Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\WindowsStore"
+            value_name: "AutoDownload"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "Auto Updates Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\WindowsStore"
+            value_name: "AutoDownload"
+            value_type: "REG_DWORD"
+            value: 4
 
   - id: disable_peer_update_delivery
     name: "Disable P2P Update Delivery"
@@ -29,14 +39,24 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Prevents Windows from downloading/uploading updates from/to other PCs"
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization"
-        value_name: "SystemSettingsDownloadMode"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 3
+    options:
+      - label: "P2P Delivery Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization"
+            value_name: "SystemSettingsDownloadMode"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "P2P Delivery Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization"
+            value_name: "SystemSettingsDownloadMode"
+            value_type: "REG_DWORD"
+            value: 3
 
   - id: disable_ms_products_auto_update
     name: "Disable MS Products Auto Update"
@@ -44,13 +64,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Services\\7971f918-a847-4430-9279-4a52d1efe18d"
-        value_name: "RegisteredWithAU"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "MS Products Auto Update Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Services\\7971f918-a847-4430-9279-4a52d1efe18d"
+            value_name: "RegisteredWithAU"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "MS Products Auto Update Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Services\\7971f918-a847-4430-9279-4a52d1efe18d"
+            value_name: "RegisteredWithAU"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_driver_updates
     name: "Disable Driver Updates via Windows Update"
@@ -58,14 +88,24 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Useful if you prefer to install drivers manually from manufacturer"
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
-        value_name: "ExcludeWUDriversInQualityUpdate"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    options:
+      - label: "Driver Updates Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "ExcludeWUDriversInQualityUpdate"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Driver Updates Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "ExcludeWUDriversInQualityUpdate"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_windows_update_complete
     name: "Disable Windows Update (Complete)"
@@ -73,27 +113,47 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
-        value_name: "AUOptions"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 2
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
-        value_name: "NoAutoUpdate"
-        value_type: "REG_DWORD"
-        enable_value: 1
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
-        value_name: "SetDisableUXWUAccess"
-        value_type: "REG_DWORD"
-        enable_value: 1
-    service_changes:
-      - name: "wuauserv"
-        enable_startup: disabled
-        disable_startup: manual
-        stop_on_disable: true
-        start_on_enable: true
+    options:
+      - label: "Windows Update Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "AUOptions"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "NoAutoUpdate"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "SetDisableUXWUAccess"
+            value_type: "REG_DWORD"
+            value: 1
+        service_changes:
+          - name: "wuauserv"
+            startup: disabled
+      - label: "Windows Update Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "AUOptions"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "NoAutoUpdate"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "SetDisableUXWUAccess"
+            value_type: "REG_DWORD"
+            value: 0
+        service_changes:
+          - name: "wuauserv"
+            startup: manual

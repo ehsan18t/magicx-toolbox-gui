@@ -14,14 +14,24 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Game Mode reduces background processes and prioritizes gaming"
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\GameBar"
-        value_name: "UseNexusForGameMode"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    options:
+      - label: "Game Mode Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameMode"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Game Mode Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameMode"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_fullscreen_optimizations
     name: "Disable Fullscreen Optimizations"
@@ -29,14 +39,24 @@ tweaks:
     risk_level: medium
     requires_admin: false
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Disabling can improve gaming performance and compatibility"
-    registry_changes:
-      - hive: HKCU
-        key: "System\\GameConfigStore"
-        value_name: "GameDVR_FSEBehavior"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
+    options:
+      - label: "Fullscreen Optimizations Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_FSEBehavior"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "Fullscreen Optimizations Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_FSEBehavior"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: enable_gpu_scheduling
     name: "Enable Hardware-Accelerated GPU Scheduling"
@@ -44,14 +64,24 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
+    requires_system: false
+    is_toggle: true
     info: "Improves gaming performance on compatible GPUs (Windows 10 build 2004+)"
-    registry_changes:
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
-        value_name: "HwSchMode"
-        value_type: "REG_DWORD"
-        enable_value: 2
-        disable_value: 1
+    options:
+      - label: "GPU Scheduling Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
+            value_name: "HwSchMode"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "GPU Scheduling Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
+            value_name: "HwSchMode"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_gamebar_tips
     name: "Disable Game Bar Tips"
@@ -59,13 +89,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\GameBar"
-        value_name: "ShowStartupPanel"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Game Bar Tips Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "ShowStartupPanel"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Game Bar Tips Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "ShowStartupPanel"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: high_performance_power_plan
     name: "Set High Performance Power Plan"
@@ -73,14 +113,24 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Maximizes CPU and GPU performance for gaming"
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
-        value_name: "StartupPercentage"
-        value_type: "REG_DWORD"
-        enable_value: 100
-        disable_value: 0
+    options:
+      - label: "High Performance Mode"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
+            value_name: "StartupPercentage"
+            value_type: "REG_DWORD"
+            value: 100
+      - label: "Default Power Mode"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
+            value_name: "StartupPercentage"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_mouse_acceleration
     name: "Disable Mouse Acceleration"
@@ -88,23 +138,41 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
+    requires_system: false
+    is_toggle: true
     info: "Provides more consistent mouse movement for FPS games"
-    registry_changes:
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseSpeed"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "1"
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseThreshold1"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "6"
-      - hive: HKCU
-        key: "Control Panel\\Mouse"
-        value_name: "MouseThreshold2"
-        value_type: "REG_SZ"
-        enable_value: "0"
-        disable_value: "10"
+    options:
+      - label: "Mouse Acceleration Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSpeed"
+            value_type: "REG_SZ"
+            value: "0"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold1"
+            value_type: "REG_SZ"
+            value: "0"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold2"
+            value_type: "REG_SZ"
+            value: "0"
+      - label: "Mouse Acceleration Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSpeed"
+            value_type: "REG_SZ"
+            value: "1"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold1"
+            value_type: "REG_SZ"
+            value: "6"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold2"
+            value_type: "REG_SZ"
+            value: "10"

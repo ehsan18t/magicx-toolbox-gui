@@ -1,11 +1,29 @@
+//! Tweak Commands - Unified Option-Based Model
+//!
+//! Every tweak has an `options` array. Each option contains:
+//! - `label`: Display name (e.g., "Enabled", "Disabled", "High Performance")
+//! - `registry_changes`: Registry modifications for this option
+//! - `service_changes`: Service startup changes for this option
+//! - `pre_commands` / `post_commands`: Shell commands to run
+//!
+//! Tweaks with `is_toggle: true` have exactly 2 options and render as a toggle switch.
+//! Tweaks with `is_toggle: false` render as a dropdown selector.
+
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
-use crate::models::{CategoryDefinition, TweakDefinition, TweakResult, TweakStatus};
+use crate::models::{
+    CategoryDefinition, RegistryHive, RegistryValueType, TweakDefinition, TweakOption, TweakResult,
+    TweakStatus,
+};
 use crate::services::{
     backup_service, registry_service, service_control, system_info_service, trusted_installer,
     tweak_loader,
 };
 use tauri::AppHandle;
+
+// ============================================================================
+// Query Commands
+// ============================================================================
 
 /// Get all available categories (auto-discovered from YAML files)
 #[tauri::command]
@@ -70,53 +88,115 @@ pub async fn get_tweak(tweak_id: String) -> Result<Option<TweakDefinition>> {
     Ok(tweak)
 }
 
-/// Get status of a specific tweak (applied or not)
+/// Get status of a specific tweak
+/// Returns current_option_index = None if system state doesn't match any defined option
 #[tauri::command]
 pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     log::trace!("Command: get_tweak_status({})", tweak_id);
     let tweak = tweak_loader::get_tweak(&tweak_id)?
         .ok_or_else(|| Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
 
-    // Check if snapshot exists (means tweak is applied by us)
-    let has_backup = backup_service::snapshot_exists(&tweak_id)?;
+    let windows_info = system_info_service::get_windows_info()?;
+    let version = windows_info.version_number();
 
-    // Detect current state from registry
-    let (is_applied, current_option_index) = backup_service::detect_tweak_state(&tweak)?;
+    // Detect current state by matching against all options
+    let state = backup_service::detect_tweak_state(&tweak, version)?;
 
     // Get last applied timestamp from snapshot if exists
-    let last_applied = backup_service::load_snapshot(&tweak_id)?.map(|s| s.applied_at);
+    let last_applied = backup_service::load_snapshot(&tweak_id)?.map(|s| s.created_at);
 
     log::trace!(
-        "Tweak {} status: applied={}, has_backup={}, option_index={:?}",
+        "Tweak {} status: current_option={:?}, has_snapshot={}",
         tweak_id,
-        is_applied,
-        has_backup,
-        current_option_index
+        state.current_option_index,
+        state.has_snapshot
     );
 
     Ok(TweakStatus {
         tweak_id,
-        is_applied,
+        is_applied: state.has_snapshot, // "applied by us" = has snapshot
         last_applied,
-        has_backup,
-        current_option_index,
+        has_backup: state.has_snapshot,
+        current_option_index: state.current_option_index,
     })
 }
 
-/// Apply a tweak (set enable values in registry)
-/// If a snapshot already exists (tweak is applied), this will TOGGLE it off (restore from snapshot)
+/// Get status of all tweaks
 #[tauri::command]
-pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
-    log::info!("Command: apply_tweak({})", tweak_id);
+pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
+    log::debug!("Command: get_all_tweak_statuses");
+    let windows_info = system_info_service::get_windows_info()?;
+    let version = windows_info.version_number();
+
+    let tweaks = tweak_loader::get_tweaks_for_version(version)?;
+    let mut statuses = Vec::new();
+
+    for (id, tweak) in tweaks {
+        let state = backup_service::detect_tweak_state(&tweak, version)?;
+        let last_applied = backup_service::load_snapshot(&id)?.map(|s| s.created_at);
+
+        statuses.push(TweakStatus {
+            tweak_id: id,
+            is_applied: state.has_snapshot,
+            last_applied,
+            has_backup: state.has_snapshot,
+            current_option_index: state.current_option_index,
+        });
+    }
+
+    log::debug!("Returning {} tweak statuses", statuses.len());
+    Ok(statuses)
+}
+
+// ============================================================================
+// Apply Commands
+// ============================================================================
+
+/// Apply a specific option for a tweak
+///
+/// For toggle tweaks (is_toggle: true):
+/// - option_index 0 = first option (usually "Enabled" or "On")
+/// - option_index 1 = second option (usually "Disabled" or "Off")
+///
+/// For dropdown tweaks (is_toggle: false):
+/// - option_index corresponds to the options array index
+#[tauri::command]
+pub async fn apply_tweak(
+    app: AppHandle,
+    tweak_id: String,
+    option_index: usize,
+) -> Result<TweakResult> {
+    log::info!(
+        "Command: apply_tweak({}, option_index={})",
+        tweak_id,
+        option_index
+    );
 
     let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
         log::error!("Tweak not found: {}", tweak_id);
         Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
     })?;
 
+    // Validate option_index
+    if option_index >= tweak.options.len() {
+        return Err(Error::WindowsApi(format!(
+            "Invalid option index {} for tweak '{}' (has {} options)",
+            option_index,
+            tweak.name,
+            tweak.options.len()
+        )));
+    }
+
+    let option = &tweak.options[option_index];
     let system_info = system_info_service::get_system_info()?;
     let version = system_info.windows.version_number();
-    log::debug!("Processing '{}' on Windows {}", tweak.name, version);
+
+    log::debug!(
+        "Applying option '{}' for '{}' on Windows {}",
+        option.label,
+        tweak.name,
+        version
+    );
 
     // Check admin if required
     if tweak.requires_admin && !system_info.is_admin {
@@ -124,327 +204,90 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         return Err(Error::RequiresAdmin);
     }
 
-    // Get version-specific changes
-    let changes = tweak.get_changes_for_version(version);
-    if changes.is_empty() {
-        log::warn!(
-            "No registry changes for Windows {} in tweak '{}'",
-            version,
-            tweak.name
-        );
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    // Check if snapshot exists - if so, this is a TOGGLE OFF operation
-    if let Some(existing_snapshot) = backup_service::load_snapshot(&tweak_id)? {
+    // Check if already at this option
+    let current_state = backup_service::detect_tweak_state(&tweak, version)?;
+    if current_state.current_option_index == Some(option_index) {
         log::info!(
-            "Snapshot exists for '{}' - toggling OFF (restoring from snapshot)",
-            tweak.name
-        );
-
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Info,
-                &format!("Toggling OFF: {}", tweak.name),
-                Some(&format!(
-                    "Restoring {} registry values from snapshot",
-                    existing_snapshot.registry_snapshots.len()
-                )),
-            );
-        }
-
-        // Restore registry values from snapshot
-        if let Err(e) = backup_service::restore_from_snapshot(&existing_snapshot) {
-            log::error!(
-                "Failed to restore from snapshot for '{}': {}",
-                tweak.name,
-                e
-            );
-
-            // Delete the snapshot since restore failed - user likely lacks permissions
-            // and keeping it would just show the tweak as "applied" when it's not
-            let _ = backup_service::delete_snapshot(&tweak_id);
-
-            return Err(e);
-        }
-
-        // Restore service states if any
-        if let Some(ref service_changes) = tweak.service_changes {
-            for sc in service_changes {
-                log::info!(
-                    "Restoring service{}: {} -> {:?}",
-                    if tweak.requires_system {
-                        " as SYSTEM"
-                    } else {
-                        ""
-                    },
-                    sc.name,
-                    sc.disable_startup
-                );
-
-                // Restore startup type
-                if tweak.requires_system {
-                    let start_type = sc.disable_startup.to_sc_start_type();
-                    if let Err(e) =
-                        trusted_installer::set_service_startup_as_system(&sc.name, start_type)
-                    {
-                        log::warn!(
-                            "Failed to restore service '{}' startup as SYSTEM: {}",
-                            sc.name,
-                            e
-                        );
-                    }
-                } else if let Err(e) =
-                    service_control::set_service_startup(&sc.name, &sc.disable_startup)
-                {
-                    log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
-                }
-
-                // Start service if required
-                if sc.start_on_enable {
-                    if tweak.requires_system {
-                        if let Err(e) = trusted_installer::start_service_as_system(&sc.name) {
-                            log::warn!("Failed to start service '{}' as SYSTEM: {}", sc.name, e);
-                        }
-                    } else if let Err(e) = service_control::start_service(&sc.name) {
-                        log::warn!("Failed to start service '{}': {}", sc.name, e);
-                    }
-                }
-            }
-        }
-
-        // Delete snapshot after successful restore
-        backup_service::delete_snapshot(&tweak_id)?;
-
-        log::info!(
-            "Successfully toggled OFF tweak '{}'{}",
+            "Tweak '{}' is already at option '{}', skipping",
             tweak.name,
-            if tweak.requires_reboot {
-                " (reboot required)"
-            } else {
-                ""
-            }
+            option.label
         );
-
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Success,
-                &format!("Successfully toggled OFF: {}", tweak.name),
-                if tweak.requires_reboot {
-                    Some("Reboot required")
-                } else {
-                    None
-                },
-            );
-        }
-
         return Ok(TweakResult {
             success: true,
-            message: format!("Successfully reverted: {}", tweak.name),
-            requires_reboot: tweak.requires_reboot,
+            message: format!("Already at option: {}", option.label),
+            requires_reboot: false,
         });
     }
-
-    // No snapshot exists - this is a regular APPLY operation
-    log::info!("No snapshot for '{}' - applying tweak", tweak.name);
-
-    // Step 1: Capture snapshot BEFORE making any changes
-    let snapshot = backup_service::capture_snapshot(&tweak, version)?;
-    backup_service::save_snapshot(&snapshot)?;
-    log::info!(
-        "Captured snapshot for '{}' with {} registry values",
-        tweak.name,
-        snapshot.registry_snapshots.len()
-    );
 
     if is_debug_enabled() {
         emit_debug_log(
             &app,
             DebugLevel::Info,
-            &format!("Captured snapshot for: {}", tweak.name),
-            Some(&format!(
-                "{} registry values",
-                snapshot.registry_snapshots.len()
-            )),
+            &format!("Applying: {} → {}", tweak.name, option.label),
+            None,
         );
     }
 
-    // Step 2: Run pre_commands if defined (e.g., disable UCPD service)
-    if let Some(ref commands) = tweak.pre_commands {
-        for cmd in commands {
-            log::info!(
-                "Running pre-command{}: {}",
-                if tweak.requires_system {
-                    " as SYSTEM"
-                } else {
-                    ""
-                },
-                cmd
-            );
-
-            if tweak.requires_system {
-                // Run as SYSTEM for protected operations
-                match trusted_installer::run_command_as_system(cmd) {
-                    Ok(exit_code) => {
-                        if exit_code != 0 {
-                            log::warn!(
-                                "Pre-command returned non-zero exit code {}: {}",
-                                exit_code,
-                                cmd
-                            );
-                        } else {
-                            log::debug!("Pre-command succeeded as SYSTEM: {}", cmd);
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to run pre-command as SYSTEM: {}", e);
-                    }
-                }
-            } else {
-                // Run as current user
-                use std::os::windows::process::CommandExt;
-                let output = std::process::Command::new("cmd")
-                    .raw_arg(format!("/C {}", cmd))
-                    .output();
-
-                match output {
-                    Ok(result) => {
-                        if !result.status.success() {
-                            log::warn!(
-                                "Pre-command returned non-zero exit code {}: {}",
-                                result.status.code().unwrap_or(-1),
-                                String::from_utf8_lossy(&result.stderr)
-                            );
-                        } else {
-                            log::debug!("Pre-command succeeded: {}", cmd);
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to run pre-command: {}", e);
-                    }
-                }
-            }
-        }
+    // Step 1: Capture snapshot BEFORE making any changes (only if no snapshot exists)
+    if !backup_service::snapshot_exists(&tweak_id)? {
+        let snapshot = backup_service::capture_snapshot(&tweak, option_index, version)?;
+        backup_service::save_snapshot(&snapshot)?;
+        log::info!(
+            "Captured snapshot for '{}' with {} registry values, {} services",
+            tweak.name,
+            snapshot.registry_snapshots.len(),
+            snapshot.service_snapshots.len()
+        );
+    } else {
+        log::debug!(
+            "Snapshot already exists for '{}', skipping capture",
+            tweak.name
+        );
     }
 
-    // Step 3: Apply all registry changes atomically
-    let mut applied_values: Vec<(crate::models::RegistrySnapshot, serde_json::Value)> = Vec::new();
-
-    for change in &changes {
-        let hive_str = change.hive.as_str();
-        let full_path = format!("{}\\{}\\{}", hive_str, change.key, change.value_name);
-
-        log::debug!("Setting {} = {:?}", full_path, change.enable_value);
-
-        // Capture current value for potential rollback
-        let current_snapshot = crate::models::RegistrySnapshot {
-            hive: hive_str.to_string(),
-            key: change.key.clone(),
-            value_name: change.value_name.clone(),
-            value_type: change.value_type.as_str().to_string(),
-            value: read_current_value(change)?,
-            existed: true, // We'll set the value, so it will exist
-        };
-
-        // Try to write the value
-        if let Err(e) = write_registry_value(
-            &app,
-            change,
-            &change.enable_value,
-            "Setting",
-            &tweak.name,
-            tweak.requires_system,
-        ) {
-            log::error!("Failed to apply {}: {}", full_path, e);
-
-            // Rollback all applied values
-            log::warn!("Rolling back {} applied changes", applied_values.len());
-            for (snap, _original) in applied_values.iter().rev() {
-                let hive_enum = match snap.hive.as_str() {
-                    "HKCU" => crate::models::RegistryHive::HKCU,
-                    "HKLM" => crate::models::RegistryHive::HKLM,
-                    _ => continue,
-                };
-
-                if let Some(ref val) = snap.value {
-                    let _ = restore_value(
-                        &hive_enum,
-                        &snap.key,
-                        &snap.value_name,
-                        &snap.value_type,
-                        val,
-                    );
-                } else {
-                    let _ = registry_service::delete_value(&hive_enum, &snap.key, &snap.value_name);
-                }
-            }
-
-            // Delete the snapshot since apply failed
-            let _ = backup_service::delete_snapshot(&tweak_id);
-
-            return Err(Error::RegistryOperation(format!(
-                "Failed to apply '{}': {}. Rolled back {} changes.",
-                tweak.name,
-                e,
-                applied_values.len()
+    // Step 2: Run pre_commands if defined
+    for cmd in &option.pre_commands {
+        if let Err(e) = run_command(cmd, tweak.requires_system) {
+            log::error!("Pre-command failed, aborting: {}", e);
+            return Err(Error::CommandExecution(format!(
+                "Pre-command failed: {}",
+                e
             )));
         }
-
-        applied_values.push((current_snapshot, change.enable_value.clone()));
     }
 
-    // Step 3: Apply service changes
-    if let Some(ref service_changes) = tweak.service_changes {
-        for sc in service_changes {
-            log::info!(
-                "Applying service change{}: {} -> {:?}",
-                if tweak.requires_system {
-                    " as SYSTEM"
-                } else {
-                    ""
-                },
-                sc.name,
-                sc.enable_startup
-            );
+    // Step 3: Apply registry changes atomically
+    if let Err(e) = apply_registry_changes(&app, &tweak, option, version) {
+        log::error!(
+            "Failed to apply registry changes for '{}': {}",
+            tweak.name,
+            e
+        );
 
-            // Stop service if required
-            if sc.stop_on_disable {
-                if tweak.requires_system {
-                    if let Err(e) = trusted_installer::stop_service_as_system(&sc.name) {
-                        log::warn!("Failed to stop service '{}' as SYSTEM: {}", sc.name, e);
-                    }
-                } else if let Err(e) = service_control::stop_service(&sc.name) {
-                    log::warn!("Failed to stop service '{}': {}", sc.name, e);
-                }
-            }
+        // Restore from snapshot on failure
+        if let Some(snapshot) = backup_service::load_snapshot(&tweak_id)? {
+            log::warn!("Rolling back to snapshot...");
+            let _ = backup_service::restore_from_snapshot(&snapshot);
+        }
+        backup_service::delete_snapshot(&tweak_id)?;
 
-            // Set startup type
-            if tweak.requires_system {
-                let start_type = sc.enable_startup.to_sc_start_type();
-                if let Err(e) =
-                    trusted_installer::set_service_startup_as_system(&sc.name, start_type)
-                {
-                    log::error!(
-                        "Failed to set service '{}' startup as SYSTEM: {}",
-                        sc.name,
-                        e
-                    );
-                    // Don't fail the whole operation for service errors
-                }
-            } else if let Err(e) =
-                service_control::set_service_startup(&sc.name, &sc.enable_startup)
-            {
-                log::error!("Failed to set service '{}' startup: {}", sc.name, e);
-                // Don't fail the whole operation for service errors
-            }
+        return Err(e);
+    }
+
+    // Step 4: Apply service changes
+    apply_service_changes(option, tweak.requires_system);
+
+    // Step 5: Run post_commands
+    for cmd in &option.post_commands {
+        if let Err(e) = run_command(cmd, tweak.requires_system) {
+            log::warn!("Post-command failed (non-fatal): {}", e);
         }
     }
 
     log::info!(
-        "Successfully applied tweak '{}'{}",
+        "Successfully applied '{}' → '{}'{}",
         tweak.name,
+        option.label,
         if tweak.requires_reboot {
             " (reboot required)"
         } else {
@@ -456,141 +299,7 @@ pub async fn apply_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult
         emit_debug_log(
             &app,
             DebugLevel::Success,
-            &format!("Successfully applied: {}", tweak.name),
-            if tweak.requires_reboot {
-                Some("Reboot required for changes to take effect")
-            } else {
-                None
-            },
-        );
-    }
-
-    Ok(TweakResult {
-        success: true,
-        message: format!("Successfully applied: {}", tweak.name),
-        requires_reboot: tweak.requires_reboot,
-    })
-}
-
-/// Apply a specific option for a multi-state tweak
-#[tauri::command]
-pub async fn apply_tweak_option(
-    app: AppHandle,
-    tweak_id: String,
-    option_index: usize,
-) -> Result<TweakResult> {
-    log::info!(
-        "Command: apply_tweak_option({}, option={})",
-        tweak_id,
-        option_index
-    );
-
-    let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
-        log::error!("Tweak not found: {}", tweak_id);
-        Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
-    })?;
-
-    let system_info = system_info_service::get_system_info()?;
-    let version = system_info.windows.version_number();
-
-    // Check admin if required
-    if tweak.requires_admin && !system_info.is_admin {
-        return Err(Error::RequiresAdmin);
-    }
-
-    let changes = tweak.get_changes_for_version(version);
-    if changes.is_empty() {
-        return Err(Error::UnsupportedWindowsVersion);
-    }
-
-    // Capture snapshot if not already exists
-    if !backup_service::snapshot_exists(&tweak_id)? {
-        let snapshot = backup_service::capture_snapshot(&tweak, version)?;
-        backup_service::save_snapshot(&snapshot)?;
-    }
-
-    // Apply the selected option for each registry change
-    for change in &changes {
-        if let Some(ref options) = change.options {
-            if option_index < options.len() {
-                let option = &options[option_index];
-
-                // Apply registry value
-                write_registry_value(
-                    &app,
-                    change,
-                    &option.value,
-                    "Setting option",
-                    &tweak.name,
-                    tweak.requires_system,
-                )?;
-
-                // Apply per-option service changes if defined
-                if let Some(ref services) = option.service_changes {
-                    for svc in services {
-                        log::info!(
-                            "Applying option service change{}: {} -> {:?}",
-                            if tweak.requires_system {
-                                " as SYSTEM"
-                            } else {
-                                ""
-                            },
-                            svc.name,
-                            svc.startup
-                        );
-
-                        // Set startup type
-                        if tweak.requires_system {
-                            let start_type = svc.startup.to_sc_start_type();
-                            if let Err(e) = trusted_installer::set_service_startup_as_system(
-                                &svc.name, start_type,
-                            ) {
-                                log::warn!(
-                                    "Failed to set service '{}' startup as SYSTEM: {}",
-                                    svc.name,
-                                    e
-                                );
-                            }
-                        } else if let Err(e) =
-                            service_control::set_service_startup(&svc.name, &svc.startup)
-                        {
-                            log::warn!("Failed to set service '{}' startup: {}", svc.name, e);
-                        }
-
-                        // Stop service if startup is disabled and stop_if_disabled is set
-                        if svc.stop_if_disabled
-                            && svc.startup == crate::models::ServiceStartupType::Disabled
-                        {
-                            if tweak.requires_system {
-                                if let Err(e) = trusted_installer::stop_service_as_system(&svc.name)
-                                {
-                                    log::warn!(
-                                        "Failed to stop service '{}' as SYSTEM: {}",
-                                        svc.name,
-                                        e
-                                    );
-                                }
-                            } else if let Err(e) = service_control::stop_service(&svc.name) {
-                                log::warn!("Failed to stop service '{}': {}", svc.name, e);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    log::info!(
-        "Successfully applied option {} for '{}'",
-        option_index,
-        tweak.name
-    );
-
-    if is_debug_enabled() {
-        emit_debug_log(
-            &app,
-            DebugLevel::Success,
-            &format!("Applied option for: {}", tweak.name),
+            &format!("Applied: {} → {}", tweak.name, option.label),
             if tweak.requires_reboot {
                 Some("Reboot required")
             } else {
@@ -601,12 +310,12 @@ pub async fn apply_tweak_option(
 
     Ok(TweakResult {
         success: true,
-        message: format!("Applied option {} for {}", option_index, tweak.name),
+        message: format!("Applied: {} → {}", tweak.name, option.label),
         requires_reboot: tweak.requires_reboot,
     })
 }
 
-/// Revert a tweak (restore to snapshot state, or use disable_value if no snapshot)
+/// Revert a tweak to its original state (restore from snapshot)
 #[tauri::command]
 pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
     log::info!("Command: revert_tweak({})", tweak_id);
@@ -617,7 +326,6 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
     })?;
 
     let system_info = system_info_service::get_system_info()?;
-    let version = system_info.windows.version_number();
 
     // Check admin if required
     if tweak.requires_admin && !system_info.is_admin {
@@ -625,208 +333,38 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         return Err(Error::RequiresAdmin);
     }
 
-    let changes = tweak.get_changes_for_version(version);
-
-    // Try to load existing snapshot
-    let snapshot = backup_service::load_snapshot(&tweak_id)?;
-
-    if let Some(snap) = snapshot {
-        // CASE 1: We have a snapshot - restore from it
-        log::info!(
-            "Reverting '{}' using snapshot from {}",
-            tweak.name,
-            snap.applied_at
-        );
-
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Info,
-                &format!("Reverting: {}", tweak.name),
-                Some(&format!(
-                    "{} registry values to restore",
-                    snap.registry_snapshots.len()
-                )),
-            );
-        }
-
-        // Restore registry values from snapshot (atomic)
-        backup_service::restore_from_snapshot(&snap)?;
-
-        // Delete snapshot after successful revert
-        backup_service::delete_snapshot(&tweak_id)?;
-    } else {
-        // CASE 2: No snapshot exists (tweak was enabled before app was installed)
-        // Capture current state FIRST, then apply disable_value from YAML
-        log::info!(
-            "No snapshot found for '{}' - capturing current state and using disable_value",
-            tweak.name
-        );
-
-        // Capture current state so user can undo this revert later
-        let snapshot = backup_service::capture_snapshot(&tweak, version)?;
-        backup_service::save_snapshot(&snapshot)?;
-
-        if is_debug_enabled() {
-            emit_debug_log(
-                &app,
-                DebugLevel::Info,
-                &format!("Disabling: {} (no previous snapshot)", tweak.name),
-                Some(&format!("{} registry values to set", changes.len())),
-            );
-        }
-
-        // Run pre_commands if defined (e.g., disable UCPD service)
-        if let Some(ref commands) = tweak.pre_commands {
-            for cmd in commands {
-                log::info!(
-                    "Running pre-command{}: {}",
-                    if tweak.requires_system {
-                        " as SYSTEM"
-                    } else {
-                        ""
-                    },
-                    cmd
-                );
-
-                if tweak.requires_system {
-                    // Run as SYSTEM for protected operations
-                    match trusted_installer::run_command_as_system(cmd) {
-                        Ok(exit_code) => {
-                            if exit_code != 0 {
-                                log::warn!(
-                                    "Pre-command returned non-zero exit code {}: {}",
-                                    exit_code,
-                                    cmd
-                                );
-                            } else {
-                                log::debug!("Pre-command succeeded as SYSTEM: {}", cmd);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to run pre-command as SYSTEM: {}", e);
-                        }
-                    }
-                } else {
-                    // Run as current user
-                    use std::os::windows::process::CommandExt;
-                    let output = std::process::Command::new("cmd")
-                        .raw_arg(format!("/C {}", cmd))
-                        .output();
-
-                    match output {
-                        Ok(result) => {
-                            if !result.status.success() {
-                                log::warn!(
-                                    "Pre-command returned non-zero exit code {}: {}",
-                                    result.status.code().unwrap_or(-1),
-                                    String::from_utf8_lossy(&result.stderr)
-                                );
-                            } else {
-                                log::debug!("Pre-command succeeded: {}", cmd);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to run pre-command: {}", e);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Apply disable_value for each registry change
-        // Track if any writes fail so we can clean up
-        let mut write_failed = false;
-        let mut write_error: Option<Error> = None;
-
-        for change in &changes {
-            if let Some(ref disable_value) = change.disable_value {
-                // Use disable_value from YAML
-                if let Err(e) = write_registry_value(
-                    &app,
-                    change,
-                    disable_value,
-                    "Disabling",
-                    &tweak.name,
-                    tweak.requires_system,
-                ) {
-                    log::error!("Failed to write disable_value: {}", e);
-                    write_failed = true;
-                    write_error = Some(e);
-                    break;
-                }
-            } else {
-                // No disable_value - delete the key (restore to "not configured")
-                log::debug!(
-                    "No disable_value for {}\\{}\\{} - deleting key",
-                    change.hive.as_str(),
-                    change.key,
-                    change.value_name
-                );
-                let _ =
-                    registry_service::delete_value(&change.hive, &change.key, &change.value_name);
-            }
-        }
-
-        // If any write failed, delete the snapshot we just created and return error
-        if write_failed {
-            log::error!(
-                "Failed to apply disable_value for '{}' - deleting snapshot",
-                tweak.name
-            );
-            let _ = backup_service::delete_snapshot(&tweak_id);
-            return Err(write_error
-                .unwrap_or_else(|| Error::RegistryOperation("Unknown error".to_string())));
-        }
-    }
-
-    // Revert service changes (same for both cases)
-    if let Some(ref service_changes) = tweak.service_changes {
-        for sc in service_changes {
-            log::info!(
-                "Reverting service{}: {} -> {:?}",
-                if tweak.requires_system {
-                    " as SYSTEM"
-                } else {
-                    ""
-                },
-                sc.name,
-                sc.disable_startup
-            );
-
-            // Restore startup type
-            if tweak.requires_system {
-                let start_type = sc.disable_startup.to_sc_start_type();
-                if let Err(e) =
-                    trusted_installer::set_service_startup_as_system(&sc.name, start_type)
-                {
-                    log::warn!(
-                        "Failed to restore service '{}' startup as SYSTEM: {}",
-                        sc.name,
-                        e
-                    );
-                }
-            } else if let Err(e) =
-                service_control::set_service_startup(&sc.name, &sc.disable_startup)
-            {
-                log::warn!("Failed to restore service '{}' startup: {}", sc.name, e);
-            }
-
-            // Start service if required
-            if sc.start_on_enable {
-                if tweak.requires_system {
-                    if let Err(e) = trusted_installer::start_service_as_system(&sc.name) {
-                        log::warn!("Failed to start service '{}' as SYSTEM: {}", sc.name, e);
-                    }
-                } else if let Err(e) = service_control::start_service(&sc.name) {
-                    log::warn!("Failed to start service '{}': {}", sc.name, e);
-                }
-            }
-        }
-    }
+    // Load snapshot
+    let snapshot = backup_service::load_snapshot(&tweak_id)?
+        .ok_or_else(|| Error::BackupFailed("No snapshot found for this tweak".into()))?;
 
     log::info!(
-        "Successfully reverted tweak '{}'{}",
+        "Reverting '{}' from option '{}' (snapshot from {})",
+        tweak.name,
+        snapshot.applied_option_label,
+        snapshot.created_at
+    );
+
+    if is_debug_enabled() {
+        emit_debug_log(
+            &app,
+            DebugLevel::Info,
+            &format!("Reverting: {}", tweak.name),
+            Some(&format!(
+                "{} registry values, {} services",
+                snapshot.registry_snapshots.len(),
+                snapshot.service_snapshots.len()
+            )),
+        );
+    }
+
+    // Restore from snapshot
+    backup_service::restore_from_snapshot(&snapshot)?;
+
+    // Delete snapshot after successful restore
+    backup_service::delete_snapshot(&tweak_id)?;
+
+    log::info!(
+        "Successfully reverted '{}'{}",
         tweak.name,
         if tweak.requires_reboot {
             " (reboot required)"
@@ -839,7 +377,7 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         emit_debug_log(
             &app,
             DebugLevel::Success,
-            &format!("Successfully reverted: {}", tweak.name),
+            &format!("Reverted: {}", tweak.name),
             if tweak.requires_reboot {
                 Some("Reboot required")
             } else {
@@ -850,16 +388,22 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
 
     Ok(TweakResult {
         success: true,
-        message: format!("Successfully reverted: {}", tweak.name),
+        message: format!("Reverted: {}", tweak.name),
         requires_reboot: tweak.requires_reboot,
     })
 }
 
-/// Apply multiple tweaks at once
+/// Batch apply multiple tweak options
+/// Input: Vec of (tweak_id, option_index) tuples
 #[tauri::command]
-pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Result<TweakResult> {
-    log::info!("Command: batch_apply_tweaks({} tweaks)", tweak_ids.len());
-    log::debug!("Batch tweak IDs: {:?}", tweak_ids);
+pub async fn batch_apply_tweaks(
+    app: AppHandle,
+    operations: Vec<(String, usize)>,
+) -> Result<TweakResult> {
+    log::info!(
+        "Command: batch_apply_tweaks({} operations)",
+        operations.len()
+    );
 
     let system_info = system_info_service::get_system_info()?;
 
@@ -872,29 +416,51 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
         emit_debug_log(
             &app,
             DebugLevel::Info,
-            &format!("Batch applying {} tweaks", tweak_ids.len()),
+            &format!("Batch applying {} tweaks", operations.len()),
             None,
         );
     }
 
     let mut requires_reboot = false;
+    let mut success_count = 0;
+    let mut failure_count = 0;
 
-    for tweak_id in &tweak_ids {
-        let result = Box::pin(apply_tweak(app.clone(), tweak_id.clone())).await;
+    for (tweak_id, option_index) in &operations {
+        let result = Box::pin(apply_tweak(app.clone(), tweak_id.clone(), *option_index)).await;
 
-        if let Err(e) = result {
-            log::warn!("Failed to apply tweak '{}' in batch: {}", tweak_id, e);
-            // Continue with other tweaks
-        } else if let Ok(res) = result {
-            if res.requires_reboot {
-                requires_reboot = true;
+        match result {
+            Ok(res) => {
+                success_count += 1;
+                if res.requires_reboot {
+                    requires_reboot = true;
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to apply tweak '{}' option {}: {}",
+                    tweak_id,
+                    option_index,
+                    e
+                );
+                failure_count += 1;
             }
         }
     }
 
+    let message = if failure_count > 0 {
+        format!(
+            "Applied {}/{} tweaks ({} failed)",
+            success_count,
+            operations.len(),
+            failure_count
+        )
+    } else {
+        format!("Successfully applied {} tweaks", success_count)
+    };
+
     log::info!(
-        "Batch apply completed: {} tweaks{}",
-        tweak_ids.len(),
+        "Batch apply completed: {}{}",
+        message,
         if requires_reboot {
             " (reboot required)"
         } else {
@@ -906,7 +472,7 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
         emit_debug_log(
             &app,
             DebugLevel::Success,
-            &format!("Batch apply completed: {} tweaks", tweak_ids.len()),
+            &message,
             if requires_reboot {
                 Some("Reboot required")
             } else {
@@ -916,8 +482,45 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
     }
 
     Ok(TweakResult {
+        success: failure_count == 0,
+        message,
+        requires_reboot,
+    })
+}
+
+/// Batch revert multiple tweaks
+#[tauri::command]
+pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Result<TweakResult> {
+    log::info!("Command: batch_revert_tweaks({} tweaks)", tweak_ids.len());
+
+    let system_info = system_info_service::get_system_info()?;
+
+    if !system_info.is_admin {
+        return Err(Error::RequiresAdmin);
+    }
+
+    let mut requires_reboot = false;
+    let mut success_count = 0;
+
+    for tweak_id in &tweak_ids {
+        let result = Box::pin(revert_tweak(app.clone(), tweak_id.clone())).await;
+
+        match result {
+            Ok(res) => {
+                success_count += 1;
+                if res.requires_reboot {
+                    requires_reboot = true;
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to revert tweak '{}': {}", tweak_id, e);
+            }
+        }
+    }
+
+    Ok(TweakResult {
         success: true,
-        message: format!("Successfully applied {} tweaks", tweak_ids.len()),
+        message: format!("Reverted {} tweaks", success_count),
         requires_reboot,
     })
 }
@@ -926,205 +529,227 @@ pub async fn batch_apply_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resul
 // Helper Functions
 // ============================================================================
 
-/// Read current registry value for a change
-fn read_current_value(change: &crate::models::RegistryChange) -> Result<Option<serde_json::Value>> {
-    match change.value_type {
-        crate::models::RegistryValueType::DWord => {
-            registry_service::read_dword(&change.hive, &change.key, &change.value_name)
+/// Run a shell command (as user or SYSTEM)
+fn run_command(cmd: &str, use_system: bool) -> Result<()> {
+    log::info!(
+        "Running command{}: {}",
+        if use_system { " as SYSTEM" } else { "" },
+        cmd
+    );
+
+    if use_system {
+        match trusted_installer::run_command_as_system(cmd) {
+            Ok(exit_code) => {
+                if exit_code != 0 {
+                    log::warn!("Command returned exit code {}: {}", exit_code, cmd);
+                }
+                Ok(())
+            }
+            Err(e) => Err(Error::CommandExecution(format!(
+                "SYSTEM command failed: {}",
+                e
+            ))),
+        }
+    } else {
+        use std::os::windows::process::CommandExt;
+        let output = std::process::Command::new("cmd")
+            .raw_arg(format!("/C {}", cmd))
+            .output()
+            .map_err(|e| Error::CommandExecution(e.to_string()))?;
+
+        if !output.status.success() {
+            log::warn!(
+                "Command failed with exit code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Apply all registry changes for an option atomically
+fn apply_registry_changes(
+    app: &AppHandle,
+    tweak: &TweakDefinition,
+    option: &TweakOption,
+    windows_version: u32,
+) -> Result<()> {
+    let mut applied: Vec<(RegistryHive, String, String, Option<serde_json::Value>)> = Vec::new();
+
+    for change in &option.registry_changes {
+        // Skip if not for this Windows version
+        if !change.applies_to_version(windows_version) {
+            continue;
+        }
+
+        let full_path = format!(
+            "{}\\{}\\{}",
+            change.hive.as_str(),
+            change.key,
+            change.value_name
+        );
+
+        // Read current value for rollback
+        let current = read_registry_value(
+            &change.hive,
+            &change.key,
+            &change.value_name,
+            &change.value_type,
+        )?;
+
+        log::debug!(
+            "Setting {} = {:?} (was {:?})",
+            full_path,
+            change.value,
+            current
+        );
+
+        // Write new value
+        if let Err(e) = write_registry_value(
+            &change.hive,
+            &change.key,
+            &change.value_name,
+            &change.value_type,
+            &change.value,
+            tweak.requires_system,
+        ) {
+            log::error!("Failed to write {}: {}", full_path, e);
+
+            // Rollback applied changes
+            for (hive, key, value_name, original) in applied.iter().rev() {
+                if let Some(val) = original {
+                    // Restore original value - guess type from value
+                    let _ = restore_value(hive, key, value_name, val);
+                } else {
+                    // Delete the value we created
+                    let _ = registry_service::delete_value(hive, key, value_name);
+                }
+            }
+
+            return Err(e);
+        }
+
+        applied.push((
+            change.hive,
+            change.key.clone(),
+            change.value_name.clone(),
+            current,
+        ));
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                app,
+                DebugLevel::Info,
+                &format!("Set {}", full_path),
+                Some(&format!("{:?}", change.value)),
+            );
+        }
+    }
+
+    log::debug!("Applied {} registry changes", applied.len());
+    Ok(())
+}
+
+/// Apply all service changes for an option
+fn apply_service_changes(option: &TweakOption, use_system: bool) {
+    for change in &option.service_changes {
+        log::info!(
+            "Setting service{} '{}' startup to {:?}",
+            if use_system { " (SYSTEM)" } else { "" },
+            change.name,
+            change.startup
+        );
+
+        if use_system {
+            let start_type = change.startup.to_sc_start_type();
+            if let Err(e) =
+                trusted_installer::set_service_startup_as_system(&change.name, start_type)
+            {
+                log::warn!(
+                    "Failed to set service '{}' startup as SYSTEM: {}",
+                    change.name,
+                    e
+                );
+            }
+        } else if let Err(e) = service_control::set_service_startup(&change.name, &change.startup) {
+            log::warn!("Failed to set service '{}' startup: {}", change.name, e);
+        }
+
+        // Stop service if setting to Disabled
+        if change.startup == crate::models::ServiceStartupType::Disabled {
+            if use_system {
+                let _ = trusted_installer::stop_service_as_system(&change.name);
+            } else {
+                let _ = service_control::stop_service(&change.name);
+            }
+        }
+    }
+}
+
+/// Read a registry value
+fn read_registry_value(
+    hive: &RegistryHive,
+    key: &str,
+    value_name: &str,
+    value_type: &RegistryValueType,
+) -> Result<Option<serde_json::Value>> {
+    let result = match value_type {
+        RegistryValueType::Dword => registry_service::read_dword(hive, key, value_name)
+            .map(|v| v.map(|val| serde_json::json!(val))),
+        RegistryValueType::String | RegistryValueType::ExpandString => {
+            registry_service::read_string(hive, key, value_name)
                 .map(|v| v.map(|val| serde_json::json!(val)))
         }
-        crate::models::RegistryValueType::String
-        | crate::models::RegistryValueType::ExpandString => {
-            registry_service::read_string(&change.hive, &change.key, &change.value_name)
-                .map(|v| v.map(|val| serde_json::json!(val)))
-        }
-        crate::models::RegistryValueType::Binary => {
-            registry_service::read_binary(&change.hive, &change.key, &change.value_name)
-                .map(|v| v.map(|val| serde_json::json!(val)))
-        }
-        crate::models::RegistryValueType::QWord => {
-            registry_service::read_qword(&change.hive, &change.key, &change.value_name)
-                .map(|v| v.map(|val| serde_json::json!(val)))
-        }
-        crate::models::RegistryValueType::MultiString => {
-            log::trace!("MultiString type not supported");
+        RegistryValueType::Binary => registry_service::read_binary(hive, key, value_name)
+            .map(|v| v.map(|val| serde_json::json!(val))),
+        RegistryValueType::Qword => registry_service::read_qword(hive, key, value_name)
+            .map(|v| v.map(|val| serde_json::json!(val))),
+        RegistryValueType::MultiString => registry_service::read_string(hive, key, value_name)
+            .map(|v| v.map(|val| serde_json::json!(val))),
+    };
+
+    match result {
+        Ok(v) => Ok(v),
+        Err(Error::RegistryKeyNotFound(_)) => Ok(None),
+        Err(e) => {
+            log::debug!(
+                "Could not read {}\\{}\\{}: {}",
+                hive.as_str(),
+                key,
+                value_name,
+                e
+            );
             Ok(None)
         }
     }
 }
 
-/// Write a registry value based on type
-/// If use_system is true, uses SYSTEM elevation via reg.exe
+/// Write a registry value
 fn write_registry_value(
-    app: &AppHandle,
-    change: &crate::models::RegistryChange,
-    value: &serde_json::Value,
-    operation: &str,
-    tweak_name: &str,
-    use_system: bool,
-) -> Result<()> {
-    let hive_name = change.hive.as_str();
-    let full_path = format!("{}\\{}\\{}", hive_name, change.key, change.value_name);
-
-    // If SYSTEM elevation requested, use reg.exe via trusted_installer
-    if use_system {
-        return write_registry_value_as_system(change, value, operation, &full_path);
-    }
-
-    match change.value_type {
-        crate::models::RegistryValueType::DWord => {
-            if let Some(v) = value.as_u64() {
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("{} DWORD: {} = {}", operation, full_path, v),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_dword(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    v as u32,
-                )?;
-            }
-        }
-        crate::models::RegistryValueType::String
-        | crate::models::RegistryValueType::ExpandString => {
-            if let Some(v) = value.as_str() {
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("{} String: {} = {}", operation, full_path, v),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_string(&change.hive, &change.key, &change.value_name, v)?;
-            }
-        }
-        crate::models::RegistryValueType::Binary => {
-            if let Some(arr) = value.as_array() {
-                let binary: Vec<u8> = arr
-                    .iter()
-                    .filter_map(|v| v.as_u64().map(|u| u as u8))
-                    .collect();
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!(
-                            "{} Binary: {} ({} bytes)",
-                            operation,
-                            full_path,
-                            binary.len()
-                        ),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_binary(
-                    &change.hive,
-                    &change.key,
-                    &change.value_name,
-                    &binary,
-                )?;
-            }
-        }
-        crate::models::RegistryValueType::QWord => {
-            if let Some(v) = value.as_u64() {
-                if is_debug_enabled() {
-                    emit_debug_log(
-                        app,
-                        DebugLevel::Info,
-                        &format!("{} QWORD: {} = {}", operation, full_path, v),
-                        Some(tweak_name),
-                    );
-                }
-                registry_service::set_qword(&change.hive, &change.key, &change.value_name, v)?;
-            }
-        }
-        crate::models::RegistryValueType::MultiString => {
-            log::warn!(
-                "MultiString registry type not supported for {}: {}",
-                operation.to_lowercase(),
-                full_path
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Write a registry value as SYSTEM using reg.exe
-fn write_registry_value_as_system(
-    change: &crate::models::RegistryChange,
-    value: &serde_json::Value,
-    operation: &str,
-    full_path: &str,
-) -> Result<()> {
-    let hive_name = change.hive.as_str();
-    let value_type = change.value_type.as_str();
-
-    // Convert value to string for reg.exe
-    let value_data = match change.value_type {
-        crate::models::RegistryValueType::DWord | crate::models::RegistryValueType::QWord => {
-            value.as_u64().map(|v| v.to_string())
-        }
-        crate::models::RegistryValueType::String
-        | crate::models::RegistryValueType::ExpandString => {
-            value.as_str().map(|s| format!("\"{}\"", s))
-        }
-        _ => {
-            log::warn!(
-                "SYSTEM elevation not supported for type {:?}: {}",
-                change.value_type,
-                full_path
-            );
-            return Ok(());
-        }
-    };
-
-    if let Some(data) = value_data {
-        log::info!(
-            "[SYSTEM] {} {}: {} = {}",
-            operation,
-            value_type,
-            full_path,
-            data
-        );
-        trusted_installer::set_registry_value_as_system(
-            hive_name,
-            &change.key,
-            &change.value_name,
-            value_type,
-            &data,
-        )?;
-    }
-
-    Ok(())
-}
-
-/// Restore a value to the registry
-fn restore_value(
-    hive: &crate::models::RegistryHive,
+    hive: &RegistryHive,
     key: &str,
     value_name: &str,
-    value_type: &str,
+    value_type: &RegistryValueType,
     value: &serde_json::Value,
+    use_system: bool,
 ) -> Result<()> {
+    if use_system {
+        return write_registry_value_as_system(hive, key, value_name, value_type, value);
+    }
+
     match value_type {
-        "REG_DWORD" => {
+        RegistryValueType::Dword => {
             if let Some(v) = value.as_u64() {
                 registry_service::set_dword(hive, key, value_name, v as u32)?;
             }
         }
-        "REG_SZ" | "REG_EXPAND_SZ" => {
+        RegistryValueType::String | RegistryValueType::ExpandString => {
             if let Some(v) = value.as_str() {
                 registry_service::set_string(hive, key, value_name, v)?;
             }
         }
-        "REG_BINARY" => {
+        RegistryValueType::Binary => {
             if let Some(arr) = value.as_array() {
                 let binary: Vec<u8> = arr
                     .iter()
@@ -1133,12 +758,75 @@ fn restore_value(
                 registry_service::set_binary(hive, key, value_name, &binary)?;
             }
         }
-        "REG_QWORD" => {
+        RegistryValueType::Qword => {
             if let Some(v) = value.as_u64() {
                 registry_service::set_qword(hive, key, value_name, v)?;
             }
         }
-        _ => {}
+        RegistryValueType::MultiString => {
+            log::warn!("MultiString not supported for write");
+        }
+    }
+
+    Ok(())
+}
+
+/// Write a registry value as SYSTEM
+fn write_registry_value_as_system(
+    hive: &RegistryHive,
+    key: &str,
+    value_name: &str,
+    value_type: &RegistryValueType,
+    value: &serde_json::Value,
+) -> Result<()> {
+    let value_data = match value_type {
+        RegistryValueType::Dword | RegistryValueType::Qword => {
+            value.as_u64().map(|v| v.to_string())
+        }
+        RegistryValueType::String | RegistryValueType::ExpandString => {
+            value.as_str().map(|s| format!("\"{}\"", s))
+        }
+        _ => {
+            log::warn!("SYSTEM elevation not supported for {:?}", value_type);
+            return Ok(());
+        }
+    };
+
+    if let Some(data) = value_data {
+        trusted_installer::set_registry_value_as_system(
+            hive.as_str(),
+            key,
+            value_name,
+            value_type.as_str(),
+            &data,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Restore a value (guess type from JSON value)
+fn restore_value(
+    hive: &RegistryHive,
+    key: &str,
+    value_name: &str,
+    value: &serde_json::Value,
+) -> Result<()> {
+    if let Some(v) = value.as_u64() {
+        // Could be DWORD or QWORD - use DWORD if it fits
+        if v <= u32::MAX as u64 {
+            registry_service::set_dword(hive, key, value_name, v as u32)?;
+        } else {
+            registry_service::set_qword(hive, key, value_name, v)?;
+        }
+    } else if let Some(v) = value.as_str() {
+        registry_service::set_string(hive, key, value_name, v)?;
+    } else if let Some(arr) = value.as_array() {
+        let binary: Vec<u8> = arr
+            .iter()
+            .filter_map(|v| v.as_u64().map(|u| u as u8))
+            .collect();
+        registry_service::set_binary(hive, key, value_name, &binary)?;
     }
     Ok(())
 }

@@ -10,25 +10,19 @@
   const percentage = $derived(total > 0 ? Math.round((applied / total) * 100) : 0);
 </script>
 
-<div
-  class="flex items-center gap-5 rounded-lg border border-border bg-card px-5 py-4 max-sm:flex-col max-sm:p-4"
->
+<div class="flex items-center gap-5 rounded-lg border border-border bg-card px-5 py-4 max-sm:flex-col max-sm:p-4">
   <!-- Main circular stat -->
   <div class="flex flex-col items-center gap-1">
     <div class="stat-circle relative h-15 w-15">
       <svg viewBox="0 0 36 36" class="h-full w-full">
-        <path
-          class="circle-bg"
-          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-        />
+        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
         <path
           class="circle"
           stroke-dasharray="{percentage}, 100"
           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
         />
       </svg>
-      <span
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-bold text-foreground"
+      <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-bold text-foreground"
         >{percentage}%</span
       >
     </div>
@@ -45,9 +39,7 @@
         <Icon icon="mdi:tune-vertical" width="16" />
         {total}
       </div>
-      <div class="text-xs font-medium tracking-wide text-foreground-muted uppercase">
-        Total Tweaks
-      </div>
+      <div class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Total Tweaks</div>
     </div>
 
     <div class="flex flex-col gap-0.5">

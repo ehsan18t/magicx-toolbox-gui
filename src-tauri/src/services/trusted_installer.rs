@@ -472,6 +472,7 @@ pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
 }
 
 /// Start a Windows service as SYSTEM using net start
+#[allow(dead_code)]
 pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
     log::info!("Starting service '{}' as SYSTEM", service_name);
 

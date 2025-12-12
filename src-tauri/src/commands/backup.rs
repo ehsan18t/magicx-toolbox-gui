@@ -32,7 +32,7 @@ pub fn get_backup_info(tweak_id: String) -> Result<Option<BackupInfo>> {
         Some(snapshot) => Ok(Some(BackupInfo {
             tweak_id: snapshot.tweak_id,
             tweak_name: snapshot.tweak_name,
-            applied_at: snapshot.applied_at,
+            applied_at: snapshot.created_at,
             windows_version: snapshot.windows_version,
             registry_values_count: snapshot.registry_snapshots.len(),
             service_snapshots_count: snapshot.service_snapshots.len(),

@@ -91,10 +91,11 @@ pub fn run() {
             commands::tweaks::get_tweaks_by_category,
             commands::tweaks::get_tweak,
             commands::tweaks::get_tweak_status,
+            commands::tweaks::get_all_tweak_statuses,
             commands::tweaks::apply_tweak,
-            commands::tweaks::apply_tweak_option,
             commands::tweaks::revert_tweak,
             commands::tweaks::batch_apply_tweaks,
+            commands::tweaks::batch_revert_tweaks,
             commands::debug::set_debug_mode,
             commands::debug::get_debug_mode,
             // Backup commands
