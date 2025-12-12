@@ -622,18 +622,27 @@ pub fn detect_tweak_state(
 }
 
 /// Check if all registry/service changes in an option match current state
+/// Items with skip_validation=true are excluded from this check
 fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> Result<bool, Error> {
-    // If option has no changes, it can't match
-    if option.registry_changes.is_empty() && option.service_changes.is_empty() {
+    // Count only validatable changes (those without skip_validation)
+    let validatable_registry: Vec<_> = option
+        .registry_changes
+        .iter()
+        .filter(|c| !c.skip_validation && c.applies_to_version(windows_version))
+        .collect();
+    let validatable_services: Vec<_> = option
+        .service_changes
+        .iter()
+        .filter(|c| !c.skip_validation)
+        .collect();
+
+    // If option has no validatable changes, it can't match
+    if validatable_registry.is_empty() && validatable_services.is_empty() {
         return Ok(false);
     }
 
-    // Check all registry values
-    for change in &option.registry_changes {
-        if !change.applies_to_version(windows_version) {
-            continue;
-        }
-
+    // Check all validatable registry values
+    for change in validatable_registry {
         let (current_value, existed) = read_registry_value(
             &change.hive,
             &change.key,
@@ -650,8 +659,8 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         }
     }
 
-    // Check all service states
-    for change in &option.service_changes {
+    // Check all validatable service states
+    for change in validatable_services {
         let status = service_control::get_service_status(&change.name)?;
         let current_startup = status.startup_type;
 
@@ -660,7 +669,7 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         }
     }
 
-    // All checks passed
+    // All validatable checks passed
     Ok(true)
 }
 

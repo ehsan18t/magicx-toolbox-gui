@@ -170,13 +170,16 @@ tweaks:
             value_type: REG_DWORD
             value: 0
             windows_versions: [10, 11] # Optional filter
+            skip_validation: false # Optional: if true, ignore this for status check & failure
         service_changes:
           - name: "DiagTrack"
             startup: disabled
+            skip_validation: false # Optional: if true, ignore for status check & failure
         scheduler_changes:
           - task_path: "\\Microsoft\\Windows\\Application Experience"
             task_name: "Microsoft Compatibility Appraiser"
             action: disable # enable | disable | delete
+            skip_validation: false # Optional: if true, ignore for status check & failure
         pre_commands: [] # Shell commands before changes
         pre_powershell: [] # PowerShell before changes (after pre_commands)
         post_commands: [] # Shell commands after changes
@@ -193,6 +196,16 @@ tweaks:
           - name: "DiagTrack"
             startup: automatic
 ```
+
+### skip_validation Flag
+
+The `skip_validation` flag can be added to `registry_changes`, `service_changes`, and `scheduler_changes`. When `true`:
+
+1. **Status Detection**: The item is excluded from tweak status checks (determining if a tweak is "applied" or not)
+2. **Atomic Rollback**: Failures for this item won't trigger a full rollback
+3. **Execution**: The change is still attempted, but failures are logged as warnings and execution continues
+
+**Use case**: Windows Update service (`wuauserv`) re-enables itself when Settings app opens. With `skip_validation: true`, the tweak status won't flip to "not applied" just because this service changed.
 
 ### Execution Order
 

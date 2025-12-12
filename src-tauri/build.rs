@@ -86,6 +86,8 @@ struct RegistryChange {
     value: serde_json::Value,
     #[serde(default)]
     windows_versions: Option<Vec<u32>>,
+    #[serde(default)]
+    skip_validation: bool,
 }
 
 /// Single service modification within an option
@@ -97,6 +99,8 @@ struct ServiceChange {
     stop_service: bool,
     #[serde(default)]
     start_service: bool,
+    #[serde(default)]
+    skip_validation: bool,
 }
 
 /// Single scheduled task modification within an option
@@ -105,6 +109,8 @@ struct SchedulerChange {
     task_path: String,
     task_name: String,
     action: SchedulerAction,
+    #[serde(default)]
+    skip_validation: bool,
 }
 
 /// A single option within a tweak - contains all changes for that state

@@ -183,6 +183,9 @@ pub struct RegistryChange {
     /// Optional Windows version filter [10], [11], or [10, 11]
     #[serde(default)]
     pub windows_versions: Option<Vec<u32>>,
+    /// If true, skip this change for tweak status validation and ignore failures during apply
+    #[serde(default)]
+    pub skip_validation: bool,
 }
 
 impl RegistryChange {
@@ -209,6 +212,9 @@ pub struct ServiceChange {
     /// Start the service after changing startup type
     #[serde(default)]
     pub start_service: bool,
+    /// If true, skip this change for tweak status validation and ignore failures during apply
+    #[serde(default)]
+    pub skip_validation: bool,
 }
 
 /// Single scheduled task modification within an option
@@ -220,6 +226,9 @@ pub struct SchedulerChange {
     pub task_name: String,
     /// Action to perform on the task
     pub action: SchedulerAction,
+    /// If true, skip this change for tweak status validation and ignore failures during apply
+    #[serde(default)]
+    pub skip_validation: bool,
 }
 
 /// A single option within a tweak - contains all changes for that state
@@ -479,6 +488,7 @@ mod tests {
             value_type: RegistryValueType::Dword,
             value: serde_json::json!(value),
             windows_versions,
+            skip_validation: false,
         }
     }
 
@@ -568,6 +578,7 @@ mod tests {
                         value_type: RegistryValueType::Dword,
                         value: serde_json::json!(1),
                         windows_versions: None,
+                        skip_validation: false,
                     },
                 ]),
                 make_option(vec![make_registry_change(2, None)]),

@@ -613,16 +613,25 @@ fn apply_registry_changes(
             change.value_name
         );
 
-        // Read current value for rollback
-        let current = read_registry_value(
-            &change.hive,
-            &change.key,
-            &change.value_name,
-            &change.value_type,
-        )?;
+        // Read current value for rollback (only for validatable changes)
+        let current = if !change.skip_validation {
+            read_registry_value(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+                &change.value_type,
+            )?
+        } else {
+            None
+        };
 
         log::debug!(
-            "Setting {} = {:?} (was {:?})",
+            "Setting{} {} = {:?} (was {:?})",
+            if change.skip_validation {
+                " (skip_validation)"
+            } else {
+                ""
+            },
             full_path,
             change.value,
             current
@@ -637,6 +646,16 @@ fn apply_registry_changes(
             &change.value,
             tweak.requires_system,
         ) {
+            if change.skip_validation {
+                // For skip_validation items, log warning but continue
+                log::warn!(
+                    "Failed to write {} (skip_validation, continuing): {}",
+                    full_path,
+                    e
+                );
+                continue;
+            }
+
             log::error!("Failed to write {}: {}", full_path, e);
 
             // Rollback applied changes
@@ -653,18 +672,25 @@ fn apply_registry_changes(
             return Err(e);
         }
 
-        applied.push((
-            change.hive,
-            change.key.clone(),
-            change.value_name.clone(),
-            current,
-        ));
+        // Only track for rollback if NOT skip_validation
+        if !change.skip_validation {
+            applied.push((
+                change.hive,
+                change.key.clone(),
+                change.value_name.clone(),
+                current,
+            ));
+        }
 
         if is_debug_enabled() {
             emit_debug_log(
                 app,
                 DebugLevel::Info,
-                &format!("Set {}", full_path),
+                &format!(
+                    "Set{}{}",
+                    if change.skip_validation { " [sv]" } else { "" },
+                    full_path
+                ),
                 Some(&format!("{:?}", change.value)),
             );
         }
@@ -700,12 +726,17 @@ fn apply_all_changes_atomically(
     Ok(())
 }
 
-/// Apply all service changes for an option atomically (fail on first error)
+/// Apply all service changes for an option atomically (fail on first error for non-skip_validation items)
 fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Result<()> {
     for change in &option.service_changes {
         log::info!(
-            "Setting service{} '{}' startup to {:?}",
+            "Setting service{}{} '{}' startup to {:?}",
             if use_system { " (SYSTEM)" } else { "" },
+            if change.skip_validation {
+                " (skip_validation)"
+            } else {
+                ""
+            },
             change.name,
             change.startup
         );
@@ -718,6 +749,15 @@ fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Resul
         };
 
         if let Err(e) = result {
+            if change.skip_validation {
+                // For skip_validation items, log warning but continue
+                log::warn!(
+                    "Failed to set service '{}' startup (skip_validation, continuing): {}",
+                    change.name,
+                    e
+                );
+                continue;
+            }
             return Err(Error::ServiceControl(format!(
                 "Failed to set service '{}' startup: {}",
                 change.name, e
@@ -736,7 +776,7 @@ fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Resul
     Ok(())
 }
 
-/// Apply all scheduler changes for an option atomically (fail on first error)
+/// Apply all scheduler changes for an option atomically (fail on first error for non-skip_validation items)
 fn apply_scheduler_changes_atomic(
     app: &AppHandle,
     option: &TweakOption,
@@ -745,8 +785,13 @@ fn apply_scheduler_changes_atomic(
     for change in &option.scheduler_changes {
         let task_path = format!("{}\\{}", change.task_path, change.task_name);
         log::info!(
-            "Applying scheduler change{}: {} → {:?}",
+            "Applying scheduler change{}{}: {} → {:?}",
             if use_system { " (SYSTEM)" } else { "" },
+            if change.skip_validation {
+                " (skip_validation)"
+            } else {
+                ""
+            },
             task_path,
             change.action
         );
@@ -777,6 +822,15 @@ fn apply_scheduler_changes_atomic(
         };
 
         if let Err(e) = result {
+            if change.skip_validation {
+                // For skip_validation items, log warning but continue
+                log::warn!(
+                    "Failed to apply scheduler change for '{}' (skip_validation, continuing): {}",
+                    task_path,
+                    e
+                );
+                continue;
+            }
             return Err(Error::CommandExecution(format!(
                 "Failed to apply scheduler change for '{}': {}",
                 task_path, e
@@ -787,7 +841,12 @@ fn apply_scheduler_changes_atomic(
             emit_debug_log(
                 app,
                 DebugLevel::Info,
-                &format!("Scheduler: {} → {:?}", task_path, change.action),
+                &format!(
+                    "Scheduler{}: {} → {:?}",
+                    if change.skip_validation { " [sv]" } else { "" },
+                    task_path,
+                    change.action
+                ),
                 None,
             );
         }

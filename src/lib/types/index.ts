@@ -26,6 +26,8 @@ export interface RegistryChange {
   value: unknown;
   /** Optional Windows version filter. If undefined/empty, applies to all versions. */
   windows_versions?: number[];
+  /** If true, skip this change for tweak status validation and ignore failures during apply */
+  skip_validation?: boolean;
 }
 
 /** Service change within an option */
@@ -34,6 +36,8 @@ export interface ServiceChange {
   name: string;
   /** Target startup type when this option is selected */
   startup: ServiceStartupType;
+  /** If true, skip this change for tweak status validation and ignore failures during apply */
+  skip_validation?: boolean;
 }
 
 /** Action for scheduled task changes */
@@ -47,6 +51,8 @@ export interface SchedulerChange {
   task_name: string;
   /** Action to perform on the task */
   action: SchedulerAction;
+  /** If true, skip this change for tweak status validation and ignore failures during apply */
+  skip_validation?: boolean;
 }
 
 /** A single option within a tweak - contains all changes for that state */
