@@ -31,10 +31,6 @@ struct Win32VideoController {
     video_processor: Option<String>,
     current_refresh_rate: Option<u32>,
     video_mode_description: Option<String>,
-    #[serde(rename = "CurrentHorizontalResolution")]
-    current_horizontal_resolution: Option<u32>,
-    #[serde(rename = "CurrentVerticalResolution")]
-    current_vertical_resolution: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -301,91 +297,218 @@ fn get_hardware_info() -> HardwareInfo {
     }
 }
 
+use std::mem::size_of;
+use windows_sys::Win32::Graphics::Gdi::{
+    EnumDisplayDevicesW, EnumDisplaySettingsExW, DEVMODEW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ACTIVE,
+    DISPLAY_DEVICE_ATTACHED_TO_DESKTOP, ENUM_CURRENT_SETTINGS,
+};
+
 #[derive(Deserialize, Debug)]
 #[serde(rename = "WmiMonitorID")]
 #[serde(rename_all = "PascalCase")]
 struct WmiMonitorID {
     user_friendly_name: Option<Vec<u16>>,
-    // We could add more fields if needed
+    instance_name: String,
 }
 
-/// Get monitor information from WMI
-fn get_monitor_info(wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo> {
-    // We need to connect to the "root\\wmi" namespace for WmiMonitorID
-    let wmi_monitor_con = match WMIConnection::with_namespace_path("root\\wmi") {
+#[derive(Deserialize, Debug)]
+#[serde(rename = "Win32_PnPEntity")]
+#[serde(rename_all = "PascalCase")]
+struct Win32PnPEntity {
+    name: Option<String>,
+    device_id: Option<String>,
+    class_guid: Option<String>,
+}
+
+/// Get monitor information using WinAPI (EnumDisplayDevices/EnumDisplaySettings) + WMI
+fn get_monitor_info(_wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo> {
+    log::debug!("Gathering monitor info via Nested EnumDisplayDevices + WMI + PnP");
+
+    let monitor_names = get_all_monitor_names();
+    let mut monitors = Vec::new();
+    let mut adapter_index = 0;
+
+    unsafe {
+        loop {
+            let mut adapter_device: DISPLAY_DEVICEW = std::mem::zeroed();
+            adapter_device.cb = size_of::<DISPLAY_DEVICEW>() as u32;
+
+            // Enum Adapter
+            if EnumDisplayDevicesW(std::ptr::null(), adapter_index, &mut adapter_device, 0) == 0 {
+                // If we've checked a reasonable number of adapters and they are failing, break.
+                // But usually 0 returns false means end of list.
+                break;
+            }
+
+            let device_name_raw = &adapter_device.DeviceName;
+            let len = device_name_raw
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(device_name_raw.len());
+            let device_name = String::from_utf16_lossy(&device_name_raw[0..len]);
+            let state_flags = adapter_device.StateFlags;
+
+            // Log adapter info
+            log::debug!(
+                "Adapter {}: {} (Flags: 0x{:X})",
+                adapter_index,
+                device_name,
+                state_flags
+            );
+
+            if (state_flags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0 {
+                // Get Settings for this Adapter
+                let mut dev_mode: DEVMODEW = std::mem::zeroed();
+                dev_mode.dmSize = size_of::<DEVMODEW>() as u16;
+                // We use EnumDisplaySettingsExW to get the current mode for this adapter.
+                // Note: If multiple monitors are on one adapter, they might share this or have specific modes?
+                // Typically Extended Desktop = Separate Adapters (Sources).
+                let mut resolution = "Unknown".to_string();
+                let mut refresh_rate = 60;
+
+                if EnumDisplaySettingsExW(
+                    adapter_device.DeviceName.as_ptr(),
+                    ENUM_CURRENT_SETTINGS,
+                    &mut dev_mode,
+                    0,
+                ) != 0
+                {
+                    let width = dev_mode.dmPelsWidth;
+                    let height = dev_mode.dmPelsHeight;
+                    refresh_rate = dev_mode.dmDisplayFrequency;
+                    resolution = format!("{}x{}", width, height);
+                }
+
+                // Inner Loop: Enum Monitors on this Adapter
+                let mut monitor_index = 0;
+                loop {
+                    let mut monitor_device: DISPLAY_DEVICEW = std::mem::zeroed();
+                    monitor_device.cb = size_of::<DISPLAY_DEVICEW>() as u32;
+
+                    if EnumDisplayDevicesW(
+                        adapter_device.DeviceName.as_ptr(),
+                        monitor_index,
+                        &mut monitor_device,
+                        0,
+                    ) == 0
+                    {
+                        break;
+                    }
+
+                    // Found a monitor on this adapter
+                    let mon_id_raw = &monitor_device.DeviceID;
+                    let len = mon_id_raw
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(mon_id_raw.len());
+                    let device_id = String::from_utf16_lossy(&mon_id_raw[0..len]);
+                    let mon_flags = monitor_device.StateFlags;
+
+                    log::debug!(
+                        "  -> Monitor {}: {} (Flags: 0x{:X})",
+                        monitor_index,
+                        device_id,
+                        mon_flags
+                    );
+
+                    if (mon_flags & DISPLAY_DEVICE_ACTIVE) != 0 {
+                        let mut name = "Generic Monitor".to_string();
+                        let hardware_id = device_id.split('\\').nth(1).unwrap_or("");
+
+                        // Match Name
+                        if let Some(wmi_match) = monitor_names.iter().find_map(|(k, v)| {
+                            if !hardware_id.is_empty() && k.contains(hardware_id) {
+                                Some(v.clone())
+                            } else if k.contains(&device_id) || device_id.contains(k) {
+                                Some(v.clone())
+                            } else {
+                                None
+                            }
+                        }) {
+                            name = wmi_match;
+                        } else {
+                            // Fallback
+                            let device_string_raw = &monitor_device.DeviceString;
+                            let len = device_string_raw
+                                .iter()
+                                .position(|&c| c == 0)
+                                .unwrap_or(device_string_raw.len());
+                            let monitor_name_w = &device_string_raw[0..len];
+                            let monitor_name = String::from_utf16_lossy(monitor_name_w);
+                            if !monitor_name.trim().is_empty() {
+                                name = monitor_name;
+                            }
+                        }
+
+                        log::debug!("  -> Added: {} - {} @ {}Hz", name, resolution, refresh_rate);
+                        monitors.push(crate::models::MonitorInfo {
+                            name: name.clone(),
+                            resolution: resolution.clone(),
+                            refresh_rate,
+                        });
+                    } else {
+                        log::debug!("  -> Monitor is not active (StateFlags & DISPLAY_DEVICE_ACTIVE == 0). Skipping.");
+                    }
+
+                    monitor_index += 1;
+                }
+
+                if monitor_index == 0 {
+                    log::debug!(
+                        "  -> Active Adapter but no monitors enumerated via EnumDisplayDevices?"
+                    );
+                }
+            }
+
+            adapter_index += 1;
+        }
+    }
+
+    monitors
+}
+
+/// Get map of unique ID -> Friendly Name from WmiMonitorID and Win32_PnPEntity
+fn get_all_monitor_names() -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+
+    let wmi_con = match WMIConnection::new() {
         Ok(con) => con,
-        Err(e) => {
-            log::warn!("Failed to connect to root\\wmi: {}", e);
-            // Fallback: Return empty list or try to get basic info from Win32_DesktopMonitor
-            return vec![];
-        }
+        Err(_) => return map,
     };
 
-    let query: Vec<WmiMonitorID> = match wmi_monitor_con.query() {
-        Ok(results) => results,
-        Err(e) => {
-            log::warn!("Failed to query WmiMonitorID: {}", e);
-            return vec![];
-        }
-    };
-
-    // Get resolutions from Win32_VideoController (root\cimv2)
-    // We try to grab the current resolution from the main GPU(s)
-    let video_controllers: Vec<Win32VideoController> = wmi_con.query().unwrap_or_default();
-
-    // Collect resolutions and refresh rates from active controllers
-    // We do NOT sort/dedup to preserve index alignment with WmiMonitorID as best effort.
-    let mut resolutions_and_rates = Vec::new();
-    for vc in video_controllers {
-        // Filter out basic/driverless adapters to match real monitors better
-        let name = vc.name.as_deref().unwrap_or("").to_lowercase();
-        if name.contains("basic") || name.contains("microsoft") {
-            continue;
-        }
-
-        if let (Some(w), Some(h)) = (
-            vc.current_horizontal_resolution,
-            vc.current_vertical_resolution,
-        ) {
-            if w > 0 && h > 0 {
-                let hz = vc.current_refresh_rate.unwrap_or(60);
-                resolutions_and_rates.push((format!("{}x{}", w, h), hz));
+    // 1. Try WmiMonitorID (Best source for Model Names via EDID)
+    if let Ok(wmi_monitor_con) = WMIConnection::with_namespace_path("root\\wmi") {
+        let query: Vec<WmiMonitorID> = wmi_monitor_con.query().unwrap_or_default();
+        for mon in query {
+            if let Some(raw) = mon.user_friendly_name {
+                let chars: Vec<u16> = raw.into_iter().filter(|&c| c != 0).collect();
+                let name = String::from_utf16_lossy(&chars);
+                if !name.trim().is_empty() {
+                    map.insert(mon.instance_name, name);
+                }
             }
         }
     }
 
-    // Map WmiMonitorID to MonitorInfo
-    query
-        .into_iter()
-        .enumerate()
-        .map(|(i, monitor)| {
-            let name = if let Some(raw) = monitor.user_friendly_name {
-                // WmiMonitorID UserFriendlyName is uint16[].
-                // Filter out nulls first (0).
-                let chars: Vec<u16> = raw.into_iter().filter(|&c| c != 0).collect();
-                String::from_utf16_lossy(&chars)
-            } else {
-                "Generic Monitor".to_string()
-            };
-
-            // Try to match resolution/hz by index
-            // If we run out of video controllers, reuse the first one or default
-            let (resolution, refresh_rate) =
-                resolutions_and_rates.get(i).cloned().unwrap_or_else(|| {
-                    // Fallback to first if available
-                    resolutions_and_rates
-                        .first()
-                        .cloned()
-                        .unwrap_or(("Unknown".to_string(), 0))
-                });
-
-            crate::models::MonitorInfo {
-                name,
-                resolution,
-                refresh_rate,
+    // 2. Try Win32_PnPEntity as fallback (e.g. "Integrated Monitor")
+    // Filter for Monitor class GUID: {4d36e96e-e325-11ce-bfc1-08002be10318}
+    let pnp_query: Vec<Win32PnPEntity> = wmi_con.query().unwrap_or_default();
+    for pnp in pnp_query {
+        if let (Some(class_guid), Some(dev_id), Some(name)) =
+            (pnp.class_guid, pnp.device_id, pnp.name)
+        {
+            if class_guid.eq_ignore_ascii_case("{4d36e96e-e325-11ce-bfc1-08002be10318}") {
+                // Only add if not already present (WmiMonitorID is better)
+                // We use check against map keys containing the hardware ID
+                // But PnPEntity DeviceID IS the InstanceID usually.
+                if !map.contains_key(&dev_id) {
+                    map.insert(dev_id, name);
+                }
             }
-        })
-        .collect()
+        }
+    }
+
+    map
 }
 
 #[derive(Deserialize, Debug)]
