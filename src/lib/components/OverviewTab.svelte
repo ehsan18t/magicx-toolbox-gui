@@ -3,6 +3,7 @@
   import { categoriesStore, categoryStats, systemStore } from "$lib/stores/tweaks";
   import HardwareItem from "./HardwareItem.svelte";
   import Icon from "./Icon.svelte";
+  import Marquee from "./Marquee.svelte";
 
   // Format clock speed
   const formatClockSpeed = (mhz: number) => {
@@ -135,26 +136,28 @@
             label="Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
             title={gpu.name}
           >
-            <span
-              >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
-            >
+            <Marquee>
+              <span
+                >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
+              >
 
-            {#if i === 0 && $systemStore?.hardware?.monitors && $systemStore.hardware.monitors.length > 0}
-              {#each $systemStore.hardware.monitors as monitor}
-                <span class="h-1 w-1 rounded-full bg-border"></span>
-                <span class="truncate" title="{monitor.name} - {monitor.resolution}">
-                  {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>
-                </span>
-                {#if monitor.refresh_rate > 0}
-                  <span class="text-muted-foreground bg-muted self-center rounded-md px-1.5 py-0.5 text-xs">
-                    {monitor.refresh_rate}Hz
+              {#if i === 0 && $systemStore?.hardware?.monitors && $systemStore.hardware.monitors.length > 0}
+                {#each $systemStore.hardware.monitors as monitor}
+                  <span class="h-1 w-1 rounded-full bg-border"></span>
+                  <span title="{monitor.name} - {monitor.resolution}">
+                    {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>
                   </span>
-                {/if}
-              {/each}
-            {:else if gpu.refresh_rate > 0}
-              <span class="h-1 w-1 rounded-full bg-border"></span>
-              <span>{gpu.refresh_rate}Hz</span>
-            {/if}
+                  {#if monitor.refresh_rate > 0}
+                    <span class="text-muted-foreground bg-muted self-center rounded-md px-1.5 py-0.5 text-xs">
+                      {monitor.refresh_rate}Hz
+                    </span>
+                  {/if}
+                {/each}
+              {:else if gpu.refresh_rate > 0}
+                <span class="h-1 w-1 rounded-full bg-border"></span>
+                <span>{gpu.refresh_rate}Hz</span>
+              {/if}
+            </Marquee>
           </HardwareItem>
         {/each}
       {/if}

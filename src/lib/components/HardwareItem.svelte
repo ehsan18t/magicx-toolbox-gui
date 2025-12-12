@@ -29,7 +29,7 @@
       {title}
     </h3>
     {#if children}
-      <div class="mt-0.5 flex items-center gap-2 text-xs text-foreground-muted">
+      <div class="mt-0.5 flex w-full min-w-0 items-center gap-2 text-xs text-foreground-muted">
         {@render children()}
       </div>
     {/if}
