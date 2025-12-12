@@ -118,6 +118,8 @@ tweaks:
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
     options:
       - label: "Windows Update Disabled"
+        post_powershell:
+          - "$path='\\Microsoft\\Windows\\UpdateOrchestrator\\'; $fail=0; Get-ScheduledTask -TaskPath $path -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -match 'Schedule Scan|USO|MusNotification|Reboot|Refresh'} | ForEach-Object { try { Disable-ScheduledTask -InputObject $_ -ErrorAction Stop; if ((Get-ScheduledTask -InputObject $_).State -ne 'Disabled') { $fail=1 } } catch { $fail=1 } }; exit $fail"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
@@ -137,7 +139,13 @@ tweaks:
         service_changes:
           - name: "wuauserv"
             startup: disabled
+          - name: "WaaSMedicSvc"
+            startup: disabled
+          - name: "UsoSvc"
+            startup: disabled
       - label: "Windows Update Enabled"
+        post_powershell:
+          - "$path='\\Microsoft\\Windows\\UpdateOrchestrator\\'; $fail=0; Get-ScheduledTask -TaskPath $path -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -match 'Schedule Scan|USO|MusNotification|Reboot|Refresh'} | ForEach-Object { try { Enable-ScheduledTask -InputObject $_ -ErrorAction Stop; if ((Get-ScheduledTask -InputObject $_).State -ne 'Ready') { $fail=1 } } catch { $fail=1 } }; exit $fail"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
@@ -157,3 +165,7 @@ tweaks:
         service_changes:
           - name: "wuauserv"
             startup: manual
+          - name: "WaaSMedicSvc"
+            startup: manual
+          - name: "UsoSvc"
+            startup: automatic
