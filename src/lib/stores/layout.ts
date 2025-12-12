@@ -39,6 +39,4 @@ export const isSidebarOpen = derived(sidebarState, ($s) => $s.isExpanded || $s.i
 export const sidebarWidthClass = derived(isSidebarOpen, ($isOpen) => ($isOpen ? "w-60" : "w-16"));
 
 // Derived store for left offset class (for fixed elements)
-export const contentLeftOffset = derived(isSidebarOpen, ($isOpen) =>
-  $isOpen ? "left-60" : "left-16",
-);
+export const contentLeftOffset = derived(isSidebarOpen, ($isOpen) => ($isOpen ? "left-60" : "left-16"));

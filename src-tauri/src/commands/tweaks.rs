@@ -256,7 +256,7 @@ pub async fn apply_tweak(
         );
     }
 
-    // Step 2: Run pre_commands if defined
+    // Step 2: Run pre_commands if defined (non-reversible, fail-fast)
     for cmd in &option.pre_commands {
         if let Err(e) = run_command(cmd, tweak.requires_system) {
             log::error!("Pre-command failed, aborting: {}", e);
@@ -267,7 +267,7 @@ pub async fn apply_tweak(
         }
     }
 
-    // Step 3: Run pre_powershell if defined
+    // Step 3: Run pre_powershell if defined (non-reversible, fail-fast)
     for ps_cmd in &option.pre_powershell {
         if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system) {
             log::error!("Pre-PowerShell command failed, aborting: {}", e);
@@ -278,17 +278,14 @@ pub async fn apply_tweak(
         }
     }
 
-    // Step 4: Apply registry changes atomically
-    if let Err(e) = apply_registry_changes(&app, &tweak, option, version) {
-        log::error!(
-            "Failed to apply registry changes for '{}': {}",
-            tweak.name,
-            e
-        );
+    // Steps 4-6: Apply all core changes ATOMICALLY (registry, services, scheduler)
+    // If any step fails, rollback ALL previously successful steps from snapshot
+    if let Err(e) = apply_all_changes_atomically(&app, &tweak, option, version) {
+        log::error!("Failed to apply changes for '{}': {}", tweak.name, e);
 
         // Restore from snapshot on failure
         if let Some(snapshot) = backup_service::load_snapshot(&tweak_id)? {
-            log::warn!("Rolling back to snapshot...");
+            log::warn!("Rolling back ALL changes to snapshot...");
             let _ = backup_service::restore_from_snapshot(&snapshot);
         }
         backup_service::delete_snapshot(&tweak_id)?;
@@ -296,20 +293,14 @@ pub async fn apply_tweak(
         return Err(e);
     }
 
-    // Step 5: Apply service changes
-    apply_service_changes(option, tweak.requires_system);
-
-    // Step 6: Apply scheduler changes
-    apply_scheduler_changes(&app, option, tweak.requires_system);
-
-    // Step 7: Run post_commands
+    // Step 7: Run post_commands (non-fatal, no rollback)
     for cmd in &option.post_commands {
         if let Err(e) = run_command(cmd, tweak.requires_system) {
             log::warn!("Post-command failed (non-fatal): {}", e);
         }
     }
 
-    // Step 8: Run post_powershell
+    // Step 8: Run post_powershell (non-fatal, no rollback)
     for ps_cmd in &option.post_powershell {
         if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system) {
             log::warn!("Post-PowerShell command failed (non-fatal): {}", e);
@@ -683,8 +674,34 @@ fn apply_registry_changes(
     Ok(())
 }
 
-/// Apply all service changes for an option
-fn apply_service_changes(option: &TweakOption, use_system: bool) {
+/// Apply ALL core changes atomically: registry, services, scheduler
+/// If any step fails, caller is responsible for full rollback from snapshot
+fn apply_all_changes_atomically(
+    app: &AppHandle,
+    tweak: &TweakDefinition,
+    option: &TweakOption,
+    windows_version: u32,
+) -> Result<()> {
+    // Step 1: Apply registry changes (already has internal rollback on failure)
+    apply_registry_changes(app, tweak, option, windows_version)?;
+
+    // Step 2: Apply service changes - fail-fast, return error for full rollback
+    if let Err(e) = apply_service_changes_atomic(option, tweak.requires_system) {
+        log::error!("Service changes failed, need full rollback: {}", e);
+        return Err(e);
+    }
+
+    // Step 3: Apply scheduler changes - fail-fast, return error for full rollback
+    if let Err(e) = apply_scheduler_changes_atomic(app, option, tweak.requires_system) {
+        log::error!("Scheduler changes failed, need full rollback: {}", e);
+        return Err(e);
+    }
+
+    Ok(())
+}
+
+/// Apply all service changes for an option atomically (fail on first error)
+fn apply_service_changes_atomic(option: &TweakOption, use_system: bool) -> Result<()> {
     for change in &option.service_changes {
         log::info!(
             "Setting service{} '{}' startup to {:?}",
@@ -693,19 +710,18 @@ fn apply_service_changes(option: &TweakOption, use_system: bool) {
             change.startup
         );
 
-        if use_system {
+        let result = if use_system {
             let start_type = change.startup.to_sc_start_type();
-            if let Err(e) =
-                trusted_installer::set_service_startup_as_system(&change.name, start_type)
-            {
-                log::warn!(
-                    "Failed to set service '{}' startup as SYSTEM: {}",
-                    change.name,
-                    e
-                );
-            }
-        } else if let Err(e) = service_control::set_service_startup(&change.name, &change.startup) {
-            log::warn!("Failed to set service '{}' startup: {}", change.name, e);
+            trusted_installer::set_service_startup_as_system(&change.name, start_type)
+        } else {
+            service_control::set_service_startup(&change.name, &change.startup)
+        };
+
+        if let Err(e) = result {
+            return Err(Error::ServiceControl(format!(
+                "Failed to set service '{}' startup: {}",
+                change.name, e
+            )));
         }
 
         // Stop service if setting to Disabled
@@ -717,10 +733,15 @@ fn apply_service_changes(option: &TweakOption, use_system: bool) {
             }
         }
     }
+    Ok(())
 }
 
-/// Apply all scheduler changes for an option
-fn apply_scheduler_changes(app: &AppHandle, option: &TweakOption, use_system: bool) {
+/// Apply all scheduler changes for an option atomically (fail on first error)
+fn apply_scheduler_changes_atomic(
+    app: &AppHandle,
+    option: &TweakOption,
+    use_system: bool,
+) -> Result<()> {
     for change in &option.scheduler_changes {
         let task_path = format!("{}\\{}", change.task_path, change.task_name);
         log::info!(
@@ -756,12 +777,13 @@ fn apply_scheduler_changes(app: &AppHandle, option: &TweakOption, use_system: bo
         };
 
         if let Err(e) = result {
-            log::warn!(
+            return Err(Error::CommandExecution(format!(
                 "Failed to apply scheduler change for '{}': {}",
-                task_path,
-                e
-            );
-        } else if is_debug_enabled() {
+                task_path, e
+            )));
+        }
+
+        if is_debug_enabled() {
             emit_debug_log(
                 app,
                 DebugLevel::Info,
@@ -770,6 +792,7 @@ fn apply_scheduler_changes(app: &AppHandle, option: &TweakOption, use_system: bo
             );
         }
     }
+    Ok(())
 }
 
 /// Run a PowerShell command (as user or SYSTEM)
