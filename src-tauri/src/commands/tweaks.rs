@@ -125,7 +125,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
 
     Ok(TweakStatus {
         tweak_id,
-        is_applied: state.has_snapshot, // "applied by us" = has snapshot
+        is_applied: state.current_option_index == Some(0),
         last_applied,
         has_backup: state.has_snapshot,
         current_option_index: state.current_option_index,
@@ -148,7 +148,7 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
 
         statuses.push(TweakStatus {
             tweak_id: id,
-            is_applied: state.has_snapshot,
+            is_applied: state.current_option_index == Some(0),
             last_applied,
             has_backup: state.has_snapshot,
             current_option_index: state.current_option_index,
