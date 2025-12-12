@@ -106,9 +106,7 @@
     class="titlebar flex h-10 items-center justify-between border-b border-border bg-elevated pr-1 pl-1.5 text-foreground backdrop-blur-sm select-none drag-enable"
   >
     <div class="app-info flex items-center gap-3">
-      <div
-        class="icon-container flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 p-1"
-      >
+      <div class="icon-container flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 p-1">
         <img
           src={appIcon}
           alt="App Icon"
@@ -162,6 +160,7 @@
             debugState.togglePanel();
           } else {
             debugState.toggle();
+            debugState.openPanel();
           }
         }}
         oncontextmenu={(e) => {
@@ -211,12 +210,7 @@
       <!-- Divider -->
       <div class="mx-2 h-4 w-px bg-foreground-muted/20"></div>
 
-      <ControlButton
-        title="Minimize"
-        icon="fluent:minimize-20-filled"
-        onClick={minimize}
-        variant="default"
-      />
+      <ControlButton title="Minimize" icon="fluent:minimize-20-filled" onClick={minimize} variant="default" />
       <ControlButton
         title={isMaximized ? "Restore" : "Maximize"}
         icon={isMaximized ? "tabler:copy" : "fluent:maximize-20-filled"}
