@@ -135,6 +135,17 @@ pub fn set_service_startup(
 ) -> Result<(), Error> {
     let start_type = startup_type.to_sc_start_type();
 
+    // Check if already disabled to avoid error/work
+    if matches!(startup_type, ServiceStartupType::Disabled) {
+        if let Ok(true) = is_service_disabled(service_name) {
+            log::info!(
+                "Service '{}' is already disabled, skipping config.",
+                service_name
+            );
+            return Ok(());
+        }
+    }
+
     log::info!(
         "Setting service '{}' startup to '{}'",
         service_name,
@@ -199,6 +210,12 @@ pub fn start_service(service_name: &str) -> Result<(), Error> {
 
 /// Stop a Windows service
 pub fn stop_service(service_name: &str) -> Result<(), Error> {
+    // Check if running first
+    if let Ok(false) = is_service_running(service_name) {
+        log::info!("Service '{}' is not running, skipping stop.", service_name);
+        return Ok(());
+    }
+
     log::info!("Stopping service '{}'", service_name);
 
     let output = Command::new("net")
