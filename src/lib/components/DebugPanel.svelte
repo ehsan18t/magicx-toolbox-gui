@@ -1,5 +1,6 @@
 <script lang="ts">
   import { debugState, type DebugLogEntry } from "$lib/stores/debug.svelte";
+  import { contentLeftOffset } from "$lib/stores/layout";
   import Icon from "./Icon.svelte";
 
   let filterLevel = $state<"all" | DebugLogEntry["level"]>("all");
@@ -36,7 +37,9 @@
 </script>
 
 {#if debugState.isPanelOpen}
-  <div class="fixed right-0 bottom-0 left-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg">
+  <div
+    class="fixed right-0 bottom-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg transition-[left] duration-250 ease-out {$contentLeftOffset}"
+  >
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border bg-elevated px-3 py-2">
       <div class="flex items-center gap-3">
