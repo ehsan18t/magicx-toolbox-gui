@@ -58,9 +58,26 @@ tweaks:
             startup: disabled | manual | automatic | boot | system
             stop_service: boolean?   # Stop service after changing startup
             start_service: boolean?  # Start service after changing startup
+        scheduler_changes:        # Scheduled task modifications for this option
+          - task_path: string     # Task path (e.g., "\\Microsoft\\Windows\\Application Experience")
+            task_name: string     # Task name (e.g., "Microsoft Compatibility Appraiser")
+            action: enable | disable | delete
         pre_commands: string[]?   # Shell commands to run BEFORE changes
+        pre_powershell: string[]? # PowerShell commands BEFORE changes (after pre_commands)
         post_commands: string[]?  # Shell commands to run AFTER changes
+        post_powershell: string[]? # PowerShell commands AFTER changes (after post_commands)
 ```
+
+### Execution Order
+
+When applying an option, changes are executed in this specific order:
+1. `pre_commands` - Shell (cmd.exe) commands
+2. `pre_powershell` - PowerShell commands
+3. `registry_changes` - Registry modifications
+4. `service_changes` - Windows service changes
+5. `scheduler_changes` - Task Scheduler changes
+6. `post_commands` - Shell (cmd.exe) commands
+7. `post_powershell` - PowerShell commands
 
 ### Toggle Tweak Example (2 Options)
 

@@ -91,7 +91,10 @@ src-tauri/src/
 ├── services/       # Business logic layer
 │   ├── backup_service.rs      # Backup creation/restoration
 │   ├── registry_service.rs    # Windows registry operations
+│   ├── scheduler_service.rs   # Windows Task Scheduler operations
+│   ├── service_control.rs     # Windows service management
 │   ├── system_info_service.rs # Windows version detection
+│   ├── trusted_installer.rs   # SYSTEM elevation & PowerShell execution
 │   └── tweak_loader.rs        # YAML tweak file discovery and parsing
 ├── lib.rs          # App entry, plugin setup, command registration
 ├── error.rs        # Custom error types with thiserror
@@ -133,7 +136,8 @@ log::error!("Errors that need attention");  // Failures
 
 ## YAML Tweak System
 
-Tweaks are defined in YAML files under `src-tauri/tweaks/`. Each file contains:
+Tweaks are defined in YAML files under `src-tauri/tweaks/`. Each file contains a category and array of tweaks.
+All tweaks use a **unified option-based model** where each tweak has an `options` array.
 
 ### File Structure
 
@@ -151,31 +155,70 @@ tweaks:
     description: "..."
     risk_level: low # low | medium | high | critical
     requires_admin: true
+    requires_system: false # Requires SYSTEM elevation for protected keys
     requires_reboot: false
+    is_toggle: true # true = 2 options (toggle switch), false = dropdown
     info: "Optional documentation"
-    registry_changes:
-      - hive: HKLM # HKCU or HKLM
-        key: "System\\..."
-        value_name: "Start"
-        value_type: "REG_DWORD" # REG_DWORD | REG_SZ | REG_EXPAND_SZ | REG_BINARY
-        enable_value: 4 # Value when tweak is applied
-        disable_value: 2 # Value when tweak is reverted
-        windows_versions: [10] # Optional: [10], [11], or [10, 11]
+
+    options:
+      - label: "Disabled" # First option (index 0)
+        registry_changes:
+          - hive: HKLM
+            key: "SOFTWARE\\..."
+            value_name: "AllowTelemetry"
+            value_type: REG_DWORD
+            value: 0
+            windows_versions: [10, 11] # Optional filter
+        service_changes:
+          - name: "DiagTrack"
+            startup: disabled
+        scheduler_changes:
+          - task_path: "\\Microsoft\\Windows\\Application Experience"
+            task_name: "Microsoft Compatibility Appraiser"
+            action: disable # enable | disable | delete
+        pre_commands: [] # Shell commands before changes
+        pre_powershell: [] # PowerShell before changes (after pre_commands)
+        post_commands: [] # Shell commands after changes
+        post_powershell: [] # PowerShell after changes (after post_commands)
+
+      - label: "Enabled" # Second option (index 1)
+        registry_changes:
+          - hive: HKLM
+            key: "SOFTWARE\\..."
+            value_name: "AllowTelemetry"
+            value_type: REG_DWORD
+            value: 3
+        service_changes:
+          - name: "DiagTrack"
+            startup: automatic
 ```
+
+### Execution Order
+
+When applying an option, changes are executed in this order:
+
+1. `pre_commands` (shell)
+2. `pre_powershell` (PowerShell)
+3. `registry_changes`
+4. `service_changes`
+5. `scheduler_changes`
+6. `post_commands` (shell)
+7. `post_powershell` (PowerShell)
 
 ### Adding New Tweaks
 
 1. Add to existing category YAML file or create new file in `tweaks/`.
 2. Use unique `id` across all tweaks.
 3. Set appropriate `risk_level` based on impact.
-4. Use `windows_versions` on individual registry changes for version-specific behavior.
-5. Test with both apply and revert operations.
+4. Set `is_toggle: true` for 2-option tweaks, `false` for dropdowns.
+5. Use `windows_versions` on individual registry changes for version-specific behavior.
+6. Test with both apply and revert operations.
 
 ### Tweak Loader Behavior
 
-- Auto-discovers all `.yaml` files in `tweaks/` directory.
+- YAML files are compiled at build time (no runtime parsing).
 - Filters registry changes by current Windows version at runtime.
-- Caches loaded tweaks in memory.
+- Tweaks are embedded in the binary via `build.rs`.
 
 ## Registry Operations
 
@@ -193,16 +236,40 @@ registry_service::set_string(&hive, &key, &value_name, value)?;
 registry_service::set_binary(&hive, &key, &value_name, &bytes)?;
 ```
 
+## Scheduler Operations
+
+Scheduled task management via `scheduler_service.rs`:
+
+```rust
+scheduler_service::get_task_state(task_path, task_name)?;
+scheduler_service::enable_task(task_path, task_name)?;
+scheduler_service::disable_task(task_path, task_name)?;
+scheduler_service::delete_task(task_path, task_name)?;
+```
+
+## PowerShell Execution
+
+PowerShell commands via `trusted_installer.rs`:
+
+```rust
+// As current user
+trusted_installer::run_powershell(script)?;
+
+// As SYSTEM (for protected operations)
+trusted_installer::run_powershell_as_system(script)?;
+```
+
 - HKLM writes require admin privileges; the service checks and returns `Error::RequiresAdmin`.
 - All operations are logged at trace/debug level.
 
 ## Backup System
 
-Before applying tweaks, the system creates JSON backups:
+Before applying tweaks, the system creates JSON snapshots:
 
-- Location: `backups/` directory next to executable (portable app design).
-- Format: `{tweak_id}.json` containing original registry values.
+- Location: `snapshots/` directory next to executable (portable app design).
+- Format: `{tweak_id}.json` containing original registry, service, and scheduled task states.
 - Used for reverting tweaks to original state.
+- Captures state BEFORE any changes are made for reliable rollback.
 
 ## Build / toolchain / env
 
