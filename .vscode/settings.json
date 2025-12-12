@@ -42,6 +42,7 @@
     "icns",
     "iconify",
     "magicx",
+    "multistate",
     "rlib",
     "serde",
     "staticlib",

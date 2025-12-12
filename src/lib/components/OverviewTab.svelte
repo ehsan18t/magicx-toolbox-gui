@@ -142,7 +142,7 @@
               >
 
               {#if i === 0 && $systemStore?.hardware?.monitors && $systemStore.hardware.monitors.length > 0}
-                {#each $systemStore.hardware.monitors as monitor}
+                {#each $systemStore.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
                   <span class="h-1 w-1 rounded-full bg-border"></span>
                   <span title="{monitor.name} - {monitor.resolution}">
                     {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>

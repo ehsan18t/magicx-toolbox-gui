@@ -297,27 +297,27 @@ Runs shell commands before or after applying changes.
 ## Commands (Tauri IPC)
 
 ### Tweak Operations
-| Command | Description |
-|---------|-------------|
-| `apply_tweak(id)` | Apply tweak (toggle ON), or toggle OFF if already applied |
-| `revert_tweak(id)` | Revert to original state using snapshot or disable_value |
-| `apply_tweak_option(id, index)` | Apply specific option for multi-state tweak |
-| `get_tweak_status(id)` | Check if tweak is currently applied |
-| `get_all_tweaks_with_status()` | Get all tweaks with their current statuses |
+| Command                         | Description                                               |
+| ------------------------------- | --------------------------------------------------------- |
+| `apply_tweak(id)`               | Apply tweak (toggle ON), or toggle OFF if already applied |
+| `revert_tweak(id)`              | Revert to original state using snapshot or disable_value  |
+| `apply_tweak_option(id, index)` | Apply specific option for multi-state tweak               |
+| `get_tweak_status(id)`          | Check if tweak is currently applied                       |
+| `get_all_tweaks_with_status()`  | Get all tweaks with their current statuses                |
 
 ### Backup Operations
-| Command | Description |
-|---------|-------------|
-| `has_snapshot(id)` | Check if snapshot exists for tweak |
-| `cleanup_old_backups()` | Remove orphaned backup files |
-| `validate_snapshots()` | Validate and clean stale snapshots |
+| Command                 | Description                        |
+| ----------------------- | ---------------------------------- |
+| `has_snapshot(id)`      | Check if snapshot exists for tweak |
+| `cleanup_old_backups()` | Remove orphaned backup files       |
+| `validate_snapshots()`  | Validate and clean stale snapshots |
 
 ### System Operations
-| Command | Description |
-|---------|-------------|
-| `get_system_info()` | Get Windows version, admin status, build info |
-| `get_categories()` | Get all tweak categories |
-| `toggle_debug_mode()` | Enable/disable debug logging |
+| Command               | Description                                   |
+| --------------------- | --------------------------------------------- |
+| `get_system_info()`   | Get Windows version, admin status, build info |
+| `get_categories()`    | Get all tweak categories                      |
+| `toggle_debug_mode()` | Enable/disable debug logging                  |
 
 ---
 
@@ -354,13 +354,13 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 ## File Locations
 
-| Path | Purpose |
-|------|---------|
-| `src-tauri/tweaks/*.yaml` | Tweak definitions (7 categories, 76 tweaks) |
-| `src-tauri/src/commands/` | Tauri command handlers |
-| `src-tauri/src/services/` | Business logic services |
-| `src-tauri/src/models/` | Data structures |
-| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files |
+| Path                                      | Purpose                                     |
+| ----------------------------------------- | ------------------------------------------- |
+| `src-tauri/tweaks/*.yaml`                 | Tweak definitions (7 categories, 76 tweaks) |
+| `src-tauri/src/commands/`                 | Tauri command handlers                      |
+| `src-tauri/src/services/`                 | Business logic services                     |
+| `src-tauri/src/models/`                   | Data structures                             |
+| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files                         |
 
 ---
 
@@ -383,12 +383,12 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 ## Categories
 
-| ID | Name | Tweaks | Description |
-|----|------|--------|-------------|
-| privacy | Privacy | 20 | Disable telemetry and tracking |
-| performance | Performance | 13 | Optimize system speed |
-| ui | UI/UX | 14 | Customize appearance |
-| security | Security | 11 | Improve security settings |
-| services | Services | 6 | Manage Windows services |
-| gaming | Gaming | 6 | Gaming optimizations |
-| windows_update | Windows Update | 5 | Control update behavior |
+| ID             | Name           | Tweaks | Description                    |
+| -------------- | -------------- | ------ | ------------------------------ |
+| privacy        | Privacy        | 20     | Disable telemetry and tracking |
+| performance    | Performance    | 13     | Optimize system speed          |
+| ui             | UI/UX          | 14     | Customize appearance           |
+| security       | Security       | 11     | Improve security settings      |
+| services       | Services       | 6      | Manage Windows services        |
+| gaming         | Gaming         | 6      | Gaming optimizations           |
+| windows_update | Windows Update | 5      | Control update behavior        |

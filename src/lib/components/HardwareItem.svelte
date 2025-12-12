@@ -9,7 +9,7 @@
     headerExtra?: import("svelte").Snippet;
   }
 
-  let { icon, label, title, children, headerExtra }: Props = $props();
+  const { icon, label, title, children, headerExtra }: Props = $props();
 </script>
 
 <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
