@@ -8,7 +8,11 @@
 use crate::error::Error;
 use crate::models::tweak::SchedulerAction;
 use regex::Regex;
+use std::os::windows::process::CommandExt;
 use std::process::Command;
+
+/// CREATE_NO_WINDOW flag to prevent console window from appearing
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// State of a scheduled task
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +67,7 @@ pub fn get_task_state(task_path: &str, task_name: &str) -> Result<TaskState, Err
 
     let output = Command::new("schtasks")
         .args(["/Query", "/TN", &full_path, "/FO", "LIST", "/V"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
 
@@ -103,6 +108,7 @@ pub fn enable_task(task_path: &str, task_name: &str) -> Result<(), Error> {
 
     let output = Command::new("schtasks")
         .args(["/Change", "/TN", &full_path, "/Enable"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
 
@@ -125,6 +131,7 @@ pub fn disable_task(task_path: &str, task_name: &str) -> Result<(), Error> {
 
     let output = Command::new("schtasks")
         .args(["/Change", "/TN", &full_path, "/Disable"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
 
@@ -147,6 +154,7 @@ pub fn delete_task(task_path: &str, task_name: &str) -> Result<(), Error> {
 
     let output = Command::new("schtasks")
         .args(["/Delete", "/TN", &full_path, "/F"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
 
@@ -194,6 +202,7 @@ pub fn list_tasks_in_folder(task_path: &str) -> Result<Vec<TaskInfo>, Error> {
 
     let output = Command::new("schtasks")
         .args(["/Query", "/TN", &format!("{}\\", path), "/FO", "LIST", "/V"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
 

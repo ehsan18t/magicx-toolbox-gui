@@ -598,8 +598,10 @@ fn run_command(cmd: &str, use_system: bool) -> Result<()> {
         }
     } else {
         use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         let output = std::process::Command::new("cmd")
             .raw_arg(format!("/C {}", cmd))
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| Error::CommandExecution(e.to_string()))?;
 
