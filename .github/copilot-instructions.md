@@ -2,6 +2,19 @@
 
 **CRITICAL: These instructions are mandatory and must be followed on every task. Ignoring them will result in suboptimal code quality and project standards violations.**
 
+## Documentation Priority
+
+**HIGHEST PRIORITY**: Whenever the tweak system is modified (execution order, error handling, atomicity, new fields, behavior changes, etc.), you **MUST** update `TWEAK_AUTHORING.md` immediately. This is the definitive guide for tweak authors and must always reflect the current implementation.
+
+Changes that require documentation updates:
+
+- Adding new fields to registry_changes, service_changes, scheduler_changes
+- Modifying execution order or atomicity behavior
+- Changing error handling (fatal vs. non-fatal)
+- Adding new change types or actions
+- Modifying state detection logic
+- Changing snapshot/revert behavior
+
 ## Commits
 
 - **Commit by TASK, not by FILE.** One task may involve multiple files.
