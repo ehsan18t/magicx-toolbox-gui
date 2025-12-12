@@ -8,10 +8,10 @@
 
 use crate::error::Error;
 use crate::models::{
-    RegistryHive, RegistrySnapshot, RegistryValueType, ServiceSnapshot, TweakDefinition,
-    TweakOption, TweakSnapshot, TweakState,
+    RegistryHive, RegistrySnapshot, RegistryValueType, SchedulerSnapshot, ServiceSnapshot,
+    TweakDefinition, TweakOption, TweakSnapshot, TweakState,
 };
-use crate::services::{registry_service, service_control, trusted_installer};
+use crate::services::{registry_service, scheduler_service, service_control, trusted_installer};
 use std::fs;
 use std::path::PathBuf;
 
@@ -120,10 +120,18 @@ pub fn capture_snapshot(
         snapshot.add_service_snapshot(service_snapshot);
     }
 
+    // Capture scheduled task states for this option
+    for task_change in &option.scheduler_changes {
+        let task_snapshot =
+            capture_scheduler_state(&task_change.task_path, &task_change.task_name)?;
+        snapshot.add_scheduler_snapshot(task_snapshot);
+    }
+
     log::info!(
-        "Captured {} registry values and {} services for '{}'",
+        "Captured {} registry values, {} services, and {} tasks for '{}'",
         snapshot.registry_snapshots.len(),
         snapshot.service_snapshots.len(),
+        snapshot.scheduler_snapshots.len(),
         tweak.name
     );
 
@@ -142,6 +150,17 @@ fn capture_service_state(service_name: &str) -> Result<ServiceSnapshot, Error> {
         name: service_name.to_string(),
         startup_type,
         was_running: status.state == service_control::ServiceState::Running,
+    })
+}
+
+/// Capture current scheduled task state
+fn capture_scheduler_state(task_path: &str, task_name: &str) -> Result<SchedulerSnapshot, Error> {
+    let state = scheduler_service::get_task_state(task_path, task_name)?;
+
+    Ok(SchedulerSnapshot {
+        task_path: task_path.to_string(),
+        task_name: task_name.to_string(),
+        original_state: state.as_str().to_string(),
     })
 }
 
@@ -325,10 +344,24 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
         }
     }
 
+    // Restore scheduled task states
+    for task in &snapshot.scheduler_snapshots {
+        if let Err(e) = restore_scheduler_state(task) {
+            log::warn!(
+                "Failed to restore task '{}\\{}': {}",
+                task.task_path,
+                task.task_name,
+                e
+            );
+            // Continue with other tasks - task restore failures are non-fatal
+        }
+    }
+
     log::info!(
-        "Successfully restored {} registry values and {} services",
+        "Successfully restored {} registry values, {} services, and {} tasks",
         completed_registry.len(),
-        snapshot.service_snapshots.len()
+        snapshot.service_snapshots.len(),
+        snapshot.scheduler_snapshots.len()
     );
 
     Ok(())
@@ -480,6 +513,43 @@ fn restore_service_state(snapshot: &ServiceSnapshot) -> Result<(), Error> {
         let _ = service_control::start_service(&snapshot.name);
     } else {
         let _ = service_control::stop_service(&snapshot.name);
+    }
+
+    Ok(())
+}
+
+fn restore_scheduler_state(snapshot: &SchedulerSnapshot) -> Result<(), Error> {
+    let task_path = format!("{}\\{}", snapshot.task_path, snapshot.task_name);
+    log::debug!(
+        "Restoring scheduled task '{}' to state: {}",
+        task_path,
+        snapshot.original_state
+    );
+
+    match snapshot.original_state.as_str() {
+        "Ready" | "Running" => {
+            // Task was enabled, re-enable it
+            scheduler_service::enable_task(&snapshot.task_path, &snapshot.task_name)?;
+        }
+        "Disabled" => {
+            // Task was disabled, ensure it's disabled
+            scheduler_service::disable_task(&snapshot.task_path, &snapshot.task_name)?;
+        }
+        "NotFound" => {
+            // Task didn't exist before - we can't restore a deleted task
+            // This is expected if the tweak was a "delete" action
+            log::info!(
+                "Task '{}' was not found before tweak, cannot restore",
+                task_path
+            );
+        }
+        _ => {
+            log::warn!(
+                "Unknown scheduler state '{}' for task '{}', skipping restore",
+                snapshot.original_state,
+                task_path
+            );
+        }
     }
 
     Ok(())

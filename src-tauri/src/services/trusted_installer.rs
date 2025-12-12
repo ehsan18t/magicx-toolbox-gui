@@ -490,3 +490,95 @@ pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
         )))
     }
 }
+
+// ============================================================================
+// POWERSHELL EXECUTION
+// ============================================================================
+
+/// Result of a PowerShell command execution
+#[derive(Debug)]
+pub struct PowerShellResult {
+    /// Exit code from PowerShell
+    pub exit_code: i32,
+    /// Standard output from the command
+    pub stdout: String,
+    /// Standard error from the command
+    pub stderr: String,
+    /// Whether the command was successful (exit code 0)
+    pub success: bool,
+}
+
+/// Execute a PowerShell command as the current user
+/// Uses -NoProfile and -ExecutionPolicy Bypass for reliability
+pub fn run_powershell(script: &str) -> Result<PowerShellResult, Error> {
+    log::info!("Running PowerShell command: {}", script);
+
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .output()
+        .map_err(|e| Error::CommandExecution(format!("Failed to execute PowerShell: {}", e)))?;
+
+    let result = PowerShellResult {
+        exit_code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        success: output.status.success(),
+    };
+
+    if result.success {
+        log::debug!("PowerShell command succeeded");
+        if !result.stdout.is_empty() {
+            log::trace!("PowerShell stdout: {}", result.stdout.trim());
+        }
+    } else {
+        log::warn!(
+            "PowerShell command failed with exit code {}: {}",
+            result.exit_code,
+            result.stderr.trim()
+        );
+    }
+
+    Ok(result)
+}
+
+/// Execute a PowerShell command as SYSTEM
+/// The command is wrapped and executed via CreateProcessWithTokenW
+pub fn run_powershell_as_system(script: &str) -> Result<i32, Error> {
+    log::info!("Running PowerShell command as SYSTEM: {}", script);
+
+    // Escape double quotes in the script for the command line
+    let escaped_script = script.replace('"', "\\\"");
+
+    // Build the full command to run PowerShell as SYSTEM
+    let command = format!(
+        "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{}\"",
+        escaped_script
+    );
+
+    let exit_code = execute_command_as_system(&command)?;
+
+    if exit_code == 0 {
+        log::info!("PowerShell command as SYSTEM completed successfully");
+    } else {
+        log::warn!(
+            "PowerShell command as SYSTEM failed with exit code: {}",
+            exit_code
+        );
+    }
+
+    Ok(exit_code)
+}
+
+/// Run a scheduled task command as SYSTEM (for protected tasks)
+pub fn run_schtasks_as_system(args: &str) -> Result<i32, Error> {
+    log::info!("Running schtasks as SYSTEM: {}", args);
+    let command = format!("schtasks {}", args);
+    execute_command_as_system(&command)
+}

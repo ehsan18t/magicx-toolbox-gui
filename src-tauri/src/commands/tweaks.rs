@@ -4,7 +4,18 @@
 //! - `label`: Display name (e.g., "Enabled", "Disabled", "High Performance")
 //! - `registry_changes`: Registry modifications for this option
 //! - `service_changes`: Service startup changes for this option
+//! - `scheduler_changes`: Windows Task Scheduler changes for this option
 //! - `pre_commands` / `post_commands`: Shell commands to run
+//! - `pre_powershell` / `post_powershell`: PowerShell commands to run
+//!
+//! Execution order when applying an option:
+//! 1. pre_commands (shell)
+//! 2. pre_powershell (PowerShell)
+//! 3. registry_changes
+//! 4. service_changes
+//! 5. scheduler_changes
+//! 6. post_commands (shell)
+//! 7. post_powershell (PowerShell)
 //!
 //! Tweaks with `is_toggle: true` have exactly 2 options and render as a toggle switch.
 //! Tweaks with `is_toggle: false` render as a dropdown selector.
@@ -12,12 +23,12 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::{
-    CategoryDefinition, RegistryHive, RegistryValueType, TweakDefinition, TweakOption, TweakResult,
-    TweakStatus,
+    CategoryDefinition, RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition,
+    TweakOption, TweakResult, TweakStatus,
 };
 use crate::services::{
-    backup_service, registry_service, service_control, system_info_service, trusted_installer,
-    tweak_loader,
+    backup_service, registry_service, scheduler_service, service_control, system_info_service,
+    trusted_installer, tweak_loader,
 };
 use tauri::AppHandle;
 
@@ -256,7 +267,18 @@ pub async fn apply_tweak(
         }
     }
 
-    // Step 3: Apply registry changes atomically
+    // Step 3: Run pre_powershell if defined
+    for ps_cmd in &option.pre_powershell {
+        if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system) {
+            log::error!("Pre-PowerShell command failed, aborting: {}", e);
+            return Err(Error::CommandExecution(format!(
+                "Pre-PowerShell failed: {}",
+                e
+            )));
+        }
+    }
+
+    // Step 4: Apply registry changes atomically
     if let Err(e) = apply_registry_changes(&app, &tweak, option, version) {
         log::error!(
             "Failed to apply registry changes for '{}': {}",
@@ -274,13 +296,23 @@ pub async fn apply_tweak(
         return Err(e);
     }
 
-    // Step 4: Apply service changes
+    // Step 5: Apply service changes
     apply_service_changes(option, tweak.requires_system);
 
-    // Step 5: Run post_commands
+    // Step 6: Apply scheduler changes
+    apply_scheduler_changes(&app, option, tweak.requires_system);
+
+    // Step 7: Run post_commands
     for cmd in &option.post_commands {
         if let Err(e) = run_command(cmd, tweak.requires_system) {
             log::warn!("Post-command failed (non-fatal): {}", e);
+        }
+    }
+
+    // Step 8: Run post_powershell
+    for ps_cmd in &option.post_powershell {
+        if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system) {
+            log::warn!("Post-PowerShell command failed (non-fatal): {}", e);
         }
     }
 
@@ -683,6 +715,105 @@ fn apply_service_changes(option: &TweakOption, use_system: bool) {
             } else {
                 let _ = service_control::stop_service(&change.name);
             }
+        }
+    }
+}
+
+/// Apply all scheduler changes for an option
+fn apply_scheduler_changes(app: &AppHandle, option: &TweakOption, use_system: bool) {
+    for change in &option.scheduler_changes {
+        let task_path = format!("{}\\{}", change.task_path, change.task_name);
+        log::info!(
+            "Applying scheduler change{}: {} → {:?}",
+            if use_system { " (SYSTEM)" } else { "" },
+            task_path,
+            change.action
+        );
+
+        let result = if use_system {
+            // Use schtasks via trusted_installer for SYSTEM-level operations
+            let schtasks_args = match change.action {
+                SchedulerAction::Enable => {
+                    format!("/Change /TN \"{}\" /Enable", task_path)
+                }
+                SchedulerAction::Disable => {
+                    format!("/Change /TN \"{}\" /Disable", task_path)
+                }
+                SchedulerAction::Delete => {
+                    format!("/Delete /TN \"{}\" /F", task_path)
+                }
+            };
+            trusted_installer::run_schtasks_as_system(&schtasks_args)
+                .map(|_| ())
+                .map_err(|e| Error::CommandExecution(e.to_string()))
+        } else {
+            // Use scheduler_service directly
+            scheduler_service::apply_scheduler_change(
+                &change.task_path,
+                &change.task_name,
+                change.action,
+            )
+        };
+
+        if let Err(e) = result {
+            log::warn!(
+                "Failed to apply scheduler change for '{}': {}",
+                task_path,
+                e
+            );
+        } else if is_debug_enabled() {
+            emit_debug_log(
+                app,
+                DebugLevel::Info,
+                &format!("Scheduler: {} → {:?}", task_path, change.action),
+                None,
+            );
+        }
+    }
+}
+
+/// Run a PowerShell command (as user or SYSTEM)
+fn run_powershell_command(cmd: &str, use_system: bool) -> Result<()> {
+    log::info!(
+        "Running PowerShell{}: {}",
+        if use_system { " as SYSTEM" } else { "" },
+        cmd
+    );
+
+    if use_system {
+        // run_powershell_as_system returns Result<i32, Error> (exit code only)
+        match trusted_installer::run_powershell_as_system(cmd) {
+            Ok(exit_code) => {
+                if exit_code != 0 {
+                    log::warn!("PowerShell (SYSTEM) returned exit code {}", exit_code);
+                }
+                Ok(())
+            }
+            Err(e) => Err(Error::CommandExecution(format!(
+                "PowerShell (SYSTEM) failed: {}",
+                e
+            ))),
+        }
+    } else {
+        // run_powershell returns Result<PowerShellResult, Error>
+        match trusted_installer::run_powershell(cmd) {
+            Ok(ps_result) => {
+                if ps_result.exit_code != 0 {
+                    log::warn!(
+                        "PowerShell returned exit code {}: {}",
+                        ps_result.exit_code,
+                        ps_result.stderr
+                    );
+                }
+                if !ps_result.stdout.is_empty() {
+                    log::debug!("PowerShell stdout: {}", ps_result.stdout);
+                }
+                if !ps_result.stderr.is_empty() && ps_result.exit_code != 0 {
+                    log::debug!("PowerShell stderr: {}", ps_result.stderr);
+                }
+                Ok(())
+            }
+            Err(e) => Err(Error::CommandExecution(format!("PowerShell failed: {}", e))),
         }
     }
 }

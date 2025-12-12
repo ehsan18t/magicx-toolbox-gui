@@ -67,6 +67,15 @@ enum ServiceStartupType {
     System,
 }
 
+/// Action to perform on a scheduled task
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+enum SchedulerAction {
+    Enable,
+    Disable,
+    Delete,
+}
+
 /// Single registry modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RegistryChange {
@@ -90,6 +99,14 @@ struct ServiceChange {
     start_service: bool,
 }
 
+/// Single scheduled task modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SchedulerChange {
+    task_path: String,
+    task_name: String,
+    action: SchedulerAction,
+}
+
 /// A single option within a tweak - contains all changes for that state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TweakOption {
@@ -99,9 +116,15 @@ struct TweakOption {
     #[serde(default)]
     service_changes: Vec<ServiceChange>,
     #[serde(default)]
+    scheduler_changes: Vec<SchedulerChange>,
+    #[serde(default)]
     pre_commands: Vec<String>,
     #[serde(default)]
     post_commands: Vec<String>,
+    #[serde(default)]
+    pre_powershell: Vec<String>,
+    #[serde(default)]
+    post_powershell: Vec<String>,
 }
 
 /// Raw tweak definition as loaded from YAML

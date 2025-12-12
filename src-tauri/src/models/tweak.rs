@@ -134,6 +134,28 @@ impl ServiceStartupType {
     }
 }
 
+/// Action to perform on a scheduled task
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum SchedulerAction {
+    /// Enable a disabled scheduled task
+    Enable,
+    /// Disable a scheduled task
+    Disable,
+    /// Delete/unregister a scheduled task
+    Delete,
+}
+
+impl SchedulerAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SchedulerAction::Enable => "enable",
+            SchedulerAction::Disable => "disable",
+            SchedulerAction::Delete => "delete",
+        }
+    }
+}
+
 // ============================================================================
 // CORE STRUCTURES
 // ============================================================================
@@ -189,6 +211,17 @@ pub struct ServiceChange {
     pub start_service: bool,
 }
 
+/// Single scheduled task modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerChange {
+    /// Task path (e.g., "\\Microsoft\\Windows\\Customer Experience Improvement Program")
+    pub task_path: String,
+    /// Task name (e.g., "Consolidator")
+    pub task_name: String,
+    /// Action to perform on the task
+    pub action: SchedulerAction,
+}
+
 /// A single option within a tweak - contains all changes for that state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakOption {
@@ -200,12 +233,21 @@ pub struct TweakOption {
     /// Service modifications for this option
     #[serde(default)]
     pub service_changes: Vec<ServiceChange>,
-    /// Shell commands to run BEFORE applying changes
+    /// Scheduled task modifications for this option
+    #[serde(default)]
+    pub scheduler_changes: Vec<SchedulerChange>,
+    /// Shell commands (cmd.exe) to run BEFORE applying changes
     #[serde(default)]
     pub pre_commands: Vec<String>,
-    /// Shell commands to run AFTER applying changes
+    /// Shell commands (cmd.exe) to run AFTER applying changes
     #[serde(default)]
     pub post_commands: Vec<String>,
+    /// PowerShell commands to run BEFORE applying changes (after pre_commands)
+    #[serde(default)]
+    pub pre_powershell: Vec<String>,
+    /// PowerShell commands to run AFTER applying changes (after post_commands)
+    #[serde(default)]
+    pub post_powershell: Vec<String>,
 }
 
 impl TweakOption {
@@ -224,8 +266,10 @@ impl TweakOption {
             .iter()
             .any(|c| c.applies_to_version(version));
         let has_services = !self.service_changes.is_empty();
+        let has_scheduler = !self.scheduler_changes.is_empty();
         let has_commands = !self.pre_commands.is_empty() || !self.post_commands.is_empty();
-        has_registry || has_services || has_commands
+        let has_powershell = !self.pre_powershell.is_empty() || !self.post_powershell.is_empty();
+        has_registry || has_services || has_scheduler || has_commands || has_powershell
     }
 }
 
@@ -443,8 +487,11 @@ mod tests {
             label: "Test".to_string(),
             registry_changes,
             service_changes: Vec::new(),
+            scheduler_changes: Vec::new(),
             pre_commands: Vec::new(),
             post_commands: Vec::new(),
+            pre_powershell: Vec::new(),
+            post_powershell: Vec::new(),
         }
     }
 

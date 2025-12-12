@@ -34,6 +34,17 @@ pub struct ServiceSnapshot {
     pub was_running: bool,
 }
 
+/// Snapshot of a scheduled task's state before modification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerSnapshot {
+    /// Task path (e.g., "\\Microsoft\\Windows\\Customer Experience Improvement Program")
+    pub task_path: String,
+    /// Task name (e.g., "Consolidator")
+    pub task_name: String,
+    /// Task state before modification ("Ready", "Disabled", "NotFound")
+    pub original_state: String,
+}
+
 /// Complete snapshot of system state before applying a tweak option
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakSnapshot {
@@ -56,6 +67,9 @@ pub struct TweakSnapshot {
     pub registry_snapshots: Vec<RegistrySnapshot>,
     /// Service states captured before changes
     pub service_snapshots: Vec<ServiceSnapshot>,
+    /// Scheduled task states captured before changes
+    #[serde(default)]
+    pub scheduler_snapshots: Vec<SchedulerSnapshot>,
 }
 
 impl TweakSnapshot {
@@ -78,6 +92,7 @@ impl TweakSnapshot {
             requires_system,
             registry_snapshots: Vec::new(),
             service_snapshots: Vec::new(),
+            scheduler_snapshots: Vec::new(),
         }
     }
 
@@ -89,5 +104,10 @@ impl TweakSnapshot {
     /// Add a service snapshot
     pub fn add_service_snapshot(&mut self, snapshot: ServiceSnapshot) {
         self.service_snapshots.push(snapshot);
+    }
+
+    /// Add a scheduler snapshot
+    pub fn add_scheduler_snapshot(&mut self, snapshot: SchedulerSnapshot) {
+        self.scheduler_snapshots.push(snapshot);
     }
 }

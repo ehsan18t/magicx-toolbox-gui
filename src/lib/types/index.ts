@@ -36,6 +36,19 @@ export interface ServiceChange {
   startup: ServiceStartupType;
 }
 
+/** Action for scheduled task changes */
+export type SchedulerAction = "enable" | "disable" | "delete";
+
+/** Scheduler change within an option */
+export interface SchedulerChange {
+  /** Task path in Task Scheduler (e.g., "\\Microsoft\\Windows\\Application Experience") */
+  task_path: string;
+  /** Task name (e.g., "Microsoft Compatibility Appraiser") */
+  task_name: string;
+  /** Action to perform on the task */
+  action: SchedulerAction;
+}
+
 /** A single option within a tweak - contains all changes for that state */
 export interface TweakOption {
   /** Display label (e.g., "Enabled", "Disabled", "4MB") */
@@ -44,10 +57,16 @@ export interface TweakOption {
   registry_changes: RegistryChange[];
   /** Service modifications for this option */
   service_changes: ServiceChange[];
+  /** Scheduler task modifications for this option */
+  scheduler_changes: SchedulerChange[];
   /** Shell commands to run BEFORE applying changes */
   pre_commands: string[];
+  /** PowerShell commands to run BEFORE applying changes (after pre_commands) */
+  pre_powershell: string[];
   /** Shell commands to run AFTER applying changes */
   post_commands: string[];
+  /** PowerShell commands to run AFTER applying changes (after post_commands) */
+  post_powershell: string[];
 }
 
 /** Category definition loaded from YAML file */
