@@ -119,7 +119,7 @@ tweaks:
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
     options:
       - label: "Windows Update Disabled"
-        schedule_changes:
+        scheduler_changes:
           - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
             task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
             action: disable
@@ -149,7 +149,7 @@ tweaks:
           - name: "UsoSvc"
             startup: disabled
       - label: "Windows Update Enabled"
-        schedule_changes:
+        scheduler_changes:
           - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
             task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
             action: enable
