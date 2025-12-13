@@ -37,7 +37,7 @@ pub async fn batch_apply_tweaks(
 
     let mut requires_reboot = false;
     let mut success_count = 0;
-    let mut failure_count = 0;
+    let mut failures: Vec<(String, String)> = Vec::new();
 
     for (tweak_id, option_index) in &operations {
         let result = Box::pin(apply_tweak(app.clone(), tweak_id.clone(), *option_index)).await;
@@ -50,17 +50,19 @@ pub async fn batch_apply_tweaks(
                 }
             }
             Err(e) => {
+                let error_msg = e.to_string();
                 log::warn!(
                     "Failed to apply tweak '{}' option {}: {}",
                     tweak_id,
                     option_index,
-                    e
+                    error_msg
                 );
-                failure_count += 1;
+                failures.push((tweak_id.clone(), error_msg));
             }
         }
     }
 
+    let failure_count = failures.len();
     let message = if failure_count > 0 {
         format!(
             "Applied {}/{} tweaks ({} failed)",
@@ -99,6 +101,7 @@ pub async fn batch_apply_tweaks(
         success: failure_count == 0,
         message,
         requires_reboot,
+        failures,
     })
 }
 
@@ -115,6 +118,7 @@ pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resu
 
     let mut requires_reboot = false;
     let mut success_count = 0;
+    let mut failures: Vec<(String, String)> = Vec::new();
 
     for tweak_id in &tweak_ids {
         let result = Box::pin(revert_tweak(app.clone(), tweak_id.clone())).await;
@@ -127,14 +131,29 @@ pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resu
                 }
             }
             Err(e) => {
-                log::warn!("Failed to revert tweak '{}': {}", tweak_id, e);
+                let error_msg = e.to_string();
+                log::warn!("Failed to revert tweak '{}': {}", tweak_id, error_msg);
+                failures.push((tweak_id.clone(), error_msg));
             }
         }
     }
 
+    let failure_count = failures.len();
+    let message = if failure_count > 0 {
+        format!(
+            "Reverted {}/{} tweaks ({} failed)",
+            success_count,
+            tweak_ids.len(),
+            failure_count
+        )
+    } else {
+        format!("Reverted {} tweaks", success_count)
+    };
+
     Ok(TweakResult {
-        success: true,
-        message: format!("Reverted {} tweaks", success_count),
+        success: failure_count == 0,
+        message,
         requires_reboot,
+        failures,
     })
 }

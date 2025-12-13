@@ -71,6 +71,7 @@ pub async fn apply_tweak(
             success: true,
             message: format!("Already at option: {}", option.label),
             requires_reboot: false,
+            failures: Vec::new(),
         });
     }
 
@@ -191,6 +192,7 @@ pub async fn apply_tweak(
         success: true,
         message: format!("Applied: {} → {}", tweak.name, option.label),
         requires_reboot: tweak.requires_reboot,
+        failures: Vec::new(),
     })
 }
 
@@ -269,5 +271,6 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         success: true,
         message: format!("Reverted: {}", tweak.name),
         requires_reboot: tweak.requires_reboot,
+        failures: Vec::new(),
     })
 }
