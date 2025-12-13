@@ -57,20 +57,3 @@ impl RegistryValue {
         }
     }
 }
-
-/// Information about a registry key
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryKeyInfo {
-    pub hive: String,
-    pub key: String,
-    pub subkey_count: u32,
-    pub value_count: u32,
-}
-
-/// A registry key and its values (for backup/restore)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryKeySnapshot {
-    pub hive: String,
-    pub key: String,
-    pub values: Vec<(String, RegistryValue)>,
-}

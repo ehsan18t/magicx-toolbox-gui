@@ -38,6 +38,9 @@ pub enum Error {
 
     #[error("Command execution failed: {0}")]
     CommandExecution(String),
+
+    #[error("Failed to acquire state lock")]
+    StateLock,
 }
 
 impl Serialize for Error {

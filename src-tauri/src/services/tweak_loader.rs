@@ -22,7 +22,7 @@ pub fn load_all_categories() -> Result<Vec<CategoryDefinition>, Error> {
 /// Load all tweaks (pre-compiled at build time).
 ///
 /// Returns a HashMap for O(1) lookup by tweak ID.
-#[allow(dead_code)]
+#[allow(dead_code)] // Public API for future use
 pub fn load_all_tweaks() -> Result<HashMap<String, TweakDefinition>, Error> {
     log::debug!(
         "Returning {} pre-compiled tweaks",

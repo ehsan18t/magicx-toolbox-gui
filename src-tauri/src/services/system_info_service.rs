@@ -328,6 +328,9 @@ fn get_monitor_info(_wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo>
     let mut monitors = Vec::new();
     let mut adapter_index = 0;
 
+    // SAFETY: Windows EnumDisplayDevicesW and EnumDisplaySettingsW calls.
+    // Structures are zeroed before use and properly sized. Loop terminates when
+    // EnumDisplayDevicesW returns false, indicating end of device list.
     unsafe {
         loop {
             let mut adapter_device: DISPLAY_DEVICEW = std::mem::zeroed();

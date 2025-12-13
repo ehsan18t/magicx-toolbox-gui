@@ -171,7 +171,7 @@ pub fn read_qword(
 }
 
 /// Check if a registry key exists
-#[allow(dead_code)]
+#[allow(dead_code)] // Utility function for future use
 pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
     let hive_key = get_hive_key(hive)?;
     match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
@@ -182,7 +182,7 @@ pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
 }
 
 /// Check if a registry value exists
-#[allow(dead_code)]
+#[allow(dead_code)] // Utility function for future use
 pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<bool, Error> {
     let hive_key = get_hive_key(hive)?;
     let reg_key = RegKey::predef(hive_key)
@@ -342,7 +342,6 @@ pub fn set_qword(
 }
 
 /// Delete a registry value
-#[allow(dead_code)]
 pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<(), Error> {
     log::debug!(
         "Deleting value {}\\{}\\{}",
@@ -370,7 +369,7 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
 }
 
 /// Create a registry key
-#[allow(dead_code)]
+#[allow(dead_code)] // Utility function for future use
 pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     log::debug!("Creating key {}\\{}", hive_name(hive), key_path);
     require_write_access(hive)?;

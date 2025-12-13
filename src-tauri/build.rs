@@ -331,9 +331,11 @@ pub static TWEAKS: LazyLock<HashMap<String, TweakDefinition>> = LazyLock::new(||
 }});
 
 /// Number of categories compiled into the binary
+#[allow(dead_code)]
 pub const CATEGORY_COUNT: usize = {category_count};
 
 /// Number of tweaks compiled into the binary
+#[allow(dead_code)]
 pub const TWEAK_COUNT: usize = {tweak_count};
 "#,
         category_count = categories.len(),

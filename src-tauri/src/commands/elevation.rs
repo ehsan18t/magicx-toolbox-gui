@@ -81,6 +81,9 @@ pub async fn restart_as_admin(app: tauri::AppHandle) -> Result<()> {
         .chain(std::iter::once(0))
         .collect();
 
+    // SAFETY: ShellExecuteW is called with valid null-terminated wide strings.
+    // The operation is "runas" which triggers UAC elevation. Return value > 32
+    // indicates success.
     unsafe {
         let result = ShellExecuteW(
             ptr::null_mut(),
