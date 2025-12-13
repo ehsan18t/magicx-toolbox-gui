@@ -5,6 +5,7 @@
 //! ## Module Organization
 //!
 //! - `common`: Shared utilities, constants, and Windows API imports
+//! - `service_ops`: Generic service operations for elevated contexts
 //! - `system_elevation`: SYSTEM-level elevation (via winlogon.exe token)
 //! - `ti_elevation`: TrustedInstaller-level elevation (via parent process spoofing)
 //!
@@ -22,6 +23,7 @@
 //! ```
 
 mod common;
+mod service_ops;
 mod system_elevation;
 mod ti_elevation;
 

@@ -273,63 +273,31 @@ pub fn run_command_as_system(command: &str) -> Result<i32, Error> {
 /// Set a Windows service startup type as SYSTEM using sc.exe
 /// This bypasses normal permission checks for protected services
 pub fn set_service_startup_as_system(service_name: &str, startup_type: &str) -> Result<(), Error> {
-    log::info!(
-        "Setting service '{}' startup to '{}' as SYSTEM",
+    use super::service_ops::{set_service_startup_elevated, ElevationLevel};
+    set_service_startup_elevated(
         service_name,
-        startup_type
-    );
-
-    let escaped_name = escape_shell_arg(service_name);
-    let command = format!("sc config \"{}\" start= {}", escaped_name, startup_type);
-    let exit_code = execute_command_as_system(&command)?;
-
-    if exit_code == 0 {
-        log::info!("Successfully set service startup as SYSTEM");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "sc config failed with exit code: {}",
-            exit_code
-        )))
-    }
+        startup_type,
+        ElevationLevel::System,
+        execute_command_as_system,
+    )
 }
 
 /// Stop a Windows service as SYSTEM using net stop
 pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
-    log::info!("Stopping service '{}' as SYSTEM", service_name);
-
-    let escaped_name = escape_shell_arg(service_name);
-    let command = format!("net stop \"{}\"", escaped_name);
-    let exit_code = execute_command_as_system(&command)?;
-
-    // net stop returns 0 on success, 2 if already stopped
-    if exit_code == 0 || exit_code == 2 {
-        log::info!("Service stopped (or was already stopped) as SYSTEM");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "net stop failed with exit code: {}",
-            exit_code
-        )))
-    }
+    use super::service_ops::{stop_service_elevated, ElevationLevel};
+    stop_service_elevated(
+        service_name,
+        ElevationLevel::System,
+        execute_command_as_system,
+    )
 }
 
 /// Start a Windows service as SYSTEM using net start
 pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
-    log::info!("Starting service '{}' as SYSTEM", service_name);
-
-    let escaped_name = escape_shell_arg(service_name);
-    let command = format!("net start \"{}\"", escaped_name);
-    let exit_code = execute_command_as_system(&command)?;
-
-    // net start returns 0 on success, 2 if already running
-    if exit_code == 0 || exit_code == 2 {
-        log::info!("Service started (or was already running) as SYSTEM");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "net start failed with exit code: {}",
-            exit_code
-        )))
-    }
+    use super::service_ops::{start_service_elevated, ElevationLevel};
+    start_service_elevated(
+        service_name,
+        ElevationLevel::System,
+        execute_command_as_system,
+    )
 }

@@ -7,15 +7,15 @@ use crate::error::Error;
 use std::ptr;
 
 use super::common::{
-    enable_debug_privilege, escape_shell_arg, to_wide_string, CloseHandle, CloseServiceHandle,
-    CreateProcessW, DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList,
-    OpenProcess, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
-    UpdateProcThreadAttribute, CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT,
-    ELEVATED_PROCESS_TIMEOUT_MS, EXTENDED_STARTUPINFO_PRESENT, FALSE, HANDLE,
+    enable_debug_privilege, to_wide_string, CloseHandle, CloseServiceHandle, CreateProcessW,
+    DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList, OpenProcess,
+    OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW, UpdateProcThreadAttribute,
+    CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, ELEVATED_PROCESS_TIMEOUT_MS,
+    ERROR_SERVICE_ALREADY_RUNNING, EXTENDED_STARTUPINFO_PRESENT, FALSE, HANDLE,
     LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_CREATE_PROCESS, PROCESS_INFORMATION,
     PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
-    SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATUS_PROCESS, STARTF_USESHOWWINDOW,
-    STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
+    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS,
+    STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
 };
 
 // Re-export execute_command_as_system for use in run_powershell_as_system
@@ -178,8 +178,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
         let current_state = status.dwCurrentState;
 
         // If already running, return the PID
-        // SERVICE_RUNNING = 4
-        if current_state == 4 {
+        if current_state == SERVICE_RUNNING {
             let pid = status.dwProcessId;
             CloseServiceHandle(service);
             CloseServiceHandle(scm);
@@ -193,8 +192,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
 
         if start_result == 0 {
             let err = GetLastError();
-            // ERROR_SERVICE_ALREADY_RUNNING = 1056
-            if err != 1056 {
+            if err != ERROR_SERVICE_ALREADY_RUNNING {
                 CloseServiceHandle(service);
                 CloseServiceHandle(scm);
                 return Err(Error::ServiceControl(format!(
@@ -218,7 +216,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
 
             if query_result != 0 {
                 let status = &*(status_buffer.as_ptr() as *const SERVICE_STATUS_PROCESS);
-                if status.dwCurrentState == 4 {
+                if status.dwCurrentState == SERVICE_RUNNING {
                     let pid = status.dwProcessId;
                     CloseServiceHandle(service);
                     CloseServiceHandle(scm);
@@ -416,65 +414,33 @@ pub fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, E
 /// Set a Windows service startup type as TrustedInstaller
 /// This is needed for protected services like WaaSMedicSvc
 pub fn set_service_startup_as_ti(service_name: &str, startup_type: &str) -> Result<(), Error> {
-    log::info!(
-        "Setting service '{}' startup to '{}' as TrustedInstaller",
+    use super::service_ops::{set_service_startup_elevated, ElevationLevel};
+    set_service_startup_elevated(
         service_name,
-        startup_type
-    );
-
-    let escaped_name = escape_shell_arg(service_name);
-    let command = format!("sc config \"{}\" start= {}", escaped_name, startup_type);
-    let exit_code = execute_command_as_trusted_installer(&command)?;
-
-    if exit_code == 0 {
-        log::info!("Successfully set service startup as TrustedInstaller");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "sc config failed with exit code: {}",
-            exit_code
-        )))
-    }
+        startup_type,
+        ElevationLevel::TrustedInstaller,
+        execute_command_as_trusted_installer,
+    )
 }
 
 /// Stop a Windows service as TrustedInstaller
 pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
-    log::info!("Stopping service '{}' as TrustedInstaller", service_name);
-
-    let escaped_name = escape_shell_arg(service_name);
-    let command = format!("net stop \"{}\"", escaped_name);
-    let exit_code = execute_command_as_trusted_installer(&command)?;
-
-    // net stop returns 0 on success, 2 if already stopped
-    if exit_code == 0 || exit_code == 2 {
-        log::info!("Service stopped (or was already stopped) as TrustedInstaller");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "net stop failed with exit code: {}",
-            exit_code
-        )))
-    }
+    use super::service_ops::{stop_service_elevated, ElevationLevel};
+    stop_service_elevated(
+        service_name,
+        ElevationLevel::TrustedInstaller,
+        execute_command_as_trusted_installer,
+    )
 }
 
 /// Start a Windows service as TrustedInstaller
 pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
-    log::info!("Starting service '{}' as TrustedInstaller", service_name);
-
-    let escaped_name = escape_shell_arg(service_name);
-    let command = format!("net start \"{}\"", escaped_name);
-    let exit_code = execute_command_as_trusted_installer(&command)?;
-
-    // net start returns 0 on success, 2 if already running
-    if exit_code == 0 || exit_code == 2 {
-        log::info!("Service started (or was already running) as TrustedInstaller");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "net start failed with exit code: {}",
-            exit_code
-        )))
-    }
+    use super::service_ops::{start_service_elevated, ElevationLevel};
+    start_service_elevated(
+        service_name,
+        ElevationLevel::TrustedInstaller,
+        execute_command_as_trusted_installer,
+    )
 }
 
 /// Run an arbitrary command as TrustedInstaller
