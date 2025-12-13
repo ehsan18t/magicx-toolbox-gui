@@ -89,7 +89,7 @@ For detailed information about working with the Rust backend, including:
 ### Authoring Tweaks (YAML)
 Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks. The app auto-discovers all `.yaml` files, no code changes are needed when you add/edit files.
 
-**📖 [Read the Tweak System Guide for more details](./TWEAK_SYSTEM.md)**
+**📖 [Read the Tweak Authoring Guide for more details](./TWEAK_AUTHORING.md)**
 
 ## Customization
 
