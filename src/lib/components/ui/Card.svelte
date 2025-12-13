@@ -22,7 +22,7 @@
     ghost: "border-transparent bg-transparent",
   };
 
-  const hoverClasses = hover ? "hover:border-border-hover hover:shadow-md" : "";
+  const hoverClasses = $derived(hover ? "hover:border-border-hover hover:shadow-md" : "");
 
   const paddingClasses: Record<string, string> = {
     none: "",

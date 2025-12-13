@@ -1,6 +1,6 @@
-# MagicX Toolbox Backend Architecture
+# MagicX Toolbox Architecture
 
-> Comprehensive guide for LLMs to understand the project's backend capabilities, data flow, and design decisions.
+> Comprehensive guide for understanding the project's capabilities, data flow, and design decisions.
 
 ## Project Overview
 
@@ -13,31 +13,94 @@ The application allows users to apply, revert, and manage Windows registry tweak
 
 ---
 
-## Core Features
+## Frontend Architecture
 
-### 1. Registry Tweaks
+### Store Pattern (Svelte 5 Runes)
+
+Stores use Svelte 5 runes (`.svelte.ts` files) with getter-based reactive access:
+
+```typescript
+// Store definition pattern
+let state = $state<T>(initialValue);
+
+export const store = {
+  get value() { return state; },
+  get derived() { return computedValue; },
+  action() { state = newValue; }
+};
+
+// Component usage - direct access, no $ prefix
+import { store } from "$lib/stores/store.svelte";
+
+const derived = $derived(store.value);
+```
+
+**Available stores:**
+- `themeStore` - Theme management (light/dark/system)
+- `modalStore` - Modal state (about/settings/update)
+- `sidebarState` - Sidebar expanded/pinned state
+- `colorSchemeStore` - Accent color scheme selection
+- `settingsStore` - App settings with localStorage persistence
+- `tweakDetailsModalStore` - Tweak details modal state
+- `debugState` - Debug panel and logging state
+
+### UI Components
+
+Reusable UI primitives in `$lib/components/ui/`:
+- `Button` - Primary, secondary, danger, ghost variants
+- `Badge` - Status indicators
+- `Card` - Content containers
+- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter` - Dialog system
+- `IconButton` - Icon-only buttons with tooltips
+- `Switch` - Boolean toggles
+- `Select` - Dropdown selection
+- `SearchInput` - Search with icon
+- `Spinner` - Loading indicator
+
+### Component Structure
+
+```
+src/lib/components/
+├── ui/                   # Reusable primitives
+├── AboutModal.svelte     # App info modal
+├── SettingsModal.svelte  # App settings
+├── UpdateModal.svelte    # Update management
+├── TweakCard.svelte      # Individual tweak display
+├── TweakDetailsModal.svelte # Tweak details view
+├── Sidebar.svelte        # Navigation sidebar
+├── TitleBar.svelte       # Custom window titlebar
+└── ...
+```
+
+---
+
+## Backend Architecture
+
+### Core Features
+
+#### 1. Registry Tweaks
 - **Binary tweaks**: Toggle between ON (`enable_value`) and OFF (`disable_value`) states
 - **Multi-state tweaks**: Dropdown selection from multiple options (e.g., icon cache sizes: 500KB, 4MB, 8MB)
 - **Windows version filtering**: Tweaks can be filtered to apply only on Windows 10, 11, or both
 
-### 2. Service Control
+#### 2. Service Control
 - **Tweak-level services**: Apply/revert service configuration when applying/reverting a tweak
-- **Per-option services**: Multi-state tweaks can have different service configurations per option (new feature)
+- **Per-option services**: Multi-state tweaks can have different service configurations per option
 - **Service operations**: Set startup type (Disabled, Manual, Automatic), stop/start services
 
-### 3. Snapshot-Based Backup System
+#### 3. Snapshot-Based Backup System
 - **Atomic snapshots**: Before applying any tweak, the current registry state is captured
 - **Automatic restoration**: Reverting a tweak restores from snapshot, not from predefined values
 - **Stale snapshot cleanup**: On app startup, snapshots are validated; stale ones are removed
 - **Failure handling**: If apply/revert fails, snapshots are cleaned up to prevent orphaned state
 
-### 4. Permissions Model
+#### 4. Permissions Model
 - **Admin detection**: App detects if running as administrator
 - **Per-tweak admin requirement**: Each tweak specifies `requires_admin: true/false`
 - **HKCU vs HKLM**: HKCU registry keys don't require admin; HKLM keys typically do
 - **Service operations**: Always require administrator privileges
 
-### 5. Risk Levels
+#### 5. Risk Levels
 ```yaml
 risk_levels:
   low: Safe, no system impact

@@ -38,8 +38,63 @@ Changes that require documentation updates:
 - Use Tailwind CSS (v4) utility classes; avoid inline styles unless necessary.
 - Keep aliases consistent: `@/*` maps to `src/*` and `$lib` for library exports.
 - For external links in the UI, use the `ExternalLink` component (it opens via Tauri shell).
-- Use `themeStore` from `$lib/stores/theme` for theme toggling; do not reimplement theme persistence.
 - Respect window drag regions: elements inside the title bar that need interaction must have `drag-disable`.
+
+## Store Pattern (Svelte 5 Runes)
+
+Stores are implemented using Svelte 5 runes (`.svelte.ts` files) with getter-based access:
+
+```typescript
+// Store definition (e.g., theme.svelte.ts)
+let currentTheme = $state<Theme>("system");
+
+export const themeStore = {
+  get current() { return currentTheme; },
+  get isDark() { return currentTheme === "dark"; },
+  set(theme: Theme) { currentTheme = theme; },
+  toggle() { /* ... */ }
+};
+
+// Component usage - NO $ prefix, use getter directly
+<script lang="ts">
+  import { themeStore } from "$lib/stores/theme.svelte";
+
+  // Access via getter (reactive automatically)
+  const isDark = $derived(themeStore.isDark);
+</script>
+
+{#if themeStore.current === "dark"}
+  <Icon icon="moon" />
+{/if}
+```
+
+**Available stores:**
+
+- `themeStore` - Theme management (light/dark/system)
+- `modalStore` - Modal state (about/settings/update)
+- `sidebarState` - Sidebar expanded/pinned state
+- `colorSchemeStore` - Accent color scheme
+- `settingsStore` - App settings with localStorage persistence
+- `tweakDetailsModalStore` - Tweak details modal state
+
+## UI Primitives
+
+Use the UI primitives from `$lib/components/ui` for consistency:
+
+```typescript
+import { Button, Badge, Card, Modal, ModalHeader, ModalBody, ModalFooter,
+         IconButton, Switch, Select, SearchInput, Spinner } from "$lib/components/ui";
+```
+
+**Guidelines:**
+
+- Use `Button` with `variant` prop: `"primary"`, `"secondary"`, `"danger"`, `"ghost"`
+- Use `Badge` for status indicators with `variant` prop
+- Use `Card` for content containers
+- Use `Modal` + `ModalHeader` + `ModalBody` + `ModalFooter` for dialogs
+- Use `IconButton` for icon-only buttons with tooltips
+- Use `Switch` for boolean toggles
+- Use `Spinner` for loading states
 
 ## Build / run / test
 
@@ -71,6 +126,7 @@ Changes that require documentation updates:
 - Using direct `fetch` to local files; use Tauri commands via `@tauri-apps/api` when talking to backend.
 - Adding new NPM dependencies without confirming compatibility with Vite/SvelteKit/Tauri.
 - Blocking the UI with long-running calls; offload via Tauri commands instead.
+- Using `$store` subscription syntax with rune-based stores (they don't have `subscribe`).
 
 ## Testing & linting
 

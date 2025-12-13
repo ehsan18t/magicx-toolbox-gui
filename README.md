@@ -1,11 +1,11 @@
-# Tauri + SvelteKit Starter Template
+# MagicX Toolbox
 
-A modern, full-featured starter template for building desktop applications with Tauri 2 and SvelteKit.
+A modern Windows system tweaking application built with Tauri 2 and SvelteKit. Apply, revert, and manage Windows registry tweaks and service configurations through an intuitive GUI.
 
 ## Features
 
 - 🚀 **Tauri 2** - Build smaller, faster, and more secure desktop applications.
-- ⚡ **SvelteKit** - The fastest way to build svelte apps.
+- ⚡ **SvelteKit + Svelte 5** - Modern reactive framework with runes.
 - 🎨 **Tailwind CSS v4** - Utility-first CSS framework.
 - 🌟 **Icons**: Easily use thousands of icons from [Iconify](https://iconify.design/).
 - 🌙 **Dark/Light Theme** - Built-in theme switching with system preference detection.
@@ -13,13 +13,20 @@ A modern, full-featured starter template for building desktop applications with 
 - 🔧 **TypeScript** - Full type safety.
 - 📦 **Modern Build Tools** - Vite, ESLint, Prettier.
 
+### System Tweaking Features
+
+- **Registry Tweaks**: Toggle or multi-state registry modifications
+- **Service Control**: Manage Windows services startup types
+- **Scheduled Tasks**: Enable/disable Windows scheduled tasks
+- **Windows Version Filtering**: Tweaks filtered by Windows 10/11 compatibility
+- **Snapshot-Based Backup**: Automatic state capture before applying tweaks
+- **Risk Levels**: Clear indication of tweak impact (low/medium/high/critical)
+
 ## Quick Start
 
 1. **Clone and install**
    ```bash
    git clone https://github.com/ehsan18t/magicx-toolbox-gui.git
-   ```
-   ```bash
    cd magicx-toolbox-gui
    bun install
    ```
@@ -38,11 +45,10 @@ A modern, full-featured starter template for building desktop applications with 
    ```bash
    bun run build:debug
    ```
+
 ## Development
 
 ### Commands
-
-This template comes with a set of pre-configured scripts to help you with development and maintenance.
 
 | Command                | Description                                                                           |
 | :--------------------- | :------------------------------------------------------------------------------------ |
@@ -61,42 +67,56 @@ This template comes with a set of pre-configured scripts to help you with develo
 | `bun run prepare`      | SvelteKit's command to generate types                                                 |
 
 ### Project Structure
+
 ```
-├── src/                   # Frontend source
-│   ├── lib/               # Shared components and utilities
-│   │   ├── components/    # Reusable components
-│   │   ├── stores/        # Svelte stores
-│   │   └── config/        # App configuration
-│   ├── routes/            # SvelteKit routes
-│   └── app.html           # HTML template
-├── src-tauri/             # Tauri backend
-├── static/                # Static assets
+├── src/                      # Frontend source
+│   ├── lib/
+│   │   ├── api/              # Tauri command wrappers
+│   │   ├── components/       # Svelte components
+│   │   │   └── ui/           # Reusable UI primitives
+│   │   ├── stores/           # Svelte 5 rune-based stores (.svelte.ts)
+│   │   ├── config/           # App configuration
+│   │   └── types/            # TypeScript types
+│   ├── routes/               # SvelteKit routes
+│   └── app.css               # Global styles & CSS variables
+├── src-tauri/                # Tauri backend
+│   ├── src/
+│   │   ├── commands/         # Tauri command handlers
+│   │   ├── models/           # Data structures
+│   │   └── services/         # Business logic
+│   └── tweaks/               # YAML tweak definitions
+├── static/                   # Static assets
 └── README.md
 ```
 
 ## Documentation
 
 ### Backend Development
-For detailed information about working with the Rust backend, including:
-- Understanding the project structure
-- Creating and managing Tauri commands
-- Working with application state
-- Error handling best practices
-- Frontend-backend communication
+
+For detailed information about working with the Rust backend:
 
 **📖 [Read the Rust Backend Developer Guide](./RUST_BACKEND_GUIDE.md)**
 
 ### Authoring Tweaks (YAML)
-Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks. The app auto-discovers all `.yaml` files, no code changes are needed when you add/edit files.
 
-**📖 [Read the Tweak Authoring Guide for more details](./TWEAK_AUTHORING.md)**
+Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks.
+
+**📖 [Read the Tweak Authoring Guide](./TWEAK_AUTHORING.md)**
+
+### Architecture Overview
+
+For understanding the overall architecture and data flow:
+
+**📖 [Read the Architecture Guide](./ARCHITECTURE.md)**
 
 ## Customization
 
 ### Theme
+
 Edit `src/app.css` to customize colors and design tokens.
 
 ### App Configuration
+
 Update `src/lib/config/app.ts` for app metadata and settings.
 
 ### Window Settings
