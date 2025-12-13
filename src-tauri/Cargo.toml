@@ -49,6 +49,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 regex = "1"
 
+# File locking for concurrent access safety
+fs4 = "0.13"
+
 # Windows-specific (only for Windows builds)
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

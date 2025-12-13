@@ -7,7 +7,9 @@
 
 use crate::error::Error;
 use crate::models::TweakSnapshot;
-use std::fs;
+use fs4::fs_std::FileExt;
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 const SNAPSHOTS_DIR: &str = "snapshots";
@@ -37,22 +39,33 @@ pub(crate) fn get_snapshot_path(tweak_id: &str) -> Result<PathBuf, Error> {
     Ok(get_snapshots_dir()?.join(format!("{}.json", tweak_id)))
 }
 
-/// Save snapshot to disk
+/// Save snapshot to disk with exclusive file locking
 pub fn save_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
     let path = get_snapshot_path(&snapshot.tweak_id)?;
 
     let json = serde_json::to_string_pretty(snapshot)
         .map_err(|e| Error::BackupFailed(format!("Failed to serialize snapshot: {}", e)))?;
 
-    fs::write(&path, json)
+    // Create/open file and acquire exclusive lock
+    let file = File::create(&path)
+        .map_err(|e| Error::BackupFailed(format!("Failed to create snapshot file: {}", e)))?;
+
+    file.lock_exclusive()
+        .map_err(|e| Error::BackupFailed(format!("Failed to acquire file lock: {}", e)))?;
+
+    // Write content while holding lock
+    let mut file = file;
+    file.write_all(json.as_bytes())
         .map_err(|e| Error::BackupFailed(format!("Failed to write snapshot: {}", e)))?;
 
+    // Lock is automatically released when file is dropped
     log::debug!("Saved snapshot to {:?}", path);
     Ok(())
 }
 
 /// Update the snapshot metadata (option index/label) after successfully switching options.
 /// The original registry/service/scheduler values are preserved (for full revert capability).
+/// Uses file locking for concurrency safety.
 pub fn update_snapshot_metadata(
     tweak_id: &str,
     new_option_index: usize,
@@ -67,7 +80,20 @@ pub fn update_snapshot_metadata(
         )));
     }
 
-    let content = fs::read_to_string(&path)
+    // Open file and acquire exclusive lock for atomic read-modify-write
+    let file = File::options()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|e| Error::BackupFailed(format!("Failed to open snapshot: {}", e)))?;
+
+    file.lock_exclusive()
+        .map_err(|e| Error::BackupFailed(format!("Failed to acquire file lock: {}", e)))?;
+
+    // Read current content
+    let mut content = String::new();
+    let mut file = file;
+    file.read_to_string(&mut content)
         .map_err(|e| Error::BackupFailed(format!("Failed to read snapshot: {}", e)))?;
 
     let mut snapshot: TweakSnapshot = serde_json::from_str(&content)
@@ -87,9 +113,19 @@ pub fn update_snapshot_metadata(
     let json = serde_json::to_string_pretty(&snapshot)
         .map_err(|e| Error::BackupFailed(format!("Failed to serialize snapshot: {}", e)))?;
 
-    fs::write(&path, json)
+    // Truncate and rewrite while holding lock
+    file.set_len(0)
+        .map_err(|e| Error::BackupFailed(format!("Failed to truncate snapshot file: {}", e)))?;
+
+    // Seek to beginning after truncate
+    use std::io::Seek;
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|e| Error::BackupFailed(format!("Failed to seek in snapshot file: {}", e)))?;
+
+    file.write_all(json.as_bytes())
         .map_err(|e| Error::BackupFailed(format!("Failed to write snapshot: {}", e)))?;
 
+    // Lock is automatically released when file is dropped
     log::info!(
         "Updated snapshot metadata for '{}' to option '{}'",
         tweak_id,
