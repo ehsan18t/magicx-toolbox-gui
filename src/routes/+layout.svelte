@@ -6,6 +6,7 @@
   import PendingRebootBanner from "@/lib/components/PendingRebootBanner.svelte";
   import SettingsModal from "@/lib/components/SettingsModal.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
+  import ToastContainer from "@/lib/components/ToastContainer.svelte";
   import TweakDetailsModal from "@/lib/components/TweakDetailsModal.svelte";
   import UpdateModal from "@/lib/components/UpdateModal.svelte";
   import { colorSchemeStore } from "@/lib/stores/colorScheme.svelte";
@@ -57,3 +58,4 @@
 <TweakDetailsModal />
 
 <ApplyingOverlay />
+<ToastContainer />
