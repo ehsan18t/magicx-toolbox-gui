@@ -110,7 +110,7 @@
         : 'bg-[hsl(var(--muted))]'}"
   ></div>
 
-  <div class="min-w-0 flex-1 px-4 py-3.5">
+  <div class="flex min-w-0 flex-1 flex-col gap-2 px-4 py-3.5">
     <!-- Header Section -->
     <div class="mb-2 flex items-center justify-between gap-3">
       <h3 class="m-0 flex flex-1 items-center gap-2 text-sm leading-tight font-semibold text-foreground">
@@ -176,7 +176,7 @@
     </div>
 
     <!-- Description -->
-    <p class="m-0 mb-2.5 text-sm leading-relaxed text-foreground-muted">
+    <p class="m-0 mb-2.5 grow text-sm leading-relaxed text-foreground-muted">
       {tweak.definition.description}
     </p>
 
