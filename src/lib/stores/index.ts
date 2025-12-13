@@ -2,19 +2,19 @@
 // All reactive stores following Svelte 5 runes pattern
 
 // Theme & UI
-export { colorSchemeStore, COLOR_SCHEMES, type ColorSchemeId } from "./colorScheme.svelte";
-export { themeStore, type Theme } from "./theme.svelte";
-export { sidebarStore, isSidebarOpen, sidebarWidthClass, type SidebarState } from "./layout.svelte";
+export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./colorScheme.svelte";
 export { debugState, type DebugLogEntry } from "./debug.svelte";
+export { isSidebarOpen, sidebarStore, sidebarWidthClass, type SidebarState } from "./layout.svelte";
 export { settingsStore } from "./settings.svelte";
+export { themeStore, type Theme } from "./theme.svelte";
 
 // Modal state
 export {
+  closeModal,
   modalStore,
   openAboutModal,
   openSettingsModal,
   openUpdateModal,
-  closeModal,
   type ModalType,
 } from "./modal.svelte";
 export { tweakDetailsModalStore } from "./tweakDetailsModal.svelte";
@@ -24,26 +24,26 @@ export { navigationStore, type TabDefinition } from "./navigation.svelte";
 
 // Tweaks system (split into logical modules)
 export {
-  // Data stores
-  systemStore,
+  applyPendingChanges,
+  applyTweak,
   categoriesStore,
-  tweaksStore,
+  errorStore,
+  // Actions & filters
+  filterStore,
   getCategoryStats,
+  initializeData,
   // Loading state
   loadingStore,
-  errorStore,
   // Pending changes
   pendingChangesStore,
   pendingRebootStore,
-  // Actions & filters
-  filterStore,
-  applyTweak,
   revertTweak,
-  toggleTweak,
   stageChange,
+  // Data stores
+  systemStore,
+  toggleTweak,
+  tweaksStore,
   unstageChange,
-  applyPendingChanges,
-  initializeData,
 } from "./tweaks.svelte";
 
 // System elevation

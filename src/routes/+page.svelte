@@ -37,7 +37,7 @@
     <div class="loading-screen">
       <div class="loading-content">
         <div class="loading-spinner">
-          <Icon icon="mdi:loading" width="40" class="spin" />
+          <Icon icon="mdi:loading" width="40" class="animate-spin" />
         </div>
         <p class="loading-text">Loading tweaks...</p>
       </div>
@@ -202,19 +202,5 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-  }
-
-  /* Spin animation */
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>
