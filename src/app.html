@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/icons/Toolbox.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tauri + SvelteKit + Typescript App</title>
+    <title>MagicX Toolbox</title>
 
     <script>
       (function () {
@@ -28,8 +28,6 @@
         }
       })();
     </script>
-
-    %sveltekit.head%
 
     <style>
       /* Initial loading spinner - uses hardcoded colors since CSS vars aren't loaded yet */
@@ -70,6 +68,9 @@
         }
       }
     </style>
+
+    <!-- SvelteKit injects app.css here to make sure non-blocking CSS loading -->
+    %sveltekit.head%
   </head>
   <body class="overflow-hidden" data-sveltekit-preload-data="hover">
     <!-- Initial loader shown before JS loads - hidden by Svelte when ready -->

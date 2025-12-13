@@ -13,16 +13,24 @@
   import { settingsStore } from "@/lib/stores/settings.svelte";
   import { themeStore } from "@/lib/stores/theme.svelte";
   import { updateStore } from "@/lib/stores/update.svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
   const { children } = $props();
 
-  onMount(() => {
+  onMount(async () => {
     // Hide the initial HTML loader now that Svelte is ready
     const initialLoader = document.getElementById("initial-loader");
     if (initialLoader) {
       initialLoader.classList.add("fade-out");
       setTimeout(() => initialLoader.remove(), 200);
+    }
+
+    // Show the window now that the UI is ready
+    try {
+      await invoke("show_main_window");
+    } catch (e) {
+      console.error("Failed to show window:", e);
     }
 
     themeStore.init();
