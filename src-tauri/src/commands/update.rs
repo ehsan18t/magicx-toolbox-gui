@@ -196,6 +196,20 @@ pub async fn check_for_update(
     })
 }
 
+/// Allowed GitHub repository prefixes for update downloads
+/// This prevents downloading from untrusted sources
+const ALLOWED_DOWNLOAD_PREFIXES: &[&str] = &[
+    "https://github.com/ehsan18t/magicx-toolbox",
+    "https://objects.githubusercontent.com/",
+];
+
+/// Validate that a download URL is from a trusted source
+fn is_trusted_download_url(url: &str) -> bool {
+    ALLOWED_DOWNLOAD_PREFIXES
+        .iter()
+        .any(|prefix| url.starts_with(prefix))
+}
+
 /// Download and install an update
 ///
 /// Downloads the update asset to a temporary location and launches the installer.
@@ -203,6 +217,33 @@ pub async fn check_for_update(
 #[tauri::command]
 pub async fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
     log::info!("Starting update download: {}", asset_name);
+
+    // Security: Validate download URL is from trusted source
+    if !is_trusted_download_url(&download_url) {
+        log::error!("Rejected untrusted download URL: {}", download_url);
+        return Err(Error::Update(
+            "Download URL is not from a trusted source. Updates must come from the official GitHub repository.".into()
+        ));
+    }
+
+    // Validate asset name to prevent path traversal
+    if asset_name.contains("..") || asset_name.contains('/') || asset_name.contains('\\') {
+        log::error!("Rejected invalid asset name: {}", asset_name);
+        return Err(Error::Update("Invalid asset name".into()));
+    }
+
+    // Validate file extension
+    let extension = std::path::Path::new(&asset_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    if !matches!(extension.to_lowercase().as_str(), "exe" | "msi") {
+        log::error!("Rejected unsupported file type: {}", extension);
+        return Err(Error::Update(
+            "Unsupported installer type. Only .exe and .msi files are allowed.".into(),
+        ));
+    }
 
     // Get temp directory
     let temp_dir = std::env::temp_dir();
