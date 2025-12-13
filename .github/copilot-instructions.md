@@ -23,6 +23,69 @@ Changes that require documentation updates:
 - Use clear messages, e.g., `feat(ui): add settings drawer toggle` or `fix(theme): persist system preference on init`.
 - Always commit after each logical change; avoid large uncommitted work.
 
+## Dependency Selection Guidelines
+
+**MANDATORY: Follow this process when adding ANY new package (npm) or crate (cargo).**
+
+### Before Adding a Dependency
+
+1. **Identify the need clearly** - What specific functionality is required?
+2. **Research alternatives** - Always compare at least 3 options when available
+3. **Evaluate each option** using these criteria:
+
+| Criteria          | Priority | Description                                                           |
+| ----------------- | -------- | --------------------------------------------------------------------- |
+| **Maintenance**   | Critical | Last update <6 months, active issue resolution, responsive maintainer |
+| **Stability**     | Critical | Major version 1.0+, minimal breaking changes, semantic versioning     |
+| **Performance**   | High     | Benchmarks, memory footprint, startup impact                          |
+| **Bundle Size**   | High     | Tree-shakeable, minimal transitive dependencies                       |
+| **Security**      | High     | No known CVEs, audit history, trusted maintainers                     |
+| **Compatibility** | High     | Works with current Rust/Node versions, platform support (Windows)     |
+| **Documentation** | Medium   | API docs, examples, TypeScript types (for npm)                        |
+| **Community**     | Medium   | GitHub stars, download count, Stack Overflow presence                 |
+
+### Decision Matrix Template
+
+When proposing a new dependency, document:
+
+```
+## Dependency Proposal: [purpose]
+
+### Options Evaluated:
+1. [Package A] - [version]
+   - ✅ Pros: ...
+   - ❌ Cons: ...
+   - 📊 Last updated: [date], Downloads: [count], Size: [KB]
+
+2. [Package B] - [version]
+   - ✅ Pros: ...
+   - ❌ Cons: ...
+   - 📊 Last updated: [date], Downloads: [count], Size: [KB]
+
+### Recommendation: [Package X] because [reasons]
+```
+
+### Red Flags - Avoid Dependencies That:
+
+- Haven't been updated in >12 months (unless feature-complete like `lodash`)
+- Have unresolved security vulnerabilities
+- Pull in excessive transitive dependencies
+- Are maintained by a single person with no backup maintainers
+- Have license incompatibilities (prefer MIT, Apache-2.0, BSD)
+- Are pre-1.0 without a clear roadmap (for production use)
+
+### Project Goals Alignment
+
+All dependencies must support our core goals:
+
+- **Best Performance**: Minimal runtime overhead, efficient algorithms
+- **Maximum Stability**: Battle-tested, widely used, backward compatible
+- **Small Bundle**: Prefer focused libraries over kitchen-sink frameworks
+
+### Current Approved Dependencies
+
+See `package.json` (frontend) and `src-tauri/Cargo.toml` (backend) for the current vetted dependency list. Any additions must go through the evaluation process above.
+
 # Copilot Instructions – Svelte Frontend
 
 **MANDATORY: Follow all rules in this section for every frontend change.**
