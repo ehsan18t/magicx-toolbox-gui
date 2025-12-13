@@ -124,7 +124,8 @@
       />
       {#if searchQuery}
         <button
-          class="flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted))] hover:text-foreground"
+          type="button"
+          class="hover:bg-muted flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:text-foreground"
           onclick={() => (searchQuery = "")}
         >
           <Icon icon="mdi:close" width="16" />
@@ -134,6 +135,7 @@
 
     <div class="flex gap-2.5">
       <button
+        type="button"
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {categoryPendingCount >
         0
           ? 'border-warning bg-warning/15 text-warning'
@@ -155,6 +157,7 @@
         {/if}
       </button>
       <button
+        type="button"
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
         onclick={handleDiscardChanges}
         disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
@@ -164,6 +167,7 @@
         <span class="hidden sm:inline">Discard</span>
       </button>
       <button
+        type="button"
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
         onclick={() => (showRevertAllDialog = true)}
         disabled={appliedTweaks.length === 0 || isLoading || isBatchProcessing}
@@ -183,6 +187,7 @@
           <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>
           <p class="m-0 text-sm">No tweaks match "{searchQuery}"</p>
           <button
+            type="button"
             class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
             onclick={() => (searchQuery = "")}
           >

@@ -22,7 +22,7 @@
   const riskConfig: Record<RiskLevel, { icon: string; color: string }> = {
     low: { icon: "mdi:check-circle", color: "text-success" },
     medium: { icon: "mdi:alert", color: "text-warning" },
-    high: { icon: "mdi:alert-circle", color: "text-[hsl(25_95%_53%)]" },
+    high: { icon: "mdi:alert-circle", color: "text-orange-500" },
     critical: { icon: "mdi:alert-octagon", color: "text-error" },
   };
 
@@ -104,7 +104,7 @@
       ? 'bg-warning'
       : tweak.status.is_applied
         ? 'bg-accent'
-        : 'bg-[hsl(var(--muted))]'}"
+        : 'bg-muted'}"
   ></div>
 
   <div class="flex min-w-0 flex-1 flex-col gap-2 px-4 py-3.5">
@@ -123,7 +123,7 @@
       {#if !isToggle}
         <!-- Dropdown for multi-option tweaks -->
         <select
-          class="max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[hsl(var(--muted))] bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
+          class="bg-muted max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
             ? 'border-warning bg-warning/10'
             : ''} {isLoading ? 'opacity-70' : ''}"
           disabled={isLoading}
@@ -133,13 +133,14 @@
           {#if currentOptionIndex === null}
             <option value={-1} disabled>System Default</option>
           {/if}
-          {#each options as option, i (i)}
+          {#each options as option, i (option.label)}
             <option value={i}>{option.label}</option>
           {/each}
         </select>
       {:else}
         <!-- Toggle Switch -->
         <button
+          type="button"
           class="toggle-switch shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70"
           class:active={effectiveEnabled}
           class:pending={hasPending}
@@ -154,7 +155,7 @@
               ? hasPending
                 ? 'bg-warning'
                 : 'bg-accent'
-              : 'bg-[hsl(var(--muted))]'} hover:not-disabled:brightness-95"
+              : 'bg-muted'} hover:not-disabled:brightness-95"
           >
             <span
               class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
@@ -248,7 +249,8 @@
 
       <!-- Details (modal) -->
       <button
-        class="inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:bg-[hsl(var(--muted)/0.5)] hover:text-foreground"
+        type="button"
+        class="hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:text-foreground"
         onclick={() => openTweakDetailsModal(tweak.definition.id)}
         aria-label="Open tweak details"
       >

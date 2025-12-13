@@ -137,7 +137,7 @@
 
       <!-- GPU(s) -->
       {#if systemStore.info?.hardware?.gpu && systemStore.info.hardware.gpu.length > 0}
-        {#each systemStore.info.hardware.gpu as gpu, i (i)}
+        {#each systemStore.info.hardware.gpu as gpu, i (gpu.name)}
           <HardwareItem
             icon="mdi:expansion-card"
             label="Graphics{systemStore.info.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
@@ -196,7 +196,7 @@
 
       <!-- Storage Drives -->
       {#if systemStore.info?.hardware?.disks && systemStore.info.hardware.disks.length > 0}
-        {#each systemStore.info.hardware.disks as disk, i (i)}
+        {#each systemStore.info.hardware.disks as disk, i (disk.model)}
           <HardwareItem
             icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
             label="Storage{systemStore.info.hardware.disks.length > 1 ? ` ${i + 1}` : ''}"
@@ -221,7 +221,7 @@
 
       <!-- Network -->
       {#if systemStore.info?.hardware?.network && systemStore.info.hardware.network.length > 0}
-        {#each systemStore.info.hardware.network as net, i (i)}
+        {#each systemStore.info.hardware.network as net, i (net.mac_address)}
           <HardwareItem
             icon="mdi:ethernet"
             label="Network{systemStore.info.hardware.network.length > 1 ? ` ${i + 1}` : ''}"
@@ -267,7 +267,7 @@
             <p class="m-0 mb-2 line-clamp-2 text-xs leading-relaxed text-foreground-muted">
               {category.description}
             </p>
-            <div class="h-1 overflow-hidden rounded-full bg-[hsl(var(--muted))]">
+            <div class="bg-muted h-1 overflow-hidden rounded-full">
               <div
                 class="h-full rounded-full bg-accent transition-[width] duration-300"
                 style="width: {progress}%"

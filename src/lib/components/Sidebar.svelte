@@ -80,7 +80,7 @@
       <button
         class="group relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 transition-all duration-150 {isActive
           ? 'bg-accent/15'
-          : 'hover:bg-[hsl(var(--muted))]'}"
+          : 'hover:bg-muted'}"
         onclick={() => handleNavClick(tab)}
         title={!sidebarStore.isOpen ? tab.name : undefined}
       >
@@ -107,7 +107,7 @@
               ? 'translate-x-0 opacity-100'
               : '-translate-x-2.5 opacity-0'} {tabStats.applied === tabStats.total && tabStats.total > 0
               ? 'bg-success/15 text-success'
-              : 'bg-[hsl(var(--muted))] text-foreground-muted'}"
+              : 'bg-muted text-foreground-muted'}"
           >
             {tabStats.applied}/{tabStats.total}
           </span>
@@ -148,6 +148,8 @@
     >
       <!-- Pin toggle button -->
       <button
+        type="button"
+        aria-pressed={sidebarStore.isPinned}
         class="{sidebarStore.isPinned ? 'text-accent' : 'text-foreground-muted'}
         {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={togglePin}
@@ -158,6 +160,7 @@
 
       <!-- Update button -->
       <button
+        type="button"
         class="relative {isUpdateAvailable ? 'text-success' : 'text-foreground-muted'} {sidebarStore.isOpen
           ? 'shrink-0'
           : 'w-full'}"
@@ -172,6 +175,7 @@
 
       <!-- Settings button -->
       <button
+        type="button"
         class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={openSettingsModal}
         title="Settings"
@@ -181,6 +185,7 @@
 
       <!-- About button -->
       <button
+        type="button"
         class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={openAboutModal}
         title="About"

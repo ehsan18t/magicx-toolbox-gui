@@ -29,9 +29,7 @@
 </script>
 
 <div class="overflow-hidden rounded-lg border border-border/60 bg-background">
-  <div
-    class="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-[hsl(var(--muted)/0.3)] px-3 py-2"
-  >
+  <div class="bg-muted/30 flex flex-wrap items-center justify-between gap-2 border-b border-border/40 px-3 py-2">
     <div class="flex min-w-0 items-center gap-2">
       <Icon icon="mdi:key-variant" width="12" class="text-foreground-muted" />
       <code class="bg-transparent p-0 font-mono text-[10px] break-all text-primary">

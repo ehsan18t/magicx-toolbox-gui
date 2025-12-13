@@ -68,28 +68,28 @@
     <div class="grid grid-cols-2 gap-2">
       <ExternalLink
         href={links.repository}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
       >
         <Icon icon="mdi:github" width="18" />
         <span>Source</span>
       </ExternalLink>
       <ExternalLink
         href={links.releases}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
       >
         <Icon icon="mdi:download" width="18" />
         <span>Releases</span>
       </ExternalLink>
       <ExternalLink
         href={links.issues}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
       >
         <Icon icon="mdi:bug" width="18" />
         <span>Report Bug</span>
       </ExternalLink>
       <ExternalLink
         href={links.license}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-[hsl(var(--muted))]"
+        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
       >
         <Icon icon="mdi:license" width="18" />
         <span>MIT License</span>

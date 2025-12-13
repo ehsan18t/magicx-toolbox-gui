@@ -142,11 +142,9 @@
 
       <!-- Options + Changes -->
       <div class="mt-5 space-y-4">
-        {#each tweak.definition.options as option, i (i)}
+        {#each tweak.definition.options as option, i (option.label)}
           <section class="rounded-lg border border-border bg-background">
-            <div
-              class="flex items-center justify-between gap-2 border-b border-border/50 bg-[hsl(var(--muted)/0.3)] px-4 py-3"
-            >
+            <div class="bg-muted/30 flex items-center justify-between gap-2 border-b border-border/50 px-4 py-3">
               <div class="min-w-0">
                 <div class="text-xs font-semibold tracking-wide text-foreground-muted uppercase">Option {i + 1}</div>
                 <div class="mt-0.5 truncate text-sm font-semibold text-foreground">{option.label}</div>

@@ -51,6 +51,8 @@
         <!-- Filter buttons -->
         <div class="flex items-center gap-1 rounded-md bg-background p-0.5">
           <button
+            type="button"
+            aria-pressed={filterLevel === "all"}
             onclick={() => (filterLevel = "all")}
             class="rounded px-2 py-0.5 text-xs transition-colors {filterLevel === 'all'
               ? 'bg-accent text-white'
@@ -59,6 +61,8 @@
             All ({debugState.logCounts.total})
           </button>
           <button
+            type="button"
+            aria-pressed={filterLevel === "info"}
             onclick={() => (filterLevel = "info")}
             class="rounded px-2 py-0.5 text-xs transition-colors {filterLevel === 'info'
               ? 'bg-info text-white'
@@ -67,6 +71,8 @@
             Info ({debugState.logCounts.info})
           </button>
           <button
+            type="button"
+            aria-pressed={filterLevel === "success"}
             onclick={() => (filterLevel = "success")}
             class="rounded px-2 py-0.5 text-xs transition-colors {filterLevel === 'success'
               ? 'bg-success text-white'
@@ -75,6 +81,8 @@
             Success ({debugState.logCounts.success})
           </button>
           <button
+            type="button"
+            aria-pressed={filterLevel === "warn"}
             onclick={() => (filterLevel = "warn")}
             class="rounded px-2 py-0.5 text-xs transition-colors {filterLevel === 'warn'
               ? 'bg-warning text-white'
@@ -83,6 +91,8 @@
             Warn ({debugState.logCounts.warn})
           </button>
           <button
+            type="button"
+            aria-pressed={filterLevel === "error"}
             onclick={() => (filterLevel = "error")}
             class="rounded px-2 py-0.5 text-xs transition-colors {filterLevel === 'error'
               ? 'bg-error text-white'
@@ -95,6 +105,8 @@
 
       <div class="flex items-center gap-2">
         <button
+          type="button"
+          aria-pressed={autoScroll}
           onclick={() => (autoScroll = !autoScroll)}
           title={autoScroll ? "Auto-scroll ON" : "Auto-scroll OFF"}
           class="rounded p-1 transition-colors hover:bg-foreground/10 {autoScroll
@@ -104,6 +116,7 @@
           <Icon icon="tabler:arrow-bar-to-down" width="16" height="16" />
         </button>
         <button
+          type="button"
           onclick={() => debugState.clear()}
           title="Clear logs"
           class="rounded p-1 text-foreground-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
@@ -111,6 +124,7 @@
           <Icon icon="tabler:trash" width="16" height="16" />
         </button>
         <button
+          type="button"
           onclick={() => debugState.closePanel()}
           title="Close panel"
           class="rounded p-1 text-foreground-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
