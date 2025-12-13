@@ -29,12 +29,12 @@ pub async fn apply_tweak(
 
     let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
         log::error!("Tweak not found: {}", tweak_id);
-        Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
+        Error::NotFound(format!("Tweak '{}'", tweak_id))
     })?;
 
     // Validate option_index
     if option_index >= tweak.options.len() {
-        return Err(Error::WindowsApi(format!(
+        return Err(Error::ValidationError(format!(
             "Invalid option index {} for tweak '{}' (has {} options)",
             option_index,
             tweak.name,
@@ -201,7 +201,7 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
 
     let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
         log::error!("Tweak not found: {}", tweak_id);
-        Error::WindowsApi(format!("Tweak not found: {}", tweak_id))
+        Error::NotFound(format!("Tweak '{}'", tweak_id))
     })?;
 
     let system_info = system_info_service::get_system_info()?;

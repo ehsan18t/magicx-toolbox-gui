@@ -41,6 +41,15 @@ pub enum Error {
 
     #[error("Failed to acquire state lock")]
     StateLock,
+
+    #[error("Resource not found: {0}")]
+    NotFound(String),
+
+    #[error("Validation failed: {0}")]
+    ValidationError(String),
+
+    #[error("Operation timed out: {0}")]
+    Timeout(String),
 }
 
 impl Serialize for Error {
