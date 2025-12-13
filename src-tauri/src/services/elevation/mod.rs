@@ -25,9 +25,6 @@ mod common;
 mod system_elevation;
 mod ti_elevation;
 
-// Re-export common utilities
-pub use common::{escape_shell_arg, validate_registry_path};
-
 // Re-export SYSTEM elevation functions
 pub use system_elevation::{
     can_use_system_elevation, delete_registry_value_as_system, run_command_as_system,
@@ -39,5 +36,5 @@ pub use system_elevation::{
 pub use ti_elevation::{
     run_command_as_ti, run_powershell, run_powershell_as_system, run_powershell_as_ti,
     run_schtasks_as_system, run_schtasks_as_ti, set_service_startup_as_ti, start_service_as_ti,
-    stop_service_as_ti, PowerShellResult,
+    stop_service_as_ti,
 };
