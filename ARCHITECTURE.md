@@ -35,14 +35,48 @@ import { store } from "$lib/stores/store.svelte";
 const derived = $derived(store.value);
 ```
 
+**Store Structure:**
+```
+src/lib/stores/
+├── index.ts              # Barrel export for all stores
+├── theme.svelte.ts       # Theme management (light/dark/system)
+├── modal.svelte.ts       # Modal state (about/settings/update)
+├── layout.svelte.ts      # Sidebar expanded/pinned state (sidebarStore)
+├── colorScheme.svelte.ts # Accent color scheme selection
+├── settings.svelte.ts    # App settings with localStorage persistence
+├── debug.svelte.ts       # Debug panel and logging state
+├── navigation.svelte.ts  # Tab navigation state
+├── update.svelte.ts      # Update checking state
+├── systemElevation.svelte.ts # SYSTEM elevation mode
+├── tweakDetailsModal.svelte.ts # Tweak details modal state
+└── tweaks.svelte.ts      # Barrel export for tweaks system
+    ├── tweaksData.svelte.ts    # System info, categories, tweaks list
+    ├── tweaksLoading.svelte.ts # Loading/error state with SvelteSet/SvelteMap
+    ├── tweaksPending.svelte.ts # Pending changes and reboot tracking
+    └── tweaksActions.svelte.ts # Apply, revert, toggle actions
+```
+
 **Available stores:**
 - `themeStore` - Theme management (light/dark/system)
 - `modalStore` - Modal state (about/settings/update)
-- `sidebarState` - Sidebar expanded/pinned state
+- `sidebarStore` - Sidebar expanded/pinned state
 - `colorSchemeStore` - Accent color scheme selection
 - `settingsStore` - App settings with localStorage persistence
-- `tweakDetailsModalStore` - Tweak details modal state
 - `debugState` - Debug panel and logging state
+- `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
+- `updateStore` - Update info and checking state
+- `systemElevationStore` - SYSTEM elevation mode
+- `tweakDetailsModalStore` - Tweak details modal state
+
+**Tweaks system stores:**
+- `systemStore` - Windows system info (.info getter)
+- `categoriesStore` - Category definitions (.list, .map)
+- `tweaksStore` - Tweak definitions with status (.list, .byCategory, .stats)
+- `loadingStore` - Per-tweak loading state (SvelteSet-based)
+- `errorStore` - Per-tweak error messages (SvelteMap-based)
+- `pendingChangesStore` - Staged changes before apply (SvelteMap-based)
+- `pendingRebootStore` - Tweaks requiring reboot (SvelteSet-based)
+- `filterStore` - Search and filter state
 
 ### UI Components
 

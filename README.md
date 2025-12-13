@@ -76,6 +76,10 @@ A modern Windows system tweaking application built with Tauri 2 and SvelteKit. A
 │   │   │   ├── ui/           # Reusable UI primitives
 │   │   │   └── tweak-details/# Tweak display sub-components
 │   │   ├── stores/           # Svelte 5 rune-based stores (.svelte.ts)
+│   │   │   ├── index.ts      # Barrel export for all stores
+│   │   │   ├── tweaks.svelte.ts # Tweaks system (data, loading, pending, actions)
+│   │   │   ├── navigation.svelte.ts # Tab navigation
+│   │   │   └── ...           # Theme, modal, sidebar, settings, etc.
 │   │   ├── config/           # App configuration
 │   │   └── types/            # TypeScript types
 │   ├── routes/               # SvelteKit routes
