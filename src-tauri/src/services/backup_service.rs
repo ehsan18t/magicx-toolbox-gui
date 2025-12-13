@@ -1124,3 +1124,167 @@ fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Erro
     // All values match snapshot - tweak was reverted
     Ok(true)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ========================================================================
+    // values_match tests
+    // ========================================================================
+
+    #[test]
+    fn test_values_match_both_none() {
+        assert!(values_match(&None, &None));
+    }
+
+    #[test]
+    fn test_values_match_one_none() {
+        assert!(!values_match(&Some(json!(1)), &None));
+        assert!(!values_match(&None, &Some(json!(1))));
+    }
+
+    #[test]
+    fn test_values_match_equal_dwords() {
+        let a = Some(json!(42u32));
+        let b = Some(json!(42u32));
+        assert!(values_match(&a, &b));
+    }
+
+    #[test]
+    fn test_values_match_different_dwords() {
+        let a = Some(json!(1));
+        let b = Some(json!(0));
+        assert!(!values_match(&a, &b));
+    }
+
+    #[test]
+    fn test_values_match_equal_strings() {
+        let a = Some(json!("test"));
+        let b = Some(json!("test"));
+        assert!(values_match(&a, &b));
+    }
+
+    #[test]
+    fn test_values_match_different_strings() {
+        let a = Some(json!("foo"));
+        let b = Some(json!("bar"));
+        assert!(!values_match(&a, &b));
+    }
+
+    #[test]
+    fn test_values_match_numeric_type_coercion() {
+        // u64 vs i64 should still match if same value
+        let a = Some(json!(100u64));
+        let b = Some(json!(100i64));
+        assert!(values_match(&a, &b));
+    }
+
+    // ========================================================================
+    // parse_hive tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_hive_hkcu() {
+        let result = parse_hive("HKCU");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), RegistryHive::Hkcu);
+    }
+
+    #[test]
+    fn test_parse_hive_hklm() {
+        let result = parse_hive("HKLM");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), RegistryHive::Hklm);
+    }
+
+    #[test]
+    fn test_parse_hive_invalid() {
+        let result = parse_hive("INVALID");
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // parse_value_type tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_value_type_dword() {
+        let result = parse_value_type("REG_DWORD");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), RegistryValueType::Dword);
+    }
+
+    #[test]
+    fn test_parse_value_type_qword() {
+        let result = parse_value_type("REG_QWORD");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), RegistryValueType::Qword);
+    }
+
+    #[test]
+    fn test_parse_value_type_sz() {
+        let result = parse_value_type("REG_SZ");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), RegistryValueType::String);
+    }
+
+    #[test]
+    fn test_parse_value_type_binary() {
+        let result = parse_value_type("REG_BINARY");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), RegistryValueType::Binary);
+    }
+
+    #[test]
+    fn test_parse_value_type_invalid() {
+        let result = parse_value_type("INVALID_TYPE");
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // task_state_matches tests
+    // ========================================================================
+
+    #[test]
+    fn test_task_state_ready_matches_ready() {
+        assert!(task_state_matches(
+            &scheduler_service::TaskState::Ready,
+            &scheduler_service::TaskState::Ready
+        ));
+    }
+
+    #[test]
+    fn test_task_state_running_matches_ready() {
+        // Running is equivalent to Ready (both mean enabled)
+        assert!(task_state_matches(
+            &scheduler_service::TaskState::Running,
+            &scheduler_service::TaskState::Ready
+        ));
+    }
+
+    #[test]
+    fn test_task_state_disabled_matches_disabled() {
+        assert!(task_state_matches(
+            &scheduler_service::TaskState::Disabled,
+            &scheduler_service::TaskState::Disabled
+        ));
+    }
+
+    #[test]
+    fn test_task_state_notfound_matches_notfound() {
+        assert!(task_state_matches(
+            &scheduler_service::TaskState::NotFound,
+            &scheduler_service::TaskState::NotFound
+        ));
+    }
+
+    #[test]
+    fn test_task_state_disabled_not_matches_ready() {
+        assert!(!task_state_matches(
+            &scheduler_service::TaskState::Disabled,
+            &scheduler_service::TaskState::Ready
+        ));
+    }
+}

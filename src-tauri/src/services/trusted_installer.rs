@@ -1076,3 +1076,112 @@ pub fn run_schtasks_as_ti(args: &str) -> Result<i32, Error> {
     let command = format!("schtasks {}", args);
     execute_command_as_trusted_installer(&command)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // escape_shell_arg tests
+    // ========================================================================
+
+    #[test]
+    fn test_escape_shell_arg_no_special_chars() {
+        let result = escape_shell_arg("normaltext123");
+        assert_eq!(result, "normaltext123");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_with_ampersand() {
+        let result = escape_shell_arg("foo & bar");
+        assert_eq!(result, "foo ^& bar");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_with_pipe() {
+        let result = escape_shell_arg("foo | bar");
+        assert_eq!(result, "foo ^| bar");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_with_angle_brackets() {
+        let result = escape_shell_arg("foo < bar > baz");
+        assert_eq!(result, "foo ^< bar ^> baz");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_with_caret() {
+        let result = escape_shell_arg("foo ^ bar");
+        assert_eq!(result, "foo ^^ bar");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_with_percent() {
+        let result = escape_shell_arg("100%");
+        assert_eq!(result, "100%%");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_with_double_quotes() {
+        let result = escape_shell_arg("say \"hello\"");
+        assert_eq!(result, "say \"\"hello\"\"");
+    }
+
+    #[test]
+    fn test_escape_shell_arg_mixed_special_chars() {
+        let result = escape_shell_arg("a & b | c > d");
+        assert_eq!(result, "a ^& b ^| c ^> d");
+    }
+
+    // ========================================================================
+    // validate_registry_path tests
+    // ========================================================================
+
+    #[test]
+    fn test_validate_registry_path_valid() {
+        let result = validate_registry_path("Software\\Microsoft\\Windows");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_registry_path_with_spaces() {
+        let result = validate_registry_path("Software\\Microsoft\\Windows NT");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_registry_path_with_guid() {
+        let result = validate_registry_path("Software\\{12345678-1234-1234-1234-123456789012}");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_registry_path_with_underscore_hyphen() {
+        let result = validate_registry_path("Software\\My_App-Name");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_registry_path_invalid_ampersand() {
+        let result = validate_registry_path("Software\\Bad & Path");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_registry_path_invalid_pipe() {
+        let result = validate_registry_path("Software\\Bad|Path");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_registry_path_invalid_semicolon() {
+        let result = validate_registry_path("Software;Command");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_registry_path_invalid_angle_brackets() {
+        let result = validate_registry_path("Software\\<script>");
+        assert!(result.is_err());
+    }
+}
