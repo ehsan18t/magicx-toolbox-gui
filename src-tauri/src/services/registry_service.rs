@@ -170,38 +170,6 @@ pub fn read_qword(
     }
 }
 
-/// Check if a registry key exists
-#[allow(dead_code)] // Utility function for future use
-pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
-    let hive_key = get_hive_key(hive)?;
-    match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
-        Ok(_) => Ok(true),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(Error::RegistryAccessDenied(e.to_string())),
-    }
-}
-
-/// Check if a registry value exists
-#[allow(dead_code)] // Utility function for future use
-pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<bool, Error> {
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = RegKey::predef(hive_key)
-        .open_subkey_with_flags(key_path, KEY_READ)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(key_path.to_string())
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
-
-    match reg_key.get_raw_value(value_name) {
-        Ok(_) => Ok(true),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(Error::RegistryOperation(e.to_string())),
-    }
-}
-
 /// Get registry hive key
 fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
     match hive {
@@ -368,24 +336,19 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
     Ok(())
 }
 
-/// Create a registry key
-#[allow(dead_code)] // Utility function for future use
-pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
-    log::debug!("Creating key {}\\{}", hive_name(hive), key_path);
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    log::trace!("Key created successfully");
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Check if a registry key exists (test utility)
+    fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
+        let hive_key = get_hive_key(hive)?;
+        match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(Error::RegistryAccessDenied(e.to_string())),
+        }
+    }
 
     #[test]
     fn test_key_exists_hkcu() {
