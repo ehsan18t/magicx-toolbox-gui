@@ -19,19 +19,36 @@ use tauri::AppHandle;
 // Command Execution
 // ============================================================================
 
-/// Run a shell command (as user or SYSTEM)
-pub fn run_command(cmd: &str, use_system: bool) -> Result<()> {
-    log::info!(
-        "Running command{}: {}",
-        if use_system { " as SYSTEM" } else { "" },
-        cmd
-    );
+/// Run a shell command (as user, SYSTEM, or TrustedInstaller)
+pub fn run_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
+    let elevation_label = if use_ti {
+        " as TrustedInstaller"
+    } else if use_system {
+        " as SYSTEM"
+    } else {
+        ""
+    };
+    log::info!("Running command{}: {}", elevation_label, cmd);
 
-    if use_system {
+    if use_ti {
+        // TrustedInstaller has highest privilege
+        match trusted_installer::run_command_as_ti(cmd) {
+            Ok(exit_code) => {
+                if exit_code != 0 {
+                    log::warn!("Command (TI) returned exit code {}: {}", exit_code, cmd);
+                }
+                Ok(())
+            }
+            Err(e) => Err(Error::CommandExecution(format!(
+                "TrustedInstaller command failed: {}",
+                e
+            ))),
+        }
+    } else if use_system {
         match trusted_installer::run_command_as_system(cmd) {
             Ok(exit_code) => {
                 if exit_code != 0 {
-                    log::warn!("Command returned exit code {}: {}", exit_code, cmd);
+                    log::warn!("Command (SYSTEM) returned exit code {}: {}", exit_code, cmd);
                 }
                 Ok(())
             }
@@ -60,15 +77,32 @@ pub fn run_command(cmd: &str, use_system: bool) -> Result<()> {
     }
 }
 
-/// Run a PowerShell command (as user or SYSTEM)
-pub fn run_powershell_command(cmd: &str, use_system: bool) -> Result<()> {
-    log::info!(
-        "Running PowerShell{}: {}",
-        if use_system { " as SYSTEM" } else { "" },
-        cmd
-    );
+/// Run a PowerShell command (as user, SYSTEM, or TrustedInstaller)
+pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
+    let elevation_label = if use_ti {
+        " as TrustedInstaller"
+    } else if use_system {
+        " as SYSTEM"
+    } else {
+        ""
+    };
+    log::info!("Running PowerShell{}: {}", elevation_label, cmd);
 
-    if use_system {
+    if use_ti {
+        // TrustedInstaller has highest privilege
+        match trusted_installer::run_powershell_as_ti(cmd) {
+            Ok(exit_code) => {
+                if exit_code != 0 {
+                    log::warn!("PowerShell (TI) returned exit code {}", exit_code);
+                }
+                Ok(())
+            }
+            Err(e) => Err(Error::CommandExecution(format!(
+                "PowerShell (TrustedInstaller) failed: {}",
+                e
+            ))),
+        }
+    } else if use_system {
         match trusted_installer::run_powershell_as_system(cmd) {
             Ok(exit_code) => {
                 if exit_code != 0 {

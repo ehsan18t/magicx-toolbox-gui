@@ -58,6 +58,9 @@ fn char_to_lower(c: u16) -> u16 {
 
 /// Enable SeDebugPrivilege for the current process
 fn enable_debug_privilege() -> Result<(), Error> {
+    // SAFETY: Windows API calls for privilege management. All handles are properly
+    // closed and pointers are validated. GetCurrentProcess returns a pseudo-handle
+    // that doesn't need closing.
     unsafe {
         let mut token_handle: HANDLE = ptr::null_mut();
         let process = GetCurrentProcess();
@@ -120,6 +123,8 @@ fn enable_debug_privilege() -> Result<(), Error> {
 
 /// Find a process ID by name
 fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
+    // SAFETY: Windows API calls for process enumeration. Snapshot handle is closed
+    // on all code paths. PROCESSENTRY32W struct is properly sized and initialized.
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot.is_null() || snapshot == INVALID_HANDLE_VALUE {
@@ -186,6 +191,8 @@ fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
 
 /// Get a duplicated token from a process
 fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
+    // SAFETY: Windows API calls for token duplication. All handles are properly
+    // closed on error paths and the duplicated token is returned for caller cleanup.
     unsafe {
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
         if process.is_null() {
@@ -248,6 +255,10 @@ fn execute_command_as_system(command_line: &str) -> Result<i32, Error> {
     let full_command = format!("cmd.exe /c {}", command_line);
     let mut command_wide = to_wide_string(&full_command);
 
+    // SAFETY: Windows API calls for creating a process with impersonation token.
+    // Process and thread handles are closed after waiting for completion.
+    // Token handle is closed after use. The command_wide buffer remains valid
+    // throughout the CreateProcessAsUserW call.
     unsafe {
         let startup_info = STARTUPINFOW {
             cb: std::mem::size_of::<STARTUPINFOW>() as u32,
@@ -490,7 +501,6 @@ pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
 }
 
 /// Start a Windows service as SYSTEM using net start
-#[allow(dead_code)]
 pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
     log::info!("Starting service '{}' as SYSTEM", service_name);
 
@@ -613,6 +623,9 @@ pub fn run_schtasks_as_system(args: &str) -> Result<i32, Error> {
 
 /// Start the TrustedInstaller service and wait for it to be running
 fn start_trusted_installer_service() -> Result<u32, Error> {
+    // SAFETY: Windows Service Control Manager API calls. All handles (SCM and service)
+    // are closed on both success and error paths. Service status query uses properly
+    // sized structures.
     unsafe {
         // Open Service Control Manager
         let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
@@ -726,6 +739,8 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
     let pid = start_trusted_installer_service()?;
 
+    // SAFETY: OpenProcess is called with a valid PID obtained from the service.
+    // The returned handle is owned by the caller and must be closed.
     unsafe {
         let handle = OpenProcess(PROCESS_CREATE_PROCESS, FALSE, pid);
         if handle.is_null() {
@@ -750,6 +765,10 @@ fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, Error
     let full_command = format!("cmd.exe /c {}", command_line);
     let mut command_wide = to_wide_string(&full_command);
 
+    // SAFETY: Windows API calls for parent process spoofing. This creates a process
+    // with TrustedInstaller.exe as parent, inheriting its privileges. All handles
+    // and attribute lists are properly cleaned up. The command_wide and ti_handle_copy
+    // remain valid throughout the CreateProcessW call.
     unsafe {
         // Initialize the attribute list for parent process spoofing
         let mut attr_list_size: usize = 0;
@@ -920,7 +939,6 @@ pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
 }
 
 /// Start a Windows service as TrustedInstaller
-#[allow(dead_code)]
 pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
     log::info!("Starting service '{}' as TrustedInstaller", service_name);
 
@@ -940,14 +958,12 @@ pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
 }
 
 /// Run an arbitrary command as TrustedInstaller
-#[allow(dead_code)]
 pub fn run_command_as_ti(command: &str) -> Result<i32, Error> {
     log::info!("Running command as TrustedInstaller: {}", command);
     execute_command_as_trusted_installer(command)
 }
 
 /// Run a PowerShell command as TrustedInstaller
-#[allow(dead_code)]
 pub fn run_powershell_as_ti(script: &str) -> Result<i32, Error> {
     log::info!("Running PowerShell command as TrustedInstaller: {}", script);
 
@@ -968,7 +984,7 @@ pub fn run_schtasks_as_ti(args: &str) -> Result<i32, Error> {
 }
 
 /// Set a registry value as TrustedInstaller
-#[allow(dead_code)]
+#[allow(dead_code)] // Public API for future use
 pub fn set_registry_value_as_ti(
     hive: &str,
     key: &str,
