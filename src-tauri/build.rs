@@ -151,6 +151,9 @@ struct TweakDefinitionRaw {
     requires_admin: bool,
     #[serde(default)]
     requires_system: bool,
+    /// If true, run as TrustedInstaller (for protected services like WaaSMedicSvc)
+    #[serde(default)]
+    requires_ti: bool,
     #[serde(default)]
     requires_reboot: bool,
     #[serde(default)]
@@ -171,6 +174,9 @@ struct TweakDefinition {
     requires_admin: bool,
     #[serde(default)]
     requires_system: bool,
+    /// If true, run as TrustedInstaller (for protected services like WaaSMedicSvc)
+    #[serde(default)]
+    requires_ti: bool,
     #[serde(default)]
     requires_reboot: bool,
     #[serde(default)]
@@ -275,6 +281,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 risk_level: raw.risk_level,
                 requires_admin: raw.requires_admin,
                 requires_system: raw.requires_system,
+                requires_ti: raw.requires_ti,
                 requires_reboot: raw.requires_reboot,
                 is_toggle: raw.is_toggle,
                 options: raw.options,
