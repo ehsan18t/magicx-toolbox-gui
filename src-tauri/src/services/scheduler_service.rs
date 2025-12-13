@@ -7,7 +7,7 @@
 
 use crate::error::Error;
 use crate::models::tweak::SchedulerAction;
-use regex::Regex;
+use regex_lite::Regex;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
 

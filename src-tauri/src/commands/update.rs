@@ -163,7 +163,7 @@ pub async fn check_for_update(
     log::debug!("Latest release: {}", release.tag_name);
 
     // Parse asset pattern regex
-    let asset_regex = regex::Regex::new(&config.asset_pattern).map_err(|e| {
+    let asset_regex = regex_lite::Regex::new(&config.asset_pattern).map_err(|e| {
         log::error!("Invalid asset pattern regex: {}", e);
         Error::Update(format!("Invalid asset pattern: {}", e))
     })?;
