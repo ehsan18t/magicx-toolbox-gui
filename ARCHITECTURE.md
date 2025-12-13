@@ -62,6 +62,22 @@ Reusable UI primitives in `$lib/components/ui/`:
 ```
 src/lib/components/
 ├── ui/                   # Reusable primitives
+│   ├── Button.svelte
+│   ├── Badge.svelte
+│   ├── Card.svelte
+│   ├── Modal.svelte, ModalHeader.svelte, ModalBody.svelte, ModalFooter.svelte
+│   ├── IconButton.svelte
+│   ├── Switch.svelte
+│   ├── Select.svelte
+│   ├── SearchInput.svelte
+│   ├── Spinner.svelte
+│   └── index.ts          # Barrel exports
+├── tweak-details/        # Tweak detail sub-components
+│   ├── RegistryChangeItem.svelte
+│   ├── ServiceChangeItem.svelte
+│   ├── SchedulerChangeItem.svelte
+│   ├── CommandList.svelte
+│   └── index.ts
 ├── AboutModal.svelte     # App info modal
 ├── SettingsModal.svelte  # App settings
 ├── UpdateModal.svelte    # Update management
@@ -532,13 +548,25 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 ## File Locations
 
-| Path                                      | Purpose                                     |
-| ----------------------------------------- | ------------------------------------------- |
-| `src-tauri/tweaks/*.yaml`                 | Tweak definitions (7 categories, 76 tweaks) |
-| `src-tauri/src/commands/`                 | Tauri command handlers                      |
-| `src-tauri/src/services/`                 | Business logic services                     |
-| `src-tauri/src/models/`                   | Data structures                             |
-| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files                         |
+| Path                                      | Purpose                                               |
+| ----------------------------------------- | ----------------------------------------------------- |
+| `src-tauri/tweaks/*.yaml`                 | Tweak definitions (7 categories, 76 tweaks)           |
+| `src-tauri/src/commands/`                 | Tauri command handlers                                |
+| `src-tauri/src/commands/tweaks/`          | Tweak commands (split into query/apply/batch/helpers) |
+| `src-tauri/src/services/`                 | Business logic services                               |
+| `src-tauri/src/models/`                   | Data structures                                       |
+| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files                                   |
+
+### Backend Commands Module Structure
+
+```
+src-tauri/src/commands/tweaks/
+├── mod.rs      # Module exports
+├── query.rs    # Status and listing commands (get_*, get_tweak_status)
+├── apply.rs    # Single tweak operations (apply_tweak, revert_tweak)
+├── batch.rs    # Batch operations (batch_apply_tweaks, batch_revert_tweaks)
+└── helpers.rs  # Internal utilities (registry/service/scheduler operations)
+```
 
 ---
 

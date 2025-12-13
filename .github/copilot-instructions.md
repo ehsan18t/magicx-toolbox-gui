@@ -96,6 +96,19 @@ import { Button, Badge, Card, Modal, ModalHeader, ModalBody, ModalFooter,
 - Use `Switch` for boolean toggles
 - Use `Spinner` for loading states
 
+## Tweak Details Sub-Components
+
+Use sub-components from `$lib/components/tweak-details` when displaying tweak changes:
+
+```typescript
+import { RegistryChangeItem, ServiceChangeItem, SchedulerChangeItem, CommandList } from "$lib/components/tweak-details";
+```
+
+- `RegistryChangeItem` - Displays a single registry change with path, value, badges
+- `ServiceChangeItem` - Displays a service change with name and startup type
+- `SchedulerChangeItem` - Displays a scheduler task change with action
+- `CommandList` - Displays pre/post commands or PowerShell scripts
+
 ## Build / run / test
 
 - Preferred commands: `bun run dev` for local, `bun run validate` before commits (format, lint, check).
@@ -148,17 +161,24 @@ The backend follows a layered architecture:
 
 ```
 src-tauri/src/
-├── commands/       # Tauri command handlers (thin layer calling services)
-│   ├── backup.rs   # Backup management commands
-│   ├── debug.rs    # Debug mode toggling
-│   ├── general.rs  # General app commands (greet, theme)
-│   ├── system.rs   # System info commands
-│   └── tweaks.rs   # Tweak operations (apply, revert, status)
-├── models/         # Data structures and types
-│   ├── registry.rs # Registry-related types
-│   ├── system.rs   # System info types
-│   └── tweak.rs    # Tweak definitions, categories, registry changes
-├── services/       # Business logic layer
+├── commands/           # Tauri command handlers (thin layer calling services)
+│   ├── backup.rs       # Backup management commands
+│   ├── debug.rs        # Debug mode toggling
+│   ├── elevation.rs    # SYSTEM elevation commands
+│   ├── general.rs      # General app commands (greet, theme)
+│   ├── system.rs       # System info commands
+│   ├── update.rs       # Update commands
+│   └── tweaks/         # Tweak commands (modular structure)
+│       ├── mod.rs      # Module exports
+│       ├── query.rs    # Status/listing (get_categories, get_tweak_status, etc.)
+│       ├── apply.rs    # Single tweak ops (apply_tweak, revert_tweak)
+│       ├── batch.rs    # Batch operations (batch_apply_tweaks, batch_revert_tweaks)
+│       └── helpers.rs  # Internal utilities (registry/service/scheduler ops)
+├── models/             # Data structures and types
+│   ├── registry.rs     # Registry-related types
+│   ├── system.rs       # System info types
+│   └── tweak.rs        # Tweak definitions, categories, registry changes
+├── services/           # Business logic layer
 │   ├── backup_service.rs      # Backup creation/restoration
 │   ├── registry_service.rs    # Windows registry operations
 │   ├── scheduler_service.rs   # Windows Task Scheduler operations

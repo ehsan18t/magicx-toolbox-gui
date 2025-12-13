@@ -73,7 +73,8 @@ A modern Windows system tweaking application built with Tauri 2 and SvelteKit. A
 │   ├── lib/
 │   │   ├── api/              # Tauri command wrappers
 │   │   ├── components/       # Svelte components
-│   │   │   └── ui/           # Reusable UI primitives
+│   │   │   ├── ui/           # Reusable UI primitives
+│   │   │   └── tweak-details/# Tweak display sub-components
 │   │   ├── stores/           # Svelte 5 rune-based stores (.svelte.ts)
 │   │   ├── config/           # App configuration
 │   │   └── types/            # TypeScript types
@@ -82,8 +83,9 @@ A modern Windows system tweaking application built with Tauri 2 and SvelteKit. A
 ├── src-tauri/                # Tauri backend
 │   ├── src/
 │   │   ├── commands/         # Tauri command handlers
+│   │   │   └── tweaks/       # Modular tweak commands (query, apply, batch)
 │   │   ├── models/           # Data structures
-│   │   └── services/         # Business logic
+│   │   └── services/         # Business logic (registry, services, scheduler)
 │   └── tweaks/               # YAML tweak definitions
 ├── static/                   # Static assets
 └── README.md
