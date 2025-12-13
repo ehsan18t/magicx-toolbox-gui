@@ -38,6 +38,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
 const STARTF_USESHOWWINDOW: u32 = 0x00000001;
+/// Timeout for waiting on elevated processes (30 seconds)
+const ELEVATED_PROCESS_TIMEOUT_MS: u32 = 30_000;
 
 /// Convert a Rust string to a null-terminated wide string
 fn to_wide_string(s: &str) -> Vec<u16> {
@@ -54,6 +56,46 @@ fn char_to_lower(c: u16) -> u16 {
     } else {
         c
     }
+}
+
+/// Escape a string for safe use in shell commands.
+/// This prevents command injection by escaping special characters.
+///
+/// For Windows cmd.exe, we need to:
+/// 1. Escape existing double quotes by doubling them
+/// 2. Escape special shell characters: & | < > ^ %
+fn escape_shell_arg(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len() + 10);
+    for c in s.chars() {
+        match c {
+            '"' => escaped.push_str("\"\""), // Double quotes
+            '&' | '|' | '<' | '>' | '^' => {
+                escaped.push('^'); // Escape with caret
+                escaped.push(c);
+            }
+            '%' => {
+                escaped.push('%'); // Escape percent with percent
+                escaped.push('%');
+            }
+            _ => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+/// Validate that a registry path contains only safe characters.
+/// Returns an error if the path contains potentially dangerous characters.
+fn validate_registry_path(path: &str) -> Result<(), Error> {
+    // Allow alphanumeric, backslash, underscore, hyphen, period, and space
+    for c in path.chars() {
+        if !c.is_alphanumeric() && !matches!(c, '\\' | '_' | '-' | '.' | ' ' | '{' | '}') {
+            return Err(Error::ServiceControl(format!(
+                "Invalid character '{}' in registry path: {}",
+                c, path
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Enable SeDebugPrivilege for the current process
@@ -309,11 +351,27 @@ fn execute_command_as_system(command_line: &str) -> Result<i32, Error> {
             )));
         }
 
-        // Wait for the process to complete
-        windows_sys::Win32::System::Threading::WaitForSingleObject(
+        // Wait for the process to complete (with timeout)
+        let wait_result = windows_sys::Win32::System::Threading::WaitForSingleObject(
             process_info.hProcess,
-            0xFFFFFFFF, // INFINITE
+            ELEVATED_PROCESS_TIMEOUT_MS,
         );
+
+        // Check if we timed out (WAIT_TIMEOUT = 0x102)
+        if wait_result == 0x102 {
+            log::warn!(
+                "SYSTEM command timed out after {}ms",
+                ELEVATED_PROCESS_TIMEOUT_MS
+            );
+            // Terminate the hung process
+            windows_sys::Win32::System::Threading::TerminateProcess(process_info.hProcess, 1);
+            CloseHandle(process_info.hProcess);
+            CloseHandle(process_info.hThread);
+            return Err(Error::ServiceControl(format!(
+                "SYSTEM command timed out after {}ms",
+                ELEVATED_PROCESS_TIMEOUT_MS
+            )));
+        }
 
         // Get exit code
         let mut exit_code: u32 = 0;
@@ -381,6 +439,10 @@ pub fn set_registry_value_as_system(
         value_type
     );
 
+    // Validate inputs to prevent command injection
+    validate_registry_path(key)?;
+    validate_registry_path(value_name)?;
+
     // For HKCU, we need to use HKU\<SID> since SYSTEM's HKCU is different
     let full_key = if hive.eq_ignore_ascii_case("HKCU") {
         let sid = get_current_user_sid()?;
@@ -390,11 +452,16 @@ pub fn set_registry_value_as_system(
         format!("{}\\{}", hive, key)
     };
 
-    // Build reg.exe command
+    // Escape shell arguments to prevent command injection
+    let escaped_key = escape_shell_arg(&full_key);
+    let escaped_value_name = escape_shell_arg(value_name);
+    let escaped_value_data = escape_shell_arg(value_data);
+
+    // Build reg.exe command with escaped arguments
     // reg add "HKLM\Software\..." /v "ValueName" /t REG_DWORD /d 1 /f
     let command = format!(
         "reg add \"{}\" /v \"{}\" /t {} /d {} /f",
-        full_key, value_name, value_type, value_data
+        escaped_key, escaped_value_name, value_type, escaped_value_data
     );
 
     let exit_code = execute_command_as_system(&command)?;
@@ -423,6 +490,10 @@ pub fn delete_registry_value_as_system(
         value_name
     );
 
+    // Validate inputs to prevent command injection
+    validate_registry_path(key)?;
+    validate_registry_path(value_name)?;
+
     // For HKCU, we need to use HKU\<SID> since SYSTEM's HKCU is different
     let full_key = if hive.eq_ignore_ascii_case("HKCU") {
         let sid = get_current_user_sid()?;
@@ -431,7 +502,14 @@ pub fn delete_registry_value_as_system(
         format!("{}\\{}", hive, key)
     };
 
-    let command = format!("reg delete \"{}\" /v \"{}\" /f", full_key, value_name);
+    // Escape shell arguments to prevent command injection
+    let escaped_key = escape_shell_arg(&full_key);
+    let escaped_value_name = escape_shell_arg(value_name);
+
+    let command = format!(
+        "reg delete \"{}\" /v \"{}\" /f",
+        escaped_key, escaped_value_name
+    );
 
     let exit_code = execute_command_as_system(&command)?;
 
@@ -872,11 +950,27 @@ fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, Error
             )));
         }
 
-        // Wait for the process to complete
-        windows_sys::Win32::System::Threading::WaitForSingleObject(
+        // Wait for the process to complete (with timeout)
+        let wait_result = windows_sys::Win32::System::Threading::WaitForSingleObject(
             process_info.hProcess,
-            0xFFFFFFFF, // INFINITE
+            ELEVATED_PROCESS_TIMEOUT_MS,
         );
+
+        // Check if we timed out (WAIT_TIMEOUT = 0x102)
+        if wait_result == 0x102 {
+            log::warn!(
+                "TrustedInstaller command timed out after {}ms",
+                ELEVATED_PROCESS_TIMEOUT_MS
+            );
+            // Terminate the hung process
+            windows_sys::Win32::System::Threading::TerminateProcess(process_info.hProcess, 1);
+            CloseHandle(process_info.hProcess);
+            CloseHandle(process_info.hThread);
+            return Err(Error::ServiceControl(format!(
+                "TrustedInstaller command timed out after {}ms",
+                ELEVATED_PROCESS_TIMEOUT_MS
+            )));
+        }
 
         // Get exit code
         let mut exit_code: u32 = 0;
