@@ -1,50 +1,36 @@
 # MagicX Toolbox
 
-A modern Windows system tweaking application built with Tauri 2 and SvelteKit. Apply, revert, and manage Windows registry tweaks and service configurations through an intuitive GUI.
+**The ultimate tool to optimize, tweak, and customize your Windows experience.**
 
-## Features
+MagicX Toolbox is a modern, safe, and easy-to-use application designed to help you take control of your Windows PC. Whether you want to boost gaming performance, enhance privacy, remove bloatware, or just customize your system, MagicX Toolbox makes it simple.
 
-- 🚀 **Tauri 2** - Build smaller, faster, and more secure desktop applications.
-- ⚡ **SvelteKit + Svelte 5** - Modern reactive framework with runes.
-- 🎨 **Tailwind CSS v4** - Utility-first CSS framework.
-- 🌟 **Icons**: Easily use thousands of icons from [Iconify](https://iconify.design/).
-- 🌙 **Dark/Light Theme** - Built-in theme switching with system preference detection.
-- 🎭 **Custom Titlebar** - Beautiful, native-feeling window controls.
-- 🔧 **TypeScript** - Full type safety.
-- 📦 **Modern Build Tools** - Vite, ESLint, Prettier.
+## Key Features
 
-### System Tweaking Features
+- **🎮 Gaming Optimization**: Reduce system latency and optimize background processes for a smoother gaming experience.
+- **🛡️ Privacy & Security**: Disable invasive telemetry and data collection to keep your personal information private.
+- **🚀 Performance Boost**: Remove bloatware and unnecessary services to free up system resources.
+- **💾 Safe by Design**:
+  - **Automatic Backups**: Snapshots are taken before every change, so you can always undo tweaks.
+  - **Risk Levels**: Every tweak is clearly labeled (Safe, Moderate, Advanced) so you know exactly what you're doing.
+- **ℹ️ System Information**: Get a detailed overview of your hardware and software specifications.
+- **🧹 Bloatware Removal**: Clean up pre-installed junk apps that slow down your computer.
+- **Portable**: No installation required. Just extract the files and run the .exe file.
 
-- **Registry Tweaks**: Toggle or multi-state registry modifications
-- **Service Control**: Manage Windows services startup types
-- **Scheduled Tasks**: Enable/disable Windows scheduled tasks
-- **Windows Version Filtering**: Tweaks filtered by Windows 10/11 compatibility
-- **Snapshot-Based Backup**: Automatic state capture before applying tweaks
-- **Risk Levels**: Clear indication of tweak impact (low/medium/high/critical)
+## Download
 
-## Quick Start
+1. **Download**: Go to the [Releases Page](https://github.com/ehsan18t/magicx-toolbox-gui/releases/latest) and download the latest .exe file.
 
-1. **Clone and install**
-   ```bash
-   git clone https://github.com/ehsan18t/magicx-toolbox-gui.git
-   cd magicx-toolbox-gui
-   bun install
-   ```
+## How to Use
 
-2. **Development**
-   ```bash
-   bun run dev
-   ```
+1. **Browse Categories**: Navigate through tabs like *Gaming*, *Privacy*, and *System* to find tweaks.
+2. **Review Tweaks**: Read the description and check the risk level for each tweak.
+3. **Apply**: Toggle the switch to apply a tweak. The app will automatically create a restore point.
+4. **Revert**: If you change your mind, simply toggle the switch off to revert the change or restore a snapshot from the "Backups" section.
 
-3. **Build**
-   ```bash
-   bun run build
-   ```
+---
 
-4. **Build Debug**
-   ```bash
-   bun run build:debug
-   ```
+## For Developers and Contributors
+If you are a developer looking to contribute or build from source, read the section below.
 
 ## Development
 
