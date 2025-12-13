@@ -279,7 +279,8 @@ pub fn set_service_startup_as_system(service_name: &str, startup_type: &str) -> 
         startup_type
     );
 
-    let command = format!("sc config \"{}\" start= {}", service_name, startup_type);
+    let escaped_name = escape_shell_arg(service_name);
+    let command = format!("sc config \"{}\" start= {}", escaped_name, startup_type);
     let exit_code = execute_command_as_system(&command)?;
 
     if exit_code == 0 {
@@ -297,7 +298,8 @@ pub fn set_service_startup_as_system(service_name: &str, startup_type: &str) -> 
 pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
     log::info!("Stopping service '{}' as SYSTEM", service_name);
 
-    let command = format!("net stop \"{}\"", service_name);
+    let escaped_name = escape_shell_arg(service_name);
+    let command = format!("net stop \"{}\"", escaped_name);
     let exit_code = execute_command_as_system(&command)?;
 
     // net stop returns 0 on success, 2 if already stopped
@@ -316,7 +318,8 @@ pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
 pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
     log::info!("Starting service '{}' as SYSTEM", service_name);
 
-    let command = format!("net start \"{}\"", service_name);
+    let escaped_name = escape_shell_arg(service_name);
+    let command = format!("net start \"{}\"", escaped_name);
     let exit_code = execute_command_as_system(&command)?;
 
     // net start returns 0 on success, 2 if already running

@@ -646,10 +646,11 @@ fn apply_scheduler_pattern(
 
         for task in tasks {
             let full_path = format!("{}\\{}", change.task_path, task.name);
+            let escaped_path = trusted_installer::escape_shell_arg(&full_path);
             let schtasks_args = match change.action {
-                SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", full_path),
-                SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", full_path),
-                SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", full_path),
+                SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", escaped_path),
+                SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", escaped_path),
+                SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", escaped_path),
             };
 
             let result = if use_ti {
@@ -739,10 +740,11 @@ fn apply_scheduler_exact(
     let full_path = format!("{}\\{}", change.task_path, task_name);
 
     let result = if use_elevated {
+        let escaped_path = trusted_installer::escape_shell_arg(&full_path);
         let schtasks_args = match change.action {
-            SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", full_path),
-            SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", full_path),
-            SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", full_path),
+            SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", escaped_path),
+            SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", escaped_path),
+            SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", escaped_path),
         };
         if use_ti {
             trusted_installer::run_schtasks_as_ti(&schtasks_args)

@@ -7,14 +7,15 @@ use crate::error::Error;
 use std::ptr;
 
 use super::common::{
-    enable_debug_privilege, to_wide_string, CloseHandle, CloseServiceHandle, CreateProcessW,
-    DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList, OpenProcess,
-    OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW, UpdateProcThreadAttribute,
-    CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, ELEVATED_PROCESS_TIMEOUT_MS,
-    EXTENDED_STARTUPINFO_PRESENT, FALSE, HANDLE, LPPROC_THREAD_ATTRIBUTE_LIST,
-    PROCESS_CREATE_PROCESS, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
-    SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_START,
-    SERVICE_STATUS_PROCESS, STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
+    enable_debug_privilege, escape_shell_arg, to_wide_string, CloseHandle, CloseServiceHandle,
+    CreateProcessW, DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList,
+    OpenProcess, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
+    UpdateProcThreadAttribute, CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT,
+    ELEVATED_PROCESS_TIMEOUT_MS, EXTENDED_STARTUPINFO_PRESENT, FALSE, HANDLE,
+    LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_CREATE_PROCESS, PROCESS_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
+    SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATUS_PROCESS, STARTF_USESHOWWINDOW,
+    STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
 };
 
 // Re-export execute_command_as_system for use in run_powershell_as_system
@@ -421,7 +422,8 @@ pub fn set_service_startup_as_ti(service_name: &str, startup_type: &str) -> Resu
         startup_type
     );
 
-    let command = format!("sc config \"{}\" start= {}", service_name, startup_type);
+    let escaped_name = escape_shell_arg(service_name);
+    let command = format!("sc config \"{}\" start= {}", escaped_name, startup_type);
     let exit_code = execute_command_as_trusted_installer(&command)?;
 
     if exit_code == 0 {
@@ -439,7 +441,8 @@ pub fn set_service_startup_as_ti(service_name: &str, startup_type: &str) -> Resu
 pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
     log::info!("Stopping service '{}' as TrustedInstaller", service_name);
 
-    let command = format!("net stop \"{}\"", service_name);
+    let escaped_name = escape_shell_arg(service_name);
+    let command = format!("net stop \"{}\"", escaped_name);
     let exit_code = execute_command_as_trusted_installer(&command)?;
 
     // net stop returns 0 on success, 2 if already stopped
@@ -458,7 +461,8 @@ pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
 pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
     log::info!("Starting service '{}' as TrustedInstaller", service_name);
 
-    let command = format!("net start \"{}\"", service_name);
+    let escaped_name = escape_shell_arg(service_name);
+    let command = format!("net start \"{}\"", escaped_name);
     let exit_code = execute_command_as_trusted_installer(&command)?;
 
     // net start returns 0 on success, 2 if already running
