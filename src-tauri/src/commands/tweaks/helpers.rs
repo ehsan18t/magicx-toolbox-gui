@@ -195,31 +195,50 @@ fn write_registry_value(
 
     match value_type {
         RegistryValueType::Dword => {
-            if let Some(v) = value.as_u64() {
-                registry_service::set_dword(hive, key, value_name, v as u32)?;
-            }
+            let v = value.as_u64().ok_or_else(|| {
+                Error::ValidationError(format!(
+                    "Expected u64 for DWORD registry value, got: {}",
+                    value
+                ))
+            })?;
+            registry_service::set_dword(hive, key, value_name, v as u32)?;
         }
         RegistryValueType::String | RegistryValueType::ExpandString => {
-            if let Some(v) = value.as_str() {
-                registry_service::set_string(hive, key, value_name, v)?;
-            }
+            let v = value.as_str().ok_or_else(|| {
+                Error::ValidationError(format!(
+                    "Expected string for {} registry value, got: {}",
+                    value_type.as_str(),
+                    value
+                ))
+            })?;
+            registry_service::set_string(hive, key, value_name, v)?;
         }
         RegistryValueType::Binary => {
-            if let Some(arr) = value.as_array() {
-                let binary: Vec<u8> = arr
-                    .iter()
-                    .filter_map(|v| v.as_u64().map(|u| u as u8))
-                    .collect();
-                registry_service::set_binary(hive, key, value_name, &binary)?;
-            }
+            let arr = value.as_array().ok_or_else(|| {
+                Error::ValidationError(format!(
+                    "Expected array for BINARY registry value, got: {}",
+                    value
+                ))
+            })?;
+            let binary: Vec<u8> = arr
+                .iter()
+                .filter_map(|v| v.as_u64().map(|u| u as u8))
+                .collect();
+            registry_service::set_binary(hive, key, value_name, &binary)?;
         }
         RegistryValueType::Qword => {
-            if let Some(v) = value.as_u64() {
-                registry_service::set_qword(hive, key, value_name, v)?;
-            }
+            let v = value.as_u64().ok_or_else(|| {
+                Error::ValidationError(format!(
+                    "Expected u64 for QWORD registry value, got: {}",
+                    value
+                ))
+            })?;
+            registry_service::set_qword(hive, key, value_name, v)?;
         }
         RegistryValueType::MultiString => {
-            log::warn!("MultiString not supported for write");
+            return Err(Error::ValidationError(
+                "MultiString registry values are not supported for write operations".into(),
+            ));
         }
     }
 
