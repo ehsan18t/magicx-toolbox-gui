@@ -22,7 +22,8 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "visible": true
+        "visible": true,
+        "backgroundColor": "#09090b"
       }
     ],
     "security": {
@@ -32,9 +33,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/Toolbox.ico"
-    ],
+    "icon": ["icons/Toolbox.ico"],
     "publisher": "Ehsan Khan",
     "category": "Productivity",
     "shortDescription": "Short application description",

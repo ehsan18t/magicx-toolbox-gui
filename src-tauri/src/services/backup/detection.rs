@@ -105,20 +105,28 @@ fn check_registry_matches(
         return Ok(true);
     }
 
-    // Use parallel iteration for registry checks with explicit type annotation
-    for change in validatable_registry.par_iter().collect::<Vec<_>>() {
-        let (current_value, existed) = read_registry_value(
-            &change.hive,
-            &change.key,
-            &change.value_name,
-            &change.value_type,
-        )?;
+    // Use parallel iteration for registry checks, collect results
+    let results: Vec<Result<bool, Error>> = validatable_registry
+        .par_iter()
+        .map(|change| {
+            let (current_value, existed) = read_registry_value(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+                &change.value_type,
+            )?;
 
-        if !existed {
-            return Ok(false);
-        }
+            if !existed {
+                return Ok(false);
+            }
 
-        if !values_match(&current_value, &Some(change.value.clone())) {
+            Ok(values_match(&current_value, &Some(change.value.clone())))
+        })
+        .collect();
+
+    // Check if all results are Ok(true)
+    for result in results {
+        if !result? {
             return Ok(false);
         }
     }

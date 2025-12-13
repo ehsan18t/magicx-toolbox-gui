@@ -50,10 +50,10 @@
         <div
           class="grid grid-cols-2 gap-4 gap-y-6 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-0 md:divide-x md:divide-border/50"
         >
-          {#each Array(4) as _, i (i)}
+          {#each [0, 1, 2, 3] as i (`system-skeleton-${i}`)}
             <div class="flex flex-col gap-1.5 {i === 0 ? 'md:pr-4' : i === 3 ? 'md:pl-4' : 'md:px-4'}">
               <span class="flex items-center gap-2">
-                <div class="animate-pulse h-[14px] w-[14px] rounded bg-surface/80"></div>
+                <div class="animate-pulse h-3.5 w-3.5 rounded bg-surface/80"></div>
                 <div class="animate-pulse h-3 w-24 rounded bg-surface/80"></div>
               </span>
               <div class="flex flex-col gap-1">
@@ -150,7 +150,7 @@
     {#if systemInfoLoading}
       <!-- Skeleton loading for hardware -->
       <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        {#each Array(6) as _, i (i)}
+        {#each [0, 1, 2, 3, 4, 5] as i (`hardware-skeleton-${i}`)}
           <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
             <div class="animate-pulse h-10 w-10 rounded-lg bg-surface/60"></div>
             <div class="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -293,7 +293,7 @@
     {#if tweaksLoading}
       <!-- Skeleton loading for categories -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {#each Array(6) as _, i (i)}
+        {#each [0, 1, 2, 3, 4, 5] as i (`category-skeleton-${i}`)}
           <div class="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
             <div class="animate-pulse h-10 w-10 rounded-lg bg-surface/60"></div>
             <div class="flex min-w-0 flex-1 flex-col gap-2">

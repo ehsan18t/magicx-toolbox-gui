@@ -18,6 +18,13 @@
   const { children } = $props();
 
   onMount(() => {
+    // Hide the initial HTML loader now that Svelte is ready
+    const initialLoader = document.getElementById("initial-loader");
+    if (initialLoader) {
+      initialLoader.classList.add("fade-out");
+      setTimeout(() => initialLoader.remove(), 200);
+    }
+
     themeStore.init();
     colorSchemeStore.init();
 

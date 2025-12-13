@@ -4,23 +4,15 @@
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { initializeQuick, loadingStateStore, loadRemainingData } from "$lib/stores/tweaks.svelte";
+  import { initializeData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
 
   let error = $state<string | null>(null);
 
-  // Progressive loading: show app shell immediately after categories load
-  const canShowApp = $derived(loadingStateStore.canShowApp);
-
   onMount(async () => {
     try {
-      // Phase 1: Quick init - just load categories to show the app shell
-      await initializeQuick();
-
-      // Phase 2: Load remaining data in background (non-blocking)
-      loadRemainingData().catch((e) => {
-        console.error("Failed to load remaining data:", e);
-      });
+      // Load all data - components show skeletons while loading
+      await initializeData();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load data";
       console.error("Failed to initialize:", e);
@@ -39,16 +31,7 @@
 </script>
 
 <div class="page-container">
-  {#if !canShowApp}
-    <div class="loading-screen">
-      <div class="loading-content">
-        <div class="loading-spinner">
-          <Icon icon="mdi:loading" width="40" class="animate-spin" />
-        </div>
-        <p class="loading-text">Loading tweaks...</p>
-      </div>
-    </div>
-  {:else if error}
+  {#if error}
     <div class="error-screen">
       <div class="error-content">
         <div class="error-icon-wrapper">
@@ -63,6 +46,7 @@
       </div>
     </div>
   {:else}
+    <!-- Always show app shell - components handle their own loading states -->
     <div class="app-layout">
       <Sidebar />
       <main class="main-content">
@@ -85,40 +69,6 @@
     height: 100%;
     min-height: 0;
     background: hsl(var(--background));
-  }
-
-  /* Loading Screen */
-  .loading-screen {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-  }
-
-  .loading-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .loading-spinner {
-    width: 64px;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 16px;
-    color: hsl(var(--primary));
-  }
-
-  .loading-text {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 500;
-    color: hsl(var(--muted-foreground));
   }
 
   /* Error Screen */

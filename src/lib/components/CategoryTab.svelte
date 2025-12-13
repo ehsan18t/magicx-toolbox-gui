@@ -187,7 +187,7 @@
     {#if tweaksLoading && categoryTweaks.length === 0}
       <!-- Loading state with skeleton cards -->
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
-        {#each Array(4) as _, i (i)}
+        {#each [0, 1, 2, 3] as i (`tweak-skeleton-${i}`)}
           <div class="animate-pulse relative flex overflow-hidden rounded-lg border border-border bg-card">
             <div class="flex flex-1 flex-col gap-3 p-4">
               <div class="flex items-start justify-between">

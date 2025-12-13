@@ -9,9 +9,9 @@ import * as api from "$lib/api/tweaks";
 import type { CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "$lib/types";
 
 // === Loading States ===
-let systemInfoLoading = $state(false);
-let categoriesLoading = $state(false);
-let tweaksLoading = $state(false);
+let systemInfoLoading = $state(true);
+let categoriesLoading = $state(true);
+let tweaksLoading = $state(true);
 let initialLoadComplete = $state(false);
 
 // === System Info State ===
