@@ -7,8 +7,7 @@
 
 use crate::error::Error;
 use crate::models::{RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState};
-use crate::services::{scheduler_service, service_control};
-use std::fs;
+use crate::services::{scheduler_service, service_control};use rayon::prelude::*;use std::fs;
 
 use super::capture::read_registry_value;
 use super::helpers::{parse_hive, parse_value_type, task_state_matches, values_match};
@@ -54,6 +53,7 @@ pub fn detect_tweak_state(
 
 /// Check if all registry/service/scheduler changes in an option match current state
 /// Items with skip_validation=true are excluded from this check
+/// Uses parallel iteration for registry, service, and scheduler checks
 fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> Result<bool, Error> {
     // Count only validatable changes (those without skip_validation)
     let validatable_registry: Vec<_> = option
@@ -80,8 +80,31 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         return Ok(false);
     }
 
-    // Check all validatable registry values
-    for change in validatable_registry {
+    // Use rayon to check all three categories in parallel using nested joins
+    // Each category check is independent and can run concurrently
+    let ((registry_ok, services_ok), scheduler_ok) = rayon::join(
+        || {
+            rayon::join(
+                || check_registry_matches(&validatable_registry),
+                || check_services_match(&validatable_services),
+            )
+        },
+        || check_scheduler_matches(&validatable_scheduler),
+    );
+
+    Ok(registry_ok? && services_ok? && scheduler_ok?)
+}
+
+/// Check if all registry values match expected state (parallelized)
+fn check_registry_matches(
+    validatable_registry: &[&crate::models::RegistryChange],
+) -> Result<bool, Error> {
+    if validatable_registry.is_empty() {
+        return Ok(true);
+    }
+
+    // Use parallel iteration for registry checks with explicit type annotation
+    for change in validatable_registry.par_iter().collect::<Vec<_>>() {
         let (current_value, existed) = read_registry_value(
             &change.hive,
             &change.key,
@@ -98,25 +121,58 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         }
     }
 
-    // Check all validatable service states
-    for change in validatable_services {
-        let status = service_control::get_service_status(&change.name)?;
-        let current_startup = status.startup_type;
+    Ok(true)
+}
 
-        if current_startup != Some(change.startup) {
+/// Check if all services match expected state (parallelized)
+fn check_services_match(
+    validatable_services: &[&crate::models::ServiceChange],
+) -> Result<bool, Error> {
+    if validatable_services.is_empty() {
+        return Ok(true);
+    }
+
+    // Use parallel iterator and collect results
+    let results: Vec<Result<bool, Error>> = validatable_services
+        .par_iter()
+        .map(|change| {
+            let status = service_control::get_service_status(&change.name)?;
+            let current_startup = status.startup_type;
+            Ok(current_startup == Some(change.startup))
+        })
+        .collect();
+
+    // Check if all results are Ok(true)
+    for result in results {
+        if !result? {
             return Ok(false);
         }
     }
 
-    // Check all validatable scheduler task states
+    Ok(true)
+}
+
+/// Check if all scheduler tasks match expected state (parallelized)
+fn check_scheduler_matches(
+    validatable_scheduler: &[&crate::models::SchedulerChange],
+) -> Result<bool, Error> {
+    if validatable_scheduler.is_empty() {
+        return Ok(true);
+    }
+
+    // Process scheduler changes - patterns need sequential handling due to COM threading
     for change in validatable_scheduler {
         // Determine expected state based on action
         let expected_state = match change.action {
-            crate::models::tweak::SchedulerAction::Enable => scheduler_service::TaskState::Ready,
+            crate::models::tweak::SchedulerAction::Enable => {
+                scheduler_service::TaskState::Ready
+            }
             crate::models::tweak::SchedulerAction::Disable => {
                 scheduler_service::TaskState::Disabled
             }
-            crate::models::tweak::SchedulerAction::Delete => scheduler_service::TaskState::NotFound,
+            crate::models::tweak::SchedulerAction::Delete => {
+                scheduler_service::TaskState::NotFound
+            }
         };
 
         // Handle pattern vs exact name
@@ -142,11 +198,14 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
             }
         } else if let Some(ref task_name) = change.task_name {
             // Exact task name - check single task
-            let current_state = scheduler_service::get_task_state(&change.task_path, task_name)
-                .unwrap_or(scheduler_service::TaskState::NotFound);
+            let current_state =
+                scheduler_service::get_task_state(&change.task_path, task_name)
+                    .unwrap_or(scheduler_service::TaskState::NotFound);
 
             // Handle ignore_not_found for exact names
-            if current_state == scheduler_service::TaskState::NotFound && change.ignore_not_found {
+            if current_state == scheduler_service::TaskState::NotFound
+                && change.ignore_not_found
+            {
                 // Task not found but ignore_not_found is set - consider this as matching
                 continue;
             }
@@ -158,7 +217,6 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         // If neither pattern nor name, skip validation for this change
     }
 
-    // All validatable checks passed
     Ok(true)
 }
 
@@ -190,28 +248,50 @@ pub fn cleanup_old_backups() -> Result<(), Error> {
     Ok(())
 }
 
-/// Validate all snapshots on app startup
+/// Validate all snapshots on app startup (parallelized)
 /// Removes stale snapshots where tweak was externally reverted
 pub fn validate_all_snapshots() -> Result<u32, Error> {
     log::info!("Validating all snapshots on startup");
 
     let applied_tweaks = get_applied_tweaks()?;
-    let mut removed_count = 0;
 
-    for tweak_id in applied_tweaks {
-        if let Some(snapshot) = load_snapshot(&tweak_id)? {
-            // A snapshot is stale if current state matches the original snapshot state
-            // (meaning the tweak was externally reverted)
-            let is_stale = snapshot_matches_current_state(&snapshot)?;
-
-            if is_stale {
-                log::info!(
-                    "Removing stale snapshot for '{}' - tweak was externally reverted",
-                    snapshot.tweak_name
-                );
-                delete_snapshot(&tweak_id)?;
-                removed_count += 1;
+    // Use parallel iteration to check all snapshots concurrently
+    let stale_tweaks: Vec<String> = applied_tweaks
+        .par_iter()
+        .filter_map(|tweak_id| {
+            match load_snapshot(tweak_id) {
+                Ok(Some(snapshot)) => {
+                    // A snapshot is stale if current state matches the original snapshot state
+                    // (meaning the tweak was externally reverted)
+                    match snapshot_matches_current_state(&snapshot) {
+                        Ok(true) => {
+                            log::info!(
+                                "Found stale snapshot for '{}' - tweak was externally reverted",
+                                snapshot.tweak_name
+                            );
+                            Some(tweak_id.clone())
+                        }
+                        Ok(false) => None,
+                        Err(e) => {
+                            log::warn!("Error checking snapshot for {}: {}", tweak_id, e);
+                            None
+                        }
+                    }
+                }
+                Ok(None) => None,
+                Err(e) => {
+                    log::warn!("Error loading snapshot for {}: {}", tweak_id, e);
+                    None
+                }
             }
+        })
+        .collect();
+
+    // Delete stale snapshots (sequential to avoid file system race conditions)
+    let removed_count = stale_tweaks.len() as u32;
+    for tweak_id in stale_tweaks {
+        if let Err(e) = delete_snapshot(&tweak_id) {
+            log::warn!("Failed to delete stale snapshot for {}: {}", tweak_id, e);
         }
     }
 
@@ -222,35 +302,48 @@ pub fn validate_all_snapshots() -> Result<u32, Error> {
     Ok(removed_count)
 }
 
-/// Check if current registry state matches the snapshot state
+/// Check if current registry state matches the snapshot state (parallelized)
 /// (indicating tweak was externally reverted)
 fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Error> {
-    for reg in &snapshot.registry_snapshots {
-        let hive = parse_hive(&reg.hive)?;
-        let value_type = reg
-            .value_type
-            .as_ref()
-            .map(|t| parse_value_type(t))
-            .transpose()?
-            .unwrap_or(RegistryValueType::Dword);
+    if snapshot.registry_snapshots.is_empty() {
+        return Ok(true);
+    }
 
-        let (current_value, current_exists) =
-            read_registry_value(&hive, &reg.key, &reg.value_name, &value_type)?;
+    // Use parallel iteration to check all registry values and collect results
+    let results: Vec<Result<bool, Error>> = snapshot
+        .registry_snapshots
+        .par_iter()
+        .map(|reg| {
+            let hive = parse_hive(&reg.hive)?;
+            let value_type = reg
+                .value_type
+                .as_ref()
+                .map(|t| parse_value_type(t))
+                .transpose()?
+                .unwrap_or(RegistryValueType::Dword);
 
-        // Check if current state matches snapshot state
-        let matches = if !reg.existed && !current_exists {
-            true
-        } else if reg.existed && current_exists {
-            values_match(&reg.value, &current_value)
-        } else {
-            false
-        };
+            let (current_value, current_exists) =
+                read_registry_value(&hive, &reg.key, &reg.value_name, &value_type)?;
 
-        if !matches {
+            // Check if current state matches snapshot state
+            let matches = if !reg.existed && !current_exists {
+                true
+            } else if reg.existed && current_exists {
+                values_match(&reg.value, &current_value)
+            } else {
+                false
+            };
+
+            Ok(matches)
+        })
+        .collect();
+
+    // Check if all results match
+    for result in results {
+        if !result? {
             return Ok(false);
         }
     }
 
-    // All values match snapshot - tweak was reverted
     Ok(true)
 }

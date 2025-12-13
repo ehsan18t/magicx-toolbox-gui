@@ -11,8 +11,9 @@ use crate::models::{
     TweakDefinition, TweakSnapshot,
 };
 use crate::services::{registry_service, scheduler_service, service_control};
+use rayon::prelude::*;
 
-/// Capture complete state before applying a tweak option
+/// Capture complete state before applying a tweak option (parallelized)
 pub fn capture_snapshot(
     tweak: &TweakDefinition,
     option_index: usize,
@@ -39,98 +40,35 @@ pub fn capture_snapshot(
         tweak.requires_system,
     );
 
-    // Capture registry values for this option
-    for change in &option.registry_changes {
-        // Skip if version doesn't apply
-        if !change.applies_to_version(windows_version) {
-            continue;
-        }
+    // Parallel capture: registry, services, and scheduler tasks run concurrently
+    let (registry_result, (services_result, scheduler_result)) = rayon::join(
+        || capture_registry_snapshots(&option.registry_changes, windows_version),
+        || {
+            rayon::join(
+                || capture_service_snapshots(&option.service_changes),
+                || capture_scheduler_snapshots(&option.scheduler_changes),
+            )
+        },
+    );
 
-        let (value, existed) = read_registry_value(
-            &change.hive,
-            &change.key,
-            &change.value_name,
-            &change.value_type,
-        )?;
-
-        let reg_snapshot = RegistrySnapshot {
-            hive: change.hive.as_str().to_string(),
-            key: change.key.clone(),
-            value_name: change.value_name.clone(),
-            value_type: if existed {
-                Some(change.value_type.as_str().to_string())
-            } else {
-                None
-            },
-            value,
-            existed,
-        };
-
-        snapshot.add_registry_snapshot(reg_snapshot);
+    // Add captured snapshots to the result
+    for reg_snapshot in registry_result? {
         log::trace!(
             "Captured: {}\\{}\\{} (existed: {})",
-            change.hive.as_str(),
-            change.key,
-            change.value_name,
-            existed
+            reg_snapshot.hive,
+            reg_snapshot.key,
+            reg_snapshot.value_name,
+            reg_snapshot.existed
         );
+        snapshot.add_registry_snapshot(reg_snapshot);
     }
 
-    // Capture service states for this option
-    for sc in &option.service_changes {
-        let service_snapshot = capture_service_state(&sc.name)?;
+    for service_snapshot in services_result? {
         snapshot.add_service_snapshot(service_snapshot);
     }
 
-    // Capture scheduled task states for this option
-    for task_change in &option.scheduler_changes {
-        // Handle pattern matching vs exact task name
-        if let Some(ref pattern) = task_change.task_name_pattern {
-            // Pattern-based: capture state for all matching tasks
-            let matching_tasks =
-                scheduler_service::find_tasks_by_pattern(&task_change.task_path, pattern)?;
-
-            if matching_tasks.is_empty() {
-                // If ignore_not_found, just skip capturing
-                if task_change.ignore_not_found {
-                    log::debug!(
-                        "No tasks found matching pattern '{}' in '{}' (ignore_not_found)",
-                        pattern,
-                        task_change.task_path
-                    );
-                    continue;
-                }
-                // Otherwise, still continue - we don't fail snapshot capture
-                log::warn!(
-                    "No tasks found matching pattern '{}' in '{}'",
-                    pattern,
-                    task_change.task_path
-                );
-                continue;
-            }
-
-            for task in matching_tasks {
-                let task_snapshot = SchedulerSnapshot {
-                    task_path: task_change.task_path.clone(),
-                    task_name: task.name.clone(),
-                    original_state: task.state.as_str().to_string(),
-                };
-                snapshot.add_scheduler_snapshot(task_snapshot);
-                log::trace!(
-                    "Captured pattern task: {}\\{} (state: {})",
-                    task_change.task_path,
-                    task.name,
-                    task.state.as_str()
-                );
-            }
-        } else if let Some(ref task_name) = task_change.task_name {
-            // Exact task name: capture single task state
-            let task_snapshot = capture_scheduler_state(&task_change.task_path, task_name)?;
-            snapshot.add_scheduler_snapshot(task_snapshot);
-        } else {
-            // Neither pattern nor name specified - skip with warning
-            log::warn!("Scheduler change has neither task_name nor task_name_pattern, skipping");
-        }
+    for task_snapshot in scheduler_result? {
+        snapshot.add_scheduler_snapshot(task_snapshot);
     }
 
     log::info!(
@@ -144,7 +82,110 @@ pub fn capture_snapshot(
     Ok(snapshot)
 }
 
-/// Capture CURRENT system state for ALL items across ALL options of a tweak.
+/// Capture registry values in parallel
+fn capture_registry_snapshots(
+    registry_changes: &[crate::models::RegistryChange],
+    windows_version: u32,
+) -> Result<Vec<RegistrySnapshot>, Error> {
+    registry_changes
+        .par_iter()
+        .filter(|change| change.applies_to_version(windows_version))
+        .map(|change| {
+            let (value, existed) = read_registry_value(
+                &change.hive,
+                &change.key,
+                &change.value_name,
+                &change.value_type,
+            )?;
+
+            Ok(RegistrySnapshot {
+                hive: change.hive.as_str().to_string(),
+                key: change.key.clone(),
+                value_name: change.value_name.clone(),
+                value_type: if existed {
+                    Some(change.value_type.as_str().to_string())
+                } else {
+                    None
+                },
+                value,
+                existed,
+            })
+        })
+        .collect()
+}
+
+/// Capture service states in parallel
+fn capture_service_snapshots(
+    service_changes: &[crate::models::ServiceChange],
+) -> Result<Vec<ServiceSnapshot>, Error> {
+    service_changes
+        .par_iter()
+        .map(|sc| capture_service_state(&sc.name))
+        .collect()
+}
+
+/// Capture scheduler task states (mixed parallel/sequential due to pattern matching)
+fn capture_scheduler_snapshots(
+    scheduler_changes: &[crate::models::SchedulerChange],
+) -> Result<Vec<SchedulerSnapshot>, Error> {
+    let mut snapshots = Vec::new();
+
+    // Process scheduler changes - patterns need sequential handling due to find_tasks_by_pattern
+    // but individual task captures can be parallelized within each pattern
+    for task_change in scheduler_changes {
+        if let Some(ref pattern) = task_change.task_name_pattern {
+            // Pattern-based: capture state for all matching tasks
+            let matching_tasks =
+                scheduler_service::find_tasks_by_pattern(&task_change.task_path, pattern)?;
+
+            if matching_tasks.is_empty() {
+                if task_change.ignore_not_found {
+                    log::debug!(
+                        "No tasks found matching pattern '{}' in '{}' (ignore_not_found)",
+                        pattern,
+                        task_change.task_path
+                    );
+                    continue;
+                }
+                log::warn!(
+                    "No tasks found matching pattern '{}' in '{}'",
+                    pattern,
+                    task_change.task_path
+                );
+                continue;
+            }
+
+            // Capture matching tasks in parallel
+            let task_snapshots: Vec<SchedulerSnapshot> = matching_tasks
+                .par_iter()
+                .map(|task| {
+                    log::trace!(
+                        "Captured pattern task: {}\\{} (state: {})",
+                        task_change.task_path,
+                        task.name,
+                        task.state.as_str()
+                    );
+                    SchedulerSnapshot {
+                        task_path: task_change.task_path.clone(),
+                        task_name: task.name.clone(),
+                        original_state: task.state.as_str().to_string(),
+                    }
+                })
+                .collect();
+            snapshots.extend(task_snapshots);
+        } else if let Some(ref task_name) = task_change.task_name {
+            // Exact task name: capture single task state
+            let task_snapshot = capture_scheduler_state(&task_change.task_path, task_name)?;
+            snapshots.push(task_snapshot);
+        } else {
+            log::warn!("Scheduler change has neither task_name nor task_name_pattern, skipping");
+        }
+    }
+
+    Ok(snapshots)
+}
+
+/// Capture CURRENT system state for ALL items across ALL options of a tweak (parallelized).
 /// Used for rollback when switching between options - restores to the state
 /// BEFORE the current apply operation started (not the original pre-tweak state).
 pub fn capture_current_state(
@@ -166,109 +207,139 @@ pub fn capture_current_state(
         tweak.requires_system,
     );
 
-    // Use HashSet to avoid duplicates across options
-    use std::collections::HashSet;
-    let mut captured_registry: HashSet<String> = HashSet::new();
-    let mut captured_services: HashSet<String> = HashSet::new();
-    let mut captured_tasks: HashSet<String> = HashSet::new();
+    // Collect unique items across all options first
+    use std::collections::{HashMap, HashSet};
+    let mut unique_registry: HashMap<String, &crate::models::RegistryChange> = HashMap::new();
+    let mut unique_services: HashSet<String> = HashSet::new();
+    let mut unique_tasks: Vec<(&str, &str)> = Vec::new(); // (path, name)
+    let mut unique_task_patterns: Vec<(&str, &str)> = Vec::new(); // (path, pattern)
 
-    // Iterate ALL options to capture all potentially affected items
     for option in &tweak.options {
-        // Capture registry values
         for change in &option.registry_changes {
             if !change.applies_to_version(windows_version) {
                 continue;
             }
-
             let key_id = format!(
                 "{}\\{}\\{}",
                 change.hive.as_str(),
                 change.key,
                 change.value_name
             );
-            if captured_registry.contains(&key_id) {
-                continue;
-            }
-            captured_registry.insert(key_id);
-
-            let (value, existed) = read_registry_value(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-                &change.value_type,
-            )?;
-
-            let reg_snapshot = RegistrySnapshot {
-                hive: change.hive.as_str().to_string(),
-                key: change.key.clone(),
-                value_name: change.value_name.clone(),
-                value_type: if existed {
-                    Some(change.value_type.as_str().to_string())
-                } else {
-                    None
-                },
-                value,
-                existed,
-            };
-
-            snapshot.add_registry_snapshot(reg_snapshot);
+            unique_registry.entry(key_id).or_insert(change);
         }
 
-        // Capture service states
         for sc in &option.service_changes {
-            if captured_services.contains(&sc.name) {
-                continue;
-            }
-            captured_services.insert(sc.name.clone());
-
-            let service_snapshot = capture_service_state(&sc.name)?;
-            snapshot.add_service_snapshot(service_snapshot);
+            unique_services.insert(sc.name.clone());
         }
 
-        // Capture scheduled task states
         for task_change in &option.scheduler_changes {
             if let Some(ref pattern) = task_change.task_name_pattern {
-                // Pattern-based matching
-                let matching_tasks =
-                    scheduler_service::find_tasks_by_pattern(&task_change.task_path, pattern)?;
-
-                for task in matching_tasks {
-                    let task_id = format!("{}\\{}", task_change.task_path, task.name);
-                    if captured_tasks.contains(&task_id) {
-                        continue;
-                    }
-                    captured_tasks.insert(task_id);
-
-                    let task_snapshot = SchedulerSnapshot {
-                        task_path: task_change.task_path.clone(),
-                        task_name: task.name.clone(),
-                        original_state: task.state.as_str().to_string(),
-                    };
-                    snapshot.add_scheduler_snapshot(task_snapshot);
-                }
+                unique_task_patterns.push((&task_change.task_path, pattern));
             } else if let Some(ref task_name) = task_change.task_name {
-                let task_id = format!("{}\\{}", task_change.task_path, task_name);
-                if captured_tasks.contains(&task_id) {
-                    continue;
-                }
-                captured_tasks.insert(task_id);
-
-                // Don't fail if task doesn't exist during current state capture
-                match capture_scheduler_state(&task_change.task_path, task_name) {
-                    Ok(task_snapshot) => {
-                        snapshot.add_scheduler_snapshot(task_snapshot);
-                    }
-                    Err(e) => {
-                        log::debug!(
-                            "Could not capture state for task {}\\{}: {} (may not exist)",
-                            task_change.task_path,
-                            task_name,
-                            e
-                        );
-                    }
-                }
+                unique_tasks.push((&task_change.task_path, task_name));
             }
         }
+    }
+
+    // Capture all three categories in parallel
+    let registry_changes: Vec<_> = unique_registry.values().cloned().collect();
+    let service_names: Vec<_> = unique_services.iter().cloned().collect();
+
+    let (registry_result, (services_result, scheduler_result)) = rayon::join(
+        || {
+            // Parallel registry capture
+            registry_changes
+                .par_iter()
+                .map(|change| {
+                    let (value, existed) = read_registry_value(
+                        &change.hive,
+                        &change.key,
+                        &change.value_name,
+                        &change.value_type,
+                    )?;
+
+                    Ok(RegistrySnapshot {
+                        hive: change.hive.as_str().to_string(),
+                        key: change.key.clone(),
+                        value_name: change.value_name.clone(),
+                        value_type: if existed {
+                            Some(change.value_type.as_str().to_string())
+                        } else {
+                            None
+                        },
+                        value,
+                        existed,
+                    })
+                })
+                .collect::<Result<Vec<_>, Error>>()
+        },
+        || {
+            rayon::join(
+                || {
+                    // Parallel service capture
+                    service_names
+                        .par_iter()
+                        .map(|name| capture_service_state(name))
+                        .collect::<Result<Vec<_>, Error>>()
+                },
+                || {
+                    // Scheduler capture (patterns need sequential find, but captures can be parallel)
+                    let mut snapshots = Vec::new();
+                    let mut captured_tasks_set: HashSet<String> = HashSet::new();
+
+                    // Handle patterns first
+                    for (task_path, pattern) in &unique_task_patterns {
+                        if let Ok(matching_tasks) =
+                            scheduler_service::find_tasks_by_pattern(task_path, pattern)
+                        {
+                            for task in matching_tasks {
+                                let task_id = format!("{}\\{}", task_path, task.name);
+                                if !captured_tasks_set.contains(&task_id) {
+                                    captured_tasks_set.insert(task_id);
+                                    snapshots.push(SchedulerSnapshot {
+                                        task_path: task_path.to_string(),
+                                        task_name: task.name.clone(),
+                                        original_state: task.state.as_str().to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Handle exact task names
+                    for (task_path, task_name) in &unique_tasks {
+                        let task_id = format!("{}\\{}", task_path, task_name);
+                        if !captured_tasks_set.contains(&task_id) {
+                            captured_tasks_set.insert(task_id);
+                            match capture_scheduler_state(task_path, task_name) {
+                                Ok(task_snapshot) => snapshots.push(task_snapshot),
+                                Err(e) => {
+                                    log::debug!(
+                                        "Could not capture state for task {}\\{}: {} (may not exist)",
+                                        task_path,
+                                        task_name,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    Ok::<_, Error>(snapshots)
+                },
+            )
+        },
+    );
+
+    // Add results to snapshot
+    for reg in registry_result? {
+        snapshot.add_registry_snapshot(reg);
+    }
+    for svc in services_result? {
+        snapshot.add_service_snapshot(svc);
+    }
+    for task in scheduler_result? {
+        snapshot.add_scheduler_snapshot(task);
     }
 
     log::info!(

@@ -3,6 +3,7 @@
 use crate::error::Result;
 use crate::models::{CategoryDefinition, TweakDefinition, TweakStatus};
 use crate::services::{backup_service, system_info_service, tweak_loader};
+use rayon::prelude::*;
 
 /// Get all available categories (auto-discovered from YAML files)
 #[tauri::command]
@@ -100,7 +101,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     })
 }
 
-/// Get status of all tweaks
+/// Get status of all tweaks (parallelized for performance)
 #[tauri::command]
 pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
     log::debug!("Command: get_all_tweak_statuses");
@@ -108,20 +109,34 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
     let version = windows_info.version_number();
 
     let tweaks = tweak_loader::get_tweaks_for_version(version)?;
-    let mut statuses = Vec::new();
 
-    for (id, tweak) in tweaks {
-        let state = backup_service::detect_tweak_state(&tweak, version)?;
-        let last_applied = backup_service::load_snapshot(&id)?.map(|s| s.created_at);
+    // Use rayon parallel iterator for concurrent status detection
+    // This is a CPU-bound + IO-bound task that benefits from parallelization
+    let statuses: Vec<TweakStatus> = tweaks
+        .into_par_iter()
+        .filter_map(
+            |(id, tweak)| match backup_service::detect_tweak_state(&tweak, version) {
+                Ok(state) => {
+                    let last_applied = backup_service::load_snapshot(&id)
+                        .ok()
+                        .flatten()
+                        .map(|s| s.created_at);
 
-        statuses.push(TweakStatus {
-            tweak_id: id,
-            is_applied: state.current_option_index == Some(0),
-            last_applied,
-            has_backup: state.has_snapshot,
-            current_option_index: state.current_option_index,
-        });
-    }
+                    Some(TweakStatus {
+                        tweak_id: id,
+                        is_applied: state.current_option_index == Some(0),
+                        last_applied,
+                        has_backup: state.has_snapshot,
+                        current_option_index: state.current_option_index,
+                    })
+                }
+                Err(e) => {
+                    log::warn!("Failed to detect state for tweak {}: {}", id, e);
+                    None
+                }
+            },
+        )
+        .collect();
 
     log::debug!("Returning {} tweak statuses", statuses.len());
     Ok(statuses)
