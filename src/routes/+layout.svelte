@@ -19,13 +19,6 @@
   const { children } = $props();
 
   onMount(async () => {
-    // Hide the initial HTML loader now that Svelte is ready
-    const initialLoader = document.getElementById("initial-loader");
-    if (initialLoader) {
-      initialLoader.classList.add("fade-out");
-      setTimeout(() => initialLoader.remove(), 200);
-    }
-
     // Show the window now that the UI is ready
     try {
       await invoke("show_main_window");
@@ -33,8 +26,23 @@
       console.error("Failed to show window:", e);
     }
 
+    // Start data loading IMMEDIATELY (categories first - enables UI quickly)
+    // This overlaps network request with the UI initialization below
+    const dataPromise = import("$lib/stores/tweaksData.svelte").then((m) => m.initializeQuick());
+
+    // Hide the initial HTML loader now that Svelte is ready
+    const initialLoader = document.getElementById("initial-loader");
+    if (initialLoader) {
+      initialLoader.classList.add("fade-out");
+      setTimeout(() => initialLoader.remove(), 200);
+    }
+
+    // Init theme stores (synchronous, fast)
     themeStore.init();
     colorSchemeStore.init();
+
+    // Wait for categories to finish loading (likely already done)
+    await dataPromise;
 
     // Perform silent background update check if enabled
     const settings = settingsStore.settings;

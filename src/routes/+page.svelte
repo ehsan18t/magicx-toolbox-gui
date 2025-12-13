@@ -4,15 +4,23 @@
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { initializeData } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
 
   let error = $state<string | null>(null);
 
   onMount(async () => {
     try {
-      // Load all data - components show skeletons while loading
-      await initializeData();
+      // Categories may already be loaded by layout - only load remaining data
+      // This avoids duplicate network requests
+      if (categoriesStore.list.length > 0) {
+        // Layout already loaded categories, just load remaining data
+        await loadRemainingData();
+      } else {
+        // Fallback: load everything if layout hasn't started yet
+        const { initializeData } = await import("$lib/stores/tweaksData.svelte");
+        await initializeData();
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load data";
       console.error("Failed to initialize:", e);
