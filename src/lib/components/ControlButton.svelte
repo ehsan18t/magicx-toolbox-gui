@@ -7,10 +7,10 @@
     title: string;
     icon: string;
     variant?: Variant;
-    onClick: () => void;
+    onclick: () => void;
   }
 
-  const { title, icon, variant = "default", onClick }: Props = $props();
+  const { title, icon, variant = "default", onclick }: Props = $props();
 
   const variantClasses: Record<Variant, string> = {
     default: "hover:bg-foreground/8 active:bg-foreground/12 focus-visible:bg-foreground/12",
@@ -31,8 +31,9 @@
 
 <button
   class="group relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border-0 bg-transparent transition-colors duration-150 outline-none active:scale-90 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 {btnClass}"
+  type="button"
   {title}
-  onclick={onClick}
+  {onclick}
 >
   <span class="relative z-10 flex items-center justify-center transition-transform duration-150 {iconClass}">
     <Icon {icon} width="16" height="16" />

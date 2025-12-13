@@ -1,7 +1,7 @@
 <script lang="ts">
   import { debugState } from "$lib/stores/debug.svelte";
-  import { themeStore } from "$lib/stores/theme";
-  import { systemStore } from "$lib/stores/tweaks";
+  import { themeStore } from "$lib/stores/theme.svelte";
+  import { systemStore } from "$lib/stores/tweaks.svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -129,7 +129,7 @@
         </span>
 
         <!-- Admin Status Indicator -->
-        {#if $systemStore?.is_admin}
+        {#if systemStore.info?.is_admin}
           <span
             class="flex items-center gap-1 rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success uppercase"
             title="Running as Administrator"
@@ -137,7 +137,7 @@
             <Icon icon="tabler:shield-check-filled" width="12" height="12" />
             Admin
           </span>
-        {:else if $systemStore !== null}
+        {:else if systemStore.info !== null}
           <span
             class="flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold text-warning uppercase"
             title="Running as Standard User - Some features require Administrator"
@@ -152,6 +152,8 @@
     <div class="window-controls flex items-center drag-disable">
       <!-- Debug Toggle -->
       <button
+        type="button"
+        aria-pressed={debugState.enabled}
         title={debugState.enabled
           ? `Debug ON (${debugState.logCounts.total} logs) - Click to open panel`
           : "Debug OFF - Click to enable"}
@@ -182,8 +184,9 @@
       </button>
 
       <!-- Restart as Admin button (only shown if not running as admin) -->
-      {#if $systemStore !== null && !$systemStore.is_admin}
+      {#if systemStore.info !== null && !systemStore.info.is_admin}
         <button
+          type="button"
           title="Restart as Administrator"
           onclick={restartAsAdmin}
           disabled={isRestarting}
@@ -202,22 +205,22 @@
 
       <ControlButton
         title="Toggle Theme"
-        icon={$themeStore === "dark" ? "tabler:moon" : "tabler:sun"}
-        onClick={toggleTheme}
+        icon={themeStore.current === "dark" ? "tabler:moon" : "tabler:sun"}
+        onclick={toggleTheme}
         variant="theme"
       />
 
       <!-- Divider -->
       <div class="mx-2 h-4 w-px bg-foreground-muted/20"></div>
 
-      <ControlButton title="Minimize" icon="fluent:minimize-20-filled" onClick={minimize} variant="default" />
+      <ControlButton title="Minimize" icon="fluent:minimize-20-filled" onclick={minimize} variant="default" />
       <ControlButton
         title={isMaximized ? "Restore" : "Maximize"}
         icon={isMaximized ? "tabler:copy" : "fluent:maximize-20-filled"}
-        onClick={maximize}
+        onclick={maximize}
         variant="default"
       />
-      <ControlButton title="Close" icon="tabler:x" onClick={close} variant="danger" />
+      <ControlButton title="Close" icon="tabler:x" onclick={close} variant="danger" />
     </div>
   </div>
 {:else}

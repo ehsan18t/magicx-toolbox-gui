@@ -1,15 +1,14 @@
 <script lang="ts">
-  import { loadingStore } from "$lib/stores/tweaks";
-  import { derived } from "svelte/store";
+  import { loadingStore } from "$lib/stores/tweaks.svelte";
   import Icon from "./Icon.svelte";
 
-  const isApplyingRaw = derived(loadingStore, ($loading) => $loading.size > 0);
+  const isApplying = $derived(loadingStore.isAnyLoading);
 
   let visible = $state(false);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
-    const applying = $isApplyingRaw;
+    const applying = isApplying;
 
     if (applying) {
       if (hideTimer) {

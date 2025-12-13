@@ -23,6 +23,69 @@ Changes that require documentation updates:
 - Use clear messages, e.g., `feat(ui): add settings drawer toggle` or `fix(theme): persist system preference on init`.
 - Always commit after each logical change; avoid large uncommitted work.
 
+## Dependency Selection Guidelines
+
+**MANDATORY: Follow this process when adding ANY new package (npm) or crate (cargo).**
+
+### Before Adding a Dependency
+
+1. **Identify the need clearly** - What specific functionality is required?
+2. **Research alternatives** - Always compare at least 3 options when available
+3. **Evaluate each option** using these criteria:
+
+| Criteria          | Priority | Description                                                           |
+| ----------------- | -------- | --------------------------------------------------------------------- |
+| **Maintenance**   | Critical | Last update <6 months, active issue resolution, responsive maintainer |
+| **Stability**     | Critical | Major version 1.0+, minimal breaking changes, semantic versioning     |
+| **Performance**   | High     | Benchmarks, memory footprint, startup impact                          |
+| **Bundle Size**   | High     | Tree-shakeable, minimal transitive dependencies                       |
+| **Security**      | High     | No known CVEs, audit history, trusted maintainers                     |
+| **Compatibility** | High     | Works with current Rust/Node versions, platform support (Windows)     |
+| **Documentation** | Medium   | API docs, examples, TypeScript types (for npm)                        |
+| **Community**     | Medium   | GitHub stars, download count, Stack Overflow presence                 |
+
+### Decision Matrix Template
+
+When proposing a new dependency, document:
+
+```
+## Dependency Proposal: [purpose]
+
+### Options Evaluated:
+1. [Package A] - [version]
+   - ✅ Pros: ...
+   - ❌ Cons: ...
+   - 📊 Last updated: [date], Downloads: [count], Size: [KB]
+
+2. [Package B] - [version]
+   - ✅ Pros: ...
+   - ❌ Cons: ...
+   - 📊 Last updated: [date], Downloads: [count], Size: [KB]
+
+### Recommendation: [Package X] because [reasons]
+```
+
+### Red Flags - Avoid Dependencies That:
+
+- Haven't been updated in >12 months (unless feature-complete like `lodash`)
+- Have unresolved security vulnerabilities
+- Pull in excessive transitive dependencies
+- Are maintained by a single person with no backup maintainers
+- Have license incompatibilities (prefer MIT, Apache-2.0, BSD)
+- Are pre-1.0 without a clear roadmap (for production use)
+
+### Project Goals Alignment
+
+All dependencies must support our core goals:
+
+- **Best Performance**: Minimal runtime overhead, efficient algorithms
+- **Maximum Stability**: Battle-tested, widely used, backward compatible
+- **Small Bundle**: Prefer focused libraries over kitchen-sink frameworks
+
+### Current Approved Dependencies
+
+See `package.json` (frontend) and `src-tauri/Cargo.toml` (backend) for the current vetted dependency list. Any additions must go through the evaluation process above.
+
 # Copilot Instructions – Svelte Frontend
 
 **MANDATORY: Follow all rules in this section for every frontend change.**
@@ -38,8 +101,130 @@ Changes that require documentation updates:
 - Use Tailwind CSS (v4) utility classes; avoid inline styles unless necessary.
 - Keep aliases consistent: `@/*` maps to `src/*` and `$lib` for library exports.
 - For external links in the UI, use the `ExternalLink` component (it opens via Tauri shell).
-- Use `themeStore` from `$lib/stores/theme` for theme toggling; do not reimplement theme persistence.
 - Respect window drag regions: elements inside the title bar that need interaction must have `drag-disable`.
+
+## Store Pattern (Svelte 5 Runes)
+
+Stores are implemented using Svelte 5 runes (`.svelte.ts` files) with getter-based access:
+
+```typescript
+// Store definition (e.g., theme.svelte.ts)
+let currentTheme = $state<Theme>("system");
+
+export const themeStore = {
+  get current() { return currentTheme; },
+  get isDark() { return currentTheme === "dark"; },
+  set(theme: Theme) { currentTheme = theme; },
+  toggle() { /* ... */ }
+};
+
+// Component usage - NO $ prefix, use getter directly
+<script lang="ts">
+  import { themeStore } from "$lib/stores/theme.svelte";
+
+  // Access via getter (reactive automatically)
+  const isDark = $derived(themeStore.isDark);
+</script>
+
+{#if themeStore.current === "dark"}
+  <Icon icon="moon" />
+{/if}
+```
+
+**Store Structure:**
+
+```
+src/lib/stores/
+├── index.ts              # Barrel export for all stores
+├── theme.svelte.ts       # Theme management (light/dark/system)
+├── modal.svelte.ts       # Modal state (about/settings/update)
+├── layout.svelte.ts      # Sidebar state (sidebarStore)
+├── colorScheme.svelte.ts # Accent color scheme selection
+├── settings.svelte.ts    # App settings with localStorage persistence
+├── debug.svelte.ts       # Debug panel and logging state
+├── navigation.svelte.ts  # Tab navigation state
+├── update.svelte.ts      # Update checking state
+├── systemElevation.svelte.ts # SYSTEM elevation mode
+├── tweakDetailsModal.svelte.ts # Tweak details modal state
+└── tweaks.svelte.ts      # Barrel for tweaks system
+    ├── tweaksData.svelte.ts    # systemStore, categoriesStore, tweaksStore
+    ├── tweaksLoading.svelte.ts # loadingStore, errorStore (SvelteSet/SvelteMap)
+    ├── tweaksPending.svelte.ts # pendingChangesStore, pendingRebootStore
+    └── tweaksActions.svelte.ts # filterStore, apply/revert/toggle actions
+```
+
+**Available stores:**
+
+- `themeStore` - Theme management (light/dark/system)
+- `modalStore` - Modal state (about/settings/update)
+- `sidebarStore` - Sidebar expanded/pinned state
+- `colorSchemeStore` - Accent color scheme
+- `settingsStore` - App settings with localStorage persistence
+- `debugState` - Debug panel and logging state
+- `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
+- `updateStore` - Update info and checking state
+- `systemElevationStore` - SYSTEM elevation mode
+- `tweakDetailsModalStore` - Tweak details modal state
+
+**Tweaks system stores (from tweaks.svelte.ts barrel):**
+
+- `systemStore` - Windows system info (.info getter)
+- `categoriesStore` - Category definitions (.list, .map getters)
+- `tweaksStore` - Tweak list with status (.list, .byCategory, .stats getters)
+- `loadingStore` - Per-tweak loading state (SvelteSet-based, .isLoading(), .isAnyLoading)
+- `errorStore` - Per-tweak error messages (SvelteMap-based, .getError(), .hasAnyError)
+- `pendingChangesStore` - Staged changes before apply (SvelteMap-based)
+- `pendingRebootStore` - Tweaks requiring reboot (SvelteSet-based)
+- `filterStore` - Search and filter state
+
+**Using SvelteSet/SvelteMap for reactivity:**
+
+```typescript
+import { SvelteSet, SvelteMap } from "svelte/reactivity";
+
+// Do NOT wrap with $state - they are already reactive
+const loadingTweaks = new SvelteSet<string>();
+const errors = new SvelteMap<string, string>();
+
+export const loadingStore = {
+  start(tweakId: string) { loadingTweaks.add(tweakId); },
+  stop(tweakId: string) { loadingTweaks.delete(tweakId); },
+  isLoading(tweakId: string) { return loadingTweaks.has(tweakId); },
+  get isAnyLoading() { return loadingTweaks.size > 0; },
+};
+```
+
+## UI Primitives
+
+Use the UI primitives from `$lib/components/ui` for consistency:
+
+```typescript
+import { Button, Badge, Card, Modal, ModalHeader, ModalBody, ModalFooter,
+         IconButton, Switch, Select, SearchInput, Spinner } from "$lib/components/ui";
+```
+
+**Guidelines:**
+
+- Use `Button` with `variant` prop: `"primary"`, `"secondary"`, `"danger"`, `"ghost"`
+- Use `Badge` for status indicators with `variant` prop
+- Use `Card` for content containers
+- Use `Modal` + `ModalHeader` + `ModalBody` + `ModalFooter` for dialogs
+- Use `IconButton` for icon-only buttons with tooltips
+- Use `Switch` for boolean toggles
+- Use `Spinner` for loading states
+
+## Tweak Details Sub-Components
+
+Use sub-components from `$lib/components/tweak-details` when displaying tweak changes:
+
+```typescript
+import { RegistryChangeItem, ServiceChangeItem, SchedulerChangeItem, CommandList } from "$lib/components/tweak-details";
+```
+
+- `RegistryChangeItem` - Displays a single registry change with path, value, badges
+- `ServiceChangeItem` - Displays a service change with name and startup type
+- `SchedulerChangeItem` - Displays a scheduler task change with action
+- `CommandList` - Displays pre/post commands or PowerShell scripts
 
 ## Build / run / test
 
@@ -71,6 +256,7 @@ Changes that require documentation updates:
 - Using direct `fetch` to local files; use Tauri commands via `@tauri-apps/api` when talking to backend.
 - Adding new NPM dependencies without confirming compatibility with Vite/SvelteKit/Tauri.
 - Blocking the UI with long-running calls; offload via Tauri commands instead.
+- Using `$store` subscription syntax with rune-based stores (they don't have `subscribe`).
 
 ## Testing & linting
 
@@ -92,17 +278,24 @@ The backend follows a layered architecture:
 
 ```
 src-tauri/src/
-├── commands/       # Tauri command handlers (thin layer calling services)
-│   ├── backup.rs   # Backup management commands
-│   ├── debug.rs    # Debug mode toggling
-│   ├── general.rs  # General app commands (greet, theme)
-│   ├── system.rs   # System info commands
-│   └── tweaks.rs   # Tweak operations (apply, revert, status)
-├── models/         # Data structures and types
-│   ├── registry.rs # Registry-related types
-│   ├── system.rs   # System info types
-│   └── tweak.rs    # Tweak definitions, categories, registry changes
-├── services/       # Business logic layer
+├── commands/           # Tauri command handlers (thin layer calling services)
+│   ├── backup.rs       # Backup management commands
+│   ├── debug.rs        # Debug mode toggling
+│   ├── elevation.rs    # SYSTEM elevation commands
+│   ├── general.rs      # General app commands (greet, theme)
+│   ├── system.rs       # System info commands
+│   ├── update.rs       # Update commands
+│   └── tweaks/         # Tweak commands (modular structure)
+│       ├── mod.rs      # Module exports
+│       ├── query.rs    # Status/listing (get_categories, get_tweak_status, etc.)
+│       ├── apply.rs    # Single tweak ops (apply_tweak, revert_tweak)
+│       ├── batch.rs    # Batch operations (batch_apply_tweaks, batch_revert_tweaks)
+│       └── helpers.rs  # Internal utilities (registry/service/scheduler ops)
+├── models/             # Data structures and types
+│   ├── registry.rs     # Registry-related types
+│   ├── system.rs       # System info types
+│   └── tweak.rs        # Tweak definitions, categories, registry changes
+├── services/           # Business logic layer
 │   ├── backup_service.rs      # Backup creation/restoration
 │   ├── registry_service.rs    # Windows registry operations
 │   ├── scheduler_service.rs   # Windows Task Scheduler operations

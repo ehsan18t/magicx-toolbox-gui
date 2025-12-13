@@ -163,7 +163,7 @@ pub async fn check_for_update(
     log::debug!("Latest release: {}", release.tag_name);
 
     // Parse asset pattern regex
-    let asset_regex = regex::Regex::new(&config.asset_pattern).map_err(|e| {
+    let asset_regex = regex_lite::Regex::new(&config.asset_pattern).map_err(|e| {
         log::error!("Invalid asset pattern regex: {}", e);
         Error::Update(format!("Invalid asset pattern: {}", e))
     })?;
@@ -196,6 +196,20 @@ pub async fn check_for_update(
     })
 }
 
+/// Allowed GitHub repository prefixes for update downloads
+/// This prevents downloading from untrusted sources
+const ALLOWED_DOWNLOAD_PREFIXES: &[&str] = &[
+    "https://github.com/ehsan18t/magicx-toolbox",
+    "https://objects.githubusercontent.com/",
+];
+
+/// Validate that a download URL is from a trusted source
+fn is_trusted_download_url(url: &str) -> bool {
+    ALLOWED_DOWNLOAD_PREFIXES
+        .iter()
+        .any(|prefix| url.starts_with(prefix))
+}
+
 /// Download and install an update
 ///
 /// Downloads the update asset to a temporary location and launches the installer.
@@ -203,6 +217,33 @@ pub async fn check_for_update(
 #[tauri::command]
 pub async fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
     log::info!("Starting update download: {}", asset_name);
+
+    // Security: Validate download URL is from trusted source
+    if !is_trusted_download_url(&download_url) {
+        log::error!("Rejected untrusted download URL: {}", download_url);
+        return Err(Error::Update(
+            "Download URL is not from a trusted source. Updates must come from the official GitHub repository.".into()
+        ));
+    }
+
+    // Validate asset name to prevent path traversal
+    if asset_name.contains("..") || asset_name.contains('/') || asset_name.contains('\\') {
+        log::error!("Rejected invalid asset name: {}", asset_name);
+        return Err(Error::Update("Invalid asset name".into()));
+    }
+
+    // Validate file extension
+    let extension = std::path::Path::new(&asset_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    if !matches!(extension.to_lowercase().as_str(), "exe" | "msi") {
+        log::error!("Rejected unsupported file type: {}", extension);
+        return Err(Error::Update(
+            "Unsupported installer type. Only .exe and .msi files are allowed.".into(),
+        ));
+    }
 
     // Get temp directory
     let temp_dir = std::env::temp_dir();
@@ -267,5 +308,80 @@ pub async fn install_update(download_url: String, asset_name: String) -> Result<
             log::error!("Failed to launch installer: {}", e);
             Err(Error::Update(format!("Failed to launch installer: {}", e)))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // parse_version tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_version_three_parts() {
+        assert_eq!(parse_version("3.0.0"), Some((3, 0, 0)));
+        assert_eq!(parse_version("1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_version("10.20.30"), Some((10, 20, 30)));
+    }
+
+    #[test]
+    fn test_parse_version_with_v_prefix() {
+        assert_eq!(parse_version("v3.0.0"), Some((3, 0, 0)));
+        assert_eq!(parse_version("v1.2.3"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn test_parse_version_two_parts() {
+        assert_eq!(parse_version("3.0"), Some((3, 0, 0)));
+        assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
+    }
+
+    #[test]
+    fn test_parse_version_with_prerelease() {
+        // Should strip pre-release suffix from patch
+        assert_eq!(parse_version("3.0.0-beta"), Some((3, 0, 0)));
+        assert_eq!(parse_version("1.2.3-rc.1"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn test_parse_version_invalid() {
+        assert_eq!(parse_version("invalid"), None);
+        assert_eq!(parse_version("abc.def.ghi"), None);
+        assert_eq!(parse_version("1"), None);
+    }
+
+    // ========================================================================
+    // is_newer_version tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_newer_version_major() {
+        assert!(is_newer_version("2.0.0", "3.0.0"));
+        assert!(!is_newer_version("3.0.0", "2.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_minor() {
+        assert!(is_newer_version("3.0.0", "3.1.0"));
+        assert!(!is_newer_version("3.1.0", "3.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_patch() {
+        assert!(is_newer_version("3.0.0", "3.0.1"));
+        assert!(!is_newer_version("3.0.1", "3.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_equal() {
+        assert!(!is_newer_version("3.0.0", "3.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_with_v_prefix() {
+        assert!(is_newer_version("3.0.0", "v3.1.0"));
+        assert!(is_newer_version("v3.0.0", "3.1.0"));
     }
 }

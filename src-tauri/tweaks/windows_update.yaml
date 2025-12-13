@@ -113,7 +113,7 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
-    requires_system: false
+    requires_system: true
     requires_ti: true
     is_toggle: true
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
@@ -140,12 +140,15 @@ tweaks:
             value_name: "SetDisableUXWUAccess"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "SYSTEM\\CurrentControlSet\\Services\\WaaSMedicSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
         service_changes:
           - name: "wuauserv"
             startup: disabled
             skip_validation: true
-          - name: "WaaSMedicSvc"
-            startup: disabled
           - name: "UsoSvc"
             startup: disabled
       - label: "Windows Update Enabled"
@@ -170,13 +173,15 @@ tweaks:
             value_name: "SetDisableUXWUAccess"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKLM
+            key: "SYSTEM\\CurrentControlSet\\Services\\WaaSMedicSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
         service_changes:
           - name: "wuauserv"
             startup: manual
             start_service: false
             skip_validation: true
-          - name: "WaaSMedicSvc"
-            startup: manual
-            start_service: false
           - name: "UsoSvc"
             startup: automatic

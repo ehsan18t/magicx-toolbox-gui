@@ -43,7 +43,7 @@ impl ServiceState {
 
 /// Service status information
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // name field reserved for future use
 pub struct ServiceStatus {
     pub name: String,
     pub state: ServiceState,
@@ -253,14 +253,12 @@ pub fn stop_service(service_name: &str) -> Result<(), Error> {
 }
 
 /// Check if a service is currently running
-#[allow(dead_code)]
 pub fn is_service_running(service_name: &str) -> Result<bool, Error> {
     let status = get_service_status(service_name)?;
     Ok(status.state == ServiceState::Running)
 }
 
 /// Check if a service is disabled
-#[allow(dead_code)]
 pub fn is_service_disabled(service_name: &str) -> Result<bool, Error> {
     let status = get_service_status(service_name)?;
     Ok(status.startup_type == Some(ServiceStartupType::Disabled))

@@ -471,6 +471,9 @@ pub struct TweakResult {
     pub success: bool,
     pub message: String,
     pub requires_reboot: bool,
+    /// List of (tweak_id, error_message) for failed operations in batch mode
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<(String, String)>,
 }
 
 /// Status of a specific tweak (returned to frontend)

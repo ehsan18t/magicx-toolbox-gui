@@ -3,14 +3,15 @@
   import AboutModal from "@/lib/components/AboutModal.svelte";
   import ApplyingOverlay from "@/lib/components/ApplyingOverlay.svelte";
   import DebugPanel from "@/lib/components/DebugPanel.svelte";
+  import PendingRebootBanner from "@/lib/components/PendingRebootBanner.svelte";
   import SettingsModal from "@/lib/components/SettingsModal.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
   import TweakDetailsModal from "@/lib/components/TweakDetailsModal.svelte";
   import UpdateModal from "@/lib/components/UpdateModal.svelte";
-  import { colorSchemeStore } from "@/lib/stores/colorScheme";
-  import { settingsStore } from "@/lib/stores/settings";
-  import { themeStore } from "@/lib/stores/theme";
-  import { updateStore } from "@/lib/stores/update";
+  import { colorSchemeStore } from "@/lib/stores/colorScheme.svelte";
+  import { settingsStore } from "@/lib/stores/settings.svelte";
+  import { themeStore } from "@/lib/stores/theme.svelte";
+  import { updateStore } from "@/lib/stores/update.svelte";
   import { onMount } from "svelte";
 
   const { children } = $props();
@@ -20,7 +21,7 @@
     colorSchemeStore.init();
 
     // Perform silent background update check if enabled
-    const settings = settingsStore.get();
+    const settings = settingsStore.settings;
     if (settings.autoCheckUpdates) {
       // Check if enough time has passed since last check (at least 1 hour)
       const lastCheck = settings.lastUpdateCheck;
@@ -44,6 +45,7 @@
 <TitleBar />
 <!-- TitleBar height=h-10 == 2.5rem -->
 <main class="h-[calc(100dvh-2.5rem)] w-full overflow-auto">
+  <PendingRebootBanner />
   {@render children()}
 </main>
 <DebugPanel />

@@ -1,48 +1,40 @@
-# Tauri + SvelteKit Starter Template
+# MagicX Toolbox
 
-A modern, full-featured starter template for building desktop applications with Tauri 2 and SvelteKit.
+**The ultimate tool to optimize, tweak, and customize your Windows experience.**
 
-## Features
+MagicX Toolbox is a modern, safe, and easy-to-use application designed to help you take control of your Windows PC. Whether you want to boost gaming performance, enhance privacy, remove bloatware, or just customize your system, MagicX Toolbox makes it simple.
 
-- 🚀 **Tauri 2** - Build smaller, faster, and more secure desktop applications.
-- ⚡ **SvelteKit** - The fastest way to build svelte apps.
-- 🎨 **Tailwind CSS v4** - Utility-first CSS framework.
-- 🌟 **Icons**: Easily use thousands of icons from [Iconify](https://iconify.design/).
-- 🌙 **Dark/Light Theme** - Built-in theme switching with system preference detection.
-- 🎭 **Custom Titlebar** - Beautiful, native-feeling window controls.
-- 🔧 **TypeScript** - Full type safety.
-- 📦 **Modern Build Tools** - Vite, ESLint, Prettier.
+## Key Features
 
-## Quick Start
+- **🎮 Gaming Optimization**: Reduce system latency and optimize background processes for a smoother gaming experience.
+- **🛡️ Privacy & Security**: Disable invasive telemetry and data collection to keep your personal information private.
+- **🚀 Performance Boost**: Remove bloatware and unnecessary services to free up system resources.
+- **💾 Safe by Design**:
+  - **Automatic Backups**: Snapshots are taken before every change, so you can always undo tweaks.
+  - **Risk Levels**: Every tweak is clearly labeled (Safe, Moderate, Advanced) so you know exactly what you're doing.
+- **ℹ️ System Information**: Get a detailed overview of your hardware and software specifications.
+- **🧹 Bloatware Removal**: Clean up pre-installed junk apps that slow down your computer.
+- **Portable**: No installation required. Just extract the files and run the .exe file.
 
-1. **Clone and install**
-   ```bash
-   git clone https://github.com/ehsan18t/magicx-toolbox-gui.git
-   ```
-   ```bash
-   cd magicx-toolbox-gui
-   bun install
-   ```
+## Download
 
-2. **Development**
-   ```bash
-   bun run dev
-   ```
+1. **Download**: Go to the [Releases Page](https://github.com/ehsan18t/magicx-toolbox-gui/releases/latest) and download the latest .exe file.
 
-3. **Build**
-   ```bash
-   bun run build
-   ```
+## How to Use
 
-4. **Build Debug**
-   ```bash
-   bun run build:debug
-   ```
+1. **Browse Categories**: Navigate through tabs like *Gaming*, *Privacy*, and *System* to find tweaks.
+2. **Review Tweaks**: Read the description and check the risk level for each tweak.
+3. **Apply**: Toggle the switch to apply a tweak. The app will automatically create a restore point.
+4. **Revert**: If you change your mind, simply toggle the switch off to revert the change or restore a snapshot from the "Backups" section.
+
+---
+
+## For Developers and Contributors
+If you are a developer looking to contribute or build from source, read the section below.
+
 ## Development
 
 ### Commands
-
-This template comes with a set of pre-configured scripts to help you with development and maintenance.
 
 | Command                | Description                                                                           |
 | :--------------------- | :------------------------------------------------------------------------------------ |
@@ -61,42 +53,62 @@ This template comes with a set of pre-configured scripts to help you with develo
 | `bun run prepare`      | SvelteKit's command to generate types                                                 |
 
 ### Project Structure
+
 ```
-├── src/                   # Frontend source
-│   ├── lib/               # Shared components and utilities
-│   │   ├── components/    # Reusable components
-│   │   ├── stores/        # Svelte stores
-│   │   └── config/        # App configuration
-│   ├── routes/            # SvelteKit routes
-│   └── app.html           # HTML template
-├── src-tauri/             # Tauri backend
-├── static/                # Static assets
+├── src/                      # Frontend source
+│   ├── lib/
+│   │   ├── api/              # Tauri command wrappers
+│   │   ├── components/       # Svelte components
+│   │   │   ├── ui/           # Reusable UI primitives
+│   │   │   └── tweak-details/# Tweak display sub-components
+│   │   ├── stores/           # Svelte 5 rune-based stores (.svelte.ts)
+│   │   │   ├── index.ts      # Barrel export for all stores
+│   │   │   ├── tweaks.svelte.ts # Tweaks system (data, loading, pending, actions)
+│   │   │   ├── navigation.svelte.ts # Tab navigation
+│   │   │   └── ...           # Theme, modal, sidebar, settings, etc.
+│   │   ├── config/           # App configuration
+│   │   └── types/            # TypeScript types
+│   ├── routes/               # SvelteKit routes
+│   └── app.css               # Global styles & CSS variables
+├── src-tauri/                # Tauri backend
+│   ├── src/
+│   │   ├── commands/         # Tauri command handlers
+│   │   │   └── tweaks/       # Modular tweak commands (query, apply, batch)
+│   │   ├── models/           # Data structures
+│   │   └── services/         # Business logic (registry, services, scheduler)
+│   └── tweaks/               # YAML tweak definitions
+├── static/                   # Static assets
 └── README.md
 ```
 
 ## Documentation
 
 ### Backend Development
-For detailed information about working with the Rust backend, including:
-- Understanding the project structure
-- Creating and managing Tauri commands
-- Working with application state
-- Error handling best practices
-- Frontend-backend communication
+
+For detailed information about working with the Rust backend:
 
 **📖 [Read the Rust Backend Developer Guide](./RUST_BACKEND_GUIDE.md)**
 
 ### Authoring Tweaks (YAML)
-Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks. The app auto-discovers all `.yaml` files, no code changes are needed when you add/edit files.
 
-**📖 [Read the Tweak Authoring Guide for more details](./TWEAK_AUTHORING.md)**
+Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks.
+
+**📖 [Read the Tweak Authoring Guide](./TWEAK_AUTHORING.md)**
+
+### Architecture Overview
+
+For understanding the overall architecture and data flow:
+
+**📖 [Read the Architecture Guide](./ARCHITECTURE.md)**
 
 ## Customization
 
 ### Theme
+
 Edit `src/app.css` to customize colors and design tokens.
 
 ### App Configuration
+
 Update `src/lib/config/app.ts` for app metadata and settings.
 
 ### Window Settings

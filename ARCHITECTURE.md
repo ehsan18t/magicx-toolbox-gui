@@ -1,6 +1,6 @@
-# MagicX Toolbox Backend Architecture
+# MagicX Toolbox Architecture
 
-> Comprehensive guide for LLMs to understand the project's backend capabilities, data flow, and design decisions.
+> Comprehensive guide for understanding the project's capabilities, data flow, and design decisions.
 
 ## Project Overview
 
@@ -13,31 +13,144 @@ The application allows users to apply, revert, and manage Windows registry tweak
 
 ---
 
-## Core Features
+## Frontend Architecture
 
-### 1. Registry Tweaks
+### Store Pattern (Svelte 5 Runes)
+
+Stores use Svelte 5 runes (`.svelte.ts` files) with getter-based reactive access:
+
+```typescript
+// Store definition pattern
+let state = $state<T>(initialValue);
+
+export const store = {
+  get value() { return state; },
+  get derived() { return computedValue; },
+  action() { state = newValue; }
+};
+
+// Component usage - direct access, no $ prefix
+import { store } from "$lib/stores/store.svelte";
+
+const derived = $derived(store.value);
+```
+
+**Store Structure:**
+```
+src/lib/stores/
+├── index.ts              # Barrel export for all stores
+├── theme.svelte.ts       # Theme management (light/dark/system)
+├── modal.svelte.ts       # Modal state (about/settings/update)
+├── layout.svelte.ts      # Sidebar expanded/pinned state (sidebarStore)
+├── colorScheme.svelte.ts # Accent color scheme selection
+├── settings.svelte.ts    # App settings with localStorage persistence
+├── debug.svelte.ts       # Debug panel and logging state
+├── navigation.svelte.ts  # Tab navigation state
+├── update.svelte.ts      # Update checking state
+├── systemElevation.svelte.ts # SYSTEM elevation mode
+├── tweakDetailsModal.svelte.ts # Tweak details modal state
+└── tweaks.svelte.ts      # Barrel export for tweaks system
+    ├── tweaksData.svelte.ts    # System info, categories, tweaks list
+    ├── tweaksLoading.svelte.ts # Loading/error state with SvelteSet/SvelteMap
+    ├── tweaksPending.svelte.ts # Pending changes and reboot tracking
+    └── tweaksActions.svelte.ts # Apply, revert, toggle actions
+```
+
+**Available stores:**
+- `themeStore` - Theme management (light/dark/system)
+- `modalStore` - Modal state (about/settings/update)
+- `sidebarStore` - Sidebar expanded/pinned state
+- `colorSchemeStore` - Accent color scheme selection
+- `settingsStore` - App settings with localStorage persistence
+- `debugState` - Debug panel and logging state
+- `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
+- `updateStore` - Update info and checking state
+- `systemElevationStore` - SYSTEM elevation mode
+- `tweakDetailsModalStore` - Tweak details modal state
+
+**Tweaks system stores:**
+- `systemStore` - Windows system info (.info getter)
+- `categoriesStore` - Category definitions (.list, .map)
+- `tweaksStore` - Tweak definitions with status (.list, .byCategory, .stats)
+- `loadingStore` - Per-tweak loading state (SvelteSet-based)
+- `errorStore` - Per-tweak error messages (SvelteMap-based)
+- `pendingChangesStore` - Staged changes before apply (SvelteMap-based)
+- `pendingRebootStore` - Tweaks requiring reboot (SvelteSet-based)
+- `filterStore` - Search and filter state
+
+### UI Components
+
+Reusable UI primitives in `$lib/components/ui/`:
+- `Button` - Primary, secondary, danger, ghost variants
+- `Badge` - Status indicators
+- `Card` - Content containers
+- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter` - Dialog system
+- `IconButton` - Icon-only buttons with tooltips
+- `Switch` - Boolean toggles
+- `Select` - Dropdown selection
+- `SearchInput` - Search with icon
+- `Spinner` - Loading indicator
+
+### Component Structure
+
+```
+src/lib/components/
+├── ui/                   # Reusable primitives
+│   ├── Button.svelte
+│   ├── Badge.svelte
+│   ├── Card.svelte
+│   ├── Modal.svelte, ModalHeader.svelte, ModalBody.svelte, ModalFooter.svelte
+│   ├── IconButton.svelte
+│   ├── Switch.svelte
+│   ├── Select.svelte
+│   ├── SearchInput.svelte
+│   ├── Spinner.svelte
+│   └── index.ts          # Barrel exports
+├── tweak-details/        # Tweak detail sub-components
+│   ├── RegistryChangeItem.svelte
+│   ├── ServiceChangeItem.svelte
+│   ├── SchedulerChangeItem.svelte
+│   ├── CommandList.svelte
+│   └── index.ts
+├── AboutModal.svelte     # App info modal
+├── SettingsModal.svelte  # App settings
+├── UpdateModal.svelte    # Update management
+├── TweakCard.svelte      # Individual tweak display
+├── TweakDetailsModal.svelte # Tweak details view
+├── Sidebar.svelte        # Navigation sidebar
+├── TitleBar.svelte       # Custom window titlebar
+└── ...
+```
+
+---
+
+## Backend Architecture
+
+### Core Features
+
+#### 1. Registry Tweaks
 - **Binary tweaks**: Toggle between ON (`enable_value`) and OFF (`disable_value`) states
 - **Multi-state tweaks**: Dropdown selection from multiple options (e.g., icon cache sizes: 500KB, 4MB, 8MB)
 - **Windows version filtering**: Tweaks can be filtered to apply only on Windows 10, 11, or both
 
-### 2. Service Control
+#### 2. Service Control
 - **Tweak-level services**: Apply/revert service configuration when applying/reverting a tweak
-- **Per-option services**: Multi-state tweaks can have different service configurations per option (new feature)
+- **Per-option services**: Multi-state tweaks can have different service configurations per option
 - **Service operations**: Set startup type (Disabled, Manual, Automatic), stop/start services
 
-### 3. Snapshot-Based Backup System
+#### 3. Snapshot-Based Backup System
 - **Atomic snapshots**: Before applying any tweak, the current registry state is captured
 - **Automatic restoration**: Reverting a tweak restores from snapshot, not from predefined values
 - **Stale snapshot cleanup**: On app startup, snapshots are validated; stale ones are removed
 - **Failure handling**: If apply/revert fails, snapshots are cleaned up to prevent orphaned state
 
-### 4. Permissions Model
+#### 4. Permissions Model
 - **Admin detection**: App detects if running as administrator
 - **Per-tweak admin requirement**: Each tweak specifies `requires_admin: true/false`
 - **HKCU vs HKLM**: HKCU registry keys don't require admin; HKLM keys typically do
 - **Service operations**: Always require administrator privileges
 
-### 5. Risk Levels
+#### 5. Risk Levels
 ```yaml
 risk_levels:
   low: Safe, no system impact
@@ -469,13 +582,25 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 ## File Locations
 
-| Path                                      | Purpose                                     |
-| ----------------------------------------- | ------------------------------------------- |
-| `src-tauri/tweaks/*.yaml`                 | Tweak definitions (7 categories, 76 tweaks) |
-| `src-tauri/src/commands/`                 | Tauri command handlers                      |
-| `src-tauri/src/services/`                 | Business logic services                     |
-| `src-tauri/src/models/`                   | Data structures                             |
-| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files                         |
+| Path                                      | Purpose                                               |
+| ----------------------------------------- | ----------------------------------------------------- |
+| `src-tauri/tweaks/*.yaml`                 | Tweak definitions (7 categories, 76 tweaks)           |
+| `src-tauri/src/commands/`                 | Tauri command handlers                                |
+| `src-tauri/src/commands/tweaks/`          | Tweak commands (split into query/apply/batch/helpers) |
+| `src-tauri/src/services/`                 | Business logic services                               |
+| `src-tauri/src/models/`                   | Data structures                                       |
+| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files                                   |
+
+### Backend Commands Module Structure
+
+```
+src-tauri/src/commands/tweaks/
+├── mod.rs      # Module exports
+├── query.rs    # Status and listing commands (get_*, get_tweak_status)
+├── apply.rs    # Single tweak operations (apply_tweak, revert_tweak)
+├── batch.rs    # Batch operations (batch_apply_tweaks, batch_revert_tweaks)
+└── helpers.rs  # Internal utilities (registry/service/scheduler operations)
+```
 
 ---
 

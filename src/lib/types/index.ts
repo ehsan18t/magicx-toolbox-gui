@@ -263,6 +263,8 @@ export interface TweakResult {
   success: boolean;
   message: string;
   requires_reboot: boolean;
+  /** List of [tweak_id, error_message] for failed operations in batch mode */
+  failures?: [string, string][];
 }
 
 /** Batch apply result */

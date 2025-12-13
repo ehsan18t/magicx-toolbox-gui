@@ -1,30 +1,28 @@
 <script lang="ts">
-  import { closeModal, modalStore } from "$lib/stores/modal";
-  import { settingsStore } from "$lib/stores/settings";
-  import { updateStore } from "$lib/stores/update";
+  import { closeModal, modalStore } from "$lib/stores/modal.svelte";
+  import { settingsStore } from "$lib/stores/settings.svelte";
+  import { updateStore } from "$lib/stores/update.svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { exit } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
   import ExternalLink from "./ExternalLink.svelte";
   import Icon from "./Icon.svelte";
+  import { Button, IconButton, Modal, ModalBody, ModalHeader, Switch } from "./ui";
 
   let appVersion = $state("1.0.0");
 
-  const isOpen = $derived($modalStore === "update");
+  const isOpen = $derived(modalStore.current === "update");
 
-  // Get state from store
-  const isChecking = $derived($updateStore.isChecking);
-  const isInstalling = $derived($updateStore.isInstalling);
-  const updateInfo = $derived($updateStore.updateInfo);
-  const error = $derived($updateStore.error);
+  const isChecking = $derived(updateStore.isChecking);
+  const isInstalling = $derived(updateStore.isInstalling);
+  const updateInfo = $derived(updateStore.updateInfo);
+  const error = $derived(updateStore.error);
 
-  // Get settings from store
   let autoCheckUpdates = $state(true);
   let autoInstallUpdates = $state(false);
 
-  // Sync with settings store
   $effect(() => {
-    const settings = $settingsStore;
+    const settings = settingsStore.settings;
     autoCheckUpdates = settings.autoCheckUpdates;
     autoInstallUpdates = settings.autoInstallUpdates;
   });
@@ -36,18 +34,6 @@
       console.error("Failed to get app version:", err);
     }
   });
-
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
-      closeModal();
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && isOpen) {
-      closeModal();
-    }
-  }
 
   function handleAutoCheckToggle() {
     autoCheckUpdates = !autoCheckUpdates;
@@ -72,12 +58,10 @@
     if (isInstalling || !updateInfo?.available) return;
     const success = await updateStore.installUpdate();
     if (success) {
-      // Exit the app after a short delay to allow the installer to start
       setTimeout(async () => {
         try {
           await exit(0);
         } catch {
-          // If exit fails, just close the modal
           closeModal();
         }
       }, 1000);
@@ -104,248 +88,156 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if isOpen}
-  <div
-    class="fixed inset-0 z-1000 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    role="presentation"
-    onclick={handleBackdropClick}
-  >
-    <div
-      class="animate-in zoom-in-95 w-[min(90vw,500px)] rounded-xl border border-border bg-card shadow-xl duration-200"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="update-title"
-    >
-      <!-- Header -->
-      <div class="flex items-center justify-between border-b border-border px-5 py-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
-            <Icon icon="mdi:update" width="24" class="text-accent" />
-          </div>
-          <div>
-            <h2 id="update-title" class="m-0 text-lg font-bold text-foreground">Updates</h2>
-            <span class="text-sm text-foreground-muted">Current: v{appVersion}</span>
-          </div>
-        </div>
-        <button
-          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:bg-[hsl(var(--muted))] hover:text-foreground"
-          onclick={closeModal}
-          aria-label="Close"
-        >
-          <Icon icon="mdi:close" width="20" />
-        </button>
+<Modal open={isOpen} onclose={closeModal} size="md">
+  <ModalHeader>
+    <div class="flex items-center gap-3">
+      <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
+        <Icon icon="mdi:update" width="24" class="text-accent" />
       </div>
-
-      <!-- Body -->
-      <div class="space-y-5 px-5 py-5">
-        <!-- Error Message -->
-        {#if error}
-          <div class="flex items-start gap-2 rounded-lg bg-error/15 p-3 text-error">
-            <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0" />
-            <div class="flex-1">
-              <span class="text-sm">{error}</span>
-              <button
-                class="ml-2 text-xs underline opacity-70 hover:opacity-100"
-                onclick={() => updateStore.clearError()}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Update Status Section -->
-        <div class="rounded-lg border border-border bg-surface p-4">
-          {#if updateInfo?.available}
-            <!-- Update Available -->
-            <div class="mb-4 flex items-start gap-3">
-              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/15">
-                <Icon icon="mdi:arrow-up-circle" width="24" class="text-success" />
-              </div>
-              <div class="flex-1">
-                <h3 class="m-0 text-base font-semibold text-foreground">Update Available!</h3>
-                <p class="m-0 mt-1 text-sm text-foreground-muted">
-                  Version {updateInfo.latestVersion} is available
-                  {#if updateInfo.publishedAt}
-                    (released {formatDate(updateInfo.publishedAt)})
-                  {/if}
-                </p>
-                {#if updateInfo.assetSize}
-                  <p class="m-0 mt-0.5 text-xs text-foreground-subtle">
-                    Download size: {formatBytes(updateInfo.assetSize)}
-                  </p>
-                {/if}
-              </div>
-            </div>
-
-            {#if updateInfo.releaseNotes}
-              <div class="mb-4 max-h-32 overflow-y-auto rounded-lg bg-[hsl(var(--muted)/0.5)] p-3">
-                <h4 class="m-0 mb-2 text-xs font-semibold text-foreground-muted uppercase">Release Notes</h4>
-                <p class="m-0 text-sm whitespace-pre-wrap text-foreground">
-                  {updateInfo.releaseNotes}
-                </p>
-              </div>
-            {/if}
-
-            <div class="flex gap-2">
-              {#if updateInfo.downloadUrl && updateInfo.assetName}
-                <button
-                  class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
-                  onclick={installUpdate}
-                  disabled={isInstalling}
-                >
-                  {#if isInstalling}
-                    <Icon icon="mdi:loading" width="18" class="animate-spin" />
-                    Downloading...
-                  {:else}
-                    <Icon icon="mdi:download" width="18" />
-                    Install Update
-                  {/if}
-                </button>
-              {:else}
-                <span class="flex-1 text-center text-sm text-foreground-muted"> No compatible installer found </span>
-              {/if}
-              {#if updateInfo.downloadUrl}
-                <ExternalLink
-                  href={updateInfo.downloadUrl}
-                  class="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-[hsl(var(--muted))] px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted)/0.8)]"
-                  title="Download manually"
-                >
-                  <Icon icon="mdi:open-in-new" width="16" />
-                </ExternalLink>
-              {/if}
-            </div>
-          {:else if updateInfo}
-            <!-- Up to Date -->
-            <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/15">
-                <Icon icon="mdi:check-circle" width="24" class="text-success" />
-              </div>
-              <div>
-                <h3 class="m-0 text-base font-semibold text-foreground">You're up to date!</h3>
-                <p class="m-0 mt-1 text-sm text-foreground-muted">
-                  Version {appVersion} is the latest version.
-                </p>
-              </div>
-            </div>
-          {:else}
-            <!-- Not Checked -->
-            <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--muted))]">
-                <Icon icon="mdi:help-circle" width="24" class="text-foreground-muted" />
-              </div>
-              <div>
-                <h3 class="m-0 text-base font-semibold text-foreground">Check for updates</h3>
-                <p class="m-0 mt-1 text-sm text-foreground-muted">Click the button below to check for new versions.</p>
-              </div>
-            </div>
-          {/if}
-        </div>
-
-        <!-- Check for Updates Button (only show if no update available or never checked) -->
-        {#if !updateInfo?.available}
-          <button
-            class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-[hsl(var(--muted))] px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted)/0.8)] disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={checkForUpdate}
-            disabled={isChecking}
-          >
-            {#if isChecking}
-              <Icon icon="mdi:loading" width="18" class="animate-spin" />
-              Checking for updates...
-            {:else}
-              <Icon icon="mdi:refresh" width="18" />
-              Check for Updates
-            {/if}
-          </button>
-        {/if}
-
-        <!-- Settings Section -->
-        <div class="rounded-lg border border-border bg-surface p-4">
-          <h3 class="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Icon icon="mdi:cog" width="18" class="text-accent" />
-            Update Settings
-          </h3>
-
-          <div class="space-y-4">
-            <!-- Auto Check Updates -->
-            <label class="flex cursor-pointer items-center justify-between">
-              <div class="flex-1">
-                <span class="block text-sm font-medium text-foreground"> Automatically check for updates </span>
-                <span class="block text-xs text-foreground-muted"> Check for updates when the app starts </span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoCheckUpdates}
-                aria-label="Toggle automatic update checks"
-                class="relative h-6 w-11 shrink-0 cursor-pointer rounded-full border-0 transition-colors {autoCheckUpdates
-                  ? 'bg-accent'
-                  : 'bg-[hsl(var(--muted))]'}"
-                onclick={handleAutoCheckToggle}
-              >
-                <span
-                  class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {autoCheckUpdates
-                    ? 'translate-x-5'
-                    : 'translate-x-0'}"
-                ></span>
-              </button>
-            </label>
-
-            <!-- Auto Install Updates -->
-            <label class="flex cursor-pointer items-center justify-between">
-              <div class="flex-1">
-                <span class="block text-sm font-medium text-foreground"> Automatically install updates </span>
-                <span class="block text-xs text-foreground-muted">
-                  Download and install updates automatically (coming soon)
-                </span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoInstallUpdates}
-                aria-label="Toggle automatic update installation"
-                disabled
-                class="relative h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-0 opacity-50 transition-colors {autoInstallUpdates
-                  ? 'bg-accent'
-                  : 'bg-[hsl(var(--muted))]'}"
-                onclick={handleAutoInstallToggle}
-              >
-                <span
-                  class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {autoInstallUpdates
-                    ? 'translate-x-5'
-                    : 'translate-x-0'}"
-                ></span>
-              </button>
-            </label>
-          </div>
-        </div>
-
-        <!-- Last Check Info -->
-        {#if $settingsStore.lastUpdateCheck}
-          <p class="m-0 text-center text-xs text-foreground-subtle">
-            Last checked: {formatDate($settingsStore.lastUpdateCheck)}
-          </p>
-        {/if}
+      <div>
+        <h2 class="m-0 text-lg font-bold text-foreground">Updates</h2>
+        <span class="text-sm text-foreground-muted">Current: v{appVersion}</span>
       </div>
     </div>
-  </div>
-{/if}
+    <IconButton icon="mdi:close" onclick={closeModal} aria-label="Close" />
+  </ModalHeader>
 
-<style>
-  @keyframes zoom-in-95 {
-    from {
-      opacity: 0;
-      transform: scale(0.95);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
+  <ModalBody class="space-y-5">
+    {#if error}
+      <div class="flex items-start gap-2 rounded-lg bg-error/15 p-3 text-error">
+        <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0" />
+        <div class="flex-1">
+          <span class="text-sm">{error}</span>
+          <button class="ml-2 text-xs underline opacity-70 hover:opacity-100" onclick={() => updateStore.clearError()}>
+            Dismiss
+          </button>
+        </div>
+      </div>
+    {/if}
 
-  .animate-in {
-    animation: zoom-in-95 0.2s ease-out;
-  }
-</style>
+    <div class="rounded-lg border border-border bg-surface p-4">
+      {#if updateInfo?.available}
+        <div class="mb-4 flex items-start gap-3">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/15">
+            <Icon icon="mdi:arrow-up-circle" width="24" class="text-success" />
+          </div>
+          <div class="flex-1">
+            <h3 class="m-0 text-base font-semibold text-foreground">Update Available!</h3>
+            <p class="m-0 mt-1 text-sm text-foreground-muted">
+              Version {updateInfo.latestVersion} is available
+              {#if updateInfo.publishedAt}
+                (released {formatDate(updateInfo.publishedAt)})
+              {/if}
+            </p>
+            {#if updateInfo.assetSize}
+              <p class="m-0 mt-0.5 text-xs text-foreground-subtle">
+                Download size: {formatBytes(updateInfo.assetSize)}
+              </p>
+            {/if}
+          </div>
+        </div>
+
+        {#if updateInfo.releaseNotes}
+          <div class="bg-muted/50 mb-4 max-h-32 overflow-y-auto rounded-lg p-3">
+            <h4 class="m-0 mb-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase">Release Notes</h4>
+            <p class="m-0 text-sm whitespace-pre-wrap text-foreground">
+              {updateInfo.releaseNotes}
+            </p>
+          </div>
+        {/if}
+
+        <div class="flex gap-2">
+          {#if updateInfo.downloadUrl && updateInfo.assetName}
+            <Button class="flex-1" onclick={installUpdate} disabled={isInstalling}>
+              {#if isInstalling}
+                <Icon icon="mdi:loading" width="18" class="animate-spin" />
+                Downloading...
+              {:else}
+                <Icon icon="mdi:download" width="18" />
+                Install Update
+              {/if}
+            </Button>
+          {:else}
+            <span class="flex-1 text-center text-sm text-foreground-muted">No compatible installer found</span>
+          {/if}
+          {#if updateInfo.downloadUrl}
+            <ExternalLink
+              href={updateInfo.downloadUrl}
+              class="bg-muted hover:bg-muted/80 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors"
+              title="Download manually"
+            >
+              <Icon icon="mdi:open-in-new" width="16" />
+            </ExternalLink>
+          {/if}
+        </div>
+      {:else if updateInfo}
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/15">
+            <Icon icon="mdi:check-circle" width="24" class="text-success" />
+          </div>
+          <div>
+            <h3 class="m-0 text-base font-semibold text-foreground">You're up to date!</h3>
+            <p class="m-0 mt-1 text-sm text-foreground-muted">
+              Version {appVersion} is the latest version.
+            </p>
+          </div>
+        </div>
+      {:else}
+        <div class="flex items-center gap-3">
+          <div class="bg-muted flex h-10 w-10 items-center justify-center rounded-full">
+            <Icon icon="mdi:help-circle" width="24" class="text-foreground-muted" />
+          </div>
+          <div>
+            <h3 class="m-0 text-base font-semibold text-foreground">Check for updates</h3>
+            <p class="m-0 mt-1 text-sm text-foreground-muted">Click the button below to check for new versions.</p>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    {#if !updateInfo?.available}
+      <Button variant="secondary" class="w-full" onclick={checkForUpdate} disabled={isChecking}>
+        {#if isChecking}
+          <Icon icon="mdi:loading" width="18" class="animate-spin" />
+          Checking for updates...
+        {:else}
+          <Icon icon="mdi:refresh" width="18" />
+          Check for Updates
+        {/if}
+      </Button>
+    {/if}
+
+    <div class="rounded-lg border border-border bg-surface p-4">
+      <h3 class="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <Icon icon="mdi:cog" width="18" class="text-accent" />
+        Update Settings
+      </h3>
+
+      <div class="space-y-4">
+        <label class="flex cursor-pointer items-center justify-between">
+          <div class="flex-1">
+            <span class="block text-sm font-medium text-foreground">Automatically check for updates</span>
+            <span class="block text-xs text-foreground-muted">Check for updates when the app starts</span>
+          </div>
+          <Switch checked={autoCheckUpdates} onchange={handleAutoCheckToggle} />
+        </label>
+
+        <label class="flex cursor-pointer items-center justify-between">
+          <div class="flex-1">
+            <span class="block text-sm font-medium text-foreground">Automatically install updates</span>
+            <span class="block text-xs text-foreground-muted"
+              >Download and install updates automatically (coming soon)</span
+            >
+          </div>
+          <Switch checked={autoInstallUpdates} onchange={handleAutoInstallToggle} disabled />
+        </label>
+      </div>
+    </div>
+
+    {#if settingsStore.lastUpdateCheck}
+      <p class="m-0 text-center text-xs text-foreground-subtle">
+        Last checked: {formatDate(settingsStore.lastUpdateCheck)}
+      </p>
+    {/if}
+  </ModalBody>
+</Modal>

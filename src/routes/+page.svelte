@@ -3,8 +3,8 @@
   import Icon from "$lib/components/Icon.svelte";
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
-  import { activeTab, allTabs, type TabDefinition } from "$lib/stores/navigation";
-  import { initializeStores } from "$lib/stores/tweaks";
+  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
+  import { initializeData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
 
   let loading = $state(true);
@@ -12,7 +12,7 @@
 
   onMount(async () => {
     try {
-      await initializeStores();
+      await initializeData();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load data";
       console.error("Failed to initialize:", e);
@@ -21,10 +21,14 @@
     }
   });
 
+  // Derived values from navigation store
+  const activeTab = $derived(navigationStore.activeTab);
+  const allTabs = $derived(navigationStore.allTabs);
+
   // Get the current tab definition for CategoryTab
-  const currentCategoryTab = $derived(() => {
-    if ($activeTab === "overview") return null;
-    return $allTabs.find((t: TabDefinition) => t.id === $activeTab) ?? null;
+  const currentCategoryTab = $derived.by(() => {
+    if (activeTab === "overview") return null;
+    return allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
   });
 </script>
 
@@ -33,7 +37,7 @@
     <div class="loading-screen">
       <div class="loading-content">
         <div class="loading-spinner">
-          <Icon icon="mdi:loading" width="40" class="spin" />
+          <Icon icon="mdi:loading" width="40" class="animate-spin" />
         </div>
         <p class="loading-text">Loading tweaks...</p>
       </div>
@@ -57,13 +61,10 @@
       <Sidebar />
       <main class="main-content">
         <div class="content-area">
-          {#if $activeTab === "overview"}
+          {#if activeTab === "overview"}
             <OverviewTab />
-          {:else}
-            {@const categoryTab = currentCategoryTab()}
-            {#if categoryTab}
-              <CategoryTab tab={categoryTab} />
-            {/if}
+          {:else if currentCategoryTab}
+            <CategoryTab tab={currentCategoryTab} />
           {/if}
         </div>
       </main>
@@ -201,19 +202,5 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-  }
-
-  /* Spin animation */
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

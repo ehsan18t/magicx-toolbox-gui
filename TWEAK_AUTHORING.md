@@ -591,6 +591,7 @@ post_commands:     # Run AFTER registry/service/scheduler changes
 **Execution:**
 - Commands run via `cmd.exe /C <command>`
 - If `requires_system: true`, commands run as SYSTEM
+- If `requires_ti: true`, commands run as TrustedInstaller
 - Working directory is the executable directory
 
 **See [Error Handling](#error-handling-behavior) for failure behavior.**
@@ -611,6 +612,7 @@ post_powershell:   # Run AFTER registry/service/scheduler changes
 
 **Execution:**
 - Commands run via PowerShell (or as SYSTEM if `requires_system: true`)
+- If `requires_ti: true`, PowerShell commands run as TrustedInstaller
 - Can span multiple lines if needed (use YAML multiline syntax)
 - Exit code 0 = success, non-zero = failure
 
