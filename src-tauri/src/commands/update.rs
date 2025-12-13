@@ -269,3 +269,78 @@ pub async fn install_update(download_url: String, asset_name: String) -> Result<
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // parse_version tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_version_three_parts() {
+        assert_eq!(parse_version("3.0.0"), Some((3, 0, 0)));
+        assert_eq!(parse_version("1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_version("10.20.30"), Some((10, 20, 30)));
+    }
+
+    #[test]
+    fn test_parse_version_with_v_prefix() {
+        assert_eq!(parse_version("v3.0.0"), Some((3, 0, 0)));
+        assert_eq!(parse_version("v1.2.3"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn test_parse_version_two_parts() {
+        assert_eq!(parse_version("3.0"), Some((3, 0, 0)));
+        assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
+    }
+
+    #[test]
+    fn test_parse_version_with_prerelease() {
+        // Should strip pre-release suffix from patch
+        assert_eq!(parse_version("3.0.0-beta"), Some((3, 0, 0)));
+        assert_eq!(parse_version("1.2.3-rc.1"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn test_parse_version_invalid() {
+        assert_eq!(parse_version("invalid"), None);
+        assert_eq!(parse_version("abc.def.ghi"), None);
+        assert_eq!(parse_version("1"), None);
+    }
+
+    // ========================================================================
+    // is_newer_version tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_newer_version_major() {
+        assert!(is_newer_version("2.0.0", "3.0.0"));
+        assert!(!is_newer_version("3.0.0", "2.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_minor() {
+        assert!(is_newer_version("3.0.0", "3.1.0"));
+        assert!(!is_newer_version("3.1.0", "3.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_patch() {
+        assert!(is_newer_version("3.0.0", "3.0.1"));
+        assert!(!is_newer_version("3.0.1", "3.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_equal() {
+        assert!(!is_newer_version("3.0.0", "3.0.0"));
+    }
+
+    #[test]
+    fn test_is_newer_version_with_v_prefix() {
+        assert!(is_newer_version("3.0.0", "v3.1.0"));
+        assert!(is_newer_version("v3.0.0", "3.1.0"));
+    }
+}

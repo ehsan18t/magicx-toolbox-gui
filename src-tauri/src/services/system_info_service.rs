@@ -972,4 +972,91 @@ mod tests {
         assert!(info.version_string == "10" || info.version_string == "11");
         assert!(!info.build_number.is_empty());
     }
+
+    // ========================================================================
+    // is_leap_year tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_leap_year_divisible_by_4_not_100() {
+        assert!(is_leap_year(2024));
+        assert!(is_leap_year(2020));
+        assert!(is_leap_year(2016));
+    }
+
+    #[test]
+    fn test_is_leap_year_divisible_by_100_not_400() {
+        assert!(!is_leap_year(1900));
+        assert!(!is_leap_year(2100));
+        assert!(!is_leap_year(2200));
+    }
+
+    #[test]
+    fn test_is_leap_year_divisible_by_400() {
+        assert!(is_leap_year(2000));
+        assert!(is_leap_year(1600));
+        assert!(is_leap_year(2400));
+    }
+
+    #[test]
+    fn test_is_leap_year_not_divisible_by_4() {
+        assert!(!is_leap_year(2023));
+        assert!(!is_leap_year(2019));
+        assert!(!is_leap_year(2021));
+    }
+
+    // ========================================================================
+    // days_before_month tests
+    // ========================================================================
+
+    #[test]
+    fn test_days_before_month_january() {
+        assert_eq!(days_before_month(1, false), 0);
+        assert_eq!(days_before_month(1, true), 0);
+    }
+
+    #[test]
+    fn test_days_before_month_march_non_leap() {
+        // Jan(31) + Feb(28) = 59
+        assert_eq!(days_before_month(3, false), 59);
+    }
+
+    #[test]
+    fn test_days_before_month_march_leap() {
+        // Jan(31) + Feb(29) = 60
+        assert_eq!(days_before_month(3, true), 60);
+    }
+
+    #[test]
+    fn test_days_before_month_december() {
+        // 31+28+31+30+31+30+31+31+30+31+30 = 334 (non-leap)
+        assert_eq!(days_before_month(12, false), 334);
+        assert_eq!(days_before_month(12, true), 335);
+    }
+
+    // ========================================================================
+    // parse_wmi_datetime_to_iso tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_wmi_datetime_to_iso_valid() {
+        let wmi = "20241213123456.000000+000";
+        let iso = parse_wmi_datetime_to_iso(wmi);
+        assert_eq!(iso, "2024-12-13T12:34:56");
+    }
+
+    #[test]
+    fn test_parse_wmi_datetime_to_iso_short_input() {
+        let wmi = "2024";
+        let iso = parse_wmi_datetime_to_iso(wmi);
+        // Should return as-is when too short
+        assert_eq!(iso, "2024");
+    }
+
+    #[test]
+    fn test_parse_wmi_datetime_to_iso_midnight() {
+        let wmi = "20240101000000.000000+000";
+        let iso = parse_wmi_datetime_to_iso(wmi);
+        assert_eq!(iso, "2024-01-01T00:00:00");
+    }
 }
