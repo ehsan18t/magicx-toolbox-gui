@@ -4,20 +4,26 @@
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { initializeData } from "$lib/stores/tweaks.svelte";
+  import { initializeQuick, loadingStateStore, loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
 
-  let loading = $state(true);
   let error = $state<string | null>(null);
+
+  // Progressive loading: show app shell immediately after categories load
+  const canShowApp = $derived(loadingStateStore.canShowApp);
 
   onMount(async () => {
     try {
-      await initializeData();
+      // Phase 1: Quick init - just load categories to show the app shell
+      await initializeQuick();
+
+      // Phase 2: Load remaining data in background (non-blocking)
+      loadRemainingData().catch((e) => {
+        console.error("Failed to load remaining data:", e);
+      });
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load data";
       console.error("Failed to initialize:", e);
-    } finally {
-      loading = false;
     }
   });
 
@@ -33,7 +39,7 @@
 </script>
 
 <div class="page-container">
-  {#if loading}
+  {#if !canShowApp}
     <div class="loading-screen">
       <div class="loading-content">
         <div class="loading-spinner">

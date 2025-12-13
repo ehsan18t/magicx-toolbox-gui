@@ -7,7 +7,9 @@
 
 use crate::error::Error;
 use crate::models::{RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState};
-use crate::services::{scheduler_service, service_control};use rayon::prelude::*;use std::fs;
+use crate::services::{scheduler_service, service_control};
+use rayon::prelude::*;
+use std::fs;
 
 use super::capture::read_registry_value;
 use super::helpers::{parse_hive, parse_value_type, task_state_matches, values_match};
@@ -164,15 +166,11 @@ fn check_scheduler_matches(
     for change in validatable_scheduler {
         // Determine expected state based on action
         let expected_state = match change.action {
-            crate::models::tweak::SchedulerAction::Enable => {
-                scheduler_service::TaskState::Ready
-            }
+            crate::models::tweak::SchedulerAction::Enable => scheduler_service::TaskState::Ready,
             crate::models::tweak::SchedulerAction::Disable => {
                 scheduler_service::TaskState::Disabled
             }
-            crate::models::tweak::SchedulerAction::Delete => {
-                scheduler_service::TaskState::NotFound
-            }
+            crate::models::tweak::SchedulerAction::Delete => scheduler_service::TaskState::NotFound,
         };
 
         // Handle pattern vs exact name
@@ -198,14 +196,11 @@ fn check_scheduler_matches(
             }
         } else if let Some(ref task_name) = change.task_name {
             // Exact task name - check single task
-            let current_state =
-                scheduler_service::get_task_state(&change.task_path, task_name)
-                    .unwrap_or(scheduler_service::TaskState::NotFound);
+            let current_state = scheduler_service::get_task_state(&change.task_path, task_name)
+                .unwrap_or(scheduler_service::TaskState::NotFound);
 
             // Handle ignore_not_found for exact names
-            if current_state == scheduler_service::TaskState::NotFound
-                && change.ignore_not_found
-            {
+            if current_state == scheduler_service::TaskState::NotFound && change.ignore_not_found {
                 // Task not found but ignore_not_found is set - consider this as matching
                 continue;
             }

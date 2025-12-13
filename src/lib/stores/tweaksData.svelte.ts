@@ -2,10 +2,17 @@
  * Tweaks Data Store - Svelte 5 Runes
  *
  * Manages core data: system info, categories, tweaks with their statuses.
+ * Supports progressive loading for better perceived performance.
  */
 
 import * as api from "$lib/api/tweaks";
 import type { CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "$lib/types";
+
+// === Loading States ===
+let systemInfoLoading = $state(false);
+let categoriesLoading = $state(false);
+let tweaksLoading = $state(false);
+let initialLoadComplete = $state(false);
 
 // === System Info State ===
 let systemInfo = $state<SystemInfo | null>(null);
@@ -74,7 +81,12 @@ export const systemStore = {
     return systemInfo;
   },
 
+  get isLoading() {
+    return systemInfoLoading;
+  },
+
   async load() {
+    systemInfoLoading = true;
     try {
       const info = await api.getSystemInfo();
       systemInfo = info;
@@ -82,6 +94,8 @@ export const systemStore = {
     } catch (error) {
       console.error("Failed to load system info:", error);
       return null;
+    } finally {
+      systemInfoLoading = false;
     }
   },
 
@@ -99,7 +113,12 @@ export const categoriesStore = {
     return categoriesMap;
   },
 
+  get isLoading() {
+    return categoriesLoading;
+  },
+
   async load() {
+    categoriesLoading = true;
     try {
       const result = await api.getCategories();
       categories = result;
@@ -107,6 +126,8 @@ export const categoriesStore = {
     } catch (error) {
       console.error("Failed to load categories:", error);
       return [];
+    } finally {
+      categoriesLoading = false;
     }
   },
 
@@ -128,7 +149,12 @@ export const tweaksStore = {
     return stats;
   },
 
+  get isLoading() {
+    return tweaksLoading;
+  },
+
   async load() {
+    tweaksLoading = true;
     try {
       const result = await api.getAllTweaksWithStatus();
       tweaks = result;
@@ -136,6 +162,8 @@ export const tweaksStore = {
     } catch (error) {
       console.error("Failed to load tweaks:", error);
       return [];
+    } finally {
+      tweaksLoading = false;
     }
   },
 
@@ -157,7 +185,58 @@ export const tweaksStore = {
 /** Category stats getter - exposed separately for components that need it */
 export const getCategoryStats = () => categoryStats;
 
-/** Initialize all data stores */
+/** Loading state store for progressive loading */
+export const loadingStateStore = {
+  get systemInfoLoading() {
+    return systemInfoLoading;
+  },
+  get categoriesLoading() {
+    return categoriesLoading;
+  },
+  get tweaksLoading() {
+    return tweaksLoading;
+  },
+  get initialLoadComplete() {
+    return initialLoadComplete;
+  },
+  /** True when we have enough data to show the app shell */
+  get canShowApp() {
+    return categories.length > 0;
+  },
+  /** True when all data is loaded */
+  get isFullyLoaded() {
+    return initialLoadComplete && !systemInfoLoading && !categoriesLoading && !tweaksLoading;
+  },
+};
+
+/**
+ * Initialize all data stores with progressive loading
+ * Categories load first (fast), then system info and tweaks load in parallel
+ * This allows the app shell to appear quickly while heavier data loads in the background
+ */
 export async function initializeData(): Promise<void> {
-  await Promise.all([systemStore.load(), categoriesStore.load(), tweaksStore.load()]);
+  // Phase 1: Load categories first (usually fastest, enables navigation)
+  await categoriesStore.load();
+
+  // Phase 2: Load system info and tweaks in parallel (these take longer)
+  await Promise.all([systemStore.load(), tweaksStore.load()]);
+
+  // Mark initial load as complete
+  initialLoadComplete = true;
+}
+
+/**
+ * Quick initialize - only load categories for immediate UI display
+ * Call loadRemainingData() after to load the rest
+ */
+export async function initializeQuick(): Promise<void> {
+  await categoriesStore.load();
+}
+
+/**
+ * Load remaining data after quick init
+ */
+export async function loadRemainingData(): Promise<void> {
+  await Promise.all([systemStore.load(), tweaksStore.load()]);
+  initialLoadComplete = true;
 }
