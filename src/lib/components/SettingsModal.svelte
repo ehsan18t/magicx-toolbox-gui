@@ -1,7 +1,7 @@
 <script lang="ts">
   import { closeModal, modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
-  import { tweaksStore } from "$lib/stores/tweaks";
+  import { tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { ExportData, TweakSnapshot } from "$lib/types";
   import { getVersion } from "@tauri-apps/api/app";
   import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
@@ -33,7 +33,7 @@
   }
 
   async function createTweakSnapshots(): Promise<TweakSnapshot[]> {
-    const tweaks = $tweaksStore;
+    const tweaks = tweaksStore.list;
     const snapshots: TweakSnapshot[] = [];
 
     for (const tweak of tweaks) {

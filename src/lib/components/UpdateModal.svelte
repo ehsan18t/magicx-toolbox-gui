@@ -1,7 +1,7 @@
 <script lang="ts">
   import { closeModal, modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
-  import { updateStore } from "$lib/stores/update";
+  import { updateStore } from "$lib/stores/update.svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { exit } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
@@ -13,10 +13,10 @@
 
   const isOpen = $derived(modalStore.current === "update");
 
-  const isChecking = $derived($updateStore.isChecking);
-  const isInstalling = $derived($updateStore.isInstalling);
-  const updateInfo = $derived($updateStore.updateInfo);
-  const error = $derived($updateStore.error);
+  const isChecking = $derived(updateStore.isChecking);
+  const isInstalling = $derived(updateStore.isInstalling);
+  const updateInfo = $derived(updateStore.updateInfo);
+  const error = $derived(updateStore.error);
 
   let autoCheckUpdates = $state(true);
   let autoInstallUpdates = $state(false);

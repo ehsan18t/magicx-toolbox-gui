@@ -1,11 +1,15 @@
 <script lang="ts">
-  import { pendingRebootCount, pendingRebootStore, pendingRebootTweaks } from "$lib/stores/tweaks";
+  import { filterStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
   import Icon from "./Icon.svelte";
 
   let showDetails = $state(false);
+
+  // Derived values from stores
+  const rebootCount = $derived(pendingRebootStore.count);
+  const rebootTweaks = $derived(filterStore.pendingRebootTweaks);
 </script>
 
-{#if $pendingRebootCount > 0}
+{#if rebootCount > 0}
   <div
     class="mb-4 flex items-center justify-between gap-4 rounded-lg border border-[hsl(24_94%_50%/0.3)] bg-linear-to-br from-[hsl(24_94%_50%/0.15)] to-[hsl(45_93%_47%/0.1)] px-4 py-3"
   >
@@ -18,7 +22,7 @@
       <div class="flex flex-col gap-0.5">
         <span class="text-sm font-semibold text-foreground">Restart Required</span>
         <span class="text-xs text-foreground-muted">
-          {$pendingRebootCount} tweak{$pendingRebootCount === 1 ? "" : "s"} need a system restart to take effect
+          {rebootCount} tweak{rebootCount === 1 ? "" : "s"} need a system restart to take effect
         </span>
       </div>
     </div>
@@ -44,7 +48,7 @@
   {#if showDetails}
     <div class="-mt-2 mb-4 rounded-md border border-border bg-[hsl(var(--muted)/0.3)] px-4 py-3">
       <ul class="m-0 flex list-none flex-col gap-1.5 p-0">
-        {#each $pendingRebootTweaks as tweak (tweak.definition.id)}
+        {#each rebootTweaks as tweak (tweak.definition.id)}
           <li class="flex items-center gap-2 text-xs text-foreground/80">
             <Icon icon="mdi:restart" width="14" class="text-[hsl(24_94%_50%)]" />
             {tweak.definition.name}

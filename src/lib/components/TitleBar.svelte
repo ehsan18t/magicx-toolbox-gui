@@ -1,7 +1,7 @@
 <script lang="ts">
   import { debugState } from "$lib/stores/debug.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
-  import { systemStore } from "$lib/stores/tweaks";
+  import { systemStore } from "$lib/stores/tweaks.svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -129,7 +129,7 @@
         </span>
 
         <!-- Admin Status Indicator -->
-        {#if $systemStore?.is_admin}
+        {#if systemStore.info?.is_admin}
           <span
             class="flex items-center gap-1 rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success uppercase"
             title="Running as Administrator"
@@ -137,7 +137,7 @@
             <Icon icon="tabler:shield-check-filled" width="12" height="12" />
             Admin
           </span>
-        {:else if $systemStore !== null}
+        {:else if systemStore.info !== null}
           <span
             class="flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold text-warning uppercase"
             title="Running as Standard User - Some features require Administrator"
@@ -182,7 +182,7 @@
       </button>
 
       <!-- Restart as Admin button (only shown if not running as admin) -->
-      {#if $systemStore !== null && !$systemStore.is_admin}
+      {#if systemStore.info !== null && !systemStore.info.is_admin}
         <button
           title="Restart as Administrator"
           onclick={restartAsAdmin}

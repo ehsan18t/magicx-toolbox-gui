@@ -1,7 +1,12 @@
 <script lang="ts">
-  import type { TabDefinition } from "$lib/stores/navigation";
-  import { applyPendingChanges, loadingStore, pendingChangesStore, revertTweak, tweaksStore } from "$lib/stores/tweaks";
-  import { derived } from "svelte/store";
+  import type { TabDefinition } from "$lib/stores/navigation.svelte";
+  import {
+    applyPendingChanges,
+    loadingStore,
+    pendingChangesStore,
+    revertTweak,
+    tweaksStore,
+  } from "$lib/stores/tweaks.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
   import TweakCard from "./TweakCard.svelte";
@@ -18,7 +23,7 @@
   let isBatchProcessing = $state(false);
 
   // Get tweaks for this category
-  const categoryTweaks = $derived($tweaksStore.filter((t) => t.definition.category_id === tab.id));
+  const categoryTweaks = $derived(tweaksStore.list.filter((t) => t.definition.category_id === tab.id));
 
   // Filter tweaks by search
   const filteredTweaks = $derived.by(() => {
@@ -36,10 +41,12 @@
   const progressPercent = $derived(totalCount > 0 ? Math.round((appliedCount / totalCount) * 100) : 0);
 
   // Pending changes for this category
-  const categoryPendingCount = derived([pendingChangesStore, tweaksStore], ([$pending, $tweaks]) => {
+  const categoryPendingCount = $derived.by(() => {
     let count = 0;
-    for (const [tweakId] of $pending) {
-      const tweak = $tweaks.find((t: { definition: { id: string } }) => t.definition.id === tweakId);
+    const pending = pendingChangesStore.all;
+    const tweaks = tweaksStore.list;
+    for (const [tweakId] of pending) {
+      const tweak = tweaks.find((t) => t.definition.id === tweakId);
       if (tweak?.definition.category_id === tab.id) {
         count++;
       }
@@ -48,7 +55,7 @@
   });
 
   // Loading state
-  const isLoading = derived(loadingStore, ($loading) => categoryTweaks.some((t) => $loading.has(t.definition.id)));
+  const isLoading = $derived(categoryTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
 
   async function handleApplyChanges() {
     showApplyAllDialog = false;
@@ -69,7 +76,7 @@
   }
 
   function handleDiscardChanges() {
-    pendingChangesStore.clearCategory(tab.id, $tweaksStore);
+    pendingChangesStore.clearCategory(tab.id, tweaksStore.list);
   }
 </script>
 
@@ -127,12 +134,12 @@
 
     <div class="flex gap-2.5">
       <button
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {$categoryPendingCount >
+        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {categoryPendingCount >
         0
           ? 'border-warning bg-warning/15 text-warning'
           : ''} hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success"
         onclick={() => (showApplyAllDialog = true)}
-        disabled={$categoryPendingCount === 0 || $isLoading || isBatchProcessing}
+        disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
       >
         {#if isBatchProcessing}
           <Icon icon="mdi:loading" width="18" class="animate-spin" />
@@ -140,17 +147,17 @@
           <Icon icon="mdi:check-all" width="18" />
         {/if}
         <span class="hidden sm:inline">Apply Changes</span>
-        {#if $categoryPendingCount > 0}
+        {#if categoryPendingCount > 0}
           <span
             class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-white"
-            >{$categoryPendingCount}</span
+            >{categoryPendingCount}</span
           >
         {/if}
       </button>
       <button
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
         onclick={handleDiscardChanges}
-        disabled={$categoryPendingCount === 0 || $isLoading || isBatchProcessing}
+        disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
         title="Discard all pending changes in this category"
       >
         <Icon icon="mdi:close-circle-outline" width="18" />
@@ -159,7 +166,7 @@
       <button
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
         onclick={() => (showRevertAllDialog = true)}
-        disabled={appliedTweaks.length === 0 || $isLoading || isBatchProcessing}
+        disabled={appliedTweaks.length === 0 || isLoading || isBatchProcessing}
       >
         <Icon icon="mdi:restore" width="18" />
         <span class="hidden sm:inline">Restore Defaults</span>
@@ -201,7 +208,7 @@
 <ConfirmDialog
   open={showApplyAllDialog}
   title="Apply Pending Changes"
-  message="Apply {$categoryPendingCount} pending change(s)? Some tweaks may require a system restart."
+  message="Apply {categoryPendingCount} pending change(s)? Some tweaks may require a system restart."
   confirmText="Apply Changes"
   variant="default"
   onconfirm={handleApplyChanges}

@@ -1,9 +1,8 @@
 <script lang="ts">
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
-  import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks";
+  import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
-  import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
 
@@ -11,8 +10,8 @@
     tweak: TweakWithStatus;
   }>();
 
-  const isLoading = derived(loadingStore, ($loading) => $loading.has(tweak.definition.id));
-  const tweakError = derived(errorStore, ($errors) => $errors.get(tweak.definition.id));
+  const isLoading = $derived(loadingStore.isLoading(tweak.definition.id));
+  const tweakError = $derived(errorStore.getError(tweak.definition.id));
 
   let showConfirmDialog = $state(false);
 
@@ -37,17 +36,16 @@
   const currentOptionIndex = $derived(tweak.status.current_option_index);
 
   // Get pending change for this tweak
-  const pendingChange = derived(pendingChangesStore, ($pending) => $pending.get(tweak.definition.id));
+  const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
 
   // Determine if there's a pending change
-  const hasPending = $derived($pendingChange !== undefined);
+  const hasPending = $derived(pendingChange !== undefined);
 
   // Calculate the effective state for toggle (what the user sees in the UI)
   // For toggles: option 0 = enabled, option 1 = disabled
   const effectiveEnabled = $derived.by(() => {
-    const pending = $pendingChange;
-    if (pending !== undefined) {
-      return pending.optionIndex === 0;
+    if (pendingChange !== undefined) {
+      return pendingChange.optionIndex === 0;
     }
     // If no current option matches (system default), treat as disabled
     return currentOptionIndex === 0;
@@ -55,9 +53,8 @@
 
   // Calculate effective option index for dropdowns
   const effectiveOptionIndex = $derived.by(() => {
-    const pending = $pendingChange;
-    if (pending !== undefined) {
-      return pending.optionIndex;
+    if (pendingChange !== undefined) {
+      return pendingChange.optionIndex;
     }
     return currentOptionIndex;
   });
@@ -128,8 +125,8 @@
         <select
           class="max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[hsl(var(--muted))] bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
             ? 'border-warning bg-warning/10'
-            : ''} {$isLoading ? 'opacity-70' : ''}"
-          disabled={$isLoading}
+            : ''} {isLoading ? 'opacity-70' : ''}"
+          disabled={isLoading}
           value={effectiveOptionIndex ?? -1}
           onchange={handleOptionChange}
         >
@@ -146,7 +143,7 @@
           class="toggle-switch shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70"
           class:active={effectiveEnabled}
           class:pending={hasPending}
-          disabled={$isLoading}
+          disabled={isLoading}
           onclick={handleToggleClick}
           aria-label={effectiveEnabled ? "Will revert tweak" : "Will apply tweak"}
           role="switch"
@@ -162,9 +159,9 @@
             <span
               class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
                 ? 'translate-x-5'
-                : 'translate-x-0'} {$isLoading ? 'text-foreground-muted' : 'text-accent'}"
+                : 'translate-x-0'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
             >
-              {#if $isLoading}
+              {#if isLoading}
                 <Icon icon="mdi:loading" width="14" class="animate-spin" />
               {:else if tweak.status.is_applied}
                 <Icon icon="mdi:check" width="14" />
@@ -181,12 +178,12 @@
     </p>
 
     <!-- Error message -->
-    {#if $tweakError}
+    {#if tweakError}
       <div
         class="mb-2.5 flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-xs leading-relaxed text-error"
       >
         <Icon icon="mdi:alert-circle" width="16" class="mt-0.5 shrink-0" />
-        <span class="flex-1 wrap-break-word">{$tweakError}</span>
+        <span class="flex-1 wrap-break-word">{tweakError}</span>
         <button
           class="flex shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0.5 text-error transition-colors duration-150 hover:bg-error/20"
           onclick={() => errorStore.clearError(tweak.definition.id)}

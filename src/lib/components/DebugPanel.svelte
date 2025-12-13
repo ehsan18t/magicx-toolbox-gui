@@ -1,6 +1,6 @@
 <script lang="ts">
   import { debugState, type DebugLogEntry } from "$lib/stores/debug.svelte";
-  import { sidebarState } from "$lib/stores/layout.svelte";
+  import { sidebarStore } from "$lib/stores/layout.svelte";
   import Icon from "./Icon.svelte";
 
   let filterLevel = $state<"all" | DebugLogEntry["level"]>("all");
@@ -38,7 +38,7 @@
 
 {#if debugState.isPanelOpen}
   <div
-    class="fixed right-0 bottom-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg transition-[left] duration-250 ease-out {sidebarState.contentLeftOffset}"
+    class="fixed right-0 bottom-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg transition-[left] duration-250 ease-out {sidebarStore.contentLeftOffset}"
   >
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border bg-elevated px-3 py-2">

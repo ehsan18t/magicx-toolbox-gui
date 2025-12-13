@@ -15,7 +15,7 @@ const widthClass = $derived(isOpen ? "w-60" : "w-16");
 const contentLeftOffset = $derived(isOpen ? "left-60" : "left-16");
 
 // Export the sidebar store
-export const sidebarState = {
+export const sidebarStore = {
   get isExpanded() {
     return isExpanded;
   },

@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { navigateToCategory } from "$lib/stores/navigation";
-  import { categoriesStore, categoryStats, systemStore } from "$lib/stores/tweaks";
+  import { navigationStore } from "$lib/stores/navigation.svelte";
+  import { categoriesStore, getCategoryStats, systemStore } from "$lib/stores/tweaks.svelte";
   import HardwareItem from "./HardwareItem.svelte";
   import Icon from "./Icon.svelte";
   import Marquee from "./Marquee.svelte";
+
+  // Get category stats reactively
+  const categoryStats = $derived(getCategoryStats());
 
   // Format clock speed
   const formatClockSpeed = (mhz: number) => {
@@ -49,10 +52,10 @@
           </span>
           <div class="flex flex-col">
             <span class="text-sm font-semibold text-foreground">
-              {$systemStore?.windows?.product_name?.replace("Windows ", "Win ") ?? "Windows"}
+              {systemStore.info?.windows?.product_name?.replace("Windows ", "Win ") ?? "Windows"}
             </span>
             <span class="text-xs text-foreground-muted">
-              {$systemStore?.windows?.display_version ?? ""} ({$systemStore?.windows?.build_number ?? ""})
+              {systemStore.info?.windows?.display_version ?? ""} ({systemStore.info?.windows?.build_number ?? ""})
             </span>
           </div>
         </div>
@@ -61,7 +64,7 @@
         <div class="flex flex-col gap-1.5 md:px-4">
           <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
             <Icon
-              icon={$systemStore?.device?.pc_type === "Laptop" ? "mdi:laptop" : "mdi:desktop-tower-monitor"}
+              icon={systemStore.info?.device?.pc_type === "Laptop" ? "mdi:laptop" : "mdi:desktop-tower-monitor"}
               width="14"
               class="text-accent"
             />
@@ -69,10 +72,10 @@
           </span>
           <div class="flex flex-col">
             <span class="truncate text-sm font-semibold text-foreground">
-              {$systemStore?.device?.model ?? $systemStore?.computer_name ?? "Unknown"}
+              {systemStore.info?.device?.model ?? systemStore.info?.computer_name ?? "Unknown"}
             </span>
             <span class="truncate text-xs text-foreground-muted">
-              {$systemStore?.device?.manufacturer ?? "Unknown"}
+              {systemStore.info?.device?.manufacturer ?? "Unknown"}
             </span>
           </div>
         </div>
@@ -85,7 +88,7 @@
           </span>
           <div class="flex flex-col">
             <span class="text-sm font-semibold text-foreground">
-              {formatUptime($systemStore?.windows?.uptime_seconds ?? 0)}
+              {formatUptime(systemStore.info?.windows?.uptime_seconds ?? 0)}
             </span>
             <span class="text-xs text-foreground-muted">Since boot</span>
           </div>
@@ -95,18 +98,18 @@
         <div class="flex flex-col gap-1.5 md:pl-4">
           <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
             <Icon
-              icon={$systemStore?.is_admin ? "mdi:shield-check" : "mdi:account"}
+              icon={systemStore.info?.is_admin ? "mdi:shield-check" : "mdi:account"}
               width="14"
-              class={$systemStore?.is_admin ? "text-success" : "text-warning"}
+              class={systemStore.info?.is_admin ? "text-success" : "text-warning"}
             />
             User
           </span>
           <div class="flex flex-col">
             <span class="truncate text-sm font-semibold text-foreground">
-              {$systemStore?.username ?? "User"}
+              {systemStore.info?.username ?? "User"}
             </span>
-            <span class="text-xs {$systemStore?.is_admin ? 'text-success' : 'text-warning'}">
-              {$systemStore?.is_admin ? "Admin" : "Standard"}
+            <span class="text-xs {systemStore.info?.is_admin ? 'text-success' : 'text-warning'}">
+              {systemStore.info?.is_admin ? "Admin" : "Standard"}
             </span>
           </div>
         </div>
@@ -122,18 +125,22 @@
 
     <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
       <!-- CPU -->
-      <HardwareItem icon="mdi:cpu-64-bit" label="Processor" title={$systemStore?.hardware?.cpu?.name ?? "Unknown CPU"}>
-        <span>{$systemStore?.hardware?.cpu?.cores ?? 0} Cores</span>
+      <HardwareItem
+        icon="mdi:cpu-64-bit"
+        label="Processor"
+        title={systemStore.info?.hardware?.cpu?.name ?? "Unknown CPU"}
+      >
+        <span>{systemStore.info?.hardware?.cpu?.cores ?? 0} Cores</span>
         <span class="h-1 w-1 rounded-full bg-border"></span>
-        <span>{formatClockSpeed($systemStore?.hardware?.cpu?.max_clock_mhz ?? 0)}</span>
+        <span>{formatClockSpeed(systemStore.info?.hardware?.cpu?.max_clock_mhz ?? 0)}</span>
       </HardwareItem>
 
       <!-- GPU(s) -->
-      {#if $systemStore?.hardware?.gpu && $systemStore.hardware.gpu.length > 0}
-        {#each $systemStore.hardware.gpu as gpu, i (i)}
+      {#if systemStore.info?.hardware?.gpu && systemStore.info.hardware.gpu.length > 0}
+        {#each systemStore.info.hardware.gpu as gpu, i (i)}
           <HardwareItem
             icon="mdi:expansion-card"
-            label="Graphics{$systemStore.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
+            label="Graphics{systemStore.info.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
             title={gpu.name}
           >
             <Marquee>
@@ -141,8 +148,8 @@
                 >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
               >
 
-              {#if i === 0 && $systemStore?.hardware?.monitors && $systemStore.hardware.monitors.length > 0}
-                {#each $systemStore.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
+              {#if i === 0 && systemStore.info?.hardware?.monitors && systemStore.info.hardware.monitors.length > 0}
+                {#each systemStore.info.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
                   <span class="h-1 w-1 rounded-full bg-border"></span>
                   <span title="{monitor.name} - {monitor.resolution}">
                     {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>
@@ -166,12 +173,12 @@
       <HardwareItem
         icon="bi:motherboard"
         label="Motherboard"
-        title={$systemStore?.hardware?.motherboard?.product ?? "Unknown"}
+        title={systemStore.info?.hardware?.motherboard?.product ?? "Unknown"}
       >
-        <span class="truncate">{$systemStore?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
-        {#if $systemStore?.hardware?.motherboard?.bios_version}
+        <span class="truncate">{systemStore.info?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
+        {#if systemStore.info?.hardware?.motherboard?.bios_version}
           <span class="h-1 w-1 rounded-full bg-border"></span>
-          <span class="truncate">BIOS: {$systemStore?.hardware?.motherboard?.bios_version}</span>
+          <span class="truncate">BIOS: {systemStore.info?.hardware?.motherboard?.bios_version}</span>
         {/if}
       </HardwareItem>
 
@@ -179,19 +186,20 @@
       <HardwareItem
         icon="ri:ram-line"
         label="Memory"
-        title="{$systemStore?.hardware?.memory?.total_gb ?? 0} GB {$systemStore?.hardware?.memory?.memory_type ?? ''}"
+        title="{systemStore.info?.hardware?.memory?.total_gb ?? 0} GB {systemStore.info?.hardware?.memory
+          ?.memory_type ?? ''}"
       >
-        <span>{$systemStore?.hardware?.memory?.speed_mhz ?? 0} MHz</span>
+        <span>{systemStore.info?.hardware?.memory?.speed_mhz ?? 0} MHz</span>
         <span class="h-1 w-1 rounded-full bg-border"></span>
-        <span>{$systemStore?.hardware?.memory?.slots_used ?? 0} / 4 Slots</span>
+        <span>{systemStore.info?.hardware?.memory?.slots_used ?? 0} / 4 Slots</span>
       </HardwareItem>
 
       <!-- Storage Drives -->
-      {#if $systemStore?.hardware?.disks && $systemStore.hardware.disks.length > 0}
-        {#each $systemStore.hardware.disks as disk, i (i)}
+      {#if systemStore.info?.hardware?.disks && systemStore.info.hardware.disks.length > 0}
+        {#each systemStore.info.hardware.disks as disk, i (i)}
           <HardwareItem
             icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
-            label="Storage{$systemStore.hardware.disks.length > 1 ? ` ${i + 1}` : ''}"
+            label="Storage{systemStore.info.hardware.disks.length > 1 ? ` ${i + 1}` : ''}"
             title={disk.model}
           >
             {#snippet headerExtra()}
@@ -212,11 +220,11 @@
       {/if}
 
       <!-- Network -->
-      {#if $systemStore?.hardware?.network && $systemStore.hardware.network.length > 0}
-        {#each $systemStore.hardware.network as net, i (i)}
+      {#if systemStore.info?.hardware?.network && systemStore.info.hardware.network.length > 0}
+        {#each systemStore.info.hardware.network as net, i (i)}
           <HardwareItem
             icon="mdi:ethernet"
-            label="Network{$systemStore.hardware.network.length > 1 ? ` ${i + 1}` : ''}"
+            label="Network{systemStore.info.hardware.network.length > 1 ? ` ${i + 1}` : ''}"
             title={net.name}
           >
             <span>{net.ip_address}</span>
@@ -232,15 +240,15 @@
   <div class="flex flex-col gap-3">
     <div class="flex items-center justify-between">
       <h2 class="m-0 text-lg font-semibold text-foreground">Tweak Categories</h2>
-      <span class="text-xs text-foreground-muted">{$categoriesStore.length} available</span>
+      <span class="text-xs text-foreground-muted">{categoriesStore.list.length} available</span>
     </div>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {#each $categoriesStore as category (category.id)}
-        {@const stats = $categoryStats[category.id]}
+      {#each categoriesStore.list as category (category.id)}
+        {@const stats = categoryStats[category.id]}
         {@const progress = stats?.total > 0 ? (stats.applied / stats.total) * 100 : 0}
         <button
           class="group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-accent/50 hover:shadow-md"
-          onclick={() => navigateToCategory(category.id)}
+          onclick={() => navigationStore.navigateToCategory(category.id)}
         >
           <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
             <Icon icon={category.icon || "mdi:folder"} width="20" />

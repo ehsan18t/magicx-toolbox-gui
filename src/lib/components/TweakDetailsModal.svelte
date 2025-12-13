@@ -1,6 +1,6 @@
 <script lang="ts">
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { pendingChangesStore, systemStore, tweaksStore } from "$lib/stores/tweaks";
+  import { pendingChangesStore, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { TweakOption } from "$lib/types";
   import { RISK_INFO, type RiskLevel } from "$lib/types";
   import Icon from "./Icon.svelte";
@@ -12,17 +12,17 @@
   const tweak = $derived.by(() => {
     const state = tweakDetailsModalStore.state;
     if (!state) return null;
-    return $tweaksStore.find((t) => t.definition.id === state.tweakId) ?? null;
+    return tweaksStore.list.find((t) => t.definition.id === state.tweakId) ?? null;
   });
 
   const pendingChange = $derived.by(() => {
     const t = tweak;
     if (!t) return undefined;
-    return $pendingChangesStore.get(t.definition.id);
+    return pendingChangesStore.get(t.definition.id);
   });
 
   const currentWindowsVersion = $derived.by(() => {
-    const system = $systemStore;
+    const system = systemStore.info;
     if (!system) return null;
     return system.windows.is_windows_11 ? 11 : 10;
   });
