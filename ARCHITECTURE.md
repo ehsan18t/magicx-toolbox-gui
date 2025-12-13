@@ -52,6 +52,8 @@ risk_levels:
 
 ### Tweak Definition (YAML → Rust → TypeScript)
 
+All tweaks use a **unified option-based model** where each tweak has an `options` array:
+
 ```yaml
 tweaks:
   - id: unique_tweak_id
@@ -59,66 +61,84 @@ tweaks:
     description: "What this tweak does"
     risk_level: low | medium | high | critical
     requires_admin: true | false
+    requires_system: true | false  # Requires SYSTEM elevation
     requires_reboot: true | false
+    is_toggle: true | false  # true = switch UI (2 options), false = dropdown
     info: "Optional detailed explanation"
 
-    # Registry changes (required)
-    registry_changes:
-      - hive: HKCU | HKLM
-        key: "Registry\\Path"
-        value_name: "ValueName"
-        value_type: REG_DWORD | REG_SZ | REG_BINARY | ...
-        enable_value: <value when ON>
-        disable_value: <value when OFF>
-        windows_versions: [10, 11]  # Optional filter
-
-        # Multi-state options (optional)
-        options:
-          - label: "Option Display Name"
-            value: <registry value>
-            is_default: true | false
-            service_changes:  # Per-option services (optional)
-              - name: "ServiceName"
-                startup: disabled | manual | automatic
-                stop_if_disabled: true | false
-
-    # Tweak-level service changes (optional)
-    service_changes:
-      - name: "ServiceName"
-        enable_startup: disabled | manual | automatic
-        disable_startup: disabled | manual | automatic
-        stop_on_disable: true | false
-        start_on_enable: true | false
+    options:  # Array of available states (2 for toggle, 2+ for dropdown)
+      - label: "Option Display Name"
+        registry_changes:
+          - hive: HKCU | HKLM
+            key: "Registry\\Path"
+            value_name: "ValueName"
+            value_type: REG_DWORD | REG_SZ | REG_BINARY | REG_QWORD | ...
+            value: <target value>
+            windows_versions: [10, 11]  # Optional filter
+        service_changes:
+          - name: "ServiceName"
+            startup: disabled | manual | automatic | boot | system
+            stop_service: true | false
+            start_service: true | false
+        scheduler_changes:
+          - task_path: "\\Microsoft\\Windows\\..."
+            task_name: "TaskName"
+            action: enable | disable | delete
+        pre_commands: []      # Shell commands before changes
+        pre_powershell: []    # PowerShell before changes
+        post_commands: []     # Shell commands after changes
+        post_powershell: []   # PowerShell after changes
 ```
+
+### Execution Order
+
+When applying an option, changes execute in this order:
+1. `pre_commands` → 2. `pre_powershell` → 3. `registry_changes` → 4. `service_changes` → 5. `scheduler_changes` → 6. `post_commands` → 7. `post_powershell`
 
 ### Snapshot Structure
 
 ```rust
 struct TweakSnapshot {
     tweak_id: String,
-    timestamp: String,
-    registry: Vec<RegistrySnapshot>,
-    services: Vec<ServiceSnapshot>,
+    tweak_name: String,
+    applied_option_index: usize,
+    applied_option_label: String,
+    created_at: String,
+    windows_version: u32,
+    requires_system: bool,
+    registry_snapshots: Vec<RegistrySnapshot>,
+    service_snapshots: Vec<ServiceSnapshot>,
+    scheduler_snapshots: Vec<SchedulerSnapshot>,
 }
 
 struct RegistrySnapshot {
     hive: String,
     key: String,
     value_name: String,
-    original_value: Option<serde_json::Value>,
-    original_type: Option<String>,
+    value_type: Option<String>,
+    value: Option<serde_json::Value>,
+    existed: bool,
 }
 
 struct ServiceSnapshot {
     name: String,
-    original_startup: ServiceStartupType,
+    startup_type: String,
+    was_running: bool,
+}
+
+struct SchedulerSnapshot {
+    task_path: String,
+    task_name: String,
+    original_state: String,  // "Ready", "Disabled", "NotFound"
 }
 ```
 
 ## Tweak Format Examples
 
-### 1. Simple Binary Tweak
-A standard toggle that changes a registry value between two states.
+All tweaks use the **unified option-based model** where each tweak has an `options` array.
+
+### 1. Simple Toggle Tweak
+A standard toggle (`is_toggle: true`) with two options (enabled/disabled).
 
 ```yaml
 - id: disable_game_dvr
@@ -126,40 +146,61 @@ A standard toggle that changes a registry value between two states.
   description: "Disables Windows Game Recording and Broadcasting features."
   risk_level: low
   requires_admin: false
-  registry_changes:
-    - hive: HKCU
-      key: "System\\GameConfigStore"
-      value_name: "GameDVR_Enabled"
-      value_type: REG_DWORD
-      enable_value: 0
-      disable_value: 1
+  requires_system: false
+  requires_reboot: false
+  is_toggle: true
+  options:
+    - label: "Disabled"
+      registry_changes:
+        - hive: HKCU
+          key: "System\\GameConfigStore"
+          value_name: "GameDVR_Enabled"
+          value_type: REG_DWORD
+          value: 0
+    - label: "Enabled"
+      registry_changes:
+        - hive: HKCU
+          key: "System\\GameConfigStore"
+          value_name: "GameDVR_Enabled"
+          value_type: REG_DWORD
+          value: 1
 ```
 
 ### 2. Multi-State Tweak (Dropdown)
-A tweak that offers multiple choices instead of a simple toggle.
+A tweak with multiple choices (`is_toggle: false`).
 
 ```yaml
 - id: icon_cache_size
   name: "Icon Cache Size"
   description: "Increase icon cache size to prevent icon corruption."
   risk_level: low
-  registry_changes:
-    - hive: HKLM
-      key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-      value_name: "Max Cached Icons"
-      value_type: REG_SZ
-      options:
-        - label: "Standard (500KB)"
+  is_toggle: false
+  options:
+    - label: "Standard (500KB)"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+          value_name: "Max Cached Icons"
+          value_type: REG_SZ
           value: "500"
-          is_default: true
-        - label: "Medium (2MB)"
+    - label: "Medium (2MB)"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+          value_name: "Max Cached Icons"
+          value_type: REG_SZ
           value: "2048"
-        - label: "Large (4MB)"
+    - label: "Large (4MB)"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+          value_name: "Max Cached Icons"
+          value_type: REG_SZ
           value: "4096"
 ```
 
 ### 3. Service Management Tweak
-A tweak that primarily manages Windows services.
+A tweak that manages Windows services.
 
 ```yaml
 - id: disable_print_spooler
@@ -167,17 +208,20 @@ A tweak that primarily manages Windows services.
   description: "Disables printing services. Useful if you don't use a printer."
   risk_level: medium
   requires_admin: true
-  service_changes:
-    - name: "Spooler"
-      enable_startup: disabled
-      disable_startup: automatic
-      stop_on_disable: true
-      start_on_enable: true
-  registry_changes: [] # Can be empty if only services are modified
+  is_toggle: true
+  options:
+    - label: "Disabled"
+      service_changes:
+        - name: "Spooler"
+          startup: disabled
+    - label: "Enabled"
+      service_changes:
+        - name: "Spooler"
+          startup: automatic
 ```
 
-### 4. Hybrid Tweak (Registry + Services)
-Combines registry changes with service management.
+### 4. Hybrid Tweak (Registry + Services + Scheduler)
+Combines registry changes with service and scheduler management.
 
 ```yaml
 - id: disable_diag_track
@@ -185,18 +229,36 @@ Combines registry changes with service management.
   description: "Disables Windows telemetry and data collection."
   risk_level: medium
   requires_admin: true
-  registry_changes:
-    - hive: HKLM
-      key: "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
-      value_name: "AllowTelemetry"
-      value_type: REG_DWORD
-      enable_value: 0
-      disable_value: 1
-  service_changes:
-    - name: "DiagTrack"
-      enable_startup: disabled
-      disable_startup: automatic
-      stop_on_disable: true
+  is_toggle: true
+  options:
+    - label: "Disabled"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+          value_name: "AllowTelemetry"
+          value_type: REG_DWORD
+          value: 0
+      service_changes:
+        - name: "DiagTrack"
+          startup: disabled
+      scheduler_changes:
+        - task_path: "\\Microsoft\\Windows\\Application Experience"
+          task_name: "Microsoft Compatibility Appraiser"
+          action: disable
+    - label: "Enabled"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+          value_name: "AllowTelemetry"
+          value_type: REG_DWORD
+          value: 3
+      service_changes:
+        - name: "DiagTrack"
+          startup: automatic
+      scheduler_changes:
+        - task_path: "\\Microsoft\\Windows\\Application Experience"
+          task_name: "Microsoft Compatibility Appraiser"
+          action: enable
 ```
 
 ### 5. Version-Specific Tweak
@@ -207,14 +269,24 @@ Applies different changes based on Windows version.
   name: "Taskbar Alignment"
   description: "Align taskbar icons to the left (Windows 11 only)."
   risk_level: low
-  registry_changes:
-    - hive: HKCU
-      key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-      value_name: "TaskbarAl"
-      value_type: REG_DWORD
-      enable_value: 0
-      disable_value: 1
-      windows_versions: [11] # Only applies to Windows 11
+  is_toggle: true
+  options:
+    - label: "Left"
+      registry_changes:
+        - hive: HKCU
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+          value_name: "TaskbarAl"
+          value_type: REG_DWORD
+          value: 0
+          windows_versions: [11]
+    - label: "Center"
+      registry_changes:
+        - hive: HKCU
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+          value_name: "TaskbarAl"
+          value_type: REG_DWORD
+          value: 1
+          windows_versions: [11]
 ```
 
 ### 6. System-Protected Tweak (TrustedInstaller)
@@ -226,37 +298,69 @@ Requires `requires_system: true` to modify protected keys.
   description: "Completely disables Windows Defender Antivirus."
   risk_level: critical
   requires_admin: true
-  requires_system: true # Uses TrustedInstaller impersonation
+  requires_system: true
   requires_reboot: true
-  registry_changes:
-    - hive: HKLM
-      key: "SOFTWARE\\Policies\\Microsoft\\Windows Defender"
-      value_name: "DisableAntiSpyware"
-      value_type: REG_DWORD
-      enable_value: 1
-      disable_value: 0
+  is_toggle: true
+  options:
+    - label: "Disabled"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Policies\\Microsoft\\Windows Defender"
+          value_name: "DisableAntiSpyware"
+          value_type: REG_DWORD
+          value: 1
+    - label: "Enabled"
+      registry_changes:
+        - hive: HKLM
+          key: "SOFTWARE\\Policies\\Microsoft\\Windows Defender"
+          value_name: "DisableAntiSpyware"
+          value_type: REG_DWORD
+          value: 0
 ```
 
-### 7. Command-Based Tweak
-Runs shell commands before or after applying changes.
+### 7. Command-Based Tweak with PowerShell
+Runs shell commands and PowerShell scripts before or after applying changes.
 
 ```yaml
 - id: remove_onedrive
   name: "Remove OneDrive"
   description: "Uninstalls OneDrive and removes integration."
   risk_level: high
-  pre_commands:
-    - "taskkill /f /im OneDrive.exe"
-  post_commands:
-    - "%SystemRoot%\\SysWOW64\\OneDriveSetup.exe /uninstall"
-  registry_changes:
-    - hive: HKCU
-      key: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-      value_name: "OneDrive"
-      value_type: REG_SZ
-      enable_value: "" # Remove value
-      disable_value: "\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background"
+  is_toggle: true
+  options:
+    - label: "Removed"
+      pre_commands:
+        - "taskkill /f /im OneDrive.exe"
+      pre_powershell:
+        - "Stop-Process -Name 'OneDrive' -Force -ErrorAction SilentlyContinue"
+      registry_changes:
+        - hive: HKCU
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+          value_name: "OneDrive"
+          value_type: REG_SZ
+          value: ""
+      post_powershell:
+        - "Start-Process '%SystemRoot%\\SysWOW64\\OneDriveSetup.exe' -ArgumentList '/uninstall' -Wait"
+    - label: "Installed"
+      registry_changes:
+        - hive: HKCU
+          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+          value_name: "OneDrive"
+          value_type: REG_SZ
+          value: "\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background"
+
 ```
+
+### Execution Order
+
+When applying an option, changes are executed in this order:
+1. `pre_commands` (shell commands)
+2. `pre_powershell` (PowerShell scripts)
+3. `registry_changes`
+4. `service_changes`
+5. `scheduler_changes`
+6. `post_commands` (shell commands)
+7. `post_powershell` (PowerShell scripts)
 
 ---
 
@@ -279,14 +383,25 @@ Runs shell commands before or after applying changes.
 - Query service status
 - Uses Windows SC (Service Control Manager) API
 
-### 4. `backup_service` - Snapshot Management
+### 4. `scheduler_service` - Task Scheduler Management
+- Enable/disable/delete scheduled tasks
+- Query task state (Ready, Disabled, Running, NotFound)
+- Uses Windows `schtasks.exe` CLI
+
+### 5. `backup_service` - Snapshot Management
 - `capture_snapshot()` - Capture current state before changes
 - `save_snapshot()` / `load_snapshot()` - Persist to JSON files
 - `restore_from_snapshot()` - Restore original state
 - `validate_all_snapshots()` - Startup cleanup of stale snapshots
-- Storage: `%APPDATA%/com.magicx.toolbox/snapshots/*.json`
+- Storage: `snapshots/` directory next to executable (portable app design)
 
-### 5. `system_info_service` - System Detection
+### 6. `trusted_installer` - SYSTEM Elevation & PowerShell
+- Execute commands as SYSTEM via winlogon.exe token
+- Registry writes as SYSTEM for protected keys
+- PowerShell execution: `run_powershell()`, `run_powershell_as_system()`
+- Schtasks execution: `run_schtasks_as_system()`
+
+### 7. `system_info_service` - System Detection
 - Windows version detection (10 vs 11)
 - Build number detection
 - Admin privilege check

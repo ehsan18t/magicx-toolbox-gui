@@ -9,8 +9,8 @@ use winreg::HKEY;
 /// Format hive name for display
 fn hive_name(hive: &RegistryHive) -> &'static str {
     match hive {
-        RegistryHive::HKCU => "HKCU",
-        RegistryHive::HKLM => "HKLM",
+        RegistryHive::Hkcu => "HKCU",
+        RegistryHive::Hklm => "HKLM",
     }
 }
 
@@ -205,8 +205,8 @@ pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
 /// Get registry hive key
 fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
     match hive {
-        RegistryHive::HKCU => Ok(HKEY_CURRENT_USER),
-        RegistryHive::HKLM => Ok(HKEY_LOCAL_MACHINE),
+        RegistryHive::Hkcu => Ok(HKEY_CURRENT_USER),
+        RegistryHive::Hklm => Ok(HKEY_LOCAL_MACHINE),
     }
 }
 
@@ -214,7 +214,7 @@ fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
 /// HKLM modifications require admin privileges
 fn require_write_access(hive: &RegistryHive) -> Result<(), Error> {
     use crate::services::system_info_service::is_running_as_admin;
-    if matches!(hive, RegistryHive::HKLM) && !is_running_as_admin() {
+    if matches!(hive, RegistryHive::Hklm) && !is_running_as_admin() {
         log::warn!("HKLM modification requires admin privileges");
         return Err(Error::RequiresAdmin);
     }
@@ -392,7 +392,7 @@ mod tests {
     fn test_key_exists_hkcu() {
         // Test with known HKCU key
         let result = key_exists(
-            &RegistryHive::HKCU,
+            &RegistryHive::Hkcu,
             "Software\\Microsoft\\Windows\\CurrentVersion",
         );
         assert!(result.is_ok());

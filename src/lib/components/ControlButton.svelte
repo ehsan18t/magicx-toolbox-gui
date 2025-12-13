@@ -34,9 +34,7 @@
   {title}
   onclick={onClick}
 >
-  <span
-    class="relative z-10 flex items-center justify-center transition-transform duration-150 {iconClass}"
-  >
+  <span class="relative z-10 flex items-center justify-center transition-transform duration-150 {iconClass}">
     <Icon {icon} width="16" height="16" />
   </span>
 </button>

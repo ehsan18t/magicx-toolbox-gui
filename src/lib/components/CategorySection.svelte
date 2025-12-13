@@ -26,16 +26,15 @@
   const appliedTweaks = $derived(tweaks.filter((t) => t.status.is_applied));
 
   // Check if any tweak in this category is loading
-  const isLoading = derived(loadingStore, ($loading) =>
-    tweaks.some((t) => $loading.has(t.definition.id)),
-  );
+  const isLoading = derived(loadingStore, ($loading) => tweaks.some((t) => $loading.has(t.definition.id)));
 
   async function handleApplyAll() {
     showApplyAllDialog = false;
     isBatchProcessing = true;
 
     for (const tweak of unappliedTweaks) {
-      await applyTweak(tweak.definition.id);
+      // Apply option 0 (the first/enabled option) for all tweaks
+      await applyTweak(tweak.definition.id, 0, tweak.definition.requires_reboot);
     }
 
     isBatchProcessing = false;
@@ -117,9 +116,7 @@
       </div>
 
       <!-- Count badge -->
-      <span
-        class="rounded-full bg-[hsl(var(--muted))] px-2.5 py-1 text-xs font-medium text-foreground-muted"
-      >
+      <span class="rounded-full bg-[hsl(var(--muted))] px-2.5 py-1 text-xs font-medium text-foreground-muted">
         {appliedCount}/{tweaks.length} applied
       </span>
 

@@ -87,87 +87,9 @@ For detailed information about working with the Rust backend, including:
 **📖 [Read the Rust Backend Developer Guide](./RUST_BACKEND_GUIDE.md)**
 
 ### Authoring Tweaks (YAML)
-Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks. The app auto-discovers all `.yaml` files; no code changes are needed when you add/edit files.
+Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks. The app auto-discovers all `.yaml` files, no code changes are needed when you add/edit files.
 
-**File layout**
-```yaml
-category:
-   id: performance             # slug, used in code/UI
-   name: "Performance"          # display name
-   description: "Optimize..."   # shown in UI
-   icon: "⚡"                    # emoji or icon text
-   order: 2                     # sort order in UI
-
-tweaks:
-   - id: unique_id             # must be unique across all files
-      name: "Human title"
-      description: "What it does"
-      risk_level: low | medium | high | critical
-      requires_reboot: true | false   # optional, defaults false
-      requires_admin: true | false    # optional, defaults false
-      info: "Optional extra notes"   # optional
-      registry_changes:               # flat list of registry edits
-         - hive: HKLM | HKCU
-            key: "Path\\To\\Key"
-            value_name: "ValueName"
-            value_type: REG_DWORD | REG_SZ | REG_EXPAND_SZ | REG_BINARY | REG_MULTI_SZ | REG_QWORD
-            enable_value: <json value>   # applied when enabling the tweak
-            disable_value: <json value>  # optional; used when reverting
-            windows_versions: [10, 11]   # optional; omit or empty = applies to all
-```
-
-**Version targeting**
-- Omit `windows_versions` (or leave it empty) to apply on both Windows 10 and 11.
-- Specify `[10]` or `[11]` to target a single OS.
-
-**Examples**
-Common change (applies to all):
-```yaml
-registry_changes:
-   - hive: HKLM
-      key: "System\\CurrentControlSet\\Services\\DiagTrack"
-      value_name: "Start"
-      value_type: REG_DWORD
-      enable_value: 4
-      disable_value: 2
-```
-
-Win10-only extra change:
-```yaml
-registry_changes:
-   - hive: HKLM
-      key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-      value_name: "Start"
-      value_type: REG_DWORD
-      enable_value: 4
-      disable_value: 2
-      windows_versions: [10]
-```
-
-Mixed list in one tweak:
-```yaml
-registry_changes:
-   # applies to both 10/11
-   - hive: HKCU
-      key: "Software\\Microsoft\\GameBar"
-      value_name: "UseNexusForGameMode"
-      value_type: REG_DWORD
-      enable_value: 1
-      disable_value: 0
-   # Win11-only adjustment
-   - hive: HKCU
-      key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
-      value_name: ""
-      value_type: REG_SZ
-      enable_value: ""
-      disable_value: null
-      windows_versions: [11]
-```
-
-**Notes**
-- `enable_value` / `disable_value` accept any JSON literal (number, string, null, array for binary bytes, etc.).
-- `value_name` can be empty (`""`) when setting the default value of a key.
-- Keep IDs unique; categories are sorted by `order`, tweaks within categories keep file order.
+**📖 [Read the Tweak Authoring Guide for more details](./TWEAK_AUTHORING.md)**
 
 ## Customization
 

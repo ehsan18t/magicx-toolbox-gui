@@ -161,9 +161,7 @@
           {#if updateInfo?.available}
             <!-- Update Available -->
             <div class="mb-4 flex items-start gap-3">
-              <div
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/15"
-              >
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/15">
                 <Icon icon="mdi:arrow-up-circle" width="24" class="text-success" />
               </div>
               <div class="flex-1">
@@ -184,9 +182,7 @@
 
             {#if updateInfo.releaseNotes}
               <div class="mb-4 max-h-32 overflow-y-auto rounded-lg bg-[hsl(var(--muted)/0.5)] p-3">
-                <h4 class="m-0 mb-2 text-xs font-semibold text-foreground-muted uppercase">
-                  Release Notes
-                </h4>
+                <h4 class="m-0 mb-2 text-xs font-semibold text-foreground-muted uppercase">Release Notes</h4>
                 <p class="m-0 text-sm whitespace-pre-wrap text-foreground">
                   {updateInfo.releaseNotes}
                 </p>
@@ -209,9 +205,7 @@
                   {/if}
                 </button>
               {:else}
-                <span class="flex-1 text-center text-sm text-foreground-muted">
-                  No compatible installer found
-                </span>
+                <span class="flex-1 text-center text-sm text-foreground-muted"> No compatible installer found </span>
               {/if}
               {#if updateInfo.downloadUrl}
                 <ExternalLink
@@ -239,16 +233,12 @@
           {:else}
             <!-- Not Checked -->
             <div class="flex items-center gap-3">
-              <div
-                class="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--muted))]"
-              >
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--muted))]">
                 <Icon icon="mdi:help-circle" width="24" class="text-foreground-muted" />
               </div>
               <div>
                 <h3 class="m-0 text-base font-semibold text-foreground">Check for updates</h3>
-                <p class="m-0 mt-1 text-sm text-foreground-muted">
-                  Click the button below to check for new versions.
-                </p>
+                <p class="m-0 mt-1 text-sm text-foreground-muted">Click the button below to check for new versions.</p>
               </div>
             </div>
           {/if}
@@ -282,12 +272,8 @@
             <!-- Auto Check Updates -->
             <label class="flex cursor-pointer items-center justify-between">
               <div class="flex-1">
-                <span class="block text-sm font-medium text-foreground">
-                  Automatically check for updates
-                </span>
-                <span class="block text-xs text-foreground-muted">
-                  Check for updates when the app starts
-                </span>
+                <span class="block text-sm font-medium text-foreground"> Automatically check for updates </span>
+                <span class="block text-xs text-foreground-muted"> Check for updates when the app starts </span>
               </div>
               <button
                 type="button"
@@ -310,9 +296,7 @@
             <!-- Auto Install Updates -->
             <label class="flex cursor-pointer items-center justify-between">
               <div class="flex-1">
-                <span class="block text-sm font-medium text-foreground">
-                  Automatically install updates
-                </span>
+                <span class="block text-sm font-medium text-foreground"> Automatically install updates </span>
                 <span class="block text-xs text-foreground-muted">
                   Download and install updates automatically (coming soon)
                 </span>

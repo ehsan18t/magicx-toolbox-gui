@@ -71,7 +71,7 @@ pub fn get_tweaks_by_category(category: &str) -> Result<HashMap<String, TweakDef
 
     let filtered: HashMap<_, _> = TWEAKS
         .iter()
-        .filter(|(_, tweak)| tweak.category.eq_ignore_ascii_case(category))
+        .filter(|(_, tweak)| tweak.category_id.eq_ignore_ascii_case(category))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 

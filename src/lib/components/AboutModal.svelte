@@ -60,9 +60,7 @@
       aria-labelledby="about-title"
     >
       <!-- Header with gradient accent -->
-      <div
-        class="relative bg-linear-to-br from-accent/20 via-accent/10 to-transparent px-6 pt-6 pb-4"
-      >
+      <div class="relative bg-linear-to-br from-accent/20 via-accent/10 to-transparent px-6 pt-6 pb-4">
         <!-- Close button -->
         <button
           class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-black/10 text-foreground-muted transition-colors hover:bg-black/20 hover:text-foreground"
@@ -74,9 +72,7 @@
 
         <!-- App branding -->
         <div class="flex flex-col items-center text-center">
-          <div
-            class="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/20 shadow-lg"
-          >
+          <div class="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/20 shadow-lg">
             <Icon icon="mdi:magic-staff" width="36" class="text-accent" />
           </div>
           <h2 id="about-title" class="m-0 text-xl font-bold text-foreground">
@@ -94,8 +90,7 @@
       <div class="space-y-4 px-6 py-5">
         <!-- Description -->
         <p class="m-0 text-center text-sm leading-relaxed text-foreground-muted">
-          A powerful Windows system optimization and tweaking application for privacy, performance,
-          and customization.
+          A powerful Windows system optimization and tweaking application for privacy, performance, and customization.
         </p>
 
         <!-- Quick Links -->

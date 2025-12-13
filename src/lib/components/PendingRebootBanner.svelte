@@ -18,8 +18,7 @@
       <div class="flex flex-col gap-0.5">
         <span class="text-sm font-semibold text-foreground">Restart Required</span>
         <span class="text-xs text-foreground-muted">
-          {$pendingRebootCount} tweak{$pendingRebootCount === 1 ? "" : "s"} need a system restart to take
-          effect
+          {$pendingRebootCount} tweak{$pendingRebootCount === 1 ? "" : "s"} need a system restart to take effect
         </span>
       </div>
     </div>

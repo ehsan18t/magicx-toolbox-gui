@@ -66,11 +66,7 @@
     >
       <!-- Header -->
       <div class="flex items-center gap-3 border-b border-border px-5 py-4">
-        <Icon
-          icon={iconClasses[variant].icon}
-          width="24"
-          class="shrink-0 {iconClasses[variant].color}"
-        />
+        <Icon icon={iconClasses[variant].icon} width="24" class="shrink-0 {iconClasses[variant].color}" />
         <h2 id="dialog-title" class="m-0 text-base font-semibold text-foreground">{title}</h2>
       </div>
 
@@ -80,9 +76,7 @@
       </div>
 
       <!-- Actions -->
-      <div
-        class="flex justify-end gap-2 rounded-b-xl border-t border-border bg-[hsl(var(--muted)/0.3)] px-5 py-3"
-      >
+      <div class="flex justify-end gap-2 rounded-b-xl border-t border-border bg-[hsl(var(--muted)/0.3)] px-5 py-3">
         <button
           class="cursor-pointer rounded-md border-0 bg-[hsl(var(--muted))] px-4 py-2 text-sm font-medium text-foreground transition-all duration-150 hover:bg-[hsl(var(--muted)/0.8)]"
           onclick={oncancel}

@@ -10,6 +10,8 @@
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
   import MdiBug from "~icons/mdi/bug";
+  import MdiCalendar from "~icons/mdi/calendar";
+  import MdiCalendarClock from "~icons/mdi/calendar-clock";
   import MdiCheck from "~icons/mdi/check";
   import MdiCheckAll from "~icons/mdi/check-all";
   import MdiCheckCircle from "~icons/mdi/check-circle";
@@ -20,7 +22,9 @@
   import MdiClose from "~icons/mdi/close";
   import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
   import MdiCog from "~icons/mdi/cog";
+  import MdiCogOutline from "~icons/mdi/cog-outline";
   import MdiCogs from "~icons/mdi/cogs";
+  import MdiConsole from "~icons/mdi/console";
   import MdiCpu64Bit from "~icons/mdi/cpu-64-bit";
   import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
   import MdiDatabaseExport from "~icons/mdi/database-export";
@@ -54,15 +58,18 @@
   import MdiPalette from "~icons/mdi/palette";
   import MdiPin from "~icons/mdi/pin";
   import MdiPinOutline from "~icons/mdi/pin-outline";
+  import MdiPowershell from "~icons/mdi/powershell";
   import MdiRefresh from "~icons/mdi/refresh";
   import MdiRestart from "~icons/mdi/restart";
   import MdiRestartAlert from "~icons/mdi/restart-alert";
   import MdiRestore from "~icons/mdi/restore";
   import MdiSecurity from "~icons/mdi/security";
+  import MdiServer from "~icons/mdi/server";
   import MdiSettingsOutline from "~icons/mdi/settings-outline";
   import MdiShieldAccountOutline from "~icons/mdi/shield-account-outline";
   import MdiShieldAlert from "~icons/mdi/shield-alert";
   import MdiShieldCheck from "~icons/mdi/shield-check";
+  import MdiShieldKey from "~icons/mdi/shield-key";
   import MdiShieldLock from "~icons/mdi/shield-lock";
   import MdiSpeedometer from "~icons/mdi/speedometer";
   import MdiTimerOutline from "~icons/mdi/timer-outline";
@@ -104,8 +111,12 @@
     "mdi:circle-outline": MdiCircleOutline,
     "mdi:check": MdiCheck,
     "mdi:close": MdiClose,
+    "mdi:cog-outline": MdiCogOutline,
+    "mdi:console": MdiConsole,
     "mdi:shield-account-outline": MdiShieldAccountOutline,
     "mdi:shield-lock": MdiShieldLock,
+    "mdi:shield-key": MdiShieldKey,
+    "mdi:powershell": MdiPowershell,
     "mdi:restart": MdiRestart,
     "mdi:restart-alert": MdiRestartAlert,
     "mdi:information-outline": MdiInformationOutline,
@@ -130,6 +141,7 @@
     "mdi:harddisk-plus": MdiHarddiskPlus,
     "mdi:ethernet": MdiEthernet,
     "mdi:memory": MdiMemory,
+    "mdi:server": MdiServer,
     "mdi:folder": MdiFolder,
     "mdi:check-all": MdiCheckAll,
     "mdi:undo-variant": MdiUndoVariant,
@@ -144,6 +156,8 @@
     "mdi:alert": MdiAlert,
     "mdi:alert-octagon": MdiAlertOctagon,
     "mdi:arrow-up-circle": MdiArrowUpCircle,
+    "mdi:calendar": MdiCalendar,
+    "mdi:calendar-clock": MdiCalendarClock,
     "mdi:bug": MdiBug,
     "mdi:cog": MdiCog,
     "mdi:database-export": MdiDatabaseExport,

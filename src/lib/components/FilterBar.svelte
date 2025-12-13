@@ -6,11 +6,7 @@
 <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
   <!-- Search box -->
   <div class="relative flex items-center md:w-75 md:flex-none">
-    <Icon
-      icon="mdi:magnify"
-      width="18"
-      class="pointer-events-none absolute left-3 text-foreground-muted"
-    />
+    <Icon icon="mdi:magnify" width="18" class="pointer-events-none absolute left-3 text-foreground-muted" />
     <input
       type="text"
       placeholder="Search tweaks..."

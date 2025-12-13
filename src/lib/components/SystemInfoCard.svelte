@@ -13,21 +13,15 @@
       <div class="flex items-start gap-2.5">
         <Icon icon="mdi:microsoft-windows" width="20" class="mt-0.5 shrink-0 text-accent" />
         <div class="flex min-w-0 flex-col">
-          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase"
-            >Windows</span
-          >
-          <span class="text-sm font-medium wrap-break-word text-foreground"
-            >{systemInfo.windows.product_name}</span
-          >
+          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Windows</span>
+          <span class="text-sm font-medium wrap-break-word text-foreground">{systemInfo.windows.product_name}</span>
         </div>
       </div>
 
       <div class="flex items-start gap-2.5">
         <Icon icon="mdi:update" width="20" class="mt-0.5 shrink-0 text-accent" />
         <div class="flex min-w-0 flex-col">
-          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase"
-            >Version</span
-          >
+          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Version</span>
           <span class="text-sm font-medium wrap-break-word text-foreground"
             >{systemInfo.windows.display_version} (Build {systemInfo.windows.build_number})</span
           >
@@ -37,8 +31,7 @@
       <div class="flex items-start gap-2.5">
         <Icon icon="mdi:account" width="20" class="mt-0.5 shrink-0 text-accent" />
         <div class="flex min-w-0 flex-col">
-          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase">User</span
-          >
+          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase">User</span>
           <span class="text-sm font-medium wrap-break-word text-foreground"
             >{systemInfo.username}@{systemInfo.computer_name}</span
           >
@@ -52,14 +45,8 @@
           class="mt-0.5 shrink-0 {systemInfo.is_admin ? 'text-success' : 'text-warning'}"
         />
         <div class="flex min-w-0 flex-col">
-          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase"
-            >Privileges</span
-          >
-          <span
-            class="text-sm font-medium wrap-break-word {systemInfo.is_admin
-              ? 'text-success'
-              : 'text-warning'}"
-          >
+          <span class="text-xs font-medium tracking-wide text-foreground-muted uppercase">Privileges</span>
+          <span class="text-sm font-medium wrap-break-word {systemInfo.is_admin ? 'text-success' : 'text-warning'}">
             {systemInfo.is_admin ? "Administrator" : "Standard User"}
           </span>
         </div>

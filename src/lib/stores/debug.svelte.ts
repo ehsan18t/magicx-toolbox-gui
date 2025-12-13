@@ -142,13 +142,7 @@ export const debugState = {
     isPanelOpen = false;
   },
 
-  log(
-    level: DebugLogEntry["level"],
-    source: DebugLogEntry["source"],
-    action: string,
-    details: string,
-    data?: unknown,
-  ) {
+  log(level: DebugLogEntry["level"], source: DebugLogEntry["source"], action: string, details: string, data?: unknown) {
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const timestamp = new Date();
     const entry: DebugLogEntry = {

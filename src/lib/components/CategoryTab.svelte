@@ -1,12 +1,6 @@
 <script lang="ts">
   import type { TabDefinition } from "$lib/stores/navigation";
-  import {
-    applyPendingChanges,
-    loadingStore,
-    pendingChangesStore,
-    revertTweak,
-    tweaksStore,
-  } from "$lib/stores/tweaks";
+  import { applyPendingChanges, loadingStore, pendingChangesStore, revertTweak, tweaksStore } from "$lib/stores/tweaks";
   import { derived } from "svelte/store";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
@@ -24,16 +18,14 @@
   let isBatchProcessing = $state(false);
 
   // Get tweaks for this category
-  const categoryTweaks = $derived($tweaksStore.filter((t) => t.definition.category === tab.id));
+  const categoryTweaks = $derived($tweaksStore.filter((t) => t.definition.category_id === tab.id));
 
   // Filter tweaks by search
   const filteredTweaks = $derived.by(() => {
     if (!searchQuery.trim()) return categoryTweaks;
     const query = searchQuery.toLowerCase();
     return categoryTweaks.filter(
-      (t) =>
-        t.definition.name.toLowerCase().includes(query) ||
-        t.definition.description.toLowerCase().includes(query),
+      (t) => t.definition.name.toLowerCase().includes(query) || t.definition.description.toLowerCase().includes(query),
     );
   });
 
@@ -41,31 +33,22 @@
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
   const appliedTweaks = $derived(categoryTweaks.filter((t) => t.status.is_applied));
   const totalCount = $derived(categoryTweaks.length);
-  const progressPercent = $derived(
-    totalCount > 0 ? Math.round((appliedCount / totalCount) * 100) : 0,
-  );
+  const progressPercent = $derived(totalCount > 0 ? Math.round((appliedCount / totalCount) * 100) : 0);
 
   // Pending changes for this category
-  const categoryPendingCount = derived(
-    [pendingChangesStore, tweaksStore],
-    ([$pending, $tweaks]) => {
-      let count = 0;
-      for (const [tweakId] of $pending) {
-        const tweak = $tweaks.find(
-          (t: { definition: { id: string } }) => t.definition.id === tweakId,
-        );
-        if (tweak?.definition.category === tab.id) {
-          count++;
-        }
+  const categoryPendingCount = derived([pendingChangesStore, tweaksStore], ([$pending, $tweaks]) => {
+    let count = 0;
+    for (const [tweakId] of $pending) {
+      const tweak = $tweaks.find((t: { definition: { id: string } }) => t.definition.id === tweakId);
+      if (tweak?.definition.category_id === tab.id) {
+        count++;
       }
-      return count;
-    },
-  );
+    }
+    return count;
+  });
 
   // Loading state
-  const isLoading = derived(loadingStore, ($loading) =>
-    categoryTweaks.some((t) => $loading.has(t.definition.id)),
-  );
+  const isLoading = derived(loadingStore, ($loading) => categoryTweaks.some((t) => $loading.has(t.definition.id)));
 
   async function handleApplyChanges() {
     showApplyAllDialog = false;
@@ -94,9 +77,7 @@
   <!-- Header -->
   <header class="flex flex-wrap items-center justify-between gap-6">
     <div class="flex items-center gap-4">
-      <div
-        class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent"
-      >
+      <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent">
         <Icon icon={tab.icon || "mdi:folder"} width="28" />
       </div>
       <div>
@@ -109,15 +90,9 @@
       <div class="stat-ring relative h-10 w-10" style="--progress: {progressPercent}">
         <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
           <circle class="fill-none stroke-[hsl(var(--muted))] stroke-3" cx="18" cy="18" r="14" />
-          <circle
-            class="stat-progress stroke-round fill-none stroke-accent stroke-3"
-            cx="18"
-            cy="18"
-            r="14"
-          />
+          <circle class="stat-progress stroke-round fill-none stroke-accent stroke-3" cx="18" cy="18" r="14" />
         </svg>
-        <span
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-bold text-foreground"
+        <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-bold text-foreground"
           >{progressPercent}%</span
         >
       </div>
@@ -195,9 +170,7 @@
   <!-- Tweaks Grid -->
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if filteredTweaks.length === 0}
-      <div
-        class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted"
-      >
+      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
         {#if searchQuery}
           <Icon icon="mdi:file-search-outline" width="56" />
           <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>

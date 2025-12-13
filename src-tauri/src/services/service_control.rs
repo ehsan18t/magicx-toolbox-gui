@@ -7,7 +7,11 @@
 
 use crate::error::Error;
 use crate::models::ServiceStartupType;
+use std::os::windows::process::CommandExt;
 use std::process::Command;
+
+/// CREATE_NO_WINDOW flag to prevent console window from appearing
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Service running state
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +55,7 @@ pub fn get_service_status(service_name: &str) -> Result<ServiceStatus, Error> {
     // Query service state using sc.exe
     let output = Command::new("sc")
         .args(["query", service_name])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| {
             Error::ServiceControl(format!("Failed to query service '{}': {}", service_name, e))
@@ -95,6 +100,7 @@ fn get_service_startup_type(service_name: &str) -> Result<ServiceStartupType, Er
 
     let output = Command::new("reg")
         .args(["query", &format!("HKLM\\{}", key_path), "/v", "Start"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| {
             Error::ServiceControl(format!("Failed to query service startup type: {}", e))
@@ -135,6 +141,17 @@ pub fn set_service_startup(
 ) -> Result<(), Error> {
     let start_type = startup_type.to_sc_start_type();
 
+    // Check if already disabled to avoid error/work
+    if matches!(startup_type, ServiceStartupType::Disabled) {
+        if let Ok(true) = is_service_disabled(service_name) {
+            log::info!(
+                "Service '{}' is already disabled, skipping config.",
+                service_name
+            );
+            return Ok(());
+        }
+    }
+
     log::info!(
         "Setting service '{}' startup to '{}'",
         service_name,
@@ -143,6 +160,7 @@ pub fn set_service_startup(
 
     let output = Command::new("sc")
         .args(["config", service_name, &format!("start={}", start_type)])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| {
             Error::ServiceControl(format!(
@@ -173,6 +191,7 @@ pub fn start_service(service_name: &str) -> Result<(), Error> {
 
     let output = Command::new("net")
         .args(["start", service_name])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| {
             Error::ServiceControl(format!("Failed to start service '{}': {}", service_name, e))
@@ -199,10 +218,17 @@ pub fn start_service(service_name: &str) -> Result<(), Error> {
 
 /// Stop a Windows service
 pub fn stop_service(service_name: &str) -> Result<(), Error> {
+    // Check if running first
+    if let Ok(false) = is_service_running(service_name) {
+        log::info!("Service '{}' is not running, skipping stop.", service_name);
+        return Ok(());
+    }
+
     log::info!("Stopping service '{}'", service_name);
 
     let output = Command::new("net")
         .args(["stop", service_name])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| {
             Error::ServiceControl(format!("Failed to stop service '{}': {}", service_name, e))

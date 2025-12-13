@@ -1,5 +1,6 @@
 <script lang="ts">
   import { debugState, type DebugLogEntry } from "$lib/stores/debug.svelte";
+  import { contentLeftOffset } from "$lib/stores/layout";
   import Icon from "./Icon.svelte";
 
   let filterLevel = $state<"all" | DebugLogEntry["level"]>("all");
@@ -8,9 +9,7 @@
 
   // Derived filtered logs
   const filteredLogs = $derived(
-    filterLevel === "all"
-      ? debugState.logs
-      : debugState.logs.filter((l) => l.level === filterLevel),
+    filterLevel === "all" ? debugState.logs : debugState.logs.filter((l) => l.level === filterLevel),
   );
 
   // Auto-scroll effect
@@ -39,7 +38,7 @@
 
 {#if debugState.isPanelOpen}
   <div
-    class="fixed right-0 bottom-0 left-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg"
+    class="fixed right-0 bottom-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg transition-[left] duration-250 ease-out {$contentLeftOffset}"
   >
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border bg-elevated px-3 py-2">
@@ -133,19 +132,10 @@
       {:else}
         {#each filteredLogs as log (log.id)}
           {@const config = levelConfig[log.level]}
-          <div
-            class="flex items-start gap-2 border-b border-border/50 px-3 py-1.5 hover:bg-foreground/5 {config.bg}"
-          >
-            <Icon
-              icon={config.icon}
-              width="14"
-              height="14"
-              class="{config.color} mt-0.5 shrink-0"
-            />
+          <div class="flex items-start gap-2 border-b border-border/50 px-3 py-1.5 hover:bg-foreground/5 {config.bg}">
+            <Icon icon={config.icon} width="14" height="14" class="{config.color} mt-0.5 shrink-0" />
             <span class="shrink-0 text-foreground-muted">{formatTime(log.timestamp)}</span>
-            <span
-              class="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium uppercase"
-            >
+            <span class="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium uppercase">
               {log.source}
             </span>
             <span class="shrink-0 font-medium text-accent">[{log.action}]</span>

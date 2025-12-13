@@ -7,62 +7,76 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type RegistryHive = "HKCU" | "HKLM";
 
 /** Registry value types */
-export type RegistryValueType =
-  | "REG_DWORD"
-  | "REG_SZ"
-  | "REG_EXPAND_SZ"
-  | "REG_BINARY"
-  | "REG_MULTI_SZ"
-  | "REG_QWORD";
+export type RegistryValueType = "REG_DWORD" | "REG_SZ" | "REG_EXPAND_SZ" | "REG_BINARY" | "REG_MULTI_SZ" | "REG_QWORD";
 
 /** Windows service startup type */
 export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
 
-/** Service change for a specific option (simplified: just target state) */
-export interface OptionServiceChange {
-  /** Service name (e.g., "SysMain", "DiagTrack") */
-  name: string;
-  /** Target startup type when this option is selected */
-  startup: ServiceStartupType;
-  /** Stop the service if startup is disabled */
-  stop_if_disabled?: boolean;
-}
+// ============================================================================
+// NEW UNIFIED OPTION-BASED TWEAK SYSTEM
+// ============================================================================
 
-/** Option for multi-state tweaks (displayed as dropdown) */
-export interface TweakOption {
-  label: string;
-  value: unknown;
-  is_default?: boolean;
-  /** Service changes specific to this option */
-  service_changes?: OptionServiceChange[];
-}
-
-/** Single registry change operation */
+/** Registry change within an option */
 export interface RegistryChange {
   hive: RegistryHive;
   key: string;
   value_name: string;
   value_type: RegistryValueType;
-  enable_value: unknown;
-  disable_value?: unknown;
+  /** The value to set when this option is selected */
+  value: unknown;
   /** Optional Windows version filter. If undefined/empty, applies to all versions. */
   windows_versions?: number[];
-  /** Multi-state options (if present, displayed as dropdown instead of toggle) */
-  options?: TweakOption[];
+  /** If true, skip this change for tweak status validation and ignore failures during apply */
+  skip_validation?: boolean;
 }
 
-/** Single service change operation */
+/** Service change within an option */
 export interface ServiceChange {
-  /** Service name (e.g., "wuauserv" for Windows Update) */
+  /** Service name (e.g., "SysMain", "DiagTrack") */
   name: string;
-  /** Startup type when tweak is enabled (applied) */
-  enable_startup: ServiceStartupType;
-  /** Startup type when tweak is disabled (reverted) */
-  disable_startup: ServiceStartupType;
-  /** Stop the service when applying the tweak */
-  stop_on_disable?: boolean;
-  /** Start the service when reverting the tweak */
-  start_on_enable?: boolean;
+  /** Target startup type when this option is selected */
+  startup: ServiceStartupType;
+  /** If true, skip this change for tweak status validation and ignore failures during apply */
+  skip_validation?: boolean;
+}
+
+/** Action for scheduled task changes */
+export type SchedulerAction = "enable" | "disable" | "delete";
+
+/** Scheduler change within an option */
+export interface SchedulerChange {
+  /** Task path in Task Scheduler (e.g., "\\Microsoft\\Windows\\Application Experience") */
+  task_path: string;
+  /** Exact task name (e.g., "Microsoft Compatibility Appraiser"). Mutually exclusive with task_name_pattern. */
+  task_name?: string;
+  /** Regex pattern to match multiple task names (e.g., "USO|Reboot|Refresh"). Mutually exclusive with task_name. */
+  task_name_pattern?: string;
+  /** Action to perform on the task(s) */
+  action: SchedulerAction;
+  /** If true, skip this change for tweak status validation and ignore failures during apply */
+  skip_validation?: boolean;
+  /** If true, don't error if task/path not found (useful for optional tasks) */
+  ignore_not_found?: boolean;
+}
+
+/** A single option within a tweak - contains all changes for that state */
+export interface TweakOption {
+  /** Display label (e.g., "Enabled", "Disabled", "4MB") */
+  label: string;
+  /** Registry modifications for this option */
+  registry_changes: RegistryChange[];
+  /** Service modifications for this option */
+  service_changes: ServiceChange[];
+  /** Scheduler task modifications for this option */
+  scheduler_changes: SchedulerChange[];
+  /** Shell commands to run BEFORE applying changes */
+  pre_commands: string[];
+  /** PowerShell commands to run BEFORE applying changes (after pre_commands) */
+  pre_powershell: string[];
+  /** Shell commands to run AFTER applying changes */
+  post_commands: string[];
+  /** PowerShell commands to run AFTER applying changes (after post_commands) */
+  post_powershell: string[];
 }
 
 /** Category definition loaded from YAML file */
@@ -80,27 +94,33 @@ export interface TweakDefinition {
   id: string;
   name: string;
   description: string;
-  category: string; // Dynamic category ID from YAML
+  /** Category ID from YAML */
+  category_id: string;
   risk_level: RiskLevel;
   requires_reboot: boolean;
   requires_admin: boolean;
   /** Requires SYSTEM elevation for protected registry keys */
   requires_system: boolean;
-  /** List of registry changes (with optional windows_versions filter on each) */
-  registry_changes: RegistryChange[];
-  /** List of Windows service changes (start/stop, enable/disable) */
-  service_changes?: ServiceChange[];
+  /** Requires TrustedInstaller elevation for protected services (e.g., WaaSMedicSvc) */
+  requires_ti: boolean;
   /** Additional info/documentation */
   info?: string;
+  /** True = render as toggle switch (exactly 2 options), False = render as dropdown */
+  is_toggle: boolean;
+  /** Available options for this tweak (2 for toggle, 2+ for dropdown) */
+  options: TweakOption[];
 }
 
 /** Status of a tweak in the system */
 export interface TweakStatus {
   tweak_id: string;
+  /** Whether we have a snapshot (tweak was applied by this app) */
   is_applied: boolean;
-  last_applied?: string; // ISO 8601 timestamp
+  /** When the tweak was last applied (ISO 8601 timestamp) */
+  last_applied?: string;
+  /** Whether a snapshot exists for reverting */
   has_backup: boolean;
-  /** Current selected option index for multi-state tweaks */
+  /** Current option index that matches system state, or null if "System Default" */
   current_option_index?: number;
 }
 
@@ -254,9 +274,12 @@ export interface BatchApplyResult {
 }
 
 /** Pending change for staged apply pattern */
-export type PendingChange =
-  | { type: "binary"; enabled: boolean }
-  | { type: "multistate"; optionIndex: number };
+export interface PendingChange {
+  /** Tweak ID */
+  tweakId: string;
+  /** Option index to apply */
+  optionIndex: number;
+}
 
 /**
  * UI display information for risk levels.

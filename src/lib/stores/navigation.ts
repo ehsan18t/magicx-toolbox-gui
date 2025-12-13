@@ -38,12 +38,9 @@ export const allTabs = derived(categoriesStore, ($categories): TabDefinition[] =
 });
 
 // Current tab definition
-export const currentTab = derived(
-  [activeTab, allTabs],
-  ([$activeTab, $allTabs]): TabDefinition | undefined => {
-    return $allTabs.find((tab) => tab.id === $activeTab);
-  },
-);
+export const currentTab = derived([activeTab, allTabs], ([$activeTab, $allTabs]): TabDefinition | undefined => {
+  return $allTabs.find((tab) => tab.id === $activeTab);
+});
 
 // Check if current tab is a category tab
 export const isOnCategoryTab = derived(activeTab, ($activeTab): boolean => {

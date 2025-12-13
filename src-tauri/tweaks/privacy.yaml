@@ -14,23 +14,40 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    requires_system: false
     info: "Disables DiagTrack service and associated telemetry features"
-    registry_changes:
-      # Common to both Win10 and Win11
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\DiagTrack"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-      # Win10 only - dmwappushservice
-      - hive: HKLM
-        key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-        value_name: "Start"
-        value_type: "REG_DWORD"
-        enable_value: 4
-        disable_value: 2
-        windows_versions: [10]
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          # Common to both Win10 and Win11
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\DiagTrack"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          # Win10 only - dmwappushservice
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+            windows_versions: [10]
+      - label: "Enabled"
+        registry_changes:
+          # Common to both Win10 and Win11
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\DiagTrack"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          # Win10 only - dmwappushservice
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+            windows_versions: [10]
 
   - id: disable_advertising_id
     name: "Disable Advertising ID"
@@ -38,13 +55,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
-        value_name: "Enabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
+            value_name: "Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
+            value_name: "Enabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_activity_history
     name: "Disable Activity History"
@@ -52,13 +79,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-        value_name: "ShowFrequent"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowFrequent"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowFrequent"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_location_tracking
     name: "Disable Location Tracking"
@@ -66,13 +103,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
-        value_name: "SensorPermissionState"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
+            value_name: "SensorPermissionState"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
+            value_name: "SensorPermissionState"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_feedback_notifications
     name: "Disable Feedback Notifications"
@@ -80,13 +127,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Siuf\\Rules"
-        value_name: "NumberOfSIUFInPeriod"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: -1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Siuf\\Rules"
+            value_name: "NumberOfSIUFInPeriod"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Siuf\\Rules"
+            value_name: "NumberOfSIUFInPeriod"
+            value_type: "REG_DWORD"
+            value: -1
 
   - id: disable_inking_data
     name: "Disable Inking & Typing Data"
@@ -94,13 +151,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\InputPersonalization"
-        value_name: "RestrictImplicitInkCollection"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\InputPersonalization"
+            value_name: "RestrictImplicitInkCollection"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\InputPersonalization"
+            value_name: "RestrictImplicitInkCollection"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_app_launch_tracking
     name: "Disable App Launch Tracking"
@@ -108,13 +175,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\System"
-        value_name: "PublishUserActivities"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "PublishUserActivities"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "PublishUserActivities"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_suggested_content
     name: "Disable Suggested Content"
@@ -122,13 +199,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "ContentDeliveryAllowed"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "ContentDeliveryAllowed"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "ContentDeliveryAllowed"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_tailored_experiences
     name: "Disable Tailored Experiences"
@@ -136,13 +223,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
-        value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
+            value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
+            value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_diagnostic_data
     name: "Set Diagnostic Data to Minimum"
@@ -150,13 +247,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-        value_name: "AllowDiagnosticData"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 3
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Minimum"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "AllowDiagnosticData"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Full"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "AllowDiagnosticData"
+            value_type: "REG_DWORD"
+            value: 3
 
   - id: disable_timeline
     name: "Disable Timeline/Activity History"
@@ -164,13 +271,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\System"
-        value_name: "EnableActivityFeed"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "EnableActivityFeed"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "EnableActivityFeed"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_clipboard_sync
     name: "Disable Cloud Clipboard Sync"
@@ -178,13 +295,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Clipboard"
-        value_name: "EnableCloudSync"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Clipboard"
+            value_name: "EnableCloudSync"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Clipboard"
+            value_name: "EnableCloudSync"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_store_app_suggestions
     name: "Disable Store App Auto Install"
@@ -192,13 +319,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "SilentInstalledAppsEnabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SilentInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SilentInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_windows_welcome_experience
     name: "Disable Windows Welcome Experience"
@@ -206,13 +343,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "SubscribedContent-310093Enabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-310093Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-310093Enabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_windows_spotlight
     name: "Disable Windows Spotlight Ads"
@@ -220,19 +367,33 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "RotatingLockScreenOverlayEnabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "SubscribedContent-338387Enabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "RotatingLockScreenOverlayEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338387Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "RotatingLockScreenOverlayEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338387Enabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_tips_about_windows
     name: "Disable Tips About Windows"
@@ -240,13 +401,23 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "SubscribedContent-338389Enabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338389Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338389Enabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_start_suggestions
     name: "Disable Start Menu Suggestions"
@@ -254,19 +425,33 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "SubscribedContent-338388Enabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
-      - hive: HKCU
-        key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-        value_name: "SystemPaneSuggestionsEnabled"
-        value_type: "REG_DWORD"
-        enable_value: 0
-        disable_value: 1
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338388Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SystemPaneSuggestionsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338388Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SystemPaneSuggestionsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_handwriting_data
     name: "Disable Handwriting Data Sharing"
@@ -274,13 +459,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\TabletPC"
-        value_name: "PreventHandwritingDataSharing"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\TabletPC"
+            value_name: "PreventHandwritingDataSharing"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\TabletPC"
+            value_name: "PreventHandwritingDataSharing"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_handwriting_errors
     name: "Disable Handwriting Error Reports"
@@ -288,13 +483,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    registry_changes:
-      - hive: HKLM
-        key: "Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports"
-        value_name: "PreventHandwritingErrorReports"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports"
+            value_name: "PreventHandwritingErrorReports"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports"
+            value_name: "PreventHandwritingErrorReports"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_thumbsdb_network
     name: "Disable Thumbs.db on Network Drives"
@@ -302,10 +507,20 @@ tweaks:
     risk_level: low
     requires_admin: false
     requires_reboot: false
-    registry_changes:
-      - hive: HKCU
-        key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
-        value_name: "DisableThumbsDBOnNetworkFolders"
-        value_type: "REG_DWORD"
-        enable_value: 1
-        disable_value: 0
+    requires_system: false
+    is_toggle: true
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+            value_name: "DisableThumbsDBOnNetworkFolders"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+            value_name: "DisableThumbsDBOnNetworkFolders"
+            value_type: "REG_DWORD"
+            value: 0

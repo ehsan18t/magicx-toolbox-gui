@@ -2,10 +2,24 @@
 
 **CRITICAL: These instructions are mandatory and must be followed on every task. Ignoring them will result in suboptimal code quality and project standards violations.**
 
+## Documentation Priority
+
+**HIGHEST PRIORITY**: Whenever the tweak system is modified (execution order, error handling, atomicity, new fields, behavior changes, etc.), you **MUST** update `TWEAK_AUTHORING.md` immediately. This is the definitive guide for tweak authors and must always reflect the current implementation.
+
+Changes that require documentation updates:
+
+- Adding new fields to registry_changes, service_changes, scheduler_changes
+- Modifying execution order or atomicity behavior
+- Changing error handling (fatal vs. non-fatal)
+- Adding new change types or actions
+- Modifying state detection logic
+- Changing snapshot/revert behavior
+
 ## Commits
 
-- Always commit related changes together.
-- Keep commits task-scoped (one task can touch multiple files). Avoid dumping unrelated changes together.
+- **Commit by TASK, not by FILE.** One task may involve multiple files.
+- **Do NOT group unrelated changes.** If you have fixed a bug and added a feature, commit them separately.
+- **Partially stage files if needed.** If a file contains changes for two different tasks, select only the relevant lines/hunks for the current commit.
 - Use clear messages, e.g., `feat(ui): add settings drawer toggle` or `fix(theme): persist system preference on init`.
 - Always commit after each logical change; avoid large uncommitted work.
 
@@ -91,7 +105,10 @@ src-tauri/src/
 ├── services/       # Business logic layer
 │   ├── backup_service.rs      # Backup creation/restoration
 │   ├── registry_service.rs    # Windows registry operations
+│   ├── scheduler_service.rs   # Windows Task Scheduler operations
+│   ├── service_control.rs     # Windows service management
 │   ├── system_info_service.rs # Windows version detection
+│   ├── trusted_installer.rs   # SYSTEM elevation & PowerShell execution
 │   └── tweak_loader.rs        # YAML tweak file discovery and parsing
 ├── lib.rs          # App entry, plugin setup, command registration
 ├── error.rs        # Custom error types with thiserror
@@ -133,7 +150,8 @@ log::error!("Errors that need attention");  // Failures
 
 ## YAML Tweak System
 
-Tweaks are defined in YAML files under `src-tauri/tweaks/`. Each file contains:
+Tweaks are defined in YAML files under `src-tauri/tweaks/`. Each file contains a category and array of tweaks.
+All tweaks use a **unified option-based model** where each tweak has an `options` array.
 
 ### File Structure
 
@@ -151,31 +169,90 @@ tweaks:
     description: "..."
     risk_level: low # low | medium | high | critical
     requires_admin: true
+    requires_system: false # Requires SYSTEM elevation for protected keys
+    requires_ti: false # Requires TrustedInstaller (for WaaSMedicSvc, etc.)
     requires_reboot: false
+    is_toggle: true # true = 2 options (toggle switch), false = dropdown
     info: "Optional documentation"
-    registry_changes:
-      - hive: HKLM # HKCU or HKLM
-        key: "System\\..."
-        value_name: "Start"
-        value_type: "REG_DWORD" # REG_DWORD | REG_SZ | REG_EXPAND_SZ | REG_BINARY
-        enable_value: 4 # Value when tweak is applied
-        disable_value: 2 # Value when tweak is reverted
-        windows_versions: [10] # Optional: [10], [11], or [10, 11]
+
+    options:
+      - label: "Disabled" # First option (index 0)
+        registry_changes:
+          - hive: HKLM
+            key: "SOFTWARE\\..."
+            value_name: "AllowTelemetry"
+            value_type: REG_DWORD
+            value: 0
+            windows_versions: [10, 11] # Optional filter
+            skip_validation: false # Optional: if true, ignore this for status check & failure
+        service_changes:
+          - name: "DiagTrack"
+            startup: disabled
+            skip_validation: false # Optional: if true, ignore for status check & failure
+        scheduler_changes:
+          - task_path: "\\Microsoft\\Windows\\Application Experience"
+            task_name: "Microsoft Compatibility Appraiser"
+            action: disable # enable | disable | delete
+            skip_validation: false # Optional: if true, ignore for status check & failure
+            ignore_not_found: false # Optional: if true, ignore if task doesn't exist
+          # Or use pattern matching for multiple tasks:
+          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+            task_name_pattern: "USO|MusNotification|Reboot" # Regex pattern
+            action: disable
+            ignore_not_found: true # Some tasks may not exist on all systems
+        pre_commands: [] # Shell commands before changes
+        pre_powershell: [] # PowerShell before changes (after pre_commands)
+        post_commands: [] # Shell commands after changes
+        post_powershell: [] # PowerShell after changes (after post_commands)
+
+      - label: "Enabled" # Second option (index 1)
+        registry_changes:
+          - hive: HKLM
+            key: "SOFTWARE\\..."
+            value_name: "AllowTelemetry"
+            value_type: REG_DWORD
+            value: 3
+        service_changes:
+          - name: "DiagTrack"
+            startup: automatic
 ```
+
+### skip_validation Flag
+
+The `skip_validation` flag can be added to `registry_changes`, `service_changes`, and `scheduler_changes`. When `true`:
+
+1. **Status Detection**: The item is excluded from tweak status checks (determining if a tweak is "applied" or not)
+2. **Atomic Rollback**: Failures for this item won't trigger a full rollback
+3. **Execution**: The change is still attempted, but failures are logged as warnings and execution continues
+
+**Use case**: Windows Update service (`wuauserv`) re-enables itself when Settings app opens. With `skip_validation: true`, the tweak status won't flip to "not applied" just because this service changed.
+
+### Execution Order
+
+When applying an option, changes are executed in this order:
+
+1. `pre_commands` (shell)
+2. `pre_powershell` (PowerShell)
+3. `registry_changes`
+4. `service_changes`
+5. `scheduler_changes`
+6. `post_commands` (shell)
+7. `post_powershell` (PowerShell)
 
 ### Adding New Tweaks
 
 1. Add to existing category YAML file or create new file in `tweaks/`.
 2. Use unique `id` across all tweaks.
 3. Set appropriate `risk_level` based on impact.
-4. Use `windows_versions` on individual registry changes for version-specific behavior.
-5. Test with both apply and revert operations.
+4. Set `is_toggle: true` for 2-option tweaks, `false` for dropdowns.
+5. Use `windows_versions` on individual registry changes for version-specific behavior.
+6. Test with both apply and revert operations.
 
 ### Tweak Loader Behavior
 
-- Auto-discovers all `.yaml` files in `tweaks/` directory.
+- YAML files are compiled at build time (no runtime parsing).
 - Filters registry changes by current Windows version at runtime.
-- Caches loaded tweaks in memory.
+- Tweaks are embedded in the binary via `build.rs`.
 
 ## Registry Operations
 
@@ -193,16 +270,40 @@ registry_service::set_string(&hive, &key, &value_name, value)?;
 registry_service::set_binary(&hive, &key, &value_name, &bytes)?;
 ```
 
+## Scheduler Operations
+
+Scheduled task management via `scheduler_service.rs`:
+
+```rust
+scheduler_service::get_task_state(task_path, task_name)?;
+scheduler_service::enable_task(task_path, task_name)?;
+scheduler_service::disable_task(task_path, task_name)?;
+scheduler_service::delete_task(task_path, task_name)?;
+```
+
+## PowerShell Execution
+
+PowerShell commands via `trusted_installer.rs`:
+
+```rust
+// As current user
+trusted_installer::run_powershell(script)?;
+
+// As SYSTEM (for protected operations)
+trusted_installer::run_powershell_as_system(script)?;
+```
+
 - HKLM writes require admin privileges; the service checks and returns `Error::RequiresAdmin`.
 - All operations are logged at trace/debug level.
 
 ## Backup System
 
-Before applying tweaks, the system creates JSON backups:
+Before applying tweaks, the system creates JSON snapshots:
 
-- Location: `backups/` directory next to executable (portable app design).
-- Format: `{tweak_id}.json` containing original registry values.
+- Location: `snapshots/` directory next to executable (portable app design).
+- Format: `{tweak_id}.json` containing original registry, service, and scheduled task states.
 - Used for reverting tweaks to original state.
+- Captures state BEFORE any changes are made for reliable rollback.
 
 ## Build / toolchain / env
 
