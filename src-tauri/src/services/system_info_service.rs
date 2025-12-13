@@ -267,32 +267,89 @@ fn parse_wmi_datetime_to_iso(wmi_datetime: &str) -> String {
     )
 }
 
-/// Get hardware information using WMI queries
+/// Get hardware information using WMI queries (parallelized)
+/// Each query runs in its own thread with its own WMI connection
+/// because WMI uses COM which requires per-thread initialization
 fn get_hardware_info() -> HardwareInfo {
-    log::debug!("Gathering hardware information via WMI");
+    log::debug!("Gathering hardware information via WMI (parallel)");
 
-    // Initialize WMI connection
-    let wmi_con = match WMIConnection::new() {
-        Ok(con) => con,
-        Err(e) => {
-            log::warn!("Failed to create WMI connection: {}", e);
-            return HardwareInfo::default();
-        }
-    };
+    use std::thread;
 
-    let disks = get_disk_info(&wmi_con);
+    // Run WMI queries in parallel using scoped threads
+    // Each thread creates its own WMI connection due to COM threading model
+    let (cpu, gpu, monitors, memory, motherboard, disks, network) = thread::scope(|s| {
+        let cpu_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_cpu_info(&con))
+                .unwrap_or_default()
+        });
+
+        let gpu_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_gpu_info(&con))
+                .unwrap_or_default()
+        });
+
+        let monitors_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_monitor_info(&con))
+                .unwrap_or_default()
+        });
+
+        let memory_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_memory_info(&con))
+                .unwrap_or_default()
+        });
+
+        let motherboard_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_motherboard_info(&con))
+                .unwrap_or_default()
+        });
+
+        let disks_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_disk_info(&con))
+                .unwrap_or_default()
+        });
+
+        let network_handle = s.spawn(|| {
+            WMIConnection::new()
+                .ok()
+                .map(|con| get_network_info(&con))
+                .unwrap_or_default()
+        });
+
+        // Wait for all threads to complete
+        (
+            cpu_handle.join().unwrap_or_default(),
+            gpu_handle.join().unwrap_or_default(),
+            monitors_handle.join().unwrap_or_default(),
+            memory_handle.join().unwrap_or_default(),
+            motherboard_handle.join().unwrap_or_default(),
+            disks_handle.join().unwrap_or_default(),
+            network_handle.join().unwrap_or_default(),
+        )
+    });
 
     // Calculate total storage
     let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
 
     HardwareInfo {
-        cpu: get_cpu_info(&wmi_con),
-        gpu: get_gpu_info(&wmi_con),
-        monitors: get_monitor_info(&wmi_con),
-        memory: get_memory_info(&wmi_con),
-        motherboard: get_motherboard_info(&wmi_con),
+        cpu,
+        gpu,
+        monitors,
+        memory,
+        motherboard,
         disks,
-        network: get_network_info(&wmi_con),
+        network,
         total_storage_gb,
     }
 }
