@@ -117,5 +117,8 @@ pub fn run() {
             commands::update::install_update,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            log::error!("Failed to run Tauri application: {:?}", e);
+            std::process::exit(1);
+        });
 }
