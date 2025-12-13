@@ -1,6 +1,6 @@
 <script lang="ts">
   import { debugState } from "$lib/stores/debug.svelte";
-  import { themeStore } from "$lib/stores/theme";
+  import { themeStore } from "$lib/stores/theme.svelte";
   import { systemStore } from "$lib/stores/tweaks";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
@@ -202,7 +202,7 @@
 
       <ControlButton
         title="Toggle Theme"
-        icon={$themeStore === "dark" ? "tabler:moon" : "tabler:sun"}
+        icon={themeStore.current === "dark" ? "tabler:moon" : "tabler:sun"}
         onClick={toggleTheme}
         variant="theme"
       />

@@ -15,10 +15,27 @@ export { default as SystemInfoCard } from "./components/SystemInfoCard.svelte";
 export { default as TitleBar } from "./components/TitleBar.svelte";
 export { default as TweakCard } from "./components/TweakCard.svelte";
 
-// Stores
-export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme";
+// Stores (Svelte 5 runes-based)
+export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme.svelte";
+export { sidebarState } from "./stores/layout.svelte";
+export {
+  closeModal,
+  modalStore,
+  openAboutModal,
+  openSettingsModal,
+  openUpdateModal,
+  type ModalType,
+} from "./stores/modal.svelte";
+export { settingsStore } from "./stores/settings.svelte";
+export { themeStore, type Theme } from "./stores/theme.svelte";
+export {
+  closeTweakDetailsModal,
+  openTweakDetailsModal,
+  tweakDetailsModalStore,
+} from "./stores/tweakDetailsModal.svelte";
+
+// Stores (legacy writable-based, for navigation and tweaks)
 export * from "./stores/navigation";
-export { themeStore, type Theme } from "./stores/theme";
 export * from "./stores/tweaks";
 
 // Config

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal";
+  import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";

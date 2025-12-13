@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "$lib/stores/colorScheme";
+  import { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "$lib/stores/colorScheme.svelte";
   import { cn } from "@/utils";
 
   interface Props {
@@ -9,7 +9,7 @@
 
   const { size = "sm" }: Props = $props();
 
-  const currentScheme = $derived($colorSchemeStore);
+  const currentScheme = $derived(colorSchemeStore.current);
 
   const sizeClasses = {
     sm: "w-4 h-4",

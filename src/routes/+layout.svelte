@@ -7,9 +7,9 @@
   import TitleBar from "@/lib/components/TitleBar.svelte";
   import TweakDetailsModal from "@/lib/components/TweakDetailsModal.svelte";
   import UpdateModal from "@/lib/components/UpdateModal.svelte";
-  import { colorSchemeStore } from "@/lib/stores/colorScheme";
-  import { settingsStore } from "@/lib/stores/settings";
-  import { themeStore } from "@/lib/stores/theme";
+  import { colorSchemeStore } from "@/lib/stores/colorScheme.svelte";
+  import { settingsStore } from "@/lib/stores/settings.svelte";
+  import { themeStore } from "@/lib/stores/theme.svelte";
   import { updateStore } from "@/lib/stores/update";
   import { onMount } from "svelte";
 
@@ -20,7 +20,7 @@
     colorSchemeStore.init();
 
     // Perform silent background update check if enabled
-    const settings = settingsStore.get();
+    const settings = settingsStore.settings;
     if (settings.autoCheckUpdates) {
       // Check if enough time has passed since last check (at least 1 hour)
       const lastCheck = settings.lastUpdateCheck;
