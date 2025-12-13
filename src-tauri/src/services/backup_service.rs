@@ -1,10 +1,44 @@
-//! Snapshot-Based Backup Service
+//! # Snapshot-Based Backup Service
 //!
-//! Unified option-based backup system for registry tweaks.
-//! Key features:
-//! - Capture complete state before applying any tweak option
-//! - Atomic rollback on failure
-//! - State detection by matching current state against all options
+//! Unified option-based backup system for Windows registry tweaks with atomic
+//! rollback capabilities.
+//!
+//! ## Architecture
+//!
+//! The backup service uses a **snapshot-based approach**:
+//! 1. Before applying any tweak, capture the current system state
+//! 2. Store the snapshot as a JSON file for persistence across restarts
+//! 3. On rollback, atomically restore all values from the snapshot
+//!
+//! ## Key Features
+//!
+//! - **State Capture**: Captures registry values, service states, and scheduled tasks
+//! - **Atomic Rollback**: All-or-nothing restore with automatic rollback on failure
+//! - **State Detection**: Matches current system state against all tweak options
+//! - **Option Switching**: Preserves original state when switching between options
+//!
+//! ## Module Organization
+//!
+//! This module is organized into the following sections:
+//! - **File Path Management**: Directory and file path utilities for snapshots
+//! - **Snapshot Operations**: Capture, save, load, and delete snapshots
+//! - **Restore Operations**: Atomic restore with rollback support
+//! - **State Detection**: Compare current state against tweak options
+//! - **Helper Parsers**: Registry hive and value type parsing
+//! - **Migration & Validation**: Cleanup and snapshot validation
+//!
+//! ## Usage Example
+//!
+//! ```ignore
+//! // Capture state before applying a tweak
+//! let snapshot = capture_snapshot(&tweak, option_index, windows_version)?;
+//! save_snapshot(&snapshot)?;
+//!
+//! // Apply the tweak...
+//! // If something fails, restore from snapshot:
+//! restore_from_snapshot(&snapshot)?;
+//! delete_snapshot(&tweak_id)?;
+//! ```
 
 use crate::error::Error;
 use crate::models::{

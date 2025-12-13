@@ -1,11 +1,48 @@
-//! Elevation Services (SYSTEM and TrustedInstaller)
+//! # Elevation Services (SYSTEM and TrustedInstaller)
 //!
-//! Provides functionality to execute commands with elevated privileges:
-//! - SYSTEM: Uses winlogon.exe token impersonation via CreateProcessWithTokenW
-//! - TrustedInstaller: Uses parent process spoofing with TrustedInstaller.exe
+//! Provides functionality to execute commands with elevated privileges on Windows.
 //!
-//! TrustedInstaller is more powerful than SYSTEM - it owns protected system files,
-//! registry keys, and services like WaaSMedicSvc that even SYSTEM cannot modify.
+//! ## Architecture
+//!
+//! This module implements two elevation levels:
+//!
+//! ### SYSTEM Elevation
+//! - Uses **token impersonation** via `CreateProcessWithTokenW`
+//! - Obtains SYSTEM token from `winlogon.exe`
+//! - Suitable for most protected registry keys and services
+//!
+//! ### TrustedInstaller Elevation
+//! - Uses **parent process spoofing** with TrustedInstaller.exe as parent
+//! - More powerful than SYSTEM - owns protected system files, registry keys,
+//!   and services like `WaaSMedicSvc` that even SYSTEM cannot modify
+//! - Requires starting the TrustedInstaller service first
+//!
+//! ## Security Considerations
+//!
+//! - All shell commands use `escape_shell_arg()` to prevent command injection
+//! - Registry paths are validated via `validate_registry_path()` before use
+//! - Process waits use 30-second timeout to prevent hangs
+//! - HKCU is converted to HKU\\<SID> when running as SYSTEM (different user context)
+//!
+//! ## Module Organization
+//!
+//! - **Privilege Management**: Enable SeDebugPrivilege for token access
+//! - **Process Discovery**: Find and open winlogon.exe/TrustedInstaller.exe
+//! - **Token Management**: Duplicate and use system/TI tokens
+//! - **Command Execution**: Run commands as SYSTEM or TI
+//! - **Registry Operations**: Set/delete registry values with elevation
+//! - **Service Control**: Start/stop services with elevation
+//! - **PowerShell Execution**: Run scripts with elevation
+//!
+//! ## Usage Example
+//!
+//! ```ignore
+//! // Set a protected registry value as SYSTEM
+//! set_registry_value_as_system("HKLM", "SOFTWARE\\Microsoft\\Windows", "Flag", "REG_DWORD", "1")?;
+//!
+//! // Run a command as TrustedInstaller for maximum privileges
+//! run_command_as_ti("sc config WaaSMedicSvc start= disabled")?;
+//! ```
 
 use crate::error::Error;
 use std::ffi::OsStr;
