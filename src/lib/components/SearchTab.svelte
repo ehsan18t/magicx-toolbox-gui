@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { HighlightedText } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { searchStore } from "$lib/stores/search.svelte";
+  import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
   import {
     applyPendingChanges,
     categoriesStore,
@@ -11,6 +12,7 @@
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
+  import { onDestroy } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
   import TweakCard from "./TweakCard.svelte";
@@ -35,20 +37,27 @@
   // Check if tweaks are still loading
   const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
 
+  /** Mapped search result with tweak data and highlight info */
+  interface MappedResult {
+    tweak: TweakWithStatus;
+    categoryName: string;
+    searchResult: SearchResult;
+  }
+
   // Map search results to TweakWithStatus for rendering
-  const searchResultTweaks = $derived.by((): Array<{ tweak: TweakWithStatus; score: number; categoryName: string }> => {
+  const searchResultTweaks = $derived.by((): MappedResult[] => {
     if (!results.length) return [];
 
-    const mappedResults: Array<{ tweak: TweakWithStatus; score: number; categoryName: string }> = [];
+    const mappedResults: MappedResult[] = [];
 
     for (const result of results) {
-      const tweak = tweaksStore.getById(result.tweak_id);
+      const tweak = tweaksStore.getById(result.tweakId);
       if (tweak) {
-        const category = categoriesStore.list.find((c) => c.id === result.category_id);
+        const category = categoriesStore.list.find((c) => c.id === result.categoryId);
         mappedResults.push({
           tweak,
-          score: result.score,
-          categoryName: category?.name || result.category_id,
+          categoryName: category?.name || result.categoryId,
+          searchResult: result,
         });
       }
     }
@@ -140,6 +149,14 @@
       }
     }
   }
+
+  // Cleanup debounce timer on component destroy
+  onDestroy(() => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+  });
 </script>
 
 <div class="flex h-full flex-col gap-5 overflow-hidden p-6">
@@ -293,9 +310,24 @@
     {:else}
       <!-- Results grid -->
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
-        {#each searchResultTweaks as { tweak, categoryName } (tweak.definition.id)}
+        {#each searchResultTweaks as { tweak, categoryName, searchResult } (tweak.definition.id)}
           <div class="search-result-card">
-            <TweakCard {tweak} />
+            <TweakCard {tweak}>
+              {#snippet titleSlot()}
+                <HighlightedText
+                  text={tweak.definition.name}
+                  ranges={searchResult.nameRanges}
+                  highlightClass="bg-accent/25 text-accent-foreground rounded-sm"
+                />
+              {/snippet}
+              {#snippet descriptionSlot()}
+                <HighlightedText
+                  text={tweak.definition.description || ""}
+                  ranges={searchResult.descriptionRanges}
+                  highlightClass="bg-accent/20 rounded-sm"
+                />
+              {/snippet}
+            </TweakCard>
             <!-- Category badge & navigate button at bottom -->
             <div class="mt-2 flex items-center justify-between gap-2 px-4 pb-3">
               <span
