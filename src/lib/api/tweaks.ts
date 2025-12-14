@@ -55,7 +55,7 @@ export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
   // Build status map for O(1) lookup
   const statusMap = new Map(allStatuses.map((s) => [s.tweak_id, s]));
 
-  return tweaks.map((definition) => ({
+  const result = tweaks.map((definition) => ({
     definition,
     status: statusMap.get(definition.id) || {
       tweak_id: definition.id,
@@ -63,6 +63,9 @@ export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
       has_backup: false,
     },
   }));
+
+  // Sort by name for consistent ordering (backend HashMap iteration is non-deterministic)
+  return result.sort((a, b) => a.definition.id.localeCompare(b.definition.id));
 }
 
 /**
