@@ -3,7 +3,7 @@
 //! Functions for restoring system state from snapshots:
 //! - Atomic restore with rollback on failure
 //! - Registry value restoration (normal and elevated)
-//! - Service and scheduler state restoration
+//! - Service and scheduler state restoration (with SYSTEM elevation support)
 
 use crate::error::Error;
 use crate::models::{
@@ -14,15 +14,46 @@ use crate::services::{registry_service, scheduler_service, service_control, trus
 use super::capture::read_registry_value;
 use super::helpers::{parse_hive, parse_value_type};
 
-/// Restore all registry/service values from snapshot (atomic - all or nothing)
-pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
+/// Result of a restore operation with detailed failure information
+#[derive(Debug, Clone)]
+pub struct RestoreResult {
+    /// Whether all restore operations succeeded
+    pub success: bool,
+    /// Number of registry values successfully restored
+    pub registry_restored: usize,
+    /// Number of services successfully restored
+    pub services_restored: usize,
+    /// Number of scheduler tasks successfully restored
+    pub tasks_restored: usize,
+    /// List of failures (empty if success is true)
+    pub failures: Vec<String>,
+}
+
+impl RestoreResult {
+    /// Check if there were any failures
+    pub fn has_failures(&self) -> bool {
+        !self.failures.is_empty()
+    }
+}
+
+/// Restore all registry/service values from snapshot
+///
+/// Registry operations are atomic (rollback on failure).
+/// Service and scheduler operations use SYSTEM elevation when needed and collect
+/// failures rather than stopping early, allowing partial restore.
+///
+/// Returns a RestoreResult with details about what succeeded/failed.
+pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<RestoreResult, Error> {
     log::info!(
-        "Restoring from snapshot for tweak '{}' (was option '{}')",
+        "Restoring from snapshot for tweak '{}' (was option '{}', requires_system={})",
         snapshot.tweak_name,
-        snapshot.applied_option_label
+        snapshot.applied_option_label,
+        snapshot.requires_system
     );
 
-    // Restore registry values
+    let mut failures: Vec<String> = Vec::new();
+
+    // Phase 1: Restore registry values (atomic - all or nothing)
     let mut completed_registry: Vec<(RegistryRestoreOp, Option<serde_json::Value>, bool)> =
         Vec::new();
 
@@ -63,7 +94,7 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
                 );
                 rollback_registry_operations(&completed_registry);
                 return Err(Error::BackupFailed(format!(
-                    "Failed to restore, rolled back {} changes: {}",
+                    "Failed to restore registry, rolled back {} changes: {}",
                     completed_registry.len(),
                     e
                 )));
@@ -71,35 +102,60 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
         }
     }
 
-    // Restore service states
+    let registry_restored = completed_registry.len();
+
+    // Phase 2: Restore service states (collect failures, don't stop)
+    let mut services_restored = 0;
     for svc in &snapshot.service_snapshots {
-        if let Err(e) = restore_service_state(svc) {
-            log::warn!("Failed to restore service '{}': {}", svc.name, e);
-            // Continue with other services - service restore failures are non-fatal
+        match restore_service_state(svc, snapshot.requires_system) {
+            Ok(()) => services_restored += 1,
+            Err(e) => {
+                let msg = format!("Service '{}': {}", svc.name, e);
+                log::error!("Failed to restore service: {}", msg);
+                failures.push(msg);
+            }
         }
     }
 
-    // Restore scheduled task states
+    // Phase 3: Restore scheduled task states (with SYSTEM elevation if needed)
+    let mut tasks_restored = 0;
     for task in &snapshot.scheduler_snapshots {
-        if let Err(e) = restore_scheduler_state(task) {
-            log::warn!(
-                "Failed to restore task '{}\\{}': {}",
-                task.task_path,
-                task.task_name,
-                e
-            );
-            // Continue with other tasks - task restore failures are non-fatal
+        match restore_scheduler_state(task, snapshot.requires_system) {
+            Ok(()) => tasks_restored += 1,
+            Err(e) => {
+                let msg = format!("Task '{}\\{}': {}", task.task_path, task.task_name, e);
+                log::error!("Failed to restore task: {}", msg);
+                failures.push(msg);
+            }
         }
     }
 
-    log::info!(
-        "Successfully restored {} registry values, {} services, and {} tasks",
-        completed_registry.len(),
-        snapshot.service_snapshots.len(),
-        snapshot.scheduler_snapshots.len()
-    );
+    let success = failures.is_empty();
 
-    Ok(())
+    if success {
+        log::info!(
+            "Successfully restored {} registry values, {} services, and {} tasks",
+            registry_restored,
+            services_restored,
+            tasks_restored
+        );
+    } else {
+        log::warn!(
+            "Restore completed with {} failures: {} registry, {} services, {} tasks succeeded",
+            failures.len(),
+            registry_restored,
+            services_restored,
+            tasks_restored
+        );
+    }
+
+    Ok(RestoreResult {
+        success,
+        registry_restored,
+        services_restored,
+        tasks_restored,
+        failures,
+    })
 }
 
 #[derive(Clone)]
@@ -229,7 +285,14 @@ fn restore_registry_with_system(
     Ok(())
 }
 
-fn restore_service_state(snapshot: &ServiceSnapshot) -> Result<(), Error> {
+fn restore_service_state(snapshot: &ServiceSnapshot, use_system: bool) -> Result<(), Error> {
+    log::debug!(
+        "Restoring service '{}' to startup='{}', was_running={}",
+        snapshot.name,
+        snapshot.startup_type,
+        snapshot.was_running
+    );
+
     let startup = match snapshot.startup_type.as_str() {
         "disabled" => crate::models::ServiceStartupType::Disabled,
         "manual" => crate::models::ServiceStartupType::Manual,
@@ -242,39 +305,84 @@ fn restore_service_state(snapshot: &ServiceSnapshot) -> Result<(), Error> {
         }
     };
 
-    service_control::set_service_startup(&snapshot.name, &startup)?;
+    // Set startup type (with SYSTEM elevation if needed)
+    if use_system {
+        let start_type = startup.to_sc_start_type();
+        trusted_installer::set_service_startup_as_system(&snapshot.name, start_type)?;
+    } else {
+        service_control::set_service_startup(&snapshot.name, &startup)?;
+    }
 
+    // Start/stop the service (best effort - don't fail if this part fails)
     if snapshot.was_running {
-        let _ = service_control::start_service(&snapshot.name);
+        if use_system {
+            let _ = trusted_installer::start_service_as_system(&snapshot.name);
+        } else {
+            let _ = service_control::start_service(&snapshot.name);
+        }
+    } else if use_system {
+        let _ = trusted_installer::stop_service_as_system(&snapshot.name);
     } else {
         let _ = service_control::stop_service(&snapshot.name);
     }
 
+    log::info!(
+        "Restored service '{}' to startup '{}'",
+        snapshot.name,
+        snapshot.startup_type
+    );
     Ok(())
 }
 
-fn restore_scheduler_state(snapshot: &SchedulerSnapshot) -> Result<(), Error> {
+fn restore_scheduler_state(snapshot: &SchedulerSnapshot, use_system: bool) -> Result<(), Error> {
     let task_path = format!("{}\\{}", snapshot.task_path, snapshot.task_name);
     log::debug!(
-        "Restoring scheduled task '{}' to state: {}",
+        "Restoring scheduled task '{}' to state: {} (use_system={})",
         task_path,
-        snapshot.original_state
+        snapshot.original_state,
+        use_system
     );
 
     match snapshot.original_state.as_str() {
         "Ready" | "Running" => {
             // Task was enabled, re-enable it
-            scheduler_service::enable_task(&snapshot.task_path, &snapshot.task_name)?;
+            if use_system {
+                let escaped_path = trusted_installer::escape_shell_arg(&task_path);
+                let args = format!("/Change /TN \"{}\" /Enable", escaped_path);
+                let exit_code = trusted_installer::run_schtasks_as_system(&args)?;
+                if exit_code != 0 {
+                    return Err(Error::CommandExecution(format!(
+                        "schtasks enable failed with exit code {}",
+                        exit_code
+                    )));
+                }
+                log::info!("Enabled scheduled task (SYSTEM): {}", task_path);
+            } else {
+                scheduler_service::enable_task(&snapshot.task_path, &snapshot.task_name)?;
+            }
         }
         "Disabled" => {
             // Task was disabled, ensure it's disabled
-            scheduler_service::disable_task(&snapshot.task_path, &snapshot.task_name)?;
+            if use_system {
+                let escaped_path = trusted_installer::escape_shell_arg(&task_path);
+                let args = format!("/Change /TN \"{}\" /Disable", escaped_path);
+                let exit_code = trusted_installer::run_schtasks_as_system(&args)?;
+                if exit_code != 0 {
+                    return Err(Error::CommandExecution(format!(
+                        "schtasks disable failed with exit code {}",
+                        exit_code
+                    )));
+                }
+                log::info!("Disabled scheduled task (SYSTEM): {}", task_path);
+            } else {
+                scheduler_service::disable_task(&snapshot.task_path, &snapshot.task_name)?;
+            }
         }
         "NotFound" => {
             // Task didn't exist before - we can't restore a deleted task
             // This is expected if the tweak was a "delete" action
             log::info!(
-                "Task '{}' was not found before tweak, cannot restore",
+                "Task '{}' was not found before tweak, cannot restore (expected for delete actions)",
                 task_path
             );
         }
