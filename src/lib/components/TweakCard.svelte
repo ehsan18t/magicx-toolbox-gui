@@ -38,7 +38,6 @@
       }, 1500);
       return () => clearTimeout(timer);
     }
-    return undefined;
   });
 
   let showConfirmDialog = $state(false);
