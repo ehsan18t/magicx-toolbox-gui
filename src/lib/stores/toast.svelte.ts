@@ -19,8 +19,12 @@ let idCounter = 0;
 
 // Store timeout IDs so we can clear them when toasts are manually dismissed
 // Note: Intentionally using plain Map since this is not rendered and doesn't need reactivity
-// eslint-disable-next-line svelte/prefer-svelte-reactivity
+/* eslint-disable svelte/prefer-svelte-reactivity -- Intentionally using a plain Map for timeout IDs.
+    This Map is used only for internal timeout tracking and is not used in any reactive context,
+    so Svelte reactivity is not needed or desired here. */
+// Store timeout IDs so we can clear them when toasts are manually dismissed
 const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
+/* eslint-enable svelte/prefer-svelte-reactivity */
 
 function generateId(): string {
   return `toast-${++idCounter}-${Date.now()}`;
