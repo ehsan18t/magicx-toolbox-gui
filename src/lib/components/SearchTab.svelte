@@ -173,11 +173,11 @@
     </div>
 
     {#if hasResults}
-      <div class="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-3">
-        <Icon icon="mdi:file-document-multiple" width="20" class="text-accent" />
-        <div class="flex flex-col gap-0.5">
+      <div class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-3">
+        <Icon icon="mdi:file-document-multiple" width="36" class="text-accent" />
+        <div class="flex flex-col items-center gap-0.5">
           <span class="text-base font-bold text-foreground">{resultCount}</span>
-          <span class="text-xs text-foreground-muted">Results</span>
+          <span class="text-xs font-semibold text-foreground-muted">Results</span>
         </div>
       </div>
     {/if}

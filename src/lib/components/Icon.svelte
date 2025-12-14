@@ -8,6 +8,7 @@
   import MdiAlert from "~icons/mdi/alert";
   import MdiAlertCircle from "~icons/mdi/alert-circle";
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
+  import MdiArrowRightCircle from "~icons/mdi/arrow-right-circle";
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
   import MdiBug from "~icons/mdi/bug";
   import MdiCalendar from "~icons/mdi/calendar";
@@ -34,6 +35,7 @@
   import MdiEthernet from "~icons/mdi/ethernet";
   import MdiExpansionCard from "~icons/mdi/expansion-card";
   import MdiExport from "~icons/mdi/export";
+  import MdiFileDocumentMultiple from "~icons/mdi/file-document-multiple";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
   import MdiFolder from "~icons/mdi/folder";
   import MdiGamepadVariant from "~icons/mdi/gamepad-variant";
@@ -164,6 +166,7 @@
     "mdi:download": MdiDownload,
     "mdi:email": MdiEmail,
     "mdi:export": MdiExport,
+    "mdi:file-document-multiple": MdiFileDocumentMultiple,
     "mdi:github": MdiGithub,
     "mdi:import": MdiImport,
     "mdi:information": MdiInformation,
@@ -171,6 +174,7 @@
     "mdi:open-in-new": MdiOpenInNew,
     "mdi:web": MdiWeb,
     "mdi:account-circle": MdiAccountCircle,
+    "mdi:arrow-right-circle": MdiArrowRightCircle,
 
     // Category icons (used in sidebar/navigation)
     "mdi:view-dashboard": MdiViewDashboard,
