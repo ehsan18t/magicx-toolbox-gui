@@ -13,16 +13,10 @@ import { pendingChangesStore, pendingRebootStore } from "./tweaksPending.svelte"
 
 // === Search and Filter State ===
 let searchQuery = $state<string>("");
-let selectedCategory = $state<string>("all");
 
-// Derived: filtered tweaks based on search and category
+// Derived: filtered tweaks based on search
 const filteredTweaks = $derived.by(() => {
   let filtered = tweaksStore.list;
-
-  // Filter by category
-  if (selectedCategory !== "all") {
-    filtered = filtered.filter((t) => t.definition.category_id === selectedCategory);
-  }
 
   // Filter by search query
   if (searchQuery.trim()) {
@@ -50,10 +44,6 @@ export const filterStore = {
     return searchQuery;
   },
 
-  get selectedCategory() {
-    return selectedCategory;
-  },
-
   get filteredTweaks() {
     return filteredTweaks;
   },
@@ -64,15 +54,6 @@ export const filterStore = {
 
   setSearchQuery(query: string) {
     searchQuery = query;
-  },
-
-  setCategory(category: string) {
-    selectedCategory = category;
-  },
-
-  clearFilters() {
-    searchQuery = "";
-    selectedCategory = "all";
   },
 };
 

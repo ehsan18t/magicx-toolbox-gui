@@ -73,8 +73,6 @@ export {
   getAvailableTweaks,
   getSystemInfo,
   getTweakStatus,
-  getTweakStatuses,
-  getTweaksForCurrentVersion,
   getWindowsVersion,
   isAdmin,
 } from "./api";

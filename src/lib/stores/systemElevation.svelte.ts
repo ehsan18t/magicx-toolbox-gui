@@ -53,20 +53,17 @@ export const systemElevationStore = {
   toggle() {
     if (!available) return;
     enabled = !enabled;
-    console.log(`SYSTEM elevation mode: ${enabled ? "ENABLED" : "DISABLED"}`);
   },
 
   /** Enable SYSTEM elevation mode */
   enable() {
     if (!available) return;
     enabled = true;
-    console.log("SYSTEM elevation mode: ENABLED");
   },
 
   /** Disable SYSTEM elevation mode */
   disable() {
     enabled = false;
-    console.log("SYSTEM elevation mode: DISABLED");
   },
 
   /** Check if currently enabled */

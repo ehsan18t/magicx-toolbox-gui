@@ -20,15 +20,6 @@ let systemInfo = $state<SystemInfo | null>(null);
 // === Categories State ===
 let categories = $state<CategoryDefinition[]>([]);
 
-// Derived: categories lookup map
-const categoriesMap = $derived.by(() => {
-  const map: Record<string, CategoryDefinition> = {};
-  for (const cat of categories) {
-    map[cat.id] = cat;
-  }
-  return map;
-});
-
 // === Tweaks State ===
 let tweaks = $state<TweakWithStatus[]>([]);
 
@@ -100,19 +91,11 @@ export const systemStore = {
       systemInfoLoading = false;
     }
   },
-
-  reset() {
-    systemInfo = null;
-  },
 };
 
 export const categoriesStore = {
   get list() {
     return categories;
-  },
-
-  get map() {
-    return categoriesMap;
   },
 
   get isLoading() {
@@ -134,10 +117,6 @@ export const categoriesStore = {
     } finally {
       categoriesLoading = false;
     }
-  },
-
-  reset() {
-    categories = [];
   },
 };
 
@@ -183,10 +162,6 @@ export const tweaksStore = {
   getById(tweakId: string): TweakWithStatus | undefined {
     return tweaks.find((t) => t.definition.id === tweakId);
   },
-
-  reset() {
-    tweaks = [];
-  },
 };
 
 /** Category stats getter - exposed separately for components that need it */
@@ -197,22 +172,8 @@ export const loadingStateStore = {
   get systemInfoLoading() {
     return systemInfoLoading;
   },
-  get categoriesLoading() {
-    return categoriesLoading;
-  },
   get tweaksLoading() {
     return tweaksLoading;
-  },
-  get initialLoadComplete() {
-    return initialLoadComplete;
-  },
-  /** True when we have enough data to show the app shell */
-  get canShowApp() {
-    return categories.length > 0;
-  },
-  /** True when all data is loaded */
-  get isFullyLoaded() {
-    return initialLoadComplete && !systemInfoLoading && !categoriesLoading && !tweaksLoading;
   },
 };
 

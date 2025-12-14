@@ -24,18 +24,9 @@ export async function getCategories(): Promise<CategoryDefinition[]> {
 }
 
 /**
- * Get all available tweaks
+ * Get all available tweaks (already filtered by current Windows version)
  */
 export async function getAvailableTweaks(): Promise<TweakDefinition[]> {
-  return await invoke<TweakDefinition[]>("get_available_tweaks");
-}
-
-/**
- * Get tweaks filtered by the current Windows version.
- * Note: This is identical to getAvailableTweaks() because the backend's
- * `get_available_tweaks` command already filters by the current Windows version.
- */
-export async function getTweaksForCurrentVersion(): Promise<TweakDefinition[]> {
   return await invoke<TweakDefinition[]>("get_available_tweaks");
 }
 
@@ -54,36 +45,12 @@ export async function getAllTweakStatuses(): Promise<TweakStatus[]> {
 }
 
 /**
- * Get statuses for multiple tweaks at once
- */
-export async function getTweakStatuses(tweakIds: string[]): Promise<Record<string, TweakStatus>> {
-  const statuses: Record<string, TweakStatus> = {};
-
-  // Get statuses in parallel
-  await Promise.all(
-    tweakIds.map(async (id) => {
-      try {
-        statuses[id] = await getTweakStatus(id);
-      } catch {
-        statuses[id] = {
-          tweak_id: id,
-          is_applied: false,
-          has_backup: false,
-        };
-      }
-    }),
-  );
-
-  return statuses;
-}
-
-/**
  * Get all tweaks with their status (optimized batch version)
  * Uses a single batch IPC call for statuses instead of N parallel calls
  */
 export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
   // Fetch tweaks and all statuses in parallel (2 IPC calls instead of N+1)
-  const [tweaks, allStatuses] = await Promise.all([getTweaksForCurrentVersion(), getAllTweakStatuses()]);
+  const [tweaks, allStatuses] = await Promise.all([getAvailableTweaks(), getAllTweakStatuses()]);
 
   // Build status map for O(1) lookup
   const statusMap = new Map(allStatuses.map((s) => [s.tweak_id, s]));

@@ -168,14 +168,14 @@ src/lib/stores/
 
 **Tweaks system stores (from tweaks.svelte.ts barrel):**
 
-- `systemStore` - Windows system info (.info getter)
-- `categoriesStore` - Category definitions (.list, .map getters)
-- `tweaksStore` - Tweak list with status (.list, .byCategory, .stats getters)
-- `loadingStore` - Per-tweak loading state (SvelteSet-based, .isLoading(), .isAnyLoading)
-- `errorStore` - Per-tweak error messages (SvelteMap-based, .getError(), .hasAnyError)
-- `pendingChangesStore` - Staged changes before apply (SvelteMap-based)
-- `pendingRebootStore` - Tweaks requiring reboot (SvelteSet-based)
-- `filterStore` - Search and filter state
+- `systemStore` - Windows system info (.info, .isLoading)
+- `categoriesStore` - Category definitions (.list, .isLoading)
+- `tweaksStore` - Tweak list with status (.list, .byCategory, .stats, .getById())
+- `loadingStore` - Per-tweak loading state (SvelteSet-based, .isLoading(), .isAnyLoading, .start(), .stop())
+- `errorStore` - Per-tweak error messages (SvelteMap-based, .getError(), .hasError(), .setError(), .clearError())
+- `pendingChangesStore` - Staged changes before apply (SvelteMap-based, .get(), .has(), .set(), .clear(), .count)
+- `pendingRebootStore` - Tweaks requiring reboot (SvelteSet-based, .needsReboot(), .add(), .remove(), .clear(), .count)
+- `filterStore` - Search and filter state (.searchQuery, .filteredTweaks, .pendingRebootTweaks)
 
 **Using SvelteSet/SvelteMap for reactivity:**
 
