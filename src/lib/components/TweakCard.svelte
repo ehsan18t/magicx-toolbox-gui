@@ -86,6 +86,9 @@
     const select = event.target as HTMLSelectElement;
     const optionIndex = parseInt(select.value, 10);
 
+    // Guard against invalid values
+    if (isNaN(optionIndex)) return;
+
     if (optionIndex === currentOptionIndex) {
       unstageChange(tweak.definition.id);
     } else {

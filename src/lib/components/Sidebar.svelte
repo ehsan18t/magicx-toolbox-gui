@@ -18,12 +18,16 @@
   const isUpdateAvailable = $derived(updateStore.isAvailable);
   const isCategoriesLoading = $derived(categoriesStore.isLoading);
 
+  // Guard to prevent effect from saving before mount loads the saved value
+  let pinStateInitialized = false;
+
   // Load pin state from localStorage on mount
   onMount(() => {
     const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
     if (savedPinState === "true") {
       sidebarStore.init(true);
     }
+    pinStateInitialized = true;
   });
 
   function handleNavClick(tab: TabDefinition) {
@@ -34,9 +38,11 @@
     sidebarStore.togglePinned();
   }
 
-  // Effect to save pin state
+  // Effect to save pin state (only after initial load to prevent race condition)
   $effect(() => {
-    localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
+    if (pinStateInitialized) {
+      localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
+    }
   });
 
   function handleMouseEnter() {
