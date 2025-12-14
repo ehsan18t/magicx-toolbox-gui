@@ -234,11 +234,6 @@
    * Theme Transition
    * Quick fade during theme switch for a clean, unified transition.
    * The .theme-transitioning class is toggled by JavaScript during switch.
-   */
-  /*
-   * Theme Transition
-   * Quick fade during theme switch for a clean, unified transition.
-   * The .theme-transitioning class is toggled by JavaScript during switch.
    *
    * We exempt .theme-toggle and its children so its specific animations (rotation, scale)
    * can play smoothly even while the rest of the page is frozen for the color swap.
