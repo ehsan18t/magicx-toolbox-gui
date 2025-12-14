@@ -4,7 +4,7 @@
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, initializeQuick, loadRemainingData } from "$lib/stores/tweaks.svelte";
+  import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
 
   let error = $state<string | null>(null);
@@ -12,16 +12,9 @@
   onMount(async () => {
     try {
       // Categories are always loaded by +layout (it awaits initializeQuick)
-      // This check is defensive - handles edge cases like HMR or direct navigation
-      if (categoriesStore.list.length > 0) {
-        // Normal path: layout loaded categories, we load remaining data
-        await loadRemainingData();
-      } else {
-        // Defensive fallback: should rarely execute in production
-        // Ensures app works even if layout loading changes
-        await initializeQuick();
-        await loadRemainingData();
-      }
+      // No need for defensive checks - if categories failed to load, layout already errored
+      // Simply load remaining data (system info + tweak statuses)
+      await loadRemainingData();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load data";
       console.error("Failed to initialize:", e);

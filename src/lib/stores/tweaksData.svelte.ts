@@ -93,6 +93,8 @@ export const systemStore = {
       return info;
     } catch (error) {
       console.error("Failed to load system info:", error);
+      // System info failure is recoverable - return null and let UI handle gracefully
+      // (Unlike categories which are critical for app structure)
       return null;
     } finally {
       systemInfoLoading = false;
@@ -125,7 +127,10 @@ export const categoriesStore = {
       return result;
     } catch (error) {
       console.error("Failed to load categories:", error);
-      return [];
+      // CRITICAL: Re-throw instead of returning empty array
+      // Categories are compiled at build time and should ALWAYS load successfully
+      // If this fails, it indicates a serious IPC or runtime error that must surface
+      throw error;
     } finally {
       categoriesLoading = false;
     }
@@ -161,7 +166,9 @@ export const tweaksStore = {
       return result;
     } catch (error) {
       console.error("Failed to load tweaks:", error);
-      return [];
+      // CRITICAL: Re-throw instead of returning empty array
+      // If loading fails, the app cannot function properly - surface the error
+      throw error;
     } finally {
       tweaksLoading = false;
     }
