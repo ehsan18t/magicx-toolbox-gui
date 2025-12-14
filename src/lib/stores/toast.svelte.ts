@@ -1,0 +1,86 @@
+/**
+ * Toast Store - Svelte 5 Runes
+ *
+ * Manages toast notifications for the application.
+ */
+
+export type ToastType = "success" | "error" | "warning" | "info";
+
+export interface Toast {
+  id: string;
+  type: ToastType;
+  message: string;
+  duration?: number;
+  tweakName?: string;
+}
+
+let toasts = $state<Toast[]>([]);
+let idCounter = 0;
+
+function generateId(): string {
+  return `toast-${++idCounter}-${Date.now()}`;
+}
+
+export const toastStore = {
+  get list() {
+    return toasts;
+  },
+
+  /**
+   * Show a toast notification
+   */
+  show(type: ToastType, message: string, options?: { duration?: number; tweakName?: string }) {
+    const id = generateId();
+    const duration = options?.duration ?? (type === "error" ? 5000 : 3000);
+
+    const toast: Toast = {
+      id,
+      type,
+      message,
+      duration,
+      tweakName: options?.tweakName,
+    };
+
+    toasts = [...toasts, toast];
+
+    // Auto-dismiss
+    if (duration > 0) {
+      setTimeout(() => {
+        this.dismiss(id);
+      }, duration);
+    }
+
+    return id;
+  },
+
+  /**
+   * Dismiss a specific toast
+   */
+  dismiss(id: string) {
+    toasts = toasts.filter((t) => t.id !== id);
+  },
+
+  /**
+   * Clear all toasts
+   */
+  clear() {
+    toasts = [];
+  },
+
+  // Convenience methods
+  success(message: string, options?: { duration?: number; tweakName?: string }) {
+    return this.show("success", message, options);
+  },
+
+  error(message: string, options?: { duration?: number; tweakName?: string }) {
+    return this.show("error", message, options);
+  },
+
+  warning(message: string, options?: { duration?: number; tweakName?: string }) {
+    return this.show("warning", message, options);
+  },
+
+  info(message: string, options?: { duration?: number; tweakName?: string }) {
+    return this.show("info", message, options);
+  },
+};

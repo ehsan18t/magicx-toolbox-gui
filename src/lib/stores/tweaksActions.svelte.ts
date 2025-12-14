@@ -6,6 +6,7 @@
 
 import * as api from "$lib/api/tweaks";
 import type { PendingChange, TweakWithStatus } from "$lib/types";
+import { toastStore } from "./toast.svelte";
 import { tweaksStore } from "./tweaksData.svelte";
 import { errorStore, loadingStore } from "./tweaksLoading.svelte";
 import { pendingChangesStore, pendingRebootStore } from "./tweaksPending.svelte";
@@ -84,7 +85,11 @@ export async function applyTweak(
   tweakId: string,
   optionIndex: number,
   requiresReboot: boolean = false,
+  options?: { showToast?: boolean; tweakName?: string },
 ): Promise<boolean> {
+  const showToast = options?.showToast ?? true;
+  const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
+
   loadingStore.start(tweakId);
   errorStore.clearError(tweakId);
 
@@ -101,16 +106,27 @@ export async function applyTweak(
       // Track if this tweak requires reboot
       if (result.requires_reboot || requiresReboot) {
         pendingRebootStore.add(tweakId);
+        if (showToast) {
+          toastStore.success("Applied (reboot required)", { tweakName });
+        }
+      } else if (showToast) {
+        toastStore.success("Applied successfully", { tweakName });
       }
 
       return true;
     } else {
       errorStore.setError(tweakId, result.message);
+      if (showToast) {
+        toastStore.error(result.message, { tweakName });
+      }
       return false;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to apply tweak";
     errorStore.setError(tweakId, message);
+    if (showToast) {
+      toastStore.error(message, { tweakName });
+    }
     return false;
   } finally {
     loadingStore.stop(tweakId);
@@ -120,7 +136,13 @@ export async function applyTweak(
 /**
  * Revert a tweak to its original state
  */
-export async function revertTweak(tweakId: string): Promise<boolean> {
+export async function revertTweak(
+  tweakId: string,
+  options?: { showToast?: boolean; tweakName?: string },
+): Promise<boolean> {
+  const showToast = options?.showToast ?? true;
+  const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
+
   loadingStore.start(tweakId);
   errorStore.clearError(tweakId);
 
@@ -136,16 +158,27 @@ export async function revertTweak(tweakId: string): Promise<boolean> {
       // If reverting also requires reboot, add it back
       if (result.requires_reboot) {
         pendingRebootStore.add(tweakId);
+        if (showToast) {
+          toastStore.success("Reverted (reboot required)", { tweakName });
+        }
+      } else if (showToast) {
+        toastStore.success("Reverted successfully", { tweakName });
       }
 
       return true;
     } else {
       errorStore.setError(tweakId, result.message);
+      if (showToast) {
+        toastStore.error(result.message, { tweakName });
+      }
       return false;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to revert tweak";
     errorStore.setError(tweakId, message);
+    if (showToast) {
+      toastStore.error(message, { tweakName });
+    }
     return false;
   } finally {
     loadingStore.stop(tweakId);
@@ -194,7 +227,11 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
     const tweak = tweaksStore.getById(tweakId);
     if (!tweak) continue;
 
-    const result = await applyTweak(change.tweakId, change.optionIndex, tweak.definition.requires_reboot);
+    // Apply without individual toasts - we'll show a summary
+    const result = await applyTweak(change.tweakId, change.optionIndex, tweak.definition.requires_reboot, {
+      showToast: false,
+      tweakName: tweak.definition.name,
+    });
 
     if (result) {
       success++;
@@ -202,6 +239,15 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
     } else {
       failed++;
     }
+  }
+
+  // Show summary toast
+  if (failed === 0 && success > 0) {
+    toastStore.success(`Applied ${success} tweak${success > 1 ? "s" : ""} successfully`);
+  } else if (failed > 0 && success > 0) {
+    toastStore.warning(`Applied ${success}, failed ${failed} tweak${failed > 1 ? "s" : ""}`);
+  } else if (failed > 0) {
+    toastStore.error(`Failed to apply ${failed} tweak${failed > 1 ? "s" : ""}`);
   }
 
   return { success, failed };

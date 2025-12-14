@@ -22,7 +22,16 @@
  */
 
 // Data stores
-export { categoriesStore, getCategoryStats, initializeData, systemStore, tweaksStore } from "./tweaksData.svelte";
+export {
+  categoriesStore,
+  getCategoryStats,
+  initializeData,
+  initializeQuick,
+  loadingStateStore,
+  loadRemainingData,
+  systemStore,
+  tweaksStore,
+} from "./tweaksData.svelte";
 
 // Loading & error stores
 export { errorStore, loadingStore } from "./tweaksLoading.svelte";
