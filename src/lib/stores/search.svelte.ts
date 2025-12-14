@@ -90,7 +90,7 @@ let haystackCache: {
   /** Parallel array of metadata */
   entries: HaystackEntry[];
   /** Tweaks list hash to detect changes */
-  tweaksHash: number;
+  tweaksHash: string;
 } | null = null;
 
 /**
@@ -100,9 +100,11 @@ let haystackCache: {
  */
 function getHaystack(): { strings: string[]; entries: HaystackEntry[] } {
   const tweaks = tweaksStore.list;
+
   // Create a composite hash of length + version to detect any changes
   // version increments on status updates or reloads
-  const tweaksHash = tweaks.length + tweaksStore.version;
+  // Use string concatenation to avoid arithmetic collisions (e.g., 10+5 vs 11+4)
+  const tweaksHash = `${tweaks.length}-${tweaksStore.version}`;
 
   // Return cached if still valid
   if (haystackCache && haystackCache.tweaksHash === tweaksHash) {
