@@ -11,8 +11,17 @@ let currentTheme = $state<Theme>("dark");
 
 function applyTheme(theme: Theme) {
   if (browser) {
+    // Add transitioning class for smooth fade
+    document.documentElement.classList.add("theme-transitioning");
+
     localStorage.setItem(APP_CONFIG.theme.storageKey, theme);
     document.documentElement.setAttribute("data-theme", theme);
+
+    // Remove class after transition completes
+    // Timeout matches the CSS animation duration (150ms) plus a small buffer
+    setTimeout(() => {
+      document.documentElement.classList.remove("theme-transitioning");
+    }, 200);
   }
 }
 
