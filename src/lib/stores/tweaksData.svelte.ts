@@ -22,6 +22,7 @@ let categories = $state<CategoryDefinition[]>([]);
 
 // === Tweaks State ===
 let tweaks = $state<TweakWithStatus[]>([]);
+let tweaksVersion = $state(0);
 
 // Derived: tweaks grouped by category
 const tweaksByCategory = $derived.by(() => {
@@ -142,6 +143,7 @@ export const tweaksStore = {
     try {
       const result = await api.getAllTweaksWithStatus();
       tweaks = result;
+      tweaksVersion++;
       return result;
     } catch (error) {
       console.error("Failed to load tweaks:", error);
@@ -156,11 +158,16 @@ export const tweaksStore = {
   /** Update a single tweak's status */
   updateStatus(tweakId: string, status: Partial<TweakStatus>) {
     tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: { ...t.status, ...status } } : t));
+    tweaksVersion++;
   },
 
   /** Get a tweak by ID */
   getById(tweakId: string): TweakWithStatus | undefined {
     return tweaks.find((t) => t.definition.id === tweakId);
+  },
+
+  get version() {
+    return tweaksVersion;
   },
 };
 

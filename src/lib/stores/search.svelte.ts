@@ -100,7 +100,9 @@ let haystackCache: {
  */
 function getHaystack(): { strings: string[]; entries: HaystackEntry[] } {
   const tweaks = tweaksStore.list;
-  const tweaksHash = tweaks.length; // Simple hash - rebuild if count changes
+  // Create a composite hash of length + version to detect any changes
+  // version increments on status updates or reloads
+  const tweaksHash = tweaks.length + tweaksStore.version;
 
   // Return cached if still valid
   if (haystackCache && haystackCache.tweaksHash === tweaksHash) {
