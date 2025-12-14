@@ -1,11 +1,25 @@
 /**
  * Search Store - Svelte 5 Runes
  *
- * Manages fuzzy search state with result caching.
+ * Manages fuzzy search state with result caching using fuzzysort.
  * Results only update when query changes or user explicitly clears.
  */
 
-import { fuzzySearchTweaks, type SearchResult } from "$lib/api/tweaks";
+import { tweaksStore } from "$lib/stores/tweaks.svelte";
+
+import fuzzysort from "fuzzysort";
+
+/** A search result from fuzzy search */
+export interface SearchResult {
+  /** The tweak ID */
+  tweak_id: string;
+  /** Fuzzy match score (higher is better) */
+  score: number;
+  /** Category ID for navigation */
+  category_id: string;
+  /** Match indices (compatibility field, unused in UI currently) */
+  match_indices: number[];
+}
 
 // === State ===
 
@@ -121,8 +135,25 @@ export const searchStore = {
     error = null;
 
     try {
-      const searchResults = await fuzzySearchTweaks(currentQuery);
-      results = searchResults;
+      // Get tweaks from store (already loaded in memory)
+      const tweaks = tweaksStore.list;
+
+      // Perform fuzzy search
+      // Search across name, description, and info
+      const searchResults = fuzzysort.go(currentQuery, tweaks, {
+        keys: ["definition.name", "definition.description", "definition.info"],
+        threshold: -10000, // Don't return bad matches
+        limit: 100, // Limit results for performance
+      });
+
+      // Map to SearchResult interface
+      results = searchResults.map((res) => ({
+        tweak_id: res.obj.definition.id,
+        score: res.score,
+        category_id: res.obj.definition.category_id,
+        match_indices: [], // Not currently used by UI
+      }));
+
       cachedQuery = currentQuery;
     } catch (e) {
       error = e instanceof Error ? e.message : "Search failed";

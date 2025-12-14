@@ -109,8 +109,6 @@ pub fn run() {
             // Tweak batch commands
             commands::tweaks::batch::batch_apply_tweaks,
             commands::tweaks::batch::batch_revert_tweaks,
-            // Search commands
-            commands::search::fuzzy_search_tweaks,
             commands::debug::set_debug_mode,
             commands::debug::get_debug_mode,
             // Backup commands

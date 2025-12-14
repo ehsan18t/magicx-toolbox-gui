@@ -58,8 +58,7 @@ fs4 = "0.13"
 # Parallel iteration for performance
 rayon = "1"
 
-# High-performance fuzzy search (same engine as fzf)
-nucleo-matcher = "0.3"
+
 
 # Windows-specific (only for Windows builds)
 [target.'cfg(windows)'.dependencies]

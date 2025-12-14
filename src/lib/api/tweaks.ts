@@ -116,30 +116,6 @@ export async function getWindowsVersion(): Promise<string> {
 }
 
 // ============================================================================
-// Search API
-// ============================================================================
-
-/** A search result from fuzzy search */
-export interface SearchResult {
-  /** The tweak ID */
-  tweak_id: string;
-  /** Fuzzy match score (higher is better) */
-  score: number;
-  /** Category ID for navigation */
-  category_id: string;
-  /** Match indices for highlighting */
-  match_indices: number[];
-}
-
-/**
- * Perform fuzzy search across all tweaks
- * Searches tweak name, description, and info fields concurrently.
- */
-export async function fuzzySearchTweaks(query: string): Promise<SearchResult[]> {
-  return await invoke<SearchResult[]>("fuzzy_search_tweaks", { query });
-}
-
-// ============================================================================
 // Backup API
 // ============================================================================
 

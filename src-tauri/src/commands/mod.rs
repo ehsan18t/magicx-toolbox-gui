@@ -3,7 +3,7 @@ pub mod backup;
 pub mod debug;
 pub mod elevation;
 pub mod general;
-pub mod search;
+
 pub mod system;
 pub mod tweaks;
 pub mod update;
