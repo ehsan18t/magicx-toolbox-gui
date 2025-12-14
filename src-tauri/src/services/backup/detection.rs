@@ -170,7 +170,18 @@ fn check_scheduler_matches(
         return Ok(true);
     }
 
-    // Process scheduler changes - patterns need sequential handling due to COM threading
+    // Process scheduler changes sequentially.
+    //
+    // NOTE: The Windows Task Scheduler API is COM-based, and COM objects are not thread-safe unless
+    // each thread initializes its own COM apartment (e.g., via CoInitializeEx). The current
+    // scheduler_service implementation does not perform per-thread COM initialization, so parallelizing
+    // this loop could cause undefined behavior, crashes, or subtle bugs.
+    //
+    // If parallelization is desired in the future, scheduler_service must be refactored to ensure that
+    // each thread initializes and uninitializes its own COM apartment before making any COM calls.
+    // This is non-trivial and may introduce complexity or maintenance risk.
+    //
+    // For now, we process scheduler changes sequentially to ensure correctness and stability.
     for change in validatable_scheduler {
         // Determine expected state based on action
         let expected_state = match change.action {
