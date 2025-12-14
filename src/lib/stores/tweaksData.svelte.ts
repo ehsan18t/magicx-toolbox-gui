@@ -209,22 +209,6 @@ export const loadingStateStore = {
   },
 };
 
-/**
- * Initialize all data stores with progressive loading
- * Categories load first (fast), then system info and tweaks load in parallel
- * This allows the app shell to appear quickly while heavier data loads in the background
- */
-export async function initializeData(): Promise<void> {
-  // Phase 1: Load categories first (usually fastest, enables navigation)
-  await categoriesStore.load();
-
-  // Phase 2: Load system info and tweaks in parallel (these take longer)
-  await Promise.all([systemStore.load(), tweaksStore.load()]);
-
-  // Mark initial load as complete
-  initialLoadComplete = true;
-}
-
 // Promise cache for deduplicating concurrent initialization calls
 let quickInitPromise: Promise<void> | null = null;
 let remainingDataPromise: Promise<void> | null = null;

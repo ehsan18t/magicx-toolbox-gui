@@ -16,7 +16,8 @@
  *   filterStore,
  *   applyTweak,
  *   revertTweak,
- *   initializeData
+ *   initializeQuick,
+ *   loadRemainingData
  * } from "$lib/stores/tweaks.svelte";
  * ```
  */
@@ -25,7 +26,6 @@
 export {
   categoriesStore,
   getCategoryStats,
-  initializeData,
   initializeQuick,
   loadingStateStore,
   loadRemainingData,

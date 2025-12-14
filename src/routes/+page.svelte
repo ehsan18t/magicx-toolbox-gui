@@ -18,8 +18,10 @@
         await loadRemainingData();
       } else {
         // Fallback: load everything if layout hasn't started yet
-        const { initializeData } = await import("$lib/stores/tweaksData.svelte");
-        await initializeData();
+        // Uses initializeQuick + loadRemainingData which have promise caching
+        const { initializeQuick } = await import("$lib/stores/tweaksData.svelte");
+        await initializeQuick();
+        await loadRemainingData();
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load data";

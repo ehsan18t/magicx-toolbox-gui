@@ -31,9 +31,10 @@ export {
   // Actions & filters
   filterStore,
   getCategoryStats,
-  initializeData,
+  initializeQuick,
   // Loading state
   loadingStore,
+  loadRemainingData,
   // Pending changes
   pendingChangesStore,
   pendingRebootStore,
