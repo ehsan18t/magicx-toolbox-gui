@@ -311,21 +311,25 @@
       <!-- Results grid -->
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
         {#each searchResultTweaks as { tweak, categoryName, searchResult } (tweak.definition.id)}
-          <div class="search-result-card">
+          <div class="search-result-card flex flex-col">
             <TweakCard {tweak}>
               {#snippet titleSlot()}
                 <HighlightedText
                   text={tweak.definition.name}
                   ranges={searchResult.nameRanges}
-                  highlightClass="bg-accent/25 text-accent-foreground rounded-sm"
+                  highlightClass="bg-accent/25 dark:text-accent-foreground/90 rounded"
                 />
               {/snippet}
               {#snippet descriptionSlot()}
-                <HighlightedText text={tweak.definition.description || ""} ranges={searchResult.descriptionRanges} />
+                <HighlightedText
+                  text={tweak.definition.description || ""}
+                  ranges={searchResult.descriptionRanges}
+                  highlightClass="bg-accent/25 dark:text-accent-foreground/90 font-semibold rounded"
+                />
               {/snippet}
             </TweakCard>
             <!-- Category badge & navigate button at bottom -->
-            <div class="mt-2 flex items-center justify-between gap-2 px-4 pb-3">
+            <div class="mt-auto flex items-center justify-between gap-2 border-t border-border/30 px-4 py-2.5">
               <span
                 class="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
               >
@@ -334,7 +338,7 @@
               </span>
               <button
                 type="button"
-                class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-all duration-200 hover:border-accent hover:bg-accent/10 hover:text-accent"
+                class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground transition-all duration-200 hover:border-accent hover:bg-accent/10 hover:text-accent"
                 onclick={() => navigateToTweak(tweak.definition.id, tweak.definition.category_id)}
                 title="Navigate to tweak location"
               >

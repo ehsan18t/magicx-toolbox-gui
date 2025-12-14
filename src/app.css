@@ -287,10 +287,6 @@
   -webkit-app-region: drag;
 }
 
-mark {
-  @apply rounded-sm bg-accent/30 px-0.5 text-inherit;
-}
-
 /* Custom Scrollbar */
 * {
   scrollbar-width: thin;
