@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
@@ -14,6 +15,24 @@
   const tweakError = $derived(errorStore.getError(tweak.definition.id));
   // Detection error from backend (status couldn't be determined)
   const hasDetectionError = $derived(!!tweak.status.error);
+
+  // Highlight state for search navigation
+  const shouldHighlight = $derived(searchStore.highlightTweakId === tweak.definition.id);
+  let isHighlighting = $state(false);
+
+  // Handle highlight animation
+  $effect(() => {
+    if (shouldHighlight) {
+      isHighlighting = true;
+      // Clear highlight after animation
+      const timer = setTimeout(() => {
+        isHighlighting = false;
+        searchStore.clearHighlight();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  });
 
   let showConfirmDialog = $state(false);
 
@@ -98,10 +117,11 @@
 </script>
 
 <article
+  id="tweak-{tweak.definition.id}"
   class="relative flex overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md {tweak
     .status.is_applied
     ? 'border-accent/40 bg-accent/5'
-    : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''}"
+    : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''} {isHighlighting ? 'tweak-highlight' : ''}"
 >
   <!-- Status bar -->
   <div

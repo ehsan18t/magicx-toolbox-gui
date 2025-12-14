@@ -353,6 +353,23 @@
   }
 }
 
+@keyframes tweak-highlight-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--accent) / 0);
+    border-color: hsl(var(--border));
+  }
+  25%,
+  75% {
+    box-shadow: 0 0 0 4px hsl(var(--accent) / 0.3);
+    border-color: hsl(var(--accent));
+  }
+  50% {
+    box-shadow: 0 0 0 6px hsl(var(--accent) / 0.4);
+    border-color: hsl(var(--accent));
+  }
+}
+
 .animate-spin {
   animation: spin 1s linear infinite;
 }
@@ -369,11 +386,16 @@
   animation: slide-in-up 0.2s ease-out;
 }
 
+.tweak-highlight {
+  animation: tweak-highlight-pulse 1.5s ease-in-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-spin,
   .animate-modal-in,
   .animate-fade-in,
-  .animate-slide-in-up {
+  .animate-slide-in-up,
+  .tweak-highlight {
     animation: none;
   }
 }
