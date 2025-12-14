@@ -37,7 +37,7 @@
     {#each toasts as toast (toast.id)}
       {@const config = typeConfig[toast.type]}
       <div
-        class="flex w-80 items-start gap-3 rounded-lg border p-3 shadow-lg backdrop-blur-sm transition-all duration-300 {config.bgColor} animate-in slide-in-from-right-5"
+        class="flex w-80 items-start gap-3 rounded-lg border p-3 shadow-lg backdrop-blur-sm transition-all duration-300 {config.bgColor} animate-in"
         role="alert"
       >
         <Icon icon={config.icon} width="20" class="{config.color} mt-0.5 shrink-0" />
