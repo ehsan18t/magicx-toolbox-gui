@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { initializeQuick } from "$lib/stores/tweaksData.svelte";
   import "@/app.css";
   import AboutModal from "@/lib/components/AboutModal.svelte";
   import ApplyingOverlay from "@/lib/components/ApplyingOverlay.svelte";
@@ -27,8 +28,9 @@
     }
 
     // Start data loading IMMEDIATELY (categories first - enables UI quickly)
-    // This overlaps network request with the UI initialization below
-    const dataPromise = import("$lib/stores/tweaksData.svelte").then((m) => m.initializeQuick());
+    // CRITICAL: We await here to ensure +page.svelte has categories loaded
+    // before its onMount runs. This prevents race conditions and simplifies page logic.
+    await initializeQuick();
 
     // Hide the initial HTML loader now that Svelte is ready
     const initialLoader = document.getElementById("initial-loader");
@@ -40,9 +42,6 @@
     // Init theme stores (synchronous, fast)
     themeStore.init();
     colorSchemeStore.init();
-
-    // Wait for categories to finish loading (likely already done)
-    await dataPromise;
 
     // Perform silent background update check if enabled
     const settings = settingsStore.settings;

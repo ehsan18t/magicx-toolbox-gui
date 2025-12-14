@@ -4,22 +4,21 @@
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, loadRemainingData } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, initializeQuick, loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
 
   let error = $state<string | null>(null);
 
   onMount(async () => {
     try {
-      // Categories may already be loaded by layout - only load remaining data
-      // This avoids duplicate network requests
+      // Categories are always loaded by +layout (it awaits initializeQuick)
+      // This check is defensive - handles edge cases like HMR or direct navigation
       if (categoriesStore.list.length > 0) {
-        // Layout already loaded categories, just load remaining data
+        // Normal path: layout loaded categories, we load remaining data
         await loadRemainingData();
       } else {
-        // Fallback: load everything if layout hasn't started yet
-        // Uses initializeQuick + loadRemainingData which have promise caching
-        const { initializeQuick } = await import("$lib/stores/tweaksData.svelte");
+        // Defensive fallback: should rarely execute in production
+        // Ensures app works even if layout loading changes
         await initializeQuick();
         await loadRemainingData();
       }
