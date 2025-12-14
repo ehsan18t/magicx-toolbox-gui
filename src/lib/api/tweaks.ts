@@ -1,12 +1,12 @@
 // API functions for Tauri commands
 import { invoke } from "@tauri-apps/api/core";
 import type {
-    CategoryDefinition,
-    SystemInfo,
-    TweakDefinition,
-    TweakResult,
-    TweakStatus,
-    TweakWithStatus,
+  CategoryDefinition,
+  SystemInfo,
+  TweakDefinition,
+  TweakResult,
+  TweakStatus,
+  TweakWithStatus,
 } from "../types";
 
 /**
@@ -83,10 +83,7 @@ export async function getTweakStatuses(tweakIds: string[]): Promise<Record<strin
  */
 export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
   // Fetch tweaks and all statuses in parallel (2 IPC calls instead of N+1)
-  const [tweaks, allStatuses] = await Promise.all([
-    getTweaksForCurrentVersion(),
-    getAllTweakStatuses(),
-  ]);
+  const [tweaks, allStatuses] = await Promise.all([getTweaksForCurrentVersion(), getAllTweakStatuses()]);
 
   // Build status map for O(1) lookup
   const statusMap = new Map(allStatuses.map((s) => [s.tweak_id, s]));
