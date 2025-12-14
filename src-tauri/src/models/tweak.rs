@@ -488,6 +488,9 @@ pub struct TweakStatus {
     pub has_backup: bool,
     /// Index of current matching option, or None if System Default
     pub current_option_index: Option<usize>,
+    /// Error message if state detection failed (tweak still returned but with unknown state)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 // ============================================================================

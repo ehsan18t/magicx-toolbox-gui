@@ -267,32 +267,77 @@ fn parse_wmi_datetime_to_iso(wmi_datetime: &str) -> String {
     )
 }
 
-/// Get hardware information using WMI queries
+/// Get hardware information using WMI queries (parallelized with connection reuse)
+/// Uses 3 threads instead of 7 to reduce COM initialization overhead:
+/// - Thread 1: Fast cimv2 queries (CPU, Memory, Motherboard, Network) - same connection
+/// - Thread 2: Slow cimv2 queries (GPU, Monitors) - WinAPI/registry intensive
+/// - Thread 3: Storage namespace queries (Disks) - different WMI namespace
 fn get_hardware_info() -> HardwareInfo {
-    log::debug!("Gathering hardware information via WMI");
+    log::debug!("Gathering hardware information via WMI (3-thread hybrid)");
 
-    // Initialize WMI connection
-    let wmi_con = match WMIConnection::new() {
-        Ok(con) => con,
-        Err(e) => {
-            log::warn!("Failed to create WMI connection: {}", e);
-            return HardwareInfo::default();
-        }
-    };
+    use std::thread;
+    let start = std::time::Instant::now();
 
-    let disks = get_disk_info(&wmi_con);
+    // Run WMI queries in parallel using scoped threads with connection reuse
+    let (cpu, memory, motherboard, network, gpu, monitors, disks) = thread::scope(|s| {
+        // Thread 1: Fast cimv2 queries - reuse single connection for 4 queries
+        let fast_cimv2_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => (
+                get_cpu_info(&con),
+                get_memory_info(&con),
+                get_motherboard_info(&con),
+                get_network_info(&con),
+            ),
+            Err(e) => {
+                log::debug!("WMI connection failed for fast cimv2 queries: {}", e);
+                (
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                )
+            }
+        });
+
+        // Thread 2: Slow cimv2 queries (GPU + Monitors) - WinAPI/registry heavy
+        let slow_cimv2_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => (get_gpu_info(&con), get_monitor_info(&con)),
+            Err(e) => {
+                log::debug!("WMI connection failed for slow cimv2 queries: {}", e);
+                (Default::default(), Default::default())
+            }
+        });
+
+        // Thread 3: Storage namespace - uses different WMI namespace internally
+        let storage_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_disk_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for disk info: {}", e);
+                Default::default()
+            }
+        });
+
+        // Wait for all threads to complete
+        let (cpu, memory, motherboard, network) = fast_cimv2_handle.join().unwrap_or_default();
+        let (gpu, monitors) = slow_cimv2_handle.join().unwrap_or_default();
+        let disks = storage_handle.join().unwrap_or_default();
+
+        (cpu, memory, motherboard, network, gpu, monitors, disks)
+    });
+
+    log::debug!("Hardware info gathered in {:?}", start.elapsed());
 
     // Calculate total storage
     let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
 
     HardwareInfo {
-        cpu: get_cpu_info(&wmi_con),
-        gpu: get_gpu_info(&wmi_con),
-        monitors: get_monitor_info(&wmi_con),
-        memory: get_memory_info(&wmi_con),
-        motherboard: get_motherboard_info(&wmi_con),
+        cpu,
+        gpu,
+        monitors,
+        memory,
+        motherboard,
         disks,
-        network: get_network_info(&wmi_con),
+        network,
         total_storage_gb,
     }
 }

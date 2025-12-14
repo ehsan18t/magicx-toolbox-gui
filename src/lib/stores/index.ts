@@ -31,9 +31,10 @@ export {
   // Actions & filters
   filterStore,
   getCategoryStats,
-  initializeData,
+  initializeQuick,
   // Loading state
   loadingStore,
+  loadRemainingData,
   // Pending changes
   pendingChangesStore,
   pendingRebootStore,
@@ -51,3 +52,6 @@ export { systemElevationStore } from "./systemElevation.svelte";
 
 // Update system
 export { updateStore } from "./update.svelte";
+
+// Toast notifications
+export { toastStore, type Toast, type ToastType } from "./toast.svelte";

@@ -219,10 +219,11 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         .ok_or_else(|| Error::BackupFailed("No snapshot found for this tweak".into()))?;
 
     log::info!(
-        "Reverting '{}' from option '{}' (snapshot from {})",
+        "Reverting '{}' from option '{}' (snapshot from {}, requires_system={})",
         tweak.name,
         snapshot.applied_option_label,
-        snapshot.created_at
+        snapshot.created_at,
+        snapshot.requires_system
     );
 
     if is_debug_enabled() {
@@ -231,46 +232,87 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
             DebugLevel::Info,
             &format!("Reverting: {}", tweak.name),
             Some(&format!(
-                "{} registry values, {} services",
+                "{} registry, {} services, {} tasks",
                 snapshot.registry_snapshots.len(),
-                snapshot.service_snapshots.len()
+                snapshot.service_snapshots.len(),
+                snapshot.scheduler_snapshots.len()
             )),
         );
     }
 
-    // Restore from snapshot
-    backup_service::restore_from_snapshot(&snapshot)?;
+    // Restore from snapshot - now returns RestoreResult with failure details
+    let restore_result = backup_service::restore_from_snapshot(&snapshot)?;
 
-    // Delete snapshot after successful restore
-    backup_service::delete_snapshot(&tweak_id)?;
-
-    log::info!(
-        "Successfully reverted '{}'{}",
-        tweak.name,
-        if tweak.requires_reboot {
-            " (reboot required)"
-        } else {
-            ""
-        }
-    );
-
-    if is_debug_enabled() {
-        emit_debug_log(
-            &app,
-            DebugLevel::Success,
-            &format!("Reverted: {}", tweak.name),
+    // Only delete snapshot if ALL operations succeeded
+    // This allows the user to retry the revert if some operations failed
+    if restore_result.success {
+        backup_service::delete_snapshot(&tweak_id)?;
+        log::info!(
+            "Successfully reverted '{}' (snapshot deleted){}",
+            tweak.name,
             if tweak.requires_reboot {
-                Some("Reboot required")
+                " - reboot required"
             } else {
-                None
-            },
+                ""
+            }
         );
-    }
 
-    Ok(TweakResult {
-        success: true,
-        message: format!("Reverted: {}", tweak.name),
-        requires_reboot: tweak.requires_reboot,
-        failures: Vec::new(),
-    })
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Success,
+                &format!("Reverted: {}", tweak.name),
+                if tweak.requires_reboot {
+                    Some("Reboot required")
+                } else {
+                    None
+                },
+            );
+        }
+
+        Ok(TweakResult {
+            success: true,
+            message: format!("Reverted: {}", tweak.name),
+            requires_reboot: tweak.requires_reboot,
+            failures: Vec::new(),
+        })
+    } else {
+        // Partial success - some operations failed but snapshot is kept for retry
+        log::warn!(
+            "Partial revert for '{}': {} failures (snapshot kept for retry)",
+            tweak.name,
+            restore_result.failures.len()
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Warn,
+                &format!("Partial revert: {}", tweak.name),
+                Some(&format!(
+                    "{} failures - snapshot kept for retry",
+                    restore_result.failures.len()
+                )),
+            );
+        }
+
+        // Convert failures to (tweak_id, error) format for TweakResult
+        let failures: Vec<(String, String)> = restore_result
+            .failures
+            .into_iter()
+            .map(|msg| (tweak_id.clone(), msg))
+            .collect();
+
+        // Return partial success with failure details
+        // The snapshot is preserved so user can retry
+        Ok(TweakResult {
+            success: false,
+            message: format!(
+                "Partial revert: {} operations failed. Snapshot kept for retry.",
+                failures.len()
+            ),
+            requires_reboot: tweak.requires_reboot,
+            failures,
+        })
+    }
 }

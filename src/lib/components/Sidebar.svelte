@@ -2,7 +2,7 @@
   import { sidebarStore } from "$lib/stores/layout.svelte";
   import { openAboutModal, openSettingsModal, openUpdateModal } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { getCategoryStats, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, getCategoryStats, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { onMount } from "svelte";
   import ColorSchemePicker from "./ColorSchemePicker.svelte";
@@ -16,6 +16,10 @@
   const stats = $derived(tweaksStore.stats);
   const categoryStats = $derived(getCategoryStats());
   const isUpdateAvailable = $derived(updateStore.isAvailable);
+  const isCategoriesLoading = $derived(categoriesStore.isLoading);
+
+  // Guard to prevent effect from saving before mount loads the saved value
+  let pinStateInitialized = false;
 
   // Load pin state from localStorage on mount
   onMount(() => {
@@ -23,6 +27,7 @@
     if (savedPinState === "true") {
       sidebarStore.init(true);
     }
+    pinStateInitialized = true;
   });
 
   function handleNavClick(tab: TabDefinition) {
@@ -33,9 +38,11 @@
     sidebarStore.togglePinned();
   }
 
-  // Effect to save pin state
+  // Effect to save pin state (only after initial load to prevent race condition)
   $effect(() => {
-    localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
+    if (pinStateInitialized) {
+      localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
+    }
   });
 
   function handleMouseEnter() {
@@ -117,6 +124,18 @@
         {/if}
       </button>
     {/each}
+
+    <!-- Skeleton loading for category tabs while loading -->
+    {#if isCategoriesLoading}
+      {#each [0, 1, 2, 3, 4, 5] as i (`nav-skeleton-${i}`)}
+        <div class="flex min-h-11 items-center gap-3 px-3 py-2.5">
+          <div class="animate-pulse bg-muted h-6 w-6 shrink-0 rounded"></div>
+          {#if sidebarStore.isOpen}
+            <div class="animate-pulse bg-muted h-4 flex-1 rounded"></div>
+          {/if}
+        </div>
+      {/each}
+    {/if}
   </nav>
 
   <!-- Sidebar Footer -->

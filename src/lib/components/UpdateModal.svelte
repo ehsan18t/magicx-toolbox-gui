@@ -1,6 +1,7 @@
 <script lang="ts">
   import { closeModal, modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { exit } from "@tauri-apps/plugin-process";
@@ -62,7 +63,9 @@
         try {
           await exit(0);
         } catch {
+          // Exit failed - inform user to restart manually
           closeModal();
+          toastStore.warning("Update downloaded. Please restart the app manually to apply it.");
         }
       }, 1000);
     }

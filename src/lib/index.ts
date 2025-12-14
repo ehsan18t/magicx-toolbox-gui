@@ -41,7 +41,8 @@ export {
   errorStore,
   filterStore,
   getCategoryStats,
-  initializeData,
+  initializeQuick,
+  loadRemainingData,
   loadingStore,
   pendingChangesStore,
   pendingRebootStore,
@@ -72,8 +73,6 @@ export {
   getAvailableTweaks,
   getSystemInfo,
   getTweakStatus,
-  getTweakStatuses,
-  getTweaksForCurrentVersion,
   getWindowsVersion,
   isAdmin,
 } from "./api";

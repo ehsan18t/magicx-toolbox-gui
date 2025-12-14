@@ -16,13 +16,22 @@
  *   filterStore,
  *   applyTweak,
  *   revertTweak,
- *   initializeData
+ *   initializeQuick,
+ *   loadRemainingData
  * } from "$lib/stores/tweaks.svelte";
  * ```
  */
 
 // Data stores
-export { categoriesStore, getCategoryStats, initializeData, systemStore, tweaksStore } from "./tweaksData.svelte";
+export {
+  categoriesStore,
+  getCategoryStats,
+  initializeQuick,
+  loadingStateStore,
+  loadRemainingData,
+  systemStore,
+  tweaksStore,
+} from "./tweaksData.svelte";
 
 // Loading & error stores
 export { errorStore, loadingStore } from "./tweaksLoading.svelte";

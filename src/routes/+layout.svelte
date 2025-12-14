@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { initializeQuick } from "$lib/stores/tweaksData.svelte";
   import "@/app.css";
   import AboutModal from "@/lib/components/AboutModal.svelte";
   import ApplyingOverlay from "@/lib/components/ApplyingOverlay.svelte";
@@ -6,17 +7,39 @@
   import PendingRebootBanner from "@/lib/components/PendingRebootBanner.svelte";
   import SettingsModal from "@/lib/components/SettingsModal.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
+  import ToastContainer from "@/lib/components/ToastContainer.svelte";
   import TweakDetailsModal from "@/lib/components/TweakDetailsModal.svelte";
   import UpdateModal from "@/lib/components/UpdateModal.svelte";
   import { colorSchemeStore } from "@/lib/stores/colorScheme.svelte";
   import { settingsStore } from "@/lib/stores/settings.svelte";
   import { themeStore } from "@/lib/stores/theme.svelte";
   import { updateStore } from "@/lib/stores/update.svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
   const { children } = $props();
 
-  onMount(() => {
+  onMount(async () => {
+    // Show the window now that the UI is ready
+    try {
+      await invoke("show_main_window");
+    } catch (e) {
+      console.error("Failed to show window:", e);
+    }
+
+    // Start data loading IMMEDIATELY (categories first - enables UI quickly)
+    // CRITICAL: We await here to ensure +page.svelte has categories loaded
+    // before its onMount runs. This prevents race conditions and simplifies page logic.
+    await initializeQuick();
+
+    // Hide the initial HTML loader now that Svelte is ready
+    const initialLoader = document.getElementById("initial-loader");
+    if (initialLoader) {
+      initialLoader.classList.add("fade-out");
+      setTimeout(() => initialLoader.remove(), 200);
+    }
+
+    // Init theme stores (synchronous, fast)
     themeStore.init();
     colorSchemeStore.init();
 
@@ -57,3 +80,4 @@
 <TweakDetailsModal />
 
 <ApplyingOverlay />
+<ToastContainer />

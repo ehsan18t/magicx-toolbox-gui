@@ -37,6 +37,7 @@ pub async fn batch_apply_tweaks(
 
     let mut requires_reboot = false;
     let mut success_count = 0;
+    let mut partial_success_count = 0;
     let mut failures: Vec<(String, String)> = Vec::new();
 
     for (tweak_id, option_index) in &operations {
@@ -44,7 +45,20 @@ pub async fn batch_apply_tweaks(
 
         match result {
             Ok(res) => {
-                success_count += 1;
+                if res.success {
+                    success_count += 1;
+                } else {
+                    // Partial success - apply rolled back but record failure
+                    partial_success_count += 1;
+                    // Collect inner failures
+                    for (id, msg) in res.failures {
+                        failures.push((id, msg));
+                    }
+                    if failures.is_empty() {
+                        // No inner failures but still failed
+                        failures.push((tweak_id.clone(), res.message));
+                    }
+                }
                 if res.requires_reboot {
                     requires_reboot = true;
                 }
@@ -65,10 +79,11 @@ pub async fn batch_apply_tweaks(
     let failure_count = failures.len();
     let message = if failure_count > 0 {
         format!(
-            "Applied {}/{} tweaks ({} failed)",
+            "Applied {}/{} tweaks ({} failed, {} partial)",
             success_count,
             operations.len(),
-            failure_count
+            failure_count,
+            partial_success_count
         )
     } else {
         format!("Successfully applied {} tweaks", success_count)
@@ -118,6 +133,7 @@ pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resu
 
     let mut requires_reboot = false;
     let mut success_count = 0;
+    let mut partial_success_count = 0;
     let mut failures: Vec<(String, String)> = Vec::new();
 
     for tweak_id in &tweak_ids {
@@ -125,7 +141,20 @@ pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resu
 
         match result {
             Ok(res) => {
-                success_count += 1;
+                if res.success {
+                    success_count += 1;
+                } else {
+                    // Partial success - some operations failed, snapshot kept for retry
+                    partial_success_count += 1;
+                    // Collect inner failures
+                    for (id, msg) in res.failures {
+                        failures.push((id, msg));
+                    }
+                    if failures.is_empty() {
+                        // No inner failures but still failed
+                        failures.push((tweak_id.clone(), res.message));
+                    }
+                }
                 if res.requires_reboot {
                     requires_reboot = true;
                 }
@@ -141,10 +170,11 @@ pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resu
     let failure_count = failures.len();
     let message = if failure_count > 0 {
         format!(
-            "Reverted {}/{} tweaks ({} failed)",
+            "Reverted {}/{} tweaks ({} failed, {} partial)",
             success_count,
             tweak_ids.len(),
-            failure_count
+            failure_count,
+            partial_success_count
         )
     } else {
         format!("Reverted {} tweaks", success_count)

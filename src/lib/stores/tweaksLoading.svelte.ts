@@ -15,11 +15,6 @@ const errors = new SvelteMap<string, string>();
 // === Exports ===
 
 export const loadingStore = {
-  /** Get all loading tweak IDs */
-  get all() {
-    return loadingTweaks;
-  },
-
   /** Check if a specific tweak is loading */
   isLoading(tweakId: string): boolean {
     return loadingTweaks.has(tweakId);
@@ -39,19 +34,9 @@ export const loadingStore = {
   stop(tweakId: string) {
     loadingTweaks.delete(tweakId);
   },
-
-  /** Clear all loading states */
-  clear() {
-    loadingTweaks.clear();
-  },
 };
 
 export const errorStore = {
-  /** Get all errors */
-  get all() {
-    return errors;
-  },
-
   /** Get error for a specific tweak */
   getError(tweakId: string): string | undefined {
     return errors.get(tweakId);
@@ -70,10 +55,5 @@ export const errorStore = {
   /** Clear error for a tweak */
   clearError(tweakId: string) {
     errors.delete(tweakId);
-  },
-
-  /** Clear all errors */
-  clearAll() {
-    errors.clear();
   },
 };

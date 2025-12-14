@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/icons/Toolbox.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tauri + SvelteKit + Typescript App</title>
+    <title>MagicX Toolbox</title>
 
     <script>
       (function () {
@@ -29,9 +29,54 @@
       })();
     </script>
 
+    <style>
+      /* Initial loading spinner - uses hardcoded colors since CSS vars aren't loaded yet */
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* Dark theme default */
+        background: #09090b;
+        z-index: 9999;
+        transition: opacity 0.2s ease-out;
+      }
+      /* Light theme support */
+      [data-theme="light"] #initial-loader {
+        background: #fafafa;
+      }
+      #initial-loader.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .initial-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #27272a;
+        border-top-color: #8b5cf6;
+        border-radius: 50%;
+        animation: initial-spin 0.8s linear infinite;
+      }
+      [data-theme="light"] .initial-spinner {
+        border-color: #e4e4e7;
+        border-top-color: #8b5cf6;
+      }
+      @keyframes initial-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+
+    <!-- SvelteKit injects app.css here to make sure other CSS loading does not get blocked by SvelteKit head content -->
     %sveltekit.head%
   </head>
   <body class="overflow-hidden" data-sveltekit-preload-data="hover">
+    <!-- Initial loader shown before JS loads - hidden by Svelte when ready -->
+    <div id="initial-loader">
+      <div class="initial-spinner"></div>
+    </div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

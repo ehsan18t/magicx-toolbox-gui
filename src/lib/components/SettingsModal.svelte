@@ -100,7 +100,13 @@
           throw new Error("Invalid backup file format");
         }
 
-        settingsStore.update(importData.settings);
+        // Validate settings schema to prevent malformed data
+        const settings = importData.settings;
+        if (typeof settings.autoCheckUpdates !== "boolean" || typeof settings.autoInstallUpdates !== "boolean") {
+          throw new Error("Invalid settings format in backup file");
+        }
+
+        settingsStore.update(settings);
         showStatus("success", `Imported ${importData.tweakSnapshots.length} tweak snapshots!`);
       }
     } catch (error) {

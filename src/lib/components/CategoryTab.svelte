@@ -2,6 +2,7 @@
   import type { TabDefinition } from "$lib/stores/navigation.svelte";
   import {
     applyPendingChanges,
+    loadingStateStore,
     loadingStore,
     pendingChangesStore,
     revertTweak,
@@ -21,6 +22,9 @@
   let showApplyAllDialog = $state(false);
   let showRevertAllDialog = $state(false);
   let isBatchProcessing = $state(false);
+
+  // Check if tweaks are still loading
+  const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
 
   // Get tweaks for this category
   const categoryTweaks = $derived(tweaksStore.list.filter((t) => t.definition.category_id === tab.id));
@@ -180,7 +184,28 @@
 
   <!-- Tweaks Grid -->
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
-    {#if filteredTweaks.length === 0}
+    {#if tweaksLoading && categoryTweaks.length === 0}
+      <!-- Loading state with skeleton cards -->
+      <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
+        {#each [0, 1, 2, 3] as i (`tweak-skeleton-${i}`)}
+          <div class="animate-pulse relative flex overflow-hidden rounded-lg border border-border bg-card">
+            <div class="flex flex-1 flex-col gap-3 p-4">
+              <div class="flex items-start justify-between">
+                <div class="flex flex-col gap-2">
+                  <div class="bg-muted h-5 w-40 rounded"></div>
+                  <div class="bg-muted/60 h-4 w-56 rounded"></div>
+                </div>
+                <div class="bg-muted h-9 w-12 rounded-lg"></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="bg-muted/60 h-5 w-16 rounded-full"></div>
+                <div class="bg-muted/60 h-5 w-20 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else if filteredTweaks.length === 0}
       <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
         {#if searchQuery}
           <Icon icon="mdi:file-search-outline" width="56" />

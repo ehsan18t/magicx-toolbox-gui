@@ -2,25 +2,23 @@
  * Tweaks Data Store - Svelte 5 Runes
  *
  * Manages core data: system info, categories, tweaks with their statuses.
+ * Supports progressive loading for better perceived performance.
  */
 
 import * as api from "$lib/api/tweaks";
 import type { CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "$lib/types";
+
+// === Loading States ===
+let systemInfoLoading = $state(true);
+let categoriesLoading = $state(true);
+let tweaksLoading = $state(true);
+let initialLoadComplete = $state(false);
 
 // === System Info State ===
 let systemInfo = $state<SystemInfo | null>(null);
 
 // === Categories State ===
 let categories = $state<CategoryDefinition[]>([]);
-
-// Derived: categories lookup map
-const categoriesMap = $derived.by(() => {
-  const map: Record<string, CategoryDefinition> = {};
-  for (const cat of categories) {
-    map[cat.id] = cat;
-  }
-  return map;
-});
 
 // === Tweaks State ===
 let tweaks = $state<TweakWithStatus[]>([]);
@@ -74,19 +72,24 @@ export const systemStore = {
     return systemInfo;
   },
 
+  get isLoading() {
+    return systemInfoLoading;
+  },
+
   async load() {
+    systemInfoLoading = true;
     try {
       const info = await api.getSystemInfo();
       systemInfo = info;
       return info;
     } catch (error) {
       console.error("Failed to load system info:", error);
+      // System info failure is recoverable - return null and let UI handle gracefully
+      // (Unlike categories which are critical for app structure)
       return null;
+    } finally {
+      systemInfoLoading = false;
     }
-  },
-
-  reset() {
-    systemInfo = null;
   },
 };
 
@@ -95,23 +98,25 @@ export const categoriesStore = {
     return categories;
   },
 
-  get map() {
-    return categoriesMap;
+  get isLoading() {
+    return categoriesLoading;
   },
 
   async load() {
+    categoriesLoading = true;
     try {
       const result = await api.getCategories();
       categories = result;
       return result;
     } catch (error) {
       console.error("Failed to load categories:", error);
-      return [];
+      // CRITICAL: Re-throw instead of returning empty array
+      // Categories are compiled at build time and should ALWAYS load successfully
+      // If this fails, it indicates a serious IPC or runtime error that must surface
+      throw error;
+    } finally {
+      categoriesLoading = false;
     }
-  },
-
-  reset() {
-    categories = [];
   },
 };
 
@@ -128,14 +133,23 @@ export const tweaksStore = {
     return stats;
   },
 
+  get isLoading() {
+    return tweaksLoading;
+  },
+
   async load() {
+    tweaksLoading = true;
     try {
       const result = await api.getAllTweaksWithStatus();
       tweaks = result;
       return result;
     } catch (error) {
       console.error("Failed to load tweaks:", error);
-      return [];
+      // CRITICAL: Re-throw instead of returning empty array
+      // If loading fails, the app cannot function properly - surface the error
+      throw error;
+    } finally {
+      tweaksLoading = false;
     }
   },
 
@@ -148,16 +162,78 @@ export const tweaksStore = {
   getById(tweakId: string): TweakWithStatus | undefined {
     return tweaks.find((t) => t.definition.id === tweakId);
   },
-
-  reset() {
-    tweaks = [];
-  },
 };
 
 /** Category stats getter - exposed separately for components that need it */
 export const getCategoryStats = () => categoryStats;
 
-/** Initialize all data stores */
-export async function initializeData(): Promise<void> {
-  await Promise.all([systemStore.load(), categoriesStore.load(), tweaksStore.load()]);
+/** Loading state store for progressive loading */
+export const loadingStateStore = {
+  get systemInfoLoading() {
+    return systemInfoLoading;
+  },
+  get tweaksLoading() {
+    return tweaksLoading;
+  },
+};
+
+// Promise cache for deduplicating concurrent initialization calls
+let quickInitPromise: Promise<void> | null = null;
+let remainingDataPromise: Promise<void> | null = null;
+
+/**
+ * Quick initialize - only load categories for immediate UI display
+ * Call loadRemainingData() after to load the rest
+ *
+ * Uses promise caching to prevent duplicate requests if called concurrently
+ */
+export async function initializeQuick(): Promise<void> {
+  // Return existing promise if already loading
+  if (quickInitPromise) {
+    return quickInitPromise;
+  }
+
+  // Skip if categories already loaded
+  if (categories.length > 0) {
+    return;
+  }
+
+  quickInitPromise = categoriesStore
+    .load()
+    .then(() => {
+      // Discard result to match Promise<void> signature
+    })
+    .finally(() => {
+      quickInitPromise = null;
+    });
+
+  return quickInitPromise;
+}
+
+/**
+ * Load remaining data after quick init
+ *
+ * Uses promise caching to prevent duplicate requests if called concurrently
+ * (e.g., if both layout and page call this before the first call completes)
+ */
+export async function loadRemainingData(): Promise<void> {
+  // Return existing promise if already loading
+  if (remainingDataPromise) {
+    return remainingDataPromise;
+  }
+
+  // Skip if already complete
+  if (initialLoadComplete) {
+    return;
+  }
+
+  remainingDataPromise = Promise.all([systemStore.load(), tweaksStore.load()])
+    .then(() => {
+      initialLoadComplete = true;
+    })
+    .finally(() => {
+      remainingDataPromise = null;
+    });
+
+  return remainingDataPromise;
 }

@@ -52,11 +52,6 @@ export const pendingChangesStore = {
     pendingChanges.delete(tweakId);
   },
 
-  /** Clear all pending changes */
-  clearAll() {
-    pendingChanges.clear();
-  },
-
   /** Clear pending changes for a specific category */
   clearCategory(categoryId: string, tweaks: TweakWithStatus[]) {
     const categoryTweakIds = tweaks.filter((t) => t.definition.category_id === categoryId).map((t) => t.definition.id);
@@ -64,26 +59,9 @@ export const pendingChangesStore = {
       pendingChanges.delete(tweakId);
     }
   },
-
-  /** Get pending changes for a specific category */
-  getForCategory(categoryId: string, tweaks: TweakWithStatus[]): SvelteMap<string, PendingChange> {
-    const result = new SvelteMap<string, PendingChange>();
-    for (const [tweakId, change] of pendingChanges) {
-      const tweak = tweaks.find((t) => t.definition.id === tweakId);
-      if (tweak?.definition.category_id === categoryId) {
-        result.set(tweakId, change);
-      }
-    }
-    return result;
-  },
 };
 
 export const pendingRebootStore = {
-  /** Get all tweak IDs pending reboot */
-  get all() {
-    return pendingReboot;
-  },
-
   /** Get count of tweaks pending reboot */
   get count() {
     return rebootCount;
