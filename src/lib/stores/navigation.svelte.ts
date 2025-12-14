@@ -1,14 +1,14 @@
 /**
  * Navigation Store - Svelte 5 Runes
  *
- * Manages tab-based UI navigation between Overview and category tabs.
+ * Manages tab-based UI navigation between Overview, Search, and category tabs.
  */
 
 import type { CategoryDefinition } from "$lib/types";
 import { categoriesStore } from "./tweaksData.svelte";
 
-/** Tab types - "overview" or category ID */
-export type TabId = "overview" | string;
+/** Tab types - "overview", "search", or category ID */
+export type TabId = "overview" | "search" | string;
 
 /** Tab definition for navigation */
 export interface TabDefinition {
@@ -29,6 +29,14 @@ const overviewTab: TabDefinition = {
   description: "System information and statistics",
 };
 
+// Search tab definition (static)
+const searchTab: TabDefinition = {
+  id: "search",
+  name: "Search",
+  icon: "mdi:magnify",
+  description: "Search tweaks by name, description, or info",
+};
+
 // Derived: All tabs from categories
 const allTabs = $derived.by((): TabDefinition[] => {
   const categoryTabs: TabDefinition[] = categoriesStore.list.map((cat: CategoryDefinition) => ({
@@ -38,7 +46,7 @@ const allTabs = $derived.by((): TabDefinition[] => {
     description: cat.description,
   }));
 
-  return [overviewTab, ...categoryTabs];
+  return [overviewTab, searchTab, ...categoryTabs];
 });
 
 // Derived: Current tab definition
@@ -46,8 +54,11 @@ const currentTab = $derived.by((): TabDefinition | undefined => {
   return allTabs.find((tab) => tab.id === activeTab);
 });
 
-// Derived: Is on a category tab (not overview)
-const isOnCategoryTab = $derived(activeTab !== "overview");
+// Derived: Is on a category tab (not overview or search)
+const isOnCategoryTab = $derived(activeTab !== "overview" && activeTab !== "search");
+
+// Derived: Is on search tab
+const isOnSearchTab = $derived(activeTab === "search");
 
 // === Export ===
 
@@ -72,9 +83,19 @@ export const navigationStore = {
     return isOnCategoryTab;
   },
 
+  /** Check if currently on the search tab */
+  get isOnSearchTab() {
+    return isOnSearchTab;
+  },
+
   /** Get the overview tab definition */
   get overviewTab() {
     return overviewTab;
+  },
+
+  /** Get the search tab definition */
+  get searchTab() {
+    return searchTab;
   },
 
   /** Navigate to a specific tab by ID */
@@ -85,6 +106,11 @@ export const navigationStore = {
   /** Navigate to the overview tab */
   navigateToOverview() {
     activeTab = "overview";
+  },
+
+  /** Navigate to the search tab */
+  navigateToSearch() {
+    activeTab = "search";
   },
 
   /** Navigate to a specific category */

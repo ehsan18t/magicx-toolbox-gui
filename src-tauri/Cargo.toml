@@ -58,6 +58,8 @@ fs4 = "0.13"
 # Parallel iteration for performance
 rayon = "1"
 
+
+
 # Windows-specific (only for Windows builds)
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

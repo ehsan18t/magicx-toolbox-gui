@@ -1,19 +1,44 @@
 <script lang="ts">
+  import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
+  import type { Snippet } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
 
-  const { tweak } = $props<{
+  interface Props {
     tweak: TweakWithStatus;
-  }>();
+    /** Optional slot for custom title rendering (e.g., with highlights) */
+    titleSlot?: Snippet;
+    /** Optional slot for custom description rendering (e.g., with highlights) */
+    descriptionSlot?: Snippet;
+  }
+
+  const { tweak, titleSlot, descriptionSlot }: Props = $props();
 
   const isLoading = $derived(loadingStore.isLoading(tweak.definition.id));
   const tweakError = $derived(errorStore.getError(tweak.definition.id));
   // Detection error from backend (status couldn't be determined)
   const hasDetectionError = $derived(!!tweak.status.error);
+
+  // Highlight state for search navigation
+  const shouldHighlight = $derived(searchStore.highlightTweakId === tweak.definition.id);
+  let isHighlighting = $state(false);
+
+  // Handle highlight animation
+  $effect(() => {
+    if (!shouldHighlight) return;
+
+    isHighlighting = true;
+    // Clear highlight after animation
+    const timer = setTimeout(() => {
+      isHighlighting = false;
+      searchStore.clearHighlight();
+    }, 1500);
+    return () => clearTimeout(timer);
+  });
 
   let showConfirmDialog = $state(false);
 
@@ -98,10 +123,11 @@
 </script>
 
 <article
+  id="tweak-{tweak.definition.id}"
   class="relative flex overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md {tweak
     .status.is_applied
     ? 'border-accent/40 bg-accent/5'
-    : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''}"
+    : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''} {isHighlighting ? 'tweak-highlight' : ''}"
 >
   <!-- Status bar -->
   <div
@@ -116,7 +142,11 @@
     <!-- Header Section -->
     <div class="mb-2 flex items-center justify-between gap-3">
       <h3 class="m-0 flex flex-1 items-center gap-2 text-sm leading-tight font-semibold text-foreground">
-        {tweak.definition.name}
+        {#if titleSlot}
+          {@render titleSlot()}
+        {:else}
+          {tweak.definition.name}
+        {/if}
         {#if hasDetectionError}
           <span
             class="inline-flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase"
@@ -165,16 +195,16 @@
           aria-checked={effectiveEnabled}
         >
           <span
-            class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-colors duration-200 {effectiveEnabled
+            class="switch-track flex h-6 w-11 items-center rounded-full border-2 transition-colors duration-200 {effectiveEnabled
               ? hasPending
-                ? 'bg-warning'
-                : 'bg-accent'
-              : 'bg-muted'} hover:not-disabled:brightness-95"
+                ? 'border-warning bg-warning'
+                : 'border-accent bg-accent'
+              : 'border-border bg-surface'} hover:not-disabled:brightness-95"
           >
             <span
-              class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
+              class="switch-thumb flex h-4.5 w-4.5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
                 ? 'translate-x-5'
-                : 'translate-x-0'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
+                : 'translate-x-0.5'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
             >
               {#if isLoading}
                 <Icon icon="mdi:loading" width="14" class="animate-spin" />
@@ -189,7 +219,11 @@
 
     <!-- Description -->
     <p class="m-0 mb-2.5 grow text-sm leading-relaxed text-foreground-muted">
-      {tweak.definition.description}
+      {#if descriptionSlot}
+        {@render descriptionSlot()}
+      {:else}
+        {tweak.definition.description}
+      {/if}
     </p>
 
     <!-- Error message -->

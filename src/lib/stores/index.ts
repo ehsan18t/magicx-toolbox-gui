@@ -22,6 +22,9 @@ export { tweakDetailsModalStore } from "./tweakDetailsModal.svelte";
 // Navigation
 export { navigationStore, type TabDefinition } from "./navigation.svelte";
 
+// Search
+export { searchStore } from "./search.svelte";
+
 // Tweaks system (split into logical modules)
 export {
   applyPendingChanges,
@@ -32,9 +35,9 @@ export {
   filterStore,
   getCategoryStats,
   initializeQuick,
+  loadRemainingData,
   // Loading state
   loadingStore,
-  loadRemainingData,
   // Pending changes
   pendingChangesStore,
   pendingRebootStore,

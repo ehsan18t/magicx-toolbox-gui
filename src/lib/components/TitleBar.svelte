@@ -1,6 +1,5 @@
 <script lang="ts">
   import { debugState } from "$lib/stores/debug.svelte";
-  import { themeStore } from "$lib/stores/theme.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
@@ -8,6 +7,7 @@
   import { onMount } from "svelte";
   import ControlButton from "./ControlButton.svelte";
   import Icon from "./Icon.svelte";
+  import ThemeToggle from "./ThemeToggle.svelte";
 
   let appWindow: ReturnType<typeof getCurrentWindow>;
   let appName = $state("");
@@ -81,11 +81,6 @@
     } catch (error) {
       console.error("Failed to close:", error);
     }
-  };
-
-  // Use theme store for theme toggling
-  const toggleTheme = () => {
-    themeStore.toggle();
   };
 
   // Restart the app as admin
@@ -203,12 +198,7 @@
         </button>
       {/if}
 
-      <ControlButton
-        title="Toggle Theme"
-        icon={themeStore.current === "dark" ? "tabler:moon" : "tabler:sun"}
-        onclick={toggleTheme}
-        variant="theme"
-      />
+      <ThemeToggle />
 
       <!-- Divider -->
       <div class="mx-2 h-4 w-px bg-foreground-muted/20"></div>

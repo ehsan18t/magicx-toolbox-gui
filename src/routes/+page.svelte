@@ -2,6 +2,7 @@
   import CategoryTab from "$lib/components/CategoryTab.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import OverviewTab from "$lib/components/OverviewTab.svelte";
+  import SearchTab from "$lib/components/SearchTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
@@ -27,7 +28,7 @@
 
   // Get the current tab definition for CategoryTab
   const currentCategoryTab = $derived.by(() => {
-    if (activeTab === "overview") return null;
+    if (activeTab === "overview" || activeTab === "search") return null;
     return allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
   });
 </script>
@@ -55,6 +56,8 @@
         <div class="content-area">
           {#if activeTab === "overview"}
             <OverviewTab />
+          {:else if activeTab === "search"}
+            <SearchTab />
           {:else if currentCategoryTab}
             <CategoryTab tab={currentCategoryTab} />
           {/if}
