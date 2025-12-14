@@ -278,53 +278,60 @@ fn get_hardware_info() -> HardwareInfo {
     // Run WMI queries in parallel using scoped threads
     // Each thread creates its own WMI connection due to COM threading model
     let (cpu, gpu, monitors, memory, motherboard, disks, network) = thread::scope(|s| {
-        let cpu_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_cpu_info(&con))
-                .unwrap_or_default()
+        let cpu_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_cpu_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for CPU info: {}", e);
+                Default::default()
+            }
         });
 
-        let gpu_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_gpu_info(&con))
-                .unwrap_or_default()
+        let gpu_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_gpu_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for GPU info: {}", e);
+                Default::default()
+            }
         });
 
-        let monitors_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_monitor_info(&con))
-                .unwrap_or_default()
+        let monitors_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_monitor_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for monitor info: {}", e);
+                Default::default()
+            }
         });
 
-        let memory_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_memory_info(&con))
-                .unwrap_or_default()
+        let memory_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_memory_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for memory info: {}", e);
+                Default::default()
+            }
         });
 
-        let motherboard_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_motherboard_info(&con))
-                .unwrap_or_default()
+        let motherboard_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_motherboard_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for motherboard info: {}", e);
+                Default::default()
+            }
         });
 
-        let disks_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_disk_info(&con))
-                .unwrap_or_default()
+        let disks_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_disk_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for disk info: {}", e);
+                Default::default()
+            }
         });
 
-        let network_handle = s.spawn(|| {
-            WMIConnection::new()
-                .ok()
-                .map(|con| get_network_info(&con))
-                .unwrap_or_default()
+        let network_handle = s.spawn(|| match WMIConnection::new() {
+            Ok(con) => get_network_info(&con),
+            Err(e) => {
+                log::debug!("WMI connection failed for network info: {}", e);
+                Default::default()
+            }
         });
 
         // Wait for all threads to complete
