@@ -12,6 +12,8 @@
 
   const isLoading = $derived(loadingStore.isLoading(tweak.definition.id));
   const tweakError = $derived(errorStore.getError(tweak.definition.id));
+  // Detection error from backend (status couldn't be determined)
+  const hasDetectionError = $derived(!!tweak.status.error);
 
   let showConfirmDialog = $state(false);
 
@@ -112,6 +114,15 @@
     <div class="mb-2 flex items-center justify-between gap-3">
       <h3 class="m-0 flex flex-1 items-center gap-2 text-sm leading-tight font-semibold text-foreground">
         {tweak.definition.name}
+        {#if hasDetectionError}
+          <span
+            class="inline-flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase"
+            title={tweak.status.error}
+          >
+            <Icon icon="mdi:alert" width="10" />
+            unknown state
+          </span>
+        {/if}
         {#if hasPending}
           <span
             class="inline-flex rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase"

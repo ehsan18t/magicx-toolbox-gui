@@ -98,6 +98,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
         last_applied,
         has_backup: state.has_snapshot,
         current_option_index: state.current_option_index,
+        error: None,
     })
 }
 
@@ -114,28 +115,38 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
     // This is a CPU-bound + IO-bound task that benefits from parallelization
     let statuses: Vec<TweakStatus> = tweaks
         .into_par_iter()
-        .filter_map(
-            |(id, tweak)| match backup_service::detect_tweak_state(&tweak, version) {
+        .map(|(id, tweak)| {
+            match backup_service::detect_tweak_state(&tweak, version) {
                 Ok(state) => {
                     let last_applied = backup_service::load_snapshot(&id)
                         .ok()
                         .flatten()
                         .map(|s| s.created_at);
 
-                    Some(TweakStatus {
+                    TweakStatus {
                         tweak_id: id,
                         is_applied: state.current_option_index == Some(0),
                         last_applied,
                         has_backup: state.has_snapshot,
                         current_option_index: state.current_option_index,
-                    })
+                        error: None,
+                    }
                 }
                 Err(e) => {
                     log::warn!("Failed to detect state for tweak {}: {}", id, e);
-                    None
+                    // Return tweak with error state instead of dropping it
+                    // This ensures frontend sees all tweaks and can show error indicator
+                    TweakStatus {
+                        tweak_id: id,
+                        is_applied: false,
+                        last_applied: None,
+                        has_backup: false,
+                        current_option_index: None,
+                        error: Some(format!("State detection failed: {}", e)),
+                    }
                 }
-            },
-        )
+            }
+        })
         .collect();
 
     log::debug!("Returning {} tweak statuses", statuses.len());

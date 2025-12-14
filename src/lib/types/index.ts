@@ -122,6 +122,8 @@ export interface TweakStatus {
   has_backup: boolean;
   /** Current option index that matches system state, or null if "System Default" */
   current_option_index?: number;
+  /** Error message if state detection failed (tweak still usable but with unknown state) */
+  error?: string;
 }
 
 /** Combined tweak info for UI display */
