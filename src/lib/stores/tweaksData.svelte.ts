@@ -225,18 +225,63 @@ export async function initializeData(): Promise<void> {
   initialLoadComplete = true;
 }
 
+// Promise cache for deduplicating concurrent initialization calls
+let quickInitPromise: Promise<void> | null = null;
+let remainingDataPromise: Promise<void> | null = null;
+
 /**
  * Quick initialize - only load categories for immediate UI display
  * Call loadRemainingData() after to load the rest
+ *
+ * Uses promise caching to prevent duplicate requests if called concurrently
  */
 export async function initializeQuick(): Promise<void> {
-  await categoriesStore.load();
+  // Return existing promise if already loading
+  if (quickInitPromise) {
+    return quickInitPromise;
+  }
+
+  // Skip if categories already loaded
+  if (categories.length > 0) {
+    return;
+  }
+
+  quickInitPromise = categoriesStore
+    .load()
+    .then(() => {
+      // Convert CategoryDefinition[] to void
+    })
+    .finally(() => {
+      quickInitPromise = null;
+    });
+
+  return quickInitPromise;
 }
 
 /**
  * Load remaining data after quick init
+ *
+ * Uses promise caching to prevent duplicate requests if called concurrently
+ * (e.g., if both layout and page call this before the first call completes)
  */
 export async function loadRemainingData(): Promise<void> {
-  await Promise.all([systemStore.load(), tweaksStore.load()]);
-  initialLoadComplete = true;
+  // Return existing promise if already loading
+  if (remainingDataPromise) {
+    return remainingDataPromise;
+  }
+
+  // Skip if already complete
+  if (initialLoadComplete) {
+    return;
+  }
+
+  remainingDataPromise = Promise.all([systemStore.load(), tweaksStore.load()])
+    .then(() => {
+      initialLoadComplete = true;
+    })
+    .finally(() => {
+      remainingDataPromise = null;
+    });
+
+  return remainingDataPromise;
 }
