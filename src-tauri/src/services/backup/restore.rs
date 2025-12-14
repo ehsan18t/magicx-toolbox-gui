@@ -19,21 +19,8 @@ use super::helpers::{parse_hive, parse_value_type};
 pub struct RestoreResult {
     /// Whether all restore operations succeeded
     pub success: bool,
-    /// Number of registry values successfully restored
-    pub registry_restored: usize,
-    /// Number of services successfully restored
-    pub services_restored: usize,
-    /// Number of scheduler tasks successfully restored
-    pub tasks_restored: usize,
     /// List of failures (empty if success is true)
     pub failures: Vec<String>,
-}
-
-impl RestoreResult {
-    /// Check if there were any failures
-    pub fn has_failures(&self) -> bool {
-        !self.failures.is_empty()
-    }
 }
 
 /// Restore all registry/service values from snapshot
@@ -102,31 +89,21 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<RestoreResult, 
         }
     }
 
-    let registry_restored = completed_registry.len();
-
     // Phase 2: Restore service states (collect failures, don't stop)
-    let mut services_restored = 0;
     for svc in &snapshot.service_snapshots {
-        match restore_service_state(svc, snapshot.requires_system) {
-            Ok(()) => services_restored += 1,
-            Err(e) => {
-                let msg = format!("Service '{}': {}", svc.name, e);
-                log::error!("Failed to restore service: {}", msg);
-                failures.push(msg);
-            }
+        if let Err(e) = restore_service_state(svc, snapshot.requires_system) {
+            let msg = format!("Service '{}': {}", svc.name, e);
+            log::error!("Failed to restore service: {}", msg);
+            failures.push(msg);
         }
     }
 
     // Phase 3: Restore scheduled task states (with SYSTEM elevation if needed)
-    let mut tasks_restored = 0;
     for task in &snapshot.scheduler_snapshots {
-        match restore_scheduler_state(task, snapshot.requires_system) {
-            Ok(()) => tasks_restored += 1,
-            Err(e) => {
-                let msg = format!("Task '{}\\{}': {}", task.task_path, task.task_name, e);
-                log::error!("Failed to restore task: {}", msg);
-                failures.push(msg);
-            }
+        if let Err(e) = restore_scheduler_state(task, snapshot.requires_system) {
+            let msg = format!("Task '{}\\{}': {}", task.task_path, task.task_name, e);
+            log::error!("Failed to restore task: {}", msg);
+            failures.push(msg);
         }
     }
 
@@ -134,28 +111,22 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<RestoreResult, 
 
     if success {
         log::info!(
-            "Successfully restored {} registry values, {} services, and {} tasks",
-            registry_restored,
-            services_restored,
-            tasks_restored
+            "Successfully restored {} registry, {} services, {} tasks",
+            completed_registry.len(),
+            snapshot.service_snapshots.len(),
+            snapshot.scheduler_snapshots.len()
         );
     } else {
         log::warn!(
-            "Restore completed with {} failures: {} registry, {} services, {} tasks succeeded",
+            "Restore completed with {} failures out of {} registry, {} services, {} tasks",
             failures.len(),
-            registry_restored,
-            services_restored,
-            tasks_restored
+            snapshot.registry_snapshots.len(),
+            snapshot.service_snapshots.len(),
+            snapshot.scheduler_snapshots.len()
         );
     }
 
-    Ok(RestoreResult {
-        success,
-        registry_restored,
-        services_restored,
-        tasks_restored,
-        failures,
-    })
+    Ok(RestoreResult { success, failures })
 }
 
 #[derive(Clone)]
