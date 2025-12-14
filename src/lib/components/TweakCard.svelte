@@ -196,16 +196,16 @@
           aria-checked={effectiveEnabled}
         >
           <span
-            class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-colors duration-200 {effectiveEnabled
+            class="switch-track flex h-6 w-11 items-center rounded-full border-2 transition-colors duration-200 {effectiveEnabled
               ? hasPending
-                ? 'bg-warning'
-                : 'bg-accent'
-              : 'bg-muted'} hover:not-disabled:brightness-95"
+                ? 'border-warning bg-warning'
+                : 'border-accent bg-accent'
+              : 'border-border bg-surface'} hover:not-disabled:brightness-95"
           >
             <span
-              class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
+              class="switch-thumb flex h-4.5 w-4.5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
                 ? 'translate-x-5'
-                : 'translate-x-0'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
+                : 'translate-x-0.5'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
             >
               {#if isLoading}
                 <Icon icon="mdi:loading" width="14" class="animate-spin" />
