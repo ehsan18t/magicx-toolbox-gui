@@ -115,7 +115,13 @@ export async function applyTweak(
 
       return true;
     } else {
-      errorStore.setError(tweakId, result.message);
+      // Apply failed - backend rolled back, extract detailed error if available
+      const failureDetails =
+        result.failures && result.failures.length > 0
+          ? result.failures.map(([, msg]) => msg).join("; ")
+          : result.message;
+
+      errorStore.setError(tweakId, failureDetails);
       if (showToast) {
         toastStore.error(result.message, { tweakName });
       }
@@ -150,7 +156,12 @@ export async function revertTweak(
     const result = await api.revertTweak(tweakId);
 
     if (result.success) {
-      tweaksStore.updateStatus(tweakId, { is_applied: false });
+      // Full success - snapshot was deleted, tweak is no longer applied
+      tweaksStore.updateStatus(tweakId, {
+        is_applied: false,
+        has_backup: false,
+        current_option_index: undefined,
+      });
 
       // Remove from pending reboot if it was there
       pendingRebootStore.remove(tweakId);
@@ -167,9 +178,20 @@ export async function revertTweak(
 
       return true;
     } else {
-      errorStore.setError(tweakId, result.message);
+      // Partial failure - snapshot was KEPT for retry, tweak is still "applied"
+      // Do NOT update is_applied to false - the snapshot still exists
+      const failureDetails =
+        result.failures && result.failures.length > 0
+          ? result.failures.map(([, msg]) => msg).join("; ")
+          : result.message;
+
+      errorStore.setError(tweakId, failureDetails);
+
       if (showToast) {
-        toastStore.error(result.message, { tweakName });
+        // Use warning instead of error for partial success
+        toastStore.warning(`Partial revert: ${result.failures?.length ?? 0} operations failed`, {
+          tweakName,
+        });
       }
       return false;
     }
