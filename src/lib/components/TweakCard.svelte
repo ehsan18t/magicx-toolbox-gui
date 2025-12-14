@@ -29,15 +29,15 @@
 
   // Handle highlight animation
   $effect(() => {
-    if (shouldHighlight) {
-      isHighlighting = true;
-      // Clear highlight after animation
-      const timer = setTimeout(() => {
-        isHighlighting = false;
-        searchStore.clearHighlight();
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
+    if (!shouldHighlight) return;
+
+    isHighlighting = true;
+    // Clear highlight after animation
+    const timer = setTimeout(() => {
+      isHighlighting = false;
+      searchStore.clearHighlight();
+    }, 1500);
+    return () => clearTimeout(timer);
   });
 
   let showConfirmDialog = $state(false);
