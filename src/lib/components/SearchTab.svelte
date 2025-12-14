@@ -2,6 +2,7 @@
   import { HighlightedText } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import {
     applyPendingChanges,
     categoriesStore,
@@ -133,8 +134,26 @@
     showRevertAllDialog = false;
     isBatchProcessing = true;
 
+    let success = 0;
+    let failed = 0;
+
     for (const tweak of appliedTweaks) {
-      await revertTweak(tweak.definition.id);
+      // Pass { showToast: false } to suppress individual notifications
+      const result = await revertTweak(tweak.definition.id, { showToast: false });
+      if (result) {
+        success++;
+      } else {
+        failed++;
+      }
+    }
+
+    // Show summary toast
+    if (failed === 0 && success > 0) {
+      toastStore.success(`Restored ${success} tweak${success > 1 ? "s" : ""} to defaults`);
+    } else if (failed > 0 && success > 0) {
+      toastStore.warning(`Restored ${success}, failed to restore ${failed} tweaks`);
+    } else if (failed > 0) {
+      toastStore.error(`Failed to restore ${failed} tweak${failed > 1 ? "s" : ""}`);
     }
 
     isBatchProcessing = false;
