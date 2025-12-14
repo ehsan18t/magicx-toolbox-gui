@@ -17,6 +17,11 @@ export interface Toast {
 let toasts = $state<Toast[]>([]);
 let idCounter = 0;
 
+// Store timeout IDs so we can clear them when toasts are manually dismissed
+// Note: Intentionally using plain Map since this is not rendered and doesn't need reactivity
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
+
 function generateId(): string {
   return `toast-${++idCounter}-${Date.now()}`;
 }
@@ -43,11 +48,12 @@ export const toastStore = {
 
     toasts = [...toasts, toast];
 
-    // Auto-dismiss
+    // Auto-dismiss with proper cleanup
     if (duration > 0) {
-      setTimeout(() => {
-        this.dismiss(id);
+      const timeoutId = setTimeout(() => {
+        toastStore.dismiss(id);
       }, duration);
+      timeoutIds.set(id, timeoutId);
     }
 
     return id;
@@ -57,6 +63,12 @@ export const toastStore = {
    * Dismiss a specific toast
    */
   dismiss(id: string) {
+    // Clear the auto-dismiss timeout if it exists
+    const timeoutId = timeoutIds.get(id);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutIds.delete(id);
+    }
     toasts = toasts.filter((t) => t.id !== id);
   },
 
@@ -64,6 +76,11 @@ export const toastStore = {
    * Clear all toasts
    */
   clear() {
+    // Clear all pending timeouts
+    for (const timeoutId of timeoutIds.values()) {
+      clearTimeout(timeoutId);
+    }
+    timeoutIds.clear();
     toasts = [];
   },
 
