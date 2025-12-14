@@ -233,7 +233,7 @@ export async function initializeQuick(): Promise<void> {
   quickInitPromise = categoriesStore
     .load()
     .then(() => {
-      // Convert CategoryDefinition[] to void
+      // Discard result to match Promise<void> signature
     })
     .finally(() => {
       quickInitPromise = null;

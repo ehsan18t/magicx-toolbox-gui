@@ -69,7 +69,7 @@
       }
     </style>
 
-    <!-- SvelteKit injects app.css here to make sure non-blocking CSS loading -->
+    <!-- SvelteKit injects app.css here to make sure other CSS loading does not get blocked by SvelteKit head content -->
     %sveltekit.head%
   </head>
   <body class="overflow-hidden" data-sveltekit-preload-data="hover">
