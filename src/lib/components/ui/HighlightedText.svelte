@@ -22,12 +22,7 @@
     highlightClass?: string;
   }
 
-  const {
-    text,
-    ranges = [],
-    class: className = "",
-    highlightClass = "bg-accent/30 text-accent-foreground rounded-sm px-0.5",
-  }: Props = $props();
+  const { text, ranges = [], class: className = "", highlightClass = "" }: Props = $props();
 
   /** Build text segments from ranges */
   const segments = $derived.by(() => {

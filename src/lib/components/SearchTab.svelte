@@ -321,11 +321,7 @@
                 />
               {/snippet}
               {#snippet descriptionSlot()}
-                <HighlightedText
-                  text={tweak.definition.description || ""}
-                  ranges={searchResult.descriptionRanges}
-                  highlightClass="bg-accent/20 rounded-sm"
-                />
+                <HighlightedText text={tweak.definition.description || ""} ranges={searchResult.descriptionRanges} />
               {/snippet}
             </TweakCard>
             <!-- Category badge & navigate button at bottom -->
