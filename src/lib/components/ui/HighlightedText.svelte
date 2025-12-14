@@ -30,19 +30,47 @@
       return [{ text, highlighted: false }];
     }
 
-    const result: Array<{ text: string; highlighted: boolean }> = [];
-    let lastEnd = 0;
+    // Sanitize ranges: Sort and merge overlapping intervals
+    // uFuzzy usually returns sorted non-overlapping ranges, but for robustness
+    // (and to satisfy code review), we normalize them here.
+    const sortedRanges: Array<{ start: number; end: number }> = [];
 
-    // Process range pairs
+    // 1. Convert flat array to objects
     for (let i = 0; i < ranges.length; i += 2) {
       const start = ranges[i];
       const end = ranges[i + 1];
-
-      // Validate range
-      if (start < 0 || end > text.length || start >= end) {
-        continue;
+      if (start >= 0 && end <= text.length && start < end) {
+        sortedRanges.push({ start, end });
       }
+    }
 
+    // 2. Sort by start position
+    sortedRanges.sort((a, b) => a.start - b.start);
+
+    // 3. Merge overlaps
+    const mergedRanges: Array<{ start: number; end: number }> = [];
+    if (sortedRanges.length > 0) {
+      let current = sortedRanges[0];
+
+      for (let i = 1; i < sortedRanges.length; i++) {
+        const next = sortedRanges[i];
+        if (next.start <= current.end) {
+          // Overlap or adjacent - merge
+          current.end = Math.max(current.end, next.end);
+        } else {
+          // No overlap - push current and start new
+          mergedRanges.push(current);
+          current = next;
+        }
+      }
+      mergedRanges.push(current);
+    }
+
+    const result: Array<{ text: string; highlighted: boolean }> = [];
+    let lastEnd = 0;
+
+    // Process merged range pairs
+    for (const { start, end } of mergedRanges) {
       // Add non-highlighted segment before this match
       if (start > lastEnd) {
         result.push({
@@ -73,7 +101,7 @@
 </script>
 
 <span class={className}
-  >{#each segments as segment, i (`highlight-text-seg-${i}`)}{#if segment.highlighted}<mark class={highlightClass}
-        >{segment.text}</mark
+  >{#each segments as segment, i (`highlight-seg-${i}-${segment.highlighted}-${segment.text.slice(0, 8)}`)}{#if segment.highlighted}<mark
+        class={highlightClass}>{segment.text}</mark
       >{:else}{segment.text}{/if}{/each}</span
 >
