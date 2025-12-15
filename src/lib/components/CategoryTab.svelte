@@ -204,7 +204,7 @@
         type="button"
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
         onclick={handleRestoreClick}
-        disabled={isLoading || isBatchProcessing}
+        disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
         title={snapshotCount === 0
           ? "No snapshots available"
           : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
