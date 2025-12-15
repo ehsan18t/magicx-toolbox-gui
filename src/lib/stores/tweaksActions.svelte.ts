@@ -78,9 +78,12 @@ export async function applyTweak(
     const result = await api.applyTweak(tweakId, optionIndex);
 
     if (result.success) {
+      // Query actual backup status (backend may skip if already at desired state)
+      const actualHasBackup = await api.hasBackup(tweakId);
+
       tweaksStore.updateStatus(tweakId, {
         is_applied: true,
-        has_backup: true,
+        has_backup: actualHasBackup,
         current_option_index: optionIndex,
       });
 
@@ -137,12 +140,18 @@ export async function revertTweak(
     const result = await api.revertTweak(tweakId);
 
     if (result.success) {
-      // Full success - snapshot was deleted, tweak is no longer applied
+      // Query actual status after revert to get the correct current_option_index
+      // (snapshot restored original values, which could be any option)
+      const actualStatus = await api.getTweakStatus(tweakId);
+
       tweaksStore.updateStatus(tweakId, {
         is_applied: false,
         has_backup: false,
-        current_option_index: undefined,
+        current_option_index: actualStatus.current_option_index,
       });
+
+      // Clear any pending changes for this tweak
+      pendingChangesStore.clear(tweakId);
 
       // Remove from pending reboot if it was there
       pendingRebootStore.remove(tweakId);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBackupInfo, type BackupInfo } from "$lib/api/tweaks";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { TweakOption } from "$lib/types";
@@ -13,6 +14,24 @@
     const state = tweakDetailsModalStore.state;
     if (!state) return null;
     return tweaksStore.list.find((t) => t.definition.id === state.tweakId) ?? null;
+  });
+
+  // Load snapshot info when modal opens with a tweak that has a backup
+  let snapshotInfo = $state<BackupInfo | null>(null);
+
+  $effect(() => {
+    const t = tweak;
+    if (isOpen && t?.status.has_backup) {
+      getBackupInfo(t.definition.id)
+        .then((info) => {
+          snapshotInfo = info;
+        })
+        .catch(() => {
+          snapshotInfo = null;
+        });
+    } else {
+      snapshotInfo = null;
+    }
   });
 
   const pendingChange = $derived.by(() => {
@@ -98,7 +117,33 @@
           />
           {tweak.status.is_applied ? "Applied" : "Not applied"}
         </Badge>
+
+        {#if tweak.status.has_backup}
+          <Badge variant="info" class="gap-1.5">
+            <Icon icon="mdi:history" width="14" class="text-foreground-muted" />
+            Snapshot available
+          </Badge>
+        {/if}
       </div>
+
+      {#if tweak.status.has_backup && snapshotInfo}
+        <div class="mt-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <div class="flex items-start gap-2">
+            <Icon icon="mdi:backup-restore" width="16" class="mt-0.5 shrink-0 text-accent" />
+            <div class="text-sm">
+              <span class="font-medium text-foreground">Snapshot saved</span>
+              <span class="text-foreground-muted">
+                — Original state captured with {snapshotInfo.registry_values_count} registry
+                {snapshotInfo.registry_values_count === 1 ? "value" : "values"}
+                {#if snapshotInfo.service_snapshots_count > 0}
+                  and {snapshotInfo.service_snapshots_count}
+                  {snapshotInfo.service_snapshots_count === 1 ? "service" : "services"}
+                {/if}
+              </span>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       {#if tweak.definition.info}
         <div class="mt-4 rounded-lg border border-border/50 bg-surface/50 p-3">

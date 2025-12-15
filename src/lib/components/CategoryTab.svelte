@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TabDefinition } from "$lib/stores/navigation.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import {
     applyPendingChanges,
     loadingStateStore,
@@ -40,9 +41,12 @@
 
   // Stats
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
-  const appliedTweaks = $derived(categoryTweaks.filter((t) => t.status.is_applied));
   const totalCount = $derived(categoryTweaks.length);
   const progressPercent = $derived(totalCount > 0 ? Math.round((appliedCount / totalCount) * 100) : 0);
+
+  // Tweaks with snapshots (can be restored)
+  const tweaksWithSnapshots = $derived(categoryTweaks.filter((t) => t.status.has_backup));
+  const snapshotCount = $derived(tweaksWithSnapshots.length);
 
   // Pending changes for this category
   const categoryPendingCount = $derived.by(() => {
@@ -68,15 +72,41 @@
     isBatchProcessing = false;
   }
 
-  async function handleRestoreDefaults() {
+  async function handleRestoreSnapshots() {
     showRevertAllDialog = false;
     isBatchProcessing = true;
 
-    for (const tweak of appliedTweaks) {
-      await revertTweak(tweak.definition.id);
+    let success = 0;
+    let failed = 0;
+
+    for (const tweak of tweaksWithSnapshots) {
+      // Pass { showToast: false } to suppress individual notifications
+      const result = await revertTweak(tweak.definition.id, { showToast: false });
+      if (result) {
+        success++;
+      } else {
+        failed++;
+      }
+    }
+
+    // Show summary toast
+    if (failed === 0 && success > 0) {
+      toastStore.success(`Restored ${success} snapshot${success > 1 ? "s" : ""} successfully`);
+    } else if (failed > 0 && success > 0) {
+      toastStore.warning(`Restored ${success}, failed ${failed} snapshot${failed > 1 ? "s" : ""}`);
+    } else if (failed > 0) {
+      toastStore.error(`Failed to restore ${failed} snapshot${failed > 1 ? "s" : ""}`);
     }
 
     isBatchProcessing = false;
+  }
+
+  function handleRestoreClick() {
+    if (snapshotCount === 0) {
+      toastStore.info("No snapshots available to restore in this category");
+      return;
+    }
+    showRevertAllDialog = true;
   }
 
   function handleDiscardChanges() {
@@ -173,11 +203,20 @@
       <button
         type="button"
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
-        onclick={() => (showRevertAllDialog = true)}
-        disabled={appliedTweaks.length === 0 || isLoading || isBatchProcessing}
+        onclick={handleRestoreClick}
+        disabled={isLoading || isBatchProcessing}
+        title={snapshotCount === 0
+          ? "No snapshots available"
+          : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
       >
         <Icon icon="mdi:restore" width="18" />
-        <span class="hidden sm:inline">Restore Defaults</span>
+        <span class="hidden sm:inline">Restore Snapshots</span>
+        {#if snapshotCount > 0}
+          <span
+            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-error/20 px-1.5 text-xs font-bold text-error"
+            >{snapshotCount}</span
+          >
+        {/if}
       </button>
     </div>
   </div>
@@ -247,11 +286,11 @@
 
 <ConfirmDialog
   open={showRevertAllDialog}
-  title="Restore System Defaults"
-  message="Restore all {appliedTweaks.length} applied tweak(s) to their original system values?"
-  confirmText="Restore Defaults"
+  title="Restore Snapshots"
+  message="Restore {snapshotCount} tweak{snapshotCount > 1 ? 's' : ''} to their original state from saved snapshots?"
+  confirmText="Restore Snapshots"
   variant="danger"
-  onconfirm={handleRestoreDefaults}
+  onconfirm={handleRestoreSnapshots}
   oncancel={() => (showRevertAllDialog = false)}
 />
 
