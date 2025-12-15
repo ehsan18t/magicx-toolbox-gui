@@ -194,7 +194,7 @@
     bind:this={menuEl}
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
-    class="fixed z-[9999] max-h-60 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
+    class="fixed z-9999 max-h-60 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
     style="top: {menuPosition.top}px; left: {menuPosition.left}px; width: {menuPosition.width}px;"
   >
     {#each options as opt, i (opt.value)}

@@ -349,10 +349,10 @@ pub struct TweakDefinitionRaw {
     pub requires_ti: bool,
     #[serde(default)]
     pub requires_reboot: bool,
-    /// If true, display as toggle switch (must have exactly 2 options)
-    /// If false, display as dropdown
+    /// If true, force dropdown display even for 2 options (default: false)
+    /// By default, 2 options = toggle, 3+ options = dropdown
     #[serde(default)]
-    pub is_toggle: bool,
+    pub force_dropdown: bool,
     /// Array of available states/options
     pub options: Vec<TweakOption>,
 }
@@ -376,10 +376,10 @@ pub struct TweakDefinition {
     pub requires_ti: bool,
     #[serde(default)]
     pub requires_reboot: bool,
-    /// If true, display as toggle switch (must have exactly 2 options)
-    /// If false, display as dropdown
+    /// If true, force dropdown display even for 2 options (default: false)
+    /// By default, 2 options = toggle, 3+ options = dropdown
     #[serde(default)]
-    pub is_toggle: bool,
+    pub force_dropdown: bool,
     /// Array of available states/options
     pub options: Vec<TweakOption>,
     /// Category this tweak belongs to
@@ -412,7 +412,7 @@ impl TweakDefinition {
             requires_system,
             requires_ti,
             requires_reboot: raw.requires_reboot,
-            is_toggle: raw.is_toggle,
+            force_dropdown: raw.force_dropdown,
             options: raw.options,
             category_id: category_id.to_string(),
         }
@@ -420,12 +420,9 @@ impl TweakDefinition {
 
     /// Validate tweak structure
     pub fn validate(&self) -> Result<(), String> {
-        if self.options.is_empty() {
-            return Err(format!("Tweak '{}' must have at least 1 option", self.id));
-        }
-        if self.is_toggle && self.options.len() != 2 {
+        if self.options.len() < 2 {
             return Err(format!(
-                "Toggle tweak '{}' must have exactly 2 options, found {}",
+                "Tweak '{}' must have at least 2 options, found {}",
                 self.id,
                 self.options.len()
             ));
@@ -581,7 +578,7 @@ mod tests {
         }
     }
 
-    fn make_tweak(is_toggle: bool, options: Vec<TweakOption>) -> TweakDefinition {
+    fn make_tweak(force_dropdown: bool, options: Vec<TweakOption>) -> TweakDefinition {
         TweakDefinition {
             id: "test_tweak".to_string(),
             name: "Test Tweak".to_string(),
@@ -592,7 +589,7 @@ mod tests {
             requires_system: false,
             requires_ti: false,
             requires_reboot: false,
-            is_toggle,
+            force_dropdown,
             options,
             category_id: "test".to_string(),
         }
@@ -614,9 +611,10 @@ mod tests {
     }
 
     #[test]
-    fn test_toggle_validation() {
+    fn test_option_count_validation() {
+        // 2 options - valid
         let tweak = make_tweak(
-            true,
+            false,
             vec![
                 make_option(vec![make_registry_change(1, None)]),
                 make_option(vec![make_registry_change(0, None)]),
@@ -624,7 +622,15 @@ mod tests {
         );
         assert!(tweak.validate().is_ok());
 
-        let tweak = make_tweak(true, vec![make_option(vec![make_registry_change(1, None)])]);
+        // 1 option - invalid (need minimum 2)
+        let tweak = make_tweak(
+            false,
+            vec![make_option(vec![make_registry_change(1, None)])],
+        );
+        assert!(tweak.validate().is_err());
+
+        // 0 options - invalid
+        let tweak = make_tweak(false, vec![]);
         assert!(tweak.validate().is_err());
     }
 

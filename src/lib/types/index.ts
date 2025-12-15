@@ -108,9 +108,9 @@ export interface TweakDefinition {
   requires_ti: boolean;
   /** Additional info/documentation */
   info?: string;
-  /** True = render as toggle switch (exactly 2 options), False = render as dropdown */
-  is_toggle: boolean;
-  /** Available options for this tweak (2 for toggle, 2+ for dropdown) */
+  /** Force dropdown UI even with 2 options (default: false). 2 options = toggle, 3+ = dropdown */
+  force_dropdown: boolean;
+  /** Available options for this tweak (minimum 2) */
   options: TweakOption[];
 }
 

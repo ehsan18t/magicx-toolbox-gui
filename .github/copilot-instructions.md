@@ -365,7 +365,7 @@ tweaks:
     requires_system: false # Requires SYSTEM elevation for protected keys
     requires_ti: false # Requires TrustedInstaller (for WaaSMedicSvc, etc.)
     requires_reboot: false
-    is_toggle: true # true = 2 options (toggle switch), false = dropdown
+    force_dropdown: true # true = force dropdown UI even with 2 options (Optional)
     info: "Optional documentation"
 
     options:
@@ -437,7 +437,7 @@ When applying an option, changes are executed in this order:
 1. Add to existing category YAML file or create new file in `tweaks/`.
 2. Use unique `id` across all tweaks.
 3. Set appropriate `risk_level` based on impact.
-4. Set `is_toggle: true` for 2-option tweaks, `false` for dropdowns.
+4. UI type is automatic: 2 options = toggle, 3+ options = dropdown. Use `force_dropdown: true` if 2 options should be a dropdown.
 5. Use `windows_versions` on individual registry changes for version-specific behavior.
 6. Test with both apply and revert operations.
 

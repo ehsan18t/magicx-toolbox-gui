@@ -14,7 +14,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "Superfetch (Windows 10) / SysMain (Windows 11) pre-loads data into RAM but can cause high disk usage"
     options:
       - label: "Disabled"
@@ -38,7 +37,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "Disabling search indexing speeds up file operations but slows down Windows Search"
     options:
       - label: "Disabled"
@@ -61,7 +59,6 @@ tweaks:
     description: "Disable Windows Tips notifications"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -83,7 +80,6 @@ tweaks:
     description: "Restrict background app permissions to improve performance"
     risk_level: medium
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -105,7 +101,6 @@ tweaks:
     description: "Reduce delay for startup apps to launch faster"
     risk_level: low
     requires_reboot: true
-    is_toggle: true
     options:
       - label: "No Delay"
         registry_changes:
@@ -127,7 +122,6 @@ tweaks:
     description: "Disable Xbox Game Bar and Game DVR features"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     info: "Disables Game Bar and Game DVR which consume system resources"
     options:
       - label: "Disabled"
@@ -165,7 +159,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "TRIM Enabled"
         registry_changes:
@@ -188,7 +181,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "Disables hibernation and frees up disk space used by hiberfil.sys"
     options:
       - label: "Disabled"
@@ -211,7 +203,6 @@ tweaks:
     description: "Disable unnecessary visual effects for better performance"
     risk_level: low
     requires_reboot: true
-    is_toggle: true
     options:
       - label: "Performance Mode"
         registry_changes:
@@ -234,7 +225,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    is_toggle: true
     info: "Disables prefetch which can cause excessive disk I/O on SSDs"
     options:
       - label: "Disabled"
@@ -258,7 +248,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    is_toggle: true
     info: "Uses more RAM for file system cache, improving disk performance on systems with 8GB+ RAM"
     options:
       - label: "Enabled"
@@ -282,7 +271,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    is_toggle: false
     info: "Larger icon cache reduces disk I/O when browsing folders with many icons"
     options:
       - label: "Default (500KB)"
@@ -313,7 +301,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -336,7 +323,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:

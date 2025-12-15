@@ -186,7 +186,7 @@ struct TweakDefinitionRaw {
     #[serde(default)]
     requires_reboot: bool,
     #[serde(default)]
-    is_toggle: bool,
+    force_dropdown: bool,
     options: Vec<TweakOption>,
 }
 
@@ -210,7 +210,7 @@ struct TweakDefinition {
     #[serde(default)]
     requires_reboot: bool,
     #[serde(default)]
-    is_toggle: bool,
+    force_dropdown: bool,
     options: Vec<TweakOption>,
     category_id: String,
 }
@@ -885,21 +885,23 @@ impl TweakDefinitionRaw {
             ctx.seen_tweak_ids.insert(self.id.clone());
         }
 
-        // Validate option count
-        if self.options.is_empty() {
-            ctx.tweak_error(file, &self.id, "must have at least 1 option".to_string());
-            return; // Can't validate further without options
-        }
-
-        // Toggle-specific validation
-        if self.is_toggle && self.options.len() != 2 {
+        // Validate option count (minimum 2 required)
+        if self.options.len() < 2 {
             ctx.tweak_error(
                 file,
                 &self.id,
-                format!(
-                    "is_toggle: true requires exactly 2 options, found {}",
-                    self.options.len()
-                ),
+                format!("must have at least 2 options, found {}", self.options.len()),
+            );
+            return; // Can't validate further without proper options
+        }
+
+        // Warn if force_dropdown used with 3+ options (unnecessary)
+        if self.force_dropdown && self.options.len() > 2 {
+            ctx.tweak_warning(
+                file,
+                &self.id,
+                "force_dropdown is unnecessary for 3+ options (already defaults to dropdown)"
+                    .to_string(),
             );
         }
 
@@ -1063,7 +1065,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 requires_system,
                 requires_ti,
                 requires_reboot: raw.requires_reboot,
-                is_toggle: raw.is_toggle,
+                force_dropdown: raw.force_dropdown,
                 options: raw.options,
                 category_id: category_id.clone(),
             };

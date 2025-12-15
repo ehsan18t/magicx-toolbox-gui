@@ -15,7 +15,6 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     info: "Disables DiagTrack service and associated telemetry features"
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -53,7 +52,6 @@ tweaks:
     description: "Disable advertising ID for personalized ads"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -75,7 +73,6 @@ tweaks:
     description: "Disable Windows activity history tracking"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -97,7 +94,6 @@ tweaks:
     description: "Disable location tracking services"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -119,7 +115,6 @@ tweaks:
     description: "Disable Windows feedback and suggestion notifications"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -141,7 +136,6 @@ tweaks:
     description: "Disable collection of inking and typing data for personalization"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -164,7 +158,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -186,7 +179,6 @@ tweaks:
     description: "Disable suggested apps and content in Start menu and Settings"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -208,7 +200,6 @@ tweaks:
     description: "Disable tailored experiences based on your data"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -231,7 +222,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Minimum"
         registry_changes:
@@ -254,7 +244,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -276,7 +265,6 @@ tweaks:
     description: "Disable syncing clipboard content to cloud"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -298,7 +286,6 @@ tweaks:
     description: "Prevent Windows from automatically installing suggested apps from the Store"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -320,7 +307,6 @@ tweaks:
     description: "Disable Windows welcome experience after updates"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -342,7 +328,6 @@ tweaks:
     description: "Disable Windows Spotlight lockscreen tips and advertisements"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -374,7 +359,6 @@ tweaks:
     description: "Disable 'Show me tips about Windows' notifications"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -396,7 +380,6 @@ tweaks:
     description: "Disable suggestions in Start menu"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -429,7 +412,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -452,7 +434,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -474,7 +455,6 @@ tweaks:
     description: "Prevent creation of thumbs.db files on network folders"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:

@@ -42,9 +42,9 @@ tweaks:
     requires_admin: boolean       # Needs administrator privileges
     requires_system: boolean      # Needs TrustedInstaller (SYSTEM) elevation
     requires_reboot: boolean      # Requires restart to take effect
-    is_toggle: boolean            # true = switch UI (2 options), false = dropdown UI
+    force_dropdown: boolean?      # Force dropdown UI even with 2 options (default: auto)
 
-    options:                      # Array of available states
+    options:                      # Array of available states (minimum 2)
       - label: string             # Display label (e.g., "Enabled", "Disabled", "4MB")
         registry_changes:         # Registry modifications for this option
           - hive: HKCU | HKLM
@@ -89,7 +89,6 @@ When applying an option, changes are executed in this specific order:
   requires_admin: true
   requires_system: false
   requires_reboot: false
-  is_toggle: true
 
   options:
     - label: "Disabled"           # Option 0 - Telemetry OFF
@@ -137,7 +136,6 @@ When applying an option, changes are executed in this specific order:
   requires_admin: true
   requires_system: false
   requires_reboot: false
-  is_toggle: false
 
   options:
     - label: "500 KB (Default)"
@@ -183,7 +181,6 @@ When applying an option, changes are executed in this specific order:
   requires_admin: true
   requires_system: false
   requires_reboot: false
-  is_toggle: true
 
   options:
     - label: "Disabled"
@@ -211,7 +208,6 @@ When applying an option, changes are executed in this specific order:
   requires_admin: true
   requires_system: false
   requires_reboot: false
-  is_toggle: true
 
   options:
     - label: "Flush Now"
@@ -235,7 +231,6 @@ When applying an option, changes are executed in this specific order:
   requires_admin: false
   requires_system: false
   requires_reboot: false
-  is_toggle: true
 
   options:
     - label: "Left"
@@ -383,7 +378,7 @@ pub struct TweakDefinition {
     #[serde(default)]
     pub requires_reboot: bool,
     #[serde(default)]
-    pub is_toggle: bool,
+    pub force_dropdown: bool,
     pub options: Vec<TweakOption>,
     /// Populated at load time from category
     #[serde(default)]
@@ -413,17 +408,14 @@ impl RegistryChange {
 }
 
 impl TweakDefinition {
-    /// Validate tweak has correct number of options for toggle
+    /// Validate tweak has minimum required options
     pub fn validate(&self) -> Result<(), String> {
-        if self.is_toggle && self.options.len() != 2 {
+        if self.options.len() < 2 {
             return Err(format!(
-                "Toggle tweak '{}' must have exactly 2 options, found {}",
+                "Tweak '{}' must have at least 2 options, found {}",
                 self.id,
                 self.options.len()
             ));
-        }
-        if self.options.is_empty() {
-            return Err(format!("Tweak '{}' must have at least 1 option", self.id));
         }
         Ok(())
     }
@@ -876,7 +868,11 @@ export interface ApplyTweakRequest {
 
 ## Frontend UI Behavior
 
-### Toggle Tweaks (`is_toggle: true`)
+The UI type is automatically determined by option count:
+- **2 options** → Toggle switch (unless `force_dropdown: true`)
+- **3+ options** → Dropdown menu
+
+### Toggle Tweaks (2 Options)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -895,7 +891,7 @@ States:
 Convention: For toggles, options[0] is the "tweaked" state, options[1] is "normal"
 ```
 
-### Dropdown Tweaks (`is_toggle: false`)
+### Dropdown Tweaks (3+ Options)
 
 ```
 ┌─────────────────────────────────────────────────────────┐

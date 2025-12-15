@@ -14,7 +14,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "Apps will only update when you manually check for updates in the Store"
     options:
       - label: "Auto Updates Disabled"
@@ -37,7 +36,6 @@ tweaks:
     description: "Disable Windows Update peer-to-peer delivery optimization"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     info: "Prevents Windows from downloading/uploading updates from/to other PCs"
     options:
       - label: "P2P Delivery Disabled"
@@ -61,7 +59,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "MS Products Auto Update Disabled"
         registry_changes:
@@ -84,7 +81,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "Useful if you prefer to install drivers manually from manufacturer"
     options:
       - label: "Driver Updates Disabled"
@@ -108,7 +104,6 @@ tweaks:
     risk_level: high
     requires_reboot: false
     requires_ti: true
-    is_toggle: true
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
     options:
       - label: "Windows Update Disabled"

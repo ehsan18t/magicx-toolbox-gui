@@ -14,6 +14,7 @@
   import type { Snippet } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
+  import { Select } from "./ui";
 
   interface Props {
     tweak: TweakWithStatus;
@@ -71,8 +72,8 @@
   // Get options from tweak definition
   const options = $derived(tweak.definition.options);
 
-  // Check if this is a toggle (2 options) or dropdown (3+ options)
-  const isToggle = $derived(tweak.definition.is_toggle);
+  // Check if this is a toggle (2 options and not forced dropdown) or dropdown (3+ options or forced)
+  const isToggle = $derived(tweak.definition.options.length === 2 && !tweak.definition.force_dropdown);
 
   // Current option index from registry (actual applied state, null if no match = system default)
   const currentOptionIndex = $derived(tweak.status.current_option_index);
@@ -101,6 +102,23 @@
     return currentOptionIndex;
   });
 
+  // Build options for Select component
+  const selectOptions = $derived.by(() => {
+    const opts: { value: number; label: string; disabled?: boolean }[] = [];
+
+    // Add "System Default" placeholder if current state is unknown
+    if (currentOptionIndex === null) {
+      opts.push({ value: -1, label: "System Default", disabled: true });
+    }
+
+    // Add actual options
+    options.forEach((option, i) => {
+      opts.push({ value: i, label: option.label });
+    });
+
+    return opts;
+  });
+
   function handleToggleClick() {
     if (isHighRisk && !effectiveEnabled) {
       showConfirmDialog = true;
@@ -122,9 +140,8 @@
     }
   }
 
-  function handleOptionChange(event: Event) {
-    const select = event.target as HTMLSelectElement;
-    const optionIndex = parseInt(select.value, 10);
+  function handleSelectChange(value: string | number) {
+    const optionIndex = typeof value === "number" ? value : parseInt(value, 10);
 
     // Guard against invalid values
     if (isNaN(optionIndex)) return;
@@ -197,21 +214,14 @@
 
       {#if !isToggle}
         <!-- Dropdown for multi-option tweaks -->
-        <select
-          class="bg-muted max-w-45 min-w-30 shrink-0 cursor-pointer appearance-none rounded-lg border border-border bg-[url('data:image/svg+xml,%3Csvg_xmlns=%27http://www.w3.org/2000/svg%27_width=%2712%27_height=%2712%27_viewBox=%270_0_24_24%27%3E%3Cpath_fill=%27%23888%27_d=%27M7_10l5_5_5-5z%27/%3E%3C/svg%3E')] bg-position-[right_8px_center] bg-no-repeat px-2.5 py-1.5 pr-7 text-xs font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 {hasPending
-            ? 'border-warning bg-warning/10'
-            : ''} {isLoading ? 'opacity-70' : ''}"
-          disabled={isLoading}
+        <Select
           value={effectiveOptionIndex ?? -1}
-          onchange={handleOptionChange}
-        >
-          {#if currentOptionIndex === null}
-            <option value={-1} disabled>System Default</option>
-          {/if}
-          {#each options as option, i (option.label)}
-            <option value={i}>{option.label}</option>
-          {/each}
-        </select>
+          options={selectOptions}
+          pending={hasPending}
+          loading={isLoading}
+          disabled={isLoading}
+          onchange={handleSelectChange}
+        />
       {:else}
         <!-- Toggle Switch -->
         <button

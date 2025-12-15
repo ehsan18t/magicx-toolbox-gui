@@ -14,7 +14,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Remote Desktop Disabled"
         registry_changes:
@@ -37,7 +36,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "AutoPlay Disabled"
         registry_changes:
@@ -60,7 +58,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "AutoRun Scripts Disabled"
         registry_changes:
@@ -83,7 +80,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Ctrl+Alt+Del Required"
         registry_changes:
@@ -109,7 +105,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    is_toggle: true
     info: "SMBv1 is an old protocol with security vulnerabilities"
     options:
       - label: "SMBv1 Disabled"
@@ -133,7 +128,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    is_toggle: true
     options:
       - label: "NetBIOS Disabled"
         registry_changes:
@@ -156,7 +150,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Strong Password Policy Enforced"
         registry_changes:
@@ -179,7 +172,6 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "WARNING: Reduces security. Only disable if you know what you're doing"
     options:
       - label: "SmartScreen Disabled"
@@ -203,7 +195,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     info: "Prevents automatic upload of suspicious files to Microsoft"
     options:
       - label: "Sample Submission Disabled"
@@ -227,7 +218,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Malware Reporting Disabled"
         registry_changes:

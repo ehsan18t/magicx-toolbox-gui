@@ -13,7 +13,6 @@ tweaks:
     description: "Remove advertisements from lock screen"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Ads Disabled"
         registry_changes:
@@ -36,7 +35,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Classic Menu Enabled"
         registry_changes:
@@ -59,7 +57,6 @@ tweaks:
     description: "Disable web search results in Windows Start menu"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Web Search Disabled"
         registry_changes:
@@ -81,7 +78,6 @@ tweaks:
     description: "Always show file extensions in File Explorer"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Extensions Visible"
         registry_changes:
@@ -103,7 +99,6 @@ tweaks:
     description: "Show hidden files and folders in File Explorer"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Hidden Files Visible"
         registry_changes:
@@ -125,7 +120,6 @@ tweaks:
     description: "Disable window snap suggestions when dragging"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Snap Assist Disabled"
         registry_changes:
@@ -148,7 +142,6 @@ tweaks:
     risk_level: low
     requires_reboot: false
     requires_system: true
-    is_toggle: true
     info: "The UCPD (User-mode Contextual Policy Driver) service protects widget-related registry keys. This tweak disables the service and its scheduled task first, then modifies the registry."
     # pre_commands:
     #   - "sc config ucpd start= disabled"
@@ -181,7 +174,6 @@ tweaks:
     description: "Hide the Chat icon from Windows 11 taskbar"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Chat Icon Hidden"
         registry_changes:
@@ -205,7 +197,6 @@ tweaks:
     description: "Use smaller icons in the taskbar"
     risk_level: low
     requires_reboot: true
-    is_toggle: true
     options:
       - label: "Small Icons"
         registry_changes:
@@ -227,7 +218,6 @@ tweaks:
     description: "Disable window animation and transition effects"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Animations Disabled"
         registry_changes:
@@ -249,7 +239,6 @@ tweaks:
     description: "Check 'Do this for all current items' checkbox by default in file operations"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Checkbox Pre-checked"
         registry_changes:
@@ -271,7 +260,6 @@ tweaks:
     description: "Disable the Action Center/Notification Center"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Action Center Disabled"
         registry_changes:
@@ -295,7 +283,6 @@ tweaks:
     description: "Disable sync provider notifications/ads in File Explorer"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Sync Ads Disabled"
         registry_changes:
@@ -317,7 +304,6 @@ tweaks:
     description: "Prevent Windows from blocking downloaded files from the internet"
     risk_level: medium
     requires_reboot: false
-    is_toggle: true
     info: "Removes the 'This file came from another computer' security warning"
     options:
       - label: "File Blocking Disabled"

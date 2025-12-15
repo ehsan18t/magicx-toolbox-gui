@@ -73,7 +73,6 @@ tweaks:
     description: "A simple toggle tweak"
     risk_level: low
     requires_reboot: false
-    is_toggle: true
     options:
       - label: "Disabled"
         registry_changes:
@@ -177,8 +176,8 @@ Each tweak defines a configurable Windows setting.
   requires_system: boolean      # Optional: Needs SYSTEM elevation (implies admin)
   requires_ti: boolean          # Optional: Needs TrustedInstaller (implies system & admin)
   requires_reboot: boolean      # Required: Needs restart to take effect
-  is_toggle: boolean            # Required: true = switch UI, false = dropdown
-  options: []                   # Required: Array of option definitions
+  force_dropdown: boolean       # Optional: Force dropdown UI even with 2 options
+  options: []                   # Required: Array of option definitions (minimum 2)
 ```
 
 ### Tweak Field Details
@@ -194,8 +193,8 @@ Each tweak defines a configurable Windows setting.
 | `requires_system` | boolean | ❌        | `false` | Requires SYSTEM elevation. Auto-inferred if ti is set.              |
 | `requires_ti`     | boolean | ❌        | `false` | Requires TrustedInstaller elevation (for WaaSMedicSvc, etc.)        |
 | `requires_reboot` | boolean | ✅        | `false` | Changes require restart to fully apply.                             |
-| `is_toggle`       | boolean | ✅        | `false` | `true` = 2-option switch, `false` = dropdown.                       |
-| `options`         | array   | ✅        | -       | Array of available states for this tweak.                           |
+| `force_dropdown`  | boolean | ❌        | `false` | Force dropdown UI even with 2 options.                              |
+| `options`         | array   | ✅        | -       | Array of available states for this tweak (minimum 2).               |
 
 ### Risk Levels Explained
 
@@ -252,19 +251,21 @@ requires_ti: true
 
 ## Options Array
 
-Every tweak must have an `options` array. Each option represents a complete state.
+Every tweak must have an `options` array with **at least 2 options**. The UI type is determined automatically:
+
+- **2 options** → Toggle switch (unless `force_dropdown: true`)
+- **3+ options** → Dropdown menu
 
 ### Toggle Tweaks (2 Options)
 
-For `is_toggle: true`, you must have **exactly 2 options**:
+By default, tweaks with exactly 2 options display as a toggle switch:
 
 ```yaml
-is_toggle: true
 options:
-  - label: "Option A"      # Index 0 - Shown when switch is ON
-    # ... changes for option A
-  - label: "Option B"      # Index 1 - Shown when switch is OFF
-    # ... changes for option B
+  - label: "Disabled"      # Index 0 - Shown when switch is ON
+    # ... changes for disabled state
+  - label: "Enabled"       # Index 1 - Shown when switch is OFF
+    # ... changes for enabled state
 ```
 
 **Convention:** For toggle tweaks:
@@ -273,10 +274,9 @@ options:
 
 ### Dropdown Tweaks (3+ Options)
 
-For `is_toggle: false`, you can have any number of options (minimum 1):
+Tweaks with 3 or more options automatically display as a dropdown:
 
 ```yaml
-is_toggle: false
 options:
   - label: "500 KB (Default)"
     # ... changes
@@ -285,6 +285,19 @@ options:
   - label: "4 MB"
     # ... changes
   - label: "8 MB"
+    # ... changes
+```
+
+### Force Dropdown for 2 Options
+
+If you have exactly 2 options but want a dropdown instead of a toggle, use `force_dropdown`:
+
+```yaml
+force_dropdown: true
+options:
+  - label: "Dark Mode"
+    # ... changes
+  - label: "Light Mode"
     # ... changes
 ```
 
@@ -980,7 +993,6 @@ The app detects Windows version at runtime:
   requires_admin: false
   requires_reboot: false
   requires_system: false
-  is_toggle: true
   options:
     - label: "Extensions Visible"
       registry_changes:
@@ -1008,7 +1020,6 @@ The app detects Windows version at runtime:
   requires_admin: true
   requires_reboot: false
   requires_system: false
-  is_toggle: true
   info: |
     Stops and disables the Windows Update service.
     Updates must be installed manually.
@@ -1096,7 +1107,6 @@ The app detects Windows version at runtime:
   requires_admin: true
   requires_reboot: false
   requires_system: false
-  is_toggle: false
   info: "Larger cache prevents icon corruption but uses more disk space"
   options:
     - label: "500 KB (Default)"
@@ -1142,7 +1152,6 @@ The app detects Windows version at runtime:
   requires_admin: true
   requires_reboot: false
   requires_system: false
-  is_toggle: true
   options:
     - label: "Classic Menu Enabled"
       registry_changes:
@@ -1173,7 +1182,6 @@ The app detects Windows version at runtime:
   requires_admin: true
   requires_reboot: false
   requires_system: false
-  is_toggle: true
   info: "Disable if you don't use printing. Spooler service can be a security risk."
   options:
     - label: "Disabled"
@@ -1200,7 +1208,6 @@ The app detects Windows version at runtime:
   requires_admin: true
   requires_reboot: false
   requires_system: false
-  is_toggle: true
   options:
     - label: "Tasks Disabled"
       scheduler_changes:
@@ -1237,7 +1244,6 @@ The app detects Windows version at runtime:
   requires_admin: true
   requires_reboot: false
   requires_system: false
-  is_toggle: true
   info: "Use this to resolve DNS issues or after changing DNS servers"
   options:
     - label: "Flush Now"
@@ -1396,14 +1402,12 @@ registry_changes:
 
 ```yaml
 # ❌ Wrong: Toggle with 3 options
-is_toggle: true
 options:
   - label: "Low"
   - label: "Medium"
   - label: "High"
 
 # ✅ Correct: Use dropdown for 3+ options
-is_toggle: false
 options:
   - label: "Low"
   - label: "Medium"
@@ -1470,32 +1474,33 @@ The tweak system includes a **strict validation engine** that runs at build time
 
 ### What Gets Validated
 
-| Check                            | Type    | Description                                                                 |
-| -------------------------------- | ------- | --------------------------------------------------------------------------- |
-| **Unknown Fields**               | Error   | Typos in field names are caught (e.g., `require_admin` vs `requires_admin`) |
-| **Duplicate Tweak IDs**          | Error   | Each tweak must have a unique ID across all files                           |
-| **Duplicate Category IDs**       | Error   | Each category must have a unique ID across all files                        |
-| **Category ID Format**           | Error   | Category IDs must be snake_case                                             |
-| **Category Fields**              | Error   | Category name, description, and icon cannot be empty                        |
-| **Tweak ID Format**              | Error   | IDs must be snake_case (lowercase letters, digits, underscores)             |
-| **Toggle Option Count**          | Error   | Tweaks with `is_toggle: true` must have exactly 2 options                   |
-| **Duplicate Option Labels**      | Error   | Option labels must be unique within a tweak (case-insensitive)              |
-| **Option Label**                 | Error   | Option labels cannot be empty or whitespace-only                            |
-| **Empty Options**                | Error   | Each option must have at least one change (registry, service, etc.)         |
-| **Windows Versions**             | Error   | Only `10` and `11` are valid values                                         |
-| **Registry Action Fields**       | Error   | `set` requires `value_type` + `value`; `delete_value` requires `value_name` |
-| **Registry Value Types**         | Error   | Values must match their declared `value_type`                               |
-| **REG_DWORD Range**              | Error   | Values must be in range 0 to 4294967295                                     |
-| **REG_QWORD Range**              | Error   | Values must be non-negative (0 to 18446744073709551615)                     |
-| **Registry Key/Value Names**     | Error   | Registry `key` cannot be empty                                              |
-| **Whitespace Value Names**       | Error   | `value_name` cannot be whitespace-only (use empty string for default)       |
-| **Service Names**                | Error   | Service `name` cannot be empty                                              |
-| **Scheduler Task Path**          | Error   | `task_path` cannot be empty                                                 |
-| **Scheduler Task Name**          | Error   | `task_name` or `task_name_pattern` cannot be empty                          |
-| **Scheduler Mutual Exclusivity** | Error   | Cannot set both `task_name` and `task_name_pattern`                         |
-| **Regex Patterns**               | Error   | `task_name_pattern` values must be valid regex                              |
-| **Empty Registry Value Name**    | Warning | Empty `value_name` targets the default value (may be intentional)           |
-| **HKLM Without Admin**           | Warning | HKLM registry changes should have `requires_admin: true`                    |
+| Check                            | Type    | Description                                                                   |
+| -------------------------------- | ------- | ----------------------------------------------------------------------------- |
+| **Unknown Fields**               | Error   | Typos in field names are caught (e.g., `require_admin` vs `requires_admin`)   |
+| **Duplicate Tweak IDs**          | Error   | Each tweak must have a unique ID across all files                             |
+| **Duplicate Category IDs**       | Error   | Each category must have a unique ID across all files                          |
+| **Category ID Format**           | Error   | Category IDs must be snake_case                                               |
+| **Category Fields**              | Error   | Category name, description, and icon cannot be empty                          |
+| **Tweak ID Format**              | Error   | IDs must be snake_case (lowercase letters, digits, underscores)               |
+| **Minimum Options**              | Error   | Tweaks must have at least 2 options                                           |
+| **Duplicate Option Labels**      | Error   | Option labels must be unique within a tweak (case-insensitive)                |
+| **Option Label**                 | Error   | Option labels cannot be empty or whitespace-only                              |
+| **Empty Options**                | Error   | Each option must have at least one change (registry, service, etc.)           |
+| **Windows Versions**             | Error   | Only `10` and `11` are valid values                                           |
+| **Registry Action Fields**       | Error   | `set` requires `value_type` + `value`; `delete_value` requires `value_name`   |
+| **Registry Value Types**         | Error   | Values must match their declared `value_type`                                 |
+| **REG_DWORD Range**              | Error   | Values must be in range 0 to 4294967295                                       |
+| **REG_QWORD Range**              | Error   | Values must be non-negative (0 to 18446744073709551615)                       |
+| **Registry Key/Value Names**     | Error   | Registry `key` cannot be empty                                                |
+| **Whitespace Value Names**       | Error   | `value_name` cannot be whitespace-only (use empty string for default)         |
+| **Service Names**                | Error   | Service `name` cannot be empty                                                |
+| **Scheduler Task Path**          | Error   | `task_path` cannot be empty                                                   |
+| **Scheduler Task Name**          | Error   | `task_name` or `task_name_pattern` cannot be empty                            |
+| **Scheduler Mutual Exclusivity** | Error   | Cannot set both `task_name` and `task_name_pattern`                           |
+| **Regex Patterns**               | Error   | `task_name_pattern` values must be valid regex                                |
+| **Unnecessary force_dropdown**   | Warning | `force_dropdown` is unnecessary for 3+ options (already defaults to dropdown) |
+| **Empty Registry Value Name**    | Warning | Empty `value_name` targets the default value (may be intentional)             |
+| **HKLM Without Admin**           | Warning | HKLM registry changes should have `requires_admin: true`                      |
 
 ### Errors vs Warnings
 
