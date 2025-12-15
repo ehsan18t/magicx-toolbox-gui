@@ -24,6 +24,9 @@ enum RiskLevel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+// deny_unknown_fields catches typos in YAML field names at build time.
+// If the YAML contains a field not defined in this struct (e.g., "require_admin"
+// instead of "requires_admin"), serde will error during parsing.
 #[serde(deny_unknown_fields)]
 struct CategoryDefinition {
     id: String,
@@ -789,13 +792,13 @@ impl SchedulerChange {
                     );
                 }
                 // Validate task_name_pattern is valid regex
-                else if regex::Regex::new(pattern).is_err() {
+                else if let Err(regex_err) = regex::Regex::new(pattern) {
                     ctx.tweak_error(
                         file,
                         tweak_id,
                         format!(
-                            "{}: invalid regex pattern '{}' in task_name_pattern",
-                            location, pattern
+                            "{}: invalid regex pattern '{}' in task_name_pattern: {}",
+                            location, pattern, regex_err
                         ),
                     );
                 }

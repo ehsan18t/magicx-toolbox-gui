@@ -345,7 +345,10 @@ enum RegistryRollback {
         value_name: String,
         original: Option<serde_json::Value>,
     },
-    /// Recreate a key that was deleted (we can't fully restore, just note it)
+    /// Recreate a key that was deleted.
+    /// NOTE: This is best-effort only - subkeys and values within the deleted key cannot be
+    /// restored. This is acceptable because delete_key is typically used to remove keys that
+    /// were created by the opposite option (e.g., context menu CLSID entries).
     RecreateKey { hive: RegistryHive, key: String },
     /// Delete a key that was created
     DeleteKey { hive: RegistryHive, key: String },

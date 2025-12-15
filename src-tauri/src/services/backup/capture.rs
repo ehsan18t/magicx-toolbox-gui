@@ -146,7 +146,7 @@ fn capture_registry_snapshots(
                     Ok(RegistrySnapshot {
                         hive: change.hive.as_str().to_string(),
                         key: change.key.clone(),
-                        value_name: String::new(), // No specific value for key deletion
+                        value_name: String::new(), // Key-level operation, no specific value
                         value_type: None,
                         value: None,
                         existed,
@@ -160,7 +160,7 @@ fn capture_registry_snapshots(
                     Ok(RegistrySnapshot {
                         hive: change.hive.as_str().to_string(),
                         key: change.key.clone(),
-                        value_name: String::new(), // No specific value for key creation
+                        value_name: String::new(), // Key-level operation, no specific value
                         value_type: None,
                         value: None,
                         existed,
