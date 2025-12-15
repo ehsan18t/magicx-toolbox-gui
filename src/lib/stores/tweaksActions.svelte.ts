@@ -144,6 +144,9 @@ export async function revertTweak(
         current_option_index: undefined,
       });
 
+      // Clear any pending changes for this tweak
+      pendingChangesStore.clear(tweakId);
+
       // Remove from pending reboot if it was there
       pendingRebootStore.remove(tweakId);
 
