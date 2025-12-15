@@ -1,7 +1,14 @@
 <script lang="ts">
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
-  import { errorStore, loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks.svelte";
+  import {
+    errorStore,
+    loadingStore,
+    pendingChangesStore,
+    revertTweak,
+    stageChange,
+    unstageChange,
+  } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
   import { RISK_INFO } from "$lib/types";
   import type { Snippet } from "svelte";
@@ -41,6 +48,7 @@
   });
 
   let showConfirmDialog = $state(false);
+  let showRestoreConfirmDialog = $state(false);
 
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
   const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
@@ -52,6 +60,9 @@
     high: { icon: "mdi:alert-circle", color: "text-orange-500" },
     critical: { icon: "mdi:alert-octagon", color: "text-error" },
   };
+
+  // Has a snapshot that can be restored
+  const hasSnapshot = $derived(tweak.status.has_backup);
 
   // Get options from tweak definition
   const options = $derived(tweak.definition.options);
@@ -119,6 +130,22 @@
     } else {
       stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex });
     }
+  }
+
+  function handleRestoreClick() {
+    if (isHighRisk) {
+      showRestoreConfirmDialog = true;
+    } else {
+      executeRestore();
+    }
+  }
+
+  async function executeRestore() {
+    showRestoreConfirmDialog = false;
+    await revertTweak(tweak.definition.id, {
+      showToast: true,
+      tweakName: tweak.definition.name,
+    });
   }
 </script>
 
@@ -296,15 +323,32 @@
       </div>
 
       <!-- Details (modal) -->
-      <button
-        type="button"
-        class="hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:text-foreground"
-        onclick={() => openTweakDetailsModal(tweak.definition.id)}
-        aria-label="Open tweak details"
-      >
-        <span>Details</span>
-        <Icon icon="mdi:open-in-new" width="16" />
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- Restore Snapshot Button - only shown when snapshot exists -->
+        {#if hasSnapshot}
+          <button
+            type="button"
+            class="inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-accent transition-all duration-150 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            onclick={handleRestoreClick}
+            disabled={isLoading}
+            aria-label="Restore snapshot"
+            title="Restore to original state from snapshot"
+          >
+            <Icon icon="mdi:history" width="16" />
+            <span>Restore</span>
+          </button>
+        {/if}
+
+        <button
+          type="button"
+          class="hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:text-foreground"
+          onclick={() => openTweakDetailsModal(tweak.definition.id)}
+          aria-label="Open tweak details"
+        >
+          <span>Details</span>
+          <Icon icon="mdi:open-in-new" width="16" />
+        </button>
+      </div>
     </div>
   </div>
 </article>
@@ -318,4 +362,16 @@
   cancelText="Cancel"
   onconfirm={executeToggle}
   oncancel={() => (showConfirmDialog = false)}
+/>
+
+<ConfirmDialog
+  open={showRestoreConfirmDialog}
+  title="Restore Snapshot?"
+  message="This will restore the original state from before the tweak was applied. {tweak.definition.requires_reboot
+    ? 'A system restart may be required.'
+    : ''}"
+  confirmText="Restore"
+  cancelText="Cancel"
+  onconfirm={executeRestore}
+  oncancel={() => (showRestoreConfirmDialog = false)}
 />
