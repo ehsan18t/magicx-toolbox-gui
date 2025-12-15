@@ -129,12 +129,12 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
       - label: "Enabled"
+        # Delete the value to restore default behavior (Windows prompts for feedback)
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Siuf\\Rules"
             value_name: "NumberOfSIUFInPeriod"
-            value_type: "REG_DWORD"
-            value: -1
+            action: delete_value
 
   - id: disable_inking_data
     name: "Disable Inking & Typing Data"

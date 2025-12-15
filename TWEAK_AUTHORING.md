@@ -29,8 +29,9 @@
 14. [Complete Examples](#complete-examples)
 15. [Best Practices](#best-practices)
 16. [Common Mistakes](#common-mistakes)
-17. [Testing Your Tweaks](#testing-your-tweaks)
-18. [Troubleshooting](#troubleshooting)
+17. [Build-Time Validation](#build-time-validation)
+18. [Testing Your Tweaks](#testing-your-tweaks)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -307,65 +308,93 @@ options:
 
 ### Registry Changes
 
-Modify Windows Registry values.
+Modify Windows Registry values, delete keys/values, or create empty keys.
 
 ```yaml
 registry_changes:
   - hive: HKCU | HKLM           # Required: Registry hive
     key: string                  # Required: Registry key path (no hive prefix)
-    value_name: string           # Required: Value name (use "" for default)
-    value_type: string           # Required: REG_DWORD, REG_SZ, etc.
-    value: any                   # Required: Target value
+    action: set | delete_value | delete_key | create_key  # Optional: Default "set"
+    value_name: string           # Required for set/delete_value, ignored for others
+    value_type: string           # Required for set action only
+    value: any                   # Required for set action only
     windows_versions: [10, 11]   # Optional: Filter by Windows version
     skip_validation: boolean     # Optional: Exclude from status check
 ```
 
+#### Registry Actions
+
+| Action         | Description                                   | Required Fields                     | State Detection        |
+| -------------- | --------------------------------------------- | ----------------------------------- | ---------------------- |
+| `set`          | Set a registry value (default)                | `value_name`, `value_type`, `value` | Value matches expected |
+| `delete_value` | Delete a specific registry value              | `value_name`                        | Value does not exist   |
+| `delete_key`   | Delete entire key and all subkeys recursively | *(none beyond `key`)*               | Key does not exist     |
+| `create_key`   | Create a key without setting any value        | *(none beyond `key`)*               | Key exists             |
+
 #### Registry Field Details
 
-| Field              | Type    | Required | Description                                                                |
-| ------------------ | ------- | -------- | -------------------------------------------------------------------------- |
-| `hive`             | enum    | ✅        | `HKCU` (Current User) or `HKLM` (Local Machine).                           |
-| `key`              | string  | ✅        | Path without hive. Use `\\` for separators.                                |
-| `value_name`       | string  | ✅        | Name of the value. Empty string `""` for default value.                    |
-| `value_type`       | enum    | ✅        | Registry value type (see table below).                                     |
-| `value`            | any     | ✅        | The value to set. Type depends on `value_type`.                            |
-| `windows_versions` | array   | ❌        | Only apply on specific Windows versions.                                   |
-| `skip_validation`  | boolean | ❌        | Default `false`. See [skip_validation section](#the-skip_validation-flag). |
+| Field              | Type    | Required       | Description                                                                |
+| ------------------ | ------- | -------------- | -------------------------------------------------------------------------- |
+| `hive`             | enum    | ✅              | `HKCU` (Current User) or `HKLM` (Local Machine).                           |
+| `key`              | string  | ✅              | Path without hive. Use `\\` for separators.                                |
+| `action`           | enum    | ❌              | Default `set`. One of: `set`, `delete_value`, `delete_key`, `create_key`.  |
+| `value_name`       | string  | For set/delete | Name of the value. Empty string `""` for default value.                    |
+| `value_type`       | enum    | For set only   | Registry value type (see table below).                                     |
+| `value`            | any     | For set only   | The value to set. Type depends on `value_type`.                            |
+| `windows_versions` | array   | ❌              | Only apply on specific Windows versions.                                   |
+| `skip_validation`  | boolean | ❌              | Default `false`. See [skip_validation section](#the-skip_validation-flag). |
 
 #### Registry Value Types
 
-| Type            | YAML Syntax             | Description                  |
-| --------------- | ----------------------- | ---------------------------- |
-| `REG_DWORD`     | `value: 1`              | 32-bit integer               |
-| `REG_QWORD`     | `value: 12345678900`    | 64-bit integer               |
-| `REG_SZ`        | `value: "string"`       | String value                 |
-| `REG_EXPAND_SZ` | `value: "%PATH%"`       | Expandable string            |
-| `REG_BINARY`    | `value: [0, 1, 2, 255]` | Binary data (array of bytes) |
-| `REG_MULTI_SZ`  | *(Limited support)*     | Multi-string (read-only)     |
+| Type            | YAML Syntax             | Description                                 |
+| --------------- | ----------------------- | ------------------------------------------- |
+| `REG_DWORD`     | `value: 1`              | 32-bit unsigned (0 to 4294967295)           |
+| `REG_QWORD`     | `value: 12345678900`    | 64-bit unsigned (0 to 18446744073709551615) |
+| `REG_SZ`        | `value: "string"`       | String value                                |
+| `REG_EXPAND_SZ` | `value: "%PATH%"`       | Expandable string                           |
+| `REG_BINARY`    | `value: [0, 1, 2, 255]` | Binary data (array of bytes)                |
+| `REG_MULTI_SZ`  | *(Limited support)*     | Multi-string (read-only)                    |
 
 #### Registry Examples
 
 ```yaml
-# DWORD (integer)
+# Set a DWORD value (default action)
 - hive: HKCU
   key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
   value_name: "HideFileExt"
   value_type: "REG_DWORD"
   value: 0
 
-# String
+# Set a string value
 - hive: HKLM
   key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
   value_name: "Max Cached Icons"
   value_type: "REG_SZ"
   value: "4096"
 
-# Empty string (default value)
+# Set empty string as default value (for context menu tweaks, etc.)
 - hive: HKCU
   key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
   value_name: ""
   value_type: "REG_SZ"
   value: ""
+
+# Delete a specific value
+- hive: HKCU
+  key: "Software\\Microsoft\\Siuf\\Rules"
+  value_name: "NumberOfSIUFInPeriod"
+  action: delete_value
+
+# Delete an entire key (and all subkeys recursively)
+- hive: HKCU
+  key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}"
+  action: delete_key
+  windows_versions: [11]
+
+# Create a key without setting any value
+- hive: HKCU
+  key: "Software\\MyApp\\Settings"
+  action: create_key
 
 # Binary data
 - hive: HKLM
@@ -1435,6 +1464,242 @@ options:
 
 ---
 
+## Build-Time Validation
+
+The tweak system includes a **strict validation engine** that runs at build time. All YAML files are validated for structural and semantic correctness before compilation. Errors are reported with file names and tweak IDs for easy identification.
+
+### What Gets Validated
+
+| Check                            | Type    | Description                                                                 |
+| -------------------------------- | ------- | --------------------------------------------------------------------------- |
+| **Unknown Fields**               | Error   | Typos in field names are caught (e.g., `require_admin` vs `requires_admin`) |
+| **Duplicate Tweak IDs**          | Error   | Each tweak must have a unique ID across all files                           |
+| **Duplicate Category IDs**       | Error   | Each category must have a unique ID across all files                        |
+| **Category ID Format**           | Error   | Category IDs must be snake_case                                             |
+| **Category Fields**              | Error   | Category name, description, and icon cannot be empty                        |
+| **Tweak ID Format**              | Error   | IDs must be snake_case (lowercase letters, digits, underscores)             |
+| **Toggle Option Count**          | Error   | Tweaks with `is_toggle: true` must have exactly 2 options                   |
+| **Duplicate Option Labels**      | Error   | Option labels must be unique within a tweak (case-insensitive)              |
+| **Option Label**                 | Error   | Option labels cannot be empty or whitespace-only                            |
+| **Empty Options**                | Error   | Each option must have at least one change (registry, service, etc.)         |
+| **Windows Versions**             | Error   | Only `10` and `11` are valid values                                         |
+| **Registry Action Fields**       | Error   | `set` requires `value_type` + `value`; `delete_value` requires `value_name` |
+| **Registry Value Types**         | Error   | Values must match their declared `value_type`                               |
+| **REG_DWORD Range**              | Error   | Values must be in range 0 to 4294967295                                     |
+| **REG_QWORD Range**              | Error   | Values must be non-negative (0 to 18446744073709551615)                     |
+| **Registry Key/Value Names**     | Error   | Registry `key` cannot be empty                                              |
+| **Whitespace Value Names**       | Error   | `value_name` cannot be whitespace-only (use empty string for default)       |
+| **Service Names**                | Error   | Service `name` cannot be empty                                              |
+| **Scheduler Task Path**          | Error   | `task_path` cannot be empty                                                 |
+| **Scheduler Task Name**          | Error   | `task_name` or `task_name_pattern` cannot be empty                          |
+| **Scheduler Mutual Exclusivity** | Error   | Cannot set both `task_name` and `task_name_pattern`                         |
+| **Regex Patterns**               | Error   | `task_name_pattern` values must be valid regex                              |
+| **Empty Registry Value Name**    | Warning | Empty `value_name` targets the default value (may be intentional)           |
+| **HKLM Without Admin**           | Warning | HKLM registry changes should have `requires_admin: true`                    |
+
+### Errors vs Warnings
+
+- **Errors** are fatal and will fail the build. These represent invalid configurations that would cause runtime failures.
+- **Warnings** are non-fatal and show during build output with `⚠`. These represent potentially problematic configurations that may be intentional.
+
+### Registry Value Type Rules
+
+| `value_type`    | Expected Value                       | Example                        |
+| --------------- | ------------------------------------ | ------------------------------ |
+| `REG_DWORD`     | Integer (0 to 4294967295)            | `value: 1`                     |
+| `REG_QWORD`     | Integer (0 to 18446744073709551615)  | `value: 9223372036854775807`   |
+| `REG_SZ`        | String                               | `value: "text"`                |
+| `REG_EXPAND_SZ` | String (with environment variables)  | `value: "%USERPROFILE%\\path"` |
+| `REG_MULTI_SZ`  | Array of strings                     | `value: ["a", "b"]`            |
+| `REG_BINARY`    | Array of bytes (0-255) or hex string | `value: [0, 1, 255]`           |
+
+### Common Validation Errors
+
+#### Unknown Field
+
+```
+[privacy.yaml] Parse error: unknown field `require_admin`, expected one of `id`, `name`, ...
+```
+
+**Fix:** Check for typos in field names. Use `requires_admin`, not `require_admin`.
+
+#### Invalid REG_DWORD Value
+
+```
+[privacy.yaml] Tweak 'my_tweak': option 'Enabled' registry change 'MyValue': REG_DWORD value -1 out of range (0..4294967295)
+```
+
+**Fix:** REG_DWORD is unsigned. Use `0` to `4294967295`. To delete a value instead, use `action: delete_value`:
+
+```yaml
+registry_changes:
+  - hive: HKCU
+    key: "Path\\To\\Key"
+    value_name: "Value"
+    action: delete_value
+```
+
+#### REG_SZ with null value
+
+```
+[ui.yaml] Tweak 'my_tweak': option 'Default' registry change 'Value': REG_SZ requires string value, got null
+```
+
+**Fix:** Registry values can't be `null`. To delete the entire key, use `action: delete_key`:
+
+```yaml
+registry_changes:
+  - hive: HKCU
+    key: "Path\\To\\Key"
+    action: delete_key
+```
+
+Or to delete just a value, use `action: delete_value`:
+
+```yaml
+registry_changes:
+  - hive: HKCU
+    key: "Path\\To\\Key"
+    value_name: "Value"
+    action: delete_value
+```
+
+#### Scheduler Mutual Exclusivity
+
+```
+[windows_update.yaml] Tweak 'my_tweak': option 'Disabled' scheduler change: cannot specify both 'task_name' and 'task_name_pattern' (mutually exclusive)
+```
+
+**Fix:** Use either `task_name` for a single task OR `task_name_pattern` for multiple tasks:
+
+```yaml
+# Single task
+scheduler_changes:
+  - task_path: "\\Microsoft\\Windows\\Task"
+    task_name: "SpecificTask"
+    action: disable
+
+# Multiple tasks by pattern
+scheduler_changes:
+  - task_path: "\\Microsoft\\Windows\\Task"
+    task_name_pattern: "Task1|Task2|Task3"
+    action: disable
+```
+
+#### Empty Option
+
+```
+[privacy.yaml] Tweak 'my_tweak': option 'Enabled' has no changes (registry, service, scheduler, or commands)
+```
+
+**Fix:** Each option must do something. Add at least one of:
+- `registry_changes`
+- `service_changes`
+- `scheduler_changes`
+- `pre_commands` / `post_commands`
+- `pre_powershell` / `post_powershell`
+
+#### Invalid Tweak ID Format
+
+```
+[privacy.yaml] Tweak 'MyTweak': tweak ID must be snake_case (lowercase letters, digits, underscores only)
+```
+
+**Fix:** Use snake_case for tweak IDs:
+
+```yaml
+# Wrong
+- id: MyTweak
+- id: my-tweak
+- id: myTweak123
+
+# Correct
+- id: my_tweak
+- id: disable_telemetry
+- id: set_pagefile_size_4gb
+```
+
+#### Duplicate Option Labels
+
+```
+[privacy.yaml] Tweak 'my_tweak': duplicate option label 'Disabled' (case-insensitive)
+```
+
+**Fix:** Each option label must be unique within a tweak:
+
+```yaml
+# Wrong
+options:
+  - label: "Disabled"
+    ...
+  - label: "disabled"  # Duplicate (case-insensitive)!
+
+# Correct
+options:
+  - label: "Disabled"
+    ...
+  - label: "Enabled"
+```
+
+#### Duplicate Category IDs
+
+```
+[my_tweaks.yaml] Duplicate category ID 'privacy' (already defined in privacy.yaml)
+```
+
+**Fix:** Each YAML file must define a unique category ID:
+
+```yaml
+# In my_tweaks.yaml - wrong if privacy.yaml already uses 'privacy'
+category:
+  id: privacy  # Duplicate!
+
+# Correct - use a unique ID
+category:
+  id: my_custom_privacy
+```
+
+### Common Warnings
+
+Warnings don't fail the build but indicate potential issues:
+
+#### HKLM Without Admin
+
+```
+⚠ [privacy.yaml] Tweak 'my_tweak': contains HKLM registry changes but requires_admin is false (should be true)
+```
+
+**Fix:** HKLM changes require admin privileges:
+
+```yaml
+- id: my_tweak
+  requires_admin: true  # Add this!
+  options:
+    - label: "Enabled"
+      registry_changes:
+        - hive: HKLM  # This requires admin
+          key: "SOFTWARE\\..."
+```
+
+#### Empty Value Name
+
+```
+⚠ [ui.yaml] Tweak 'my_tweak': option 'Enabled' registry change '': value_name is empty (targeting default value)
+```
+
+This is a warning because targeting the default value (`(Default)`) is sometimes intentional. If not intentional, specify a value name:
+
+```yaml
+registry_changes:
+  - hive: HKCU
+    key: "Software\\MyApp"
+    value_name: "MySetting"  # Not empty
+    value_type: "REG_SZ"
+    value: "my value"
+```
+
+---
+
 ## Testing Your Tweaks
 
 ### 1. Validate YAML Syntax
@@ -1513,14 +1778,14 @@ Some changes only work on fresh installs or after updates.
 
 ## Appendix: Value Type Reference
 
-| YAML Type | Registry Type | Example YAML           | Notes                       |
-| --------- | ------------- | ---------------------- | --------------------------- |
-| Integer   | REG_DWORD     | `value: 1`             | 32-bit, 0 to 4294967295     |
-| Integer   | REG_QWORD     | `value: 9876543210`    | 64-bit                      |
-| String    | REG_SZ        | `value: "text"`        | Plain string                |
-| String    | REG_EXPAND_SZ | `value: "%PATH%"`      | Expandable environment vars |
-| Array     | REG_BINARY    | `value: [0, 255, 128]` | Byte array                  |
-| Null      | (delete)      | `value: null`          | Deletes the value           |
+| YAML Type | Registry Type | Example YAML           | Notes                             |
+| --------- | ------------- | ---------------------- | --------------------------------- |
+| Integer   | REG_DWORD     | `value: 1`             | 32-bit, 0 to 4294967295           |
+| Integer   | REG_QWORD     | `value: 9876543210`    | 64-bit, 0 to 18446744073709551615 |
+| String    | REG_SZ        | `value: "text"`        | Plain string                      |
+| String    | REG_EXPAND_SZ | `value: "%PATH%"`      | Expandable environment vars       |
+| Array     | REG_BINARY    | `value: [0, 255, 128]` | Byte array                        |
+| Null      | (delete)      | `value: null`          | Deletes the value                 |
 
 ---
 

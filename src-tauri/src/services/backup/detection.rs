@@ -6,8 +6,10 @@
 //! - Migration utilities for old backup formats
 
 use crate::error::Error;
-use crate::models::{RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState};
-use crate::services::{scheduler_service, service_control};
+use crate::models::{
+    RegistryAction, RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState,
+};
+use crate::services::{registry_service, scheduler_service, service_control};
 use rayon::prelude::*;
 use std::fs;
 
@@ -109,18 +111,54 @@ fn check_registry_matches(
     let results: Vec<Result<bool, Error>> = validatable_registry
         .par_iter()
         .map(|change| {
-            let (current_value, existed) = read_registry_value(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-                &change.value_type,
-            )?;
+            match change.action {
+                RegistryAction::Set => {
+                    // For Set action, check if the value matches
+                    let value_type = match &change.value_type {
+                        Some(vt) => vt,
+                        None => return Ok(false), // Invalid config
+                    };
+                    let expected_value = match &change.value {
+                        Some(v) => v,
+                        None => return Ok(false), // Invalid config
+                    };
 
-            if !existed {
-                return Ok(false);
+                    let (current_value, existed) = read_registry_value(
+                        &change.hive,
+                        &change.key,
+                        &change.value_name,
+                        value_type,
+                    )?;
+
+                    if !existed {
+                        return Ok(false);
+                    }
+
+                    Ok(values_match(&current_value, &Some(expected_value.clone())))
+                }
+                RegistryAction::DeleteValue => {
+                    // For DeleteValue, check that the value doesn't exist
+                    let exists = registry_service::value_exists(
+                        &change.hive,
+                        &change.key,
+                        &change.value_name,
+                    )
+                    .unwrap_or(false);
+                    Ok(!exists)
+                }
+                RegistryAction::DeleteKey => {
+                    // For DeleteKey, check that the key doesn't exist
+                    let exists =
+                        registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+                    Ok(!exists)
+                }
+                RegistryAction::CreateKey => {
+                    // For CreateKey, check that the key exists
+                    let exists =
+                        registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+                    Ok(exists)
+                }
             }
-
-            Ok(values_match(&current_value, &Some(change.value.clone())))
         })
         .collect();
 

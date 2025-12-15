@@ -10,7 +10,7 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::{
-    RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition, TweakOption,
+    RegistryAction, RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition, TweakOption,
 };
 use crate::services::{registry_service, scheduler_service, service_control, trusted_installer};
 use tauri::AppHandle;
@@ -336,6 +336,24 @@ pub fn apply_all_changes_atomically(
     Ok(())
 }
 
+/// Rollback info for atomic registry operations
+enum RegistryRollback {
+    /// Restore a value that was set (delete if None, restore if Some)
+    RestoreValue {
+        hive: RegistryHive,
+        key: String,
+        value_name: String,
+        original: Option<serde_json::Value>,
+    },
+    /// Recreate a key that was deleted.
+    /// NOTE: This is best-effort only - subkeys and values within the deleted key cannot be
+    /// restored. This is acceptable because delete_key is typically used to remove keys that
+    /// were created by the opposite option (e.g., context menu CLSID entries).
+    RecreateKey { hive: RegistryHive, key: String },
+    /// Delete a key that was created
+    DeleteKey { hive: RegistryHive, key: String },
+}
+
 /// Apply all registry changes for an option atomically
 fn apply_registry_changes(
     app: &AppHandle,
@@ -343,7 +361,7 @@ fn apply_registry_changes(
     option: &TweakOption,
     windows_version: u32,
 ) -> Result<()> {
-    let mut applied: Vec<(RegistryHive, String, String, Option<serde_json::Value>)> = Vec::new();
+    let mut rollbacks: Vec<RegistryRollback> = Vec::new();
 
     for change in &option.registry_changes {
         // Skip if not for this Windows version
@@ -352,93 +370,249 @@ fn apply_registry_changes(
         }
 
         let full_path = format!(
-            "{}\\{}\\{}",
+            "{}\\{}{}",
             change.hive.as_str(),
             change.key,
-            change.value_name
+            if change.value_name.is_empty() {
+                String::new()
+            } else {
+                format!("\\{}", change.value_name)
+            }
         );
 
-        // Read current value for rollback (only for validatable changes)
-        let current = if !change.skip_validation {
-            read_registry_value(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-                &change.value_type,
-            )?
-        } else {
-            None
+        let result = match change.action {
+            RegistryAction::Set => {
+                // Set action - write a value
+                let value_type = match &change.value_type {
+                    Some(vt) => vt,
+                    None => {
+                        log::error!("Set action requires value_type: {}", full_path);
+                        return Err(Error::ValidationError(
+                            "Set action requires value_type".into(),
+                        ));
+                    }
+                };
+                let value = match &change.value {
+                    Some(v) => v,
+                    None => {
+                        log::error!("Set action requires value: {}", full_path);
+                        return Err(Error::ValidationError("Set action requires value".into()));
+                    }
+                };
+
+                // Read current value for rollback (only for validatable changes)
+                let current = if !change.skip_validation {
+                    read_registry_value(&change.hive, &change.key, &change.value_name, value_type)?
+                } else {
+                    None
+                };
+
+                log::debug!(
+                    "Setting{} {} = {:?} (was {:?})",
+                    if change.skip_validation {
+                        " (skip_validation)"
+                    } else {
+                        ""
+                    },
+                    full_path,
+                    value,
+                    current
+                );
+
+                let write_result = write_registry_value(
+                    &change.hive,
+                    &change.key,
+                    &change.value_name,
+                    value_type,
+                    value,
+                    tweak.requires_system,
+                );
+
+                if write_result.is_ok() && !change.skip_validation {
+                    rollbacks.push(RegistryRollback::RestoreValue {
+                        hive: change.hive,
+                        key: change.key.clone(),
+                        value_name: change.value_name.clone(),
+                        original: current,
+                    });
+                }
+
+                write_result
+            }
+
+            RegistryAction::DeleteValue => {
+                log::debug!(
+                    "Deleting value{} {}",
+                    if change.skip_validation {
+                        " (skip_validation)"
+                    } else {
+                        ""
+                    },
+                    full_path
+                );
+
+                // Read current value for rollback
+                let current = if !change.skip_validation {
+                    // Try to detect type and read - use DWORD as default
+                    let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
+                    read_registry_value(&change.hive, &change.key, &change.value_name, &value_type)?
+                } else {
+                    None
+                };
+
+                let delete_result =
+                    registry_service::delete_value(&change.hive, &change.key, &change.value_name);
+
+                // Treat not-found as success for delete operations
+                let result = match delete_result {
+                    Err(Error::RegistryKeyNotFound(_)) => Ok(()),
+                    other => other,
+                };
+
+                if result.is_ok() && !change.skip_validation && current.is_some() {
+                    rollbacks.push(RegistryRollback::RestoreValue {
+                        hive: change.hive,
+                        key: change.key.clone(),
+                        value_name: change.value_name.clone(),
+                        original: current,
+                    });
+                }
+
+                result
+            }
+
+            RegistryAction::DeleteKey => {
+                log::debug!(
+                    "Deleting key{} {}",
+                    if change.skip_validation {
+                        " (skip_validation)"
+                    } else {
+                        ""
+                    },
+                    full_path
+                );
+
+                // Check if key exists for rollback tracking
+                let key_existed = if !change.skip_validation {
+                    registry_service::key_exists(&change.hive, &change.key).unwrap_or(false)
+                } else {
+                    false
+                };
+
+                let delete_result = registry_service::delete_key(&change.hive, &change.key);
+
+                // Treat not-found as success for delete operations
+                let result = match delete_result {
+                    Err(Error::RegistryKeyNotFound(_)) => Ok(()),
+                    other => other,
+                };
+
+                if result.is_ok() && !change.skip_validation && key_existed {
+                    rollbacks.push(RegistryRollback::RecreateKey {
+                        hive: change.hive,
+                        key: change.key.clone(),
+                    });
+                }
+
+                result
+            }
+
+            RegistryAction::CreateKey => {
+                log::debug!(
+                    "Creating key{} {}",
+                    if change.skip_validation {
+                        " (skip_validation)"
+                    } else {
+                        ""
+                    },
+                    full_path
+                );
+
+                // Check if key already exists for rollback
+                let key_existed = if !change.skip_validation {
+                    registry_service::key_exists(&change.hive, &change.key).unwrap_or(false)
+                } else {
+                    false
+                };
+
+                let create_result = registry_service::create_key(&change.hive, &change.key);
+
+                if create_result.is_ok() && !change.skip_validation && !key_existed {
+                    rollbacks.push(RegistryRollback::DeleteKey {
+                        hive: change.hive,
+                        key: change.key.clone(),
+                    });
+                }
+
+                create_result
+            }
         };
 
-        log::debug!(
-            "Setting{} {} = {:?} (was {:?})",
-            if change.skip_validation {
-                " (skip_validation)"
-            } else {
-                ""
-            },
-            full_path,
-            change.value,
-            current
-        );
-
-        // Write new value
-        if let Err(e) = write_registry_value(
-            &change.hive,
-            &change.key,
-            &change.value_name,
-            &change.value_type,
-            &change.value,
-            tweak.requires_system,
-        ) {
+        // Handle errors
+        if let Err(e) = result {
             if change.skip_validation {
                 log::warn!(
-                    "Failed to write {} (skip_validation, continuing): {}",
+                    "Failed {:?} on {} (skip_validation, continuing): {}",
+                    change.action,
                     full_path,
                     e
                 );
                 continue;
             }
 
-            log::error!("Failed to write {}: {}", full_path, e);
+            log::error!("Failed {:?} on {}: {}", change.action, full_path, e);
 
             // Rollback applied changes
-            for (hive, key, value_name, original) in applied.iter().rev() {
-                if let Some(val) = original {
-                    let _ = restore_value(hive, key, value_name, val);
-                } else {
-                    let _ = registry_service::delete_value(hive, key, value_name);
+            for rollback in rollbacks.iter().rev() {
+                match rollback {
+                    RegistryRollback::RestoreValue {
+                        hive,
+                        key,
+                        value_name,
+                        original,
+                    } => {
+                        if let Some(val) = original {
+                            let _ = restore_value(hive, key, value_name, val);
+                        } else {
+                            let _ = registry_service::delete_value(hive, key, value_name);
+                        }
+                    }
+                    RegistryRollback::RecreateKey { hive, key } => {
+                        // Best effort - just create the key (values are lost)
+                        let _ = registry_service::create_key(hive, key);
+                    }
+                    RegistryRollback::DeleteKey { hive, key } => {
+                        let _ = registry_service::delete_key(hive, key);
+                    }
                 }
             }
 
             return Err(e);
         }
 
-        // Only track for rollback if NOT skip_validation
-        if !change.skip_validation {
-            applied.push((
-                change.hive,
-                change.key.clone(),
-                change.value_name.clone(),
-                current,
-            ));
-        }
-
+        // Debug logging
         if is_debug_enabled() {
+            let action_str = match change.action {
+                RegistryAction::Set => format!("Set {:?}", change.value),
+                RegistryAction::DeleteValue => "Deleted value".to_string(),
+                RegistryAction::DeleteKey => "Deleted key".to_string(),
+                RegistryAction::CreateKey => "Created key".to_string(),
+            };
             emit_debug_log(
                 app,
                 DebugLevel::Info,
                 &format!(
-                    "Set{}{}",
-                    if change.skip_validation { " [sv]" } else { "" },
+                    "{}{} {}",
+                    if change.skip_validation { "[sv] " } else { "" },
+                    action_str,
                     full_path
                 ),
-                Some(&format!("{:?}", change.value)),
+                None,
             );
         }
     }
 
-    log::debug!("Applied {} registry changes", applied.len());
+    log::debug!("Applied {} registry changes", rollbacks.len());
     Ok(())
 }
 

@@ -2192,6 +2192,7 @@ dependencies = [
  "fs4",
  "log",
  "rayon",
+ "regex",
  "regex-lite",
  "reqwest",
  "serde",
