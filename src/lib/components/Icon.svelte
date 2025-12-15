@@ -43,6 +43,7 @@
   import MdiHarddisk from "~icons/mdi/harddisk";
   import MdiHarddiskPlus from "~icons/mdi/harddisk-plus";
   import MdiHelpCircle from "~icons/mdi/help-circle";
+  import MdiHistory from "~icons/mdi/history";
   import MdiImport from "~icons/mdi/import";
   import MdiInformation from "~icons/mdi/information";
   import MdiInformationOutline from "~icons/mdi/information-outline";
@@ -175,6 +176,7 @@
     "mdi:web": MdiWeb,
     "mdi:account-circle": MdiAccountCircle,
     "mdi:arrow-right-circle": MdiArrowRightCircle,
+    "mdi:history": MdiHistory,
 
     // Category icons (used in sidebar/navigation)
     "mdi:view-dashboard": MdiViewDashboard,
