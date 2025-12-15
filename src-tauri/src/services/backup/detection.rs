@@ -170,65 +170,76 @@ fn check_scheduler_matches(
         return Ok(true);
     }
 
-    // Process scheduler changes sequentially.
+    // Process scheduler changes in parallel.
     //
-    // NOTE: The Windows Task Scheduler API is COM-based, and COM objects are not thread-safe unless
-    // each thread initializes its own COM apartment (e.g., via CoInitializeEx). The current
-    // scheduler_service implementation does not perform per-thread COM initialization, so parallelizing
-    // this loop could cause undefined behavior, crashes, or subtle bugs.
-    //
-    // If parallelization is desired in the future, scheduler_service must be refactored to ensure that
-    // each thread initializes and uninitializes its own COM apartment before making any COM calls.
-    // This is non-trivial and may introduce complexity or maintenance risk.
-    //
-    // For now, we process scheduler changes sequentially to ensure correctness and stability.
-    for change in validatable_scheduler {
-        // Determine expected state based on action
-        let expected_state = match change.action {
-            crate::models::tweak::SchedulerAction::Enable => scheduler_service::TaskState::Ready,
-            crate::models::tweak::SchedulerAction::Disable => {
-                scheduler_service::TaskState::Disabled
-            }
-            crate::models::tweak::SchedulerAction::Delete => scheduler_service::TaskState::NotFound,
-        };
-
-        // Handle pattern vs exact name
-        if let Some(ref pattern) = change.task_name_pattern {
-            // For patterns, find all matching tasks and check each
-            let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)
-                .unwrap_or_default();
-
-            if tasks.is_empty() {
-                // No tasks found - only matches if we expected deletion or ignore_not_found
-                if expected_state != scheduler_service::TaskState::NotFound
-                    && !change.ignore_not_found
-                {
-                    return Ok(false);
+    // NOTE: The scheduler_service uses the `schtasks.exe` CLI tool via std::process::Command,
+    // which is thread-safe and does not share COM apartments between threads.
+    // Therefore, it is safe to parallelize these checks.
+    let results: Vec<Result<bool, Error>> = validatable_scheduler
+        .par_iter()
+        .map(|change| {
+            // Determine expected state based on action
+            let expected_state = match change.action {
+                crate::models::tweak::SchedulerAction::Enable => {
+                    scheduler_service::TaskState::Ready
                 }
-            } else {
-                // Check that all matching tasks have expected state
-                for task in tasks {
-                    if !task_state_matches(&task.state, &expected_state) {
+                crate::models::tweak::SchedulerAction::Disable => {
+                    scheduler_service::TaskState::Disabled
+                }
+                crate::models::tweak::SchedulerAction::Delete => {
+                    scheduler_service::TaskState::NotFound
+                }
+            };
+
+            // Handle pattern vs exact name
+            if let Some(ref pattern) = change.task_name_pattern {
+                // For patterns, find all matching tasks and check each
+                let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)
+                    .unwrap_or_default();
+
+                if tasks.is_empty() {
+                    // No tasks found - only matches if we expected deletion or ignore_not_found
+                    if expected_state != scheduler_service::TaskState::NotFound
+                        && !change.ignore_not_found
+                    {
                         return Ok(false);
                     }
+                } else {
+                    // Check that all matching tasks have expected state
+                    for task in tasks {
+                        if !task_state_matches(&task.state, &expected_state) {
+                            return Ok(false);
+                        }
+                    }
+                }
+            } else if let Some(ref task_name) = change.task_name {
+                // Exact task name - check single task
+                let current_state = scheduler_service::get_task_state(&change.task_path, task_name)
+                    .unwrap_or(scheduler_service::TaskState::NotFound);
+
+                // Handle ignore_not_found for exact names
+                if current_state == scheduler_service::TaskState::NotFound
+                    && change.ignore_not_found
+                {
+                    // Task not found but ignore_not_found is set - consider this as matching
+                    return Ok(true);
+                }
+
+                if !task_state_matches(&current_state, &expected_state) {
+                    return Ok(false);
                 }
             }
-        } else if let Some(ref task_name) = change.task_name {
-            // Exact task name - check single task
-            let current_state = scheduler_service::get_task_state(&change.task_path, task_name)
-                .unwrap_or(scheduler_service::TaskState::NotFound);
+            // If neither pattern nor name, skip validation for this change (implicitly match)
 
-            // Handle ignore_not_found for exact names
-            if current_state == scheduler_service::TaskState::NotFound && change.ignore_not_found {
-                // Task not found but ignore_not_found is set - consider this as matching
-                continue;
-            }
+            Ok(true)
+        })
+        .collect();
 
-            if !task_state_matches(&current_state, &expected_state) {
-                return Ok(false);
-            }
+    // Check if all results are Ok(true)
+    for result in results {
+        if !result? {
+            return Ok(false);
         }
-        // If neither pattern nor name, skip validation for this change
     }
 
     Ok(true)
