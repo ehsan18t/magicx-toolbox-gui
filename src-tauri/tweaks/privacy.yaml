@@ -129,12 +129,9 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
       - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Siuf\\Rules"
-            value_name: "NumberOfSIUFInPeriod"
-            value_type: "REG_DWORD"
-            value: -1
+        # Delete the key to restore default behavior (Windows prompts for feedback)
+        post_powershell:
+          - "Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Siuf\\Rules' -Name 'NumberOfSIUFInPeriod' -ErrorAction SilentlyContinue"
 
   - id: disable_inking_data
     name: "Disable Inking & Typing Data"

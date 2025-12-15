@@ -29,8 +29,9 @@
 14. [Complete Examples](#complete-examples)
 15. [Best Practices](#best-practices)
 16. [Common Mistakes](#common-mistakes)
-17. [Testing Your Tweaks](#testing-your-tweaks)
-18. [Troubleshooting](#troubleshooting)
+17. [Build-Time Validation](#build-time-validation)
+18. [Testing Your Tweaks](#testing-your-tweaks)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -1431,6 +1432,220 @@ options:
 # - Still attempts the change
 # - Failures don't rollback
 # - Status detection ignores this item
+```
+
+---
+
+## Build-Time Validation
+
+The tweak system includes a **strict validation engine** that runs at build time. All YAML files are validated for structural and semantic correctness before compilation. Errors are reported with file names and tweak IDs for easy identification.
+
+### What Gets Validated
+
+| Check                            | Type    | Description                                                                 |
+| -------------------------------- | ------- | --------------------------------------------------------------------------- |
+| **Unknown Fields**               | Error   | Typos in field names are caught (e.g., `require_admin` vs `requires_admin`) |
+| **Duplicate Tweak IDs**          | Error   | Each tweak must have a unique ID across all files                           |
+| **Duplicate Category IDs**       | Error   | Each category must have a unique ID across all files                        |
+| **Tweak ID Format**              | Error   | IDs must be snake_case (lowercase letters, digits, underscores)             |
+| **Toggle Option Count**          | Error   | Tweaks with `is_toggle: true` must have exactly 2 options                   |
+| **Duplicate Option Labels**      | Error   | Option labels must be unique within a tweak (case-insensitive)              |
+| **Empty Options**                | Error   | Each option must have at least one change (registry, service, etc.)         |
+| **Windows Versions**             | Error   | Only `10` and `11` are valid values                                         |
+| **Registry Value Types**         | Error   | Values must match their declared `value_type`                               |
+| **Registry Key/Value Names**     | Error   | Registry `key` cannot be empty                                              |
+| **Service Names**                | Error   | Service `name` cannot be empty                                              |
+| **Scheduler Task Path**          | Error   | `task_path` cannot be empty                                                 |
+| **Scheduler Task Name**          | Error   | `task_name` or `task_name_pattern` cannot be empty                          |
+| **Scheduler Mutual Exclusivity** | Error   | Cannot set both `task_name` and `task_name_pattern`                         |
+| **Regex Patterns**               | Error   | `task_name_pattern` values must be valid regex                              |
+| **Empty Registry Value Name**    | Warning | Empty `value_name` targets the default value (may be intentional)           |
+| **HKLM Without Admin**           | Warning | HKLM registry changes should have `requires_admin: true`                    |
+
+### Errors vs Warnings
+
+- **Errors** are fatal and will fail the build. These represent invalid configurations that would cause runtime failures.
+- **Warnings** are non-fatal and show during build output with `⚠`. These represent potentially problematic configurations that may be intentional.
+
+### Registry Value Type Rules
+
+| `value_type`    | Expected Value                       | Example                        |
+| --------------- | ------------------------------------ | ------------------------------ |
+| `REG_DWORD`     | Integer (0 to 4294967295)            | `value: 1`                     |
+| `REG_QWORD`     | Integer (64-bit)                     | `value: 9223372036854775807`   |
+| `REG_SZ`        | String                               | `value: "text"`                |
+| `REG_EXPAND_SZ` | String (with environment variables)  | `value: "%USERPROFILE%\\path"` |
+| `REG_MULTI_SZ`  | Array of strings                     | `value: ["a", "b"]`            |
+| `REG_BINARY`    | Array of bytes (0-255) or hex string | `value: [0, 1, 255]`           |
+
+### Common Validation Errors
+
+#### Unknown Field
+
+```
+[privacy.yaml] Parse error: unknown field `require_admin`, expected one of `id`, `name`, ...
+```
+
+**Fix:** Check for typos in field names. Use `requires_admin`, not `require_admin`.
+
+#### Invalid REG_DWORD Value
+
+```
+[privacy.yaml] Tweak 'my_tweak': option 'Enabled' registry change 'MyValue': REG_DWORD value -1 out of range (0..4294967295)
+```
+
+**Fix:** REG_DWORD is unsigned. Use `0` to `4294967295`. To "delete" a value, use PowerShell:
+
+```yaml
+post_powershell:
+  - "Remove-ItemProperty -Path 'HKCU:\\Path' -Name 'Value' -ErrorAction SilentlyContinue"
+```
+
+#### REG_SZ with null value
+
+```
+[ui.yaml] Tweak 'my_tweak': option 'Default' registry change 'Value': REG_SZ requires string value, got null
+```
+
+**Fix:** Registry values can't be `null`. To delete a key, use PowerShell:
+
+```yaml
+post_powershell:
+  - "Remove-Item -Path 'HKCU:\\Path\\To\\Key' -Recurse -Force -ErrorAction SilentlyContinue"
+```
+
+#### Scheduler Mutual Exclusivity
+
+```
+[windows_update.yaml] Tweak 'my_tweak': option 'Disabled' scheduler change: cannot specify both 'task_name' and 'task_name_pattern' (mutually exclusive)
+```
+
+**Fix:** Use either `task_name` for a single task OR `task_name_pattern` for multiple tasks:
+
+```yaml
+# Single task
+scheduler_changes:
+  - task_path: "\\Microsoft\\Windows\\Task"
+    task_name: "SpecificTask"
+    action: disable
+
+# Multiple tasks by pattern
+scheduler_changes:
+  - task_path: "\\Microsoft\\Windows\\Task"
+    task_name_pattern: "Task1|Task2|Task3"
+    action: disable
+```
+
+#### Empty Option
+
+```
+[privacy.yaml] Tweak 'my_tweak': option 'Enabled' has no changes (registry, service, scheduler, or commands)
+```
+
+**Fix:** Each option must do something. Add at least one of:
+- `registry_changes`
+- `service_changes`
+- `scheduler_changes`
+- `pre_commands` / `post_commands`
+- `pre_powershell` / `post_powershell`
+
+#### Invalid Tweak ID Format
+
+```
+[privacy.yaml] Tweak 'MyTweak': tweak ID must be snake_case (lowercase letters, digits, underscores only)
+```
+
+**Fix:** Use snake_case for tweak IDs:
+
+```yaml
+# Wrong
+- id: MyTweak
+- id: my-tweak
+- id: myTweak123
+
+# Correct
+- id: my_tweak
+- id: disable_telemetry
+- id: set_pagefile_size_4gb
+```
+
+#### Duplicate Option Labels
+
+```
+[privacy.yaml] Tweak 'my_tweak': duplicate option label 'Disabled' (case-insensitive)
+```
+
+**Fix:** Each option label must be unique within a tweak:
+
+```yaml
+# Wrong
+options:
+  - label: "Disabled"
+    ...
+  - label: "disabled"  # Duplicate (case-insensitive)!
+
+# Correct
+options:
+  - label: "Disabled"
+    ...
+  - label: "Enabled"
+```
+
+#### Duplicate Category IDs
+
+```
+[my_tweaks.yaml] Duplicate category ID 'privacy' (already defined in privacy.yaml)
+```
+
+**Fix:** Each YAML file must define a unique category ID:
+
+```yaml
+# In my_tweaks.yaml - wrong if privacy.yaml already uses 'privacy'
+category:
+  id: privacy  # Duplicate!
+
+# Correct - use a unique ID
+category:
+  id: my_custom_privacy
+```
+
+### Common Warnings
+
+Warnings don't fail the build but indicate potential issues:
+
+#### HKLM Without Admin
+
+```
+⚠ [privacy.yaml] Tweak 'my_tweak': contains HKLM registry changes but requires_admin is false (should be true)
+```
+
+**Fix:** HKLM changes require admin privileges:
+
+```yaml
+- id: my_tweak
+  requires_admin: true  # Add this!
+  options:
+    - label: "Enabled"
+      registry_changes:
+        - hive: HKLM  # This requires admin
+          key: "SOFTWARE\\..."
+```
+
+#### Empty Value Name
+
+```
+⚠ [ui.yaml] Tweak 'my_tweak': option 'Enabled' registry change '': value_name is empty (targeting default value)
+```
+
+This is a warning because targeting the default value (`(Default)`) is sometimes intentional. If not intentional, specify a value name:
+
+```yaml
+registry_changes:
+  - hive: HKCU
+    key: "Software\\MyApp"
+    value_name: "MySetting"  # Not empty
+    value_type: "REG_SZ"
+    value: "my value"
 ```
 
 ---

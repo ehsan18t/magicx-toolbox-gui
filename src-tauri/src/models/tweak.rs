@@ -162,6 +162,7 @@ impl SchedulerAction {
 
 /// Category definition from YAML header
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CategoryDefinition {
     pub id: String,
     pub name: String,
@@ -173,6 +174,7 @@ pub struct CategoryDefinition {
 
 /// Single registry modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegistryChange {
     pub hive: RegistryHive,
     pub key: String,
@@ -201,6 +203,7 @@ impl RegistryChange {
 
 /// Single service modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceChange {
     /// Service name (e.g., "DiagTrack", "Spooler")
     pub name: String,
@@ -219,6 +222,7 @@ pub struct ServiceChange {
 
 /// Single scheduled task modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SchedulerChange {
     /// Task path (e.g., "\\Microsoft\\Windows\\Customer Experience Improvement Program")
     pub task_path: String,
@@ -241,6 +245,7 @@ pub struct SchedulerChange {
 
 /// A single option within a tweak - contains all changes for that state
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TweakOption {
     /// Display label (e.g., "Enabled", "Disabled", "4MB")
     pub label: String,
@@ -292,6 +297,7 @@ impl TweakOption {
 
 /// Raw tweak definition as loaded from YAML (before category assignment)
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TweakDefinitionRaw {
     pub id: String,
     pub name: String,
@@ -318,6 +324,7 @@ pub struct TweakDefinitionRaw {
 
 /// Complete tweak definition with category assignment
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TweakDefinition {
     pub id: String,
     pub name: String,

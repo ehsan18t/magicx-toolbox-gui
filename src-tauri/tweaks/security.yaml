@@ -100,29 +100,8 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_guest_account
-    name: "Disable Guest Account"
-    description: "Disable the built-in Guest account"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    is_toggle: true
-    info: "Guest account can be a security risk if left enabled"
-    options:
-      - label: "Guest Account Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-            value_name: "F"
-            value_type: "REG_BINARY"
-            value: null
-      - label: "Guest Account Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "SAM\\SAM\\Domains\\Account\\Users\\Names\\Guest"
-            value_name: "F"
-            value_type: "REG_BINARY"
-            value: null
+  # NOTE: Guest account management removed - requires special SAM registry handling
+  # Use 'net user Guest /active:no' command instead
 
   - id: disable_smbv1
     name: "Disable SMBv1 Protocol"
