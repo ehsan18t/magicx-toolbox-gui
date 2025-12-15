@@ -122,7 +122,10 @@ export async function getWindowsVersion(): Promise<string> {
 export interface BackupInfo {
   tweak_id: string;
   tweak_name: string;
-  created_at: string;
+  applied_at: string;
+  windows_version: number;
+  registry_values_count: number;
+  service_snapshots_count: number;
 }
 
 /**
