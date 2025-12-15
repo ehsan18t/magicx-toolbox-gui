@@ -1,9 +1,9 @@
 <script lang="ts">
   import { cn } from "@/utils";
-  import { onMount } from "svelte";
   import { cubicOut } from "svelte/easing";
   import { scale } from "svelte/transition";
   import Icon from "../Icon.svelte";
+  import Spinner from "./Spinner.svelte";
 
   interface Option {
     value: string | number;
@@ -24,6 +24,7 @@
 
   // eslint-disable-next-line prefer-const -- value must stay mutable for binding
   let { value = $bindable(), ...rest }: Props = $props();
+
   const {
     options,
     placeholder = "Select...",
@@ -43,6 +44,9 @@
   const selectedOption = $derived(options.find((o) => o.value === value));
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
   const isPlaceholder = $derived(!selectedOption);
+  const highlightedOptionId = $derived(
+    highlightedIndex >= 0 ? `select-option-${options[highlightedIndex]?.value}` : undefined,
+  );
 
   function updatePosition() {
     if (!triggerEl) return;
@@ -143,13 +147,11 @@
     }
   }
 
-  function handleScroll() {
-    if (isOpen) close();
-  }
+  // Set up scroll listeners on scrollable ancestors
+  $effect(() => {
+    if (!triggerEl) return;
 
-  onMount(() => {
-    // Listen to scroll on all scrollable ancestors
-    let el = triggerEl?.parentElement;
+    let el: HTMLElement | null = triggerEl.parentElement;
     const scrollListeners: Array<{ el: Element; handler: EventListener }> = [];
 
     while (el) {
@@ -175,17 +177,20 @@
   });
 </script>
 
-<svelte:window onclick={handleClickOutside} onscroll={handleScroll} />
+<svelte:window onclick={handleClickOutside} onscroll={() => isOpen && close()} />
 
 <div class={cn("relative", className)}>
   <button
     bind:this={triggerEl}
     type="button"
+    role="combobox"
     onclick={toggle}
     onkeydown={handleKeydown}
     disabled={disabled || loading}
     aria-haspopup="listbox"
     aria-expanded={isOpen}
+    aria-controls={isOpen ? "select-listbox" : undefined}
+    aria-activedescendant={highlightedOptionId}
     class={cn(
       "flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border bg-surface px-3 text-sm transition-all duration-150",
       "border-border text-foreground",
@@ -202,14 +207,7 @@
     </span>
     <div class="flex shrink-0 items-center gap-1">
       {#if loading}
-        <svg class="animate-spin h-4 w-4 text-foreground-muted" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path
-            class="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          ></path>
-        </svg>
+        <Spinner size="sm" class="text-foreground-muted" />
       {:else}
         <Icon
           icon="mdi:chevron-down"
@@ -224,6 +222,7 @@
 {#if isOpen}
   <div
     bind:this={menuEl}
+    id="select-listbox"
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
     class="fixed z-9999 max-h-60 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
@@ -233,6 +232,7 @@
       <button
         type="button"
         role="option"
+        id="select-option-{opt.value}"
         aria-selected={opt.value === value}
         disabled={opt.disabled}
         onclick={() => selectOption(opt)}
