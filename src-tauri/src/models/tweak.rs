@@ -358,6 +358,7 @@ impl TweakDefinition {
     /// Permission hierarchy: ti > system > admin
     /// - If `requires_ti: true` is set, `requires_system` and `requires_admin` are implied
     /// - If `requires_system: true` is set, `requires_admin` is implied
+    ///
     /// This allows YAML authors to only specify the highest required permission.
     pub fn from_raw(raw: TweakDefinitionRaw, category_id: &str) -> Self {
         // Infer lower permissions from higher ones

@@ -266,6 +266,31 @@ impl ValidationContext {
         }
     }
 
+    /// Validate category definition fields
+    fn validate_category(&mut self, file: &str, category: &CategoryDefinition) {
+        // Validate category ID format (snake_case)
+        if !is_valid_tweak_id(&category.id) {
+            self.error(
+                file,
+                format!(
+                    "category ID '{}' must be snake_case (lowercase letters, digits, underscores only)",
+                    category.id
+                ),
+            );
+        }
+
+        // Validate required string fields are not empty
+        if category.name.trim().is_empty() {
+            self.error(file, "category name cannot be empty".to_string());
+        }
+        if category.description.trim().is_empty() {
+            self.error(file, "category description cannot be empty".to_string());
+        }
+        if category.icon.trim().is_empty() {
+            self.error(file, "category icon cannot be empty".to_string());
+        }
+    }
+
     /// Check if there are any errors
     fn has_errors(&self) -> bool {
         !self.errors.is_empty()
@@ -281,16 +306,20 @@ impl ValidationContext {
     /// Get formatted error report
     fn error_report(&self) -> String {
         let mut report =
-            format!("\n╔══════════════════════════════════════════════════════════════╗\n");
+            String::from("\n╔══════════════════════════════════════════════════════════════╗\n");
         report.push_str("║           YAML TWEAK VALIDATION FAILED                       ║\n");
         report.push_str("╠══════════════════════════════════════════════════════════════╣\n");
         report.push_str(&format!(
-            "║ {} error(s) found:                                            \n",
-            self.errors.len()
+            "║ {:.<62}║\n",
+            format!("{} error(s) found:", self.errors.len())
         ));
         report.push_str("╠══════════════════════════════════════════════════════════════╣\n");
         for (i, error) in self.errors.iter().enumerate() {
-            report.push_str(&format!("║ {}. {}\n", i + 1, error));
+            // Errors may span multiple lines; each line needs proper framing
+            let numbered = format!("{}. {}", i + 1, error);
+            for line in numbered.lines() {
+                report.push_str(&format!("║ {}\n", line));
+            }
         }
         report.push_str("╚══════════════════════════════════════════════════════════════╝\n");
         report
@@ -338,13 +367,22 @@ impl RegistryChange {
             );
         }
 
-        // Validate value_name is not empty (empty string is technically valid but likely a mistake)
+        // Validate value_name (empty string targets default value, whitespace-only is likely a mistake)
         if self.value_name.is_empty() {
             ctx.tweak_warning(
                 file,
                 tweak_id,
                 format!(
                     "{}: value_name is empty (targeting default value)",
+                    location
+                ),
+            );
+        } else if self.value_name.trim().is_empty() {
+            ctx.tweak_error(
+                file,
+                tweak_id,
+                format!(
+                    "{}: value_name is whitespace-only (use empty string for default value)",
                     location
                 ),
             );
@@ -434,6 +472,20 @@ impl RegistryChange {
                             value_type_name(&self.value)
                         ),
                     );
+                } else if let Some(n) = self.value.as_i64() {
+                    // REG_QWORD is unsigned (0 to u64::MAX), negative values are invalid
+                    if n < 0 {
+                        ctx.tweak_error(
+                            file,
+                            tweak_id,
+                            format!(
+                                "{}: REG_QWORD value {} is negative; must be in range 0..{}",
+                                location,
+                                n,
+                                u64::MAX
+                            ),
+                        );
+                    }
                 }
             }
             RegistryValueType::String | RegistryValueType::ExpandString => {
@@ -630,6 +682,15 @@ impl SchedulerChange {
 impl TweakOption {
     /// Validate option semantic correctness
     fn validate(&self, ctx: &mut ValidationContext, file: &str, tweak_id: &str) {
+        // Validate option label is not empty or whitespace
+        if self.label.trim().is_empty() {
+            ctx.tweak_error(
+                file,
+                tweak_id,
+                "option label cannot be empty or whitespace-only".to_string(),
+            );
+        }
+
         // Validate all registry changes
         for change in &self.registry_changes {
             change.validate(ctx, file, tweak_id, &self.label);
@@ -828,8 +889,9 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        // Check for duplicate category ID
+        // Check for duplicate category ID and validate category fields
         validation_ctx.check_category_duplicate(&file_name, &tweak_file.category.id);
+        validation_ctx.validate_category(&file_name, &tweak_file.category);
         parsed_files.push((file_name, tweak_file));
     }
 
@@ -840,7 +902,10 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
         report.push_str("║           YAML PARSE ERRORS                                  ║\n");
         report.push_str("╠══════════════════════════════════════════════════════════════╣\n");
         for error in &parse_errors {
-            report.push_str(&format!("║ {}\n", error));
+            // Errors may span multiple lines; each line needs proper framing
+            for line in error.lines() {
+                report.push_str(&format!("║ {}\n", line));
+            }
         }
         report.push_str("╚══════════════════════════════════════════════════════════════╝\n");
         return Err(report.into());

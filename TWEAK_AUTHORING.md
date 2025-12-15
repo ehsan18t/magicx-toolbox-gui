@@ -335,14 +335,14 @@ registry_changes:
 
 #### Registry Value Types
 
-| Type            | YAML Syntax             | Description                  |
-| --------------- | ----------------------- | ---------------------------- |
-| `REG_DWORD`     | `value: 1`              | 32-bit integer               |
-| `REG_QWORD`     | `value: 12345678900`    | 64-bit integer               |
-| `REG_SZ`        | `value: "string"`       | String value                 |
-| `REG_EXPAND_SZ` | `value: "%PATH%"`       | Expandable string            |
-| `REG_BINARY`    | `value: [0, 1, 2, 255]` | Binary data (array of bytes) |
-| `REG_MULTI_SZ`  | *(Limited support)*     | Multi-string (read-only)     |
+| Type            | YAML Syntax             | Description                                 |
+| --------------- | ----------------------- | ------------------------------------------- |
+| `REG_DWORD`     | `value: 1`              | 32-bit unsigned (0 to 4294967295)           |
+| `REG_QWORD`     | `value: 12345678900`    | 64-bit unsigned (0 to 18446744073709551615) |
+| `REG_SZ`        | `value: "string"`       | String value                                |
+| `REG_EXPAND_SZ` | `value: "%PATH%"`       | Expandable string                           |
+| `REG_BINARY`    | `value: [0, 1, 2, 255]` | Binary data (array of bytes)                |
+| `REG_MULTI_SZ`  | *(Limited support)*     | Multi-string (read-only)                    |
 
 #### Registry Examples
 
@@ -1447,13 +1447,19 @@ The tweak system includes a **strict validation engine** that runs at build time
 | **Unknown Fields**               | Error   | Typos in field names are caught (e.g., `require_admin` vs `requires_admin`) |
 | **Duplicate Tweak IDs**          | Error   | Each tweak must have a unique ID across all files                           |
 | **Duplicate Category IDs**       | Error   | Each category must have a unique ID across all files                        |
+| **Category ID Format**           | Error   | Category IDs must be snake_case                                             |
+| **Category Fields**              | Error   | Category name, description, and icon cannot be empty                        |
 | **Tweak ID Format**              | Error   | IDs must be snake_case (lowercase letters, digits, underscores)             |
 | **Toggle Option Count**          | Error   | Tweaks with `is_toggle: true` must have exactly 2 options                   |
 | **Duplicate Option Labels**      | Error   | Option labels must be unique within a tweak (case-insensitive)              |
+| **Option Label**                 | Error   | Option labels cannot be empty or whitespace-only                            |
 | **Empty Options**                | Error   | Each option must have at least one change (registry, service, etc.)         |
 | **Windows Versions**             | Error   | Only `10` and `11` are valid values                                         |
 | **Registry Value Types**         | Error   | Values must match their declared `value_type`                               |
+| **REG_DWORD Range**              | Error   | Values must be in range 0 to 4294967295                                     |
+| **REG_QWORD Range**              | Error   | Values must be non-negative (0 to 18446744073709551615)                     |
 | **Registry Key/Value Names**     | Error   | Registry `key` cannot be empty                                              |
+| **Whitespace Value Names**       | Error   | `value_name` cannot be whitespace-only (use empty string for default)       |
 | **Service Names**                | Error   | Service `name` cannot be empty                                              |
 | **Scheduler Task Path**          | Error   | `task_path` cannot be empty                                                 |
 | **Scheduler Task Name**          | Error   | `task_name` or `task_name_pattern` cannot be empty                          |
@@ -1472,7 +1478,7 @@ The tweak system includes a **strict validation engine** that runs at build time
 | `value_type`    | Expected Value                       | Example                        |
 | --------------- | ------------------------------------ | ------------------------------ |
 | `REG_DWORD`     | Integer (0 to 4294967295)            | `value: 1`                     |
-| `REG_QWORD`     | Integer (64-bit)                     | `value: 9223372036854775807`   |
+| `REG_QWORD`     | Integer (0 to 18446744073709551615)  | `value: 9223372036854775807`   |
 | `REG_SZ`        | String                               | `value: "text"`                |
 | `REG_EXPAND_SZ` | String (with environment variables)  | `value: "%USERPROFILE%\\path"` |
 | `REG_MULTI_SZ`  | Array of strings                     | `value: ["a", "b"]`            |
@@ -1728,14 +1734,14 @@ Some changes only work on fresh installs or after updates.
 
 ## Appendix: Value Type Reference
 
-| YAML Type | Registry Type | Example YAML           | Notes                       |
-| --------- | ------------- | ---------------------- | --------------------------- |
-| Integer   | REG_DWORD     | `value: 1`             | 32-bit, 0 to 4294967295     |
-| Integer   | REG_QWORD     | `value: 9876543210`    | 64-bit                      |
-| String    | REG_SZ        | `value: "text"`        | Plain string                |
-| String    | REG_EXPAND_SZ | `value: "%PATH%"`      | Expandable environment vars |
-| Array     | REG_BINARY    | `value: [0, 255, 128]` | Byte array                  |
-| Null      | (delete)      | `value: null`          | Deletes the value           |
+| YAML Type | Registry Type | Example YAML           | Notes                             |
+| --------- | ------------- | ---------------------- | --------------------------------- |
+| Integer   | REG_DWORD     | `value: 1`             | 32-bit, 0 to 4294967295           |
+| Integer   | REG_QWORD     | `value: 9876543210`    | 64-bit, 0 to 18446744073709551615 |
+| String    | REG_SZ        | `value: "text"`        | Plain string                      |
+| String    | REG_EXPAND_SZ | `value: "%PATH%"`      | Expandable environment vars       |
+| Array     | REG_BINARY    | `value: [0, 255, 128]` | Byte array                        |
+| Null      | (delete)      | `value: null`          | Deletes the value                 |
 
 ---
 
