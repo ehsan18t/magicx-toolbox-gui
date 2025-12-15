@@ -14,7 +14,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     info: "Disables DiagTrack service and associated telemetry features"
     is_toggle: true
     options:
@@ -53,9 +52,7 @@ tweaks:
     name: "Disable Advertising ID"
     description: "Disable advertising ID for personalized ads"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -77,9 +74,7 @@ tweaks:
     name: "Disable Activity History"
     description: "Disable Windows activity history tracking"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -101,9 +96,7 @@ tweaks:
     name: "Disable Location Tracking"
     description: "Disable location tracking services"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -125,9 +118,7 @@ tweaks:
     name: "Disable Feedback Notifications"
     description: "Disable Windows feedback and suggestion notifications"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -149,9 +140,7 @@ tweaks:
     name: "Disable Inking & Typing Data"
     description: "Disable collection of inking and typing data for personalization"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -175,7 +164,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -197,9 +185,7 @@ tweaks:
     name: "Disable Suggested Content"
     description: "Disable suggested apps and content in Start menu and Settings"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -221,9 +207,7 @@ tweaks:
     name: "Disable Tailored Experiences"
     description: "Disable tailored experiences based on your data"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -247,7 +231,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Minimum"
@@ -271,7 +254,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -293,9 +275,7 @@ tweaks:
     name: "Disable Cloud Clipboard Sync"
     description: "Disable syncing clipboard content to cloud"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -317,9 +297,7 @@ tweaks:
     name: "Disable Store App Auto Install"
     description: "Prevent Windows from automatically installing suggested apps from the Store"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -341,9 +319,7 @@ tweaks:
     name: "Disable Windows Welcome Experience"
     description: "Disable Windows welcome experience after updates"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -365,9 +341,7 @@ tweaks:
     name: "Disable Windows Spotlight Ads"
     description: "Disable Windows Spotlight lockscreen tips and advertisements"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -399,9 +373,7 @@ tweaks:
     name: "Disable Tips About Windows"
     description: "Disable 'Show me tips about Windows' notifications"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -423,9 +395,7 @@ tweaks:
     name: "Disable Start Menu Suggestions"
     description: "Disable suggestions in Start menu"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -459,7 +429,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -483,7 +452,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -505,9 +473,7 @@ tweaks:
     name: "Disable Thumbs.db on Network Drives"
     description: "Prevent creation of thumbs.db files on network folders"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"

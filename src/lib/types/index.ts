@@ -3,6 +3,9 @@
 /** Risk level for tweaks */
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
+/** Permission level for tweaks (hierarchical: ti > system > admin > none) */
+export type PermissionLevel = "none" | "admin" | "system" | "ti";
+
 /** Registry hive types */
 export type RegistryHive = "HKCU" | "HKLM";
 
@@ -366,4 +369,57 @@ export interface UpdateCheckResult {
   success: boolean;
   update?: UpdateInfo;
   error?: string;
+}
+
+// ============================================================================
+// PERMISSION LEVEL HELPERS
+// ============================================================================
+
+/** Permission info for UI display */
+export interface PermissionInfo {
+  name: string;
+  description: string;
+  icon: string;
+  /** Color class for styling (e.g., 'text-foreground-muted', 'text-accent') */
+  colorClass: string;
+}
+
+/** Permission level metadata for UI */
+export const PERMISSION_INFO: Record<Exclude<PermissionLevel, "none">, PermissionInfo> = {
+  admin: {
+    name: "Admin",
+    description: "Requires Administrator privileges to apply",
+    icon: "mdi:shield-account-outline",
+    colorClass: "text-foreground-muted",
+  },
+  system: {
+    name: "System",
+    description: "Requires SYSTEM elevation for protected registry keys and services",
+    icon: "mdi:shield-lock",
+    colorClass: "text-accent",
+  },
+  ti: {
+    name: "TrustedInstaller",
+    description: "Requires TrustedInstaller elevation for highly protected resources",
+    icon: "mdi:shield-key",
+    colorClass: "text-warning",
+  },
+};
+
+/**
+ * Get the highest permission level from a tweak definition.
+ * Permission hierarchy: ti > system > admin > none
+ *
+ * @param tweak - Object with requires_admin, requires_system, requires_ti flags
+ * @returns The highest permission level required
+ */
+export function getHighestPermission(tweak: {
+  requires_admin: boolean;
+  requires_system: boolean;
+  requires_ti: boolean;
+}): PermissionLevel {
+  if (tweak.requires_ti) return "ti";
+  if (tweak.requires_system) return "system";
+  if (tweak.requires_admin) return "admin";
+  return "none";
 }

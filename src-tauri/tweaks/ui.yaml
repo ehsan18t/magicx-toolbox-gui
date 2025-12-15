@@ -12,9 +12,7 @@ tweaks:
     name: "Disable Lock Screen Ads"
     description: "Remove advertisements from lock screen"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Ads Disabled"
@@ -38,7 +36,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Classic Menu Enabled"
@@ -62,9 +59,7 @@ tweaks:
     name: "Disable Web Search in Start Menu"
     description: "Disable web search results in Windows Start menu"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Web Search Disabled"
@@ -86,9 +81,7 @@ tweaks:
     name: "Show File Extensions"
     description: "Always show file extensions in File Explorer"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Extensions Visible"
@@ -110,9 +103,7 @@ tweaks:
     name: "Show Hidden Files"
     description: "Show hidden files and folders in File Explorer"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Hidden Files Visible"
@@ -134,9 +125,7 @@ tweaks:
     name: "Disable Snap Assist Suggestions"
     description: "Disable window snap suggestions when dragging"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Snap Assist Disabled"
@@ -158,7 +147,6 @@ tweaks:
     name: "Disable Widgets (Windows 11)"
     description: "Disable the widgets dashboard in Windows 11 (requires disabling UCPD service)"
     risk_level: low
-    requires_admin: true
     requires_reboot: false
     requires_system: true
     is_toggle: true
@@ -193,9 +181,7 @@ tweaks:
     name: "Remove Chat Icon (Windows 11)"
     description: "Hide the Chat icon from Windows 11 taskbar"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Chat Icon Hidden"
@@ -219,9 +205,7 @@ tweaks:
     name: "Use Small Taskbar Icons"
     description: "Use smaller icons in the taskbar"
     risk_level: low
-    requires_admin: false
     requires_reboot: true
-    requires_system: false
     is_toggle: true
     options:
       - label: "Small Icons"
@@ -243,9 +227,7 @@ tweaks:
     name: "Disable Animation & Transition Effects"
     description: "Disable window animation and transition effects"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Animations Disabled"
@@ -267,9 +249,7 @@ tweaks:
     name: "Enable 'Do This For All' by Default"
     description: "Check 'Do this for all current items' checkbox by default in file operations"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Checkbox Pre-checked"
@@ -291,9 +271,7 @@ tweaks:
     name: "Disable Action Center (Windows 10)"
     description: "Disable the Action Center/Notification Center"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Action Center Disabled"
@@ -317,9 +295,7 @@ tweaks:
     name: "Disable File Explorer Sync Ads"
     description: "Disable sync provider notifications/ads in File Explorer"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Sync Ads Disabled"
@@ -341,9 +317,7 @@ tweaks:
     name: "Disable Downloaded Files Block"
     description: "Prevent Windows from blocking downloaded files from the internet"
     risk_level: medium
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Removes the 'This file came from another computer' security warning"
     options:

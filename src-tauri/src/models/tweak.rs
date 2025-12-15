@@ -346,17 +346,28 @@ pub struct TweakDefinition {
 }
 
 impl TweakDefinition {
-    /// Create from raw definition and category id
+    /// Create from raw definition and category id.
+    ///
+    /// Permission hierarchy: ti > system > admin
+    /// - If `requires_ti: true` is set, `requires_system` and `requires_admin` are implied
+    /// - If `requires_system: true` is set, `requires_admin` is implied
+    /// This allows YAML authors to only specify the highest required permission.
     pub fn from_raw(raw: TweakDefinitionRaw, category_id: &str) -> Self {
+        // Infer lower permissions from higher ones
+        // ti implies system implies admin
+        let requires_ti = raw.requires_ti;
+        let requires_system = raw.requires_system || requires_ti;
+        let requires_admin = raw.requires_admin || requires_system;
+
         TweakDefinition {
             id: raw.id,
             name: raw.name,
             description: raw.description,
             info: raw.info,
             risk_level: raw.risk_level,
-            requires_admin: raw.requires_admin,
-            requires_system: raw.requires_system,
-            requires_ti: raw.requires_ti,
+            requires_admin,
+            requires_system,
+            requires_ti,
             requires_reboot: raw.requires_reboot,
             is_toggle: raw.is_toggle,
             options: raw.options,

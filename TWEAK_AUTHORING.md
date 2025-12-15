@@ -71,10 +71,7 @@ tweaks:
     name: "Disable Example Feature"
     description: "A simple toggle tweak"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
-    requires_ti: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -175,9 +172,9 @@ Each tweak defines a configurable Windows setting.
   description: string           # Required: Short description
   info: string                  # Optional: Detailed documentation
   risk_level: low|medium|high|critical  # Required: Impact level
-  requires_admin: boolean       # Required: Needs admin privileges
-  requires_system: boolean      # Required: Needs SYSTEM elevation
-  requires_ti: boolean          # Optional: Needs TrustedInstaller elevation
+  requires_admin: boolean       # Optional: Needs admin privileges
+  requires_system: boolean      # Optional: Needs SYSTEM elevation (implies admin)
+  requires_ti: boolean          # Optional: Needs TrustedInstaller (implies system & admin)
   requires_reboot: boolean      # Required: Needs restart to take effect
   is_toggle: boolean            # Required: true = switch UI, false = dropdown
   options: []                   # Required: Array of option definitions
@@ -192,8 +189,8 @@ Each tweak defines a configurable Windows setting.
 | `description`     | string  | ✅        | -       | One-line description shown under the name.                          |
 | `info`            | string  | ❌        | -       | Extended documentation shown in info popup.                         |
 | `risk_level`      | enum    | ✅        | -       | One of: `low`, `medium`, `high`, `critical`.                        |
-| `requires_admin`  | boolean | ✅        | `false` | Requires running as Administrator.                                  |
-| `requires_system` | boolean | ✅        | `false` | Requires SYSTEM elevation for protected resources.                  |
+| `requires_admin`  | boolean | ❌        | `false` | Requires running as Administrator. Auto-inferred if system/ti set.  |
+| `requires_system` | boolean | ❌        | `false` | Requires SYSTEM elevation. Auto-inferred if ti is set.              |
 | `requires_ti`     | boolean | ❌        | `false` | Requires TrustedInstaller elevation (for WaaSMedicSvc, etc.)        |
 | `requires_reboot` | boolean | ✅        | `false` | Changes require restart to fully apply.                             |
 | `is_toggle`       | boolean | ✅        | `false` | `true` = 2-option switch, `false` = dropdown.                       |
@@ -210,27 +207,33 @@ Each tweak defines a configurable Windows setting.
 
 ### Privilege Requirements
 
+The permission system uses a hierarchical model: **TrustedInstaller > System > Admin > None**
+
+Lower permissions are automatically inferred from higher ones:
+- `requires_ti: true` → automatically sets `requires_system: true` and `requires_admin: true`
+- `requires_system: true` → automatically sets `requires_admin: true`
+
+**Only specify the highest permission level needed:**
+
 ```yaml
 # No special privileges (HKCU changes only)
-requires_admin: false
-requires_system: false
-requires_ti: false
+# Just omit all permission flags - they default to false
 
 # Administrator required (HKLM changes)
 requires_admin: true
-requires_system: false
-requires_ti: false
 
 # SYSTEM elevation required (protected registry keys/services)
-requires_admin: true
 requires_system: true
-requires_ti: false
+# Note: requires_admin is automatically inferred, don't specify it
 
 # TrustedInstaller required (heavily protected services like WaaSMedicSvc)
-requires_admin: true
-requires_system: true
 requires_ti: true
+# Note: Both requires_system and requires_admin are automatically inferred
 ```
+
+**When is `requires_admin: true` needed?**
+- Any changes to HKLM (HKEY_LOCAL_MACHINE) registry keys
+- Changes that affect all users on the system
 
 **When is `requires_system: true` needed?**
 - Protected registry keys (e.g., under `SYSTEM\CurrentControlSet\Services\`)

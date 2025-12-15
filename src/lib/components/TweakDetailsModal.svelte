@@ -3,7 +3,7 @@
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { TweakOption } from "$lib/types";
-  import { RISK_INFO, type RiskLevel } from "$lib/types";
+  import { getHighestPermission, PERMISSION_INFO, RISK_INFO, type RiskLevel } from "$lib/types";
   import Icon from "./Icon.svelte";
   import { CommandList, RegistryChangeItem, SchedulerChangeItem, ServiceChangeItem } from "./tweak-details";
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "./ui";
@@ -52,6 +52,14 @@
     return RISK_INFO[t.definition.risk_level as RiskLevel];
   });
 
+  // Get highest permission level (hierarchy: ti > system > admin > none)
+  const highestPermission = $derived.by(() => {
+    const t = tweak;
+    if (!t) return "none" as const;
+    return getHighestPermission(t.definition);
+  });
+  const permissionInfo = $derived(highestPermission !== "none" ? PERMISSION_INFO[highestPermission] : null);
+
   function optionLabel(optionIndex: number | null | undefined, options: TweakOption[]): string {
     if (optionIndex === null || optionIndex === undefined) return "System Default";
     const opt = options[optionIndex];
@@ -81,24 +89,11 @@
           </Badge>
         {/if}
 
-        {#if tweak.definition.requires_admin}
+        <!-- Permission level (only show highest: ti > system > admin) -->
+        {#if permissionInfo}
           <Badge variant="default" class="gap-1.5">
-            <Icon icon="mdi:shield-account-outline" width="14" class="text-foreground-muted" />
-            Admin
-          </Badge>
-        {/if}
-
-        {#if tweak.definition.requires_system}
-          <Badge variant="default" class="gap-1.5">
-            <Icon icon="mdi:shield-lock" width="14" class="text-foreground-muted" />
-            System
-          </Badge>
-        {/if}
-
-        {#if tweak.definition.requires_ti}
-          <Badge variant="default" class="gap-1.5">
-            <Icon icon="mdi:shield-key" width="14" class="text-foreground-muted" />
-            TrustedInstaller
+            <Icon icon={permissionInfo.icon} width="14" class="text-foreground-muted" />
+            {permissionInfo.name}
           </Badge>
         {/if}
 

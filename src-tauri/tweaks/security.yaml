@@ -14,7 +14,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Remote Desktop Disabled"
@@ -38,7 +37,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "AutoPlay Disabled"
@@ -62,7 +60,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "AutoRun Scripts Disabled"
@@ -86,7 +83,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Ctrl+Alt+Del Required"
@@ -110,7 +106,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Guest account can be a security risk if left enabled"
     options:
@@ -135,7 +130,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    requires_system: false
     is_toggle: true
     info: "SMBv1 is an old protocol with security vulnerabilities"
     options:
@@ -160,7 +154,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    requires_system: false
     is_toggle: true
     options:
       - label: "NetBIOS Disabled"
@@ -184,7 +177,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Strong Password Policy Enforced"
@@ -208,7 +200,6 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "WARNING: Reduces security. Only disable if you know what you're doing"
     options:
@@ -233,7 +224,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Prevents automatic upload of suspicious files to Microsoft"
     options:
@@ -258,7 +248,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Malware Reporting Disabled"

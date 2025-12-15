@@ -14,7 +14,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Disable if you don't use printing. Spooler service can be a security risk"
     options:
@@ -41,7 +40,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -67,7 +65,6 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Improves security by preventing remote registry access"
     options:
@@ -94,7 +91,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -130,7 +126,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"
@@ -156,7 +151,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Disabled"

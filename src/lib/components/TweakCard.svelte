@@ -10,7 +10,7 @@
     unstageChange,
   } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
-  import { RISK_INFO } from "$lib/types";
+  import { getHighestPermission, PERMISSION_INFO, RISK_INFO } from "$lib/types";
   import type { Snippet } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
@@ -52,6 +52,10 @@
 
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
   const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
+
+  // Get highest permission level (hierarchy: ti > system > admin > none)
+  const highestPermission = $derived(getHighestPermission(tweak.definition));
+  const permissionInfo = $derived(highestPermission !== "none" ? PERMISSION_INFO[highestPermission] : null);
 
   // Risk level config
   const riskConfig: Record<RiskLevel, { icon: string; color: string }> = {
@@ -288,25 +292,14 @@
           >
         </div>
 
-        <!-- Admin required -->
-        {#if tweak.definition.requires_admin}
+        <!-- Permission level (only show highest: ti > system > admin) -->
+        {#if permissionInfo}
           <div
-            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
-            title="Requires Administrator privileges to apply"
+            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium {permissionInfo.colorClass} transition-colors duration-150 hover:text-foreground"
+            title={permissionInfo.description}
           >
-            <Icon icon="mdi:shield-account-outline" width="16" class="opacity-70" />
-            <span class="text-xs font-semibold tracking-wide uppercase">Admin</span>
-          </div>
-        {/if}
-
-        <!-- SYSTEM elevation required -->
-        {#if tweak.definition.requires_system}
-          <div
-            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-accent transition-colors duration-150 hover:text-foreground"
-            title="Requires SYSTEM elevation for protected registry keys and services"
-          >
-            <Icon icon="mdi:shield-lock" width="16" class="opacity-90" />
-            <span class="text-xs font-semibold tracking-wide uppercase">System</span>
+            <Icon icon={permissionInfo.icon} width="16" class="opacity-80" />
+            <span class="text-xs font-semibold tracking-wide uppercase">{permissionInfo.name}</span>
           </div>
         {/if}
 

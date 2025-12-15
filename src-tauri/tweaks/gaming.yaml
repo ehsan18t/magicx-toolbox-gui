@@ -12,9 +12,7 @@ tweaks:
     name: "Enable Game Mode"
     description: "Enable Windows Game Mode for optimized gaming"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Game Mode reduces background processes and prioritizes gaming"
     options:
@@ -37,9 +35,7 @@ tweaks:
     name: "Disable Fullscreen Optimizations"
     description: "Disable fullscreen optimizations for games"
     risk_level: medium
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Disabling can improve gaming performance and compatibility"
     options:
@@ -64,7 +60,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    requires_system: false
     is_toggle: true
     info: "Improves gaming performance on compatible GPUs (Windows 10 build 2004+)"
     options:
@@ -87,9 +82,7 @@ tweaks:
     name: "Disable Game Bar Tips"
     description: "Disable Game Bar tips and notifications"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     options:
       - label: "Game Bar Tips Disabled"
@@ -113,7 +106,6 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Maximizes CPU and GPU performance for gaming"
     options:
@@ -136,9 +128,7 @@ tweaks:
     name: "Disable Mouse Acceleration"
     description: "Disable mouse pointer acceleration for gaming"
     risk_level: low
-    requires_admin: false
     requires_reboot: false
-    requires_system: false
     is_toggle: true
     info: "Provides more consistent mouse movement for FPS games"
     options:
