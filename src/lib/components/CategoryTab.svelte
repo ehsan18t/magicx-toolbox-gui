@@ -145,9 +145,9 @@
   </header>
 
   <!-- Toolbar -->
-  <div class="flex flex-wrap items-center gap-4">
+  <div class="flex flex-wrap items-center gap-3">
     <div
-      class="flex max-w-100 min-w-60 flex-1 items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-2.5 transition-all duration-200 focus-within:border-accent focus-within:bg-card"
+      class="flex max-w-full min-w-60 flex-1 items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-2.5 transition-all duration-200 focus-within:border-accent focus-within:bg-card"
     >
       <Icon icon="mdi:magnify" width="20" class="shrink-0 text-foreground-muted" />
       <input
