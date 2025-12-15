@@ -11,7 +11,8 @@
   const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
 
   // Derived values from stores
-  const allTabs = $derived(navigationStore.allTabs);
+  const fixedTabs = $derived(navigationStore.fixedTabs);
+  const categoryTabs = $derived(navigationStore.categoryTabs);
   const activeTab = $derived(navigationStore.activeTab);
   const stats = $derived(tweaksStore.stats);
   const categoryStats = $derived(getCategoryStats());
@@ -65,23 +66,54 @@
   onmouseenter={handleMouseEnter}
   onmouseleave={handleMouseLeave}
 >
-  <!-- Logo / Brand -->
-  <div class="flex min-h-16 items-center gap-3 border-b border-border p-4">
-    <div class="flex h-8 w-8 shrink-0 items-center justify-center text-accent">
-      <Icon icon="mdi:magic-staff" width="28" />
-    </div>
-    <span
-      class="text-lg font-bold whitespace-nowrap text-foreground transition-all duration-200 {sidebarStore.isOpen
-        ? 'translate-x-0 opacity-100'
-        : '-translate-x-2.5 opacity-0'}"
-    >
-      MagicX
-    </span>
-  </div>
-
   <!-- Navigation -->
-  <nav class="nav-scrollbar flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2">
-    {#each allTabs as tab (tab.id)}
+  <nav class="nav-scrollbar flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2 pt-3">
+    <!-- Fixed Tabs (Overview, Search) -->
+    {#each fixedTabs as tab (tab.id)}
+      {@const isActive = activeTab === tab.id}
+      <button
+        class="group relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 transition-all duration-150 {isActive
+          ? 'bg-accent/15'
+          : 'hover:bg-muted'}"
+        onclick={() => handleNavClick(tab)}
+        title={!sidebarStore.isOpen ? tab.name : undefined}
+      >
+        <div
+          class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
+            ? 'text-accent'
+            : 'text-foreground-muted group-hover:text-accent'}"
+        >
+          <Icon icon={tab.icon || "mdi:folder"} width="22" />
+        </div>
+        <span
+          class="flex-1 text-left text-sm font-medium whitespace-nowrap transition-all duration-200 {isActive
+            ? 'text-accent'
+            : 'text-foreground'} {sidebarStore.isOpen ? 'translate-x-0 opacity-100' : '-translate-x-2.5 opacity-0'}"
+        >
+          {tab.name}
+        </span>
+        {#if isActive}
+          <div class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm bg-accent"></div>
+        {/if}
+      </button>
+    {/each}
+
+    <!-- Divider -->
+    <div class="border-b border-border"></div>
+
+    <!-- Categories Header -->
+    {#if sidebarStore.isOpen}
+      <div class="px-3 py-2">
+        <span class="text-xs font-semibold tracking-wider text-foreground-muted uppercase">Categories</span>
+      </div>
+    {:else}
+      <div class="flex justify-center py-2">
+        <div class="h-1 w-1 rounded-full bg-foreground-muted"></div>
+      </div>
+    {/if}
+
+    <!-- Category Tabs -->
+    {#each categoryTabs as tab (tab.id)}
       {@const tabStats = tab.id !== "overview" ? categoryStats[tab.id] : null}
       {@const isActive = activeTab === tab.id}
       <button

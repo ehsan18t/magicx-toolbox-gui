@@ -16,6 +16,8 @@ export interface TabDefinition {
   name: string;
   icon: string;
   description?: string;
+  /** Whether this is a permanent/fixed tab (Overview, Search) vs dynamic category tab */
+  isPermanent?: boolean;
 }
 
 // === State ===
@@ -27,6 +29,7 @@ const overviewTab: TabDefinition = {
   name: "Overview",
   icon: "mdi:view-dashboard",
   description: "System information and statistics",
+  isPermanent: true,
 };
 
 // Search tab definition (static)
@@ -35,6 +38,7 @@ const searchTab: TabDefinition = {
   name: "Search",
   icon: "mdi:magnify",
   description: "Search tweaks by name, description, or info",
+  isPermanent: true,
 };
 
 // Derived: All tabs from categories
@@ -44,9 +48,20 @@ const allTabs = $derived.by((): TabDefinition[] => {
     name: cat.name,
     icon: cat.icon,
     description: cat.description,
+    isPermanent: false,
   }));
 
   return [overviewTab, searchTab, ...categoryTabs];
+});
+
+// Derived: Fixed/permanent tabs (Overview, Search)
+const fixedTabs = $derived.by((): TabDefinition[] => {
+  return allTabs.filter((tab) => tab.isPermanent === true);
+});
+
+// Derived: Category tabs (dynamic from YAML)
+const categoryTabs = $derived.by((): TabDefinition[] => {
+  return allTabs.filter((tab) => tab.isPermanent !== true);
 });
 
 // Derived: Current tab definition
@@ -71,6 +86,16 @@ export const navigationStore = {
   /** Get all available tabs */
   get allTabs() {
     return allTabs;
+  },
+
+  /** Get fixed/permanent tabs (Overview, Search) */
+  get fixedTabs() {
+    return fixedTabs;
+  },
+
+  /** Get category tabs (dynamic from YAML) */
+  get categoryTabs() {
+    return categoryTabs;
   },
 
   /** Get the current tab definition */
