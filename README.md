@@ -4,6 +4,19 @@
 
 MagicX Toolbox is a modern, safe, and easy-to-use application designed to help you take control of your Windows PC. Whether you want to boost gaming performance, enhance privacy, remove bloatware, or just customize your system, MagicX Toolbox makes it simple.
 
+## Screenshots
+
+<div align="center">
+  <img src="static/screenshots/01-overview.png" alt="Overview Tab" width="800">
+  <p><em>Overview - System information and statistics at a glance</em></p>
+
+  <img src="static/screenshots/02-search.png" alt="Search Tab" width="800">
+  <p><em>Search - Find tweaks quickly with fuzzy search</em></p>
+
+  <img src="static/screenshots/03-gaming-tweaks.png" alt="Gaming Tweaks" width="800">
+  <p><em>Gaming Tweaks - Optimize your system for better gaming performance</em></p>
+</div>
+
 ## Key Features
 
 - **🎮 Gaming Optimization**: Reduce system latency and optimize background processes for a smoother gaming experience.
