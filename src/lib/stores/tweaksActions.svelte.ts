@@ -78,9 +78,12 @@ export async function applyTweak(
     const result = await api.applyTweak(tweakId, optionIndex);
 
     if (result.success) {
+      // Query actual backup status (backend may skip if already at desired state)
+      const actualHasBackup = await api.hasBackup(tweakId);
+
       tweaksStore.updateStatus(tweakId, {
         is_applied: true,
-        has_backup: true,
+        has_backup: actualHasBackup,
         current_option_index: optionIndex,
       });
 
