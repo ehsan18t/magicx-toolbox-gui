@@ -1,5 +1,6 @@
 <script lang="ts">
   import { cn } from "@/utils";
+  import { onMount } from "svelte";
   import { cubicOut } from "svelte/easing";
   import { scale } from "svelte/transition";
   import Icon from "../Icon.svelte";
@@ -141,9 +142,40 @@
       close();
     }
   }
+
+  function handleScroll() {
+    if (isOpen) close();
+  }
+
+  onMount(() => {
+    // Listen to scroll on all scrollable ancestors
+    let el = triggerEl?.parentElement;
+    const scrollListeners: Array<{ el: Element; handler: EventListener }> = [];
+
+    while (el) {
+      const style = window.getComputedStyle(el);
+      const isScrollable = /(auto|scroll)/.test(style.overflow + style.overflowY + style.overflowX);
+
+      if (isScrollable) {
+        const handler = () => {
+          if (isOpen) close();
+        };
+        el.addEventListener("scroll", handler, { passive: true });
+        scrollListeners.push({ el, handler });
+      }
+
+      el = el.parentElement;
+    }
+
+    return () => {
+      scrollListeners.forEach(({ el, handler }) => {
+        el.removeEventListener("scroll", handler);
+      });
+    };
+  });
 </script>
 
-<svelte:window onclick={handleClickOutside} onscroll={() => isOpen && updatePosition()} />
+<svelte:window onclick={handleClickOutside} onscroll={handleScroll} />
 
 <div class={cn("relative", className)}>
   <button
