@@ -83,6 +83,32 @@ impl RegistryValueType {
     }
 }
 
+/// Action to perform on a registry key/value
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryAction {
+    /// Set a registry value (default behavior)
+    #[default]
+    Set,
+    /// Delete a specific registry value
+    DeleteValue,
+    /// Delete an entire registry key and all subkeys
+    DeleteKey,
+    /// Create a registry key without setting any value
+    CreateKey,
+}
+
+impl RegistryAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RegistryAction::Set => "set",
+            RegistryAction::DeleteValue => "delete_value",
+            RegistryAction::DeleteKey => "delete_key",
+            RegistryAction::CreateKey => "create_key",
+        }
+    }
+}
+
 /// Windows service startup type
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -178,10 +204,19 @@ pub struct CategoryDefinition {
 pub struct RegistryChange {
     pub hive: RegistryHive,
     pub key: String,
+    /// Value name (empty string targets the default value)
+    #[serde(default)]
     pub value_name: String,
-    pub value_type: RegistryValueType,
-    /// Target value for this registry entry
-    pub value: serde_json::Value,
+    /// Action to perform: set, delete_value, delete_key, create_key
+    /// Defaults to "set" for backward compatibility
+    #[serde(default)]
+    pub action: RegistryAction,
+    /// Value type - required for "set" action, ignored for delete/create actions
+    #[serde(default)]
+    pub value_type: Option<RegistryValueType>,
+    /// Target value - required for "set" action, ignored for delete/create actions
+    #[serde(default)]
+    pub value: Option<serde_json::Value>,
     /// Optional Windows version filter [10], [11], or [10, 11]
     #[serde(default)]
     pub windows_versions: Option<Vec<u32>>,
@@ -525,8 +560,9 @@ mod tests {
             hive: RegistryHive::Hkcu,
             key: "SOFTWARE\\Test".to_string(),
             value_name: "Value".to_string(),
-            value_type: RegistryValueType::Dword,
-            value: serde_json::json!(value),
+            action: RegistryAction::Set,
+            value_type: Some(RegistryValueType::Dword),
+            value: Some(serde_json::json!(value)),
             windows_versions,
             skip_validation: false,
         }
@@ -616,8 +652,9 @@ mod tests {
                         hive: RegistryHive::Hklm,
                         key: "SOFTWARE\\Other".to_string(),
                         value_name: "Other".to_string(),
-                        value_type: RegistryValueType::Dword,
-                        value: serde_json::json!(1),
+                        action: RegistryAction::Set,
+                        value_type: Some(RegistryValueType::Dword),
+                        value: Some(serde_json::json!(1)),
                         windows_versions: None,
                         skip_validation: false,
                     },

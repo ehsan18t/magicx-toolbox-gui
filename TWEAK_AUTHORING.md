@@ -308,30 +308,41 @@ options:
 
 ### Registry Changes
 
-Modify Windows Registry values.
+Modify Windows Registry values, delete keys/values, or create empty keys.
 
 ```yaml
 registry_changes:
   - hive: HKCU | HKLM           # Required: Registry hive
     key: string                  # Required: Registry key path (no hive prefix)
-    value_name: string           # Required: Value name (use "" for default)
-    value_type: string           # Required: REG_DWORD, REG_SZ, etc.
-    value: any                   # Required: Target value
+    action: set | delete_value | delete_key | create_key  # Optional: Default "set"
+    value_name: string           # Required for set/delete_value, ignored for others
+    value_type: string           # Required for set action only
+    value: any                   # Required for set action only
     windows_versions: [10, 11]   # Optional: Filter by Windows version
     skip_validation: boolean     # Optional: Exclude from status check
 ```
 
+#### Registry Actions
+
+| Action         | Description                                   | Required Fields                     | State Detection        |
+| -------------- | --------------------------------------------- | ----------------------------------- | ---------------------- |
+| `set`          | Set a registry value (default)                | `value_name`, `value_type`, `value` | Value matches expected |
+| `delete_value` | Delete a specific registry value              | `value_name`                        | Value does not exist   |
+| `delete_key`   | Delete entire key and all subkeys recursively | *(none beyond `key`)*               | Key does not exist     |
+| `create_key`   | Create a key without setting any value        | *(none beyond `key`)*               | Key exists             |
+
 #### Registry Field Details
 
-| Field              | Type    | Required | Description                                                                |
-| ------------------ | ------- | -------- | -------------------------------------------------------------------------- |
-| `hive`             | enum    | ✅        | `HKCU` (Current User) or `HKLM` (Local Machine).                           |
-| `key`              | string  | ✅        | Path without hive. Use `\\` for separators.                                |
-| `value_name`       | string  | ✅        | Name of the value. Empty string `""` for default value.                    |
-| `value_type`       | enum    | ✅        | Registry value type (see table below).                                     |
-| `value`            | any     | ✅        | The value to set. Type depends on `value_type`.                            |
-| `windows_versions` | array   | ❌        | Only apply on specific Windows versions.                                   |
-| `skip_validation`  | boolean | ❌        | Default `false`. See [skip_validation section](#the-skip_validation-flag). |
+| Field              | Type    | Required       | Description                                                                |
+| ------------------ | ------- | -------------- | -------------------------------------------------------------------------- |
+| `hive`             | enum    | ✅              | `HKCU` (Current User) or `HKLM` (Local Machine).                           |
+| `key`              | string  | ✅              | Path without hive. Use `\\` for separators.                                |
+| `action`           | enum    | ❌              | Default `set`. One of: `set`, `delete_value`, `delete_key`, `create_key`.  |
+| `value_name`       | string  | For set/delete | Name of the value. Empty string `""` for default value.                    |
+| `value_type`       | enum    | For set only   | Registry value type (see table below).                                     |
+| `value`            | any     | For set only   | The value to set. Type depends on `value_type`.                            |
+| `windows_versions` | array   | ❌              | Only apply on specific Windows versions.                                   |
+| `skip_validation`  | boolean | ❌              | Default `false`. See [skip_validation section](#the-skip_validation-flag). |
 
 #### Registry Value Types
 
@@ -347,26 +358,43 @@ registry_changes:
 #### Registry Examples
 
 ```yaml
-# DWORD (integer)
+# Set a DWORD value (default action)
 - hive: HKCU
   key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
   value_name: "HideFileExt"
   value_type: "REG_DWORD"
   value: 0
 
-# String
+# Set a string value
 - hive: HKLM
   key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
   value_name: "Max Cached Icons"
   value_type: "REG_SZ"
   value: "4096"
 
-# Empty string (default value)
+# Set empty string as default value (for context menu tweaks, etc.)
 - hive: HKCU
   key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
   value_name: ""
   value_type: "REG_SZ"
   value: ""
+
+# Delete a specific value
+- hive: HKCU
+  key: "Software\\Microsoft\\Siuf\\Rules"
+  value_name: "NumberOfSIUFInPeriod"
+  action: delete_value
+
+# Delete an entire key (and all subkeys recursively)
+- hive: HKCU
+  key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}"
+  action: delete_key
+  windows_versions: [11]
+
+# Create a key without setting any value
+- hive: HKCU
+  key: "Software\\MyApp\\Settings"
+  action: create_key
 
 # Binary data
 - hive: HKLM
@@ -1455,6 +1483,7 @@ The tweak system includes a **strict validation engine** that runs at build time
 | **Option Label**                 | Error   | Option labels cannot be empty or whitespace-only                            |
 | **Empty Options**                | Error   | Each option must have at least one change (registry, service, etc.)         |
 | **Windows Versions**             | Error   | Only `10` and `11` are valid values                                         |
+| **Registry Action Fields**       | Error   | `set` requires `value_type` + `value`; `delete_value` requires `value_name` |
 | **Registry Value Types**         | Error   | Values must match their declared `value_type`                               |
 | **REG_DWORD Range**              | Error   | Values must be in range 0 to 4294967295                                     |
 | **REG_QWORD Range**              | Error   | Values must be non-negative (0 to 18446744073709551615)                     |
@@ -1500,11 +1529,14 @@ The tweak system includes a **strict validation engine** that runs at build time
 [privacy.yaml] Tweak 'my_tweak': option 'Enabled' registry change 'MyValue': REG_DWORD value -1 out of range (0..4294967295)
 ```
 
-**Fix:** REG_DWORD is unsigned. Use `0` to `4294967295`. To "delete" a value, use PowerShell:
+**Fix:** REG_DWORD is unsigned. Use `0` to `4294967295`. To delete a value instead, use `action: delete_value`:
 
 ```yaml
-post_powershell:
-  - "Remove-ItemProperty -Path 'HKCU:\\Path' -Name 'Value' -ErrorAction SilentlyContinue"
+registry_changes:
+  - hive: HKCU
+    key: "Path\\To\\Key"
+    value_name: "Value"
+    action: delete_value
 ```
 
 #### REG_SZ with null value
@@ -1513,11 +1545,23 @@ post_powershell:
 [ui.yaml] Tweak 'my_tweak': option 'Default' registry change 'Value': REG_SZ requires string value, got null
 ```
 
-**Fix:** Registry values can't be `null`. To delete a key, use PowerShell:
+**Fix:** Registry values can't be `null`. To delete the entire key, use `action: delete_key`:
 
 ```yaml
-post_powershell:
-  - "Remove-Item -Path 'HKCU:\\Path\\To\\Key' -Recurse -Force -ErrorAction SilentlyContinue"
+registry_changes:
+  - hive: HKCU
+    key: "Path\\To\\Key"
+    action: delete_key
+```
+
+Or to delete just a value, use `action: delete_value`:
+
+```yaml
+registry_changes:
+  - hive: HKCU
+    key: "Path\\To\\Key"
+    value_name: "Value"
+    action: delete_value
 ```
 
 #### Scheduler Mutual Exclusivity

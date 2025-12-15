@@ -48,8 +48,11 @@ tweaks:
             windows_versions: [11]
       - label: "Modern Menu (Default)"
         # Delete the key to restore default modern menu
-        post_powershell:
-          - "Remove-Item -Path 'HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}' -Recurse -Force -ErrorAction SilentlyContinue"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}"
+            action: delete_key
+            windows_versions: [11]
 
   - id: disable_web_search
     name: "Disable Web Search in Start Menu"

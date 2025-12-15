@@ -77,15 +77,35 @@ enum SchedulerAction {
     Delete,
 }
 
+/// Action to perform on a registry key/value
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+enum RegistryAction {
+    /// Set a registry value (default behavior)
+    #[default]
+    Set,
+    /// Delete a specific registry value
+    DeleteValue,
+    /// Delete an entire registry key and all subkeys
+    DeleteKey,
+    /// Create a registry key without setting any value
+    CreateKey,
+}
+
 /// Single registry modification within an option
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RegistryChange {
     hive: RegistryHive,
     key: String,
+    #[serde(default)]
     value_name: String,
-    value_type: RegistryValueType,
-    value: serde_json::Value,
+    #[serde(default)]
+    action: RegistryAction,
+    #[serde(default)]
+    value_type: Option<RegistryValueType>,
+    #[serde(default)]
+    value: Option<serde_json::Value>,
     #[serde(default)]
     windows_versions: Option<Vec<u32>>,
     #[serde(default)]
@@ -367,28 +387,127 @@ impl RegistryChange {
             );
         }
 
-        // Validate value_name (empty string targets default value, whitespace-only is likely a mistake)
-        if self.value_name.is_empty() {
-            ctx.tweak_warning(
-                file,
-                tweak_id,
-                format!(
-                    "{}: value_name is empty (targeting default value)",
-                    location
-                ),
-            );
-        } else if self.value_name.trim().is_empty() {
-            ctx.tweak_error(
-                file,
-                tweak_id,
-                format!(
-                    "{}: value_name is whitespace-only (use empty string for default value)",
-                    location
-                ),
-            );
+        // Action-specific validation
+        match self.action {
+            RegistryAction::Set => {
+                // Set action requires value_type and value
+                if self.value_type.is_none() {
+                    ctx.tweak_error(
+                        file,
+                        tweak_id,
+                        format!("{}: 'set' action requires value_type", location),
+                    );
+                }
+                if self.value.is_none() {
+                    ctx.tweak_error(
+                        file,
+                        tweak_id,
+                        format!("{}: 'set' action requires value", location),
+                    );
+                }
+                // Validate value_name (empty string targets default value)
+                if self.value_name.is_empty() {
+                    ctx.tweak_warning(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_name is empty (targeting default value)",
+                            location
+                        ),
+                    );
+                } else if self.value_name.trim().is_empty() {
+                    ctx.tweak_error(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_name is whitespace-only (use empty string for default value)",
+                            location
+                        ),
+                    );
+                }
+                // Validate value matches value_type (if both present)
+                if self.value_type.is_some() && self.value.is_some() {
+                    self.validate_value_type(ctx, file, tweak_id, &location);
+                }
+            }
+            RegistryAction::DeleteValue => {
+                // DeleteValue requires value_name
+                if self.value_name.is_empty() {
+                    ctx.tweak_error(
+                        file,
+                        tweak_id,
+                        format!("{}: 'delete_value' action requires value_name", location),
+                    );
+                } else if self.value_name.trim().is_empty() {
+                    ctx.tweak_error(
+                        file,
+                        tweak_id,
+                        format!("{}: value_name is whitespace-only", location),
+                    );
+                }
+                // Warn if value_type/value are provided (they're ignored)
+                if self.value_type.is_some() || self.value.is_some() {
+                    ctx.tweak_warning(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_type and value are ignored for 'delete_value' action",
+                            location
+                        ),
+                    );
+                }
+            }
+            RegistryAction::DeleteKey => {
+                // DeleteKey only needs the key path
+                // Warn if value_name/value_type/value are provided
+                if !self.value_name.is_empty() {
+                    ctx.tweak_warning(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_name is ignored for 'delete_key' action",
+                            location
+                        ),
+                    );
+                }
+                if self.value_type.is_some() || self.value.is_some() {
+                    ctx.tweak_warning(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_type and value are ignored for 'delete_key' action",
+                            location
+                        ),
+                    );
+                }
+            }
+            RegistryAction::CreateKey => {
+                // CreateKey only needs the key path
+                // Warn if value_name/value_type/value are provided
+                if !self.value_name.is_empty() {
+                    ctx.tweak_warning(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_name is ignored for 'create_key' action",
+                            location
+                        ),
+                    );
+                }
+                if self.value_type.is_some() || self.value.is_some() {
+                    ctx.tweak_warning(
+                        file,
+                        tweak_id,
+                        format!(
+                            "{}: value_type and value are ignored for 'create_key' action",
+                            location
+                        ),
+                    );
+                }
+            }
         }
 
-        // Validate Windows versions
+        // Validate Windows versions (applies to all actions)
         if let Some(versions) = &self.windows_versions {
             for v in versions {
                 if !VALID_WINDOWS_VERSIONS.contains(v) {
@@ -403,9 +522,6 @@ impl RegistryChange {
                 }
             }
         }
-
-        // Validate value matches value_type
-        self.validate_value_type(ctx, file, tweak_id, &location);
     }
 
     /// Check if this registry change targets HKLM (requires admin)
@@ -421,19 +537,28 @@ impl RegistryChange {
         tweak_id: &str,
         location: &str,
     ) {
-        match self.value_type {
+        let value_type = match &self.value_type {
+            Some(vt) => vt,
+            None => return,
+        };
+        let value = match &self.value {
+            Some(v) => v,
+            None => return,
+        };
+
+        match value_type {
             RegistryValueType::Dword => {
-                if !self.value.is_u64() && !self.value.is_i64() {
+                if !value.is_u64() && !value.is_i64() {
                     ctx.tweak_error(
                         file,
                         tweak_id,
                         format!(
                             "{}: REG_DWORD requires integer value, got {}",
                             location,
-                            value_type_name(&self.value)
+                            value_type_name(value)
                         ),
                     );
-                } else if let Some(n) = self.value.as_u64() {
+                } else if let Some(n) = value.as_u64() {
                     if n > u32::MAX as u64 {
                         ctx.tweak_error(
                             file,
@@ -446,7 +571,7 @@ impl RegistryChange {
                             ),
                         );
                     }
-                } else if let Some(n) = self.value.as_i64() {
+                } else if let Some(n) = value.as_i64() {
                     if n < 0 || n > u32::MAX as i64 {
                         ctx.tweak_error(
                             file,
@@ -462,17 +587,17 @@ impl RegistryChange {
                 }
             }
             RegistryValueType::Qword => {
-                if !self.value.is_u64() && !self.value.is_i64() {
+                if !value.is_u64() && !value.is_i64() {
                     ctx.tweak_error(
                         file,
                         tweak_id,
                         format!(
                             "{}: REG_QWORD requires integer value, got {}",
                             location,
-                            value_type_name(&self.value)
+                            value_type_name(value)
                         ),
                     );
-                } else if let Some(n) = self.value.as_i64() {
+                } else if let Some(n) = value.as_i64() {
                     // REG_QWORD is unsigned (0 to u64::MAX), negative values are invalid
                     if n < 0 {
                         ctx.tweak_error(
@@ -489,35 +614,35 @@ impl RegistryChange {
                 }
             }
             RegistryValueType::String | RegistryValueType::ExpandString => {
-                if !self.value.is_string() {
+                if !value.is_string() {
                     ctx.tweak_error(
                         file,
                         tweak_id,
                         format!(
                             "{}: {} requires string value, got {}",
                             location,
-                            if matches!(self.value_type, RegistryValueType::String) {
+                            if matches!(value_type, RegistryValueType::String) {
                                 "REG_SZ"
                             } else {
                                 "REG_EXPAND_SZ"
                             },
-                            value_type_name(&self.value)
+                            value_type_name(value)
                         ),
                     );
                 }
             }
             RegistryValueType::MultiString => {
-                if !self.value.is_array() {
+                if !value.is_array() {
                     ctx.tweak_error(
                         file,
                         tweak_id,
                         format!(
                             "{}: REG_MULTI_SZ requires array of strings, got {}",
                             location,
-                            value_type_name(&self.value)
+                            value_type_name(value)
                         ),
                     );
-                } else if let Some(arr) = self.value.as_array() {
+                } else if let Some(arr) = value.as_array() {
                     for (i, item) in arr.iter().enumerate() {
                         if !item.is_string() {
                             ctx.tweak_error(
@@ -536,8 +661,8 @@ impl RegistryChange {
             }
             RegistryValueType::Binary => {
                 // Binary can be array of integers (bytes) or hex string
-                if self.value.is_array() {
-                    if let Some(arr) = self.value.as_array() {
+                if value.is_array() {
+                    if let Some(arr) = value.as_array() {
                         for (i, item) in arr.iter().enumerate() {
                             if let Some(n) = item.as_u64() {
                                 if n > 255 {
@@ -564,14 +689,14 @@ impl RegistryChange {
                             }
                         }
                     }
-                } else if !self.value.is_string() {
+                } else if !value.is_string() {
                     ctx.tweak_error(
                         file,
                         tweak_id,
                         format!(
                             "{}: REG_BINARY requires array of bytes or hex string, got {}",
                             location,
-                            value_type_name(&self.value)
+                            value_type_name(value)
                         ),
                     );
                 }

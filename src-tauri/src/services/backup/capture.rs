@@ -7,8 +7,8 @@
 
 use crate::error::Error;
 use crate::models::{
-    RegistryHive, RegistrySnapshot, RegistryValueType, SchedulerSnapshot, ServiceSnapshot,
-    TweakDefinition, TweakSnapshot,
+    RegistryAction, RegistryHive, RegistrySnapshot, RegistryValueType, SchedulerSnapshot,
+    ServiceSnapshot, TweakDefinition, TweakSnapshot,
 };
 use crate::services::{registry_service, scheduler_service, service_control};
 use rayon::prelude::*;
@@ -91,25 +91,82 @@ fn capture_registry_snapshots(
         .par_iter()
         .filter(|change| change.applies_to_version(windows_version))
         .map(|change| {
-            let (value, existed) = read_registry_value(
-                &change.hive,
-                &change.key,
-                &change.value_name,
-                &change.value_type,
-            )?;
+            match change.action {
+                RegistryAction::Set => {
+                    // For Set, capture the current value
+                    let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
+                    let (value, existed) = read_registry_value(
+                        &change.hive,
+                        &change.key,
+                        &change.value_name,
+                        &value_type,
+                    )?;
 
-            Ok(RegistrySnapshot {
-                hive: change.hive.as_str().to_string(),
-                key: change.key.clone(),
-                value_name: change.value_name.clone(),
-                value_type: if existed {
-                    Some(change.value_type.as_str().to_string())
-                } else {
-                    None
-                },
-                value,
-                existed,
-            })
+                    Ok(RegistrySnapshot {
+                        hive: change.hive.as_str().to_string(),
+                        key: change.key.clone(),
+                        value_name: change.value_name.clone(),
+                        value_type: if existed {
+                            Some(value_type.as_str().to_string())
+                        } else {
+                            None
+                        },
+                        value,
+                        existed,
+                    })
+                }
+                RegistryAction::DeleteValue => {
+                    // For DeleteValue, capture if value exists and its current value
+                    let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
+                    let (value, existed) = read_registry_value(
+                        &change.hive,
+                        &change.key,
+                        &change.value_name,
+                        &value_type,
+                    )?;
+
+                    Ok(RegistrySnapshot {
+                        hive: change.hive.as_str().to_string(),
+                        key: change.key.clone(),
+                        value_name: change.value_name.clone(),
+                        value_type: if existed {
+                            Some(value_type.as_str().to_string())
+                        } else {
+                            None
+                        },
+                        value,
+                        existed,
+                    })
+                }
+                RegistryAction::DeleteKey => {
+                    // For DeleteKey, just note if the key existed
+                    let existed =
+                        registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+
+                    Ok(RegistrySnapshot {
+                        hive: change.hive.as_str().to_string(),
+                        key: change.key.clone(),
+                        value_name: String::new(), // No specific value for key deletion
+                        value_type: None,
+                        value: None,
+                        existed,
+                    })
+                }
+                RegistryAction::CreateKey => {
+                    // For CreateKey, note if the key already existed
+                    let existed =
+                        registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+
+                    Ok(RegistrySnapshot {
+                        hive: change.hive.as_str().to_string(),
+                        key: change.key.clone(),
+                        value_name: String::new(), // No specific value for key creation
+                        value_type: None,
+                        value: None,
+                        existed,
+                    })
+                }
+            }
         })
         .collect()
 }
@@ -251,11 +308,14 @@ pub fn capture_current_state(
             registry_changes
                 .par_iter()
                 .map(|change| {
+                    // For revert capture, we always capture Set-style snapshots
+                    // since we're recording current state
+                    let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
                     let (value, existed) = read_registry_value(
                         &change.hive,
                         &change.key,
                         &change.value_name,
-                        &change.value_type,
+                        &value_type,
                     )?;
 
                     Ok(RegistrySnapshot {
@@ -263,7 +323,7 @@ pub fn capture_current_state(
                         key: change.key.clone(),
                         value_name: change.value_name.clone(),
                         value_type: if existed {
-                            Some(change.value_type.as_str().to_string())
+                            Some(value_type.as_str().to_string())
                         } else {
                             None
                         },

@@ -336,6 +336,92 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
     Ok(())
 }
 
+/// Delete a registry key and all its subkeys recursively
+pub fn delete_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
+    log::debug!("Deleting key {}\\{}", hive_name(hive), key_path);
+    require_write_access(hive)?;
+    let hive_key = get_hive_key(hive)?;
+
+    // Need to open parent key and delete the child
+    // Split path into parent and child
+    let (parent_path, child_name) = match key_path.rsplit_once('\\') {
+        Some((parent, child)) => (parent, child),
+        None => {
+            // No parent - trying to delete a top-level key (not allowed)
+            return Err(Error::RegistryOperation(
+                "Cannot delete top-level registry key".into(),
+            ));
+        }
+    };
+
+    let parent_key = RegKey::predef(hive_key)
+        .open_subkey_with_flags(parent_path, KEY_WRITE)
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                Error::RegistryKeyNotFound(format!("Parent key not found: {}", parent_path))
+            } else {
+                Error::RegistryAccessDenied(e.to_string())
+            }
+        })?;
+
+    // delete_subkey_all deletes the key and all subkeys recursively
+    parent_key.delete_subkey_all(child_name).map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            Error::RegistryKeyNotFound(key_path.to_string())
+        } else {
+            Error::RegistryOperation(format!("Failed to delete key {}: {}", key_path, e))
+        }
+    })?;
+
+    log::trace!("Key deleted successfully");
+    Ok(())
+}
+
+/// Check if a registry key exists
+pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
+    let hive_key = get_hive_key(hive)?;
+    match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(Error::RegistryAccessDenied(e.to_string())),
+    }
+}
+
+/// Check if a registry value exists
+pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<bool, Error> {
+    let hive_key = get_hive_key(hive)?;
+    let reg_key = match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
+        Ok(k) => k,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(Error::RegistryAccessDenied(e.to_string())),
+    };
+
+    // Try to get any value - if it exists, return true
+    match reg_key.get_raw_value(value_name) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(Error::RegistryOperation(format!(
+            "Failed to check value {}: {}",
+            value_name, e
+        ))),
+    }
+}
+
+/// Create a registry key without setting any value
+pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
+    log::debug!("Creating key {}\\{}", hive_name(hive), key_path);
+    require_write_access(hive)?;
+    let hive_key = get_hive_key(hive)?;
+
+    // create_subkey creates the key if it doesn't exist, or opens it if it does
+    RegKey::predef(hive_key)
+        .create_subkey_with_flags(key_path, KEY_WRITE)
+        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+
+    log::trace!("Key created successfully");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
