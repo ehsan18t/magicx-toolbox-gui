@@ -82,10 +82,14 @@ function cleanupBackendListener() {
 
 // Initialize from localStorage
 if (browser) {
-  const stored = localStorage.getItem(DEBUG_STORAGE_KEY);
-  if (stored === "true") {
-    enabled = true;
-    syncDebugModeToBackend(true).then(() => setupBackendListener());
+  try {
+    const stored = localStorage.getItem(DEBUG_STORAGE_KEY);
+    if (stored === "true") {
+      enabled = true;
+      syncDebugModeToBackend(true).then(() => setupBackendListener());
+    }
+  } catch {
+    // Ignore storage errors (restricted environments)
   }
 }
 
@@ -107,7 +111,11 @@ export const debugState = {
   toggle() {
     enabled = !enabled;
     if (browser) {
-      localStorage.setItem(DEBUG_STORAGE_KEY, String(enabled));
+      try {
+        localStorage.setItem(DEBUG_STORAGE_KEY, String(enabled));
+      } catch {
+        // Ignore storage errors (restricted environments)
+      }
     }
     syncDebugModeToBackend(enabled);
     if (enabled) {
@@ -120,7 +128,11 @@ export const debugState = {
   setEnabled(value: boolean) {
     enabled = value;
     if (browser) {
-      localStorage.setItem(DEBUG_STORAGE_KEY, String(value));
+      try {
+        localStorage.setItem(DEBUG_STORAGE_KEY, String(value));
+      } catch {
+        // Ignore storage errors (restricted environments)
+      }
     }
     syncDebugModeToBackend(value);
     if (value) {
