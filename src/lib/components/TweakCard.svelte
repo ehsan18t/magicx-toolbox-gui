@@ -172,7 +172,7 @@
 
 <article
   id="tweak-{tweak.definition.id}"
-  class="relative flex overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md {tweak
+  class="tweak-card relative flex overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md {tweak
     .status.is_applied
     ? 'border-accent/40 bg-accent/5'
     : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''} {isHighlighting ? 'tweak-highlight' : ''}"
@@ -284,8 +284,8 @@
     {/if}
 
     <!-- Metadata Section -->
-    <div class="flex items-center justify-between border-t border-border/30 pt-2">
-      <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-2 border-t border-border/30 pt-2">
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-3">
         <!-- Risk level -->
         <div
           class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
@@ -326,30 +326,31 @@
       </div>
 
       <!-- Details (modal) -->
-      <div class="flex items-center gap-2">
+      <div class="card-actions ml-auto flex shrink-0 items-center gap-2" class:has-restore={hasSnapshot}>
         <!-- Restore Snapshot Button - only shown when snapshot exists -->
         {#if hasSnapshot}
           <button
             type="button"
-            class="inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-accent transition-all duration-150 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            class="card-action inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-accent transition-all duration-150 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleRestoreClick}
             disabled={isLoading}
             aria-label="Restore snapshot"
             title="Restore to original state from snapshot"
           >
-            <Icon icon="mdi:history" width="16" />
-            <span>Restore</span>
+            <Icon icon="mdi:history" width="16" class="card-action-icon" />
+            <span class="card-action-label">Restore</span>
           </button>
         {/if}
 
         <button
           type="button"
-          class="hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:text-foreground"
+          class="card-action hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:text-foreground"
           onclick={() => openTweakDetailsModal(tweak.definition.id)}
           aria-label="Open tweak details"
+          title="Details"
         >
-          <span>Details</span>
-          <Icon icon="mdi:open-in-new" width="16" />
+          <span class="card-action-label">Details</span>
+          <Icon icon="mdi:open-in-new" width="16" class="card-action-icon" />
         </button>
       </div>
     </div>
@@ -378,3 +379,47 @@
   onconfirm={executeRestore}
   oncancel={() => (showRestoreConfirmDialog = false)}
 />
+
+<style>
+  .tweak-card {
+    container-type: inline-size;
+  }
+
+  /*
+    Labels should be visible by default.
+    Collapse to icon-only only when the card is tight.
+    Cards with BOTH actions (Restore + Details) need more room, so collapse earlier.
+  */
+
+  @container (max-width: 430px) {
+    .card-actions.has-restore .card-action {
+      gap: 0;
+      padding-inline: 0.375rem;
+    }
+
+    .card-actions.has-restore .card-action-label {
+      display: none;
+    }
+
+    .card-actions.has-restore :global(.card-action-icon) {
+      transform: scale(1.2);
+      transform-origin: center;
+    }
+  }
+
+  @container (max-width: 360px) {
+    .card-action {
+      gap: 0;
+      padding-inline: 0.375rem;
+    }
+
+    .card-action-label {
+      display: none;
+    }
+
+    :global(.card-action-icon) {
+      transform: scale(1.2);
+      transform-origin: center;
+    }
+  }
+</style>
