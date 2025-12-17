@@ -108,6 +108,15 @@ pub async fn apply_tweak(
     for cmd in &option.pre_commands {
         if let Err(e) = run_command(cmd, tweak.requires_system, tweak.requires_ti) {
             log::error!("Pre-command failed, aborting: {}", e);
+            if !is_switching_options {
+                if let Err(del_err) = backup_service::delete_snapshot(&tweak_id) {
+                    log::warn!(
+                        "Failed to delete snapshot for '{}' after pre-command failure: {}",
+                        tweak_id,
+                        del_err
+                    );
+                }
+            }
             return Err(Error::CommandExecution(format!(
                 "Pre-command failed: {}",
                 e
@@ -119,6 +128,15 @@ pub async fn apply_tweak(
     for ps_cmd in &option.pre_powershell {
         if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system, tweak.requires_ti) {
             log::error!("Pre-PowerShell command failed, aborting: {}", e);
+            if !is_switching_options {
+                if let Err(del_err) = backup_service::delete_snapshot(&tweak_id) {
+                    log::warn!(
+                        "Failed to delete snapshot for '{}' after pre-PowerShell failure: {}",
+                        tweak_id,
+                        del_err
+                    );
+                }
+            }
             return Err(Error::CommandExecution(format!(
                 "Pre-PowerShell failed: {}",
                 e
