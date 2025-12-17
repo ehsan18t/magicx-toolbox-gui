@@ -811,7 +811,15 @@ fn apply_scheduler_pattern(
     use_ti: bool,
     flags_str: &str,
 ) -> Result<()> {
-    let pattern = change.task_name_pattern.as_ref().unwrap();
+    let pattern = match change.task_name_pattern.as_deref() {
+        Some(p) => p,
+        None => {
+            return Err(Error::ValidationError(format!(
+                "Scheduler change in '{}' expected task_name_pattern but it was missing",
+                change.task_path
+            )))
+        }
+    };
 
     if use_elevated {
         let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)?;
@@ -929,7 +937,15 @@ fn apply_scheduler_exact(
     use_ti: bool,
     flags_str: &str,
 ) -> Result<()> {
-    let task_name = change.task_name.as_ref().unwrap();
+    let task_name = match change.task_name.as_deref() {
+        Some(n) => n,
+        None => {
+            return Err(Error::ValidationError(format!(
+                "Scheduler change in '{}' expected task_name but it was missing",
+                change.task_path
+            )))
+        }
+    };
     let full_path = format!("{}\\{}", change.task_path, task_name);
 
     let result = if use_elevated {
