@@ -24,13 +24,9 @@
 
   // Load pin state from localStorage on mount
   onMount(() => {
-    try {
-      const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
-      if (savedPinState === "true") {
-        sidebarStore.init(true);
-      }
-    } catch {
-      // Ignore storage errors (restricted environments)
+    const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
+    if (savedPinState === "true") {
+      sidebarStore.init(true);
     }
     pinStateInitialized = true;
   });
@@ -46,11 +42,7 @@
   // Effect to save pin state (only after initial load to prevent race condition)
   $effect(() => {
     if (pinStateInitialized) {
-      try {
-        localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
-      } catch {
-        // Ignore storage errors (restricted environments)
-      }
+      localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
     }
   });
 
