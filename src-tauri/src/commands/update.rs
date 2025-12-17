@@ -293,7 +293,9 @@ pub async fn install_update(download_url: String, asset_name: String) -> Result<
 
     let result = if extension.eq_ignore_ascii_case("msi") {
         Command::new("msiexec")
-            .args(["/i", download_path.to_str().unwrap_or(""), "/passive"])
+            .arg("/i")
+            .arg(&download_path)
+            .arg("/passive")
             .spawn()
     } else {
         Command::new(&download_path).spawn()
