@@ -154,14 +154,14 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
         }
 
         // Check current status
-        let mut status_buffer = [0u8; std::mem::size_of::<SERVICE_STATUS_PROCESS>()];
         let mut bytes_needed: u32 = 0;
+        let mut status = std::mem::MaybeUninit::<SERVICE_STATUS_PROCESS>::zeroed();
 
         let query_result = QueryServiceStatusEx(
             service,
             SC_STATUS_PROCESS_INFO,
-            status_buffer.as_mut_ptr(),
-            status_buffer.len() as u32,
+            status.as_mut_ptr() as *mut u8,
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
             &mut bytes_needed,
         );
 
@@ -174,7 +174,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             )));
         }
 
-        let status = &*(status_buffer.as_ptr() as *const SERVICE_STATUS_PROCESS);
+        let status = status.assume_init();
         let current_state = status.dwCurrentState;
 
         // If already running, return the PID
@@ -206,16 +206,17 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
         for _ in 0..100 {
             std::thread::sleep(std::time::Duration::from_millis(100));
 
+            let mut status = std::mem::MaybeUninit::<SERVICE_STATUS_PROCESS>::zeroed();
             let query_result = QueryServiceStatusEx(
                 service,
                 SC_STATUS_PROCESS_INFO,
-                status_buffer.as_mut_ptr(),
-                status_buffer.len() as u32,
+                status.as_mut_ptr() as *mut u8,
+                std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
                 &mut bytes_needed,
             );
 
             if query_result != 0 {
-                let status = &*(status_buffer.as_ptr() as *const SERVICE_STATUS_PROCESS);
+                let status = status.assume_init();
                 if status.dwCurrentState == SERVICE_RUNNING {
                     let pid = status.dwProcessId;
                     CloseServiceHandle(service);
@@ -282,9 +283,11 @@ pub fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, E
             ));
         }
 
-        // Allocate memory for attribute list
-        let attr_list_buffer = vec![0u8; attr_list_size];
-        let attr_list = attr_list_buffer.as_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+        // Allocate memory for attribute list.
+        // Use an aligned element type (usize) to ensure proper alignment.
+        let usize_count = attr_list_size.div_ceil(std::mem::size_of::<usize>());
+        let mut attr_list_buffer: Vec<usize> = vec![0; usize_count];
+        let attr_list = attr_list_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
 
         // Initialize the attribute list
         if InitializeProcThreadAttributeList(attr_list, 1, 0, &mut attr_list_size) == FALSE {

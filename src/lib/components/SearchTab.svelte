@@ -21,6 +21,8 @@
   // Initialize from store to persist across page changes
   let searchInput = $state(searchStore.query);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+  let scrollRaf: number | null = null;
 
   // Dialog states
   let showApplyAllDialog = $state(false);
@@ -116,12 +118,22 @@
     navigationStore.navigateToCategory(categoryId);
 
     // Scroll to the tweak after a short delay for DOM to update
-    requestAnimationFrame(() => {
-      setTimeout(() => {
+    if (scrollTimer) {
+      clearTimeout(scrollTimer);
+      scrollTimer = null;
+    }
+    if (scrollRaf !== null) {
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = null;
+    }
+
+    scrollRaf = requestAnimationFrame(() => {
+      scrollTimer = setTimeout(() => {
         const element = document.getElementById(`tweak-${tweakId}`);
         if (element) {
           element.scrollIntoView({ behavior: "smooth", block: "center" });
         }
+        scrollTimer = null;
       }, 100);
     });
   }
@@ -185,6 +197,16 @@
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
+    }
+
+    if (scrollTimer) {
+      clearTimeout(scrollTimer);
+      scrollTimer = null;
+    }
+
+    if (scrollRaf !== null) {
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = null;
     }
   });
 </script>
