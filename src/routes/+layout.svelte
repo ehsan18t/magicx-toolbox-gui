@@ -5,7 +5,6 @@
   import ApplyingOverlay from "@/lib/components/ApplyingOverlay.svelte";
   import DebugPanel from "@/lib/components/DebugPanel.svelte";
   import Icon from "@/lib/components/Icon.svelte";
-  import PendingRebootBanner from "@/lib/components/PendingRebootBanner.svelte";
   import SettingsModal from "@/lib/components/SettingsModal.svelte";
   import TitleBar from "@/lib/components/TitleBar.svelte";
   import ToastContainer from "@/lib/components/ToastContainer.svelte";
@@ -78,7 +77,6 @@
 <TitleBar />
 <!-- TitleBar height=h-10 == 2.5rem -->
 <main class="h-[calc(100dvh-2.5rem)] w-full overflow-auto">
-  <PendingRebootBanner />
   {#if initError}
     <div class="flex min-h-full items-center justify-center p-6">
       <div class="w-[min(92vw,420px)] rounded-xl border border-border bg-card p-6 text-center">

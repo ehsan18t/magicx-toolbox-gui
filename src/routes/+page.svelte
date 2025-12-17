@@ -2,6 +2,7 @@
   import CategoryTab from "$lib/components/CategoryTab.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import OverviewTab from "$lib/components/OverviewTab.svelte";
+  import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
   import SearchTab from "$lib/components/SearchTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
@@ -53,6 +54,9 @@
     <div class="app-layout">
       <Sidebar />
       <main class="main-content">
+        <div class="">
+          <PendingRebootBanner />
+        </div>
         <div class="content-area">
           {#if activeTab === "overview"}
             <OverviewTab />

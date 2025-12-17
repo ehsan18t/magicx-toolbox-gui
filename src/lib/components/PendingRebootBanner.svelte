@@ -11,7 +11,7 @@
 
 {#if rebootCount > 0}
   <div
-    class="mb-4 flex w-full min-w-0 items-center justify-between gap-4 rounded-lg border border-warning/30 bg-linear-to-br from-warning/15 to-warning/10 px-4 py-3"
+    class="mb-4 flex w-full min-w-0 items-center justify-between gap-4 border-b border-warning/30 bg-linear-to-br from-warning/15 to-warning/10 px-4 py-3"
   >
     <div class="flex min-w-0 flex-1 items-center gap-3">
       <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-warning/20 text-warning">
@@ -19,7 +19,7 @@
       </div>
       <div class="flex min-w-0 flex-col gap-0.5">
         <span class="text-sm font-semibold text-foreground">Restart Required</span>
-        <span class="text-xs break-words text-foreground-muted">
+        <span class="text-xs wrap-break-word text-foreground-muted">
           {rebootCount} tweak{rebootCount === 1 ? "" : "s"} need a system restart to take effect
         </span>
       </div>
@@ -42,14 +42,13 @@
       </button>
     </div>
   </div>
-
   {#if showDetails}
-    <div class="bg-muted/30 -mt-2 mb-4 rounded-md border border-border px-4 py-3">
+    <div class="bg-muted/30 mx-2 -mt-2 mb-4 rounded-md border border-border px-4 py-3">
       <ul class="m-0 flex list-none flex-col gap-1.5 p-0">
         {#each rebootTweaks as tweak (tweak.definition.id)}
           <li class="flex min-w-0 items-start gap-2 text-xs text-foreground/80">
             <Icon icon="mdi:restart" width="14" class="shrink-0 text-warning" />
-            <span class="min-w-0 break-words">{tweak.definition.name}</span>
+            <span class="min-w-0 wrap-break-word">{tweak.definition.name}</span>
           </li>
         {/each}
       </ul>
