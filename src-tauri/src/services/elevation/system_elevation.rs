@@ -251,10 +251,26 @@ pub fn delete_registry_value_as_system(
         log::info!("Successfully deleted registry value as SYSTEM");
         Ok(())
     } else {
-        Err(Error::ServiceControl(format!(
-            "reg.exe delete failed with exit code: {}",
-            exit_code
-        )))
+        // reg.exe uses non-zero codes for "not found" as well as other failures.
+        // If the value is already absent, treat this as success.
+        let query_command = format!(
+            "reg query \"{}\" /v \"{}\"",
+            escaped_key, escaped_value_name
+        );
+        let query_exit = execute_command_as_system(&query_command)?;
+
+        if query_exit != 0 {
+            log::debug!(
+                "reg delete returned {} but value appears absent; treating as success",
+                exit_code
+            );
+            Ok(())
+        } else {
+            Err(Error::ServiceControl(format!(
+                "reg.exe delete failed with exit code: {}",
+                exit_code
+            )))
+        }
     }
 }
 

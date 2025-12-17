@@ -151,13 +151,19 @@ fn execute_registry_restore(op: &RegistryRestoreOp, use_system: bool) -> Result<
         );
 
         if use_system {
-            let _ = trusted_installer::delete_registry_value_as_system(
+            trusted_installer::delete_registry_value_as_system(
                 op.hive.as_str(),
                 &op.key,
                 &op.value_name,
-            );
+            )?;
         } else {
-            let _ = registry_service::delete_value(&op.hive, &op.key, &op.value_name);
+            match registry_service::delete_value(&op.hive, &op.key, &op.value_name) {
+                Ok(()) => {}
+                Err(Error::RegistryKeyNotFound(_)) => {
+                    // Already absent (key/value missing) - treat as restored
+                }
+                Err(e) => return Err(e),
+            }
         }
         Ok(())
     } else if let (Some(value), Some(value_type)) = (&op.value, &op.value_type) {
