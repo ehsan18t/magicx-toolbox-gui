@@ -1,31 +1,18 @@
 <script lang="ts">
   import { themeStore } from "$lib/stores/theme.svelte";
-  import { onDestroy } from "svelte";
   import Icon from "./Icon.svelte";
 
   let isAnimating = $state(false);
-  let animationTimer: ReturnType<typeof setTimeout> | null = null;
 
   const toggleTheme = () => {
     if (isAnimating) return;
     isAnimating = true;
     themeStore.toggle();
     // Reset animation state after transition completes
-    if (animationTimer) {
-      clearTimeout(animationTimer);
-    }
-    animationTimer = setTimeout(() => {
+    setTimeout(() => {
       isAnimating = false;
-      animationTimer = null;
     }, 300);
   };
-
-  onDestroy(() => {
-    if (animationTimer) {
-      clearTimeout(animationTimer);
-      animationTimer = null;
-    }
-  });
 </script>
 
 <button

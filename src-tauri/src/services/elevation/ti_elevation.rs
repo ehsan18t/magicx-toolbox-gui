@@ -285,8 +285,8 @@ pub fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, E
 
         // Allocate memory for attribute list.
         // Use an aligned element type (usize) to ensure proper alignment.
-        let usize_count = (attr_list_size + std::mem::size_of::<usize>() - 1)
-            / std::mem::size_of::<usize>();
+        let usize_count =
+            (attr_list_size + std::mem::size_of::<usize>() - 1) / std::mem::size_of::<usize>();
         let mut attr_list_buffer: Vec<usize> = vec![0; usize_count];
         let attr_list = attr_list_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
 
