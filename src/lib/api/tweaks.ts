@@ -142,6 +142,7 @@ export interface BackupInfo {
   windows_version: number;
   registry_values_count: number;
   service_snapshots_count: number;
+  scheduler_snapshots_count: number;
 }
 
 /**

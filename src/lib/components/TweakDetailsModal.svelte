@@ -98,7 +98,7 @@
 
     const matchedOption = inspection.options.find((o) => o.all_match);
     const totalChecks = inspection.options.reduce(
-      (sum, o) => sum + o.registry_results.length + o.service_results.length,
+      (sum, o) => sum + o.registry_results.length + o.service_results.length + o.scheduler_results.length,
       0,
     );
 
@@ -106,7 +106,8 @@
     const relevantOption = inspection.options.find((o) => o.is_current || o.is_pending) ?? inspection.options[0];
     const mismatches = relevantOption
       ? relevantOption.registry_results.filter((r) => !r.is_match).length +
-        relevantOption.service_results.filter((s) => !s.is_match).length
+        relevantOption.service_results.filter((s) => !s.is_match).length +
+        relevantOption.scheduler_results.filter((s) => !s.is_match).length
       : 0;
 
     return {
@@ -333,7 +334,31 @@
                     </div>
                   {/each}
 
-                  {#if opt.registry_results.length === 0 && opt.service_results.length === 0}
+                  {#each opt.scheduler_results as task}
+                    <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {task.is_match ? '' : 'bg-error/5'}">
+                      <Icon
+                        icon={task.is_match ? "mdi:check-circle" : "mdi:close-circle"}
+                        width="14"
+                        class="mt-0.5 shrink-0 {task.is_match ? 'text-success' : 'text-error'}"
+                      />
+                      <div class="min-w-0 flex-1 text-xs">
+                        <div class="font-medium text-foreground">Task: {task.task_name}</div>
+                        <div class="truncate text-[10px] text-foreground-muted/70">{task.task_path}</div>
+                        {#if !task.is_match}
+                          <div class="mt-1 flex gap-4 font-mono text-[11px]">
+                            <span class="text-foreground-muted">
+                              Expected: <span class="text-success">{task.expected_state}</span>
+                            </span>
+                            <span class="text-foreground-muted">
+                              Actual: <span class="text-error">{task.actual_state ?? "Not Found"}</span>
+                            </span>
+                          </div>
+                        {/if}
+                      </div>
+                    </div>
+                  {/each}
+
+                  {#if opt.registry_results.length === 0 && opt.service_results.length === 0 && opt.scheduler_results.length === 0}
                     <div class="px-2 py-1.5 text-xs text-foreground-muted italic">
                       No detectable changes for this Windows version
                     </div>
@@ -363,8 +388,12 @@
               — {snapshotInfo.registry_values_count} registry
               {snapshotInfo.registry_values_count === 1 ? "value" : "values"}
               {#if snapshotInfo.service_snapshots_count > 0}
-                and {snapshotInfo.service_snapshots_count}
+                , {snapshotInfo.service_snapshots_count}
                 {snapshotInfo.service_snapshots_count === 1 ? "service" : "services"}
+              {/if}
+              {#if snapshotInfo.scheduler_snapshots_count > 0}
+                , {snapshotInfo.scheduler_snapshots_count}
+                {snapshotInfo.scheduler_snapshots_count === 1 ? "task" : "tasks"}
               {/if}
               captured
             </span>

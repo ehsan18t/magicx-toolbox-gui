@@ -2,10 +2,10 @@ use super::capture::read_registry_value;
 use super::helpers::values_match;
 use crate::error::Error;
 use crate::models::{
-    OptionInspection, RegistryAction, RegistryMismatch, ServiceMismatch, TweakDefinition,
-    TweakInspection, TweakOption,
+    OptionInspection, RegistryAction, RegistryMismatch, SchedulerAction, SchedulerMismatch,
+    ServiceMismatch, TweakDefinition, TweakInspection, TweakOption,
 };
-use crate::services::{registry_service, service_control};
+use crate::services::{registry_service, scheduler_service, service_control};
 use rayon::prelude::*;
 
 /// Inspect a tweak to find exact system state vs expected state for all options
@@ -53,9 +53,13 @@ fn inspect_option(
     // Check service changes
     let service_results = inspect_service_changes(option)?;
 
+    // Check scheduler changes
+    let scheduler_results = inspect_scheduler_changes(option)?;
+
     // Determine if everything matches
-    let all_match =
-        registry_results.iter().all(|r| r.is_match) && service_results.iter().all(|s| s.is_match);
+    let all_match = registry_results.iter().all(|r| r.is_match)
+        && service_results.iter().all(|s| s.is_match)
+        && scheduler_results.iter().all(|s| s.is_match);
 
     Ok(OptionInspection {
         option_index: index,
@@ -64,6 +68,7 @@ fn inspect_option(
         is_pending,
         registry_results,
         service_results,
+        scheduler_results,
         all_match,
     })
 }
@@ -198,6 +203,120 @@ fn inspect_service_changes(option: &TweakOption) -> Result<Vec<ServiceMismatch>,
             description: format!("Set startup to {:?}", expected_startup),
             is_match,
         });
+    }
+
+    Ok(results)
+}
+
+fn inspect_scheduler_changes(option: &TweakOption) -> Result<Vec<SchedulerMismatch>, Error> {
+    let mut results = Vec::new();
+
+    for change in &option.scheduler_changes {
+        // Handle pattern-based task matching
+        if let Some(pattern) = &change.task_name_pattern {
+            // For patterns, we need to list matching tasks and check each one
+            let matching_tasks =
+                scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)
+                    .unwrap_or_default();
+
+            if matching_tasks.is_empty() && change.ignore_not_found {
+                // Skip if no tasks found and ignore_not_found is true
+                continue;
+            }
+
+            for task_info in matching_tasks {
+                let actual_state = match &task_info.state {
+                    scheduler_service::TaskState::Ready => Some("Ready".to_string()),
+                    scheduler_service::TaskState::Disabled => Some("Disabled".to_string()),
+                    scheduler_service::TaskState::Running => Some("Running".to_string()),
+                    scheduler_service::TaskState::NotFound => None,
+                    scheduler_service::TaskState::Unknown(s) => Some(s.clone()),
+                };
+
+                let (expected_state, is_match) = match change.action {
+                    SchedulerAction::Enable => {
+                        let expected = "Ready";
+                        let matches = matches!(
+                            task_info.state,
+                            scheduler_service::TaskState::Ready
+                                | scheduler_service::TaskState::Running
+                        );
+                        (expected, matches)
+                    }
+                    SchedulerAction::Disable => {
+                        let expected = "Disabled";
+                        let matches =
+                            matches!(task_info.state, scheduler_service::TaskState::Disabled);
+                        (expected, matches)
+                    }
+                    SchedulerAction::Delete => {
+                        let expected = "Deleted";
+                        let matches =
+                            matches!(task_info.state, scheduler_service::TaskState::NotFound);
+                        (expected, matches)
+                    }
+                };
+
+                results.push(SchedulerMismatch {
+                    task_path: change.task_path.clone(),
+                    task_name: task_info.name,
+                    expected_state: expected_state.to_string(),
+                    actual_state,
+                    description: format!("{:?} task (pattern: {})", change.action, pattern),
+                    is_match,
+                });
+            }
+        } else if let Some(task_name) = &change.task_name {
+            // Single task inspection
+            let task_state = scheduler_service::get_task_state(&change.task_path, task_name)
+                .unwrap_or(scheduler_service::TaskState::Unknown("Error".to_string()));
+
+            // Handle not found case
+            if matches!(task_state, scheduler_service::TaskState::NotFound)
+                && change.ignore_not_found
+            {
+                continue;
+            }
+
+            let actual_state = match &task_state {
+                scheduler_service::TaskState::Ready => Some("Ready".to_string()),
+                scheduler_service::TaskState::Disabled => Some("Disabled".to_string()),
+                scheduler_service::TaskState::Running => Some("Running".to_string()),
+                scheduler_service::TaskState::NotFound => None,
+                scheduler_service::TaskState::Unknown(s) => Some(s.clone()),
+            };
+
+            let (expected_state, is_match) = match change.action {
+                SchedulerAction::Enable => {
+                    let expected = "Ready";
+                    let matches = matches!(
+                        task_state,
+                        scheduler_service::TaskState::Ready | scheduler_service::TaskState::Running
+                    );
+                    (expected, matches)
+                }
+                SchedulerAction::Disable => {
+                    let expected = "Disabled";
+                    let matches = matches!(task_state, scheduler_service::TaskState::Disabled);
+                    (expected, matches)
+                }
+                SchedulerAction::Delete => {
+                    let expected = "Deleted";
+                    let matches = matches!(task_state, scheduler_service::TaskState::NotFound);
+                    (expected, matches)
+                }
+            };
+
+            results.push(SchedulerMismatch {
+                task_path: change.task_path.clone(),
+                task_name: task_name.clone(),
+                expected_state: expected_state.to_string(),
+                actual_state,
+                description: format!("{:?} task", change.action),
+                is_match,
+            });
+        }
+        // If neither task_name nor task_name_pattern is set, skip this change
     }
 
     Ok(results)

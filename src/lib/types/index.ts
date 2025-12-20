@@ -177,6 +177,15 @@ export interface ServiceMismatch {
   is_match: boolean;
 }
 
+export interface SchedulerMismatch {
+  task_path: string;
+  task_name: string;
+  expected_state: string;
+  actual_state?: string;
+  description: string;
+  is_match: boolean;
+}
+
 export interface OptionInspection {
   option_index: number;
   label: string;
@@ -184,6 +193,7 @@ export interface OptionInspection {
   is_pending: boolean;
   registry_results: RegistryMismatch[];
   service_results: ServiceMismatch[];
+  scheduler_results: SchedulerMismatch[];
   all_match: boolean;
 }
 

@@ -22,6 +22,16 @@ pub struct ServiceMismatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerMismatch {
+    pub task_path: String,
+    pub task_name: String,
+    pub expected_state: String,
+    pub actual_state: Option<String>,
+    pub description: String,
+    pub is_match: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OptionInspection {
     pub option_index: usize,
     pub label: String,
@@ -29,6 +39,7 @@ pub struct OptionInspection {
     pub is_pending: bool,
     pub registry_results: Vec<RegistryMismatch>,
     pub service_results: Vec<ServiceMismatch>,
+    pub scheduler_results: Vec<SchedulerMismatch>,
     pub all_match: bool,
 }
 

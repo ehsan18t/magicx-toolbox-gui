@@ -11,6 +11,7 @@ pub struct BackupInfo {
     pub windows_version: u32,
     pub registry_values_count: usize,
     pub service_snapshots_count: usize,
+    pub scheduler_snapshots_count: usize,
 }
 
 /// Check if a tweak has a snapshot (is applied)
@@ -36,6 +37,7 @@ pub fn get_backup_info(tweak_id: String) -> Result<Option<BackupInfo>> {
             windows_version: snapshot.windows_version,
             registry_values_count: snapshot.registry_snapshots.len(),
             service_snapshots_count: snapshot.service_snapshots.len(),
+            scheduler_snapshots_count: snapshot.scheduler_snapshots.len(),
         })),
         None => Ok(None),
     }
