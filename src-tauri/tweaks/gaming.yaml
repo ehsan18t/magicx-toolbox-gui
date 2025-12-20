@@ -15,14 +15,14 @@ tweaks:
     requires_reboot: false
     info: "Game Mode reduces background processes and prioritizes gaming"
     options:
-      - label: "Game Mode Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\GameBar"
             value_name: "UseNexusForGameMode"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Game Mode Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\GameBar"
@@ -37,14 +37,14 @@ tweaks:
     requires_reboot: false
     info: "Disabling can improve gaming performance and compatibility"
     options:
-      - label: "Fullscreen Optimizations Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKCU
             key: "System\\GameConfigStore"
             value_name: "GameDVR_FSEBehavior"
             value_type: "REG_DWORD"
             value: 2
-      - label: "Fullscreen Optimizations Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "System\\GameConfigStore"
@@ -60,14 +60,14 @@ tweaks:
     requires_reboot: true
     info: "Improves gaming performance on compatible GPUs (Windows 10 build 2004+)"
     options:
-      - label: "GPU Scheduling Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
             value_name: "HwSchMode"
             value_type: "REG_DWORD"
             value: 2
-      - label: "GPU Scheduling Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Control\\GraphicsDrivers"
@@ -81,14 +81,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Game Bar Tips Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\GameBar"
             value_name: "ShowStartupPanel"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Game Bar Tips Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\GameBar"
@@ -104,14 +104,14 @@ tweaks:
     requires_reboot: false
     info: "Maximizes CPU and GPU performance for gaming"
     options:
-      - label: "High Performance Mode"
+      - label: "Performance"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
             value_name: "StartupPercentage"
             value_type: "REG_DWORD"
             value: 100
-      - label: "Default Power Mode"
+      - label: "Default"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
@@ -126,7 +126,7 @@ tweaks:
     requires_reboot: false
     info: "Provides more consistent mouse movement for FPS games"
     options:
-      - label: "Mouse Acceleration Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKCU
             key: "Control Panel\\Mouse"
@@ -143,7 +143,7 @@ tweaks:
             value_name: "MouseThreshold2"
             value_type: "REG_SZ"
             value: "0"
-      - label: "Mouse Acceleration Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Control Panel\\Mouse"

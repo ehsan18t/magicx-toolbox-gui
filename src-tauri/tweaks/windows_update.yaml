@@ -16,14 +16,14 @@ tweaks:
     requires_reboot: false
     info: "Apps will only update when you manually check for updates in the Store"
     options:
-      - label: "Auto Updates Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\WindowsStore"
             value_name: "AutoDownload"
             value_type: "REG_DWORD"
             value: 2
-      - label: "Auto Updates Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\WindowsStore"
@@ -38,14 +38,14 @@ tweaks:
     requires_reboot: false
     info: "Prevents Windows from downloading/uploading updates from/to other PCs"
     options:
-      - label: "P2P Delivery Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization"
             value_name: "SystemSettingsDownloadMode"
             value_type: "REG_DWORD"
             value: 0
-      - label: "P2P Delivery Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\DeliveryOptimization"
@@ -60,14 +60,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "MS Products Auto Update Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Services\\7971f918-a847-4430-9279-4a52d1efe18d"
             value_name: "RegisteredWithAU"
             value_type: "REG_DWORD"
             value: 0
-      - label: "MS Products Auto Update Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Services\\7971f918-a847-4430-9279-4a52d1efe18d"
@@ -83,14 +83,14 @@ tweaks:
     requires_reboot: false
     info: "Useful if you prefer to install drivers manually from manufacturer"
     options:
-      - label: "Driver Updates Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
             value_name: "ExcludeWUDriversInQualityUpdate"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Driver Updates Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
@@ -106,7 +106,7 @@ tweaks:
     requires_ti: true
     info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
     options:
-      - label: "Windows Update Disabled"
+      - label: "Disabled"
         scheduler_changes:
           - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
             task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
@@ -139,7 +139,7 @@ tweaks:
             skip_validation: true
           - name: "UsoSvc"
             startup: disabled
-      - label: "Windows Update Enabled"
+      - label: "Enabled"
         scheduler_changes:
           - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
             task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"

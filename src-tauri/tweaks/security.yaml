@@ -15,14 +15,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "Remote Desktop Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Control\\Terminal Server"
             value_name: "fDenyTSConnections"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Remote Desktop Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Control\\Terminal Server"
@@ -37,14 +37,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "AutoPlay Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoDriveTypeAutoRun"
             value_type: "REG_DWORD"
             value: 255
-      - label: "AutoPlay Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
@@ -59,14 +59,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "AutoRun Scripts Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoAutorun"
             value_type: "REG_DWORD"
             value: 1
-      - label: "AutoRun Scripts Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
@@ -81,14 +81,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "Ctrl+Alt+Del Required"
+      - label: "Required"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
             value_name: "DisableCAD"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Ctrl+Alt+Del Not Required"
+      - label: "Not Required"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
@@ -107,14 +107,14 @@ tweaks:
     requires_reboot: true
     info: "SMBv1 is an old protocol with security vulnerabilities"
     options:
-      - label: "SMBv1 Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
             value_name: "SMB1"
             value_type: "REG_DWORD"
             value: 0
-      - label: "SMBv1 Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
@@ -129,14 +129,14 @@ tweaks:
     requires_admin: true
     requires_reboot: true
     options:
-      - label: "NetBIOS Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
             value_name: "NetbiosOptions"
             value_type: "REG_DWORD"
             value: 2
-      - label: "NetBIOS Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
@@ -151,14 +151,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "Strong Password Policy Enforced"
+      - label: "Enforced"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
             value_name: "RequireSignOrSeal"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Standard Password Policy"
+      - label: "Standard"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\Netlogon\\Parameters"
@@ -174,14 +174,14 @@ tweaks:
     requires_reboot: false
     info: "WARNING: Reduces security. Only disable if you know what you're doing"
     options:
-      - label: "SmartScreen Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\System"
             value_name: "EnableSmartScreen"
             value_type: "REG_DWORD"
             value: 0
-      - label: "SmartScreen Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\System"
@@ -197,14 +197,14 @@ tweaks:
     requires_reboot: false
     info: "Prevents automatic upload of suspicious files to Microsoft"
     options:
-      - label: "Sample Submission Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows Defender\\Spynet"
             value_name: "SubmitSamplesConsent"
             value_type: "REG_DWORD"
             value: 2
-      - label: "Sample Submission Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows Defender\\Spynet"
@@ -219,14 +219,14 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "Malware Reporting Disabled"
+      - label: "Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\MRT"
             value_name: "DontReportInfectionInformation"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Malware Reporting Enabled"
+      - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\MRT"
