@@ -231,7 +231,7 @@
 
 <article
   id="tweak-{tweak.definition.id}"
-  class="tweak-card group relative flex overflow-hidden rounded-xl border transition-all duration-200
+  class="tweak-card group relative flex overflow-hidden rounded-lg border transition-all duration-200
     {hasPending
     ? 'border-warning/40 bg-warning/3'
     : tweak.status.is_applied
