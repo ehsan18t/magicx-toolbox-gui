@@ -10,6 +10,7 @@
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
   import MdiArrowRightCircle from "~icons/mdi/arrow-right-circle";
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
+  import MdiBackupRestore from "~icons/mdi/backup-restore";
   import MdiBug from "~icons/mdi/bug";
   import MdiCalendar from "~icons/mdi/calendar";
   import MdiCalendarClock from "~icons/mdi/calendar-clock";
@@ -22,7 +23,9 @@
   import MdiCircle from "~icons/mdi/circle";
   import MdiCircleHalfFull from "~icons/mdi/circle-half-full";
   import MdiCircleOutline from "~icons/mdi/circle-outline";
+  import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";
   import MdiClose from "~icons/mdi/close";
+  import MdiCloseCircle from "~icons/mdi/close-circle";
   import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
   import MdiCog from "~icons/mdi/cog";
   import MdiCogOutline from "~icons/mdi/cog-outline";
@@ -73,14 +76,17 @@
   import MdiSettingsOutline from "~icons/mdi/settings-outline";
   import MdiShieldAccountOutline from "~icons/mdi/shield-account-outline";
   import MdiShieldAlert from "~icons/mdi/shield-alert";
+  import MdiShieldAlertOutline from "~icons/mdi/shield-alert-outline";
   import MdiShieldCheck from "~icons/mdi/shield-check";
   import MdiShieldKey from "~icons/mdi/shield-key";
   import MdiShieldLock from "~icons/mdi/shield-lock";
   import MdiSpeedometer from "~icons/mdi/speedometer";
+  import MdiTextSearch from "~icons/mdi/text-search";
   import MdiTimerOutline from "~icons/mdi/timer-outline";
   import MdiToggleSwitch from "~icons/mdi/toggle-switch";
   import MdiToggleSwitchOffOutline from "~icons/mdi/toggle-switch-off-outline";
   import MdiToggleSwitchVariantOff from "~icons/mdi/toggle-switch-variant-off";
+  import MdiTuneVariant from "~icons/mdi/tune-variant";
   import MdiTuneVertical from "~icons/mdi/tune-vertical";
   import MdiUndoVariant from "~icons/mdi/undo-variant";
   import MdiUpdate from "~icons/mdi/update";
@@ -142,6 +148,9 @@
     "mdi:account": MdiAccount,
     "mdi:shield-check": MdiShieldCheck,
     "mdi:shield-alert": MdiShieldAlert,
+    "mdi:shield-alert-outline": MdiShieldAlertOutline,
+    "mdi:text-search": MdiTextSearch,
+    "mdi:tune-variant": MdiTuneVariant,
     "mdi:cpu-64-bit": MdiCpu64Bit,
     "mdi:expansion-card": MdiExpansionCard,
     "mdi:timer-outline": MdiTimerOutline,
@@ -186,6 +195,9 @@
     "mdi:web": MdiWeb,
     "mdi:account-circle": MdiAccountCircle,
     "mdi:arrow-right-circle": MdiArrowRightCircle,
+    "mdi:backup-restore": MdiBackupRestore,
+    "mdi:clipboard-check-outline": MdiClipboardCheckOutline,
+    "mdi:close-circle": MdiCloseCircle,
     "mdi:history": MdiHistory,
 
     // Category icons (used in sidebar/navigation)

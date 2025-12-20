@@ -14,12 +14,14 @@
 mod capture;
 mod detection;
 mod helpers;
-mod restore;
-mod storage;
+pub mod inspection;
+pub mod restore;
+pub mod storage;
 
 // Re-export public items from submodules
 pub use capture::{capture_current_state, capture_snapshot};
 pub use detection::{cleanup_old_backups, detect_tweak_state, validate_all_snapshots};
+pub use inspection::inspect_tweak;
 pub use restore::restore_from_snapshot;
 pub use storage::{
     delete_snapshot, get_applied_tweaks, get_snapshots_dir, load_snapshot, save_snapshot,
