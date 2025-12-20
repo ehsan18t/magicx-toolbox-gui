@@ -20,6 +20,9 @@
   const isUpdateAvailable = $derived(updateStore.isAvailable);
   const isCategoriesLoading = $derived(categoriesStore.isLoading);
 
+  // Count tweaks with snapshots for badge
+  const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
+
   // Guard to prevent effect from saving before mount loads the saved value
   let pinStateInitialized = false;
 
@@ -69,15 +72,20 @@
 >
   <!-- Navigation -->
   <nav class="nav-scrollbar flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2 pt-3">
-    <!-- Fixed Tabs (Overview, Search) -->
+    <!-- Fixed Tabs (Overview, Search, Snapshots) -->
     {#each fixedTabs as tab (tab.id)}
       {@const isActive = activeTab === tab.id}
+      {@const isSnapshots = tab.id === "snapshots"}
       <button
         class="group relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 transition-all duration-150 {isActive
           ? 'bg-accent/15'
           : 'hover:bg-muted'}"
         onclick={() => handleNavClick(tab)}
-        use:tooltip={!sidebarStore.isOpen ? tab.name : null}
+        use:tooltip={!sidebarStore.isOpen
+          ? isSnapshots && snapshotCount > 0
+            ? `${tab.name} (${snapshotCount})`
+            : tab.name
+          : null}
       >
         <div
           class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
@@ -85,6 +93,13 @@
             : 'text-foreground-muted group-hover:text-accent'}"
         >
           <Icon icon={tab.icon || "mdi:folder"} width="22" />
+          {#if isSnapshots && snapshotCount > 0 && !sidebarStore.isOpen}
+            <span
+              class="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-surface bg-accent px-0.5 text-[9px] font-bold text-white"
+            >
+              {snapshotCount > 99 ? "99+" : snapshotCount}
+            </span>
+          {/if}
         </div>
         <span
           class="flex-1 text-left text-sm font-medium whitespace-nowrap transition-all duration-200 {isActive
@@ -93,6 +108,15 @@
         >
           {tab.name}
         </span>
+        {#if isSnapshots && snapshotCount > 0}
+          <span
+            class="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent transition-all duration-200 {sidebarStore.isOpen
+              ? 'translate-x-0 opacity-100'
+              : '-translate-x-2.5 opacity-0'}"
+          >
+            {snapshotCount}
+          </span>
+        {/if}
         {#if isActive}
           <div class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm bg-accent"></div>
         {/if}

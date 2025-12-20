@@ -1,14 +1,14 @@
 /**
  * Navigation Store - Svelte 5 Runes
  *
- * Manages tab-based UI navigation between Overview, Search, and category tabs.
+ * Manages tab-based UI navigation between Overview, Search, Snapshots, and category tabs.
  */
 
 import type { CategoryDefinition } from "$lib/types";
 import { categoriesStore } from "./tweaksData.svelte";
 
-/** Tab types - "overview", "search", or category ID */
-export type TabId = "overview" | "search" | string;
+/** Tab types - "overview", "search", "snapshots", or category ID */
+export type TabId = "overview" | "search" | "snapshots" | string;
 
 /** Tab definition for navigation */
 export interface TabDefinition {
@@ -41,6 +41,15 @@ const searchTab: TabDefinition = {
   isPermanent: true,
 };
 
+// Snapshots tab definition (static)
+const snapshotsTab: TabDefinition = {
+  id: "snapshots",
+  name: "Snapshots",
+  icon: "mdi:backup-restore",
+  description: "View and manage tweaks with saved snapshots",
+  isPermanent: true,
+};
+
 // Derived: All tabs from categories
 const allTabs = $derived.by((): TabDefinition[] => {
   const categoryTabs: TabDefinition[] = categoriesStore.list.map((cat: CategoryDefinition) => ({
@@ -51,7 +60,7 @@ const allTabs = $derived.by((): TabDefinition[] => {
     isPermanent: false,
   }));
 
-  return [overviewTab, searchTab, ...categoryTabs];
+  return [overviewTab, searchTab, snapshotsTab, ...categoryTabs];
 });
 
 // Derived: Fixed/permanent tabs (Overview, Search)
@@ -70,10 +79,13 @@ const currentTab = $derived.by((): TabDefinition | undefined => {
 });
 
 // Derived: Is on a category tab (not overview or search)
-const isOnCategoryTab = $derived(activeTab !== "overview" && activeTab !== "search");
+const isOnCategoryTab = $derived(activeTab !== "overview" && activeTab !== "search" && activeTab !== "snapshots");
 
 // Derived: Is on search tab
 const isOnSearchTab = $derived(activeTab === "search");
+
+// Derived: Is on snapshots tab
+const isOnSnapshotsTab = $derived(activeTab === "snapshots");
 
 // === Export ===
 
@@ -113,6 +125,11 @@ export const navigationStore = {
     return isOnSearchTab;
   },
 
+  /** Check if currently on the snapshots tab */
+  get isOnSnapshotsTab() {
+    return isOnSnapshotsTab;
+  },
+
   /** Get the overview tab definition */
   get overviewTab() {
     return overviewTab;
@@ -121,6 +138,11 @@ export const navigationStore = {
   /** Get the search tab definition */
   get searchTab() {
     return searchTab;
+  },
+
+  /** Get the snapshots tab definition */
+  get snapshotsTab() {
+    return snapshotsTab;
   },
 
   /** Navigate to a specific tab by ID */
@@ -136,6 +158,11 @@ export const navigationStore = {
   /** Navigate to the search tab */
   navigateToSearch() {
     activeTab = "search";
+  },
+
+  /** Navigate to the snapshots tab */
+  navigateToSnapshots() {
+    activeTab = "snapshots";
   },
 
   /** Navigate to a specific category */
