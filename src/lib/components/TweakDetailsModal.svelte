@@ -103,7 +103,11 @@
     );
 
     // Count mismatches for the current/pending option or first option
-    const relevantOption = inspection.options.find((o) => o.is_current || o.is_pending) ?? inspection.options[0];
+    // Count mismatches for the current/pending option or first option
+    const pendingIdx = pendingChange?.optionIndex;
+    const relevantOption =
+      inspection.options.find((o) => o.is_current || (pendingIdx !== undefined && o.option_index === pendingIdx)) ??
+      inspection.options[0];
     const mismatches = relevantOption
       ? relevantOption.registry_results.filter((r) => !r.is_match).length +
         relevantOption.service_results.filter((s) => !s.is_match).length +
@@ -263,7 +267,7 @@
 
         {#if showInspectionDetails && inspection}
           <div class="border-t border-border/50 bg-background">
-            {#each inspection.options as opt, optIndex}
+            {#each inspection.options as opt, optIndex (`inspection-option-${optIndex}`)}
               <div class="border-b border-border/30 last:border-b-0">
                 <!-- Option Header -->
                 <div class="bg-muted/30 flex items-center gap-3 px-4 py-2.5">
@@ -281,14 +285,14 @@
                   <span class="text-sm font-medium text-foreground">{opt.label}</span>
                   {#if opt.all_match}
                     <Badge variant="success" size="sm">Current State</Badge>
-                  {:else if opt.is_pending}
+                  {:else if pendingChange?.optionIndex === optIndex}
                     <Badge variant="warning" size="sm">Pending</Badge>
                   {/if}
                 </div>
 
                 <!-- Check Results -->
                 <div class="space-y-1 px-4 py-3">
-                  {#each opt.registry_results as reg}
+                  {#each opt.registry_results as reg, regIndex (`registry-result-${regIndex}`)}
                     <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {reg.is_match ? '' : 'bg-error/5'}">
                       <Icon
                         icon={reg.is_match ? "mdi:check-circle" : "mdi:close-circle"}
@@ -311,7 +315,7 @@
                     </div>
                   {/each}
 
-                  {#each opt.service_results as svc}
+                  {#each opt.service_results as svc, svcIndex (`service-result-${svcIndex}`)}
                     <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {svc.is_match ? '' : 'bg-error/5'}">
                       <Icon
                         icon={svc.is_match ? "mdi:check-circle" : "mdi:close-circle"}
@@ -334,7 +338,7 @@
                     </div>
                   {/each}
 
-                  {#each opt.scheduler_results as task}
+                  {#each opt.scheduler_results as task, taskIndex (`scheduler-result-${taskIndex}`)}
                     <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {task.is_match ? '' : 'bg-error/5'}">
                       <Icon
                         icon={task.is_match ? "mdi:check-circle" : "mdi:close-circle"}

@@ -57,9 +57,8 @@ fn inspect_option(
     let scheduler_results = inspect_scheduler_changes(option)?;
 
     // Determine if everything matches
-    let all_match = registry_results.iter().all(|r| r.is_match)
-        && service_results.iter().all(|s| s.is_match)
-        && scheduler_results.iter().all(|s| s.is_match);
+    let all_match =
+        calculate_overall_match(&registry_results, &service_results, &scheduler_results);
 
     Ok(OptionInspection {
         option_index: index,
@@ -71,6 +70,25 @@ fn inspect_option(
         scheduler_results,
         all_match,
     })
+}
+
+fn calculate_overall_match(
+    registry_results: &[RegistryMismatch],
+    service_results: &[ServiceMismatch],
+    scheduler_results: &[SchedulerMismatch],
+) -> bool {
+    registry_results
+        .iter()
+        .filter(|r| !r.skip_validation)
+        .all(|r| r.is_match)
+        && service_results
+            .iter()
+            .filter(|s| !s.skip_validation)
+            .all(|s| s.is_match)
+        && scheduler_results
+            .iter()
+            .filter(|s| !s.skip_validation)
+            .all(|s| s.is_match)
 }
 
 fn inspect_registry_changes(
@@ -120,6 +138,7 @@ fn inspect_registry_changes(
                     value_type: Some(value_type.as_str().to_string()),
                     description: format!("Set {} to {:?}", value_str, expected_val),
                     is_match,
+                    skip_validation: change.skip_validation,
                 });
             }
             RegistryAction::DeleteValue => {
@@ -140,6 +159,7 @@ fn inspect_registry_changes(
                     value_type: None,
                     description: format!("Delete value {}", value_str),
                     is_match: !exists,
+                    skip_validation: change.skip_validation,
                 });
             }
             RegistryAction::DeleteKey => {
@@ -159,6 +179,7 @@ fn inspect_registry_changes(
                     value_type: None,
                     description: format!("Delete key {}", path),
                     is_match: !exists,
+                    skip_validation: change.skip_validation,
                 });
             }
             RegistryAction::CreateKey => {
@@ -178,6 +199,7 @@ fn inspect_registry_changes(
                     value_type: None,
                     description: format!("Create key {}", path),
                     is_match: exists,
+                    skip_validation: change.skip_validation,
                 });
             }
         }
@@ -202,6 +224,7 @@ fn inspect_service_changes(option: &TweakOption) -> Result<Vec<ServiceMismatch>,
             actual_startup: current_startup.map(|s| format!("{:?}", s)),
             description: format!("Set startup to {:?}", expected_startup),
             is_match,
+            skip_validation: change.skip_validation,
         });
     }
 
@@ -264,6 +287,7 @@ fn inspect_scheduler_changes(option: &TweakOption) -> Result<Vec<SchedulerMismat
                     actual_state,
                     description: format!("{:?} task (pattern: {})", change.action, pattern),
                     is_match,
+                    skip_validation: change.skip_validation,
                 });
             }
         } else if let Some(task_name) = &change.task_name {
@@ -314,10 +338,83 @@ fn inspect_scheduler_changes(option: &TweakOption) -> Result<Vec<SchedulerMismat
                 actual_state,
                 description: format!("{:?} task", change.action),
                 is_match,
+                skip_validation: change.skip_validation,
             });
         }
         // If neither task_name nor task_name_pattern is set, skip this change
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_skip_validation_logic() {
+        let registry_success = RegistryMismatch {
+            hive: "HKCU".into(),
+            key: "Test".into(),
+            value_name: "Val".into(),
+            expected_value: None,
+            actual_value: None,
+            value_type: None,
+            description: "Test".into(),
+            is_match: true,
+            skip_validation: false,
+        };
+
+        let registry_fail = RegistryMismatch {
+            hive: "HKCU".into(),
+            key: "Test".into(),
+            value_name: "Val".into(),
+            expected_value: None,
+            actual_value: None,
+            value_type: None,
+            description: "Test".into(),
+            is_match: false,
+            skip_validation: false,
+        };
+
+        let registry_fail_skip = RegistryMismatch {
+            hive: "HKCU".into(),
+            key: "Test".into(),
+            value_name: "Val".into(),
+            expected_value: None,
+            actual_value: None,
+            value_type: None,
+            description: "Test".into(),
+            is_match: false,
+            skip_validation: true,
+        };
+
+        // All match -> OK
+        assert!(calculate_overall_match(
+            &[registry_success.clone()],
+            &[],
+            &[]
+        ));
+
+        // One fail -> Fail
+        assert!(!calculate_overall_match(
+            &[registry_success.clone(), registry_fail.clone()],
+            &[],
+            &[]
+        ));
+
+        // Validation fail but skip_validation is true -> OK
+        assert!(calculate_overall_match(
+            &[registry_success.clone(), registry_fail_skip.clone()],
+            &[],
+            &[]
+        ));
+
+        // All skipped -> OK (technically vacuous truth)
+        assert!(calculate_overall_match(
+            &[registry_fail_skip.clone()],
+            &[],
+            &[]
+        ));
+    }
 }

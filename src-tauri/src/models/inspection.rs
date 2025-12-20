@@ -10,6 +10,7 @@ pub struct RegistryMismatch {
     pub value_type: Option<String>,
     pub description: String,
     pub is_match: bool,
+    pub skip_validation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +20,7 @@ pub struct ServiceMismatch {
     pub actual_startup: Option<String>,
     pub description: String,
     pub is_match: bool,
+    pub skip_validation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +31,7 @@ pub struct SchedulerMismatch {
     pub actual_state: Option<String>,
     pub description: String,
     pub is_match: bool,
+    pub skip_validation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
