@@ -1,15 +1,17 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { open } from "@tauri-apps/plugin-shell";
   import type { Snippet } from "svelte";
 
   interface Props {
     href: string;
     children: Snippet;
+    title?: string;
     class?: string;
     [key: string]: unknown;
   }
 
-  const { href, children, ...rest }: Props = $props();
+  const { href, children, title, ...rest }: Props = $props();
 
   async function handleClick(event: MouseEvent) {
     // Only intercept external links
@@ -26,6 +28,6 @@
 
 <!-- This is an external link component that opens URLs in the system browser via Tauri shell -->
 <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-<a {href} {...rest} onclick={handleClick}>
+<a {href} {...rest} onclick={handleClick} use:tooltip={title}>
   {@render children()}
 </a>

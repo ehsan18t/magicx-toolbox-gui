@@ -18,6 +18,7 @@ pub fn capture_snapshot(
     tweak: &TweakDefinition,
     option_index: usize,
     windows_version: u32,
+    original_option_index: Option<usize>,
 ) -> Result<TweakSnapshot, Error> {
     let option = tweak
         .options
@@ -25,10 +26,11 @@ pub fn capture_snapshot(
         .ok_or_else(|| Error::BackupFailed(format!("Invalid option index: {}", option_index)))?;
 
     log::info!(
-        "Capturing snapshot for tweak '{}' option '{}' (index {})",
+        "Capturing snapshot for tweak '{}' option '{}' (index {}), original_option_index={:?}",
         tweak.name,
         option.label,
-        option_index
+        option_index,
+        original_option_index
     );
 
     let mut snapshot = TweakSnapshot::new(
@@ -38,6 +40,7 @@ pub fn capture_snapshot(
         &option.label,
         windows_version,
         tweak.requires_system,
+        original_option_index,
     );
 
     // Parallel capture: registry, services, and scheduler tasks run concurrently
@@ -255,6 +258,7 @@ pub fn capture_current_state(
     );
 
     // We create a snapshot but option_index/label don't matter here since this is temporary
+    // original_option_index also doesn't matter - this is just for rollback
     let mut snapshot = TweakSnapshot::new(
         &tweak.id,
         &tweak.name,
@@ -262,6 +266,7 @@ pub fn capture_current_state(
         "_current_state_",
         windows_version,
         tweak.requires_system,
+        None, // Not relevant for temporary rollback snapshots
     );
 
     // Collect unique items across all options first

@@ -225,8 +225,8 @@
     id="select-listbox"
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
-    class="fixed z-9999 max-h-60 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
-    style="top: {menuPosition.top}px; left: {menuPosition.left}px; width: {menuPosition.width}px;"
+    class="fixed z-9999 max-h-60 w-fit space-y-1 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
+    style="top: {menuPosition.top}px; left: {menuPosition.left}px; "
   >
     {#each options as opt, i (opt.value)}
       <button
@@ -245,7 +245,7 @@
           opt.disabled && "cursor-not-allowed text-foreground-muted opacity-50",
         )}
       >
-        <span class="truncate">{opt.label}</span>
+        <span>{opt.label}</span>
         {#if opt.value === value}
           <Icon icon="mdi:check" class="h-4 w-4 shrink-0 text-accent" />
         {/if}

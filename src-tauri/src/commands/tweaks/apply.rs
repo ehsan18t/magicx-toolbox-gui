@@ -93,13 +93,17 @@ pub async fn apply_tweak(
         );
         Some(backup_service::capture_current_state(&tweak, version)?)
     } else {
-        let snapshot = backup_service::capture_snapshot(&tweak, option_index, version)?;
+        // Capture original state - pass current_option_index so we know if original was unknown
+        let original_option_index = current_state.current_option_index;
+        let snapshot =
+            backup_service::capture_snapshot(&tweak, option_index, version, original_option_index)?;
         backup_service::save_snapshot(&snapshot)?;
         log::info!(
-            "Captured original snapshot for '{}' with {} registry values, {} services",
+            "Captured original snapshot for '{}' with {} registry values, {} services (original_option_index={:?})",
             tweak.name,
             snapshot.registry_snapshots.len(),
-            snapshot.service_snapshots.len()
+            snapshot.service_snapshots.len(),
+            original_option_index
         );
         None
     };

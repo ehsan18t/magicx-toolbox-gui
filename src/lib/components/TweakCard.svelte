@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import {
@@ -14,7 +15,8 @@
   import type { Snippet } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
-  import { Select } from "./ui";
+  import { SegmentedSwitch, Select } from "./ui";
+  import type { SegmentOption } from "./ui/SegmentedSwitch.svelte";
 
   interface Props {
     tweak: TweakWithStatus;
@@ -75,8 +77,15 @@
   // Check if this is a toggle (2 options and not forced dropdown) or dropdown (3+ options or forced)
   const isToggle = $derived(tweak.definition.options.length === 2 && !tweak.definition.force_dropdown);
 
-  // Current option index from registry (actual applied state, null if no match = system default)
+  // Current option index from registry (actual applied state, null/undefined if no match = system default)
   const currentOptionIndex = $derived(tweak.status.current_option_index);
+
+  // Original option index from snapshot (undefined = no snapshot, null = unknown original, number = known original)
+  const snapshotOriginalOptionIndex = $derived(tweak.status.snapshot_original_option_index);
+
+  // Determine if we should show the "Default" segment in segmented switch
+  // Show when: current state is unknown OR snapshot exists with unknown original state
+  const showDefaultSegment = $derived(currentOptionIndex === null || snapshotOriginalOptionIndex === null);
 
   // Get pending change for this tweak
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
@@ -84,14 +93,47 @@
   // Determine if there's a pending change
   const hasPending = $derived(pendingChange !== undefined);
 
-  // Calculate the effective state for toggle (what the user sees in the UI)
-  // For toggles: option 0 = enabled, option 1 = disabled
-  const effectiveEnabled = $derived.by(() => {
+  // Calculate effective value for segmented switch
+  // -1 = Default/System, 0 = ON (option 0), 1 = OFF (option 1)
+  const effectiveSegmentValue = $derived.by(() => {
     if (pendingChange !== undefined) {
-      return pendingChange.optionIndex === 0;
+      return pendingChange.optionIndex;
     }
-    // If no current option matches (system default), treat as disabled
-    return currentOptionIndex === 0;
+    // If current state is unknown, show as Default (-1)
+    if (currentOptionIndex === null) {
+      return -1;
+    }
+    return currentOptionIndex;
+  });
+
+  // Build segment options for segmented switch
+  const segmentOptions = $derived.by(() => {
+    const segments: SegmentOption[] = [];
+
+    // Option 0 is always first (ON/Applied state)
+    segments.push({
+      value: 0,
+      label: options[0]?.label ?? "ON",
+      icon: "mdi:check-circle",
+    });
+
+    // Add Default segment in the middle if needed
+    if (showDefaultSegment) {
+      segments.push({
+        value: -1,
+        label: "Default",
+        icon: "mdi:restore",
+      });
+    }
+
+    // Option 1 is last (OFF/Original state)
+    segments.push({
+      value: 1,
+      label: options[1]?.label ?? "OFF",
+      icon: "mdi:close-circle-outline",
+    });
+
+    return segments;
   });
 
   // Calculate effective option index for dropdowns
@@ -119,24 +161,41 @@
     return opts;
   });
 
-  function handleToggleClick() {
-    if (isHighRisk && !effectiveEnabled) {
+  // Track pending high-risk action for confirmation
+  let pendingHighRiskValue: number | null = $state(null);
+
+  function handleSegmentChange(newValue: number) {
+    // Handle "Default" selection - just unstage any pending change
+    if (newValue === -1) {
+      unstageChange(tweak.definition.id);
+      return;
+    }
+
+    // Check for high-risk confirmation (only when enabling option 0)
+    if (isHighRisk && newValue === 0 && effectiveSegmentValue !== 0) {
+      pendingHighRiskValue = newValue;
       showConfirmDialog = true;
+      return;
+    }
+
+    executeSegmentChange(newValue);
+  }
+
+  function executeSegmentChange(newValue: number) {
+    showConfirmDialog = false;
+    pendingHighRiskValue = null;
+
+    // If selecting current state, unstage
+    if (newValue === currentOptionIndex) {
+      unstageChange(tweak.definition.id);
     } else {
-      executeToggle();
+      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex: newValue });
     }
   }
 
-  function executeToggle() {
-    showConfirmDialog = false;
-    const newEnabled = !effectiveEnabled;
-    // For toggles: option 0 = enabled, option 1 = disabled
-    const newOptionIndex = newEnabled ? 0 : 1;
-
-    if (newOptionIndex === currentOptionIndex) {
-      unstageChange(tweak.definition.id);
-    } else {
-      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex: newOptionIndex });
+  function handleConfirmHighRisk() {
+    if (pendingHighRiskValue !== null) {
+      executeSegmentChange(pendingHighRiskValue);
     }
   }
 
@@ -172,185 +231,170 @@
 
 <article
   id="tweak-{tweak.definition.id}"
-  class="tweak-card relative flex overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md {tweak
-    .status.is_applied
-    ? 'border-accent/40 bg-accent/5'
-    : ''} {hasPending ? 'border-warning/50 bg-warning/5' : ''} {isHighlighting ? 'tweak-highlight' : ''}"
+  class="tweak-card group relative flex overflow-hidden rounded-xl border transition-all duration-200
+    {hasPending
+    ? 'border-warning/40 bg-warning/3'
+    : tweak.status.is_applied
+      ? 'border-accent/30 bg-accent/3'
+      : 'border-border bg-card hover:border-border-hover'}
+    {isHighlighting ? 'tweak-highlight' : ''}"
 >
-  <!-- Status bar -->
+  <!-- Status indicator -->
   <div
-    class="w-0.75 shrink-0 transition-colors duration-200 {hasPending
+    class="absolute top-0 left-0 h-full w-1 transition-colors duration-200 {hasPending
       ? 'bg-warning'
       : tweak.status.is_applied
         ? 'bg-accent'
-        : 'bg-muted'}"
+        : 'group-hover:bg-muted bg-transparent'}"
   ></div>
 
-  <div class="flex min-w-0 flex-1 flex-col gap-2 px-4 py-3.5">
-    <!-- Header Section -->
-    <div class="mb-2 flex items-center justify-between gap-3">
-      <h3 class="m-0 flex flex-1 items-center gap-2 text-sm leading-tight font-semibold text-foreground">
-        {#if titleSlot}
-          {@render titleSlot()}
-        {:else}
-          {tweak.definition.name}
-        {/if}
-        {#if hasDetectionError}
-          <span
-            class="inline-flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase"
-            title={tweak.status.error}
-          >
-            <Icon icon="mdi:alert" width="10" />
-            unknown state
-          </span>
-        {/if}
-        {#if hasPending}
-          <span
-            class="inline-flex rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase"
-            >pending</span
-          >
-        {/if}
-      </h3>
-
-      {#if !isToggle}
-        <!-- Dropdown for multi-option tweaks -->
-        <Select
-          value={effectiveOptionIndex ?? -1}
-          options={selectOptions}
-          pending={hasPending}
-          loading={isLoading}
-          disabled={isLoading}
-          onchange={handleSelectChange}
-        />
-      {:else}
-        <!-- Toggle Switch -->
-        <button
-          type="button"
-          class="toggle-switch shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70"
-          class:active={effectiveEnabled}
-          class:pending={hasPending}
-          disabled={isLoading}
-          onclick={handleToggleClick}
-          aria-label={effectiveEnabled ? "Will revert tweak" : "Will apply tweak"}
-          role="switch"
-          aria-checked={effectiveEnabled}
-        >
-          <span
-            class="switch-track flex h-6 w-11 items-center rounded-full border-2 transition-colors duration-200 {effectiveEnabled
-              ? hasPending
-                ? 'border-warning bg-warning'
-                : 'border-accent bg-accent'
-              : 'border-border bg-surface'} hover:not-disabled:brightness-95"
-          >
+  <div class="flex min-w-0 flex-1 flex-col px-3 pt-2.5 pb-2">
+    <!-- Header: Title + Control -->
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0 flex-1">
+        <h3 class="m-0 flex flex-wrap items-center gap-2 text-[13px] leading-tight font-semibold text-foreground">
+          {#if titleSlot}
+            {@render titleSlot()}
+          {:else}
+            {tweak.definition.name}
+          {/if}
+          {#if hasDetectionError}
             <span
-              class="switch-thumb flex h-4.5 w-4.5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
-                ? 'translate-x-5'
-                : 'translate-x-0.5'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
+              class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
+              use:tooltip={tweak.status.error}
             >
-              {#if isLoading}
-                <Icon icon="mdi:loading" width="14" class="animate-spin" />
-              {:else if tweak.status.is_applied}
-                <Icon icon="mdi:check" width="14" />
-              {/if}
+              <Icon icon="mdi:alert" width="10" />
+              Unknown
             </span>
-          </span>
-        </button>
-      {/if}
-    </div>
+          {/if}
+          {#if hasPending}
+            <span
+              class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
+            >
+              Pending
+            </span>
+          {/if}
+        </h3>
 
-    <!-- Description -->
-    <p class="m-0 mb-2.5 grow text-sm leading-relaxed text-foreground-muted">
-      {#if descriptionSlot}
-        {@render descriptionSlot()}
-      {:else}
-        {tweak.definition.description}
-      {/if}
-    </p>
+        <!-- Description -->
+        <p class="m-0 mt-1.5 mb-1.5 text-[12px] leading-relaxed text-foreground-muted/80">
+          {#if descriptionSlot}
+            {@render descriptionSlot()}
+          {:else}
+            {tweak.definition.description}
+          {/if}
+        </p>
+      </div>
+
+      <!-- Control -->
+      <div class="shrink-0 pt-0.5">
+        {#if !isToggle}
+          <Select
+            value={effectiveOptionIndex ?? -1}
+            options={selectOptions}
+            pending={hasPending}
+            loading={isLoading}
+            disabled={isLoading}
+            onchange={handleSelectChange}
+          />
+        {:else}
+          <SegmentedSwitch
+            value={effectiveSegmentValue}
+            options={segmentOptions}
+            pending={hasPending}
+            loading={isLoading}
+            disabled={isLoading}
+            iconOnly
+            onchange={handleSegmentChange}
+          />
+        {/if}
+      </div>
+    </div>
 
     <!-- Error message -->
     {#if tweakError}
       <div
-        class="mb-2.5 flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-xs leading-relaxed text-error"
+        class="mt-3 flex items-start gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-xs leading-relaxed text-error"
       >
         <Icon icon="mdi:alert-circle" width="16" class="mt-0.5 shrink-0" />
         <span class="flex-1 wrap-break-word">{tweakError}</span>
         <button
-          class="flex shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0.5 text-error transition-colors duration-150 hover:bg-error/20"
+          class="flex shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0.5 text-error/70 transition-colors duration-150 hover:bg-error/10 hover:text-error"
           onclick={() => errorStore.clearError(tweak.definition.id)}
         >
-          <Icon icon="mdi:close" width="14" />
+          <Icon icon="mdi:close" width="16" />
         </button>
       </div>
     {/if}
 
-    <!-- Metadata Section -->
-    <div class="flex flex-wrap items-center gap-2 border-t border-border/30 pt-2">
-      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+    <!-- Footer: Metadata + Actions -->
+    <div class="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/40 pt-2.5">
+      <!-- Metadata tags -->
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <!-- Risk level -->
         <div
-          class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
-          title={riskInfo.description}
+          class="inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors duration-150
+            {tweak.definition.risk_level === 'low'
+            ? 'bg-success/8 text-success hover:bg-success/15'
+            : tweak.definition.risk_level === 'medium'
+              ? 'bg-warning/8 text-warning hover:bg-warning/15'
+              : tweak.definition.risk_level === 'high'
+                ? 'bg-orange-500/8 text-orange-500 hover:bg-orange-500/15'
+                : 'bg-error/8 text-error hover:bg-error/15'}"
+          use:tooltip={riskInfo.description}
         >
-          <Icon
-            icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon}
-            width="16"
-            class="opacity-70 {riskConfig[tweak.definition.risk_level as RiskLevel].color}"
-          />
-          <span
-            class="text-xs font-semibold tracking-wide uppercase {riskConfig[tweak.definition.risk_level as RiskLevel]
-              .color}">{riskInfo.name}</span
-          >
+          <Icon icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon} width="12" />
+          <span class="tracking-wide uppercase">{riskInfo.name}</span>
         </div>
 
-        <!-- Permission level (only show highest: ti > system > admin) -->
+        <!-- Permission level -->
         {#if permissionInfo}
           <div
-            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium {permissionInfo.colorClass} transition-colors duration-150 hover:text-foreground"
-            title={permissionInfo.description}
+            class="bg-muted/50 hover:bg-muted inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground-muted"
+            use:tooltip={permissionInfo.description}
           >
-            <Icon icon={permissionInfo.icon} width="16" class="opacity-80" />
-            <span class="text-xs font-semibold tracking-wide uppercase">{permissionInfo.name}</span>
+            <Icon icon={permissionInfo.icon} width="12" />
+            <span class="tracking-wide uppercase">{permissionInfo.name}</span>
           </div>
         {/if}
 
         <!-- Reboot required -->
         {#if tweak.definition.requires_reboot}
           <div
-            class="inline-flex cursor-help items-center gap-1.5 text-xs font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground"
-            title="System restart required after applying or reverting"
+            class="inline-flex cursor-help items-center gap-1 rounded-full bg-info/8 px-2 py-0.5 text-[10px] font-medium text-info transition-colors duration-150 hover:bg-info/15"
+            use:tooltip={"System restart required after applying or reverting"}
           >
-            <Icon icon="mdi:restart" width="16" class="opacity-70" />
-            <span class="text-xs font-semibold tracking-wide uppercase">Reboot</span>
+            <Icon icon="mdi:restart" width="12" />
+            <span class="tracking-wide uppercase">Reboot</span>
           </div>
         {/if}
       </div>
 
-      <!-- Details (modal) -->
-      <div class="card-actions ml-auto flex shrink-0 items-center gap-2" class:has-restore={hasSnapshot}>
-        <!-- Restore Snapshot Button - only shown when snapshot exists -->
+      <!-- Actions -->
+      <div class="card-actions flex shrink-0 items-center gap-1" class:has-restore={hasSnapshot}>
         {#if hasSnapshot}
           <button
             type="button"
-            class="card-action inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-accent transition-all duration-150 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            class="card-action inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-accent transition-all duration-150 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleRestoreClick}
             disabled={isLoading}
             aria-label="Restore snapshot"
-            title="Restore to original state from snapshot"
+            use:tooltip={"Restore to original state from snapshot"}
           >
-            <Icon icon="mdi:history" width="16" class="card-action-icon" />
+            <Icon icon="mdi:history" width="18" class="card-action-icon" />
             <span class="card-action-label">Restore</span>
           </button>
         {/if}
 
         <button
           type="button"
-          class="card-action hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-foreground-muted transition-all duration-150 hover:text-foreground"
+          class="card-action hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-all duration-150 hover:text-foreground"
           onclick={() => openTweakDetailsModal(tweak.definition.id)}
           aria-label="Open tweak details"
-          title="Details"
+          use:tooltip={"Details"}
         >
           <span class="card-action-label">Details</span>
-          <Icon icon="mdi:open-in-new" width="16" class="card-action-icon" />
+          <Icon icon="mdi:chevron-right" width="18" class="card-action-icon" />
         </button>
       </div>
     </div>
@@ -364,8 +408,11 @@
     .risk_level} risk. {riskInfo.description} Are you sure you want to apply it?"
   confirmText="Yes, Apply"
   cancelText="Cancel"
-  onconfirm={executeToggle}
-  oncancel={() => (showConfirmDialog = false)}
+  onconfirm={handleConfirmHighRisk}
+  oncancel={() => {
+    showConfirmDialog = false;
+    pendingHighRiskValue = null;
+  }}
 />
 
 <ConfirmDialog
@@ -385,6 +432,16 @@
     container-type: inline-size;
   }
 
+  /* Subtle shadow on hover for depth */
+  .tweak-card:hover {
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Dark theme shadow adjustment */
+  :global([data-theme="dark"]) .tweak-card:hover {
+    box-shadow: 0 2px 12px -2px rgba(0, 0, 0, 0.3);
+  }
+
   /*
     Labels should be visible by default.
     Collapse to icon-only only when the card is tight.
@@ -402,7 +459,7 @@
     }
 
     .card-actions.has-restore :global(.card-action-icon) {
-      transform: scale(1.2);
+      transform: scale(1.1);
       transform-origin: center;
     }
   }
@@ -418,7 +475,7 @@
     }
 
     :global(.card-action-icon) {
-      transform: scale(1.2);
+      transform: scale(1.1);
       transform-origin: center;
     }
   }

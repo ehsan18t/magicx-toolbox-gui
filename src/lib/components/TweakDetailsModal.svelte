@@ -60,8 +60,8 @@
   });
   const permissionInfo = $derived(highestPermission !== "none" ? PERMISSION_INFO[highestPermission] : null);
 
-  function optionLabel(optionIndex: number | null | undefined, options: TweakOption[]): string {
-    if (optionIndex === null || optionIndex === undefined) return "System Default";
+  function optionLabel(optionIndex: number | null, options: TweakOption[]): string {
+    if (optionIndex === null) return "System Default";
     const opt = options[optionIndex];
     return opt ? opt.label : `Option ${optionIndex}`;
   }

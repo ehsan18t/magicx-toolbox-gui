@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { debugState } from "$lib/stores/debug.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
@@ -127,7 +128,7 @@
         {#if systemStore.info?.is_admin}
           <span
             class="flex items-center gap-1 rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success uppercase"
-            title="Running as Administrator"
+            use:tooltip={"Running as Administrator"}
           >
             <Icon icon="tabler:shield-check-filled" width="12" height="12" />
             Admin
@@ -135,7 +136,7 @@
         {:else if systemStore.info !== null}
           <span
             class="flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold text-warning uppercase"
-            title="Running as Standard User - Some features require Administrator"
+            use:tooltip={"Running as Standard User - Some features require Administrator"}
           >
             <Icon icon="tabler:shield-x" width="12" height="12" />
             User
@@ -149,7 +150,7 @@
       <button
         type="button"
         aria-pressed={debugState.enabled}
-        title={debugState.enabled
+        use:tooltip={debugState.enabled
           ? `Debug ON (${debugState.logCounts.total} logs) - Click to open panel`
           : "Debug OFF - Click to enable"}
         onclick={() => {
@@ -182,7 +183,7 @@
       {#if systemStore.info !== null && !systemStore.info.is_admin}
         <button
           type="button"
-          title="Restart as Administrator"
+          use:tooltip={"Restart as Administrator"}
           onclick={restartAsAdmin}
           disabled={isRestarting}
           class="relative flex h-8 w-8 items-center justify-center rounded-md text-warning transition-all duration-150 hover:bg-foreground/10 hover:text-warning {isRestarting

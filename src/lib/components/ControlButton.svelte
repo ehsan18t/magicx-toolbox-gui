@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import Icon from "./Icon.svelte";
 
   type Variant = "default" | "theme" | "danger";
@@ -32,7 +33,7 @@
 <button
   class="group relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border-0 bg-transparent transition-colors duration-150 outline-none active:scale-90 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 {btnClass}"
   type="button"
-  {title}
+  use:tooltip={title}
   {onclick}
 >
   <span class="relative z-10 flex items-center justify-center transition-transform duration-150 {iconClass}">

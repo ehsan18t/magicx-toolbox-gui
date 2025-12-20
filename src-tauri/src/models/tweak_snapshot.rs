@@ -63,6 +63,11 @@ pub struct TweakSnapshot {
     /// Whether SYSTEM elevation was used for this tweak
     #[serde(default)]
     pub requires_system: bool,
+    /// Which option index matched the original state before any changes.
+    /// None means original state was unknown (didn't match any defined option).
+    /// Used by frontend to show "Default" segment in segmented switch.
+    #[serde(default)]
+    pub original_option_index: Option<usize>,
     /// Registry values captured before changes
     pub registry_snapshots: Vec<RegistrySnapshot>,
     /// Service states captured before changes
@@ -81,6 +86,7 @@ impl TweakSnapshot {
         applied_option_label: &str,
         windows_version: u32,
         requires_system: bool,
+        original_option_index: Option<usize>,
     ) -> Self {
         Self {
             tweak_id: tweak_id.to_string(),
@@ -90,6 +96,7 @@ impl TweakSnapshot {
             created_at: chrono::Local::now().to_rfc3339(),
             windows_version,
             requires_system,
+            original_option_index,
             registry_snapshots: Vec::new(),
             service_snapshots: Vec::new(),
             scheduler_snapshots: Vec::new(),

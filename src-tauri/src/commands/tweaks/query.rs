@@ -82,14 +82,18 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     // Detect current state by matching against all options
     let state = backup_service::detect_tweak_state(&tweak, version)?;
 
-    // Get last applied timestamp from snapshot if exists
-    let last_applied = backup_service::load_snapshot(&tweak_id)?.map(|s| s.created_at);
+    // Get snapshot info if exists (for last_applied timestamp and original_option_index)
+    let snapshot = backup_service::load_snapshot(&tweak_id)?;
+    let last_applied = snapshot.as_ref().map(|s| s.created_at.clone());
+    // Get original_option_index from snapshot: Some(Some(i)) if matched, Some(None) if unknown
+    let snapshot_original_option_index = snapshot.map(|s| s.original_option_index);
 
     log::trace!(
-        "Tweak {} status: current_option={:?}, has_snapshot={}",
+        "Tweak {} status: current_option={:?}, has_snapshot={}, original_option={:?}",
         tweak_id,
         state.current_option_index,
-        state.has_snapshot
+        state.has_snapshot,
+        snapshot_original_option_index
     );
 
     Ok(TweakStatus {
@@ -98,6 +102,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
         last_applied,
         has_backup: state.has_snapshot,
         current_option_index: state.current_option_index,
+        snapshot_original_option_index,
         error: None,
     })
 }
@@ -118,10 +123,9 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
         .map(|(id, tweak)| {
             match backup_service::detect_tweak_state(&tweak, version) {
                 Ok(state) => {
-                    let last_applied = backup_service::load_snapshot(&id)
-                        .ok()
-                        .flatten()
-                        .map(|s| s.created_at);
+                    let snapshot = backup_service::load_snapshot(&id).ok().flatten();
+                    let last_applied = snapshot.as_ref().map(|s| s.created_at.clone());
+                    let snapshot_original_option_index = snapshot.map(|s| s.original_option_index);
 
                     TweakStatus {
                         tweak_id: id,
@@ -129,6 +133,7 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                         last_applied,
                         has_backup: state.has_snapshot,
                         current_option_index: state.current_option_index,
+                        snapshot_original_option_index,
                         error: None,
                     }
                 }
@@ -142,6 +147,7 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                         last_applied: None,
                         has_backup: false,
                         current_option_index: None,
+                        snapshot_original_option_index: None,
                         error: Some(format!("State detection failed: {}", e)),
                     }
                 }

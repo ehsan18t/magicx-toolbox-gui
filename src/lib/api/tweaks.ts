@@ -61,6 +61,7 @@ export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
       tweak_id: definition.id,
       is_applied: false,
       has_backup: false,
+      current_option_index: null,
     },
   }));
 

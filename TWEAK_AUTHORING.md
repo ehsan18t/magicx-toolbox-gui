@@ -48,7 +48,7 @@ Tweaks use a **unified option-based model** where every tweak has an `options` a
 | Concept              | Description                                                       |
 | -------------------- | ----------------------------------------------------------------- |
 | **Option**           | A complete state for a tweak (e.g., "Enabled", "Disabled", "4MB") |
-| **Toggle Tweak**     | Has exactly 2 options, displays as an on/off switch               |
+| **Toggle Tweak**     | Has exactly 2 options, displays as a segmented switch             |
 | **Dropdown Tweak**   | Has 3+ options, displays as a dropdown selector                   |
 | **Snapshot**         | Captured original state before applying a tweak (for reverting)   |
 | **Atomic Execution** | Registry, services, and scheduler changes are all-or-nothing      |
@@ -253,24 +253,43 @@ requires_ti: true
 
 Every tweak must have an `options` array with **at least 2 options**. The UI type is determined automatically:
 
-- **2 options** → Toggle switch (unless `force_dropdown: true`)
+- **2 options** → Segmented switch (unless `force_dropdown: true`)
 - **3+ options** → Dropdown menu
 
 ### Toggle Tweaks (2 Options)
 
-By default, tweaks with exactly 2 options display as a toggle switch:
+By default, tweaks with exactly 2 options display as a **segmented switch**:
+
+```
+┌────────────────────────────────┐
+│ [Disabled] │ [Default] │ [Enabled] │
+└────────────────────────────────┘
+```
+
+The segmented switch shows 2 or 3 segments:
+- **Option 0 label** (left) — The "tweaked" state
+- **Default** (middle) — Only shown when system state is unknown
+- **Option 1 label** (right) — The "normal/original" state
 
 ```yaml
 options:
-  - label: "Disabled"      # Index 0 - Shown when switch is ON
+  - label: "Disabled"      # Index 0 - Shown on the left
     # ... changes for disabled state
-  - label: "Enabled"       # Index 1 - Shown when switch is OFF
+  - label: "Enabled"       # Index 1 - Shown on the right
     # ... changes for enabled state
 ```
 
 **Convention:** For toggle tweaks:
 - `options[0]` = The "tweaked" state (what the user wants to achieve)
 - `options[1]` = The "default/normal" state
+
+#### When Does "Default" Appear?
+
+The **Default** segment appears in the middle when:
+1. The current system state doesn't match either option (unknown/custom value), OR
+2. A snapshot exists where the original state was unknown (user applied a tweak to an unknown state)
+
+This ensures users can always see and return to the original system state, even if it wasn't one of the defined options.
 
 ### Dropdown Tweaks (3+ Options)
 
@@ -290,7 +309,7 @@ options:
 
 ### Force Dropdown for 2 Options
 
-If you have exactly 2 options but want a dropdown instead of a toggle, use `force_dropdown`:
+If you have exactly 2 options but want a dropdown instead of a segmented switch, use `force_dropdown`:
 
 ```yaml
 force_dropdown: true
@@ -857,11 +876,22 @@ For each option in tweak.options:
 
 ### Special Cases
 
-1. **No Match (System Default)**: If no option matches current state, UI shows "System Default" placeholder
+1. **No Match (Unknown State)**: If no option matches current state, `current_option_index` is `null`. For 2-option tweaks, the segmented switch shows a "Default" segment in the middle.
 
-2. **Empty Options**: If an option has no validatable changes (all filtered out), it cannot be detected as current
+2. **Snapshot with Unknown Original**: When a tweak is applied from an unknown state, the snapshot records `original_option_index: null`. Even after restart (when current state matches an option), the "Default" segment remains visible so users can restore to the original unknown state.
 
-3. **Value Comparison**: Handles numeric type variations (DWORD as u32 or u64)
+3. **Empty Options**: If an option has no validatable changes (all filtered out), it cannot be detected as current
+
+4. **Value Comparison**: Handles numeric type variations (DWORD as u32 or u64)
+
+### UI State Display
+
+| Scenario             | 2-Option Tweaks (Segmented Switch) | 3+ Option Tweaks (Dropdown)  |
+| -------------------- | ---------------------------------- | ---------------------------- |
+| Matches Option 0     | `[Option0] [Option1]`              | Option 0 selected            |
+| Matches Option 1     | `[Option0] [Option1]`              | Option 1 selected            |
+| Unknown State        | `[Option0] [Default] [Option1]`    | "System Default" placeholder |
+| Applied from Unknown | `[Option0] [Default] [Option1]`    | Shows applied option         |
 
 ---
 

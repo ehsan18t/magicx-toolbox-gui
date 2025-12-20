@@ -9,6 +9,7 @@ export { default as ModalBody } from "./ModalBody.svelte";
 export { default as ModalFooter } from "./ModalFooter.svelte";
 export { default as ModalHeader } from "./ModalHeader.svelte";
 export { default as SearchInput } from "./SearchInput.svelte";
+export { default as SegmentedSwitch } from "./SegmentedSwitch.svelte";
 export { default as Select } from "./Select.svelte";
 export { default as Spinner } from "./Spinner.svelte";
 export { default as Switch } from "./Switch.svelte";

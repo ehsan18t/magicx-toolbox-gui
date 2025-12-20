@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { categoriesStore, getCategoryStats, loadingStateStore, systemStore } from "$lib/stores/tweaks.svelte";
   import HardwareItem from "./HardwareItem.svelte";
@@ -194,7 +195,7 @@
                 {#if i === 0 && systemStore.info?.hardware?.monitors && systemStore.info.hardware.monitors.length > 0}
                   {#each systemStore.info.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
                     <span class="h-1 w-1 rounded-full bg-border"></span>
-                    <span title="{monitor.name} - {monitor.resolution}">
+                    <span use:tooltip={`${monitor.name} - ${monitor.resolution}`}>
                       {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>
                     </span>
                     {#if monitor.refresh_rate > 0}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import Icon from "./Icon.svelte";
 
   interface Props {
@@ -25,7 +26,7 @@
         {@render headerExtra()}
       {/if}
     </div>
-    <h3 class="line-clamp-1 text-sm font-semibold text-foreground" {title}>
+    <h3 class="line-clamp-1 text-sm font-semibold text-foreground" use:tooltip={title}>
       {title}
     </h3>
     {#if children}

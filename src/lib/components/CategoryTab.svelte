@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import type { TabDefinition } from "$lib/stores/navigation.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import {
@@ -195,7 +196,7 @@
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
         onclick={handleDiscardChanges}
         disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
-        title="Discard all pending changes in this category"
+        use:tooltip={"Discard all pending changes in this category"}
       >
         <Icon icon="mdi:close-circle-outline" width="18" />
         <span class="hidden sm:inline">Discard</span>
@@ -205,7 +206,7 @@
         class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
         onclick={handleRestoreClick}
         disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
-        title={snapshotCount === 0
+        use:tooltip={snapshotCount === 0
           ? "No snapshots available"
           : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
       >
