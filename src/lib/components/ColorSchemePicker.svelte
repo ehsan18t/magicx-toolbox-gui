@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "$lib/stores/colorScheme.svelte";
   import { cn } from "@/utils";
 
@@ -34,7 +35,7 @@
         currentScheme === scheme.id && "scale-110 ring-2 ring-white/60",
       )}
       style="background-color: {scheme.color}"
-      title={scheme.name}
+      use:tooltip={scheme.name}
       aria-label="Set {scheme.name} color scheme"
       aria-pressed={currentScheme === scheme.id}
     >

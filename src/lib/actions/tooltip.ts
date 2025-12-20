@@ -1,7 +1,7 @@
-export function tooltip(node: HTMLElement, text: string) {
+export function tooltip(node: HTMLElement, text: string | undefined | null) {
   let tooltipComponent: HTMLElement | null = null;
 
-  function params(text: string) {
+  function params(text: string | undefined | null) {
     if (!text) return;
 
     // Update text if tooltip exists

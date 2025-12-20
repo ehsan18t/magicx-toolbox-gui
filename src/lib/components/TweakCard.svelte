@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import {
@@ -260,7 +261,7 @@
           {#if hasDetectionError}
             <span
               class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
-              title={tweak.status.error}
+              use:tooltip={tweak.status.error}
             >
               <Icon icon="mdi:alert" width="10" />
               Unknown
@@ -340,7 +341,7 @@
               : tweak.definition.risk_level === 'high'
                 ? 'bg-orange-500/8 text-orange-500 hover:bg-orange-500/15'
                 : 'bg-error/8 text-error hover:bg-error/15'}"
-          title={riskInfo.description}
+          use:tooltip={riskInfo.description}
         >
           <Icon icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon} width="12" />
           <span class="tracking-wide uppercase">{riskInfo.name}</span>
@@ -350,7 +351,7 @@
         {#if permissionInfo}
           <div
             class="bg-muted/50 hover:bg-muted inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground-muted"
-            title={permissionInfo.description}
+            use:tooltip={permissionInfo.description}
           >
             <Icon icon={permissionInfo.icon} width="12" />
             <span class="tracking-wide uppercase">{permissionInfo.name}</span>
@@ -361,7 +362,7 @@
         {#if tweak.definition.requires_reboot}
           <div
             class="inline-flex cursor-help items-center gap-1 rounded-full bg-info/8 px-2 py-0.5 text-[10px] font-medium text-info transition-colors duration-150 hover:bg-info/15"
-            title="System restart required after applying or reverting"
+            use:tooltip={"System restart required after applying or reverting"}
           >
             <Icon icon="mdi:restart" width="12" />
             <span class="tracking-wide uppercase">Reboot</span>
@@ -378,7 +379,7 @@
             onclick={handleRestoreClick}
             disabled={isLoading}
             aria-label="Restore snapshot"
-            title="Restore to original state from snapshot"
+            use:tooltip={"Restore to original state from snapshot"}
           >
             <Icon icon="mdi:history" width="18" class="card-action-icon" />
             <span class="card-action-label">Restore</span>
@@ -390,7 +391,7 @@
           class="card-action hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-all duration-150 hover:text-foreground"
           onclick={() => openTweakDetailsModal(tweak.definition.id)}
           aria-label="Open tweak details"
-          title="Details"
+          use:tooltip={"Details"}
         >
           <span class="card-action-label">Details</span>
           <Icon icon="mdi:chevron-right" width="18" class="card-action-icon" />

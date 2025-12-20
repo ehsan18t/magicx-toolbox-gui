@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { filterStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
   import Icon from "./Icon.svelte";
 
@@ -36,7 +37,7 @@
       <button
         class="hover:bg-muted flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-all duration-150 hover:text-foreground"
         onclick={() => pendingRebootStore.clear()}
-        title="Dismiss (changes still apply after restart)"
+        use:tooltip={"Dismiss (changes still apply after restart)"}
       >
         <Icon icon="mdi:close" width="16" />
       </button>

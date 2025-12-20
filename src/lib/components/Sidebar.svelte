@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { sidebarStore } from "$lib/stores/layout.svelte";
   import { openAboutModal, openSettingsModal, openUpdateModal } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
@@ -76,7 +77,7 @@
           ? 'bg-accent/15'
           : 'hover:bg-muted'}"
         onclick={() => handleNavClick(tab)}
-        title={!sidebarStore.isOpen ? tab.name : undefined}
+        use:tooltip={!sidebarStore.isOpen ? tab.name : null}
       >
         <div
           class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
@@ -121,7 +122,7 @@
           ? 'bg-accent/15'
           : 'hover:bg-muted'}"
         onclick={() => handleNavClick(tab)}
-        title={!sidebarStore.isOpen ? tab.name : undefined}
+        use:tooltip={!sidebarStore.isOpen ? tab.name : null}
       >
         <div
           class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
@@ -186,7 +187,7 @@
       </div>
 
       <!-- Color Scheme Picker (only visible when expanded) -->
-      <div class="flex items-center justify-center gap-2 py-1" title="Color Scheme">
+      <div class="flex items-center justify-center gap-2 py-1">
         <ColorSchemePicker />
       </div>
     {/if}
@@ -204,7 +205,7 @@
         class="{sidebarStore.isPinned ? 'text-accent' : 'text-foreground-muted'}
         {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={togglePin}
-        title={sidebarStore.isPinned ? "Unpin sidebar" : "Pin sidebar"}
+        use:tooltip={sidebarStore.isPinned ? "Unpin sidebar" : "Pin sidebar"}
       >
         <Icon icon={sidebarStore.isPinned ? "mdi:pin" : "mdi:pin-outline"} width="22" />
       </button>
@@ -216,7 +217,7 @@
           ? 'shrink-0'
           : 'w-full'}"
         onclick={openUpdateModal}
-        title={isUpdateAvailable ? "Update available!" : "Updates"}
+        use:tooltip={isUpdateAvailable ? "Update available!" : "Updates"}
       >
         <Icon icon="mdi:update" width="22" />
         {#if isUpdateAvailable}
@@ -229,7 +230,7 @@
         type="button"
         class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={openSettingsModal}
-        title="Settings"
+        use:tooltip={"Settings"}
       >
         <Icon icon="mdi:settings-outline" width="22" />
       </button>
@@ -239,7 +240,7 @@
         type="button"
         class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={openAboutModal}
-        title="About"
+        use:tooltip={"About"}
       >
         <Icon icon="mdi:information-outline" width="22" />
       </button>

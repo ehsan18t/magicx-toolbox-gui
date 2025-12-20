@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { debugState, type DebugLogEntry } from "$lib/stores/debug.svelte";
   import { sidebarStore } from "$lib/stores/layout.svelte";
   import Icon from "./Icon.svelte";
@@ -108,7 +109,7 @@
           type="button"
           aria-pressed={autoScroll}
           onclick={() => (autoScroll = !autoScroll)}
-          title={autoScroll ? "Auto-scroll ON" : "Auto-scroll OFF"}
+          use:tooltip={autoScroll ? "Auto-scroll ON" : "Auto-scroll OFF"}
           class="rounded p-1 transition-colors hover:bg-foreground/10 {autoScroll
             ? 'text-accent'
             : 'text-foreground-muted'}"
@@ -118,7 +119,7 @@
         <button
           type="button"
           onclick={() => debugState.clear()}
-          title="Clear logs"
+          use:tooltip={"Clear logs"}
           class="rounded p-1 text-foreground-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
         >
           <Icon icon="tabler:trash" width="16" height="16" />
@@ -126,7 +127,7 @@
         <button
           type="button"
           onclick={() => debugState.closePanel()}
-          title="Close panel"
+          use:tooltip={"Close panel"}
           class="rounded p-1 text-foreground-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
         >
           <Icon icon="tabler:x" width="16" height="16" />

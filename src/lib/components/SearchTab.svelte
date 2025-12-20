@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { HighlightedText } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
@@ -292,7 +293,7 @@
           class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
           onclick={handleDiscardChanges}
           disabled={searchPendingCount === 0 || isLoading || isBatchProcessing}
-          title="Discard all pending changes in search results"
+          use:tooltip={"Discard all pending changes in search results"}
         >
           <Icon icon="mdi:close-circle-outline" width="18" />
           <span class="hidden sm:inline">Discard</span>
@@ -302,7 +303,7 @@
           class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
           onclick={handleRestoreClick}
           disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
-          title={snapshotCount === 0
+          use:tooltip={snapshotCount === 0
             ? "No snapshots available"
             : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
         >
@@ -401,7 +402,7 @@
                 type="button"
                 class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground transition-all duration-200 hover:border-accent hover:bg-accent/10 hover:text-accent"
                 onclick={() => navigateToTweak(tweak.definition.id, tweak.definition.category_id)}
-                title="Navigate to tweak location"
+                use:tooltip={"Navigate to tweak location"}
               >
                 <Icon icon="mdi:arrow-right-circle" width="14" />
                 Go to location
