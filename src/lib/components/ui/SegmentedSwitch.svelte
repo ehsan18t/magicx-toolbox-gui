@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { cn } from "@/utils";
   import Icon from "../Icon.svelte";
 
@@ -131,7 +132,7 @@
             ),
       )}
       onclick={() => handleClick(opt.value)}
-      title={opt.label}
+      use:tooltip={opt.label}
     >
       {#if loading && isSelected}
         <Icon icon="mdi:loading" width={currentSize.icon} class="animate-spin" />
