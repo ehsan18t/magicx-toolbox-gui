@@ -14,14 +14,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Disabled"
+      - label: "Ads Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
             value_name: "RotatingLockScreenEnabled"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Enabled"
+      - label: "Ads Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
@@ -36,7 +36,7 @@ tweaks:
     requires_admin: true
     requires_reboot: false
     options:
-      - label: "Classic"
+      - label: "Classic Menu Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae9a9}\\InprocServer32"
@@ -44,7 +44,7 @@ tweaks:
             value_type: "REG_SZ"
             value: ""
             windows_versions: [11]
-      - label: "Modern"
+      - label: "Modern Menu (Default)"
         # Delete the key to restore default modern menu
         registry_changes:
           - hive: HKCU
@@ -58,14 +58,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Disabled"
+      - label: "Web Search Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
             value_name: "BingSearchEnabled"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Enabled"
+      - label: "Web Search Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
@@ -79,14 +79,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Visible"
+      - label: "Extensions Visible"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
             value_name: "HideFileExt"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Hidden"
+      - label: "Extensions Hidden (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -100,14 +100,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Visible"
+      - label: "Hidden Files Visible"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
             value_name: "Hidden"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Hidden"
+      - label: "Hidden Files Hidden (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -121,14 +121,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Disabled"
+      - label: "Snap Assist Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
             value_name: "SnapAssist"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Enabled"
+      - label: "Snap Assist Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -152,7 +152,7 @@ tweaks:
     #   - "sc config ucpd start= demand"
     #   - "schtasks /Change /TN \"Microsoft\\Windows\\AppxDeploymentClient\\UCPD velocity\" /Enable"
     options:
-      - label: "Disabled"
+      - label: "Widgets Disabled"
         registry_changes:
           - hive: HKLM
             key: "SOFTWARE\\Policies\\Microsoft\\Dsh"
@@ -160,7 +160,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
             windows_versions: [11]
-      - label: "Enabled"
+      - label: "Widgets Enabled (Default)"
         registry_changes:
           - hive: HKLM
             key: "SOFTWARE\\Policies\\Microsoft\\Dsh"
@@ -175,7 +175,7 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Hidden"
+      - label: "Chat Icon Hidden"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -183,7 +183,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
             windows_versions: [11]
-      - label: "Visible"
+      - label: "Chat Icon Visible (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -198,14 +198,14 @@ tweaks:
     risk_level: low
     requires_reboot: true
     options:
-      - label: "Small"
+      - label: "Small Icons"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
             value_name: "TaskbarSmallIcons"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Large"
+      - label: "Large Icons (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -219,14 +219,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Disabled"
+      - label: "Animations Disabled"
         registry_changes:
           - hive: HKCU
             key: "Control Panel\\Desktop\\WindowMetrics"
             value_name: "MinAnimate"
             value_type: "REG_SZ"
             value: "0"
-      - label: "Enabled"
+      - label: "Animations Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Control Panel\\Desktop\\WindowMetrics"
@@ -240,14 +240,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Pre-checked"
+      - label: "Checkbox Pre-checked"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\OperationStatusManager"
             value_name: "ConfirmationCheckBoxDoForAll"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Unchecked"
+      - label: "Checkbox Unchecked (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\OperationStatusManager"
@@ -261,7 +261,7 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Disabled"
+      - label: "Action Center Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
@@ -269,7 +269,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
             windows_versions: [10]
-      - label: "Enabled"
+      - label: "Action Center Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
@@ -284,14 +284,14 @@ tweaks:
     risk_level: low
     requires_reboot: false
     options:
-      - label: "Disabled"
+      - label: "Sync Ads Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
             value_name: "ShowSyncProviderNotifications"
             value_type: "REG_DWORD"
             value: 0
-      - label: "Enabled"
+      - label: "Sync Ads Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -306,14 +306,14 @@ tweaks:
     requires_reboot: false
     info: "Removes the 'This file came from another computer' security warning"
     options:
-      - label: "Disabled"
+      - label: "File Blocking Disabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"
             value_name: "SaveZoneInformation"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Enabled"
+      - label: "File Blocking Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments"
