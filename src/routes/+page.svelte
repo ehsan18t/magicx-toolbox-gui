@@ -5,6 +5,7 @@
   import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
   import SearchTab from "$lib/components/SearchTab.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
+  import SnapshotsTab from "$lib/components/SnapshotsTab.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
@@ -62,6 +63,8 @@
             <OverviewTab />
           {:else if activeTab === "search"}
             <SearchTab />
+          {:else if activeTab === "snapshots"}
+            <SnapshotsTab />
           {:else if currentCategoryTab}
             <CategoryTab tab={currentCategoryTab} />
           {/if}
