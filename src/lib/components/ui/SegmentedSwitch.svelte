@@ -131,7 +131,7 @@
             ),
       )}
       onclick={() => handleClick(opt.value)}
-      title={iconOnly ? opt.label : undefined}
+      title={opt.label}
     >
       {#if loading && isSelected}
         <Icon icon="mdi:loading" width={currentSize.icon} class="animate-spin" />
