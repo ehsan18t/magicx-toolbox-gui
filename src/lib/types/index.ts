@@ -124,7 +124,7 @@ export interface TweakStatus {
   /** Whether a snapshot exists for reverting */
   has_backup: boolean;
   /** Current option index that matches system state, or null if "System Default" */
-  current_option_index?: number;
+  current_option_index: number | null;
   /**
    * The original option index from the snapshot, if one exists.
    * - undefined: No snapshot exists (tweak was never applied)

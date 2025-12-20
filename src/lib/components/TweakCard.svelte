@@ -84,9 +84,7 @@
 
   // Determine if we should show the "Default" segment in segmented switch
   // Show when: current state is unknown OR snapshot exists with unknown original state
-  const showDefaultSegment = $derived(
-    currentOptionIndex === null || currentOptionIndex === undefined || snapshotOriginalOptionIndex === null,
-  );
+  const showDefaultSegment = $derived(currentOptionIndex === null || snapshotOriginalOptionIndex === null);
 
   // Get pending change for this tweak
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
@@ -101,7 +99,7 @@
       return pendingChange.optionIndex;
     }
     // If current state is unknown, show as Default (-1)
-    if (currentOptionIndex === null || currentOptionIndex === undefined) {
+    if (currentOptionIndex === null) {
       return -1;
     }
     return currentOptionIndex;
