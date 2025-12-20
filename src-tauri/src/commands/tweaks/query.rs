@@ -1,7 +1,7 @@
 //! Query Commands - Status and listing operations for tweaks
 
 use crate::error::Result;
-use crate::models::{CategoryDefinition, TweakDefinition, TweakStatus};
+use crate::models::{CategoryDefinition, TweakDefinition, TweakInspection, TweakStatus};
 use crate::services::{backup_service, system_info_service, tweak_loader};
 use rayon::prelude::*;
 
@@ -157,4 +157,29 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
 
     log::debug!("Returning {} tweak statuses", statuses.len());
     Ok(statuses)
+}
+
+/// Inspect a tweak to find detailed mismatches (for "Custom Configuration" analysis)
+#[tauri::command]
+pub async fn get_tweak_inspection(tweak_id: String) -> Result<TweakInspection> {
+    log::debug!("Command: get_tweak_inspection({})", tweak_id);
+
+    let tweak = tweak_loader::get_tweak(&tweak_id)?
+        .ok_or_else(|| crate::error::Error::WindowsApi(format!("Tweak not found: {}", tweak_id)))?;
+
+    let windows_info = system_info_service::get_windows_info()?;
+    let version = windows_info.version_number();
+
+    // Re-detect state to get current indices
+    let state = backup_service::detect_tweak_state(&tweak, version)?;
+
+    // Perform detailed inspection
+    let result = backup_service::inspect_tweak(
+        &tweak,
+        version,
+        state.current_option_index,
+        None, // We don't have pending index in backend easily right now, frontend knows it
+    )?;
+
+    Ok(result)
 }

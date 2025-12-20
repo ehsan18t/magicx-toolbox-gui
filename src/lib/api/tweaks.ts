@@ -4,6 +4,7 @@ import type {
   CategoryDefinition,
   SystemInfo,
   TweakDefinition,
+  TweakInspection,
   TweakResult,
   TweakStatus,
   TweakWithStatus,
@@ -14,6 +15,20 @@ import type {
  */
 export async function getSystemInfo(): Promise<SystemInfo> {
   return await invoke<SystemInfo>("get_system_info");
+}
+
+// ----------------------------------------------------------------------------
+// API FUNCTIONS
+// ----------------------------------------------------------------------------
+
+/** Get inspection details for a tweak (detailed Expected vs Actual) */
+export async function inspectTweak(tweakId: string): Promise<TweakInspection> {
+  try {
+    return await invoke("get_tweak_inspection", { tweakId });
+  } catch (err) {
+    console.error(`Failed to inspect tweak ${tweakId}:`, err);
+    throw err;
+  }
 }
 
 /**

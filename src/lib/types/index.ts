@@ -150,10 +150,47 @@ export interface WindowsInfo {
   build_number: string;
   is_windows_11: boolean;
   version_string: string; // "10" or "11"
+  is_windows_server: boolean;
   /** System uptime in seconds */
   uptime_seconds: number;
   /** OS install date as ISO 8601 string */
   install_date: string | null;
+}
+
+// Inspection Types
+export interface RegistryMismatch {
+  hive: string;
+  key: string;
+  value_name: string;
+  expected_value: unknown;
+  actual_value: unknown;
+  value_type?: string;
+  description: string;
+  is_match: boolean;
+}
+
+export interface ServiceMismatch {
+  name: string;
+  expected_startup: string;
+  actual_startup?: string;
+  description: string;
+  is_match: boolean;
+}
+
+export interface OptionInspection {
+  option_index: number;
+  label: string;
+  is_current: boolean;
+  is_pending: boolean;
+  registry_results: RegistryMismatch[];
+  service_results: ServiceMismatch[];
+  all_match: boolean;
+}
+
+export interface TweakInspection {
+  tweak_id: string;
+  options: OptionInspection[];
+  matched_option_index?: number;
 }
 
 /** Device/system information from Win32_ComputerSystem */

@@ -102,7 +102,9 @@ pub fn run() {
             commands::tweaks::query::get_tweaks_by_category,
             commands::tweaks::query::get_tweak,
             commands::tweaks::query::get_tweak_status,
+            commands::tweaks::query::get_tweak_status,
             commands::tweaks::query::get_all_tweak_statuses,
+            commands::tweaks::query::get_tweak_inspection,
             // Tweak apply commands
             commands::tweaks::apply::apply_tweak,
             commands::tweaks::apply::revert_tweak,
