@@ -19,6 +19,8 @@
   import MdiChevronDown from "~icons/mdi/chevron-down";
   import MdiChevronRight from "~icons/mdi/chevron-right";
   import MdiChevronUp from "~icons/mdi/chevron-up";
+  import MdiCircle from "~icons/mdi/circle";
+  import MdiCircleHalfFull from "~icons/mdi/circle-half-full";
   import MdiCircleOutline from "~icons/mdi/circle-outline";
   import MdiClose from "~icons/mdi/close";
   import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
@@ -76,6 +78,9 @@
   import MdiShieldLock from "~icons/mdi/shield-lock";
   import MdiSpeedometer from "~icons/mdi/speedometer";
   import MdiTimerOutline from "~icons/mdi/timer-outline";
+  import MdiToggleSwitch from "~icons/mdi/toggle-switch";
+  import MdiToggleSwitchOffOutline from "~icons/mdi/toggle-switch-off-outline";
+  import MdiToggleSwitchVariantOff from "~icons/mdi/toggle-switch-variant-off";
   import MdiTuneVertical from "~icons/mdi/tune-vertical";
   import MdiUndoVariant from "~icons/mdi/undo-variant";
   import MdiUpdate from "~icons/mdi/update";
@@ -111,6 +116,8 @@
     "mdi:magic-staff": MdiMagicStaff,
     "mdi:tune-vertical": MdiTuneVertical,
     "mdi:check-circle": MdiCheckCircle,
+    "mdi:circle": MdiCircle,
+    "mdi:circle-half-full": MdiCircleHalfFull,
     "mdi:circle-outline": MdiCircleOutline,
     "mdi:check": MdiCheck,
     "mdi:close": MdiClose,
@@ -138,6 +145,9 @@
     "mdi:cpu-64-bit": MdiCpu64Bit,
     "mdi:expansion-card": MdiExpansionCard,
     "mdi:timer-outline": MdiTimerOutline,
+    "mdi:toggle-switch": MdiToggleSwitch,
+    "mdi:toggle-switch-off-outline": MdiToggleSwitchOffOutline,
+    "mdi:toggle-switch-variant-off": MdiToggleSwitchVariantOff,
     "mdi:laptop": MdiLaptop,
     "mdi:desktop-tower-monitor": MdiDesktopTowerMonitor,
     "mdi:harddisk": MdiHarddisk,

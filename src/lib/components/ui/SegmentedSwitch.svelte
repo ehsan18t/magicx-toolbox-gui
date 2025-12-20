@@ -20,6 +20,8 @@
     loading?: boolean;
     /** Disable all interactions */
     disabled?: boolean;
+    /** Show icons only (hide labels) */
+    iconOnly?: boolean;
     /** Size variant */
     size?: "sm" | "md";
     /** Additional CSS classes */
@@ -34,6 +36,7 @@
     pending = false,
     loading = false,
     disabled = false,
+    iconOnly = false,
     size = "sm",
     class: className = "",
     onchange,
@@ -44,12 +47,14 @@
     sm: {
       track: "p-0.5 gap-0.5",
       segment: "px-2.5 py-1 text-xs",
-      icon: 12,
+      segmentIconOnly: "px-2 py-1",
+      icon: 16,
     },
     md: {
       track: "p-1 gap-1",
       segment: "px-3.5 py-1.5 text-sm",
-      icon: 14,
+      segmentIconOnly: "px-2.5 py-1.5",
+      icon: 18,
     },
   };
 
@@ -94,18 +99,16 @@
   role="radiogroup"
   tabindex="-1"
   class={cn(
-    "inline-flex items-center rounded-lg transition-colors duration-200",
-    pending ? "bg-warning/15" : "bg-muted",
+    "inline-flex items-center rounded-full  transition-colors duration-200",
+    pending ? "bg-warning/15" : "bg-accent-foreground/15 shadow-inner",
     disabled && "opacity-60",
     currentSize.track,
     className,
   )}
   onkeydown={handleKeydown}
 >
-  {#each options as opt, i (opt.value)}
+  {#each options as opt (opt.value)}
     {@const isSelected = opt.value === value}
-    {@const isFirst = i === 0}
-    {@const isLast = i === options.length - 1}
     <button
       type="button"
       role="radio"
@@ -114,28 +117,30 @@
       disabled={disabled || loading}
       class={cn(
         "relative inline-flex items-center justify-center gap-1.5 font-medium transition-all duration-150",
-        "rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
         "disabled:cursor-not-allowed",
         currentSize.segment,
+        iconOnly && currentSize.segmentIconOnly,
         isSelected
           ? pending
-            ? "text-warning-foreground bg-warning shadow-sm"
-            : "bg-accent text-accent-foreground shadow-sm"
+            ? "text-warning-foreground scale-[1.02] bg-warning shadow-md"
+            : "scale-[1.02] bg-accent text-accent-foreground shadow-md"
           : cn(
               "text-foreground-muted",
               !disabled && !loading && "cursor-pointer hover:bg-white/5 hover:text-foreground",
             ),
-        isFirst && "rounded-l-md",
-        isLast && "rounded-r-md",
       )}
       onclick={() => handleClick(opt.value)}
+      title={iconOnly ? opt.label : undefined}
     >
       {#if loading && isSelected}
         <Icon icon="mdi:loading" width={currentSize.icon} class="animate-spin" />
-      {:else if opt.icon && isSelected}
+      {:else if opt.icon}
         <Icon icon={opt.icon} width={currentSize.icon} />
       {/if}
-      <span class="select-none">{opt.label}</span>
+      {#if !iconOnly}
+        <span class="select-none">{opt.label}</span>
+      {/if}
     </button>
   {/each}
 </div>
