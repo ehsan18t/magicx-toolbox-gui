@@ -14,7 +14,8 @@
   import type { Snippet } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Icon from "./Icon.svelte";
-  import { Select } from "./ui";
+  import { SegmentedSwitch, Select } from "./ui";
+  import type { SegmentOption } from "./ui/SegmentedSwitch.svelte";
 
   interface Props {
     tweak: TweakWithStatus;
@@ -75,8 +76,17 @@
   // Check if this is a toggle (2 options and not forced dropdown) or dropdown (3+ options or forced)
   const isToggle = $derived(tweak.definition.options.length === 2 && !tweak.definition.force_dropdown);
 
-  // Current option index from registry (actual applied state, null if no match = system default)
+  // Current option index from registry (actual applied state, null/undefined if no match = system default)
   const currentOptionIndex = $derived(tweak.status.current_option_index);
+
+  // Original option index from snapshot (undefined = no snapshot, null = unknown original, number = known original)
+  const snapshotOriginalOptionIndex = $derived(tweak.status.snapshot_original_option_index);
+
+  // Determine if we should show the "Default" segment in segmented switch
+  // Show when: current state is unknown OR snapshot exists with unknown original state
+  const showDefaultSegment = $derived(
+    currentOptionIndex === null || currentOptionIndex === undefined || snapshotOriginalOptionIndex === null,
+  );
 
   // Get pending change for this tweak
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
@@ -84,14 +94,45 @@
   // Determine if there's a pending change
   const hasPending = $derived(pendingChange !== undefined);
 
-  // Calculate the effective state for toggle (what the user sees in the UI)
-  // For toggles: option 0 = enabled, option 1 = disabled
-  const effectiveEnabled = $derived.by(() => {
+  // Calculate effective value for segmented switch
+  // -1 = Default/System, 0 = ON (option 0), 1 = OFF (option 1)
+  const effectiveSegmentValue = $derived.by(() => {
     if (pendingChange !== undefined) {
-      return pendingChange.optionIndex === 0;
+      return pendingChange.optionIndex;
     }
-    // If no current option matches (system default), treat as disabled
-    return currentOptionIndex === 0;
+    // If current state is unknown, show as Default (-1)
+    if (currentOptionIndex === null || currentOptionIndex === undefined) {
+      return -1;
+    }
+    return currentOptionIndex;
+  });
+
+  // Build segment options for segmented switch
+  const segmentOptions = $derived.by(() => {
+    const segments: SegmentOption[] = [];
+
+    // Option 0 is always first (ON/Applied state)
+    segments.push({
+      value: 0,
+      label: options[0]?.label ?? "ON",
+      icon: "mdi:check",
+    });
+
+    // Add Default segment in the middle if needed
+    if (showDefaultSegment) {
+      segments.push({
+        value: -1,
+        label: "Default",
+      });
+    }
+
+    // Option 1 is last (OFF/Original state)
+    segments.push({
+      value: 1,
+      label: options[1]?.label ?? "OFF",
+    });
+
+    return segments;
   });
 
   // Calculate effective option index for dropdowns
@@ -119,24 +160,41 @@
     return opts;
   });
 
-  function handleToggleClick() {
-    if (isHighRisk && !effectiveEnabled) {
+  // Track pending high-risk action for confirmation
+  let pendingHighRiskValue: number | null = $state(null);
+
+  function handleSegmentChange(newValue: number) {
+    // Handle "Default" selection - just unstage any pending change
+    if (newValue === -1) {
+      unstageChange(tweak.definition.id);
+      return;
+    }
+
+    // Check for high-risk confirmation (only when enabling option 0)
+    if (isHighRisk && newValue === 0 && effectiveSegmentValue !== 0) {
+      pendingHighRiskValue = newValue;
       showConfirmDialog = true;
+      return;
+    }
+
+    executeSegmentChange(newValue);
+  }
+
+  function executeSegmentChange(newValue: number) {
+    showConfirmDialog = false;
+    pendingHighRiskValue = null;
+
+    // If selecting current state, unstage
+    if (newValue === currentOptionIndex) {
+      unstageChange(tweak.definition.id);
     } else {
-      executeToggle();
+      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex: newValue });
     }
   }
 
-  function executeToggle() {
-    showConfirmDialog = false;
-    const newEnabled = !effectiveEnabled;
-    // For toggles: option 0 = enabled, option 1 = disabled
-    const newOptionIndex = newEnabled ? 0 : 1;
-
-    if (newOptionIndex === currentOptionIndex) {
-      unstageChange(tweak.definition.id);
-    } else {
-      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex: newOptionIndex });
+  function handleConfirmHighRisk() {
+    if (pendingHighRiskValue !== null) {
+      executeSegmentChange(pendingHighRiskValue);
     }
   }
 
@@ -223,38 +281,15 @@
           onchange={handleSelectChange}
         />
       {:else}
-        <!-- Toggle Switch -->
-        <button
-          type="button"
-          class="toggle-switch shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70"
-          class:active={effectiveEnabled}
-          class:pending={hasPending}
+        <!-- Segmented Switch for toggle tweaks -->
+        <SegmentedSwitch
+          value={effectiveSegmentValue}
+          options={segmentOptions}
+          pending={hasPending}
+          loading={isLoading}
           disabled={isLoading}
-          onclick={handleToggleClick}
-          aria-label={effectiveEnabled ? "Will revert tweak" : "Will apply tweak"}
-          role="switch"
-          aria-checked={effectiveEnabled}
-        >
-          <span
-            class="switch-track flex h-6 w-11 items-center rounded-full border-2 transition-colors duration-200 {effectiveEnabled
-              ? hasPending
-                ? 'border-warning bg-warning'
-                : 'border-accent bg-accent'
-              : 'border-border bg-surface'} hover:not-disabled:brightness-95"
-          >
-            <span
-              class="switch-thumb flex h-4.5 w-4.5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200 {effectiveEnabled
-                ? 'translate-x-5'
-                : 'translate-x-0.5'} {isLoading ? 'text-foreground-muted' : 'text-accent'}"
-            >
-              {#if isLoading}
-                <Icon icon="mdi:loading" width="14" class="animate-spin" />
-              {:else if tweak.status.is_applied}
-                <Icon icon="mdi:check" width="14" />
-              {/if}
-            </span>
-          </span>
-        </button>
+          onchange={handleSegmentChange}
+        />
       {/if}
     </div>
 
@@ -364,8 +399,11 @@
     .risk_level} risk. {riskInfo.description} Are you sure you want to apply it?"
   confirmText="Yes, Apply"
   cancelText="Cancel"
-  onconfirm={executeToggle}
-  oncancel={() => (showConfirmDialog = false)}
+  onconfirm={handleConfirmHighRisk}
+  oncancel={() => {
+    showConfirmDialog = false;
+    pendingHighRiskValue = null;
+  }}
 />
 
 <ConfirmDialog
