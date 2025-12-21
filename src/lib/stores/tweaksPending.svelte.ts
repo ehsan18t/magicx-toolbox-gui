@@ -59,6 +59,17 @@ export const pendingChangesStore = {
       pendingChanges.delete(tweakId);
     }
   },
+
+  /** Get count of pending changes for a specific set of tweak IDs */
+  getCountForTweaks(tweakIds: string[]): number {
+    let count = 0;
+    for (const [tweakId] of pendingChanges) {
+      if (tweakIds.includes(tweakId)) {
+        count++;
+      }
+    }
+    return count;
+  },
 };
 
 export const pendingRebootStore = {

@@ -54,17 +54,7 @@
   const appliedCount = $derived(snapshotTweaks.filter((t) => t.status.is_applied).length);
 
   // Pending changes for snapshot tweaks
-  const pendingCount = $derived.by(() => {
-    let count = 0;
-    const pending = pendingChangesStore.all;
-    const tweakIds = new Set(snapshotTweaks.map((t) => t.definition.id));
-    for (const [tweakId] of pending) {
-      if (tweakIds.has(tweakId)) {
-        count++;
-      }
-    }
-    return count;
-  });
+  const pendingCount = $derived(pendingChangesStore.getCountForTweaks(snapshotTweaks.map((t) => t.definition.id)));
 
   // Loading state
   const isLoading = $derived(snapshotTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
