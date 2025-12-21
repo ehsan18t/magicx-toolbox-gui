@@ -4,7 +4,7 @@
 
 ## Validation
 
-**ALWAYS run `bun run validate` before committing.** This runs format, lint, type-check, svelte-check, cargo fmt, and cargo clippy.
+**ALWAYS run `bun run validate` before committing.** This runs format, lint, type-check, svelte-check, cargo fmt, and cargo clippy. FIX all issues regardless if they came from your changes or from previous changes.
 
 ## Documentation Priority
 
