@@ -89,9 +89,24 @@ pub fn write_profile_archive(
     Ok(())
 }
 
+/// Maximum allowed profile archive size (10 MB)
+const MAX_PROFILE_SIZE: u64 = 10 * 1024 * 1024;
+
 /// Read a profile archive from a file.
 pub fn read_profile_archive(path: &Path) -> Result<ProfileArchiveContents, Error> {
     log::info!("Reading profile archive from {}", path.display());
+
+    // Check file size before opening
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| Error::ProfileError(format!("Failed to read file metadata: {}", e)))?;
+
+    if metadata.len() > MAX_PROFILE_SIZE {
+        return Err(Error::ProfileError(format!(
+            "Profile file too large: {} bytes (max {} bytes)",
+            metadata.len(),
+            MAX_PROFILE_SIZE
+        )));
+    }
 
     let file = File::open(path)
         .map_err(|e| Error::ProfileError(format!("Failed to open archive: {}", e)))?;

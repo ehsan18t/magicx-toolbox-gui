@@ -33,6 +33,7 @@
 <button
   class="group relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border-0 bg-transparent transition-colors duration-150 outline-none active:scale-90 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 {btnClass}"
   type="button"
+  aria-label={title}
   use:tooltip={title}
   {onclick}
 >

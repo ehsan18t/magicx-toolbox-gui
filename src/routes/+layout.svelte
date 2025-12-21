@@ -58,13 +58,15 @@
     // Validate and clean up stale backup snapshots in background
     invoke("validate_snapshots")
       .then((removed) => {
-        if (removed && typeof removed === "number" && removed > 0) {
+        if (import.meta.env.DEV && removed && typeof removed === "number" && removed > 0) {
           console.log(`Cleaned up ${removed} stale backup snapshot(s)`);
         }
       })
       .catch((e) => {
-        // Non-critical error, just log it
-        console.warn("Failed to validate snapshots:", e);
+        // Non-critical error, just log it in dev mode
+        if (import.meta.env.DEV) {
+          console.warn("Failed to validate snapshots:", e);
+        }
       });
 
     // Perform silent background update check if enabled

@@ -224,6 +224,7 @@
       <!-- Pin toggle button -->
       <button
         type="button"
+        aria-label={sidebarStore.isPinned ? "Unpin sidebar" : "Pin sidebar"}
         aria-pressed={sidebarStore.isPinned}
         class="{sidebarStore.isPinned ? 'text-accent' : 'text-foreground-muted'}
         {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
@@ -236,6 +237,7 @@
       <!-- Widgets toggle button -->
       <button
         type="button"
+        aria-label={isWidgetsOpen ? "Hide widgets" : "Show widgets"}
         aria-pressed={isWidgetsOpen}
         class="{isWidgetsOpen ? 'text-accent' : 'text-foreground-muted'}
         {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
@@ -248,6 +250,7 @@
       <!-- Update button -->
       <button
         type="button"
+        aria-label={isUpdateAvailable ? "Update available" : "Updates"}
         class="relative {isUpdateAvailable ? 'text-success' : 'text-foreground-muted'} {sidebarStore.isOpen
           ? 'shrink-0'
           : 'w-full'}"
@@ -263,6 +266,7 @@
       <!-- Settings button -->
       <button
         type="button"
+        aria-label="Settings"
         class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={openSettingsModal}
         use:tooltip={"Settings"}
@@ -273,6 +277,7 @@
       <!-- About button -->
       <button
         type="button"
+        aria-label="About"
         class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
         onclick={openAboutModal}
         use:tooltip={"About"}

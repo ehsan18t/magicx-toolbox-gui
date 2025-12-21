@@ -38,6 +38,7 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (closeOnEscape && e.key === "Escape" && open && onclose) {
+      e.stopPropagation();
       onclose();
     }
   }
