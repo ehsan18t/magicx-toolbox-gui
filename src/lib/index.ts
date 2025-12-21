@@ -1,15 +1,5 @@
-// Components
-export { default as CategoryTab } from "./components/CategoryTab.svelte";
-export { default as ColorSchemePicker } from "./components/ColorSchemePicker.svelte";
-export { default as ConfirmDialog } from "./components/ConfirmDialog.svelte";
-export { default as ControlButton } from "./components/ControlButton.svelte";
-export { default as DebugPanel } from "./components/DebugPanel.svelte";
-export { default as ExternalLink } from "./components/ExternalLink.svelte";
-export { default as OverviewTab } from "./components/OverviewTab.svelte";
-export { default as PendingRebootBanner } from "./components/PendingRebootBanner.svelte";
-export { default as Sidebar } from "./components/Sidebar.svelte";
-export { default as TitleBar } from "./components/TitleBar.svelte";
-export { default as TweakCard } from "./components/TweakCard.svelte";
+// Components (re-export all from organized structure)
+export * from "./components";
 
 // Stores (Svelte 5 runes-based)
 export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme.svelte";

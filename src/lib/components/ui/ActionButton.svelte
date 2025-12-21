@@ -1,8 +1,8 @@
 <script lang="ts">
   import { tooltip as tooltipAction } from "$lib/actions/tooltip";
+  import { Icon } from "$lib/components/shared";
   import type { Snippet } from "svelte";
   import type { HTMLButtonAttributes } from "svelte/elements";
-  import Icon from "../Icon.svelte";
   import { actionButton, counterBadge, type ActionButtonVariants, type CounterBadgeVariants } from "./variants";
 
   interface Props extends HTMLButtonAttributes {

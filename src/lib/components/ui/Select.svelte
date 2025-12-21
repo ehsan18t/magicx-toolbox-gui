@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { Icon } from "$lib/components/shared";
   import { cn } from "@/utils";
   import { cubicOut } from "svelte/easing";
   import { scale } from "svelte/transition";
-  import Icon from "../Icon.svelte";
   import Spinner from "./Spinner.svelte";
 
   interface Option {

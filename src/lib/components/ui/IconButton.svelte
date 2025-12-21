@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { Icon } from "$lib/components/shared";
   import type { HTMLButtonAttributes } from "svelte/elements";
-  import Icon from "../Icon.svelte";
 
   interface Props extends Omit<HTMLButtonAttributes, "class"> {
     icon: string;

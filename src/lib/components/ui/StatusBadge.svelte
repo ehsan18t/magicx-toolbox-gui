@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import Icon from "../Icon.svelte";
+  import { Icon } from "$lib/components/shared";
   import { statusBadge, type StatusBadgeVariants } from "./variants";
 
   interface Props {

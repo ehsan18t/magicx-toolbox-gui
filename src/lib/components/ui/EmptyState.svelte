@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { Icon } from "$lib/components/shared";
   import type { Snippet } from "svelte";
-  import Icon from "../Icon.svelte";
   import { button } from "./variants";
 
   /**
