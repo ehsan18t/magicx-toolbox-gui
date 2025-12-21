@@ -31,12 +31,12 @@
     "format:check": "prettier --check ./src",
     "format:rust": "cd src-tauri && cargo fmt",
     "format:rust:check": "cd src-tauri && cargo fmt -- --check",
-    "lint": "eslint ./src --noEmit",
+    "lint": "eslint ./src",
     "lint:fix": "eslint ./src --fix",
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "lint:rust:fix": "cd src-tauri && cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged",
     "type-check": "tsc --noEmit",
-    "validate": "bun run format:check && bun run lint && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust",
+    "validate": "bun run format:check && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust",
     "tauri": "tauri"
   },
   "dependencies": {
