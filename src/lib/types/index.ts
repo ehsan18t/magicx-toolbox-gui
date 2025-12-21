@@ -19,13 +19,19 @@ export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | 
 // NEW UNIFIED OPTION-BASED TWEAK SYSTEM
 // ============================================================================
 
+/** Action type for registry operations */
+export type RegistryAction = "set" | "delete_value" | "delete_key" | "create_key";
+
 /** Registry change within an option */
 export interface RegistryChange {
   hive: RegistryHive;
   key: string;
   value_name: string;
-  value_type: RegistryValueType;
-  /** The value to set when this option is selected */
+  /** Action to perform: set value, delete value, delete key, or create key */
+  action: RegistryAction;
+  /** Value type (required for set action, null for delete operations) */
+  value_type: RegistryValueType | null;
+  /** The value to set when this option is selected (null for delete operations) */
   value: unknown;
   /** Optional Windows version filter. If undefined/empty, applies to all versions. */
   windows_versions?: number[];
