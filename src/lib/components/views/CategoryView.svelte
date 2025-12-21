@@ -43,7 +43,6 @@
   // Stats
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
   const totalCount = $derived(categoryTweaks.length);
-  const progressPercent = $derived(totalCount > 0 ? Math.round((appliedCount / totalCount) * 100) : 0);
 
   // Tweaks with snapshots (can be restored)
   const tweaksWithSnapshots = $derived(categoryTweaks.filter((t) => t.status.has_backup));
@@ -115,36 +114,7 @@
   }
 </script>
 
-<div class="flex h-full flex-col gap-5 overflow-hidden p-6">
-  <!-- Header -->
-  <header class="flex flex-wrap items-center justify-between gap-6">
-    <div class="flex items-center gap-4">
-      <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent">
-        <Icon icon={tab.icon || "mdi:folder"} width="28" />
-      </div>
-      <div>
-        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">{tab.name}</h1>
-        <p class="mt-1 mb-0 text-sm text-foreground-muted">{tab.description}</p>
-      </div>
-    </div>
-
-    <div class="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-3">
-      <div class="stat-ring relative h-10 w-10" style="--progress: {progressPercent}">
-        <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
-          <circle class="fill-none stroke-[hsl(var(--muted))] stroke-3" cx="18" cy="18" r="14" />
-          <circle class="stat-progress stroke-round fill-none stroke-accent stroke-3" cx="18" cy="18" r="14" />
-        </svg>
-        <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-bold text-foreground"
-          >{progressPercent}%</span
-        >
-      </div>
-      <div class="flex flex-col gap-0.5">
-        <span class="text-base font-bold text-foreground">{appliedCount} / {totalCount}</span>
-        <span class="text-xs text-foreground-muted">Applied</span>
-      </div>
-    </div>
-  </header>
-
+<div class="flex h-full flex-col gap-3 overflow-hidden p-3">
   <!-- Toolbar -->
   <div class="flex flex-wrap items-center gap-3">
     <div
@@ -167,42 +137,48 @@
         </button>
       {/if}
     </div>
+    <div class="flex w-full items-center justify-between">
+      <div class="flex gap-2.5">
+        <ActionButton
+          intent="apply"
+          icon="mdi:check-all"
+          active={categoryPendingCount > 0}
+          loading={isBatchProcessing}
+          badgeCount={categoryPendingCount}
+          badgeVariant="warning"
+          onclick={() => (showApplyAllDialog = true)}
+          disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
+        >
+          Apply Changes
+        </ActionButton>
+        <ActionButton
+          intent="discard"
+          icon="mdi:close-circle-outline"
+          onclick={handleDiscardChanges}
+          disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
+          tooltip="Discard all pending changes in this category"
+        >
+          Discard
+        </ActionButton>
+        <ActionButton
+          intent="restore"
+          icon="mdi:restore"
+          badgeCount={snapshotCount}
+          badgeVariant="error"
+          onclick={handleRestoreClick}
+          disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
+          tooltip={snapshotCount === 0
+            ? "No snapshots available"
+            : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
+        >
+          Restore Snapshots
+        </ActionButton>
+      </div>
 
-    <div class="flex gap-2.5">
-      <ActionButton
-        intent="apply"
-        icon="mdi:check-all"
-        active={categoryPendingCount > 0}
-        loading={isBatchProcessing}
-        badgeCount={categoryPendingCount}
-        badgeVariant="warning"
-        onclick={() => (showApplyAllDialog = true)}
-        disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
-      >
-        Apply Changes
-      </ActionButton>
-      <ActionButton
-        intent="discard"
-        icon="mdi:close-circle-outline"
-        onclick={handleDiscardChanges}
-        disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
-        tooltip="Discard all pending changes in this category"
-      >
-        Discard
-      </ActionButton>
-      <ActionButton
-        intent="restore"
-        icon="mdi:restore"
-        badgeCount={snapshotCount}
-        badgeVariant="error"
-        onclick={handleRestoreClick}
-        disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
-        tooltip={snapshotCount === 0
-          ? "No snapshots available"
-          : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
-      >
-        Restore Snapshots
-      </ActionButton>
+      <div class="flex flex-col items-center justify-center gap-0.5">
+        <span class="text-xs font-bold text-foreground">{appliedCount} / {totalCount}</span>
+        <span class="text-xs text-foreground-muted">Applied</span>
+      </div>
     </div>
   </div>
 
@@ -256,12 +232,3 @@
   onconfirm={handleRestoreSnapshots}
   oncancel={() => (showRevertAllDialog = false)}
 />
-
-<style>
-  .stat-progress {
-    stroke-dasharray: 88;
-    stroke-dashoffset: calc(88 * (1 - var(--progress) / 100));
-    transition: stroke-dashoffset 0.4s ease;
-    stroke-linecap: round;
-  }
-</style>
