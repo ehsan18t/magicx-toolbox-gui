@@ -319,11 +319,20 @@
               {#each applicableTweaks as preview (preview.tweak_id)}
                 {@const isSkipped =
                   skipTweakIds.has(preview.tweak_id) || (skipAlreadyApplied && preview.already_applied)}
-                <div class="flex items-center gap-3 px-3 py-2.5 {isSkipped ? 'opacity-50' : ''}">
+                {@const isDisabled = skipAlreadyApplied && preview.already_applied}
+                <button
+                  type="button"
+                  class="hover:bg-muted/50 focus-visible:bg-muted/50 flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors focus-visible:outline-none {isSkipped
+                    ? 'opacity-50'
+                    : ''}"
+                  disabled={isDisabled}
+                  onclick={() => toggleSkipTweak(preview.tweak_id)}
+                  aria-label="Toggle {preview.tweak_name}"
+                >
                   <Checkbox
                     checked={!skipTweakIds.has(preview.tweak_id) && !(skipAlreadyApplied && preview.already_applied)}
-                    disabled={skipAlreadyApplied && preview.already_applied}
-                    onchange={() => toggleSkipTweak(preview.tweak_id)}
+                    disabled={isDisabled}
+                    aria-label="{preview.tweak_name} selection"
                   />
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
@@ -348,7 +357,7 @@
                   >
                     {preview.changes.length} changes
                   </Badge>
-                </div>
+                </button>
               {/each}
             </div>
           {/if}
@@ -362,8 +371,10 @@
           </div>
           <div class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3">
             <div>
-              <span class="block text-sm text-foreground">Create restore snapshots</span>
-              <span class="text-xs text-foreground-muted">Allows reverting individual tweaks</span>
+              <span class="block text-sm text-foreground">Create restore points</span>
+              <span class="text-xs text-foreground-muted"
+                >Backs up current values before applying each tweak for easy undo</span
+              >
             </div>
             <Switch checked={createRestorePoint} onchange={(v) => (createRestorePoint = v)} />
           </div>

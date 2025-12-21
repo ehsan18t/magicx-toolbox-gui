@@ -4,12 +4,22 @@
     disabled?: boolean;
     indeterminate?: boolean;
     class?: string;
+    "aria-label"?: string;
     onchange?: (checked: boolean) => void;
   }
 
-  const { checked, disabled = false, indeterminate = false, class: className = "", onchange }: Props = $props();
+  const {
+    checked,
+    disabled = false,
+    indeterminate = false,
+    class: className = "",
+    "aria-label": ariaLabel,
+    onchange,
+  }: Props = $props();
 
-  function handleClick() {
+  function handleClick(e: MouseEvent) {
+    // Stop propagation to prevent parent buttons from also triggering
+    e.stopPropagation();
     if (!disabled) {
       onchange?.(!checked);
     }
@@ -18,6 +28,7 @@
   function handleKeydown(e: KeyboardEvent) {
     if ((e.key === "Enter" || e.key === " ") && !disabled) {
       e.preventDefault();
+      e.stopPropagation();
       onchange?.(!checked);
     }
   }
@@ -27,6 +38,7 @@
   type="button"
   role="checkbox"
   aria-checked={indeterminate ? "mixed" : checked}
+  aria-label={ariaLabel}
   {disabled}
   class="checkbox flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border-2 transition-all duration-150
     {disabled ? 'cursor-not-allowed opacity-50' : 'hover:border-accent'}

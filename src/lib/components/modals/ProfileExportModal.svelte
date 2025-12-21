@@ -164,13 +164,18 @@
       <!-- Step 1: Select Tweaks -->
       <div class="space-y-4">
         <!-- Select all toggle -->
-        <div class="flex items-center justify-between rounded-lg border border-border bg-surface p-3">
+        <button
+          type="button"
+          class="hover:bg-muted/30 flex w-full items-center justify-between rounded-lg border border-border bg-surface p-3 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+          onclick={() => handleSelectAll(!selectAllApplied)}
+          aria-label="Select all applied tweaks"
+        >
           <div class="flex items-center gap-3">
-            <Checkbox checked={selectAllApplied} onchange={handleSelectAll} />
+            <Checkbox checked={selectAllApplied} aria-label="Select all" />
             <span class="font-medium text-foreground">Select All Applied Tweaks</span>
           </div>
           <Badge variant="default">{appliedTweaks.length} tweaks</Badge>
-        </div>
+        </button>
 
         {#if appliedTweaks.length === 0}
           <div class="flex flex-col items-center justify-center gap-3 py-12 text-center">
@@ -198,10 +203,11 @@
                     {@const currentOption = tweak.definition.options[tweak.status.current_option_index ?? 0]}
                     <button
                       type="button"
-                      class="hover:bg-muted/50 flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors"
+                      class="hover:bg-muted/50 focus-visible:bg-muted/50 flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors focus-visible:outline-none"
                       onclick={() => toggleTweak(tweak.definition.id)}
+                      aria-label="Toggle {tweak.definition.name}"
                     >
-                      <Checkbox checked={isSelected} onchange={() => toggleTweak(tweak.definition.id)} />
+                      <Checkbox checked={isSelected} aria-label="{tweak.definition.name} selection" />
                       <div class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-medium text-foreground">{tweak.definition.name}</span>
                       </div>
@@ -254,10 +260,11 @@
           <div class="flex-1">
             <div class="flex items-center gap-2">
               <Icon icon="mdi:database" width="18" class="text-accent" />
-              <span class="font-medium text-foreground">Include System State Snapshot</span>
+              <span class="font-medium text-foreground">Include Baseline System State</span>
             </div>
             <p class="mt-1 text-sm text-foreground-muted">
-              Captures current registry, service, and task states for conflict detection during import.
+              Records current system settings (registry, services, tasks) to detect conflicts when importing on another
+              machine.
             </p>
           </div>
           <Switch checked={includeSystemState} onchange={(checked) => (includeSystemState = checked)} />
