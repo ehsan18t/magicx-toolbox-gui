@@ -25,10 +25,7 @@ export default [
     },
     rules: {
       // Enforce no unused variables (keep underscore prefix convention)
-      "@typescript-eslint/no-unused-vars": [
-        "warn",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
-      ],
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       // Allow explicit any when needed (warn instead of error)
       "@typescript-eslint/no-explicit-any": "warn",
       // Enforce consistent type imports
@@ -84,6 +81,16 @@ export default [
       // Security rules
       "no-eval": "error",
       "no-implied-eval": "error",
+    },
+  },
+
+  // Override global rules for Svelte 5 rune patterns
+  {
+    files: ["**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
+    rules: {
+      // Svelte 5 runes often require `let { ... } = $props()` to stay reactive;
+      // don't penalize this pattern.
+      "prefer-const": "off",
     },
   },
 ];

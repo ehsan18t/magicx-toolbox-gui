@@ -23,7 +23,7 @@
     class?: string;
   }
 
-  const { icon, title, count, size = "sm", uppercase = false, class: className = "" }: Props = $props();
+  let { icon, title, count, size = "sm", uppercase = false, class: className = "" }: Props = $props();
 </script>
 
 <h3

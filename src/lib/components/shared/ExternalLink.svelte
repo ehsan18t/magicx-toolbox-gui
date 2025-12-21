@@ -11,7 +11,7 @@
     [key: string]: unknown;
   }
 
-  const { href, children, title, ...rest }: Props = $props();
+  let { href, children, title, ...rest }: Props = $props();
 
   async function handleClick(event: MouseEvent) {
     // Only intercept external links

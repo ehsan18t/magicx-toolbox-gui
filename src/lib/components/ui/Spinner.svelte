@@ -9,7 +9,7 @@
     ariaLabel?: string;
   }
 
-  const { size = "md", class: className = "", ariaLabel = "Loading" }: Props = $props();
+  let { size = "md", class: className = "", ariaLabel = "Loading" }: Props = $props();
 
   const sizeMap: Record<Size, number> = {
     sm: 16,

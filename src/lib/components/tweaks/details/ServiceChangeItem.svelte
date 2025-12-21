@@ -7,7 +7,7 @@
     change: ServiceChange;
   }
 
-  const { change }: Props = $props();
+  let { change }: Props = $props();
 </script>
 
 <div class="rounded-lg border border-border/60 bg-background px-3 py-2">

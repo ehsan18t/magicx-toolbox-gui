@@ -11,7 +11,7 @@
     onclick: () => void;
   }
 
-  const { title, icon, variant = "default", onclick }: Props = $props();
+  let { title, icon, variant = "default", onclick }: Props = $props();
 
   const variantClasses: Record<Variant, string> = {
     default: "hover:bg-foreground/8 active:bg-foreground/12 focus-visible:bg-foreground/12",

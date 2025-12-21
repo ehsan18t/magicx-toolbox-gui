@@ -22,7 +22,7 @@
     highlightClass?: string;
   }
 
-  const { text, ranges = [], class: className = "", highlightClass = "" }: Props = $props();
+  let { text, ranges = [], class: className = "", highlightClass = "" }: Props = $props();
 
   /** Build text segments from ranges */
   const segments = $derived.by(() => {

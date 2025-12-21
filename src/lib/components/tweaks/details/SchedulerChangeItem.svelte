@@ -7,7 +7,7 @@
     change: SchedulerChange;
   }
 
-  const { change }: Props = $props();
+  let { change }: Props = $props();
 
   function schedulerTarget(c: SchedulerChange): string {
     if (c.task_name) return `${c.task_path}\\${c.task_name}`;

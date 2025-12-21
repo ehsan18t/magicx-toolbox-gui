@@ -8,7 +8,7 @@
     maxHeight?: string;
   }
 
-  const {
+  let {
     children,
     class: className = "",
     scrollable = false,

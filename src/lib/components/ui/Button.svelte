@@ -13,7 +13,7 @@
     children: Snippet;
   }
 
-  const {
+  let {
     variant = "secondary",
     size = "md",
     fullWidth = false,

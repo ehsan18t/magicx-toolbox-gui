@@ -8,7 +8,7 @@
     class?: string;
   }
 
-  const {
+  let {
     value,
     max = 100,
     size = "md",

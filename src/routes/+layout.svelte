@@ -21,7 +21,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
-  const { children } = $props();
+  let { children } = $props();
 
   let initError = $state<string | null>(null);
 

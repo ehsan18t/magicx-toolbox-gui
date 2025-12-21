@@ -9,7 +9,7 @@
     onclear?: () => void;
   }
 
-  const { value = "", placeholder = "Search...", class: className = "", onchange, onclear }: Props = $props();
+  let { value = "", placeholder = "Search...", class: className = "", onchange, onclear }: Props = $props();
 
   function handleInput(e: Event) {
     const target = e.target as HTMLInputElement;

@@ -14,7 +14,7 @@
     children: Snippet;
   }
 
-  const {
+  let {
     open,
     onclose,
     size = "md",

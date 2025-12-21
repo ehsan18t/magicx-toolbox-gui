@@ -15,7 +15,7 @@
     oncancel: () => void;
   }
 
-  const {
+  let {
     open,
     title,
     message,

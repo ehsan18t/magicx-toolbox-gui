@@ -8,7 +8,7 @@
     class?: string;
   }
 
-  const { icon, size = 20, class: className = "", ...rest }: Props = $props();
+  let { icon, size = 20, class: className = "", ...rest }: Props = $props();
 </script>
 
 <button

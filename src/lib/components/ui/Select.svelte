@@ -22,7 +22,6 @@
     onchange?: (value: string | number) => void;
   }
 
-  // eslint-disable-next-line prefer-const -- value must stay mutable for binding
   let { value = $bindable(), ...rest }: Props = $props();
 
   const {

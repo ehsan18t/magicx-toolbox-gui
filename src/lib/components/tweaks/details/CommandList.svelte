@@ -8,7 +8,7 @@
     iconClass?: string;
   }
 
-  const { title, commands, icon = "mdi:console", iconClass = "text-foreground-muted" }: Props = $props();
+  let { title, commands, icon = "mdi:console", iconClass = "text-foreground-muted" }: Props = $props();
 </script>
 
 {#if commands.length > 0}

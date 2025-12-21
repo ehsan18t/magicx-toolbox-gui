@@ -274,7 +274,7 @@
     class?: string;
   }
 
-  const { icon, width = 24, height, class: className = "" }: Props = $props();
+  let { icon, width = 24, height, class: className = "" }: Props = $props();
 
   const IconComponent = $derived(iconRegistry[icon]);
   const computedHeight = $derived(height ?? width);
