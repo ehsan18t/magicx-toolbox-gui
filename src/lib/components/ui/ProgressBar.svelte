@@ -34,7 +34,14 @@
 </script>
 
 <div class="flex w-full items-center gap-3 {className}">
-  <div class="bg-muted relative flex-1 overflow-hidden rounded-full {sizeClasses[size]}">
+  <div
+    class="bg-muted relative flex-1 overflow-hidden rounded-full {sizeClasses[size]}"
+    role="progressbar"
+    aria-valuenow={Math.round(percentage)}
+    aria-valuemin={0}
+    aria-valuemax={100}
+    aria-label="Progress"
+  >
     <div
       class="absolute inset-y-0 left-0 rounded-full transition-all duration-300 ease-out {variantClasses[variant]}"
       style="width: {percentage}%"
