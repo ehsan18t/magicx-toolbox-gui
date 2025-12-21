@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { Icon } from "$lib/components/shared";
   import { cn } from "@/utils";
-  import Icon from "../Icon.svelte";
 
   export interface SegmentOption {
     value: number;

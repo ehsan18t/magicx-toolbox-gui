@@ -1,12 +1,8 @@
 <script lang="ts">
-  import CategoryTab from "$lib/components/CategoryTab.svelte";
-  import FavoritesTab from "$lib/components/FavoritesTab.svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import OverviewTab from "$lib/components/OverviewTab.svelte";
-  import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
-  import SearchTab from "$lib/components/SearchTab.svelte";
-  import Sidebar from "$lib/components/Sidebar.svelte";
-  import SnapshotsTab from "$lib/components/SnapshotsTab.svelte";
+  import { RebootBanner } from "$lib/components/feedback";
+  import { Sidebar } from "$lib/components/layout";
+  import { Icon } from "$lib/components/shared";
+  import { CategoryView, FavoritesView, OverviewView, SearchView, SnapshotsView } from "$lib/components/views";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
@@ -58,19 +54,19 @@
       <Sidebar />
       <main class="main-content">
         <div class="">
-          <PendingRebootBanner />
+          <RebootBanner />
         </div>
         <div class="content-area">
           {#if activeTab === "overview"}
-            <OverviewTab />
+            <OverviewView />
           {:else if activeTab === "search"}
-            <SearchTab />
+            <SearchView />
           {:else if activeTab === "favorites"}
-            <FavoritesTab />
+            <FavoritesView />
           {:else if activeTab === "snapshots"}
-            <SnapshotsTab />
+            <SnapshotsView />
           {:else if currentCategoryTab}
-            <CategoryTab tab={currentCategoryTab} />
+            <CategoryView tab={currentCategoryTab} />
           {/if}
         </div>
       </main>

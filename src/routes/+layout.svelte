@@ -1,19 +1,15 @@
 <script lang="ts">
+  import { DebugPanel } from "$lib/components/debug";
+  import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
+  import { TitleBar } from "$lib/components/layout";
+  import { AboutModal, SettingsModal, TweakDetailsModal, UpdateModal } from "$lib/components/modals";
+  import { Icon } from "$lib/components/shared";
+  import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
+  import { settingsStore } from "$lib/stores/settings.svelte";
+  import { themeStore } from "$lib/stores/theme.svelte";
   import { initializeQuick } from "$lib/stores/tweaksData.svelte";
+  import { updateStore } from "$lib/stores/update.svelte";
   import "@/app.css";
-  import AboutModal from "@/lib/components/AboutModal.svelte";
-  import ApplyingOverlay from "@/lib/components/ApplyingOverlay.svelte";
-  import DebugPanel from "@/lib/components/DebugPanel.svelte";
-  import Icon from "@/lib/components/Icon.svelte";
-  import SettingsModal from "@/lib/components/SettingsModal.svelte";
-  import TitleBar from "@/lib/components/TitleBar.svelte";
-  import ToastContainer from "@/lib/components/ToastContainer.svelte";
-  import TweakDetailsModal from "@/lib/components/TweakDetailsModal.svelte";
-  import UpdateModal from "@/lib/components/UpdateModal.svelte";
-  import { colorSchemeStore } from "@/lib/stores/colorScheme.svelte";
-  import { settingsStore } from "@/lib/stores/settings.svelte";
-  import { themeStore } from "@/lib/stores/theme.svelte";
-  import { updateStore } from "@/lib/stores/update.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
