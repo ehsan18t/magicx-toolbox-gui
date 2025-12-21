@@ -4,8 +4,6 @@
 
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
-
 use crate::error::Error;
 use crate::models::{
     ConfigurationProfile, ExportOptions, ProfileMetadata, RegistryValueState, SchedulerState,
@@ -14,6 +12,7 @@ use crate::models::{
 };
 use crate::services::backup::detect_tweak_state;
 use crate::services::profile::archive::write_profile_archive;
+use crate::services::profile::hash_option_content;
 use crate::services::{registry_service, scheduler_service, service_control};
 
 /// Export a configuration profile.
@@ -115,39 +114,6 @@ fn build_selections(
     }
 
     Ok(selections)
-}
-
-/// Compute a hash of option content for schema change detection.
-fn hash_option_content(option: &crate::models::TweakOption) -> String {
-    let mut hasher = Sha256::new();
-
-    // Hash registry changes
-    for change in &option.registry_changes {
-        hasher.update(change.hive.as_str().as_bytes());
-        hasher.update(change.key.as_bytes());
-        hasher.update(change.value_name.as_bytes());
-        if let Some(ref v) = change.value {
-            hasher.update(format!("{:?}", v).as_bytes());
-        }
-    }
-
-    // Hash service changes
-    for service in &option.service_changes {
-        hasher.update(service.name.as_bytes());
-        hasher.update(service.startup.as_str().as_bytes());
-    }
-
-    // Hash scheduler changes
-    for task in &option.scheduler_changes {
-        hasher.update(task.task_path.as_bytes());
-        if let Some(ref name) = task.task_name {
-            hasher.update(name.as_bytes());
-        }
-        hasher.update(task.action.as_str().as_bytes());
-    }
-
-    // Use first 32 characters (128 bits) for good collision resistance while keeping size reasonable
-    hex::encode(hasher.finalize())[..32].to_string()
 }
 
 /// Capture current system state for the profile.
