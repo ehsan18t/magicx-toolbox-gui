@@ -285,7 +285,7 @@
   </div>
 </aside>
 
-<style>
+<style lang="postcss">
   @reference "@/app.css";
 
   .sidebar-controls {

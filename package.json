@@ -48,7 +48,8 @@
     "@tauri-apps/plugin-process": "~2.3.1",
     "@tauri-apps/plugin-shell": "~2.3.3",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "tailwind-variants": "^3.2.2"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.0",

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { StatusBadge } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
@@ -340,41 +341,37 @@
       <!-- Metadata tags -->
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <!-- Risk level -->
-        <div
-          class="inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors duration-150
-            {tweak.definition.risk_level === 'low'
-            ? 'bg-success/8 text-success hover:bg-success/15'
-            : tweak.definition.risk_level === 'medium'
-              ? 'bg-warning/8 text-warning hover:bg-warning/15'
-              : tweak.definition.risk_level === 'high'
-                ? 'bg-orange-500/8 text-orange-500 hover:bg-orange-500/15'
-                : 'bg-error/8 text-error hover:bg-error/15'}"
-          use:tooltip={riskInfo.description}
-        >
-          <Icon icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon} width="12" />
-          <span class="tracking-wide uppercase">{riskInfo.name}</span>
-        </div>
+        <StatusBadge
+          variant={tweak.definition.risk_level === "low"
+            ? "success"
+            : tweak.definition.risk_level === "medium"
+              ? "warning"
+              : tweak.definition.risk_level === "high"
+                ? "orange"
+                : "error"}
+          icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon}
+          label={riskInfo.name}
+          tooltip={riskInfo.description}
+        />
 
         <!-- Permission level -->
         {#if permissionInfo}
-          <div
-            class="bg-muted/50 hover:bg-muted inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-foreground-muted transition-colors duration-150 hover:text-foreground-muted"
-            use:tooltip={permissionInfo.description}
-          >
-            <Icon icon={permissionInfo.icon} width="12" />
-            <span class="tracking-wide uppercase">{permissionInfo.name}</span>
-          </div>
+          <StatusBadge
+            variant="muted"
+            icon={permissionInfo.icon}
+            label={permissionInfo.name}
+            tooltip={permissionInfo.description}
+          />
         {/if}
 
         <!-- Reboot required -->
         {#if tweak.definition.requires_reboot}
-          <div
-            class="inline-flex cursor-help items-center gap-1 rounded-full bg-info/8 px-2 py-0.5 text-[10px] font-medium text-info transition-colors duration-150 hover:bg-info/15"
-            use:tooltip={"System restart required after applying or reverting"}
-          >
-            <Icon icon="mdi:restart" width="12" />
-            <span class="tracking-wide uppercase">Reboot</span>
-          </div>
+          <StatusBadge
+            variant="info"
+            icon="mdi:restart"
+            label="Reboot"
+            tooltip="System restart required after applying or reverting"
+          />
         {/if}
       </div>
 

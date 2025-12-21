@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { ActionButton, EmptyState, SkeletonCard } from "$lib/components/ui";
   import type { TabDefinition } from "$lib/stores/navigation.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import {
@@ -169,101 +169,63 @@
     </div>
 
     <div class="flex gap-2.5">
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {categoryPendingCount >
-        0
-          ? 'border-warning bg-warning/15 text-warning'
-          : ''} hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success"
+      <ActionButton
+        intent="apply"
+        icon="mdi:check-all"
+        active={categoryPendingCount > 0}
+        loading={isBatchProcessing}
+        badgeCount={categoryPendingCount}
+        badgeVariant="warning"
         onclick={() => (showApplyAllDialog = true)}
         disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
       >
-        {#if isBatchProcessing}
-          <Icon icon="mdi:loading" width="18" class="animate-spin" />
-        {:else}
-          <Icon icon="mdi:check-all" width="18" />
-        {/if}
-        <span class="hidden sm:inline">Apply Changes</span>
-        {#if categoryPendingCount > 0}
-          <span
-            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-white"
-            >{categoryPendingCount}</span
-          >
-        {/if}
-      </button>
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+        Apply Changes
+      </ActionButton>
+      <ActionButton
+        intent="discard"
+        icon="mdi:close-circle-outline"
         onclick={handleDiscardChanges}
         disabled={categoryPendingCount === 0 || isLoading || isBatchProcessing}
-        use:tooltip={"Discard all pending changes in this category"}
+        tooltip="Discard all pending changes in this category"
       >
-        <Icon icon="mdi:close-circle-outline" width="18" />
-        <span class="hidden sm:inline">Discard</span>
-      </button>
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
+        Discard
+      </ActionButton>
+      <ActionButton
+        intent="restore"
+        icon="mdi:restore"
+        badgeCount={snapshotCount}
+        badgeVariant="error"
         onclick={handleRestoreClick}
         disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
-        use:tooltip={snapshotCount === 0
+        tooltip={snapshotCount === 0
           ? "No snapshots available"
           : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
       >
-        <Icon icon="mdi:restore" width="18" />
-        <span class="hidden sm:inline">Restore Snapshots</span>
-        {#if snapshotCount > 0}
-          <span
-            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-error/20 px-1.5 text-xs font-bold text-error"
-            >{snapshotCount}</span
-          >
-        {/if}
-      </button>
+        Restore Snapshots
+      </ActionButton>
     </div>
   </div>
 
   <!-- Tweaks Grid -->
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if tweaksLoading && categoryTweaks.length === 0}
-      <!-- Loading state with skeleton cards -->
-      <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
-        {#each [0, 1, 2, 3] as i (`tweak-skeleton-${i}`)}
-          <div class="animate-pulse relative flex overflow-hidden rounded-lg border border-border bg-card">
-            <div class="flex flex-1 flex-col gap-3 p-4">
-              <div class="flex items-start justify-between">
-                <div class="flex flex-col gap-2">
-                  <div class="bg-muted h-5 w-40 rounded"></div>
-                  <div class="bg-muted/60 h-4 w-56 rounded"></div>
-                </div>
-                <div class="bg-muted h-9 w-12 rounded-lg"></div>
-              </div>
-              <div class="flex items-center gap-2">
-                <div class="bg-muted/60 h-5 w-16 rounded-full"></div>
-                <div class="bg-muted/60 h-5 w-20 rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        {/each}
-      </div>
+      <SkeletonCard />
     {:else if filteredTweaks.length === 0}
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        {#if searchQuery}
-          <Icon icon="mdi:file-search-outline" width="56" />
-          <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>
-          <p class="m-0 text-sm">No tweaks match "{searchQuery}"</p>
-          <button
-            type="button"
-            class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
-            onclick={() => (searchQuery = "")}
-          >
-            Clear search
-          </button>
-        {:else}
-          <Icon icon="mdi:package-variant" width="56" />
-          <h3 class="m-0 text-lg font-semibold text-foreground">No tweaks available</h3>
-          <p class="m-0 text-sm">This category has no tweaks for your system</p>
-        {/if}
-      </div>
+      {#if searchQuery}
+        <EmptyState
+          icon="mdi:file-search-outline"
+          title="No results found"
+          description={`No tweaks match "${searchQuery}"`}
+          actionText="Clear search"
+          onaction={() => (searchQuery = "")}
+        />
+      {:else}
+        <EmptyState
+          icon="mdi:package-variant"
+          title="No tweaks available"
+          description="This category has no tweaks for your system"
+        />
+      {/if}
     {:else}
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
         {#each filteredTweaks as tweak (tweak.definition.id)}

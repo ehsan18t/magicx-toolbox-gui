@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { HighlightedText } from "$lib/components/ui";
+  import { ActionButton, EmptyState, HighlightedText } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -266,56 +266,40 @@
 
     {#if hasResults}
       <div class="flex gap-2.5">
-        <button
-          type="button"
-          class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {searchPendingCount >
-          0
-            ? 'border-warning bg-warning/15 text-warning'
-            : ''} hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success"
+        <ActionButton
+          intent="apply"
+          icon="mdi:check-all"
+          active={searchPendingCount > 0}
+          loading={isBatchProcessing}
+          badgeCount={searchPendingCount}
+          badgeVariant="warning"
           onclick={() => (showApplyAllDialog = true)}
           disabled={searchPendingCount === 0 || isLoading || isBatchProcessing}
         >
-          {#if isBatchProcessing}
-            <Icon icon="mdi:loading" width="18" class="animate-spin" />
-          {:else}
-            <Icon icon="mdi:check-all" width="18" />
-          {/if}
-          <span class="hidden sm:inline">Apply Changes</span>
-          {#if searchPendingCount > 0}
-            <span
-              class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-white"
-              >{searchPendingCount}</span
-            >
-          {/if}
-        </button>
-        <button
-          type="button"
-          class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+          Apply Changes
+        </ActionButton>
+        <ActionButton
+          intent="discard"
+          icon="mdi:close-circle-outline"
           onclick={handleDiscardChanges}
           disabled={searchPendingCount === 0 || isLoading || isBatchProcessing}
-          use:tooltip={"Discard all pending changes in search results"}
+          tooltip="Discard all pending changes in search results"
         >
-          <Icon icon="mdi:close-circle-outline" width="18" />
-          <span class="hidden sm:inline">Discard</span>
-        </button>
-        <button
-          type="button"
-          class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
+          Discard
+        </ActionButton>
+        <ActionButton
+          intent="restore"
+          icon="mdi:restore"
+          badgeCount={snapshotCount}
+          badgeVariant="error"
           onclick={handleRestoreClick}
           disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
-          use:tooltip={snapshotCount === 0
+          tooltip={snapshotCount === 0
             ? "No snapshots available"
             : `Restore ${snapshotCount} snapshot${snapshotCount > 1 ? "s" : ""}`}
         >
-          <Icon icon="mdi:restore" width="18" />
-          <span class="hidden sm:inline">Restore Snapshots</span>
-          {#if snapshotCount > 0}
-            <span
-              class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-error/20 px-1.5 text-xs font-bold text-error"
-              >{snapshotCount}</span
-            >
-          {/if}
-        </button>
+          Restore Snapshots
+        </ActionButton>
       </div>
     {/if}
   </div>
@@ -324,51 +308,37 @@
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if tweaksLoading && !isActive}
       <!-- Loading state -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <Icon icon="mdi:loading" width="48" class="animate-spin text-accent" />
-        <p class="m-0 text-sm">Loading tweaks...</p>
-      </div>
+      <EmptyState icon="mdi:loading" title="" description="Loading tweaks...">
+        <!-- Spinner handled by icon animation -->
+      </EmptyState>
     {:else if error}
       <!-- Error state -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <Icon icon="mdi:alert-circle" width="56" class="text-error" />
-        <h3 class="m-0 text-lg font-semibold text-foreground">Search Error</h3>
-        <p class="m-0 text-sm">{error}</p>
-        <button
-          type="button"
-          class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
-          onclick={() => searchStore.search()}
-        >
-          Retry
-        </button>
-      </div>
+      <EmptyState
+        icon="mdi:alert-circle"
+        title="Search Error"
+        description={error}
+        actionText="Retry"
+        onaction={() => searchStore.search()}
+      />
     {:else if !isActive}
       <!-- Empty state - no search query -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <Icon icon="mdi:text-search" width="56" />
-        <h3 class="m-0 text-lg font-semibold text-foreground">Start Searching</h3>
-        <p class="m-0 text-sm">Enter a search term to find tweaks across all categories</p>
-      </div>
+      <EmptyState
+        icon="mdi:text-search"
+        title="Start Searching"
+        description="Enter a search term to find tweaks across all categories"
+      />
     {:else if isSearching}
       <!-- Searching state -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <Icon icon="mdi:loading" width="48" class="animate-spin text-accent" />
-        <p class="m-0 text-sm">Searching...</p>
-      </div>
+      <EmptyState icon="mdi:loading" title="" description="Searching..." />
     {:else if !hasResults}
       <!-- No results -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <Icon icon="mdi:file-search-outline" width="56" />
-        <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>
-        <p class="m-0 text-sm">No tweaks match "{searchStore.query}"</p>
-        <button
-          type="button"
-          class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
-          onclick={handleClear}
-        >
-          Clear search
-        </button>
-      </div>
+      <EmptyState
+        icon="mdi:file-search-outline"
+        title="No results found"
+        description={`No tweaks match "${searchStore.query}"`}
+        actionText="Clear search"
+        onaction={handleClear}
+      />
     {:else}
       <!-- Results grid -->
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
@@ -436,7 +406,7 @@
   oncancel={() => (showRevertAllDialog = false)}
 />
 
-<style>
+<style lang="postcss">
   @reference "@/app.css";
   .search-result-card {
     @apply overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-hover hover:shadow-md;

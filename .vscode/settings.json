@@ -61,6 +61,7 @@
     "magicx",
     "MSVC",
     "multistate",
+    "onaction",
     "Pels",
     "Prefetcher",
     "prerender",

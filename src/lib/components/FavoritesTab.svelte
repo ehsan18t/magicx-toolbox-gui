@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { ActionButton, EmptyState, SkeletonCard } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -166,122 +167,71 @@
     </div>
 
     <div class="flex gap-2.5">
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 {pendingCount >
-        0
-          ? 'border-warning bg-warning/15 text-warning'
-          : ''} hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success"
+      <ActionButton
+        intent="apply"
+        icon="mdi:check-all"
+        active={pendingCount > 0}
+        loading={isBatchProcessing}
+        badgeCount={pendingCount}
+        badgeVariant="warning"
         onclick={() => (showApplyAllDialog = true)}
         disabled={pendingCount === 0 || isLoading || isBatchProcessing}
       >
-        {#if isBatchProcessing}
-          <Icon icon="mdi:loading" width="18" class="animate-spin" />
-        {:else}
-          <Icon icon="mdi:check-all" width="18" />
-        {/if}
-        <span class="hidden sm:inline">Apply Changes</span>
-        {#if pendingCount > 0}
-          <span
-            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-white"
-            >{pendingCount}</span
-          >
-        {/if}
-      </button>
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+        Apply Changes
+      </ActionButton>
+      <ActionButton
+        intent="discard"
+        icon="mdi:close-circle-outline"
         onclick={handleDiscardChanges}
         disabled={pendingCount === 0 || isLoading || isBatchProcessing}
-        use:tooltip={"Discard all pending changes"}
+        tooltip="Discard all pending changes"
       >
-        <Icon icon="mdi:close-circle-outline" width="18" />
-        <span class="hidden sm:inline">Discard</span>
-      </button>
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent hover:not-disabled:bg-accent/15 hover:not-disabled:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+        Discard
+      </ActionButton>
+      <ActionButton
+        intent="accent"
+        icon="mdi:restore"
+        badgeCount={snapshotCount}
+        badgeVariant="accent"
         onclick={() => (showRevertAllDialog = true)}
         disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
-        use:tooltip={snapshotCount === 0 ? "No snapshots to restore" : `Restore all ${snapshotCount} snapshots`}
+        tooltip={snapshotCount === 0 ? "No snapshots to restore" : `Restore all ${snapshotCount} snapshots`}
       >
-        <Icon icon="mdi:restore" width="18" />
-        <span class="hidden sm:inline">Restore All</span>
-        {#if snapshotCount > 0}
-          <span
-            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent/20 px-1.5 text-xs font-bold text-accent"
-            >{snapshotCount}</span
-          >
-        {/if}
-      </button>
-      <button
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
+        Restore All
+      </ActionButton>
+      <ActionButton
+        intent="danger"
+        icon="mdi:star-off"
         onclick={() => (showClearAllDialog = true)}
         disabled={totalCount === 0 || isBatchProcessing}
-        use:tooltip={totalCount === 0 ? "No favorites to clear" : "Clear all favorites"}
+        tooltip={totalCount === 0 ? "No favorites to clear" : "Clear all favorites"}
       >
-        <Icon icon="mdi:star-off" width="18" />
-        <span class="hidden sm:inline">Clear All</span>
-      </button>
+        Clear All
+      </ActionButton>
     </div>
   </div>
 
   <!-- Tweaks Grid - grouped by category -->
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if tweaksLoading && favoriteTweaks.length === 0}
-      <!-- Loading state with skeleton cards -->
-      <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
-        {#each [0, 1, 2, 3] as i (`tweak-skeleton-${i}`)}
-          <div class="animate-pulse relative flex overflow-hidden rounded-lg border border-border bg-card">
-            <div class="flex flex-1 flex-col gap-3 p-4">
-              <div class="flex items-start justify-between">
-                <div class="flex flex-col gap-2">
-                  <div class="bg-muted h-5 w-40 rounded"></div>
-                  <div class="bg-muted/60 h-4 w-56 rounded"></div>
-                </div>
-                <div class="bg-muted h-9 w-12 rounded-lg"></div>
-              </div>
-              <div class="flex items-center gap-2">
-                <div class="bg-muted/60 h-5 w-16 rounded-full"></div>
-                <div class="bg-muted/60 h-5 w-20 rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        {/each}
-      </div>
+      <SkeletonCard />
     {:else if favoriteTweaks.length === 0}
-      <!-- No favorites yet -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <div class="bg-muted/50 flex h-20 w-20 items-center justify-center rounded-full">
-          <Icon icon="mdi:star-outline" width="48" class="text-foreground-muted/50" />
-        </div>
-        <h3 class="m-0 text-lg font-semibold text-foreground">No Favorites Yet</h3>
-        <p class="m-0 max-w-sm text-sm">
-          Click the star icon on any tweak to add it to your favorites for quick access.
-        </p>
-        <button
-          type="button"
-          class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
-          onclick={() => navigationStore.navigateToOverview()}
-        >
-          Browse Tweaks
-        </button>
-      </div>
+      <EmptyState
+        icon="mdi:star-outline"
+        title="No Favorites Yet"
+        description="Click the star icon on any tweak to add it to your favorites for quick access."
+        actionText="Browse Tweaks"
+        onaction={() => navigationStore.navigateToOverview()}
+        showIconCircle
+      />
     {:else if filteredTweaks.length === 0}
-      <!-- Search returned no results -->
-      <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
-        <Icon icon="mdi:file-search-outline" width="56" />
-        <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>
-        <p class="m-0 text-sm">No favorites match "{searchQuery}"</p>
-        <button
-          type="button"
-          class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
-          onclick={() => (searchQuery = "")}
-        >
-          Clear search
-        </button>
-      </div>
+      <EmptyState
+        icon="mdi:file-search-outline"
+        title="No results found"
+        description={`No favorites match "${searchQuery}"`}
+        actionText="Clear search"
+        onaction={() => (searchQuery = "")}
+      />
     {:else}
       <!-- Grouped by category -->
       <div class="flex flex-col gap-6 pb-4">
