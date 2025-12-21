@@ -36,7 +36,7 @@
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "lint:rust:fix": "cd src-tauri && cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged",
     "type-check": "tsc --noEmit",
-    "validate": "bun run format:check && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust",
+    "validate": "bun run format:check && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust && bun run lint",
     "tauri": "tauri"
   },
   "dependencies": {
