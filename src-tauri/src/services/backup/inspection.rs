@@ -213,7 +213,7 @@ fn inspect_service_changes(option: &TweakOption) -> Result<Vec<ServiceMismatch>,
 
     for change in &option.service_changes {
         let status = service_control::get_service_status(&change.name).ok();
-        let current_startup = status.as_ref().map(|s| s.startup_type).flatten();
+        let current_startup = status.as_ref().and_then(|s| s.startup_type);
 
         let expected_startup = change.startup;
         let is_match = current_startup == Some(expected_startup);
@@ -391,7 +391,7 @@ mod tests {
 
         // All match -> OK
         assert!(calculate_overall_match(
-            &[registry_success.clone()],
+            std::slice::from_ref(&registry_success),
             &[],
             &[]
         ));
@@ -412,7 +412,7 @@ mod tests {
 
         // All skipped -> OK (technically vacuous truth)
         assert!(calculate_overall_match(
-            &[registry_fail_skip.clone()],
+            std::slice::from_ref(&registry_fail_skip),
             &[],
             &[]
         ));
