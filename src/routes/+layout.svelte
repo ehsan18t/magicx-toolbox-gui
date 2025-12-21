@@ -2,7 +2,14 @@
   import { DebugPanel } from "$lib/components/debug";
   import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
   import { TitleBar } from "$lib/components/layout";
-  import { AboutModal, SettingsModal, TweakDetailsModal, UpdateModal } from "$lib/components/modals";
+  import {
+    AboutModal,
+    ProfileExportModal,
+    ProfileImportModal,
+    SettingsModal,
+    TweakDetailsModal,
+    UpdateModal,
+  } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
@@ -102,6 +109,8 @@
 <SettingsModal />
 <UpdateModal />
 <TweakDetailsModal />
+<ProfileExportModal />
+<ProfileImportModal />
 
 <ApplyingOverlay />
 <ToastContainer />

@@ -1,21 +1,17 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Button, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
-  import { closeModal, modalStore } from "$lib/stores/modal.svelte";
-  import { settingsStore } from "$lib/stores/settings.svelte";
+  import { Badge, Button, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
+  import { closeModal, modalStore, openProfileExportModal, openProfileImportModal } from "$lib/stores/modal.svelte";
   import { tweaksStore } from "$lib/stores/tweaks.svelte";
-  import type { ExportData, TweakSnapshot } from "$lib/types";
   import { getVersion } from "@tauri-apps/api/app";
-  import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
-  import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
   import { onMount } from "svelte";
 
   let appVersion = $state("1.0.0");
-  let isExporting = $state(false);
-  let isImporting = $state(false);
-  let statusMessage = $state<{ type: "success" | "error"; text: string } | null>(null);
 
   const isOpen = $derived(modalStore.current === "settings");
+
+  // Count applied tweaks for badge
+  const appliedCount = $derived(tweaksStore.list.filter((t) => t.status.is_applied).length);
 
   onMount(async () => {
     try {
@@ -25,96 +21,19 @@
     }
   });
 
-  function showStatus(type: "success" | "error", text: string) {
-    statusMessage = { type, text };
+  function handleExportProfile() {
+    closeModal();
+    // Small delay to allow current modal to close
     setTimeout(() => {
-      statusMessage = null;
-    }, 3000);
+      openProfileExportModal();
+    }, 100);
   }
 
-  async function createTweakSnapshots(): Promise<TweakSnapshot[]> {
-    const tweaks = tweaksStore.list;
-    const snapshots: TweakSnapshot[] = [];
-
-    for (const tweak of tweaks) {
-      snapshots.push({
-        tweakId: tweak.definition.id,
-        tweakName: tweak.definition.name,
-        isApplied: tweak.status.is_applied,
-        registryValues: {},
-        snapshotTime: new Date().toISOString(),
-      });
-    }
-
-    return snapshots;
-  }
-
-  async function handleExport() {
-    if (isExporting) return;
-    isExporting = true;
-
-    try {
-      const snapshots = await createTweakSnapshots();
-      const settings = settingsStore.settings;
-
-      const exportData: ExportData = {
-        version: "1.0",
-        exportTime: new Date().toISOString(),
-        appVersion,
-        settings,
-        tweakSnapshots: snapshots,
-      };
-
-      const filePath = await save({
-        defaultPath: `magicx-backup-${new Date().toISOString().split("T")[0]}.json`,
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-
-      if (filePath) {
-        await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
-        showStatus("success", "Settings exported successfully!");
-      }
-    } catch (error) {
-      console.error("Export failed:", error);
-      showStatus("error", `Export failed: ${error}`);
-    } finally {
-      isExporting = false;
-    }
-  }
-
-  async function handleImport() {
-    if (isImporting) return;
-    isImporting = true;
-
-    try {
-      const filePath = await openDialog({
-        multiple: false,
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-
-      if (filePath && typeof filePath === "string") {
-        const content = await readTextFile(filePath);
-        const importData = JSON.parse(content) as ExportData;
-
-        if (!importData.version || !importData.settings) {
-          throw new Error("Invalid backup file format");
-        }
-
-        // Validate settings schema to prevent malformed data
-        const settings = importData.settings;
-        if (typeof settings.autoCheckUpdates !== "boolean" || typeof settings.autoInstallUpdates !== "boolean") {
-          throw new Error("Invalid settings format in backup file");
-        }
-
-        settingsStore.update(settings);
-        showStatus("success", `Imported ${importData.tweakSnapshots.length} tweak snapshots!`);
-      }
-    } catch (error) {
-      console.error("Import failed:", error);
-      showStatus("error", `Import failed: ${error}`);
-    } finally {
-      isImporting = false;
-    }
+  function handleImportProfile() {
+    closeModal();
+    setTimeout(() => {
+      openProfileImportModal();
+    }, 100);
   }
 </script>
 
@@ -130,55 +49,52 @@
   </ModalHeader>
 
   <ModalBody class="space-y-5">
-    {#if statusMessage}
-      <div
-        class="flex items-center gap-2 rounded-lg p-3 {statusMessage.type === 'success'
-          ? 'bg-success/15 text-success'
-          : 'bg-error/15 text-error'}"
-      >
-        <Icon icon={statusMessage.type === "success" ? "mdi:check-circle" : "mdi:alert-circle"} width="18" />
-        <span class="text-sm">{statusMessage.text}</span>
-      </div>
-    {/if}
-
+    <!-- Configuration Profiles Section -->
     <div class="rounded-lg border border-border bg-surface p-4">
       <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Icon icon="mdi:database-export" width="18" class="text-accent" />
-        Backup & Restore
+        <Icon icon="mdi:file-document-multiple" width="18" class="text-accent" />
+        Configuration Profiles
       </h3>
       <p class="mb-4 text-sm text-foreground-muted">
-        Export your current settings and tweak states to a backup file, or import from a previous backup.
+        Export your tweak configurations to share across machines or back up before reinstalling Windows.
       </p>
 
       <div class="flex flex-wrap gap-3">
-        <Button variant="secondary" class="flex-1" onclick={handleExport} disabled={isExporting}>
-          {#if isExporting}
-            <Icon icon="mdi:loading" width="18" class="animate-spin" />
-            Exporting...
-          {:else}
-            <Icon icon="mdi:export" width="18" />
-            Export Backup
+        <Button variant="secondary" class="flex-1" onclick={handleExportProfile}>
+          <Icon icon="mdi:export" width="18" />
+          Export Profile
+          {#if appliedCount > 0}
+            <Badge variant="default" class="ml-1">{appliedCount}</Badge>
           {/if}
         </Button>
 
-        <Button variant="secondary" class="flex-1" onclick={handleImport} disabled={isImporting}>
-          {#if isImporting}
-            <Icon icon="mdi:loading" width="18" class="animate-spin" />
-            Importing...
-          {:else}
-            <Icon icon="mdi:import" width="18" />
-            Import Backup
-          {/if}
+        <Button variant="secondary" class="flex-1" onclick={handleImportProfile}>
+          <Icon icon="mdi:import" width="18" />
+          Import Profile
         </Button>
       </div>
     </div>
 
+    <!-- Profile Info Box -->
     <div class="flex items-start gap-3 rounded-lg border border-border/50 bg-surface/50 p-3">
       <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
-      <p class="m-0 text-xs leading-relaxed text-foreground-muted">
-        Backup files contain your app settings and a snapshot of all tweak states. When importing, settings will be
-        restored immediately.
-      </p>
+      <div class="text-xs leading-relaxed text-foreground-muted">
+        <p class="m-0">
+          <strong>Profiles</strong> save your applied tweak selections as a portable
+          <code class="bg-muted rounded px-1">.mgx</code> file.
+        </p>
+        <ul class="m-0 mt-1.5 list-inside list-disc space-y-0.5 pl-0">
+          <li>Share your setup with others</li>
+          <li>Restore after Windows reinstall</li>
+          <li>Sync across multiple machines</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- App Info -->
+    <div class="flex items-center justify-between rounded-lg border border-border/50 bg-surface/50 px-4 py-3">
+      <span class="text-sm text-foreground-muted">App Version</span>
+      <Badge variant="default">{appVersion}</Badge>
     </div>
   </ModalBody>
 </Modal>
