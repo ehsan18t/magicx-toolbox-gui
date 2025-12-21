@@ -7,7 +7,7 @@
     loading?: boolean;
     pending?: boolean;
     class?: string;
-    "aria-label"?: string;
+    ariaLabel?: string;
     onchange?: (checked: boolean) => void;
   }
 
@@ -17,7 +17,7 @@
     loading = false,
     pending = false,
     class: className = "",
-    "aria-label": ariaLabel = "Toggle",
+    ariaLabel = "Toggle",
     onchange,
   }: Props = $props();
 

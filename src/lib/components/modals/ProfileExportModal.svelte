@@ -119,8 +119,8 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="lg">
-  <ModalHeader>
+<Modal open={isOpen} onclose={closeModal} size="lg" labelledBy="export-modal-title">
+  <ModalHeader id="export-modal-title">
     <div class="flex items-center gap-3">
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:export" width="24" class="text-accent" />
@@ -171,7 +171,7 @@
           aria-label="Select all applied tweaks"
         >
           <div class="flex items-center gap-3">
-            <Checkbox checked={selectAllApplied} aria-label="Select all" />
+            <Checkbox checked={selectAllApplied} ariaLabel="Select all" />
             <span class="font-medium text-foreground">Select All Applied Tweaks</span>
           </div>
           <Badge variant="default">{appliedTweaks.length} tweaks</Badge>
@@ -207,7 +207,7 @@
                       onclick={() => toggleTweak(tweak.definition.id)}
                       aria-label="Toggle {tweak.definition.name}"
                     >
-                      <Checkbox checked={isSelected} aria-label="{tweak.definition.name} selection" />
+                      <Checkbox checked={isSelected} ariaLabel="{tweak.definition.name} selection" />
                       <div class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-medium text-foreground">{tweak.definition.name}</span>
                       </div>

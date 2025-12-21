@@ -9,6 +9,8 @@
     closeOnEscape?: boolean;
     class?: string;
     role?: "dialog" | "alertdialog";
+    /** ID of the element that labels this modal (for aria-labelledby) */
+    labelledBy?: string;
     children: Snippet;
   }
 
@@ -20,6 +22,7 @@
     closeOnEscape = true,
     class: className = "",
     role = "dialog",
+    labelledBy,
     children,
   }: Props = $props();
 
@@ -58,6 +61,7 @@
       ]} {className}"
       {role}
       aria-modal="true"
+      aria-labelledby={labelledBy}
     >
       {@render children()}
     </div>

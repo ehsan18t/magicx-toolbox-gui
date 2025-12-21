@@ -38,8 +38,8 @@
   const config = $derived(variantConfig[variant]);
 </script>
 
-<Modal {open} onclose={oncancel} size="sm" role="alertdialog">
-  <ModalHeader>
+<Modal {open} onclose={oncancel} size="sm" role="alertdialog" labelledBy="confirm-dialog-title">
+  <ModalHeader id="confirm-dialog-title">
     <div class="flex items-center gap-3">
       <Icon icon={config.icon} width="24" class="shrink-0 {config.iconColor}" />
       <h2 class="m-0 text-base font-semibold text-foreground">{title}</h2>

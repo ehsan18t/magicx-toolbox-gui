@@ -6,10 +6,10 @@
   interface Props {
     size?: Size;
     class?: string;
-    "aria-label"?: string;
+    ariaLabel?: string;
   }
 
-  const { size = "md", class: className = "", "aria-label": ariaLabel = "Loading" }: Props = $props();
+  const { size = "md", class: className = "", ariaLabel = "Loading" }: Props = $props();
 
   const sizeMap: Record<Size, number> = {
     sm: 16,

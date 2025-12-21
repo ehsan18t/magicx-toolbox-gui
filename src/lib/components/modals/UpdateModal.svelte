@@ -90,8 +90,8 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="md">
-  <ModalHeader>
+<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="update-modal-title">
+  <ModalHeader id="update-modal-title">
     <div class="flex items-center gap-3">
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:update" width="24" class="text-accent" />

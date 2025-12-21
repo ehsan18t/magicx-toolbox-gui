@@ -37,8 +37,8 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="md">
-  <ModalHeader>
+<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="settings-modal-title">
+  <ModalHeader id="settings-modal-title">
     <div class="flex items-center gap-3">
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:cog" width="24" class="text-accent" />

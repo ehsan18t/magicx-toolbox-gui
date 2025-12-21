@@ -197,8 +197,14 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={handleClose} size="lg" closeOnEscape={step !== "applying"}>
-  <ModalHeader>
+<Modal
+  open={isOpen}
+  onclose={handleClose}
+  size="lg"
+  closeOnEscape={step !== "applying"}
+  labelledBy="import-modal-title"
+>
+  <ModalHeader id="import-modal-title">
     <div class="flex items-center gap-3">
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:import" width="24" class="text-accent" />
@@ -363,7 +369,7 @@
                   <Checkbox
                     checked={!skipTweakIds.has(preview.tweak_id) && !(skipAlreadyApplied && preview.already_applied)}
                     disabled={isDisabled}
-                    aria-label="{preview.tweak_name} selection"
+                    ariaLabel="{preview.tweak_name} selection"
                   />
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">

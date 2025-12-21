@@ -6,7 +6,7 @@
     disabled?: boolean;
     indeterminate?: boolean;
     class?: string;
-    "aria-label"?: string;
+    ariaLabel?: string;
     onchange?: (checked: boolean) => void;
   }
 
@@ -15,7 +15,7 @@
     disabled = false,
     indeterminate = false,
     class: className = "",
-    "aria-label": ariaLabel = "Toggle option",
+    ariaLabel = "Toggle option",
     onchange,
   }: Props = $props();
 
