@@ -5,11 +5,11 @@
   import { toastStore } from "$lib/stores/toast.svelte";
   import {
     applyPendingChanges,
+    batchRevertTweaks,
     categoriesStore,
     loadingStateStore,
     loadingStore,
     pendingChangesStore,
-    revertTweak,
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -88,26 +88,7 @@
     isBatchProcessing = true;
 
     const tweaksWithSnapshots = favoriteTweaks.filter((t) => t.status.has_backup);
-    let success = 0;
-    let failed = 0;
-
-    for (const tweak of tweaksWithSnapshots) {
-      const result = await revertTweak(tweak.definition.id, { showToast: false });
-      if (result) {
-        success++;
-      } else {
-        failed++;
-      }
-    }
-
-    // Show summary toast
-    if (failed === 0 && success > 0) {
-      toastStore.success(`Restored ${success} snapshot${success > 1 ? "s" : ""} successfully`);
-    } else if (failed > 0 && success > 0) {
-      toastStore.warning(`Restored ${success}, failed ${failed} snapshot${failed > 1 ? "s" : ""}`);
-    } else if (failed > 0) {
-      toastStore.error(`Failed to restore ${failed} snapshot${failed > 1 ? "s" : ""}`);
-    }
+    await batchRevertTweaks(tweaksWithSnapshots.map((t) => t.definition.id));
 
     isBatchProcessing = false;
   }
