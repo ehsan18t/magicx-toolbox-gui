@@ -8,6 +8,9 @@ export { isSidebarOpen, sidebarStore, sidebarWidthClass, type SidebarState } fro
 export { settingsStore } from "./settings.svelte";
 export { themeStore, type Theme } from "./theme.svelte";
 
+// Favorites
+export { favoritesStore } from "./favorites.svelte";
+
 // Modal state
 export {
   closeModal,

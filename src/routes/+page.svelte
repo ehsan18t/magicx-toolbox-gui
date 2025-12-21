@@ -1,5 +1,6 @@
 <script lang="ts">
   import CategoryTab from "$lib/components/CategoryTab.svelte";
+  import FavoritesTab from "$lib/components/FavoritesTab.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import OverviewTab from "$lib/components/OverviewTab.svelte";
   import PendingRebootBanner from "$lib/components/PendingRebootBanner.svelte";
@@ -30,7 +31,8 @@
 
   // Get the current tab definition for CategoryTab
   const currentCategoryTab = $derived.by(() => {
-    if (activeTab === "overview" || activeTab === "search") return null;
+    if (activeTab === "overview" || activeTab === "search" || activeTab === "favorites" || activeTab === "snapshots")
+      return null;
     return allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
   });
 </script>
@@ -63,6 +65,8 @@
             <OverviewTab />
           {:else if activeTab === "search"}
             <SearchTab />
+          {:else if activeTab === "favorites"}
+            <FavoritesTab />
           {:else if activeTab === "snapshots"}
             <SnapshotsTab />
           {:else if currentCategoryTab}
