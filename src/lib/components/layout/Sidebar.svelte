@@ -9,8 +9,10 @@
   import { categoriesStore, getCategoryStats, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { onMount } from "svelte";
+  import { slide } from "svelte/transition";
 
   const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
+  const SIDEBAR_STATS_OPEN_KEY = "magicx-sidebar-stats-open";
 
   // Derived values from stores
   const fixedTabs = $derived(navigationStore.fixedTabs);
@@ -30,12 +32,21 @@
   // Guard to prevent effect from saving before mount loads the saved value
   let pinStateInitialized = false;
 
+  // State for collapsible stats section
+  let isStatsOpen = $state(true);
+
   // Load pin state from localStorage on mount
   onMount(() => {
     const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
     if (savedPinState === "true") {
       sidebarStore.init(true);
     }
+
+    const savedStatsOpen = localStorage.getItem(SIDEBAR_STATS_OPEN_KEY);
+    if (savedStatsOpen !== null) {
+      isStatsOpen = savedStatsOpen === "true";
+    }
+
     pinStateInitialized = true;
   });
 
@@ -51,6 +62,12 @@
   $effect(() => {
     if (pinStateInitialized) {
       localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
+    }
+  });
+
+  $effect(() => {
+    if (pinStateInitialized) {
+      localStorage.setItem(SIDEBAR_STATS_OPEN_KEY, isStatsOpen.toString());
     }
   });
 
@@ -211,22 +228,35 @@
   <!-- Sidebar Footer -->
   <div class="flex flex-col gap-3 border-t border-border p-3">
     {#if sidebarStore.isOpen}
-      <div class="flex items-center justify-center gap-4 py-2">
-        <div class="flex flex-col items-center gap-0.5">
-          <span class="text-lg font-bold text-foreground">{stats.applied}</span>
-          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Applied</span>
-        </div>
-        <div class="h-6 w-px bg-border"></div>
-        <div class="flex flex-col items-center gap-0.5">
-          <span class="text-lg font-bold text-foreground">{stats.total}</span>
-          <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Total</span>
-        </div>
-      </div>
+      <!-- Collapsible Stats Header -->
+      <button
+        class="flex w-full cursor-pointer items-center justify-between pl-2 text-xs font-semibold tracking-wider text-foreground-muted uppercase transition-colors hover:text-foreground"
+        onclick={() => (isStatsOpen = !isStatsOpen)}
+      >
+        <span>Status</span>
+        <Icon icon={isStatsOpen ? "mdi:chevron-down" : "mdi:chevron-right"} width="16" />
+      </button>
 
-      <!-- Color Scheme Picker (only visible when expanded) -->
-      <div class="flex items-center justify-center gap-2 py-1">
-        <ColorSchemePicker />
-      </div>
+      {#if isStatsOpen}
+        <div transition:slide={{ duration: 200, axis: "y" }}>
+          <div class="flex items-center justify-center gap-4 py-2">
+            <div class="flex flex-col items-center gap-0.5">
+              <span class="text-lg font-bold text-foreground">{stats.applied}</span>
+              <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Applied</span>
+            </div>
+            <div class="h-6 w-px bg-border"></div>
+            <div class="flex flex-col items-center gap-0.5">
+              <span class="text-lg font-bold text-foreground">{stats.total}</span>
+              <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Total</span>
+            </div>
+          </div>
+
+          <!-- Color Scheme Picker (only visible when expanded) -->
+          <div class="flex items-center justify-center gap-2 py-1">
+            <ColorSchemePicker />
+          </div>
+        </div>
+      {/if}
     {/if}
 
     <!-- Control buttons: Pin, Update, Settings, About -->
