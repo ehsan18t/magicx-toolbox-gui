@@ -2,19 +2,20 @@
 // Using Svelte 5 runes for reactive state
 
 import { browser } from "$app/environment";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { APP_CONFIG } from "@/lib/config/app";
 
 export type Theme = "light" | "dark";
 
-// Reactive state
-let currentTheme = $state<Theme>("dark");
+// Persistent state
+const themeState = new PersistentStore<Theme>(APP_CONFIG.theme.storageKey, "dark");
 
 function applyTheme(theme: Theme) {
   if (browser) {
     // Add transitioning class for smooth fade
     document.documentElement.classList.add("theme-transitioning");
 
-    localStorage.setItem(APP_CONFIG.theme.storageKey, theme);
+    themeState.value = theme;
     document.documentElement.setAttribute("data-theme", theme);
 
     // Remove class after transition completes
@@ -28,32 +29,33 @@ function applyTheme(theme: Theme) {
 // Export the theme store with methods
 export const themeStore = {
   get current() {
-    return currentTheme;
+    return themeState.value;
   },
 
   get isDark() {
-    return currentTheme === "dark";
+    return themeState.value === "dark";
   },
 
   init() {
     if (!browser) return;
 
-    const stored = localStorage.getItem(APP_CONFIG.theme.storageKey) as Theme | null;
-    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initialTheme: Theme = stored || (systemPrefersDark ? "dark" : "light");
+    // Check if we should use system preference (if nothing stored)
+    // We check directly here because we want to override the default "dark" if necessary
+    const stored = localStorage.getItem(APP_CONFIG.theme.storageKey);
+    if (!stored) {
+      const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      themeState.value = systemPrefersDark ? "dark" : "light";
+    }
 
-    currentTheme = initialTheme;
-    document.documentElement.setAttribute("data-theme", initialTheme);
+    document.documentElement.setAttribute("data-theme", themeState.value);
   },
 
   toggle() {
-    const newTheme: Theme = currentTheme === "dark" ? "light" : "dark";
-    currentTheme = newTheme;
+    const newTheme: Theme = themeState.value === "dark" ? "light" : "dark";
     applyTheme(newTheme);
   },
 
   set(theme: Theme) {
-    currentTheme = theme;
     applyTheme(theme);
   },
 };

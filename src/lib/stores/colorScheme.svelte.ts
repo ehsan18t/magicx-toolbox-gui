@@ -6,6 +6,7 @@
  */
 
 import { browser } from "$app/environment";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
 /** Available color schemes */
 export const COLOR_SCHEMES = [
@@ -23,15 +24,15 @@ export type ColorSchemeId = (typeof COLOR_SCHEMES)[number]["id"];
 const STORAGE_KEY = "magicx-color-scheme";
 const DEFAULT_SCHEME: ColorSchemeId = "purple";
 
-// Reactive state
-let currentScheme = $state<ColorSchemeId>(DEFAULT_SCHEME);
+// Persistent state
+const schemeState = new PersistentStore<ColorSchemeId>(STORAGE_KEY, DEFAULT_SCHEME);
 
 // Derived value for the full scheme object
-const currentSchemeInfo = $derived(COLOR_SCHEMES.find((s) => s.id === currentScheme) ?? COLOR_SCHEMES[0]);
+const currentSchemeInfo = $derived(COLOR_SCHEMES.find((s) => s.id === schemeState.value) ?? COLOR_SCHEMES[0]);
 
 export const colorSchemeStore = {
   get current() {
-    return currentScheme;
+    return schemeState.value;
   },
 
   get info() {
@@ -46,21 +47,26 @@ export const colorSchemeStore = {
   init() {
     if (!browser) return;
 
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const validScheme = COLOR_SCHEMES.find((s) => s.id === stored);
-    const initialScheme = validScheme?.id ?? DEFAULT_SCHEME;
+    // Validate the loaded value from PersistentStore
+    const loaded = schemeState.value;
+    const isValid = COLOR_SCHEMES.some((s) => s.id === loaded);
 
-    currentScheme = initialScheme;
-    document.documentElement.setAttribute("data-scheme", initialScheme);
+    const finalScheme = isValid ? loaded : DEFAULT_SCHEME;
+
+    // If invalid, reset it
+    if (!isValid) {
+      schemeState.value = finalScheme;
+    }
+
+    document.documentElement.setAttribute("data-scheme", finalScheme);
   },
 
   /** Set a specific color scheme */
   setScheme(scheme: ColorSchemeId) {
     if (!COLOR_SCHEMES.find((s) => s.id === scheme)) return;
 
-    currentScheme = scheme;
+    schemeState.value = scheme;
     if (browser) {
-      localStorage.setItem(STORAGE_KEY, scheme);
       document.documentElement.setAttribute("data-scheme", scheme);
     }
   },

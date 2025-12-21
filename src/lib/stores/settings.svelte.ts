@@ -1,6 +1,6 @@
 // App settings store with localStorage persistence using Svelte 5 runes
 
-import { browser } from "$app/environment";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import type { AppSettings } from "../types";
 
 const SETTINGS_STORAGE_KEY = "magicx-app-settings";
@@ -12,45 +12,18 @@ const defaultSettings: AppSettings = {
   lastUpdateCheck: null,
 };
 
-function loadSettings(): AppSettings {
-  if (!browser) {
-    return defaultSettings;
-  }
-
-  try {
-    const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (stored) {
-      return { ...defaultSettings, ...JSON.parse(stored) };
-    }
-  } catch (error) {
-    console.error("Failed to load settings from localStorage:", error);
-  }
-
-  return defaultSettings;
-}
-
-function saveSettings(settings: AppSettings): void {
-  if (!browser) return;
-
-  try {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-  } catch (error) {
-    console.error("Failed to save settings to localStorage:", error);
-  }
-}
-
-// Reactive state
-let settings = $state<AppSettings>(loadSettings());
+// Persistent state
+const settingsState = new PersistentStore<AppSettings>(SETTINGS_STORAGE_KEY, defaultSettings);
 
 // Derived values for convenience
-const autoCheckUpdates = $derived(settings.autoCheckUpdates);
-const autoInstallUpdates = $derived(settings.autoInstallUpdates);
-const checkUpdateInterval = $derived(settings.checkUpdateInterval);
-const lastUpdateCheck = $derived(settings.lastUpdateCheck);
+const autoCheckUpdates = $derived(settingsState.value.autoCheckUpdates);
+const autoInstallUpdates = $derived(settingsState.value.autoInstallUpdates);
+const checkUpdateInterval = $derived(settingsState.value.checkUpdateInterval);
+const lastUpdateCheck = $derived(settingsState.value.lastUpdateCheck);
 
 export const settingsStore = {
   get settings() {
-    return settings;
+    return settingsState.value;
   },
 
   get autoCheckUpdates() {
@@ -70,13 +43,11 @@ export const settingsStore = {
   },
 
   update(newSettings: Partial<AppSettings>) {
-    settings = { ...settings, ...newSettings };
-    saveSettings(settings);
+    settingsState.value = { ...settingsState.value, ...newSettings };
   },
 
   reset() {
-    settings = { ...defaultSettings };
-    saveSettings(settings);
+    settingsState.value = { ...defaultSettings };
   },
 
   setAutoCheckUpdates(enabled: boolean) {

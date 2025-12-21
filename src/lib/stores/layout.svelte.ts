@@ -1,16 +1,24 @@
 // Sidebar layout state using Svelte 5 runes
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
 export interface SidebarState {
   isExpanded: boolean;
   isPinned: boolean;
+  isWidgetsOpen: boolean;
 }
 
-// Reactive state
+const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
+const SIDEBAR_WIDGETS_OPEN_KEY = "magicx-sidebar-widgets-open";
+
+// Persistent state
+const pinnedState = new PersistentStore(SIDEBAR_PIN_KEY, false);
+const widgetsOpenState = new PersistentStore(SIDEBAR_WIDGETS_OPEN_KEY, true);
+
+// Reactive state (transient)
 let isExpanded = $state(false);
-let isPinned = $state(false);
 
 // Derived values
-const isOpen = $derived(isExpanded || isPinned);
+const isOpen = $derived(isExpanded || pinnedState.value);
 const widthClass = $derived(isOpen ? "w-60" : "w-16");
 const contentLeftOffset = $derived(isOpen ? "left-60" : "left-16");
 
@@ -21,7 +29,11 @@ export const sidebarStore = {
   },
 
   get isPinned() {
-    return isPinned;
+    return pinnedState.value;
+  },
+
+  get isWidgetsOpen() {
+    return widgetsOpenState.value;
   },
 
   get isOpen() {
@@ -41,25 +53,33 @@ export const sidebarStore = {
   },
 
   setPinned(pinned: boolean) {
-    isPinned = pinned;
-  },
-
-  togglePinned() {
-    isPinned = !isPinned;
-    // If unpinning, collapse sidebar
-    if (!isPinned) {
+    pinnedState.value = pinned;
+    if (!pinned) {
       isExpanded = false;
     }
   },
 
+  togglePinned() {
+    pinnedState.value = !pinnedState.value;
+    if (!pinnedState.value) {
+      isExpanded = false;
+    }
+  },
+
+  setWidgetsOpen(open: boolean) {
+    widgetsOpenState.value = open;
+  },
+
+  toggleWidgets() {
+    widgetsOpenState.value = !widgetsOpenState.value;
+  },
+
   init(pinned: boolean) {
     isExpanded = false;
-    isPinned = pinned;
+    pinnedState.value = pinned;
   },
 };
 
-// Legacy compatibility exports (derived stores for backward compatibility)
-// These are kept for components that haven't been migrated yet
 export const isSidebarOpen = {
   get value() {
     return isOpen;

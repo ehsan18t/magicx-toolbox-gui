@@ -1,4 +1,5 @@
 import { browser } from "$app/environment";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -24,8 +25,10 @@ const DEBUG_STORAGE_KEY = "magicx-debug-mode";
 let logIdCounter = 0;
 let unlistenDebugLog: UnlistenFn | null = null;
 
-// Svelte 5 reactive state using $state rune
-let enabled = $state(false);
+// Persistent state for enabled flag
+const debugEnabledState = new PersistentStore(DEBUG_STORAGE_KEY, false);
+
+// Other reactive state
 let logs = $state<DebugLogEntry[]>([]);
 let isPanelOpen = $state(false);
 
@@ -80,19 +83,15 @@ function cleanupBackendListener() {
   }
 }
 
-// Initialize from localStorage
-if (browser) {
-  const stored = localStorage.getItem(DEBUG_STORAGE_KEY);
-  if (stored === "true") {
-    enabled = true;
-    syncDebugModeToBackend(true).then(() => setupBackendListener());
-  }
+// Initialize based on persistent state
+if (browser && debugEnabledState.value) {
+  syncDebugModeToBackend(true).then(() => setupBackendListener());
 }
 
 // Export reactive getters and methods
 export const debugState = {
   get enabled() {
-    return enabled;
+    return debugEnabledState.value;
   },
   get logs() {
     return logs;
@@ -105,12 +104,11 @@ export const debugState = {
   },
 
   toggle() {
-    enabled = !enabled;
-    if (browser) {
-      localStorage.setItem(DEBUG_STORAGE_KEY, String(enabled));
-    }
-    syncDebugModeToBackend(enabled);
-    if (enabled) {
+    const newValue = !debugEnabledState.value;
+    debugEnabledState.value = newValue;
+
+    syncDebugModeToBackend(newValue);
+    if (newValue) {
       setupBackendListener();
     } else {
       cleanupBackendListener();
@@ -118,10 +116,8 @@ export const debugState = {
   },
 
   setEnabled(value: boolean) {
-    enabled = value;
-    if (browser) {
-      localStorage.setItem(DEBUG_STORAGE_KEY, String(value));
-    }
+    debugEnabledState.value = value;
+
     syncDebugModeToBackend(value);
     if (value) {
       setupBackendListener();
@@ -159,7 +155,7 @@ export const debugState = {
     logs = [entry, ...logs].slice(0, 500);
 
     // Also log to browser console when debug is enabled
-    if (enabled) {
+    if (debugEnabledState.value) {
       const prefix = `[${source.toUpperCase()}] ${action}:`;
       switch (level) {
         case "error":

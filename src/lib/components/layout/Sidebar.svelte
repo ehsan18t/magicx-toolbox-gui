@@ -8,11 +8,7 @@
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { categoriesStore, getCategoryStats, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
-  import { onMount } from "svelte";
   import { slide } from "svelte/transition";
-
-  const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
-  const SIDEBAR_WIDGETS_OPEN_KEY = "magicx-sidebar-widgets-open";
 
   // Derived values from stores
   const fixedTabs = $derived(navigationStore.fixedTabs);
@@ -29,26 +25,8 @@
   // Count favorites for badge
   const favoritesCount = $derived(favoritesStore.count);
 
-  // Guard to prevent effect from saving before mount loads the saved value
-  let pinStateInitialized = false;
-
   // State for collapsible widgets section
-  let isWidgetsOpen = $state(true);
-
-  // Load pin state from localStorage on mount
-  onMount(() => {
-    const savedPinState = localStorage.getItem(SIDEBAR_PIN_KEY);
-    if (savedPinState === "true") {
-      sidebarStore.init(true);
-    }
-
-    const savedWidgetsOpen = localStorage.getItem(SIDEBAR_WIDGETS_OPEN_KEY);
-    if (savedWidgetsOpen !== null) {
-      isWidgetsOpen = savedWidgetsOpen === "true";
-    }
-
-    pinStateInitialized = true;
-  });
+  const isWidgetsOpen = $derived(sidebarStore.isWidgetsOpen);
 
   function handleNavClick(tab: TabDefinition) {
     navigationStore.navigateToTab(tab.id);
@@ -57,19 +35,6 @@
   function togglePin() {
     sidebarStore.togglePinned();
   }
-
-  // Effect to save pin state (only after initial load to prevent race condition)
-  $effect(() => {
-    if (pinStateInitialized) {
-      localStorage.setItem(SIDEBAR_PIN_KEY, sidebarStore.isPinned.toString());
-    }
-  });
-
-  $effect(() => {
-    if (pinStateInitialized) {
-      localStorage.setItem(SIDEBAR_WIDGETS_OPEN_KEY, isWidgetsOpen.toString());
-    }
-  });
 
   function handleMouseEnter() {
     if (!sidebarStore.isPinned) {
@@ -274,7 +239,7 @@
         aria-pressed={isWidgetsOpen}
         class="{isWidgetsOpen ? 'text-accent' : 'text-foreground-muted'}
         {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
-        onclick={() => (isWidgetsOpen = !isWidgetsOpen)}
+        onclick={() => sidebarStore.toggleWidgets()}
         use:tooltip={isWidgetsOpen ? "Hide widgets" : "Show widgets"}
       >
         <Icon icon="mdi:widgets" width="22" />
