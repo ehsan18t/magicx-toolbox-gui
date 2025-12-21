@@ -118,6 +118,9 @@
   // Fluent Icons
   import FluentMaximize20Filled from "~icons/fluent/maximize-20-filled";
 
+  // Icon Park Twotone Icons
+  import IconParkTwotoneNewComputer from "~icons/icon-park-twotone/new-computer";
+
   // Icon registry mapping icon names to components
   const iconRegistry: Record<string, typeof MdiLoading> = {
     // MDI icons
@@ -243,6 +246,9 @@
 
     // Ri icons
     "ri:ram-line": RiRamLine,
+
+    // Icon Park Twotone icons
+    "icon-park-twotone:new-computer": IconParkTwotoneNewComputer,
   };
 
   export function getIconComponent(name: string) {

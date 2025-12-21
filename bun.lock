@@ -21,6 +21,7 @@
         "@eslint/js": "^9.39.2",
         "@iconify-json/bi": "^1.2.7",
         "@iconify-json/fluent": "^1.2.36",
+        "@iconify-json/icon-park-twotone": "^1.2.4",
         "@iconify-json/mdi": "^1.2.3",
         "@iconify-json/ri": "^1.2.6",
         "@iconify-json/tabler": "^1.2.24",
@@ -134,6 +135,8 @@
     "@iconify-json/bi": ["@iconify-json/bi@1.2.7", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-IPz8WNxmLkH1I9msl+0Q4OnmjjvP4uU0Z61a4i4sqonB6vKSbMGUWuGn8/YuuszlReVj8rf+3gNv5JU8Xoljyg=="],
 
     "@iconify-json/fluent": ["@iconify-json/fluent@1.2.36", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-DhxwOu5Qiq09o2ehHeUK0I9lC01OeWFlxXP7pIslM0vbi8VuplrrJ7kMg21GJy87iOCevzxf6gTU7TLPGgSknw=="],
+
+    "@iconify-json/icon-park-twotone": ["@iconify-json/icon-park-twotone@1.2.4", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-AhnGngG6DxuIZMsz4FMrv0QWTRM/CZ3NnEeaceV6psKSgt/axW+hft7oQ6pIAFN9KB95Kp3hbJuhlhG3ao60eQ=="],
 
     "@iconify-json/mdi": ["@iconify-json/mdi@1.2.3", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-O3cLwbDOK7NNDf2ihaQOH5F9JglnulNDFV7WprU2dSoZu3h3cWH//h74uQAB87brHmvFVxIOkuBX2sZSzYhScg=="],
 

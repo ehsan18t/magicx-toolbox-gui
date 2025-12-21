@@ -130,7 +130,7 @@
       segments.push({
         value: -1,
         label: "Default",
-        icon: "mdi:restore",
+        icon: "icon-park-twotone:new-computer",
       });
     }
 
