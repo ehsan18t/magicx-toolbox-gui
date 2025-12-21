@@ -429,15 +429,20 @@
           </p>
         </div>
 
-        {#if applyResult.failed_tweaks.length > 0}
+        {#if applyResult.failures.length > 0}
           <div class="w-full max-w-md rounded-lg border border-error/30 bg-error/10 p-3">
             <div class="flex items-center gap-2 text-sm font-medium text-error">
               <Icon icon="mdi:close-circle" width="18" />
-              {applyResult.failed_tweaks.length} Failed
+              {applyResult.failures.length} Failed
             </div>
             <ul class="m-0 mt-2 list-inside list-disc space-y-1 pl-1 text-sm text-foreground-muted">
-              {#each applyResult.failed_tweaks.slice(0, 5) as [tweakId, reason] (tweakId)}
-                <li>{tweakId}: {reason}</li>
+              {#each applyResult.failures.slice(0, 5) as failure (failure.tweak_id)}
+                <li>
+                  <span class="font-medium">{failure.tweak_name}</span>: {failure.error}
+                  {#if failure.was_rolled_back}
+                    <span class="text-xs text-warning">(rolled back)</span>
+                  {/if}
+                </li>
               {/each}
             </ul>
           </div>

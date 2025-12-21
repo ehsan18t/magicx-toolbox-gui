@@ -146,7 +146,8 @@ fn hash_option_content(option: &crate::models::TweakOption) -> String {
         hasher.update(task.action.as_str().as_bytes());
     }
 
-    hex::encode(hasher.finalize())[..16].to_string()
+    // Use first 32 characters (128 bits) for good collision resistance while keeping size reasonable
+    hex::encode(hasher.finalize())[..32].to_string()
 }
 
 /// Capture current system state for the profile.

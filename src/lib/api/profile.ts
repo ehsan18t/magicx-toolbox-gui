@@ -121,14 +121,23 @@ export interface ProfileValidation {
   stats: ValidationStats;
 }
 
+/** Details of a failed tweak application */
+export interface ApplyFailure {
+  tweak_id: string;
+  tweak_name: string;
+  error: string;
+  was_rolled_back: boolean;
+}
+
 /** Result of applying a profile */
 export interface ProfileApplyResult {
   success: boolean;
   applied_count: number;
   skipped_count: number;
-  failed_tweaks: [string, string][];
+  failed_count: number;
+  failures: ApplyFailure[];
   requires_reboot: boolean;
-  backup_ids: string[];
+  reboot_required_tweaks: string[];
 }
 
 // ============================================================================
@@ -202,14 +211,4 @@ export async function applyProfile(
     skipAlreadyApplied: options?.skipAlreadyApplied ?? true,
     createRestorePoint: options?.createRestorePoint ?? true,
   });
-}
-
-/**
- * Load a profile from file without validating.
- *
- * @param filePath - Path to the profile file
- * @returns The loaded profile
- */
-export async function loadProfile(filePath: string): Promise<ConfigurationProfile> {
-  return invoke("profile_load", { filePath });
 }

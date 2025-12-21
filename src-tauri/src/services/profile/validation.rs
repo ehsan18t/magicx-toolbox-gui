@@ -2,14 +2,50 @@
 //!
 //! Validates configuration profiles against the current system and tweak definitions.
 
+use sha2::{Digest, Sha256};
+
 use crate::error::Error;
 use crate::models::{
     ChangeDetail, ChangeType, ConfigurationProfile, ErrorCode, ProfileValidation,
-    TweakChangePreview, TweakDefinition, TweakSelection, ValidationError, ValidationStats,
-    ValidationWarning, WarningCode, PROFILE_SCHEMA_VERSION,
+    TweakChangePreview, TweakDefinition, TweakOption, TweakSelection, ValidationError,
+    ValidationStats, ValidationWarning, WarningCode, PROFILE_SCHEMA_VERSION,
 };
 use crate::services::backup::detect_tweak_state;
 use crate::services::{scheduler_service, service_control};
+
+/// Compute a hash of option content for schema change detection.
+/// Must match the hash_option_content function in export.rs.
+fn hash_option_content(option: &TweakOption) -> String {
+    let mut hasher = Sha256::new();
+
+    // Hash registry changes
+    for change in &option.registry_changes {
+        hasher.update(change.hive.as_str().as_bytes());
+        hasher.update(change.key.as_bytes());
+        hasher.update(change.value_name.as_bytes());
+        if let Some(ref v) = change.value {
+            hasher.update(format!("{:?}", v).as_bytes());
+        }
+    }
+
+    // Hash service changes
+    for service in &option.service_changes {
+        hasher.update(service.name.as_bytes());
+        hasher.update(service.startup.as_str().as_bytes());
+    }
+
+    // Hash scheduler changes
+    for task in &option.scheduler_changes {
+        hasher.update(task.task_path.as_bytes());
+        if let Some(ref name) = task.task_name {
+            hasher.update(name.as_bytes());
+        }
+        hasher.update(task.action.as_str().as_bytes());
+    }
+
+    // Use first 32 characters (128 bits) for good collision resistance
+    hex::encode(hasher.finalize())[..32].to_string()
+}
 
 /// Validate a profile against current system state.
 pub fn validate_profile(
@@ -155,6 +191,22 @@ fn validate_selection(
             },
         };
     };
+
+    // Check for schema changes using option content hash
+    let target_option = &tweak.options[resolved_option_index];
+    if let Some(ref stored_hash) = selection.option_content_hash {
+        let current_hash = hash_option_content(target_option);
+        if stored_hash != &current_hash {
+            selection_warnings.push(ValidationWarning {
+                tweak_id: selection.tweak_id.clone(),
+                code: WarningCode::TweakSchemaChanged,
+                message: format!(
+                    "Option '{}' for tweak '{}' has changed since profile was created",
+                    target_option.label, tweak.name
+                ),
+            });
+        }
+    }
 
     // Get current tweak state
     let current_state = detect_tweak_state(tweak, windows_version).ok();

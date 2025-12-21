@@ -49,6 +49,7 @@ pub fn apply_profile(
     let mut skipped_count = 0;
     let mut failures = Vec::new();
     let mut backup_tweak_ids = Vec::new();
+    let mut reboot_required_tweaks = Vec::new();
 
     for preview in &validation.preview {
         // Skip if in skip list
@@ -115,6 +116,11 @@ pub fn apply_profile(
                     option.label
                 );
                 applied_count += 1;
+
+                // Track if this tweak requires reboot
+                if tweak.requires_reboot {
+                    reboot_required_tweaks.push(tweak.id.clone());
+                }
             }
             Err(e) => {
                 log::error!("Failed to apply tweak '{}': {}", tweak.id, e);
@@ -150,6 +156,7 @@ pub fn apply_profile(
     }
 
     let success = failures.is_empty();
+    let requires_reboot = !reboot_required_tweaks.is_empty();
 
     Ok(ProfileApplyResult {
         success,
@@ -157,8 +164,8 @@ pub fn apply_profile(
         skipped_count,
         failed_count: failures.len(),
         failures,
-        requires_reboot: false,
-        reboot_required_tweaks: Vec::new(),
+        requires_reboot,
+        reboot_required_tweaks,
     })
 }
 
@@ -217,13 +224,40 @@ fn apply_tweak_changes(
         if let Some(ref task_name) = task_change.task_name {
             match task_change.action {
                 crate::models::SchedulerAction::Enable => {
-                    let _ = scheduler_service::enable_task(&task_change.task_path, task_name);
+                    if let Err(e) =
+                        scheduler_service::enable_task(&task_change.task_path, task_name)
+                    {
+                        log::warn!(
+                            "Failed to enable task '{}\\{}': {}",
+                            task_change.task_path,
+                            task_name,
+                            e
+                        );
+                    }
                 }
                 crate::models::SchedulerAction::Disable => {
-                    let _ = scheduler_service::disable_task(&task_change.task_path, task_name);
+                    if let Err(e) =
+                        scheduler_service::disable_task(&task_change.task_path, task_name)
+                    {
+                        log::warn!(
+                            "Failed to disable task '{}\\{}': {}",
+                            task_change.task_path,
+                            task_name,
+                            e
+                        );
+                    }
                 }
                 crate::models::SchedulerAction::Delete => {
-                    let _ = scheduler_service::delete_task(&task_change.task_path, task_name);
+                    if let Err(e) =
+                        scheduler_service::delete_task(&task_change.task_path, task_name)
+                    {
+                        log::warn!(
+                            "Failed to delete task '{}\\{}': {}",
+                            task_change.task_path,
+                            task_name,
+                            e
+                        );
+                    }
                 }
             }
         }
