@@ -57,14 +57,11 @@ pub fn validate_profile(
     for selection in &profile.selections {
         match validate_selection(selection, available_tweaks, windows_version) {
             SelectionResult::Valid {
-                tweak,
-                resolved_option_index,
                 change_preview,
                 selection_warnings,
             } => {
                 warnings.extend(selection_warnings);
                 preview.push(*change_preview);
-                let _ = (tweak, resolved_option_index);
             }
             SelectionResult::Invalid { error } => {
                 errors.push(error);
@@ -94,10 +91,8 @@ pub fn validate_profile(
     })
 }
 
-enum SelectionResult<'a> {
+enum SelectionResult {
     Valid {
-        tweak: &'a TweakDefinition,
-        resolved_option_index: usize,
         change_preview: Box<TweakChangePreview>,
         selection_warnings: Vec<ValidationWarning>,
     },
@@ -106,11 +101,11 @@ enum SelectionResult<'a> {
     },
 }
 
-fn validate_selection<'a>(
+fn validate_selection(
     selection: &TweakSelection,
-    available_tweaks: &'a [TweakDefinition],
+    available_tweaks: &[TweakDefinition],
     windows_version: u32,
-) -> SelectionResult<'a> {
+) -> SelectionResult {
     let mut selection_warnings = Vec::new();
 
     // Find the tweak
@@ -208,8 +203,6 @@ fn validate_selection<'a>(
     };
 
     SelectionResult::Valid {
-        tweak,
-        resolved_option_index,
         change_preview: Box::new(change_preview),
         selection_warnings,
     }

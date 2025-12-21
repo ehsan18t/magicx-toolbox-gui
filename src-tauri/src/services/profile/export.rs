@@ -244,11 +244,11 @@ fn capture_system_state(
         }
     }
 
-    // Deduplicate entries
-    registry_state
-        .dedup_by(|a, b| a.hive == b.hive && a.key == b.key && a.value_name == b.value_name);
-    service_state.dedup_by(|a, b| a.name == b.name);
-    scheduler_state.dedup_by(|a, b| a.task_path == b.task_path && a.task_name == b.task_name);
+    // Deduplicate entries using a HashSet-based approach
+    // (dedup_by only removes consecutive duplicates, which doesn't work for unsorted data)
+    let registry_state = deduplicate_registry_state(registry_state);
+    let service_state = deduplicate_service_state(service_state);
+    let scheduler_state = deduplicate_scheduler_state(scheduler_state);
 
     Ok(SystemStateSnapshot {
         schema_version: PROFILE_SCHEMA_VERSION,
@@ -257,6 +257,60 @@ fn capture_system_state(
         service_state,
         scheduler_state,
     })
+}
+
+/// Deduplicate registry state entries by (hive, key, value_name)
+fn deduplicate_registry_state(entries: Vec<RegistryValueState>) -> Vec<RegistryValueState> {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+
+    for entry in entries {
+        let key = (
+            entry.hive.clone(),
+            entry.key.clone(),
+            entry.value_name.clone(),
+        );
+        if seen.insert(key) {
+            result.push(entry);
+        }
+    }
+
+    result
+}
+
+/// Deduplicate service state entries by name
+fn deduplicate_service_state(entries: Vec<ServiceState>) -> Vec<ServiceState> {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+
+    for entry in entries {
+        if seen.insert(entry.name.clone()) {
+            result.push(entry);
+        }
+    }
+
+    result
+}
+
+/// Deduplicate scheduler state entries by (task_path, task_name)
+fn deduplicate_scheduler_state(entries: Vec<SchedulerState>) -> Vec<SchedulerState> {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+
+    for entry in entries {
+        let key = (entry.task_path.clone(), entry.task_name.clone());
+        if seen.insert(key) {
+            result.push(entry);
+        }
+    }
+
+    result
 }
 
 /// Read a registry value using the expected type, returning (exists, value).
