@@ -76,18 +76,6 @@
   // Loading state
   const isLoading = $derived(favoriteTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
 
-  // Get category name by ID
-  function getCategoryName(categoryId: string): string {
-    const cat = categoriesStore.list.find((c) => c.id === categoryId);
-    return cat?.name ?? categoryId;
-  }
-
-  // Get category icon by ID
-  function getCategoryIcon(categoryId: string): string {
-    const cat = categoriesStore.list.find((c) => c.id === categoryId);
-    return cat?.icon ?? "mdi:folder";
-  }
-
   async function handleApplyChanges() {
     showApplyAllDialog = false;
     isBatchProcessing = true;
@@ -333,10 +321,10 @@
               type="button"
               class="hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1 py-1 transition-all duration-150"
               onclick={() => navigateToCategory(categoryId)}
-              use:tooltip={`View ${getCategoryName(categoryId)} category`}
+              use:tooltip={`View ${categoriesStore.getName(categoryId)} category`}
             >
-              <Icon icon={getCategoryIcon(categoryId)} width="18" class="text-accent" />
-              <h3 class="m-0 text-sm font-semibold text-foreground">{getCategoryName(categoryId)}</h3>
+              <Icon icon={categoriesStore.getIcon(categoryId)} width="18" class="text-accent" />
+              <h3 class="m-0 text-sm font-semibold text-foreground">{categoriesStore.getName(categoryId)}</h3>
               <span class="text-xs text-foreground-muted">({tweaks.length})</span>
               <Icon icon="mdi:chevron-right" width="16" class="text-foreground-muted" />
             </button>
