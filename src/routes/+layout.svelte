@@ -12,6 +12,7 @@
   } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
+  import { navigationStore } from "$lib/stores/navigation.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { initializeQuick } from "$lib/stores/tweaksData.svelte";
@@ -23,6 +24,15 @@
   const { children } = $props();
 
   let initError = $state<string | null>(null);
+
+  // Global keyboard shortcuts
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    // Ctrl+K or Cmd+K to focus search
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      e.preventDefault();
+      navigationStore.focusSearch();
+    }
+  }
 
   onMount(async () => {
     // Show the window now that the UI is ready
@@ -90,6 +100,8 @@
     }
   });
 </script>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 <TitleBar />
 <!-- TitleBar height=h-10 == 2.5rem -->
