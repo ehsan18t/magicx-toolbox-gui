@@ -14,6 +14,7 @@
   import MdiBug from "~icons/mdi/bug";
   import MdiCalendar from "~icons/mdi/calendar";
   import MdiCalendarClock from "~icons/mdi/calendar-clock";
+  import MdiChartBar from "~icons/mdi/chart-bar";
   import MdiCheck from "~icons/mdi/check";
   import MdiCheckAll from "~icons/mdi/check-all";
   import MdiCheckCircle from "~icons/mdi/check-circle";
@@ -95,6 +96,7 @@
   import MdiUpdate from "~icons/mdi/update";
   import MdiViewDashboard from "~icons/mdi/view-dashboard";
   import MdiWeb from "~icons/mdi/web";
+  import MdiWidgets from "~icons/mdi/widgets";
   import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
@@ -178,6 +180,7 @@
     "mdi:pin": MdiPin,
     "mdi:pin-outline": MdiPinOutline,
     "mdi:help-circle": MdiHelpCircle,
+    "mdi:chart-bar": MdiChartBar,
     "mdi:alert": MdiAlert,
     "mdi:alert-octagon": MdiAlertOctagon,
     "mdi:arrow-up-circle": MdiArrowUpCircle,
@@ -213,6 +216,7 @@
     "mdi:star": MdiStar,
     "mdi:star-off": MdiStarOff,
     "mdi:star-outline": MdiStarOutline,
+    "mdi:widgets": MdiWidgets,
 
     // Tabler icons
     "tabler:bug": TablerBug,

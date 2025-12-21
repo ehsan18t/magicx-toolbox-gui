@@ -12,7 +12,7 @@
   import { slide } from "svelte/transition";
 
   const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
-  const SIDEBAR_STATS_OPEN_KEY = "magicx-sidebar-stats-open";
+  const SIDEBAR_WIDGETS_OPEN_KEY = "magicx-sidebar-widgets-open";
 
   // Derived values from stores
   const fixedTabs = $derived(navigationStore.fixedTabs);
@@ -32,8 +32,8 @@
   // Guard to prevent effect from saving before mount loads the saved value
   let pinStateInitialized = false;
 
-  // State for collapsible stats section
-  let isStatsOpen = $state(true);
+  // State for collapsible widgets section
+  let isWidgetsOpen = $state(true);
 
   // Load pin state from localStorage on mount
   onMount(() => {
@@ -42,9 +42,9 @@
       sidebarStore.init(true);
     }
 
-    const savedStatsOpen = localStorage.getItem(SIDEBAR_STATS_OPEN_KEY);
-    if (savedStatsOpen !== null) {
-      isStatsOpen = savedStatsOpen === "true";
+    const savedWidgetsOpen = localStorage.getItem(SIDEBAR_WIDGETS_OPEN_KEY);
+    if (savedWidgetsOpen !== null) {
+      isWidgetsOpen = savedWidgetsOpen === "true";
     }
 
     pinStateInitialized = true;
@@ -67,7 +67,7 @@
 
   $effect(() => {
     if (pinStateInitialized) {
-      localStorage.setItem(SIDEBAR_STATS_OPEN_KEY, isStatsOpen.toString());
+      localStorage.setItem(SIDEBAR_WIDGETS_OPEN_KEY, isWidgetsOpen.toString());
     }
   });
 
@@ -228,16 +228,7 @@
   <!-- Sidebar Footer -->
   <div class="flex flex-col gap-3 border-t border-border p-3">
     {#if sidebarStore.isOpen}
-      <!-- Collapsible Stats Header -->
-      <button
-        class="flex w-full cursor-pointer items-center justify-between pl-2 text-xs font-semibold tracking-wider text-foreground-muted uppercase transition-colors hover:text-foreground"
-        onclick={() => (isStatsOpen = !isStatsOpen)}
-      >
-        <span>Status</span>
-        <Icon icon={isStatsOpen ? "mdi:chevron-down" : "mdi:chevron-right"} width="16" />
-      </button>
-
-      {#if isStatsOpen}
+      {#if isWidgetsOpen}
         <div transition:slide={{ duration: 200, axis: "y" }}>
           <div class="flex items-center justify-center gap-4 py-2">
             <div class="flex flex-col items-center gap-0.5">
@@ -275,6 +266,18 @@
         use:tooltip={sidebarStore.isPinned ? "Unpin sidebar" : "Pin sidebar"}
       >
         <Icon icon={sidebarStore.isPinned ? "mdi:pin" : "mdi:pin-outline"} width="22" />
+      </button>
+
+      <!-- Widgets toggle button -->
+      <button
+        type="button"
+        aria-pressed={isWidgetsOpen}
+        class="{isWidgetsOpen ? 'text-accent' : 'text-foreground-muted'}
+        {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
+        onclick={() => (isWidgetsOpen = !isWidgetsOpen)}
+        use:tooltip={isWidgetsOpen ? "Hide widgets" : "Show widgets"}
+      >
+        <Icon icon="mdi:widgets" width="22" />
       </button>
 
       <!-- Update button -->
