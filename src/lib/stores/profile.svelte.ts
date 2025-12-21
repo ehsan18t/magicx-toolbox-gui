@@ -157,6 +157,33 @@ export const profileStore = {
   },
 
   /**
+   * Import a profile from a file path (for drag-drop).
+   * @param filePath - Path to the profile file
+   */
+  async importProfileFromPath(filePath: string): Promise<boolean> {
+    if (isImporting) return false;
+
+    isImporting = true;
+    importError = null;
+    currentProfile = null;
+    validation = null;
+    applyResult = null;
+
+    try {
+      const [profile, validationResult] = await profileApi.importProfile(filePath);
+      currentProfile = profile;
+      validation = validationResult;
+      return true;
+    } catch (error) {
+      console.error("Failed to import profile:", error);
+      importError = error instanceof Error ? error.message : String(error);
+      return false;
+    } finally {
+      isImporting = false;
+    }
+  },
+
+  /**
    * Apply the currently loaded profile.
    */
   async applyProfile(options?: {

@@ -16,6 +16,7 @@
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { SvelteSet } from "svelte/reactivity";
 
   const isOpen = $derived(modalStore.current === "profileImport");
@@ -65,6 +66,41 @@
     }
   });
 
+  // Set up native drag-drop listener when modal is open
+  $effect(() => {
+    if (!isOpen) return;
+
+    let unlisten: (() => void) | undefined;
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type === "over") {
+          isDragOver = true;
+        } else if (event.payload.type === "drop") {
+          isDragOver = false;
+          const paths = event.payload.paths;
+          if (paths && paths.length > 0) {
+            const filePath = paths[0];
+            if (filePath.endsWith(".mgx")) {
+              handleDroppedFile(filePath);
+            } else {
+              toastStore.show("error", "Please select a .mgx profile file");
+            }
+          }
+        } else {
+          // cancelled
+          isDragOver = false;
+        }
+      })
+      .then((fn) => {
+        unlisten = fn;
+      });
+
+    return () => {
+      unlisten?.();
+    };
+  });
+
   // Auto-advance to review when import completes
   $effect(() => {
     if (profile && validation && step === "select") {
@@ -91,31 +127,26 @@
     }
   }
 
+  async function handleDroppedFile(filePath: string) {
+    const success = await profileStore.importProfileFromPath(filePath);
+    if (!success && profileStore.importError) {
+      toastStore.show("error", profileStore.importError);
+    }
+  }
+
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
-    isDragOver = true;
+    // The native Tauri drag-drop event handles the visual state
   }
 
   function handleDragLeave() {
-    isDragOver = false;
+    // The native Tauri drag-drop event handles the visual state
   }
 
   async function handleDrop(e: DragEvent) {
     e.preventDefault();
-    isDragOver = false;
-
-    const files = e.dataTransfer?.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.name.endsWith(".mgx")) {
-        // For drag-drop, we need to handle the file path differently
-        // In Tauri v2, we'd need to use the file's path from the event
-        // For now, show a message to use the browse button
-        toastStore.show("info", "Please use the Browse button to select profiles");
-      } else {
-        toastStore.show("error", "Please select a .mgx profile file");
-      }
-    }
+    // Native drag-drop is handled by Tauri's onDragDropEvent
+    // This is here to prevent default browser behavior
   }
 
   function toggleSkipTweak(tweakId: string) {
