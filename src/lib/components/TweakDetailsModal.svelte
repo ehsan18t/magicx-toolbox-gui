@@ -22,13 +22,17 @@
   $effect(() => {
     const t = tweak;
     if (isOpen && t?.status.has_backup) {
+      let cancelled = false;
       getBackupInfo(t.definition.id)
         .then((info) => {
-          snapshotInfo = info;
+          if (!cancelled) snapshotInfo = info;
         })
         .catch(() => {
-          snapshotInfo = null;
+          if (!cancelled) snapshotInfo = null;
         });
+      return () => {
+        cancelled = true;
+      };
     } else {
       snapshotInfo = null;
     }
@@ -52,16 +56,24 @@
       if (isOpen && t) {
         // load inspection
         isInspecting = true;
+        let cancelled = false;
         inspectTweak(t.definition.id)
           .then((res) => {
-            inspection = res;
-            isInspecting = false;
+            if (!cancelled) {
+              inspection = res;
+              isInspecting = false;
+            }
           })
           .catch((err) => {
-            console.error("Inspection failed", err);
-            inspectionError = "Failed to analyze system state";
-            isInspecting = false;
+            if (!cancelled) {
+              console.error("Inspection failed", err);
+              inspectionError = "Failed to analyze system state";
+              isInspecting = false;
+            }
           });
+        return () => {
+          cancelled = true;
+        };
       }
     }
   });
