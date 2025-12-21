@@ -21,8 +21,9 @@
 
   $effect(() => {
     const t = tweak;
+    let cancelled = false;
+
     if (isOpen && t?.status.has_backup) {
-      let cancelled = false;
       getBackupInfo(t.definition.id)
         .then((info) => {
           if (!cancelled) snapshotInfo = info;
@@ -30,12 +31,13 @@
         .catch(() => {
           if (!cancelled) snapshotInfo = null;
         });
-      return () => {
-        cancelled = true;
-      };
     } else {
       snapshotInfo = null;
     }
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Inspection State
@@ -46,6 +48,8 @@
 
   $effect(() => {
     const t = tweak;
+    let cancelled = false;
+
     // Reset state when tweak changes or modal closes
     if (!isOpen || !t || inspection?.tweak_id !== t.definition.id) {
       inspection = null;
@@ -56,7 +60,6 @@
       if (isOpen && t) {
         // load inspection
         isInspecting = true;
-        let cancelled = false;
         inspectTweak(t.definition.id)
           .then((res) => {
             if (!cancelled) {
@@ -71,11 +74,12 @@
               isInspecting = false;
             }
           });
-        return () => {
-          cancelled = true;
-        };
       }
     }
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   const pendingChange = $derived.by(() => {

@@ -1859,5 +1859,5 @@ Use Task Scheduler (`taskschd.msc`) to explore tasks.
 
 ---
 
-*Last updated: December 2024*
+*Last updated: December 2025*
 *This document should be updated whenever the tweak system changes.*
