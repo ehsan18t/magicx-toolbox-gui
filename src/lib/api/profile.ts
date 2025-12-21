@@ -140,28 +140,24 @@ export interface ProfileApplyResult {
  *
  * @param filePath - Path to save the profile
  * @param profileName - Name for the profile
- * @param description - Optional description
- * @param tags - Optional tags for categorization
- * @param includeSystemState - Whether to include current system state
- * @param selections - Array of tweak selections to include
+ * @param tweakIds - Array of tweak IDs to include in the profile
+ * @param options - Optional export options
  */
 export async function exportProfile(
   filePath: string,
   profileName: string,
-  selections: TweakSelection[],
+  tweakIds: string[],
   options?: {
     description?: string;
-    tags?: string[];
     includeSystemState?: boolean;
   },
 ): Promise<void> {
   return invoke("profile_export", {
     filePath,
-    profileName,
+    name: profileName,
     description: options?.description ?? null,
-    tags: options?.tags ?? [],
+    tweakIds,
     includeSystemState: options?.includeSystemState ?? false,
-    tweakSelections: selections,
   });
 }
 
@@ -189,25 +185,22 @@ export async function validateProfile(profile: ConfigurationProfile): Promise<Pr
  * Apply a validated profile to the system.
  *
  * @param profile - The profile to apply
- * @param validation - Validation result from importProfile or validateProfile
  * @param options - Apply options
  * @returns Apply result
  */
 export async function applyProfile(
   profile: ConfigurationProfile,
-  validation: ProfileValidation,
   options?: {
+    skipTweakIds?: string[];
     skipAlreadyApplied?: boolean;
-    createRestorePoints?: boolean;
-    rollbackOnError?: boolean;
+    createRestorePoint?: boolean;
   },
 ): Promise<ProfileApplyResult> {
   return invoke("profile_apply", {
     profile,
-    validation,
+    skipTweakIds: options?.skipTweakIds ?? [],
     skipAlreadyApplied: options?.skipAlreadyApplied ?? true,
-    createRestorePoints: options?.createRestorePoints ?? true,
-    rollbackOnError: options?.rollbackOnError ?? true,
+    createRestorePoint: options?.createRestorePoint ?? true,
   });
 }
 

@@ -16,6 +16,8 @@ export {
   closeModal,
   modalStore,
   openAboutModal,
+  openProfileExportModal,
+  openProfileImportModal,
   openSettingsModal,
   openUpdateModal,
   type ModalType,
@@ -24,6 +26,9 @@ export { tweakDetailsModalStore } from "./tweakDetailsModal.svelte";
 
 // Navigation
 export { navigationStore, type TabDefinition } from "./navigation.svelte";
+
+// Profile system
+export { profileStore } from "./profile.svelte";
 
 // Search
 export { searchStore } from "./search.svelte";
