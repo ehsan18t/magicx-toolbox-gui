@@ -123,19 +123,19 @@
         <div class="flex h-9 w-9 items-center justify-center rounded-full bg-warning/15">
           <Icon icon="mdi:star" width="18" class="text-warning" />
         </div>
-        <div class="flex flex-col gap-0.5">
+        <div class="flex flex-col items-center justify-center gap-0.5">
           <span class="text-base font-bold text-foreground">{totalCount}</span>
           <span class="text-xs text-foreground-muted">Favorites</span>
         </div>
       </div>
       <div class="h-8 w-px bg-border"></div>
-      <div class="flex flex-col gap-0.5">
+      <div class="flex flex-col items-center justify-center gap-0.5">
         <span class="text-base font-bold text-foreground">{appliedCount}</span>
         <span class="text-xs text-foreground-muted">Applied</span>
       </div>
       {#if snapshotCount > 0}
         <div class="h-8 w-px bg-border"></div>
-        <div class="flex flex-col gap-0.5">
+        <div class="flex flex-col items-center justify-center gap-0.5">
           <span class="text-base font-bold text-foreground">{snapshotCount}</span>
           <span class="text-xs text-foreground-muted">Snapshots</span>
         </div>
