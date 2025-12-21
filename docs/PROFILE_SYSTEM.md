@@ -8,11 +8,11 @@ The Profile System allows users to export their tweak configurations and import 
 
 ## Key Concepts
 
-| Concept | Purpose | Storage |
-|---------|---------|---------|
-| **Internal Snapshots** | Atomic rollback for single tweak | `snapshots/{id}.json` (hidden) |
-| **Configuration Profile** | User's desired tweak selections | `.mgx` archive file |
-| **System State Snapshot** | Full system state for validation | Optional in `.mgx` archive |
+| Concept                   | Purpose                          | Storage                        |
+| ------------------------- | -------------------------------- | ------------------------------ |
+| **Internal Snapshots**    | Atomic rollback for single tweak | `snapshots/{id}.json` (hidden) |
+| **Configuration Profile** | User's desired tweak selections  | `.mgx` archive file            |
+| **System State Snapshot** | Full system state for validation | Optional in `.mgx` archive     |
 
 ## Profile Archive Format
 
@@ -39,12 +39,12 @@ Profiles include a schema version for forward/backward compatibility:
 
 The system handles cross-version scenarios:
 
-| Scenario | Behavior |
-|----------|----------|
-| Same version | Full compatibility |
+| Scenario      | Behavior                                                   |
+| ------------- | ---------------------------------------------------------- |
+| Same version  | Full compatibility                                         |
 | Win10 → Win11 | Validates each tweak, warns about version-specific changes |
-| Win11 → Win10 | Skips Win11-only tweaks with clear messaging |
-| Unknown tweak | Skips with warning (tweak removed from app) |
+| Win11 → Win10 | Skips Win11-only tweaks with clear messaging               |
+| Unknown tweak | Skips with warning (tweak removed from app)                |
 
 ## Validation System
 
@@ -113,16 +113,16 @@ const result = await applyProfile(profileData, {
 
 The following features are planned for future releases:
 
-| Feature | Description | Priority | Status |
-|---------|-------------|----------|--------|
-| **Windows Restore Point** | Automatic Windows restore point before batch apply | P1 | Planned |
-| **Cloud Sync** | Sync profiles via GitHub Gist / OneDrive | P2 | Planned |
-| **Diff View** | Visual comparison between two profiles | P2 | Planned |
-| **Profile Templates** | Pre-built profiles (Gaming, Privacy, Minimal) | P2 | Planned |
-| **Profile Library** | Community-shared profile repository | P3 | Planned |
-| **Scheduled Apply** | Apply profile on schedule (e.g., "gaming mode" toggle) | P3 | Planned |
-| **Profile Versioning** | Track changes to a profile over time | P3 | Planned |
-| **Selective Sync** | Sync only specific categories across machines | P3 | Planned |
+| Feature                   | Description                                            | Priority | Status  |
+| ------------------------- | ------------------------------------------------------ | -------- | ------- |
+| **Windows Restore Point** | Automatic Windows restore point before batch apply     | P1       | Planned |
+| **Cloud Sync**            | Sync profiles via GitHub Gist / OneDrive               | P2       | Planned |
+| **Diff View**             | Visual comparison between two profiles                 | P2       | Planned |
+| **Profile Templates**     | Pre-built profiles (Gaming, Privacy, Minimal)          | P2       | Planned |
+| **Profile Library**       | Community-shared profile repository                    | P3       | Planned |
+| **Scheduled Apply**       | Apply profile on schedule (e.g., "gaming mode" toggle) | P3       | Planned |
+| **Profile Versioning**    | Track changes to a profile over time                   | P3       | Planned |
+| **Selective Sync**        | Sync only specific categories across machines          | P3       | Planned |
 
 ### Implementation Notes
 
