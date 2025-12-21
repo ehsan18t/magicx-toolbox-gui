@@ -92,6 +92,34 @@ pub fn write_profile_archive(
 /// Maximum allowed profile archive size (10 MB)
 const MAX_PROFILE_SIZE: u64 = 10 * 1024 * 1024;
 
+/// Maximum allowed uncompressed file size within archive (10 MB)
+/// Protects against ZIP bombs (small compressed files that expand to huge sizes)
+const MAX_UNCOMPRESSED_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Read a file from the archive with size limit protection.
+/// Returns an error if the uncompressed size exceeds the limit.
+fn read_archive_file_safe(zip: &mut ZipArchive<File>, name: &str) -> Result<String, Error> {
+    let mut file = zip
+        .by_name(name)
+        .map_err(|e| Error::ProfileError(format!("Missing {}: {}", name, e)))?;
+
+    // Check uncompressed size to protect against ZIP bombs
+    if file.size() > MAX_UNCOMPRESSED_FILE_SIZE {
+        return Err(Error::ProfileError(format!(
+            "File {} exceeds maximum allowed size: {} bytes (max {} bytes)",
+            name,
+            file.size(),
+            MAX_UNCOMPRESSED_FILE_SIZE
+        )));
+    }
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .map_err(|e| Error::ProfileError(format!("Failed to read {}: {}", name, e)))?;
+
+    Ok(contents)
+}
+
 /// Read a profile archive from a file.
 pub fn read_profile_archive(path: &Path) -> Result<ProfileArchiveContents, Error> {
     log::info!("Reading profile archive from {}", path.display());
@@ -114,26 +142,16 @@ pub fn read_profile_archive(path: &Path) -> Result<ProfileArchiveContents, Error
     let mut zip = ZipArchive::new(file)
         .map_err(|e| Error::ProfileError(format!("Invalid archive: {}", e)))?;
 
-    // Read manifest
+    // Read manifest (with ZIP bomb protection)
     let manifest: ProfileManifest = {
-        let mut file = zip
-            .by_name("manifest.json")
-            .map_err(|e| Error::ProfileError(format!("Missing manifest.json: {}", e)))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|e| Error::ProfileError(format!("Failed to read manifest: {}", e)))?;
+        let contents = read_archive_file_safe(&mut zip, "manifest.json")?;
         serde_json::from_str(&contents)
             .map_err(|e| Error::ProfileError(format!("Invalid manifest: {}", e)))?
     };
 
-    // Read profile
+    // Read profile (with ZIP bomb protection)
     let profile: ConfigurationProfile = {
-        let mut file = zip
-            .by_name("profile.json")
-            .map_err(|e| Error::ProfileError(format!("Missing profile.json: {}", e)))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|e| Error::ProfileError(format!("Failed to read profile: {}", e)))?;
+        let contents = read_archive_file_safe(&mut zip, "profile.json")?;
 
         // Verify checksum
         let checksum = compute_checksum(contents.as_bytes());
@@ -145,14 +163,9 @@ pub fn read_profile_archive(path: &Path) -> Result<ProfileArchiveContents, Error
             .map_err(|e| Error::ProfileError(format!("Invalid profile: {}", e)))?
     };
 
-    // Read system state if present
+    // Read system state if present (with ZIP bomb protection)
     let system_state = if manifest.includes_system_state {
-        let mut file = zip
-            .by_name("system_state.json")
-            .map_err(|e| Error::ProfileError(format!("Missing system_state.json: {}", e)))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|e| Error::ProfileError(format!("Failed to read system state: {}", e)))?;
+        let contents = read_archive_file_safe(&mut zip, "system_state.json")?;
 
         // Verify checksum if present
         if let Some(ref expected) = manifest.system_state_checksum {

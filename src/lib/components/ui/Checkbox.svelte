@@ -50,8 +50,8 @@
   onkeydown={handleKeydown}
 >
   {#if checked}
-    <Icon icon="mdi:check" width={12} class="text-white" />
+    <Icon icon="mdi:check" width={12} class="pointer-events-none text-white" />
   {:else if indeterminate}
-    <Icon icon="tabler:minus" width={12} class="text-white" />
+    <Icon icon="tabler:minus" width={12} class="pointer-events-none text-white" />
   {/if}
 </button>
