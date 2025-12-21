@@ -31,7 +31,6 @@ regex = "1"  # For validating task_name_pattern in YAML
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-log = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-prevent-default = "4"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

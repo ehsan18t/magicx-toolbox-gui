@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { open } from "@tauri-apps/plugin-shell";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -18,7 +18,7 @@
     if (href && (href.startsWith("http://") || href.startsWith("https://"))) {
       event.preventDefault();
       try {
-        await open(href);
+        await openUrl(href);
       } catch (error) {
         console.error(`Failed to open external link: ${href}`, error);
       }
@@ -26,7 +26,7 @@
   }
 </script>
 
-<!-- This is an external link component that opens URLs in the system browser via Tauri shell -->
+<!-- This is an external link component that opens URLs in the system browser via Tauri opener -->
 <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 <a {href} {...rest} onclick={handleClick} use:tooltip={title}>
   {@render children()}
