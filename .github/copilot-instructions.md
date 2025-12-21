@@ -49,6 +49,8 @@ Use primitives from `$lib/components/ui`: `Button`, `Badge`, `Card`, `Modal`, `I
 
 For tweak details: `$lib/components/tweak-details` has `RegistryChangeItem`, `ServiceChangeItem`, `SchedulerChangeItem`, `CommandList`
 
+Anytime you add a new icon make sure to import it in `Icon.svelte`.
+
 ## Patterns
 
 - State: `$state`, `$derived`; `onMount` for browser-only work

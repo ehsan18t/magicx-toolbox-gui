@@ -81,6 +81,9 @@
   import MdiShieldKey from "~icons/mdi/shield-key";
   import MdiShieldLock from "~icons/mdi/shield-lock";
   import MdiSpeedometer from "~icons/mdi/speedometer";
+  import MdiStar from "~icons/mdi/star";
+  import MdiStarOff from "~icons/mdi/star-off";
+  import MdiStarOutline from "~icons/mdi/star-outline";
   import MdiTextSearch from "~icons/mdi/text-search";
   import MdiTimerOutline from "~icons/mdi/timer-outline";
   import MdiToggleSwitch from "~icons/mdi/toggle-switch";
@@ -207,6 +210,9 @@
     "mdi:gamepad-variant": MdiGamepadVariant,
     "mdi:cogs": MdiCogs,
     "mdi:palette": MdiPalette,
+    "mdi:star": MdiStar,
+    "mdi:star-off": MdiStarOff,
+    "mdi:star-outline": MdiStarOutline,
 
     // Tabler icons
     "tabler:bug": TablerBug,
