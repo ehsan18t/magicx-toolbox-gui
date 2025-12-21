@@ -26,6 +26,21 @@
     children,
   }: Props = $props();
 
+  // Internal state to manage exit animation
+  let isVisible = $state(false);
+  let isClosing = $state(false);
+
+  // Track open prop changes to trigger animations
+  $effect(() => {
+    if (open && !isVisible && !isClosing) {
+      // Opening: show immediately
+      isVisible = true;
+    } else if (!open && isVisible && !isClosing) {
+      // Closing: trigger exit animation
+      isClosing = true;
+    }
+  });
+
   const sizeClasses: Record<string, string> = {
     sm: "w-[min(90vw,360px)]",
     md: "w-[min(90vw,480px)]",
@@ -40,28 +55,38 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (closeOnEscape && e.key === "Escape" && open && onclose) {
+    if (closeOnEscape && e.key === "Escape" && isVisible && !isClosing && onclose) {
       e.stopPropagation();
       onclose();
+    }
+  }
+
+  function handleAnimationEnd(e: AnimationEvent) {
+    // Only handle our exit animation
+    if (e.animationName === "modal-out" && isClosing) {
+      isVisible = false;
+      isClosing = false;
     }
   }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if open}
+{#if isVisible}
   <div
-    class="modal-backdrop fixed inset-0 z-1000 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    class="modal-backdrop fixed inset-0 z-1000 flex items-center justify-center backdrop-blur-sm
+      {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/60'}"
     role="presentation"
     onclick={handleBackdropClick}
   >
     <div
-      class="modal-content animate-modal-in overflow-hidden rounded-xl border border-border bg-card shadow-xl {sizeClasses[
+      class="modal-content overflow-hidden rounded-xl border border-border bg-card shadow-xl {sizeClasses[
         size
-      ]} {className}"
+      ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'} {className}"
       {role}
       aria-modal="true"
       aria-labelledby={labelledBy}
+      onanimationend={handleAnimationEnd}
     >
       {@render children()}
     </div>
