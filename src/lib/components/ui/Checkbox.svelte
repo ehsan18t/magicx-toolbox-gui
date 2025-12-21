@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Icon } from "$lib/components/shared";
+
   interface Props {
     checked: boolean;
     disabled?: boolean;
@@ -13,12 +15,11 @@
     disabled = false,
     indeterminate = false,
     class: className = "",
-    "aria-label": ariaLabel,
+    "aria-label": ariaLabel = "Toggle option",
     onchange,
   }: Props = $props();
 
   function handleClick(e: MouseEvent) {
-    // Stop propagation to prevent parent buttons from also triggering
     e.stopPropagation();
     if (!disabled) {
       onchange?.(!checked);
@@ -40,20 +41,17 @@
   aria-checked={indeterminate ? "mixed" : checked}
   aria-label={ariaLabel}
   {disabled}
-  class="checkbox flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border-2 transition-all duration-150
-    {disabled ? 'cursor-not-allowed opacity-50' : 'hover:border-accent'}
-    {checked || indeterminate ? 'border-accent bg-accent' : 'border-border bg-transparent'}
+  class="checkbox flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border-0 ring-2 transition-all duration-150 ring-inset
+    focus-visible:ring-accent focus-visible:ring-offset-1
+    {disabled ? 'cursor-not-allowed opacity-50' : 'hover:ring-accent'}
+    {checked || indeterminate ? 'bg-accent ring-accent' : 'bg-transparent ring-border'}
     {className}"
   onclick={handleClick}
   onkeydown={handleKeydown}
 >
   {#if checked}
-    <svg class="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-      <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
+    <Icon icon="mdi:check" width={12} class="text-white" />
   {:else if indeterminate}
-    <svg class="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-      <line x1="5" y1="12" x2="19" y2="12"></line>
-    </svg>
+    <Icon icon="tabler:minus" width={12} class="text-white" />
   {/if}
 </button>
