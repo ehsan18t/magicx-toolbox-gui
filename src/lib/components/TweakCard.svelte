@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import {
@@ -67,6 +68,13 @@
     high: { icon: "mdi:alert-circle", color: "text-orange-500" },
     critical: { icon: "mdi:alert-octagon", color: "text-error" },
   };
+
+  // Favorite state
+  const isFavorite = $derived(favoritesStore.isFavorite(tweak.definition.id));
+
+  function toggleFavorite() {
+    favoritesStore.toggle(tweak.definition.id);
+  }
 
   // Has a snapshot that can be restored
   const hasSnapshot = $derived(tweak.status.has_backup);
@@ -372,6 +380,19 @@
 
       <!-- Actions -->
       <div class="card-actions flex shrink-0 items-center gap-1" class:has-restore={hasSnapshot}>
+        <!-- Favorite button -->
+        <button
+          type="button"
+          class="card-action inline-flex cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-1.5 transition-all duration-150 {isFavorite
+            ? 'text-warning hover:bg-warning/10'
+            : 'hover:bg-muted/50 text-foreground-muted hover:text-foreground'}"
+          onclick={toggleFavorite}
+          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+          use:tooltip={isFavorite ? "Remove from favorites" : "Add to favorites"}
+        >
+          <Icon icon={isFavorite ? "mdi:star" : "mdi:star-outline"} width="18" />
+        </button>
+
         {#if hasSnapshot}
           <button
             type="button"

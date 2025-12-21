@@ -100,19 +100,19 @@ If you are a developer looking to contribute or build from source, read the sect
 
 For detailed information about working with the Rust backend:
 
-**📖 [Read the Rust Backend Developer Guide](./RUST_BACKEND_GUIDE.md)**
+**📖 [Read the Rust Backend Developer Guide](./docs/RUST_BACKEND_GUIDE.md)**
 
 ### Authoring Tweaks (YAML)
 
 Tweaks live in `src-tauri/tweaks/*.yaml`. Each file defines **one category** plus a list of tweaks.
 
-**📖 [Read the Tweak Authoring Guide](./TWEAK_AUTHORING.md)**
+**📖 [Read the Tweak Authoring Guide](./docs/TWEAK_AUTHORING.md)**
 
 ### Architecture Overview
 
 For understanding the overall architecture and data flow:
 
-**📖 [Read the Architecture Guide](./ARCHITECTURE.md)**
+**📖 [Read the Architecture Guide](./docs/ARCHITECTURE.md)**
 
 ## Customization
 

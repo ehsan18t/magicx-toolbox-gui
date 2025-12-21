@@ -103,6 +103,21 @@ export const categoriesStore = {
     return categoriesLoading;
   },
 
+  /** Get category by ID */
+  getById(categoryId: string): CategoryDefinition | undefined {
+    return categories.find((c) => c.id === categoryId);
+  },
+
+  /** Get category name by ID, returns the ID if not found */
+  getName(categoryId: string): string {
+    return categories.find((c) => c.id === categoryId)?.name ?? categoryId;
+  },
+
+  /** Get category icon by ID, returns default folder icon if not found */
+  getIcon(categoryId: string): string {
+    return categories.find((c) => c.id === categoryId)?.icon ?? "mdi:folder";
+  },
+
   async load() {
     categoriesLoading = true;
     try {

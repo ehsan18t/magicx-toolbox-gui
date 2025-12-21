@@ -48,8 +48,7 @@ export const colorSchemeStore = {
 
     const stored = localStorage.getItem(STORAGE_KEY);
     const validScheme = COLOR_SCHEMES.find((s) => s.id === stored);
-    // Use type narrowing instead of non-null assertion
-    const initialScheme: ColorSchemeId = validScheme ? (stored as ColorSchemeId) : DEFAULT_SCHEME;
+    const initialScheme = validScheme?.id ?? DEFAULT_SCHEME;
 
     currentScheme = initialScheme;
     document.documentElement.setAttribute("data-scheme", initialScheme);

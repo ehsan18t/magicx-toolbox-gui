@@ -33,7 +33,12 @@
 </script>
 
 {#if toasts.length > 0}
-  <div class="fixed right-4 bottom-4 z-1000 flex flex-col gap-2" role="region" aria-label="Notifications">
+  <div
+    class="fixed right-4 bottom-4 z-1000 flex flex-col gap-2"
+    role="region"
+    aria-label="Notifications"
+    aria-live="polite"
+  >
     {#each toasts as toast (toast.id)}
       {@const config = typeConfig[toast.type]}
       <div

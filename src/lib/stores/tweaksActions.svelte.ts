@@ -264,3 +264,31 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
 
   return { success, failed };
 }
+
+/**
+ * Batch revert multiple tweaks (restore snapshots)
+ */
+export async function batchRevertTweaks(tweakIds: string[]): Promise<{ success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+
+  for (const tweakId of tweakIds) {
+    const result = await revertTweak(tweakId, { showToast: false });
+    if (result) {
+      success++;
+    } else {
+      failed++;
+    }
+  }
+
+  // Show summary toast
+  if (failed === 0 && success > 0) {
+    toastStore.success(`Restored ${success} snapshot${success > 1 ? "s" : ""} successfully`);
+  } else if (failed > 0 && success > 0) {
+    toastStore.warning(`Restored ${success}, failed ${failed} snapshot${failed > 1 ? "s" : ""}`);
+  } else if (failed > 0) {
+    toastStore.error(`Failed to restore ${failed} snapshot${failed > 1 ? "s" : ""}`);
+  }
+
+  return { success, failed };
+}

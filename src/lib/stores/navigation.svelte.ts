@@ -1,14 +1,14 @@
 /**
  * Navigation Store - Svelte 5 Runes
  *
- * Manages tab-based UI navigation between Overview, Search, Snapshots, and category tabs.
+ * Manages tab-based UI navigation between Overview, Search, Favorites, Snapshots, and category tabs.
  */
 
 import type { CategoryDefinition } from "$lib/types";
 import { categoriesStore } from "./tweaksData.svelte";
 
-/** Tab types - "overview", "search", "snapshots", or category ID */
-export type TabId = "overview" | "search" | "snapshots" | string;
+/** Tab types - "overview", "search", "favorites", "snapshots", or category ID */
+export type TabId = "overview" | "search" | "favorites" | "snapshots" | string;
 
 /** Tab definition for navigation */
 export interface TabDefinition {
@@ -41,6 +41,15 @@ const searchTab: TabDefinition = {
   isPermanent: true,
 };
 
+// Favorites tab definition (static)
+const favoritesTab: TabDefinition = {
+  id: "favorites",
+  name: "Favorites",
+  icon: "mdi:star",
+  description: "Quick access to your saved tweaks",
+  isPermanent: true,
+};
+
 // Snapshots tab definition (static)
 const snapshotsTab: TabDefinition = {
   id: "snapshots",
@@ -60,7 +69,7 @@ const allTabs = $derived.by((): TabDefinition[] => {
     isPermanent: false,
   }));
 
-  return [overviewTab, searchTab, snapshotsTab, ...categoryTabs];
+  return [overviewTab, searchTab, favoritesTab, snapshotsTab, ...categoryTabs];
 });
 
 // Derived: Fixed/permanent tabs (Overview, Search)
@@ -78,11 +87,16 @@ const currentTab = $derived.by((): TabDefinition | undefined => {
   return allTabs.find((tab) => tab.id === activeTab);
 });
 
-// Derived: Is on a category tab (not overview or search)
-const isOnCategoryTab = $derived(activeTab !== "overview" && activeTab !== "search" && activeTab !== "snapshots");
+// Derived: Is on a category tab (not overview, search, favorites, or snapshots)
+const isOnCategoryTab = $derived(
+  activeTab !== "overview" && activeTab !== "search" && activeTab !== "favorites" && activeTab !== "snapshots",
+);
 
 // Derived: Is on search tab
 const isOnSearchTab = $derived(activeTab === "search");
+
+// Derived: Is on favorites tab
+const isOnFavoritesTab = $derived(activeTab === "favorites");
 
 // Derived: Is on snapshots tab
 const isOnSnapshotsTab = $derived(activeTab === "snapshots");
@@ -125,6 +139,11 @@ export const navigationStore = {
     return isOnSearchTab;
   },
 
+  /** Check if currently on the favorites tab */
+  get isOnFavoritesTab() {
+    return isOnFavoritesTab;
+  },
+
   /** Check if currently on the snapshots tab */
   get isOnSnapshotsTab() {
     return isOnSnapshotsTab;
@@ -138,6 +157,11 @@ export const navigationStore = {
   /** Get the search tab definition */
   get searchTab() {
     return searchTab;
+  },
+
+  /** Get the favorites tab definition */
+  get favoritesTab() {
+    return favoritesTab;
   },
 
   /** Get the snapshots tab definition */
@@ -158,6 +182,11 @@ export const navigationStore = {
   /** Navigate to the search tab */
   navigateToSearch() {
     activeTab = "search";
+  },
+
+  /** Navigate to the favorites tab */
+  navigateToFavorites() {
+    activeTab = "favorites";
   },
 
   /** Navigate to the snapshots tab */

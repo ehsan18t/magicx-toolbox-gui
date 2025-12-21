@@ -21,17 +21,23 @@
 
   $effect(() => {
     const t = tweak;
+    let cancelled = false;
+
     if (isOpen && t?.status.has_backup) {
       getBackupInfo(t.definition.id)
         .then((info) => {
-          snapshotInfo = info;
+          if (!cancelled) snapshotInfo = info;
         })
         .catch(() => {
-          snapshotInfo = null;
+          if (!cancelled) snapshotInfo = null;
         });
     } else {
       snapshotInfo = null;
     }
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Inspection State
@@ -42,6 +48,8 @@
 
   $effect(() => {
     const t = tweak;
+    let cancelled = false;
+
     // Reset state when tweak changes or modal closes
     if (!isOpen || !t || inspection?.tweak_id !== t.definition.id) {
       inspection = null;
@@ -54,16 +62,24 @@
         isInspecting = true;
         inspectTweak(t.definition.id)
           .then((res) => {
-            inspection = res;
-            isInspecting = false;
+            if (!cancelled) {
+              inspection = res;
+              isInspecting = false;
+            }
           })
           .catch((err) => {
-            console.error("Inspection failed", err);
-            inspectionError = "Failed to analyze system state";
-            isInspecting = false;
+            if (!cancelled) {
+              console.error("Inspection failed", err);
+              inspectionError = "Failed to analyze system state";
+              isInspecting = false;
+            }
           });
       }
     }
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   const pendingChange = $derived.by(() => {

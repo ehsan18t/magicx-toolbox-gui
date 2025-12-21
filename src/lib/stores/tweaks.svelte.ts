@@ -27,8 +27,8 @@ export {
   categoriesStore,
   getCategoryStats,
   initializeQuick,
-  loadingStateStore,
   loadRemainingData,
+  loadingStateStore,
   systemStore,
   tweaksStore,
 } from "./tweaksData.svelte";
@@ -43,6 +43,7 @@ export { pendingChangesStore, pendingRebootStore } from "./tweaksPending.svelte"
 export {
   applyPendingChanges,
   applyTweak,
+  batchRevertTweaks,
   filterStore,
   revertTweak,
   stageChange,

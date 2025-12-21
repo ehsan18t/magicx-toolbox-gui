@@ -1,6 +1,8 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import {
     applyPendingChanges,
     batchRevertTweaks,
@@ -17,19 +19,23 @@
   let searchQuery = $state("");
   let showApplyAllDialog = $state(false);
   let showRevertAllDialog = $state(false);
+  let showClearAllDialog = $state(false);
   let isBatchProcessing = $state(false);
 
   // Check if tweaks are still loading
   const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
 
-  // Get tweaks that have snapshots (has_backup)
-  const snapshotTweaks = $derived(tweaksStore.list.filter((t) => t.status.has_backup));
+  // Get favorited tweaks from tweaksStore
+  const favoriteTweaks = $derived.by(() => {
+    const ids = favoritesStore.ids;
+    return tweaksStore.list.filter((t) => ids.includes(t.definition.id));
+  });
 
   // Filter tweaks by search
   const filteredTweaks = $derived.by(() => {
-    if (!searchQuery.trim()) return snapshotTweaks;
+    if (!searchQuery.trim()) return favoriteTweaks;
     const query = searchQuery.toLowerCase();
-    return snapshotTweaks.filter(
+    return favoriteTweaks.filter(
       (t) => t.definition.name.toLowerCase().includes(query) || t.definition.description.toLowerCase().includes(query),
     );
   });
@@ -50,14 +56,15 @@
   });
 
   // Stats
-  const totalCount = $derived(snapshotTweaks.length);
-  const appliedCount = $derived(snapshotTweaks.filter((t) => t.status.is_applied).length);
+  const totalCount = $derived(favoriteTweaks.length);
+  const appliedCount = $derived(favoriteTweaks.filter((t) => t.status.is_applied).length);
+  const snapshotCount = $derived(favoriteTweaks.filter((t) => t.status.has_backup).length);
 
-  // Pending changes for snapshot tweaks
-  const pendingCount = $derived(pendingChangesStore.getCountForTweaks(snapshotTweaks.map((t) => t.definition.id)));
+  // Pending changes for favorite tweaks
+  const pendingCount = $derived(pendingChangesStore.getCountForTweaks(favoriteTweaks.map((t) => t.definition.id)));
 
   // Loading state
-  const isLoading = $derived(snapshotTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
+  const isLoading = $derived(favoriteTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
 
   async function handleApplyChanges() {
     showApplyAllDialog = false;
@@ -70,19 +77,26 @@
     showRevertAllDialog = false;
     isBatchProcessing = true;
 
-    await batchRevertTweaks(snapshotTweaks.map((t) => t.definition.id));
+    const tweaksWithSnapshots = favoriteTweaks.filter((t) => t.status.has_backup);
+    await batchRevertTweaks(tweaksWithSnapshots.map((t) => t.definition.id));
 
     isBatchProcessing = false;
   }
 
   function handleDiscardChanges() {
-    // Clear pending changes for all snapshot tweaks
-    const tweakIds = new Set(snapshotTweaks.map((t) => t.definition.id));
+    // Clear pending changes for all favorite tweaks
+    const tweakIds = new Set(favoriteTweaks.map((t) => t.definition.id));
     for (const [tweakId] of pendingChangesStore.all) {
       if (tweakIds.has(tweakId)) {
         pendingChangesStore.clear(tweakId);
       }
     }
+  }
+
+  function handleClearAllFavorites() {
+    showClearAllDialog = false;
+    favoritesStore.clear();
+    toastStore.success("All favorites cleared");
   }
 
   function navigateToCategory(categoryId: string) {
@@ -94,30 +108,37 @@
   <!-- Header -->
   <header class="flex flex-wrap items-center justify-between gap-6">
     <div class="flex items-center gap-4">
-      <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent">
-        <Icon icon="mdi:backup-restore" width="28" />
+      <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-warning/15 text-warning">
+        <Icon icon="mdi:star" width="28" />
       </div>
       <div>
-        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Snapshots</h1>
-        <p class="mt-1 mb-0 text-sm text-foreground-muted">Tweaks with saved original state that can be restored</p>
+        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Favorites</h1>
+        <p class="mt-1 mb-0 text-sm text-foreground-muted">Quick access to your saved tweaks</p>
       </div>
     </div>
 
     <div class="flex items-center gap-4 rounded-xl border border-border bg-card px-5 py-3">
       <div class="flex items-center gap-2.5">
-        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15">
-          <Icon icon="mdi:history" width="18" class="text-accent" />
+        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-warning/15">
+          <Icon icon="mdi:star" width="18" class="text-warning" />
         </div>
         <div class="flex flex-col gap-0.5">
           <span class="text-base font-bold text-foreground">{totalCount}</span>
-          <span class="text-xs text-foreground-muted">Snapshots</span>
+          <span class="text-xs text-foreground-muted">Favorites</span>
         </div>
       </div>
       <div class="h-8 w-px bg-border"></div>
       <div class="flex flex-col gap-0.5">
         <span class="text-base font-bold text-foreground">{appliedCount}</span>
-        <span class="text-xs text-foreground-muted">Currently Applied</span>
+        <span class="text-xs text-foreground-muted">Applied</span>
       </div>
+      {#if snapshotCount > 0}
+        <div class="h-8 w-px bg-border"></div>
+        <div class="flex flex-col gap-0.5">
+          <span class="text-base font-bold text-foreground">{snapshotCount}</span>
+          <span class="text-xs text-foreground-muted">Snapshots</span>
+        </div>
+      {/if}
     </div>
   </header>
 
@@ -129,7 +150,7 @@
       <Icon icon="mdi:magnify" width="20" class="shrink-0 text-foreground-muted" />
       <input
         type="text"
-        placeholder="Search snapshots..."
+        placeholder="Search favorites..."
         bind:value={searchQuery}
         class="flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-subtle"
       />
@@ -179,26 +200,36 @@
       </button>
       <button
         type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
+        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-accent hover:not-disabled:bg-accent/15 hover:not-disabled:text-accent disabled:cursor-not-allowed disabled:opacity-50"
         onclick={() => (showRevertAllDialog = true)}
-        disabled={totalCount === 0 || isLoading || isBatchProcessing}
-        use:tooltip={totalCount === 0 ? "No snapshots available" : `Restore all ${totalCount} snapshots`}
+        disabled={snapshotCount === 0 || isLoading || isBatchProcessing}
+        use:tooltip={snapshotCount === 0 ? "No snapshots to restore" : `Restore all ${snapshotCount} snapshots`}
       >
         <Icon icon="mdi:restore" width="18" />
         <span class="hidden sm:inline">Restore All</span>
-        {#if totalCount > 0}
+        {#if snapshotCount > 0}
           <span
-            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-error/20 px-1.5 text-xs font-bold text-error"
-            >{totalCount}</span
+            class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent/20 px-1.5 text-xs font-bold text-accent"
+            >{snapshotCount}</span
           >
         {/if}
+      </button>
+      <button
+        type="button"
+        class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200 hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error disabled:cursor-not-allowed disabled:opacity-50"
+        onclick={() => (showClearAllDialog = true)}
+        disabled={totalCount === 0 || isBatchProcessing}
+        use:tooltip={totalCount === 0 ? "No favorites to clear" : "Clear all favorites"}
+      >
+        <Icon icon="mdi:star-off" width="18" />
+        <span class="hidden sm:inline">Clear All</span>
       </button>
     </div>
   </div>
 
   <!-- Tweaks Grid - grouped by category -->
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
-    {#if tweaksLoading && snapshotTweaks.length === 0}
+    {#if tweaksLoading && favoriteTweaks.length === 0}
       <!-- Loading state with skeleton cards -->
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
         {#each [0, 1, 2, 3] as i (`tweak-skeleton-${i}`)}
@@ -219,16 +250,15 @@
           </div>
         {/each}
       </div>
-    {:else if snapshotTweaks.length === 0}
-      <!-- No snapshots available -->
+    {:else if favoriteTweaks.length === 0}
+      <!-- No favorites yet -->
       <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
         <div class="bg-muted/50 flex h-20 w-20 items-center justify-center rounded-full">
-          <Icon icon="mdi:backup-restore" width="48" class="text-foreground-muted/50" />
+          <Icon icon="mdi:star-outline" width="48" class="text-foreground-muted/50" />
         </div>
-        <h3 class="m-0 text-lg font-semibold text-foreground">No Snapshots Yet</h3>
+        <h3 class="m-0 text-lg font-semibold text-foreground">No Favorites Yet</h3>
         <p class="m-0 max-w-sm text-sm">
-          When you apply tweaks, their original state is saved as a snapshot. You can restore these snapshots later to
-          undo changes.
+          Click the star icon on any tweak to add it to your favorites for quick access.
         </p>
         <button
           type="button"
@@ -243,7 +273,7 @@
       <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
         <Icon icon="mdi:file-search-outline" width="56" />
         <h3 class="m-0 text-lg font-semibold text-foreground">No results found</h3>
-        <p class="m-0 text-sm">No snapshots match "{searchQuery}"</p>
+        <p class="m-0 text-sm">No favorites match "{searchQuery}"</p>
         <button
           type="button"
           class="mt-2 cursor-pointer rounded-lg border-0 bg-accent px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:brightness-110"
@@ -297,11 +327,23 @@
 <ConfirmDialog
   open={showRevertAllDialog}
   title="Restore All Snapshots"
-  message="Restore all {totalCount} tweak{totalCount > 1
+  message="Restore {snapshotCount} tweak{snapshotCount > 1
     ? 's'
-    : ''} to their original state? This will undo all applied changes."
+    : ''} to their original state? This will undo all applied changes for favorites with snapshots."
   confirmText="Restore All"
   variant="danger"
   onconfirm={handleRestoreAll}
   oncancel={() => (showRevertAllDialog = false)}
+/>
+
+<ConfirmDialog
+  open={showClearAllDialog}
+  title="Clear All Favorites"
+  message="Remove all {totalCount} tweak{totalCount > 1
+    ? 's'
+    : ''} from your favorites? This won't affect the tweaks themselves."
+  confirmText="Clear Favorites"
+  variant="danger"
+  onconfirm={handleClearAllFavorites}
+  oncancel={() => (showClearAllDialog = false)}
 />

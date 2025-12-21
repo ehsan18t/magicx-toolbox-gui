@@ -435,12 +435,11 @@ registry_changes:
   value_type: "REG_BINARY"
   value: [0, 1, 2, 3, 255]
 
-# Delete a value (set to null)
+# Delete a value
 - hive: HKCU
   key: "Software\\Example"
   value_name: "DeleteMe"
-  value_type: "REG_SZ"
-  value: null
+  action: delete_value
 
 # Windows 11 only
 - hive: HKCU
@@ -1859,5 +1858,5 @@ Use Task Scheduler (`taskschd.msc`) to explore tasks.
 
 ---
 
-*Last updated: December 2024*
+*Last updated: December 2025*
 *This document should be updated whenever the tweak system changes.*

@@ -91,8 +91,6 @@ pub fn run() {
             setup::setup(app)
         })
         .invoke_handler(tauri::generate_handler![
-            commands::general::update_theme,
-            commands::general::get_theme,
             commands::general::show_main_window,
             commands::system::get_system_info,
             // Tweak query commands

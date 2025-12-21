@@ -543,6 +543,7 @@ pub struct TweakStatus {
     /// - None: No snapshot exists (tweak was never applied)
     /// - Some(None): Snapshot exists but original state was unknown (didn't match any option)
     /// - Some(Some(i)): Snapshot exists and original state matched option i
+    ///
     /// Used by frontend to show "Default" segment when original state was unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_original_option_index: Option<Option<usize>>,
