@@ -15,25 +15,65 @@ import { invoke } from "@tauri-apps/api/core";
 export interface TweakSelection {
   tweak_id: string;
   selected_option_index: number;
+  selected_option_label: string;
   option_content_hash?: string;
+  category_id?: string;
 }
 
-/** Profile metadata */
+/** Profile metadata - matches backend ProfileMetadata struct */
 export interface ProfileMetadata {
-  profile_name: string;
+  name: string;
   description?: string;
   created_at: string;
+  modified_at: string;
   app_version: string;
-  source_machine_name?: string;
   source_windows_version: number;
-  tags: string[];
+  source_windows_build: number;
+  source_machine_id?: string;
 }
 
-/** Captured system state (optional) */
-export interface ProfileSystemState {
-  registry_state: Record<string, unknown>;
-  services_state: Record<string, unknown>;
-  tasks_state: Record<string, unknown>;
+/** State of a single registry value */
+export interface RegistryValueState {
+  hive: string;
+  key: string;
+  value_name: string;
+  value_type?: string;
+  value?: unknown;
+  exists: boolean;
+}
+
+/** State of a Windows service */
+export interface ServiceState {
+  name: string;
+  startup_type: string;
+  is_running: boolean;
+  exists: boolean;
+}
+
+/** State of a scheduled task */
+export interface SchedulerState {
+  task_path: string;
+  task_name: string;
+  state: string;
+  exists: boolean;
+}
+
+/** Snapshot metadata */
+export interface SnapshotMetadata {
+  created_at: string;
+  app_version: string;
+  windows_version: number;
+  windows_build: number;
+  machine_name: string;
+}
+
+/** System state snapshot - matches backend SystemStateSnapshot struct */
+export interface SystemStateSnapshot {
+  schema_version: number;
+  metadata: SnapshotMetadata;
+  registry_state: RegistryValueState[];
+  service_state: ServiceState[];
+  scheduler_state: SchedulerState[];
 }
 
 /** Full configuration profile */
@@ -41,7 +81,7 @@ export interface ConfigurationProfile {
   schema_version: number;
   metadata: ProfileMetadata;
   selections: TweakSelection[];
-  system_state?: ProfileSystemState;
+  system_state?: SystemStateSnapshot;
 }
 
 /** Warning code for validation warnings */

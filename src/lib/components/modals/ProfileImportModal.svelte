@@ -245,7 +245,7 @@
               <Icon icon="mdi:file-document" width="24" class="text-accent" />
             </div>
             <div class="min-w-0 flex-1">
-              <h3 class="m-0 truncate text-base font-semibold text-foreground">{profile.metadata.profile_name}</h3>
+              <h3 class="m-0 truncate text-base font-semibold text-foreground">{profile.metadata.name}</h3>
               {#if profile.metadata.description}
                 <p class="m-0 mt-1 text-sm text-foreground-muted">{profile.metadata.description}</p>
               {/if}
