@@ -1,17 +1,35 @@
 export function tooltip(node: HTMLElement, text: string | undefined | null) {
   let tooltipComponent: HTMLElement | null = null;
 
-  function params(text: string | undefined | null) {
-    if (!text) return;
-
-    // Update text if tooltip exists
+  function hide() {
     if (tooltipComponent) {
-      tooltipComponent.textContent = text;
+      tooltipComponent.remove();
+      tooltipComponent = null;
     }
+
+    window.removeEventListener("scroll", hide, true);
+    window.removeEventListener("resize", positionTooltip);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) hide();
+  }
+
+  function params(text: string | undefined | null) {
+    if (!text) {
+      hide();
+      return;
+    }
+
+    if (tooltipComponent) tooltipComponent.textContent = text;
   }
 
   function mouseEnter() {
     if (!text) return;
+
+    // Ensure we never leave an orphaned tooltip behind
+    hide();
 
     // Create tooltip
     tooltipComponent = document.createElement("div");
@@ -24,13 +42,15 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
     document.body.appendChild(tooltipComponent);
 
     positionTooltip();
+
+    // Hide tooltip on interactions that can interrupt hover without firing mouseleave
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", positionTooltip);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
   }
 
   function mouseLeave() {
-    if (tooltipComponent) {
-      tooltipComponent.remove();
-      tooltipComponent = null;
-    }
+    hide();
   }
 
   function positionTooltip() {
@@ -61,6 +81,9 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
   node.addEventListener("mouseenter", mouseEnter);
   node.addEventListener("mouseleave", mouseLeave);
   node.addEventListener("mousemove", positionTooltip); // Follow/update if needed, or mostly static
+  node.addEventListener("pointerdown", hide);
+  node.addEventListener("click", hide);
+  node.addEventListener("blur", hide, true);
 
   return {
     update(newText: string) {
@@ -71,7 +94,10 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
       node.removeEventListener("mouseenter", mouseEnter);
       node.removeEventListener("mouseleave", mouseLeave);
       node.removeEventListener("mousemove", positionTooltip);
-      mouseLeave();
+      node.removeEventListener("pointerdown", hide);
+      node.removeEventListener("click", hide);
+      node.removeEventListener("blur", hide, true);
+      hide();
     },
   };
 }
