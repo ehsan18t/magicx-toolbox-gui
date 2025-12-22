@@ -228,67 +228,122 @@ export function unstageChange(tweakId: string): void {
 }
 
 /**
- * Apply all pending changes
+ * Apply all pending changes using batch API for efficiency
  */
 export async function applyPendingChanges(): Promise<{ success: number; failed: number }> {
   const pending = pendingChangesStore.all;
-  let success = 0;
-  let failed = 0;
+
+  if (pending.size === 0) {
+    return { success: 0, failed: 0 };
+  }
+
+  // Build operations array for batch API
+  const operations: [string, number][] = [];
+  const tweakMap = new Map<string, { change: PendingChange; tweak: TweakWithStatus }>();
 
   for (const [tweakId, change] of pending) {
     const tweak = tweaksStore.getById(tweakId);
     if (!tweak) continue;
+    operations.push([change.tweakId, change.optionIndex]);
+    tweakMap.set(tweakId, { change, tweak });
+  }
 
-    // Apply without individual toasts - we'll show a summary
-    const result = await applyTweak(change.tweakId, change.optionIndex, tweak.definition.requires_reboot, {
-      showToast: false,
-      tweakName: tweak.definition.name,
-    });
+  if (operations.length === 0) {
+    return { success: 0, failed: 0 };
+  }
 
-    if (result) {
-      success++;
-      pendingChangesStore.clear(tweakId);
-    } else {
-      failed++;
+  try {
+    // Use batch API for single IPC call instead of N calls
+    const result = await api.batchApplyTweaks(operations);
+
+    // Count successes and failures from result
+    const totalAttempted = operations.length;
+    const failedCount = result.failures?.length ?? 0;
+    const successCount = totalAttempted - failedCount;
+
+    // Clear successful pending changes
+    const failedIds = new Set(result.failures?.map(([id]) => id) ?? []);
+    for (const tweakId of tweakMap.keys()) {
+      if (!failedIds.has(tweakId)) {
+        pendingChangesStore.clear(tweakId);
+
+        // Track reboot requirement
+        const entry = tweakMap.get(tweakId);
+        if (entry?.tweak.definition.requires_reboot) {
+          pendingRebootStore.add(tweakId);
+        }
+
+        // Update status in store
+        tweaksStore.updateStatus(tweakId, {
+          is_applied: entry?.change.optionIndex === 0,
+          current_option_index: entry?.change.optionIndex,
+          has_backup: true,
+        });
+      }
     }
-  }
 
-  // Show summary toast
-  if (failed === 0 && success > 0) {
-    toastStore.success(`Applied ${success} tweak${success > 1 ? "s" : ""} successfully`);
-  } else if (failed > 0 && success > 0) {
-    toastStore.warning(`Applied ${success}, failed ${failed} tweak${failed > 1 ? "s" : ""}`);
-  } else if (failed > 0) {
-    toastStore.error(`Failed to apply ${failed} tweak${failed > 1 ? "s" : ""}`);
-  }
+    // Show summary toast
+    if (failedCount === 0 && successCount > 0) {
+      toastStore.success(`Applied ${successCount} tweak${successCount > 1 ? "s" : ""} successfully`);
+    } else if (failedCount > 0 && successCount > 0) {
+      toastStore.warning(`Applied ${successCount}, failed ${failedCount} tweak${failedCount > 1 ? "s" : ""}`);
+    } else if (failedCount > 0) {
+      toastStore.error(`Failed to apply ${failedCount} tweak${failedCount > 1 ? "s" : ""}`);
+    }
 
-  return { success, failed };
+    return { success: successCount, failed: failedCount };
+  } catch (error) {
+    console.error("Batch apply failed:", error);
+    toastStore.error("Failed to apply pending changes");
+    return { success: 0, failed: operations.length };
+  }
 }
 
 /**
- * Batch revert multiple tweaks (restore snapshots)
+ * Batch revert multiple tweaks using batch API for efficiency
  */
 export async function batchRevertTweaks(tweakIds: string[]): Promise<{ success: number; failed: number }> {
-  let success = 0;
-  let failed = 0;
+  if (tweakIds.length === 0) {
+    return { success: 0, failed: 0 };
+  }
 
-  for (const tweakId of tweakIds) {
-    const result = await revertTweak(tweakId, { showToast: false });
-    if (result) {
-      success++;
-    } else {
-      failed++;
+  try {
+    // Use batch API for single IPC call instead of N calls
+    const result = await api.batchRevertTweaks(tweakIds);
+
+    // Count successes and failures from result
+    const totalAttempted = tweakIds.length;
+    const failedCount = result.failures?.length ?? 0;
+    const successCount = totalAttempted - failedCount;
+
+    // Update status for successful reverts
+    const failedIds = new Set(result.failures?.map(([id]) => id) ?? []);
+    for (const tweakId of tweakIds) {
+      if (!failedIds.has(tweakId)) {
+        // Update status to reflect reverted state
+        tweaksStore.updateStatus(tweakId, {
+          is_applied: false,
+          current_option_index: null,
+          has_backup: false,
+        });
+        // Clear from pending reboot if it was there
+        pendingRebootStore.remove(tweakId);
+      }
     }
-  }
 
-  // Show summary toast
-  if (failed === 0 && success > 0) {
-    toastStore.success(`Restored ${success} snapshot${success > 1 ? "s" : ""} successfully`);
-  } else if (failed > 0 && success > 0) {
-    toastStore.warning(`Restored ${success}, failed ${failed} snapshot${failed > 1 ? "s" : ""}`);
-  } else if (failed > 0) {
-    toastStore.error(`Failed to restore ${failed} snapshot${failed > 1 ? "s" : ""}`);
-  }
+    // Show summary toast
+    if (failedCount === 0 && successCount > 0) {
+      toastStore.success(`Restored ${successCount} snapshot${successCount > 1 ? "s" : ""} successfully`);
+    } else if (failedCount > 0 && successCount > 0) {
+      toastStore.warning(`Restored ${successCount}, failed ${failedCount} snapshot${failedCount > 1 ? "s" : ""}`);
+    } else if (failedCount > 0) {
+      toastStore.error(`Failed to restore ${failedCount} snapshot${failedCount > 1 ? "s" : ""}`);
+    }
 
-  return { success, failed };
+    return { success: successCount, failed: failedCount };
+  } catch (error) {
+    console.error("Batch revert failed:", error);
+    toastStore.error("Failed to restore snapshots");
+    return { success: 0, failed: tweakIds.length };
+  }
 }
