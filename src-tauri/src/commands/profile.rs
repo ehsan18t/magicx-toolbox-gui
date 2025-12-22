@@ -13,13 +13,14 @@ use crate::models::{
 use crate::services::profile::{apply_profile, export_profile, import_profile, validate_profile};
 use crate::services::{system_info_service, tweak_loader};
 
-/// Export a configuration profile to a file.
-pub fn get_profile_dir(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+/// Get the profile directory for storing/reading profiles.
+/// Returns an error if the app data directory cannot be determined.
+pub fn get_profile_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     app_handle
         .path()
         .app_data_dir()
-        .expect("failed to get app data dir")
-        .join("profiles")
+        .map(|p| p.join("profiles"))
+        .map_err(|e| format!("Failed to get app data directory: {}", e))
 }
 
 #[tauri::command]
@@ -30,7 +31,7 @@ pub async fn get_saved_profiles(
     let profile_dir = if let Some(path) = custom_path {
         PathBuf::from(path)
     } else {
-        get_profile_dir(&app_handle)
+        get_profile_dir(&app_handle)?
     };
 
     if !profile_dir.exists() {
@@ -69,7 +70,7 @@ pub async fn delete_saved_profile(
     let profile_dir = if let Some(path) = custom_path {
         PathBuf::from(path)
     } else {
-        get_profile_dir(&app_handle)
+        get_profile_dir(&app_handle)?
     };
 
     // Sanitize filename to prevent directory traversal
