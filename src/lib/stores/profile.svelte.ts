@@ -6,6 +6,7 @@
 
 import type { ConfigurationProfile, ProfileApplyResult, ProfileValidation, TweakChangePreview } from "$lib/api/profile";
 import * as profileApi from "$lib/api/profile";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
 // === Export State ===
@@ -20,7 +21,9 @@ let importError = $state<string | null>(null);
 let savedProfiles = $state<profileApi.ProfileMetadata[]>([]);
 let loadingSavedProfiles = $state(false);
 let savedProfilesError = $state<string | null>(null);
-let currentProfileDir = $state<string | null>(null);
+
+// Persistent store for profile directory
+const currentProfileDirStore = new PersistentStore<string | null>("magicx_profile_dir", null);
 
 // === Apply State ===
 let isApplying = $state(false);
@@ -66,7 +69,7 @@ export const profileStore = {
     return savedProfilesError;
   },
   get currentProfileDir() {
-    return currentProfileDir;
+    return currentProfileDirStore.value;
   },
   get isApplying() {
     return isApplying;
@@ -99,8 +102,12 @@ export const profileStore = {
   /**
    * Set custom profile directory and reload profiles.
    */
+
+  /**
+   * Set custom profile directory and reload profiles.
+   */
   setProfileDir(path: string | null) {
-    currentProfileDir = path;
+    currentProfileDirStore.value = path;
     this.loadSavedProfiles();
   },
 
@@ -154,7 +161,7 @@ export const profileStore = {
     loadingSavedProfiles = true;
     savedProfilesError = null;
     try {
-      savedProfiles = await profileApi.getSavedProfiles(currentProfileDir);
+      savedProfiles = await profileApi.getSavedProfiles(currentProfileDirStore.value);
     } catch (error) {
       console.error("Failed to load saved profiles:", error);
       savedProfilesError = error instanceof Error ? error.message : String(error);
@@ -168,7 +175,7 @@ export const profileStore = {
    */
   async deleteProfile(name: string): Promise<boolean> {
     try {
-      await profileApi.deleteSavedProfile(name, currentProfileDir);
+      await profileApi.deleteSavedProfile(name, currentProfileDirStore.value);
       await this.loadSavedProfiles();
       return true;
     } catch (error) {
