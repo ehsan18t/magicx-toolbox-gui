@@ -7,8 +7,8 @@
 import type { CategoryDefinition } from "$lib/types";
 import { categoriesStore } from "./tweaksData.svelte";
 
-/** Tab types - "overview", "search", "favorites", "snapshots", or category ID */
-export type TabId = "overview" | "search" | "favorites" | "snapshots" | string;
+/** Tab types - "overview", "search", "favorites", "snapshots", "profiles", or category ID */
+export type TabId = "overview" | "search" | "favorites" | "snapshots" | "profiles" | string;
 
 /** Tab definition for navigation */
 export interface TabDefinition {
@@ -56,8 +56,17 @@ const favoritesTab: TabDefinition = {
 const snapshotsTab: TabDefinition = {
   id: "snapshots",
   name: "Snapshots",
-  icon: "mdi:backup-restore",
+  icon: "mdi:history", // Changed from backup-restore to distinguish from Profiles
   description: "View and manage tweaks with saved snapshots",
+  isPermanent: true,
+};
+
+// Profiles tab definition (static)
+const profilesTab: TabDefinition = {
+  id: "profiles",
+  name: "Profiles",
+  icon: "mdi:file-multiple",
+  description: "Manage saved configuration profiles",
   isPermanent: true,
 };
 
@@ -71,7 +80,7 @@ const allTabs = $derived.by((): TabDefinition[] => {
     isPermanent: false,
   }));
 
-  return [overviewTab, searchTab, favoritesTab, snapshotsTab, ...categoryTabs];
+  return [overviewTab, searchTab, favoritesTab, snapshotsTab, profilesTab, ...categoryTabs];
 });
 
 // Derived: Fixed/permanent tabs (Overview, Search)
@@ -89,9 +98,13 @@ const currentTab = $derived.by((): TabDefinition | undefined => {
   return allTabs.find((tab) => tab.id === activeTab);
 });
 
-// Derived: Is on a category tab (not overview, search, favorites, or snapshots)
+// Derived: Is on a category tab (not overview, search, favorites, snapshots, or profiles)
 const isOnCategoryTab = $derived(
-  activeTab !== "overview" && activeTab !== "search" && activeTab !== "favorites" && activeTab !== "snapshots",
+  activeTab !== "overview" &&
+    activeTab !== "search" &&
+    activeTab !== "favorites" &&
+    activeTab !== "snapshots" &&
+    activeTab !== "profiles",
 );
 
 // Derived: Is on search tab
@@ -102,6 +115,9 @@ const isOnFavoritesTab = $derived(activeTab === "favorites");
 
 // Derived: Is on snapshots tab
 const isOnSnapshotsTab = $derived(activeTab === "snapshots");
+
+// Derived: Is on profiles tab
+const isOnProfilesTab = $derived(activeTab === "profiles");
 
 // === Export ===
 
@@ -149,6 +165,11 @@ export const navigationStore = {
   /** Check if currently on the snapshots tab */
   get isOnSnapshotsTab() {
     return isOnSnapshotsTab;
+  },
+
+  /** Check if currently on the profiles tab */
+  get isOnProfilesTab() {
+    return isOnProfilesTab;
   },
 
   /** Get the overview tab definition */

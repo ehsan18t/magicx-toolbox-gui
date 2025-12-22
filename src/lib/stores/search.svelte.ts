@@ -81,6 +81,12 @@ let cachedQuery = "";
 /** Tweak ID to highlight after navigation */
 let highlightTweakId = $state<string | null>(null);
 
+/** Debounce timer for search queries */
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Debounce delay in milliseconds */
+const DEBOUNCE_DELAY = 200;
+
 // === Haystack Cache ===
 
 /** Cached haystack data - rebuilt when tweaks change */
@@ -233,19 +239,20 @@ export const searchStore = {
   // --- Actions ---
 
   /**
-   * Set search query and trigger search if changed.
+   * Set search query and trigger debounced search.
    * @param newQuery - The search query string
    */
   setQuery(newQuery: string) {
     query = newQuery;
     const trimmed = newQuery.trim();
 
-    // Skip if query unchanged
-    if (trimmed === cachedQuery) {
-      return;
+    // Clear any pending debounced search
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
     }
 
-    // Clear for empty query
+    // Clear for empty query immediately (no debounce needed)
     if (!trimmed) {
       results = [];
       cachedQuery = "";
@@ -253,8 +260,16 @@ export const searchStore = {
       return;
     }
 
-    // Execute search
-    this.search();
+    // Skip if query unchanged
+    if (trimmed === cachedQuery) {
+      return;
+    }
+
+    // Debounce search execution to reduce CPU usage during rapid typing
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      this.search();
+    }, DEBOUNCE_DELAY);
   },
 
   /**

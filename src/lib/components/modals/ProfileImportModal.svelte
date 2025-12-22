@@ -58,11 +58,16 @@
   // Reset state when modal opens
   $effect(() => {
     if (isOpen) {
-      step = "select";
+      if (profileStore.currentProfile) {
+        step = "review";
+      } else {
+        step = "select";
+        profileStore.clear();
+      }
+      // Always reset options
       skipAlreadyApplied = true;
       createRestorePoint = true;
       skipTweakIds.clear();
-      profileStore.clear();
     }
   });
 
@@ -70,6 +75,7 @@
   $effect(() => {
     if (!isOpen) return;
 
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
 
     getCurrentWebview()
@@ -93,10 +99,16 @@
         }
       })
       .then((fn) => {
-        unlisten = fn;
+        // If effect was cancelled before promise resolved, immediately clean up
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   });

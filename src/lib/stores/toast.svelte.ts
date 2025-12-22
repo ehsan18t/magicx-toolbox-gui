@@ -26,6 +26,9 @@ let idCounter = 0;
 const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
 /* eslint-enable svelte/prefer-svelte-reactivity */
 
+/** Maximum number of toasts to display at once */
+const MAX_TOASTS = 5;
+
 function generateId(): string {
   return `toast-${++idCounter}-${Date.now()}`;
 }
@@ -49,6 +52,20 @@ export const toastStore = {
       duration,
       tweakName: options?.tweakName,
     };
+
+    // Remove oldest toast(s) if at max capacity
+    while (toasts.length >= MAX_TOASTS) {
+      const oldest = toasts[0];
+      if (oldest) {
+        // Clear any pending timeout for the removed toast
+        const oldestTimeout = timeoutIds.get(oldest.id);
+        if (oldestTimeout) {
+          clearTimeout(oldestTimeout);
+          timeoutIds.delete(oldest.id);
+        }
+      }
+      toasts = toasts.slice(1);
+    }
 
     toasts = [...toasts, toast];
 

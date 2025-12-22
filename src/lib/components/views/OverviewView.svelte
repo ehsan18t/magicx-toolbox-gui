@@ -13,6 +13,62 @@
   const systemInfoLoading = $derived(loadingStateStore.systemInfoLoading);
   const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
 
+  /**
+   * Handle keyboard navigation for category grid.
+   * Arrow keys move focus between category cards in a grid pattern.
+   */
+  function handleCategoryKeydown(event: KeyboardEvent, index: number, totalItems: number) {
+    const key = event.key;
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
+      return;
+    }
+
+    event.preventDefault();
+    const grid = event.currentTarget as HTMLElement;
+    const parent = grid.parentElement;
+    if (!parent) return;
+
+    const buttons = Array.from(parent.querySelectorAll("button"));
+    if (buttons.length === 0) return;
+
+    // Calculate columns based on container width (match Tailwind breakpoints)
+    // sm:2, lg:3, xl:4 columns
+    const containerWidth = parent.getBoundingClientRect().width;
+    let cols = 1;
+    if (containerWidth >= 1280)
+      cols = 4; // xl
+    else if (containerWidth >= 1024)
+      cols = 3; // lg
+    else if (containerWidth >= 640) cols = 2; // sm
+
+    let targetIndex = index;
+
+    switch (key) {
+      case "ArrowRight":
+        targetIndex = Math.min(index + 1, totalItems - 1);
+        break;
+      case "ArrowLeft":
+        targetIndex = Math.max(index - 1, 0);
+        break;
+      case "ArrowDown":
+        targetIndex = Math.min(index + cols, totalItems - 1);
+        break;
+      case "ArrowUp":
+        targetIndex = Math.max(index - cols, 0);
+        break;
+      case "Home":
+        targetIndex = 0;
+        break;
+      case "End":
+        targetIndex = totalItems - 1;
+        break;
+    }
+
+    if (targetIndex !== index && buttons[targetIndex]) {
+      (buttons[targetIndex] as HTMLElement).focus();
+    }
+  }
+
   // Format clock speed
   const formatClockSpeed = (mhz: number) => {
     if (mhz >= 1000) {
@@ -312,13 +368,19 @@
         {/each}
       </div>
     {:else}
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {#each categoriesStore.list as category (category.id)}
+      <div
+        class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        role="grid"
+        aria-label="Tweak categories"
+      >
+        {#each categoriesStore.list as category, index (category.id)}
           {@const stats = categoryStats[category.id]}
           {@const progress = stats?.total > 0 ? (stats.applied / stats.total) * 100 : 0}
           <button
-            class="group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-accent/50 hover:shadow-md"
+            class="group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-accent/50 hover:shadow-md focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background focus:outline-none"
             onclick={() => navigationStore.navigateToCategory(category.id)}
+            onkeydown={(e) => handleCategoryKeydown(e, index, categoriesStore.list.length)}
+            aria-label="{category.name}: {stats?.applied ?? 0} of {stats?.total ?? 0} tweaks applied"
           >
             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
               <Icon icon={category.icon || "mdi:folder"} width="20" />

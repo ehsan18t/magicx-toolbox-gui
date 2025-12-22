@@ -15,6 +15,17 @@ export type RegistryValueType = "REG_DWORD" | "REG_SZ" | "REG_EXPAND_SZ" | "REG_
 /** Windows service startup type */
 export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
 
+/**
+ * Registry value type - maps to the RegistryValueType enum.
+ * - REG_DWORD: 32-bit number (0 to 4294967295)
+ * - REG_QWORD: 64-bit number
+ * - REG_SZ: String
+ * - REG_EXPAND_SZ: Expandable string (contains environment variables)
+ * - REG_MULTI_SZ: Array of strings
+ * - REG_BINARY: Array of numbers (bytes)
+ */
+export type RegistryValue = number | string | string[] | number[] | null;
+
 // ============================================================================
 // NEW UNIFIED OPTION-BASED TWEAK SYSTEM
 // ============================================================================
@@ -32,7 +43,7 @@ export interface RegistryChange {
   /** Value type (required for set action, null for delete operations) */
   value_type: RegistryValueType | null;
   /** The value to set when this option is selected (null for delete operations) */
-  value: unknown;
+  value: RegistryValue;
   /** Optional Windows version filter. If undefined/empty, applies to all versions. */
   windows_versions?: number[];
   /** If true, skip this change for tweak status validation and ignore failures during apply */

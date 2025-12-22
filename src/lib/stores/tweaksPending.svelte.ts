@@ -62,9 +62,12 @@ export const pendingChangesStore = {
 
   /** Get count of pending changes for a specific set of tweak IDs */
   getCountForTweaks(tweakIds: string[]): number {
+    // Use Set for O(1) lookup instead of O(n) array.includes()
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local variable, not reactive state
+    const tweakIdSet = new Set(tweakIds);
     let count = 0;
-    for (const [tweakId] of pendingChanges) {
-      if (tweakIds.includes(tweakId)) {
+    for (const tweakId of pendingChanges.keys()) {
+      if (tweakIdSet.has(tweakId)) {
         count++;
       }
     }

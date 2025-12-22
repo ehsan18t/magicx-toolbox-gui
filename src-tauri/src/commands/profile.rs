@@ -3,6 +3,7 @@
 //! Tauri commands for the profile export/import system.
 
 use std::path::PathBuf;
+use tauri::Manager;
 
 use crate::error::Error;
 use crate::models::{
@@ -12,9 +13,86 @@ use crate::models::{
 use crate::services::profile::{apply_profile, export_profile, import_profile, validate_profile};
 use crate::services::{system_info_service, tweak_loader};
 
-/// Export a configuration profile to a file.
+/// Get the profile directory for storing/reading profiles.
+/// Returns an error if the app data directory cannot be determined.
+pub fn get_profile_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app_handle
+        .path()
+        .app_data_dir()
+        .map(|p| p.join("profiles"))
+        .map_err(|e| format!("Failed to get app data directory: {}", e))
+}
+
 #[tauri::command]
-pub fn profile_export(
+pub async fn get_saved_profiles(
+    app_handle: tauri::AppHandle,
+    custom_path: Option<String>,
+) -> Result<Vec<crate::models::ProfileMetadata>, String> {
+    let profile_dir = if let Some(path) = custom_path {
+        PathBuf::from(path)
+    } else {
+        get_profile_dir(&app_handle)?
+    };
+
+    if !profile_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut profiles = Vec::new();
+
+    let entries = std::fs::read_dir(profile_dir).map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) == Some("mgx") {
+            // Try to read metadata from the archive
+            match crate::services::profile::archive::read_profile_archive(&path) {
+                Ok(contents) => {
+                    profiles.push(contents.profile.metadata);
+                }
+                Err(e) => {
+                    // Log but continue - don't fail the entire list for one corrupted file
+                    log::warn!("Failed to read profile '{}': {}", path.display(), e);
+                }
+            }
+        }
+    }
+
+    // Sort by date created (descending)
+    profiles.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(profiles)
+}
+
+#[tauri::command]
+pub async fn delete_saved_profile(
+    app_handle: tauri::AppHandle,
+    name: String,
+    custom_path: Option<String>,
+) -> Result<(), String> {
+    let profile_dir = if let Some(path) = custom_path {
+        PathBuf::from(path)
+    } else {
+        get_profile_dir(&app_handle)?
+    };
+
+    // Sanitize filename to prevent directory traversal
+    let safe_name = name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "");
+    let filename = format!("{}.mgx", safe_name);
+    let path = profile_dir.join(filename);
+
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn profile_export(
+    _app_handle: tauri::AppHandle,
     file_path: String,
     name: String,
     description: Option<String>,

@@ -6,6 +6,7 @@
 
 import type { ConfigurationProfile, ProfileApplyResult, ProfileValidation, TweakChangePreview } from "$lib/api/profile";
 import * as profileApi from "$lib/api/profile";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
 // === Export State ===
@@ -15,6 +16,16 @@ let exportError = $state<string | null>(null);
 // === Import State ===
 let isImporting = $state(false);
 let importError = $state<string | null>(null);
+
+// === Saved Profiles State ===
+let savedProfiles = $state<profileApi.ProfileMetadata[]>([]);
+let loadingSavedProfiles = $state(false);
+let savedProfilesError = $state<string | null>(null);
+let isDeleting = $state(false);
+let deleteError = $state<string | null>(null);
+
+// Persistent store for profile directory
+const currentProfileDirStore = new PersistentStore<string | null>("magicx_profile_dir", null);
 
 // === Apply State ===
 let isApplying = $state(false);
@@ -50,6 +61,24 @@ export const profileStore = {
   get importError() {
     return importError;
   },
+  get savedProfiles() {
+    return savedProfiles;
+  },
+  get loadingSavedProfiles() {
+    return loadingSavedProfiles;
+  },
+  get savedProfilesError() {
+    return savedProfilesError;
+  },
+  get isDeleting() {
+    return isDeleting;
+  },
+  get deleteError() {
+    return deleteError;
+  },
+  get currentProfileDir() {
+    return currentProfileDirStore.value;
+  },
   get isApplying() {
     return isApplying;
   },
@@ -79,6 +108,14 @@ export const profileStore = {
   },
 
   /**
+   * Set custom profile directory and reload profiles.
+   */
+  setProfileDir(path: string | null) {
+    currentProfileDirStore.value = path;
+    this.loadSavedProfiles();
+  },
+
+  /**
    * Export a profile to a file.
    * Opens a save dialog and exports the selected tweaks.
    */
@@ -104,10 +141,14 @@ export const profileStore = {
 
       if (!filePath) {
         // User cancelled
+        isExporting = false;
         return false;
       }
 
       await profileApi.exportProfile(filePath, name, tweakIds, options);
+
+      // Reload profiles after successful export
+      this.loadSavedProfiles();
       return true;
     } catch (error) {
       console.error("Failed to export profile:", error);
@@ -115,6 +156,44 @@ export const profileStore = {
       return false;
     } finally {
       isExporting = false;
+    }
+  },
+
+  /**
+   * Load the list of saved profiles.
+   */
+  async loadSavedProfiles() {
+    loadingSavedProfiles = true;
+    savedProfilesError = null;
+    try {
+      savedProfiles = await profileApi.getSavedProfiles(currentProfileDirStore.value);
+    } catch (error) {
+      console.error("Failed to load saved profiles:", error);
+      savedProfilesError = error instanceof Error ? error.message : String(error);
+    } finally {
+      loadingSavedProfiles = false;
+    }
+  },
+
+  /**
+   * Delete a saved profile.
+   */
+  async deleteProfile(name: string): Promise<boolean> {
+    if (isDeleting) return false;
+
+    isDeleting = true;
+    deleteError = null;
+
+    try {
+      await profileApi.deleteSavedProfile(name, currentProfileDirStore.value);
+      await this.loadSavedProfiles();
+      return true;
+    } catch (error) {
+      console.error("Failed to delete profile:", error);
+      deleteError = error instanceof Error ? error.message : String(error);
+      return false;
+    } finally {
+      isDeleting = false;
     }
   },
 
@@ -252,6 +331,7 @@ export type {
   ChangeType,
   ConfigurationProfile,
   ProfileApplyResult,
+  ProfileMetadata,
   ProfileValidation,
   TweakChangePreview,
   ValidationError,

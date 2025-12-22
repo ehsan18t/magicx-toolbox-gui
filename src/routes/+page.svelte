@@ -2,7 +2,14 @@
   import { RebootBanner } from "$lib/components/feedback";
   import { Sidebar } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { CategoryView, FavoritesView, OverviewView, SearchView, SnapshotsView } from "$lib/components/views";
+  import {
+    CategoryView,
+    FavoritesView,
+    OverviewView,
+    ProfileManager,
+    SearchView,
+    SnapshotsView,
+  } from "$lib/components/views";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { onMount } from "svelte";
@@ -65,6 +72,8 @@
             <FavoritesView />
           {:else if activeTab === "snapshots"}
             <SnapshotsView />
+          {:else if activeTab === "profiles"}
+            <ProfileManager />
           {:else if currentCategoryTab}
             <CategoryView tab={currentCategoryTab} />
           {/if}

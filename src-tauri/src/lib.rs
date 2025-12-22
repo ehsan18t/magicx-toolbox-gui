@@ -123,6 +123,8 @@ pub fn run() {
             commands::profile::profile_validate,
             commands::profile::profile_apply,
             commands::profile::get_windows_version,
+            commands::profile::get_saved_profiles,
+            commands::profile::delete_saved_profile,
             // Elevation commands
             commands::elevation::apply_registry_as_system,
             commands::elevation::delete_registry_as_system,

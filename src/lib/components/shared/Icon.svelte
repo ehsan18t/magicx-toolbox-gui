@@ -38,14 +38,18 @@
   import MdiDatabase from "~icons/mdi/database";
   import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
   import MdiDatabaseExport from "~icons/mdi/database-export";
+  import MdiDelete from "~icons/mdi/delete";
   import MdiDesktopTowerMonitor from "~icons/mdi/desktop-tower-monitor";
   import MdiDownload from "~icons/mdi/download";
   import MdiEmail from "~icons/mdi/email";
   import MdiEthernet from "~icons/mdi/ethernet";
   import MdiExpansionCard from "~icons/mdi/expansion-card";
   import MdiExport from "~icons/mdi/export";
+  import MdiFileCog from "~icons/mdi/file-cog";
   import MdiFileDocument from "~icons/mdi/file-document";
   import MdiFileDocumentMultiple from "~icons/mdi/file-document-multiple";
+  import MdiFileImport from "~icons/mdi/file-import";
+  import MdiFileMultiple from "~icons/mdi/file-multiple";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
   import MdiFolder from "~icons/mdi/folder";
   import MdiFolderOpen from "~icons/mdi/folder-open";
@@ -72,6 +76,8 @@
   import MdiPalette from "~icons/mdi/palette";
   import MdiPin from "~icons/mdi/pin";
   import MdiPinOutline from "~icons/mdi/pin-outline";
+  import MdiPlay from "~icons/mdi/play";
+  import MdiPlus from "~icons/mdi/plus";
   import MdiPowershell from "~icons/mdi/powershell";
   import MdiRefresh from "~icons/mdi/refresh";
   import MdiRestart from "~icons/mdi/restart";
@@ -259,6 +265,12 @@
 
     // Icon Park Twotone icons
     "icon-park-twotone:new-computer": IconParkTwotoneNewComputer,
+    "mdi:file-import": MdiFileImport,
+    "mdi:file-multiple": MdiFileMultiple,
+    "mdi:file-cog": MdiFileCog,
+    "mdi:play": MdiPlay,
+    "mdi:plus": MdiPlus,
+    "mdi:delete": MdiDelete,
   };
 
   export function getIconComponent(name: string) {

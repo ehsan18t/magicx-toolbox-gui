@@ -302,6 +302,9 @@ pub struct TweakChangePreview {
     pub tweak_name: String,
     /// Category ID
     pub category_id: String,
+    /// Original Tweak ID from profile (if resolved by alias)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_tweak_id: Option<String>,
     /// Current option on target system (None if unknown)
     pub current_option_index: Option<usize>,
     /// Current option label
@@ -318,6 +321,9 @@ pub struct TweakChangePreview {
     pub risk_level: String,
     /// Whether this is already at desired state
     pub already_applied: bool,
+    /// Whether this tweak has commands that will be skipped during profile apply
+    #[serde(default)]
+    pub has_skipped_commands: bool,
     /// Detailed changes that would be made
     pub changes: Vec<ChangeDetail>,
 }

@@ -150,3 +150,16 @@ See source files:
 - `src-tauri/src/services/profile/` - Core logic
 - `src-tauri/src/commands/profile.rs` - Tauri commands
 - `src/lib/components/profile/` - UI components
+
+---
+
+## Future Enhancements (Post-MVP)
+
+| Feature               | Description                                     | Priority |
+| --------------------- | ----------------------------------------------- | -------- |
+| Cloud Sync            | Sync profiles via GitHub Gist / OneDrive        | P2       |
+| Profile Library       | Community-shared profiles                       | P3       |
+| Diff View             | Compare two profiles                            | P2       |
+| Scheduled Apply       | Apply profile on schedule (e.g., "gaming mode") | P3       |
+| Profile Templates     | Pre-built profiles (Gaming, Privacy, Minimal)   | P2       |
+| Windows Restore Point | Automatic restore point before batch apply      | P1       |

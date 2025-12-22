@@ -2,6 +2,8 @@ import { browser } from "$app/environment";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 
 export interface DebugLogEntry {
   id: number;
@@ -191,5 +193,60 @@ export const debugState = {
 
   clear() {
     logs = [];
+  },
+
+  /**
+   * Export all logs to a file using the system save dialog.
+   * Logs are formatted as JSON for easy parsing and analysis.
+   * @returns true if export was successful, false if cancelled or failed
+   */
+  async exportLogs(): Promise<boolean> {
+    if (logs.length === 0) {
+      return false;
+    }
+
+    try {
+      // Generate default filename with timestamp
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Not reactive state, just for filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const defaultPath = `magicx-debug-logs-${timestamp}.json`;
+
+      // Open save dialog
+      const filePath = await save({
+        defaultPath,
+        filters: [
+          { name: "JSON Files", extensions: ["json"] },
+          { name: "Text Files", extensions: ["txt"] },
+        ],
+      });
+
+      if (!filePath) {
+        // User cancelled
+        return false;
+      }
+
+      // Format logs for export
+      const exportData = {
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Not reactive state, just for JSON export
+        exportedAt: new Date().toISOString(),
+        totalLogs: logs.length,
+        logs: logs.map((log) => ({
+          id: log.id,
+          timestamp: log.timestamp.toISOString(),
+          level: log.level,
+          source: log.source,
+          action: log.action,
+          details: log.details,
+          data: log.data,
+        })),
+      };
+
+      // Write to file
+      await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
+      return true;
+    } catch (error) {
+      console.error("Failed to export debug logs:", error);
+      return false;
+    }
   },
 };
