@@ -47,10 +47,15 @@ pub async fn get_saved_profiles(
         let path = entry.path();
 
         if path.extension().and_then(|s| s.to_str()) == Some("mgx") {
-            // Try to read metadata from the archive without fully loading it
-            // For now, simpler to reuse read_profile_archive but maybe handle errors gracefully
-            if let Ok(contents) = crate::services::profile::archive::read_profile_archive(&path) {
-                profiles.push(contents.profile.metadata);
+            // Try to read metadata from the archive
+            match crate::services::profile::archive::read_profile_archive(&path) {
+                Ok(contents) => {
+                    profiles.push(contents.profile.metadata);
+                }
+                Err(e) => {
+                    // Log but continue - don't fail the entire list for one corrupted file
+                    log::warn!("Failed to read profile '{}': {}", path.display(), e);
+                }
             }
         }
     }

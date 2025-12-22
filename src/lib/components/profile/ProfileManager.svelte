@@ -15,22 +15,22 @@
   const isLoading = $derived(profileStore.loadingSavedProfiles);
   const currentProfileDir = $derived(profileStore.currentProfileDir);
   let profileToDelete = $state<string | null>(null);
-
-  // Load profiles on mount (store handles caching/state)
-  onMount(() => {
-    profileStore.loadSavedProfiles();
-  });
+  let deletingProfile = $state<string | null>(null);
 
   async function handleDelete(name: string) {
-    if (!name) return;
-    try {
-      await profileStore.deleteProfile(name);
-      profileToDelete = null;
+    if (!name || deletingProfile) return;
+    deletingProfile = name;
+
+    const success = await profileStore.deleteProfile(name);
+    profileToDelete = null;
+
+    if (success) {
       toastStore.show("success", `Profile "${name}" deleted`);
-    } catch (e) {
-      console.error("Failed to delete profile:", e);
-      toastStore.show("error", "Failed to delete profile");
+    } else {
+      toastStore.show("error", profileStore.deleteError ?? "Failed to delete profile");
     }
+
+    deletingProfile = null;
   }
 
   async function handleApplySaved(name: string) {
@@ -103,6 +103,7 @@
     profileStore.loadSavedProfiles();
 
     // Set up native drag-drop listener
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
 
     getCurrentWebview()
@@ -121,10 +122,16 @@
         }
       })
       .then((fn) => {
-        unlisten = fn;
+        // If cleanup was called before promise resolved, immediately clean up
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   });
@@ -233,8 +240,18 @@
                 <span>{new Date(profile.created_at).toLocaleDateString()}</span>
               </div>
               <div class="flex gap-1">
-                <Button size="sm" variant="secondary" class="h-8 px-2" onclick={() => (profileToDelete = profile.name)}>
-                  <Icon icon="mdi:delete" width="16" />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  class="h-8 px-2"
+                  onclick={() => (profileToDelete = profile.name)}
+                  disabled={deletingProfile === profile.name}
+                >
+                  {#if deletingProfile === profile.name}
+                    <Icon icon="mdi:loading" width="16" class="animate-spin" />
+                  {:else}
+                    <Icon icon="mdi:delete" width="16" />
+                  {/if}
                 </Button>
                 <Button size="sm" variant="primary" class="h-8 px-3" onclick={() => handleApplySaved(profile.name)}>
                   <Icon icon="mdi:play" width="16" class="mr-1.5" />

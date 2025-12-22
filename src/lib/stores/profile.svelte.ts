@@ -21,6 +21,8 @@ let importError = $state<string | null>(null);
 let savedProfiles = $state<profileApi.ProfileMetadata[]>([]);
 let loadingSavedProfiles = $state(false);
 let savedProfilesError = $state<string | null>(null);
+let isDeleting = $state(false);
+let deleteError = $state<string | null>(null);
 
 // Persistent store for profile directory
 const currentProfileDirStore = new PersistentStore<string | null>("magicx_profile_dir", null);
@@ -68,6 +70,12 @@ export const profileStore = {
   get savedProfilesError() {
     return savedProfilesError;
   },
+  get isDeleting() {
+    return isDeleting;
+  },
+  get deleteError() {
+    return deleteError;
+  },
   get currentProfileDir() {
     return currentProfileDirStore.value;
   },
@@ -98,10 +106,6 @@ export const profileStore = {
   get errorCount() {
     return errorCount;
   },
-
-  /**
-   * Set custom profile directory and reload profiles.
-   */
 
   /**
    * Set custom profile directory and reload profiles.
@@ -137,10 +141,14 @@ export const profileStore = {
 
       if (!filePath) {
         // User cancelled
+        isExporting = false;
         return false;
       }
 
       await profileApi.exportProfile(filePath, name, tweakIds, options);
+
+      // Reload profiles after successful export
+      this.loadSavedProfiles();
       return true;
     } catch (error) {
       console.error("Failed to export profile:", error);
@@ -148,9 +156,6 @@ export const profileStore = {
       return false;
     } finally {
       isExporting = false;
-      isExporting = false;
-      // Reload profiles after export
-      this.loadSavedProfiles();
     }
   },
 
@@ -174,17 +179,21 @@ export const profileStore = {
    * Delete a saved profile.
    */
   async deleteProfile(name: string): Promise<boolean> {
+    if (isDeleting) return false;
+
+    isDeleting = true;
+    deleteError = null;
+
     try {
       await profileApi.deleteSavedProfile(name, currentProfileDirStore.value);
       await this.loadSavedProfiles();
       return true;
     } catch (error) {
       console.error("Failed to delete profile:", error);
-      // throw error to let UI handle it or set a store error?
-      // Since it's a specific action, returning false/throwing is often better for immediate UI feedback.
-      // But let's set a shared error for simplicity if we want, or just rethrow.
-      // Let's rely on caller to show toast, but we handle the reload.
-      throw error;
+      deleteError = error instanceof Error ? error.message : String(error);
+      return false;
+    } finally {
+      isDeleting = false;
     }
   },
 
@@ -322,6 +331,7 @@ export type {
   ChangeType,
   ConfigurationProfile,
   ProfileApplyResult,
+  ProfileMetadata,
   ProfileValidation,
   TweakChangePreview,
   ValidationError,

@@ -321,6 +321,9 @@ pub struct TweakChangePreview {
     pub risk_level: String,
     /// Whether this is already at desired state
     pub already_applied: bool,
+    /// Whether this tweak has commands that will be skipped during profile apply
+    #[serde(default)]
+    pub has_skipped_commands: bool,
     /// Detailed changes that would be made
     pub changes: Vec<ChangeDetail>,
 }

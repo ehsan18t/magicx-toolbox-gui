@@ -118,8 +118,28 @@ pub fn apply_profile(
             }
         }
 
-        // Apply the tweak
-        let option = &tweak.options[preview.target_option_index];
+        // Apply the tweak - with bounds check
+        let option = match tweak.options.get(preview.target_option_index) {
+            Some(opt) => opt,
+            None => {
+                log::error!(
+                    "Option index {} out of bounds for tweak '{}' (has {} options)",
+                    preview.target_option_index,
+                    tweak.id,
+                    tweak.options.len()
+                );
+                failures.push(ApplyFailure {
+                    tweak_id: tweak.id.clone(),
+                    tweak_name: tweak.name.clone(),
+                    error: format!(
+                        "Option index {} is out of bounds",
+                        preview.target_option_index
+                    ),
+                    was_rolled_back: false,
+                });
+                continue;
+            }
+        };
         match apply_tweak_changes(tweak, option, windows_version) {
             Ok(()) => {
                 log::info!(

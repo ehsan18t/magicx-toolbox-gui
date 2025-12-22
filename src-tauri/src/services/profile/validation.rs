@@ -220,6 +220,10 @@ fn validate_selection(
     // Build change preview
     let changes = build_change_details(target_option, windows_version);
 
+    // Check if this tweak has commands that will be skipped during profile apply
+    let has_skipped_commands =
+        !target_option.pre_commands.is_empty() || !target_option.post_commands.is_empty();
+
     let change_preview = TweakChangePreview {
         tweak_id: tweak.id.clone(),
         original_tweak_id: if tweak.id != selection.tweak_id {
@@ -237,6 +241,7 @@ fn validate_selection(
         skip_reason: None,
         risk_level: tweak.risk_level.as_str().to_string(),
         already_applied,
+        has_skipped_commands,
         changes,
     };
 

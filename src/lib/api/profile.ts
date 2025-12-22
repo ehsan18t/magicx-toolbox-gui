@@ -139,6 +139,8 @@ export interface TweakChangePreview {
   skip_reason?: string;
   risk_level: string;
   already_applied: boolean;
+  /** Whether this tweak has commands that will be skipped during profile apply */
+  has_skipped_commands: boolean;
   changes: ChangeDetail[];
 }
 
