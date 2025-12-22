@@ -207,6 +207,7 @@ export const debugState = {
 
     try {
       // Generate default filename with timestamp
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Not reactive state, just for filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const defaultPath = `magicx-debug-logs-${timestamp}.json`;
 
@@ -226,6 +227,7 @@ export const debugState = {
 
       // Format logs for export
       const exportData = {
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Not reactive state, just for JSON export
         exportedAt: new Date().toISOString(),
         totalLogs: logs.length,
         logs: logs.map((log) => ({

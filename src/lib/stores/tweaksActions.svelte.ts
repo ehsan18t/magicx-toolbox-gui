@@ -239,6 +239,7 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
 
   // Build operations array for batch API
   const operations: [string, number][] = [];
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local variable, not reactive state
   const tweakMap = new Map<string, { change: PendingChange; tweak: TweakWithStatus }>();
 
   for (const [tweakId, change] of pending) {
@@ -262,6 +263,7 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
     const successCount = totalAttempted - failedCount;
 
     // Clear successful pending changes
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local variable, not reactive state
     const failedIds = new Set(result.failures?.map(([id]) => id) ?? []);
     for (const tweakId of tweakMap.keys()) {
       if (!failedIds.has(tweakId)) {
@@ -317,6 +319,7 @@ export async function batchRevertTweaks(tweakIds: string[]): Promise<{ success: 
     const successCount = totalAttempted - failedCount;
 
     // Update status for successful reverts
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local variable, not reactive state
     const failedIds = new Set(result.failures?.map(([id]) => id) ?? []);
     for (const tweakId of tweakIds) {
       if (!failedIds.has(tweakId)) {
