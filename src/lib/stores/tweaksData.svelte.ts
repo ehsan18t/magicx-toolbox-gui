@@ -194,8 +194,14 @@ export const loadingStateStore = {
   get systemInfoLoading() {
     return systemInfoLoading;
   },
+  get categoriesLoading() {
+    return categoriesLoading;
+  },
   get tweaksLoading() {
     return tweaksLoading;
+  },
+  get initialLoadComplete() {
+    return initialLoadComplete;
   },
 };
 
