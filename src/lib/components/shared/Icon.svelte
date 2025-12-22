@@ -8,6 +8,8 @@
   import MdiAlert from "~icons/mdi/alert";
   import MdiAlertCircle from "~icons/mdi/alert-circle";
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
+  import MdiArrowLeft from "~icons/mdi/arrow-left";
+  import MdiArrowRight from "~icons/mdi/arrow-right";
   import MdiArrowRightCircle from "~icons/mdi/arrow-right-circle";
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
   import MdiBackupRestore from "~icons/mdi/backup-restore";
@@ -33,6 +35,7 @@
   import MdiCogs from "~icons/mdi/cogs";
   import MdiConsole from "~icons/mdi/console";
   import MdiCpu64Bit from "~icons/mdi/cpu-64-bit";
+  import MdiDatabase from "~icons/mdi/database";
   import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
   import MdiDatabaseExport from "~icons/mdi/database-export";
   import MdiDesktopTowerMonitor from "~icons/mdi/desktop-tower-monitor";
@@ -41,9 +44,11 @@
   import MdiEthernet from "~icons/mdi/ethernet";
   import MdiExpansionCard from "~icons/mdi/expansion-card";
   import MdiExport from "~icons/mdi/export";
+  import MdiFileDocument from "~icons/mdi/file-document";
   import MdiFileDocumentMultiple from "~icons/mdi/file-document-multiple";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
   import MdiFolder from "~icons/mdi/folder";
+  import MdiFolderOpen from "~icons/mdi/folder-open";
   import MdiGamepadVariant from "~icons/mdi/gamepad-variant";
   import MdiGithub from "~icons/mdi/github";
   import MdiHarddisk from "~icons/mdi/harddisk";
@@ -137,6 +142,7 @@
     "mdi:close": MdiClose,
     "mdi:cog-outline": MdiCogOutline,
     "mdi:console": MdiConsole,
+    "mdi:database": MdiDatabase,
     "mdi:shield-account-outline": MdiShieldAccountOutline,
     "mdi:shield-lock": MdiShieldLock,
     "mdi:shield-key": MdiShieldKey,
@@ -173,6 +179,8 @@
     "mdi:memory": MdiMemory,
     "mdi:server": MdiServer,
     "mdi:folder": MdiFolder,
+    "mdi:folder-open": MdiFolderOpen,
+    "mdi:file-document": MdiFileDocument,
     "mdi:check-all": MdiCheckAll,
     "mdi:undo-variant": MdiUndoVariant,
     "mdi:file-search-outline": MdiFileSearchOutline,
@@ -187,6 +195,8 @@
     "mdi:alert": MdiAlert,
     "mdi:alert-octagon": MdiAlertOctagon,
     "mdi:arrow-up-circle": MdiArrowUpCircle,
+    "mdi:arrow-right": MdiArrowRight,
+    "mdi:arrow-left": MdiArrowLeft,
     "mdi:calendar": MdiCalendar,
     "mdi:calendar-clock": MdiCalendarClock,
     "mdi:bug": MdiBug,
@@ -264,7 +274,7 @@
     class?: string;
   }
 
-  const { icon, width = 24, height, class: className = "" }: Props = $props();
+  let { icon, width = 24, height, class: className = "" }: Props = $props();
 
   const IconComponent = $derived(iconRegistry[icon]);
   const computedHeight = $derived(height ?? width);

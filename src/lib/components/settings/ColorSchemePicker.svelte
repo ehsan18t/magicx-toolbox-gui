@@ -8,7 +8,7 @@
     size?: "sm" | "md";
   }
 
-  const { size = "sm" }: Props = $props();
+  let { size = "sm" }: Props = $props();
 
   const currentScheme = $derived(colorSchemeStore.current);
 

@@ -22,6 +22,8 @@ export interface TabDefinition {
 
 // === State ===
 let activeTab = $state<TabId>("overview");
+/** Signal to focus the search input - incremented each time focus is requested */
+let focusSearchSignal = $state(0);
 
 // Overview tab definition (static)
 const overviewTab: TabDefinition = {
@@ -197,5 +199,17 @@ export const navigationStore = {
   /** Navigate to a specific category */
   navigateToCategory(categoryId: string) {
     activeTab = categoryId;
+  },
+
+  /** Signal to focus search input (watched by SearchView) */
+  get focusSearchSignal() {
+    return focusSearchSignal;
+  },
+
+  /** Navigate to search tab and focus the search input */
+  focusSearch() {
+    activeTab = "search";
+    // Increment signal to trigger focus in SearchView
+    focusSearchSignal++;
   },
 };

@@ -50,6 +50,9 @@ pub enum Error {
 
     #[error("Operation timed out: {0}")]
     Timeout(String),
+
+    #[error("Profile error: {0}")]
+    ProfileError(String),
 }
 
 impl Serialize for Error {

@@ -36,7 +36,7 @@
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "lint:rust:fix": "cd src-tauri && cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged",
     "type-check": "tsc --noEmit",
-    "validate": "bun run format:check && bun run lint && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust",
+    "validate": "bun run format:check && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust && bun run lint",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -46,7 +46,6 @@
     "@tauri-apps/plugin-fs": "~2.4.4",
     "@tauri-apps/plugin-opener": "^2.5.2",
     "@tauri-apps/plugin-process": "~2.3.1",
-    "@tauri-apps/plugin-shell": "~2.3.3",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.4.0",
     "tailwind-variants": "^3.2.2"

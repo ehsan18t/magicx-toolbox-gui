@@ -8,7 +8,7 @@
     currentWindowsVersion: number | null;
   }
 
-  const { change, currentWindowsVersion }: Props = $props();
+  let { change, currentWindowsVersion }: Props = $props();
 
   function formatRegistryPath(c: RegistryChange): string {
     return `${c.hive}\\${c.key}`;

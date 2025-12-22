@@ -31,7 +31,6 @@ regex = "1"  # For validating task_name_pattern in YAML
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-log = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-prevent-default = "4"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -58,6 +57,16 @@ fs4 = "0.13"
 
 # Parallel iteration for performance
 rayon = "1"
+
+# Profile system - ZIP archives
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Profile system - checksums and hashing
+sha2 = "0.10"
+hex = "0.4"
+
+# Profile system - machine identification
+hostname = "0.4"
 
 
 

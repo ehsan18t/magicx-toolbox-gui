@@ -8,7 +8,7 @@
     fade?: boolean; // linear mask
   }
 
-  const { children, speed = 30, pauseOnHover = true, fade = true }: Props = $props();
+  let { children, speed = 30, pauseOnHover = true, fade = true }: Props = $props();
 
   let container: HTMLDivElement | undefined = $state();
   let content: HTMLDivElement | undefined = $state();

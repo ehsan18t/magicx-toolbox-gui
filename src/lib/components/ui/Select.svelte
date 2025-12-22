@@ -22,8 +22,14 @@
     onchange?: (value: string | number) => void;
   }
 
-  // eslint-disable-next-line prefer-const -- value must stay mutable for binding
   let { value = $bindable(), ...rest }: Props = $props();
+
+  const instanceId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `select-${crypto.randomUUID()}`
+      : `select-${Math.random().toString(36).slice(2)}`;
+  const listboxId = `${instanceId}-listbox`;
+  const optionId = (opt: Option) => `${instanceId}-option-${String(opt.value)}`;
 
   const {
     options,
@@ -45,7 +51,7 @@
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
   const isPlaceholder = $derived(!selectedOption);
   const highlightedOptionId = $derived(
-    highlightedIndex >= 0 ? `select-option-${options[highlightedIndex]?.value}` : undefined,
+    highlightedIndex >= 0 && options[highlightedIndex] ? optionId(options[highlightedIndex]) : undefined,
   );
 
   function updatePosition() {
@@ -147,6 +153,15 @@
     }
   }
 
+  // Keep the highlighted option in view while navigating.
+  $effect(() => {
+    if (!isOpen || !menuEl || highlightedIndex < 0) return;
+    const opt = options[highlightedIndex];
+    if (!opt) return;
+    const el = menuEl.querySelector<HTMLElement>(`#${CSS.escape(optionId(opt))}`);
+    el?.scrollIntoView({ block: "nearest" });
+  });
+
   // Set up scroll listeners on scrollable ancestors
   $effect(() => {
     if (!triggerEl) return;
@@ -189,7 +204,7 @@
     disabled={disabled || loading}
     aria-haspopup="listbox"
     aria-expanded={isOpen}
-    aria-controls={isOpen ? "select-listbox" : undefined}
+    aria-controls={listboxId}
     aria-activedescendant={highlightedOptionId}
     class={cn(
       "flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border bg-surface px-3 text-sm transition-all duration-150",
@@ -222,19 +237,21 @@
 {#if isOpen}
   <div
     bind:this={menuEl}
-    id="select-listbox"
+    id={listboxId}
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
     class="fixed z-9999 max-h-60 w-fit space-y-1 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
-    style="top: {menuPosition.top}px; left: {menuPosition.left}px; "
+    style="top: {menuPosition.top}px; left: {menuPosition.left}px; width: {menuPosition.width}px;"
   >
     {#each options as opt, i (opt.value)}
       <button
         type="button"
         role="option"
-        id="select-option-{opt.value}"
+        id={optionId(opt)}
         aria-selected={opt.value === value}
+        aria-disabled={opt.disabled}
         disabled={opt.disabled}
+        tabindex={-1}
         onclick={() => selectOption(opt)}
         onmouseenter={() => (highlightedIndex = i)}
         class={cn(

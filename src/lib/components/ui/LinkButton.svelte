@@ -21,7 +21,7 @@
     [key: string]: unknown;
   }
 
-  const { size = "md", icon, class: className = "", children, ...rest }: Props = $props();
+  let { size = "md", icon, class: className = "", children, ...rest }: Props = $props();
 </script>
 
 <button type="button" class={linkButton({ size, class: className })} {...rest}>

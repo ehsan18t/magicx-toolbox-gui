@@ -11,7 +11,7 @@
     children: Snippet;
   }
 
-  const { variant = "default", hover = false, padding = "md", class: className = "", children }: Props = $props();
+  let { variant = "default", hover = false, padding = "md", class: className = "", children }: Props = $props();
 
   const baseClasses = "rounded-lg border transition-all duration-200";
 

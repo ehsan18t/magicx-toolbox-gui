@@ -145,9 +145,9 @@
   }
 </script>
 
-<Modal open={isOpen && !!tweak} onclose={closeTweakDetailsModal} size="lg">
+<Modal open={isOpen && !!tweak} onclose={closeTweakDetailsModal} size="lg" labelledBy="tweak-details-title">
   {#if tweak}
-    <ModalHeader>
+    <ModalHeader id="tweak-details-title">
       <div class="min-w-0">
         <h2 class="m-0 truncate text-lg font-bold text-foreground">
           {tweak.definition.name}

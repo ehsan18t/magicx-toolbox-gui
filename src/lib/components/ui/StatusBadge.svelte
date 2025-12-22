@@ -16,7 +16,7 @@
     class?: string;
   }
 
-  const { variant, icon, label, tooltip: tooltipText, class: className = "" }: Props = $props();
+  let { variant, icon, label, tooltip: tooltipText, class: className = "" }: Props = $props();
 </script>
 
 <div class={statusBadge({ variant, class: className })} use:tooltip={tooltipText}>

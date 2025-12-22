@@ -26,7 +26,7 @@
     children?: Snippet;
   }
 
-  const { icon, title, description, actionText, onaction, showIconCircle = false, children }: Props = $props();
+  let { icon, title, description, actionText, onaction, showIconCircle = false, children }: Props = $props();
 </script>
 
 <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">

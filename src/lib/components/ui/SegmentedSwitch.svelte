@@ -31,7 +31,7 @@
     onchange?: (value: number) => void;
   }
 
-  const {
+  let {
     value,
     options,
     pending = false,

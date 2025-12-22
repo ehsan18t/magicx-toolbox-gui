@@ -27,7 +27,7 @@
     descriptionSlot?: Snippet;
   }
 
-  const { tweak, titleSlot, descriptionSlot }: Props = $props();
+  let { tweak, titleSlot, descriptionSlot }: Props = $props();
 
   const isLoading = $derived(loadingStore.isLoading(tweak.definition.id));
   const tweakError = $derived(errorStore.getError(tweak.definition.id));

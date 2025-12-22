@@ -11,7 +11,7 @@
     onclick: () => void;
   }
 
-  const { title, icon, variant = "default", onclick }: Props = $props();
+  let { title, icon, variant = "default", onclick }: Props = $props();
 
   const variantClasses: Record<Variant, string> = {
     default: "hover:bg-foreground/8 active:bg-foreground/12 focus-visible:bg-foreground/12",
@@ -33,6 +33,7 @@
 <button
   class="group relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border-0 bg-transparent transition-colors duration-150 outline-none active:scale-90 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 {btnClass}"
   type="button"
+  aria-label={title}
   use:tooltip={title}
   {onclick}
 >

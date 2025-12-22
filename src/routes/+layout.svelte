@@ -2,9 +2,17 @@
   import { DebugPanel } from "$lib/components/debug";
   import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
   import { TitleBar } from "$lib/components/layout";
-  import { AboutModal, SettingsModal, TweakDetailsModal, UpdateModal } from "$lib/components/modals";
+  import {
+    AboutModal,
+    ProfileExportModal,
+    ProfileImportModal,
+    SettingsModal,
+    TweakDetailsModal,
+    UpdateModal,
+  } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
+  import { navigationStore } from "$lib/stores/navigation.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { initializeQuick } from "$lib/stores/tweaksData.svelte";
@@ -13,9 +21,18 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
-  const { children } = $props();
+  let { children } = $props();
 
   let initError = $state<string | null>(null);
+
+  // Global keyboard shortcuts
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    // Ctrl+K or Cmd+K to focus search
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      e.preventDefault();
+      navigationStore.focusSearch();
+    }
+  }
 
   onMount(async () => {
     // Show the window now that the UI is ready
@@ -48,6 +65,20 @@
 
     if (initError) return;
 
+    // Validate and clean up stale backup snapshots in background
+    invoke("validate_snapshots")
+      .then((removed) => {
+        if (import.meta.env.DEV && removed && typeof removed === "number" && removed > 0) {
+          console.log(`Cleaned up ${removed} stale backup snapshot(s)`);
+        }
+      })
+      .catch((e) => {
+        // Non-critical error, just log it in dev mode
+        if (import.meta.env.DEV) {
+          console.warn("Failed to validate snapshots:", e);
+        }
+      });
+
     // Perform silent background update check if enabled
     const settings = settingsStore.settings;
     if (settings.autoCheckUpdates) {
@@ -69,6 +100,8 @@
     }
   });
 </script>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 <TitleBar />
 <!-- TitleBar height=h-10 == 2.5rem -->
@@ -102,6 +135,8 @@
 <SettingsModal />
 <UpdateModal />
 <TweakDetailsModal />
+<ProfileExportModal />
+<ProfileImportModal />
 
 <ApplyingOverlay />
 <ToastContainer />

@@ -18,7 +18,7 @@
     tab: TabDefinition;
   }
 
-  const { tab }: Props = $props();
+  let { tab }: Props = $props();
 
   let searchQuery = $state("");
   let showApplyAllDialog = $state(false);

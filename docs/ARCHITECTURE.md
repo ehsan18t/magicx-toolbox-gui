@@ -144,13 +144,21 @@ src/lib/components/
 - **Stale snapshot cleanup**: On app startup, snapshots are validated; stale ones are removed
 - **Failure handling**: If apply/revert fails, snapshots are cleaned up to prevent orphaned state
 
-#### 4. Permissions Model
+#### 4. Configuration Profile System
+- **Profile export**: Export applied tweaks as shareable `.mgx` archives
+- **Profile import**: Import and validate profiles before applying
+- **Validation**: Pre-apply validation with warnings/errors and change preview
+- **System state capture**: Optional full system state snapshot for debugging
+- **Rollback support**: Automatic rollback on partial apply failure
+- See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
+
+#### 5. Permissions Model
 - **Admin detection**: App detects if running as administrator
 - **Per-tweak admin requirement**: Each tweak specifies `requires_admin: true/false`
 - **HKCU vs HKLM**: HKCU registry keys don't require admin; HKLM keys typically do
 - **Service operations**: Always require administrator privileges
 
-#### 5. Risk Levels
+#### 6. Risk Levels
 ```yaml
 risk_levels:
   low: Safe, no system impact
@@ -508,13 +516,20 @@ When applying an option, changes are executed in this order:
 - `validate_all_snapshots()` - Startup cleanup of stale snapshots
 - Storage: `snapshots/` directory next to executable (portable app design)
 
-### 6. `trusted_installer` - SYSTEM Elevation & PowerShell
+### 6. `profile` - Configuration Profile Export/Import
+- `export_profile()` - Export applied tweaks to .mgx archive
+- `import_profile()` - Read and validate profile from archive
+- `apply_profile()` - Apply validated profile to system
+- `validate_profile()` - Validate profile against current system
+- See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
+
+### 7. `trusted_installer` - SYSTEM Elevation & PowerShell
 - Execute commands as SYSTEM via winlogon.exe token
 - Registry writes as SYSTEM for protected keys
 - PowerShell execution: `run_powershell()`, `run_powershell_as_system()`
 - Schtasks execution: `run_schtasks_as_system()`
 
-### 7. `system_info_service` - System Detection
+### 8. `system_info_service` - System Detection
 - Windows version detection (10 vs 11)
 - Build number detection
 - Admin privilege check
@@ -539,6 +554,14 @@ When applying an option, changes are executed in this order:
 | `has_snapshot(id)`      | Check if snapshot exists for tweak |
 | `cleanup_old_backups()` | Remove orphaned backup files       |
 | `validate_snapshots()`  | Validate and clean stale snapshots |
+
+### Profile Operations
+| Command              | Description                              |
+| -------------------- | ---------------------------------------- |
+| `profile_export()`   | Export applied tweaks to .mgx archive    |
+| `profile_import()`   | Import and validate profile from archive |
+| `profile_validate()` | Validate profile against current system  |
+| `profile_apply()`    | Apply validated profile to system        |
 
 ### System Operations
 | Command               | Description                                   |

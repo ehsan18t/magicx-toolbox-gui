@@ -17,10 +17,11 @@
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { onDestroy } from "svelte";
+  import { onDestroy, tick } from "svelte";
 
   // Initialize from store to persist across page changes
   let searchInput = $state(searchStore.query);
+  let searchInputRef = $state<HTMLInputElement | null>(null);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let scrollTimer: ReturnType<typeof setTimeout> | null = null;
   let scrollRaf: number | null = null;
@@ -28,6 +29,15 @@
   // Dialog states
   let showApplyAllDialog = $state(false);
   let showRevertAllDialog = $state(false);
+
+  // Watch for focus signal from navigation store (triggered by Ctrl+K)
+  $effect(() => {
+    const signal = navigationStore.focusSearchSignal;
+    if (signal > 0 && searchInputRef) {
+      // Use tick to ensure DOM is ready after navigation
+      tick().then(() => searchInputRef?.focus());
+    }
+  });
   let isBatchProcessing = $state(false);
 
   // Search results from store
@@ -247,8 +257,9 @@
         <Icon icon="mdi:magnify" width="20" class="shrink-0 text-foreground-muted" />
       {/if}
       <input
+        bind:this={searchInputRef}
         type="text"
-        placeholder="Search tweaks..."
+        placeholder="Search tweaks... (Ctrl+K)"
         value={searchInput}
         oninput={(e) => handleSearchInput(e.currentTarget.value)}
         class="flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-subtle"
