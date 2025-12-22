@@ -2,9 +2,10 @@
 //!
 //! Handles configuration profile export, import, validation, and application.
 
-mod archive;
+pub mod archive;
 mod export;
 mod import;
+pub mod migration;
 mod validation;
 
 use sha2::{Digest, Sha256};
@@ -14,6 +15,7 @@ use crate::models::TweakOption;
 // Re-export main functions
 pub use export::export_profile;
 pub use import::{apply_profile, import_profile};
+pub use migration::migrate_profile;
 pub use validation::validate_profile;
 
 /// Compute a hash of option content for schema change detection.

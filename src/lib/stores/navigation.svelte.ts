@@ -7,8 +7,8 @@
 import type { CategoryDefinition } from "$lib/types";
 import { categoriesStore } from "./tweaksData.svelte";
 
-/** Tab types - "overview", "search", "favorites", "snapshots", or category ID */
-export type TabId = "overview" | "search" | "favorites" | "snapshots" | string;
+/** Tab types - "overview", "search", "favorites", "snapshots", "profiles", or category ID */
+export type TabId = "overview" | "search" | "favorites" | "snapshots" | "profiles" | string;
 
 /** Tab definition for navigation */
 export interface TabDefinition {
@@ -56,8 +56,17 @@ const favoritesTab: TabDefinition = {
 const snapshotsTab: TabDefinition = {
   id: "snapshots",
   name: "Snapshots",
-  icon: "mdi:backup-restore",
+  icon: "mdi:history", // Changed from backup-restore to distinguish from Profiles
   description: "View and manage tweaks with saved snapshots",
+  isPermanent: true,
+};
+
+// Profiles tab definition (static)
+const profilesTab: TabDefinition = {
+  id: "profiles",
+  name: "Profiles",
+  icon: "mdi:file-multiple",
+  description: "Manage saved configuration profiles",
   isPermanent: true,
 };
 
@@ -71,7 +80,7 @@ const allTabs = $derived.by((): TabDefinition[] => {
     isPermanent: false,
   }));
 
-  return [overviewTab, searchTab, favoritesTab, snapshotsTab, ...categoryTabs];
+  return [overviewTab, searchTab, favoritesTab, snapshotsTab, profilesTab, ...categoryTabs];
 });
 
 // Derived: Fixed/permanent tabs (Overview, Search)

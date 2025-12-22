@@ -16,6 +16,12 @@ let exportError = $state<string | null>(null);
 let isImporting = $state(false);
 let importError = $state<string | null>(null);
 
+// === Saved Profiles State ===
+let savedProfiles = $state<profileApi.ProfileMetadata[]>([]);
+let loadingSavedProfiles = $state(false);
+let savedProfilesError = $state<string | null>(null);
+let currentProfileDir = $state<string | null>(null);
+
 // === Apply State ===
 let isApplying = $state(false);
 let applyProgress = $state<{ current: number; total: number } | null>(null);
@@ -50,6 +56,18 @@ export const profileStore = {
   get importError() {
     return importError;
   },
+  get savedProfiles() {
+    return savedProfiles;
+  },
+  get loadingSavedProfiles() {
+    return loadingSavedProfiles;
+  },
+  get savedProfilesError() {
+    return savedProfilesError;
+  },
+  get currentProfileDir() {
+    return currentProfileDir;
+  },
   get isApplying() {
     return isApplying;
   },
@@ -76,6 +94,14 @@ export const profileStore = {
   },
   get errorCount() {
     return errorCount;
+  },
+
+  /**
+   * Set custom profile directory and reload profiles.
+   */
+  setProfileDir(path: string | null) {
+    currentProfileDir = path;
+    this.loadSavedProfiles();
   },
 
   /**
@@ -115,6 +141,43 @@ export const profileStore = {
       return false;
     } finally {
       isExporting = false;
+      isExporting = false;
+      // Reload profiles after export
+      this.loadSavedProfiles();
+    }
+  },
+
+  /**
+   * Load the list of saved profiles.
+   */
+  async loadSavedProfiles() {
+    loadingSavedProfiles = true;
+    savedProfilesError = null;
+    try {
+      savedProfiles = await profileApi.getSavedProfiles(currentProfileDir);
+    } catch (error) {
+      console.error("Failed to load saved profiles:", error);
+      savedProfilesError = error instanceof Error ? error.message : String(error);
+    } finally {
+      loadingSavedProfiles = false;
+    }
+  },
+
+  /**
+   * Delete a saved profile.
+   */
+  async deleteProfile(name: string): Promise<boolean> {
+    try {
+      await profileApi.deleteSavedProfile(name, currentProfileDir);
+      await this.loadSavedProfiles();
+      return true;
+    } catch (error) {
+      console.error("Failed to delete profile:", error);
+      // throw error to let UI handle it or set a store error?
+      // Since it's a specific action, returning false/throwing is often better for immediate UI feedback.
+      // But let's set a shared error for simplicity if we want, or just rethrow.
+      // Let's rely on caller to show toast, but we handle the reload.
+      throw error;
     }
   },
 

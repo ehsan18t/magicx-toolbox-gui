@@ -58,11 +58,16 @@
   // Reset state when modal opens
   $effect(() => {
     if (isOpen) {
-      step = "select";
+      if (profileStore.currentProfile) {
+        step = "review";
+      } else {
+        step = "select";
+        profileStore.clear();
+      }
+      // Always reset options
       skipAlreadyApplied = true;
       createRestorePoint = true;
       skipTweakIds.clear();
-      profileStore.clear();
     }
   });
 

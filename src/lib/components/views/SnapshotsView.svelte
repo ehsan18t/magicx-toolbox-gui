@@ -4,6 +4,7 @@
   import { Icon } from "$lib/components/shared";
   import { TweakCard } from "$lib/components/tweaks";
   import { ActionButton, EmptyState, SkeletonCard } from "$lib/components/ui";
+  import { modalStore } from "$lib/stores/modal.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import {
     applyPendingChanges,
@@ -99,8 +100,8 @@
         <Icon icon="mdi:backup-restore" width="28" />
       </div>
       <div>
-        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Snapshots</h1>
-        <p class="mt-1 mb-0 text-sm text-foreground-muted">Tweaks with saved original state that can be restored</p>
+        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Applied Tweaks</h1>
+        <p class="mt-1 mb-0 text-sm text-foreground-muted">Manage applied tweaks and restore checkpoints</p>
       </div>
     </div>
 
@@ -143,6 +144,26 @@
           <Icon icon="mdi:close" width="16" />
         </button>
       {/if}
+    </div>
+
+    <!-- Export/Import Actions -->
+    <div class="mr-1 flex items-center gap-2 border-r border-border pr-3">
+      <ActionButton
+        intent="default"
+        icon="mdi:export"
+        onclick={() => modalStore.open("profileExport")}
+        tooltip="Export current configuration to a file"
+      >
+        Export
+      </ActionButton>
+      <ActionButton
+        intent="default"
+        icon="mdi:import"
+        onclick={() => modalStore.open("profileImport")}
+        tooltip="Import configuration from a file"
+      >
+        Import
+      </ActionButton>
     </div>
 
     <div class="flex gap-2.5">

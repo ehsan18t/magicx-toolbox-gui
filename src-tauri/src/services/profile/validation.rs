@@ -113,16 +113,32 @@ fn validate_selection(
     let tweak = match available_tweaks.iter().find(|t| t.id == selection.tweak_id) {
         Some(t) => t,
         None => {
-            return SelectionResult::Invalid {
-                error: ValidationError {
+            // Try to find by alias
+            if let Some(t) = available_tweaks
+                .iter()
+                .find(|t| t.aliases.contains(&selection.tweak_id))
+            {
+                selection_warnings.push(ValidationWarning {
                     tweak_id: selection.tweak_id.clone(),
-                    code: ErrorCode::TweakNotFound,
+                    code: WarningCode::TweakResolvedByAlias,
                     message: format!(
-                        "Tweak '{}' not found in current app version",
-                        selection.tweak_id
+                        "Tweak '{}' was found via alias '{}'",
+                        selection.tweak_id, t.id
                     ),
-                },
-            };
+                });
+                t
+            } else {
+                return SelectionResult::Invalid {
+                    error: ValidationError {
+                        tweak_id: selection.tweak_id.clone(),
+                        code: ErrorCode::TweakNotFound,
+                        message: format!(
+                            "Tweak '{}' not found in current app version",
+                            selection.tweak_id
+                        ),
+                    },
+                };
+            }
         }
     };
 
@@ -206,6 +222,11 @@ fn validate_selection(
 
     let change_preview = TweakChangePreview {
         tweak_id: tweak.id.clone(),
+        original_tweak_id: if tweak.id != selection.tweak_id {
+            Some(selection.tweak_id.clone())
+        } else {
+            None
+        },
         tweak_name: tweak.name.clone(),
         category_id: tweak.category_id.clone(),
         current_option_index,

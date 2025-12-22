@@ -339,6 +339,9 @@ pub struct TweakDefinitionRaw {
     pub description: String,
     #[serde(default)]
     pub info: Option<String>,
+    /// Previous IDs this tweak was known by (for migration)
+    #[serde(default)]
+    pub aliases: Vec<String>,
     pub risk_level: RiskLevel,
     #[serde(default)]
     pub requires_admin: bool,
@@ -366,6 +369,9 @@ pub struct TweakDefinition {
     pub description: String,
     #[serde(default)]
     pub info: Option<String>,
+    /// Previous IDs this tweak was known by (for migration)
+    #[serde(default)]
+    pub aliases: Vec<String>,
     pub risk_level: RiskLevel,
     #[serde(default)]
     pub requires_admin: bool,
@@ -407,6 +413,7 @@ impl TweakDefinition {
             name: raw.name,
             description: raw.description,
             info: raw.info,
+            aliases: raw.aliases,
             risk_level: raw.risk_level,
             requires_admin,
             requires_system,
@@ -592,6 +599,7 @@ mod tests {
             name: "Test Tweak".to_string(),
             description: "A test tweak".to_string(),
             info: None,
+            aliases: Vec::new(),
             risk_level: RiskLevel::Low,
             requires_admin: false,
             requires_system: false,

@@ -25,7 +25,19 @@ pub fn import_profile(
     log::info!("Importing profile from {}", path.display());
 
     // Read the archive
-    let contents = read_profile_archive(path)?;
+    let mut contents = read_profile_archive(path)?;
+
+    // Migrate if needed
+    let migration_notes =
+        crate::services::profile::migration::migrate_profile(&mut contents.profile)?;
+
+    if !migration_notes.is_empty() {
+        log::info!(
+            "Profile migrated with {} notes: {:?}",
+            migration_notes.len(),
+            migration_notes
+        );
+    }
 
     // Validate
     let validation = validate_profile(&contents.profile, available_tweaks, windows_version)?;

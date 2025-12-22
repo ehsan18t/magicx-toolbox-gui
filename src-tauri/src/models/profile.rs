@@ -302,6 +302,9 @@ pub struct TweakChangePreview {
     pub tweak_name: String,
     /// Category ID
     pub category_id: String,
+    /// Original Tweak ID from profile (if resolved by alias)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_tweak_id: Option<String>,
     /// Current option on target system (None if unknown)
     pub current_option_index: Option<usize>,
     /// Current option label

@@ -252,3 +252,19 @@ export async function applyProfile(
     createRestorePoint: options?.createRestorePoint ?? true,
   });
 }
+
+/**
+ * Get list of saved profiles from the app data directory or a custom path.
+ */
+export async function getSavedProfiles(customPath?: string | null): Promise<ProfileMetadata[]> {
+  return invoke("get_saved_profiles", { customPath });
+}
+
+/**
+ * Delete a saved profile by name.
+ * @param name Profile name (without extension)
+ * @param customPath Optional custom directory path
+ */
+export async function deleteSavedProfile(name: string, customPath?: string | null): Promise<void> {
+  return invoke("delete_saved_profile", { name, customPath });
+}
