@@ -77,78 +77,80 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
 
-  - id: disable_autoplay
-    name: "Disable AutoPlay"
-    description: "Disable AutoPlay for removable drives"
+  - id: removable_media_behavior
+    name: "Removable Media Behavior"
+    description: "Configure AutoPlay and AutoRun for removable drives"
     risk_level: low
     requires_admin: true
     requires_reboot: false
     info: |
       ## What This Does
-      Prevents Windows from automatically running programs when you insert removable media.
+      Controls how Windows handles removable media like USB drives and CDs/DVDs.
 
-      ## Security Risk of AutoPlay
-      - USB drives can contain malware that auto-executes
-      - CDs/DVDs may have malicious autorun scripts
-      - Infected devices can compromise your system instantly
+      ## Options Explained
+      - **Maximum Security**: Disables both AutoPlay and AutoRun scripts (recommended)
+      - **AutoRun Only Disabled**: AutoPlay works but scripts don't execute
+      - **AutoPlay Only Disabled**: AutoPlay is off but AutoRun can execute (not recommended)
+      - **All Enabled**: Original Windows behavior (insecure)
 
-      ## Impact
-      - You'll need to manually open File Explorer to access drives
-      - Slightly less convenient, much more secure
+      ## Security Risks
+      - **AutoPlay**: Automatically runs programs when media is inserted
+      - **AutoRun (autorun.inf)**: Scripts on drives can execute automatically
+      - USB drives with malware can infect systems instantly with these enabled
 
       ## Recommendation
-      Essential security measure. Always disable AutoPlay.
+      Always use "Maximum Security". There's no legitimate reason to keep these enabled.
     options:
-      - label: "AutoPlay Disabled"
+      - label: "Maximum Security (All Disabled)"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoDriveTypeAutoRun"
             value_type: "REG_DWORD"
             value: 255
-      - label: "AutoPlay Enabled"
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoAutorun"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "AutoRun Only Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoDriveTypeAutoRun"
             value_type: "REG_DWORD"
             value: 0
-
-  - id: disable_autorun
-    name: "Disable AutoRun Scripts"
-    description: "Disable execution of autorun scripts"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents autorun.inf files from executing programs automatically.
-
-      ## Background
-      AutoRun scripts (autorun.inf) were historically used by CDs/DVDs to launch installers. Malware authors exploited this to spread viruses via USB drives.
-
-      ## Security Impact
-      - Blocks a major malware infection vector
-      - No legitimate modern software requires AutoRun
-      - Works alongside AutoPlay disable for complete protection
-
-      ## Recommendation
-      Always disable. There's no good reason to keep AutoRun enabled.
-    options:
-      - label: "AutoRun Scripts Disabled"
-        registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoAutorun"
             value_type: "REG_DWORD"
             value: 1
-      - label: "AutoRun Scripts Enabled"
+      - label: "AutoPlay Only Disabled"
         registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoDriveTypeAutoRun"
+            value_type: "REG_DWORD"
+            value: 255
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoAutorun"
             value_type: "REG_DWORD"
             value: 0
+      - label: "All Enabled (Insecure)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoDriveTypeAutoRun"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoAutorun"
+            value_type: "REG_DWORD"
+            value: 0
+
+  # NOTE: disable_autoplay, disable_autorun consolidated into removable_media_behavior above
 
   - id: require_ctrlaltdel
     name: "Require Ctrl+Alt+Del to Unlock"

@@ -187,62 +187,190 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_gamebar_tips
-    name: "Disable Game Bar Tips"
-    description: "Disable Game Bar tips and notifications"
+  - id: xbox_game_bar_mode
+    name: "Xbox Game Bar Mode"
+    description: "Configure Xbox Game Bar overlay and recording features"
     risk_level: low
-    requires_reboot: false
+    requires_admin: true
+    requires_reboot: true
     info: |
       ## What This Does
-      Disables the startup tips and notifications from Xbox Game Bar.
+      Controls Xbox Game Bar and its recording features with different levels of functionality.
 
-      ## Benefits
-      - No more "Press Win+G to open Game Bar" popups
-      - Cleaner gaming experience
-      - Game Bar still works if needed
+      ## Options Explained
+      - **Fully Enabled**: All Game Bar features including overlay, recording, and tips
+      - **Recording Disabled**: Game Bar overlay works but no background recording (saves resources)
+      - **Tips Only Disabled**: Full functionality without startup tips and popups
+      - **Completely Disabled**: No Game Bar, no recording, no overlay (maximum performance)
 
-      ## Note
-      This only disables tips, not the Game Bar itself. You can still use Win+G if needed.
+      ## Performance Impact
+      - Disabling Game DVR can improve FPS by 5-15% in some games
+      - Removing the overlay eliminates potential stuttering
+      - Background recording uses GPU resources even when not actively recording
+
+      ## Alternatives
+      Use dedicated recording software like OBS, NVIDIA ShadowPlay, or AMD ReLive for better performance and quality.
 
       ## Recommendation
-      Safe to disable. Purely removes annoyance without losing functionality.
+      "Completely Disabled" for competitive gaming. "Recording Disabled" if you want the overlay but not the performance hit.
     options:
-      - label: "Game Bar Tips Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\GameBar"
-            value_name: "ShowStartupPanel"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Game Bar Tips Enabled"
+      - label: "Fully Enabled (Default)"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\GameBar"
             value_name: "ShowStartupPanel"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "AutoGameModeEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameBarEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
+            value_name: "AllowGameDVR"
+            action: delete_value
+      - label: "Tips Only Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "ShowStartupPanel"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "AutoGameModeEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameBarEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
+            value_name: "AllowGameDVR"
+            action: delete_value
+      - label: "Recording Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "ShowStartupPanel"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "AutoGameModeEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameBarEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
+            value_name: "AllowGameDVR"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Completely Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "ShowStartupPanel"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "AutoGameModeEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameBarEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
+            value_name: "AllowGameDVR"
+            value_type: "REG_DWORD"
+            value: 0
 
-  - id: disable_mouse_acceleration
-    name: "Disable Mouse Acceleration"
-    description: "Disable mouse pointer acceleration for gaming"
+  # NOTE: disable_gamebar_tips, disable_game_dvr, disable_gamebar consolidated into xbox_game_bar_mode above
+
+  - id: mouse_input_mode
+    name: "Mouse Input Mode"
+    description: "Configure mouse acceleration and precision for gaming"
     risk_level: low
-    requires_reboot: false
+    requires_reboot: true
     info: |
       ## What This Does
-      Disables Windows mouse acceleration which changes pointer speed based on how fast you move the mouse.
+      Controls Windows mouse acceleration and enhanced pointer precision settings.
+
+      ## Options Explained
+      - **Raw Input (Gaming)**: Disables all acceleration and precision enhancements for true 1:1 movement
+      - **Acceleration Only Disabled**: Disables speed-based acceleration but keeps precision curves
+      - **Precision Only Disabled**: Disables precision curves but keeps acceleration
+      - **Windows Default**: All mouse enhancements enabled
 
       ## Gaming Impact
-      - **FPS games**: Critical for consistent aim - muscle memory relies on 1:1 movement
-      - **RTS/MOBA**: Less critical but still beneficial for precision
-      - **Casual games**: Minimal impact
+      - **FPS games**: Raw Input is critical for consistent aim and muscle memory
+      - **RTS/MOBA**: Less critical but Raw Input still beneficial for precision
+      - **Casual games**: Windows Default is fine
 
-      ## How It Works
-      With acceleration enabled, moving the mouse slowly moves the cursor a short distance, but moving quickly covers more distance proportionally.
+      ## Technical Details
+      - **Acceleration**: Changes pointer speed based on how fast you move the mouse
+      - **Enhanced Precision**: Applies non-linear curves to all mouse movement
 
       ## Recommendation
-      Essential for competitive FPS gaming. Highly recommended for all gamers.
+      Use "Raw Input (Gaming)" for competitive FPS gaming. Essential for building muscle memory.
     options:
-      - label: "Mouse Acceleration Disabled"
+      - label: "Raw Input (Gaming)"
         registry_changes:
           - hive: HKCU
             key: "Control Panel\\Mouse"
@@ -259,7 +387,54 @@ tweaks:
             value_name: "MouseThreshold2"
             value_type: "REG_SZ"
             value: "0"
-      - label: "Mouse Acceleration Enabled"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSensitivity"
+            value_type: "REG_SZ"
+            value: "10"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseXCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,C0,CC,0C,00,00,00,00,00,80,99,19,00,00,00,00,00,40,66,26,00,00,00,00,00,00,33,33,00,00,00,00,00"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseYCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,00,00,38,00,00,00,00,00,00,00,70,00,00,00,00,00,00,00,A8,00,00,00,00,00,00,00,E0,00,00,00,00,00"
+      - label: "Acceleration Only Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSpeed"
+            value_type: "REG_SZ"
+            value: "0"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold1"
+            value_type: "REG_SZ"
+            value: "0"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold2"
+            value_type: "REG_SZ"
+            value: "0"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSensitivity"
+            value_type: "REG_SZ"
+            value: "10"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseXCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,15,6E,00,00,00,00,00,00,00,40,01,00,00,00,00,00,29,DC,03,00,00,00,00,00,00,00,28,00,00,00,00,00"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseYCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,FD,11,01,00,00,00,00,00,00,24,04,00,00,00,00,00,00,FC,12,00,00,00,00,00,00,00,C0,BB,01,00,00,00,00"
+      - label: "Precision Only Disabled"
         registry_changes:
           - hive: HKCU
             key: "Control Panel\\Mouse"
@@ -276,155 +451,6 @@ tweaks:
             value_name: "MouseThreshold2"
             value_type: "REG_SZ"
             value: "10"
-
-  - id: disable_game_dvr
-    name: "Disable Game DVR"
-    description: "Completely disable Xbox Game DVR background recording"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Disables Xbox Game DVR's background recording and game clip features.
-
-      ## Performance Impact
-      - **FPS improvement**: 5-15% in some games
-      - **Reduced stuttering**: No background video encoding
-      - **Lower GPU usage**: No recording overhead
-
-      ## What You Lose
-      - "Record that" feature (Win+Alt+G)
-      - Background game recording
-      - Game clip capture
-
-      ## Alternative
-      Use dedicated recording software like OBS for better performance and quality.
-
-      ## Recommendation
-      Disable for competitive gaming. Keep enabled if you frequently clip gameplay.
-    options:
-      - label: "Game DVR Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "System\\GameConfigStore"
-            value_name: "GameDVR_Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
-            value_name: "AllowGameDVR"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Game DVR Enabled (Default)"
-        registry_changes:
-          - hive: HKCU
-            key: "System\\GameConfigStore"
-            value_name: "GameDVR_Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
-            value_name: "AllowGameDVR"
-            action: delete_value
-
-  # NOTE: honor_user_fse_behavior, disable_efse_features, disable_dps_feature
-  # have been consolidated into fullscreen_optimizations tweak above
-
-  - id: disable_gamebar
-    name: "Disable Xbox Game Bar"
-    description: "Completely disable Xbox Game Bar overlay"
-    risk_level: low
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Completely disables the Xbox Game Bar overlay that appears when you press Win+G.
-
-      ## Benefits
-      - Eliminates overlay-related stuttering
-      - Removes accidental Game Bar activations
-      - Reduces background resource usage
-
-      ## What You Lose
-      - Quick access to recording features
-      - Performance monitoring overlay
-      - Xbox social features
-
-      ## Recommendation
-      Disable if you don't use Game Bar features. Third-party overlays (Discord, NVIDIA) often work better.
-    options:
-      - label: "Game Bar Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\GameBar"
-            value_name: "AutoGameModeEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\GameBar"
-            value_name: "UseNexusForGameBarEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Game Bar Enabled (Default)"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\GameBar"
-            value_name: "AutoGameModeEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\GameBar"
-            value_name: "UseNexusForGameBarEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  # NOTE: optimize_tcp_ack_frequency removed - consolidated into disable_nagle_algorithm in network.yaml
-
-  - id: disable_pointer_precision
-    name: "Disable Enhanced Pointer Precision"
-    description: "Disable Windows enhanced pointer precision globally"
-    risk_level: low
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Disables Windows' enhanced pointer precision which applies a non-linear curve to mouse movement.
-
-      ## Difference from Mouse Acceleration
-      - **Mouse Acceleration**: Changes speed based on movement speed
-      - **Enhanced Pointer Precision**: Applies a curve that affects all movement
-
-      ## Gaming Impact
-      - Provides true 1:1 mouse movement
-      - Consistent aim regardless of movement speed
-      - Essential for building muscle memory
-
-      ## Technical Details
-      Sets flat mouse curves that provide linear movement.
-
-      ## Recommendation
-      Essential for FPS gaming. Also benefits precision work like photo editing.
-    options:
-      - label: "Enhanced Precision Disabled"
-        registry_changes:
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSensitivity"
@@ -440,8 +466,23 @@ tweaks:
             value_name: "SmoothMouseYCurve"
             value_type: "REG_BINARY"
             value: "00,00,00,00,00,00,00,00,00,00,38,00,00,00,00,00,00,00,70,00,00,00,00,00,00,00,A8,00,00,00,00,00,00,00,E0,00,00,00,00,00"
-      - label: "Enhanced Precision Enabled (Default)"
+      - label: "Windows Default"
         registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSpeed"
+            value_type: "REG_SZ"
+            value: "1"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold1"
+            value_type: "REG_SZ"
+            value: "6"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseThreshold2"
+            value_type: "REG_SZ"
+            value: "10"
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSensitivity"
@@ -457,6 +498,13 @@ tweaks:
             value_name: "SmoothMouseYCurve"
             value_type: "REG_BINARY"
             value: "00,00,00,00,00,00,00,00,FD,11,01,00,00,00,00,00,00,24,04,00,00,00,00,00,00,FC,12,00,00,00,00,00,00,00,C0,BB,01,00,00,00,00"
+
+  # NOTE: disable_mouse_acceleration, disable_pointer_precision consolidated into mouse_input_mode above
+
+  # NOTE: honor_user_fse_behavior, disable_efse_features, disable_dps_feature
+  # have been consolidated into fullscreen_optimizations tweak above
+
+  # NOTE: optimize_tcp_ack_frequency removed - consolidated into disable_nagle_algorithm in network.yaml
 
   - id: multimedia_priority_gaming
     name: "Set Multimedia Priority for Gaming"

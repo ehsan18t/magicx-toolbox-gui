@@ -98,53 +98,88 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
 
-  - id: disable_windows_update_complete
-    name: "Disable Windows Update (Complete)"
-    description: "Completely disable the Windows Update service and automatic updates"
+  - id: windows_update_mode
+    name: "Windows Update Mode"
+    description: "Control how Windows handles automatic updates"
     risk_level: high
     requires_reboot: false
+    requires_admin: true
     requires_ti: true
-    info: "Stops and disables the Windows Update service. Updates must be installed manually. Use with caution - security updates will not be installed automatically."
+    info: |
+      ## What This Does
+      Controls Windows Update behavior with different levels of automation.
+
+      ## Options Explained
+      - **Automatic Install**: Windows downloads and installs updates automatically (default behavior)
+      - **Download Only**: Downloads updates but waits for you to install them
+      - **Notify Only**: Checks for updates but asks before downloading
+      - **Disabled (Complete)**: Completely disables Windows Update (requires TrustedInstaller)
+
+      ## Security Warning
+      Disabling or delaying updates can leave your system vulnerable to security threats. Only use restrictive settings if you understand the risks.
+
+      ## Recommendation
+      "Notify Only" offers a good balance of control and security for most users.
     options:
-      - label: "Windows Update Disabled"
-        scheduler_changes:
-          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
-            task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
-            action: disable
-            ignore_not_found: true # Not all tasks exist on every system
+      - label: "Automatic Install (Default)"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
             value_name: "AUOptions"
             value_type: "REG_DWORD"
-            value: 1
+            value: 4
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
             value_name: "NoAutoUpdate"
             value_type: "REG_DWORD"
-            value: 1
+            value: 0
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
             value_name: "SetDisableUXWUAccess"
             value_type: "REG_DWORD"
-            value: 1
+            value: 0
           - hive: HKLM
             key: "SYSTEM\\CurrentControlSet\\Services\\WaaSMedicSvc"
             value_name: "Start"
             value_type: "REG_DWORD"
-            value: 4
+            value: 3
         service_changes:
           - name: "wuauserv"
-            startup: disabled
+            startup: manual
+            start_service: false
             skip_validation: true
           - name: "UsoSvc"
-            startup: disabled
-      - label: "Windows Update Enabled"
-        scheduler_changes:
-          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
-            task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
-            action: enable
-            ignore_not_found: true # Not all tasks exist on every system
+            startup: automatic
+      - label: "Download Only"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "AUOptions"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "NoAutoUpdate"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "SetDisableUXWUAccess"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "SYSTEM\\CurrentControlSet\\Services\\WaaSMedicSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+        service_changes:
+          - name: "wuauserv"
+            startup: manual
+            start_service: false
+            skip_validation: true
+          - name: "UsoSvc"
+            startup: automatic
+      - label: "Notify Only"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
@@ -173,6 +208,39 @@ tweaks:
             skip_validation: true
           - name: "UsoSvc"
             startup: automatic
+      - label: "Disabled (Complete)"
+        scheduler_changes:
+          - task_path: "\\Microsoft\\Windows\\UpdateOrchestrator"
+            task_name_pattern: "Schedule Scan|USO|MusNotification|Reboot|Refresh"
+            action: disable
+            ignore_not_found: true
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "AUOptions"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "NoAutoUpdate"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "SetDisableUXWUAccess"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "SYSTEM\\CurrentControlSet\\Services\\WaaSMedicSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+        service_changes:
+          - name: "wuauserv"
+            startup: disabled
+            skip_validation: true
+          - name: "UsoSvc"
+            startup: disabled
 
   - id: disable_auto_restart_after_update
     name: "Disable Auto Restart After Update"

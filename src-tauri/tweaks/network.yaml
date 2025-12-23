@@ -62,72 +62,75 @@ tweaks:
             value_name: "TcpDelAckTicks"
             action: delete_value
 
-  - id: disable_teredo
-    name: "Disable Teredo IPv6 Tunneling"
-    description: "Disable Teredo IPv6 tunneling for reduced latency"
+  - id: ipv6_transition_mode
+    name: "IPv6 Transition Technologies"
+    description: "Configure Teredo and ISATAP IPv6 tunneling protocols"
     risk_level: low
     requires_admin: true
-    requires_reboot: false
+    requires_reboot: true
     info: |
       ## What This Does
-      Disables Teredo, an IPv6 transition technology that tunnels IPv6 over IPv4.
+      Controls IPv6 transition technologies that tunnel IPv6 over IPv4 networks.
 
-      ## Benefits
-      - **Reduced latency**: Tunneling adds overhead
-      - **Gaming**: Some games have issues with Teredo
-      - **Security**: Reduces attack surface
+      ## Options Explained
+      - **All Disabled**: Disables both Teredo and ISATAP (lowest latency)
+      - **Teredo Only**: Keeps Teredo for Xbox/P2P, disables ISATAP
+      - **ISATAP Only**: Keeps ISATAP for enterprise, disables Teredo
+      - **All Enabled**: Default Windows behavior
 
-      ## When to Keep Enabled
-      - Xbox Live party chat may require Teredo
-      - Some P2P applications need it for NAT traversal
+      ## Teredo
+      - Used by Xbox Live for party chat
+      - Required for some P2P applications
+      - Tunnels IPv6 through NAT
+
+      ## ISATAP
+      - Enterprise IPv6 transition
+      - Rarely needed for home users
+      - Adds network overhead
 
       ## Recommendation
-      Safe to disable for most users. Re-enable if Xbox party chat stops working.
+      "All Disabled" for gaming/low latency. "Teredo Only" if you use Xbox Live party chat.
     options:
-      - label: "Teredo Disabled"
+      - label: "All Disabled (Lowest Latency)"
         pre_commands:
           - "netsh interface teredo set state disabled"
+          - "netsh interface isatap set state disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
             value_name: "DisabledComponents"
             value_type: "REG_DWORD"
             value: 1
-      - label: "Teredo Enabled (Default)"
+      - label: "Teredo Only (Xbox)"
         pre_commands:
           - "netsh interface teredo set state default"
+          - "netsh interface isatap set state disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
+            value_name: "DisabledComponents"
+            action: delete_value
+      - label: "ISATAP Only (Enterprise)"
+        pre_commands:
+          - "netsh interface teredo set state disabled"
+          - "netsh interface isatap set state default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
+            value_name: "DisabledComponents"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "All Enabled (Default)"
+        pre_commands:
+          - "netsh interface teredo set state default"
+          - "netsh interface isatap set state default"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
             value_name: "DisabledComponents"
             action: delete_value
 
-  - id: disable_isatap
-    name: "Disable ISATAP IPv6 Tunneling"
-    description: "Disable ISATAP IPv6 transition technology"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables ISATAP (Intra-Site Automatic Tunnel Addressing Protocol), another IPv6 transition technology.
-
-      ## Benefits
-      - **Reduced overhead**: Tunneling adds latency
-      - **Simpler networking**: Fewer protocols to troubleshoot
-      - **Security**: Reduces potential attack vectors
-
-      ## Recommendation
-      Safe to disable unless your organization specifically requires ISATAP.
-    options:
-      - label: "ISATAP Disabled"
-        pre_commands:
-          - "netsh interface isatap set state disabled"
-        registry_changes: []
-      - label: "ISATAP Enabled (Default)"
-        pre_commands:
-          - "netsh interface isatap set state default"
-        registry_changes: []
+  # NOTE: disable_teredo, disable_isatap consolidated into ipv6_transition_mode above
 
   - id: disable_network_throttling
     name: "Disable Network Throttling"
@@ -165,31 +168,52 @@ tweaks:
             value_type: "REG_DWORD"
             value: 10
 
-  - id: disable_netbios
-    name: "Disable NetBIOS over TCP/IP"
-    description: "Disable legacy NetBIOS name resolution protocol"
+  - id: legacy_network_protocols
+    name: "Legacy Network Protocols"
+    description: "Configure legacy protocols (LLMNR, WPAD, NetBIOS) for security"
     risk_level: medium
     requires_admin: true
     requires_reboot: true
     info: |
       ## What This Does
-      Disables NetBIOS over TCP/IP, a legacy protocol from the Windows 9x era.
+      Controls legacy network protocols that can be exploited for attacks.
 
-      ## Benefits
-      - **Security**: NetBIOS can be exploited for network attacks
-      - **Reduced noise**: Less broadcast traffic on network
-      - **Performance**: Fewer protocols to process
+      ## Options Explained
+      - **Maximum Security**: Disables LLMNR, WPAD, and NetBIOS (recommended)
+      - **NetBIOS Only Enabled**: Legacy device compatibility, other protocols disabled
+      - **WPAD Only Enabled**: For corporate proxy auto-discovery
+      - **All Enabled**: Default Windows behavior (less secure)
 
-      ## Caution
-      - **Old applications**: Some legacy apps require NetBIOS
-      - **Network shares**: Very old SMB implementations may need it
-      - **Printers**: Some older network printers use NetBIOS
+      ## Security Risks
+      - **LLMNR**: Can be exploited for credential theft (LLMNR poisoning)
+      - **WPAD**: Attackers can redirect your traffic through rogue proxies
+      - **NetBIOS**: Legacy protocol vulnerable to various network attacks
+
+      ## Compatibility Notes
+      - Some old printers/devices may need NetBIOS
+      - Corporate networks may require WPAD for proxy configuration
+      - DNS misconfiguration may cause slow name resolution without LLMNR
 
       ## Recommendation
-      Safe to disable on modern networks. Keep enabled if you have legacy devices.
+      Use "Maximum Security" unless you have specific compatibility requirements.
     options:
-      - label: "NetBIOS Disabled"
+      - label: "Maximum Security (All Disabled)"
         registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            value_type: "REG_DWORD"
+            value: 1
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
             value_name: "EnableLMHOSTS"
@@ -200,8 +224,23 @@ tweaks:
             value_name: "NodeType"
             value_type: "REG_DWORD"
             value: 2
-      - label: "NetBIOS Enabled (Default)"
+      - label: "NetBIOS Only Enabled"
         registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            value_type: "REG_DWORD"
+            value: 1
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
             value_name: "EnableLMHOSTS"
@@ -211,6 +250,58 @@ tweaks:
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
             value_name: "NodeType"
             action: delete_value
+      - label: "WPAD Only Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "All Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            action: delete_value
+
+  # NOTE: disable_netbios, disable_llmnr, disable_wpad consolidated into legacy_network_protocols above
 
   - id: increase_irp_stack_size
     name: "Increase Network IRP Stack Size"
@@ -247,84 +338,3 @@ tweaks:
             value_name: "IRPStackSize"
             value_type: "REG_DWORD"
             value: 20
-
-  - id: disable_llmnr
-    name: "Disable LLMNR"
-    description: "Disable Link-Local Multicast Name Resolution for security"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables LLMNR (Link-Local Multicast Name Resolution), a protocol used when DNS fails.
-
-      ## Security Benefits
-      - **Prevents LLMNR poisoning**: A common network attack vector
-      - **Credential theft**: LLMNR can be exploited to capture password hashes
-      - **Reduced attack surface**: One less protocol to exploit
-
-      ## Caution
-      Name resolution may be slower if DNS is misconfigured, as LLMNR won't be available as a fallback.
-
-      ## Recommendation
-      Strongly recommended for security-conscious users and enterprise environments.
-    options:
-      - label: "LLMNR Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
-            value_name: "EnableMulticast"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "LLMNR Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
-            value_name: "EnableMulticast"
-            action: delete_value
-
-  - id: disable_wpad
-    name: "Disable WPAD (Web Proxy Auto-Discovery)"
-    description: "Disable automatic proxy configuration discovery"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables WPAD (Web Proxy Auto-Discovery Protocol) which automatically finds proxy settings.
-
-      ## Security Benefits
-      - **Prevents WPAD attacks**: Attackers can set up rogue WPAD servers
-      - **Traffic interception**: WPAD can be used to redirect your traffic
-      - **Faster connections**: No need to search for proxy settings
-
-      ## When to Keep Enabled
-      - Corporate networks that use automatic proxy configuration
-      - Networks where proxy settings change frequently
-
-      ## Recommendation
-      Disable unless your network administrator requires it.
-    options:
-      - label: "WPAD Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
-            value_name: "WpadOverride"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "WPAD Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
-            value_name: "WpadOverride"
-            action: delete_value

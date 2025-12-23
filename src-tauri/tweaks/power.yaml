@@ -8,112 +8,100 @@ category:
   order: 8
 
 tweaks:
-  - id: disable_fast_startup
-    name: "Disable Fast Startup (Hiberboot)"
-    description: "Disable Windows Fast Startup hybrid shutdown feature"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Disables Windows Fast Startup (also called Hiberboot), which saves the kernel session to disk on shutdown for faster boot times.
-
-      ## Why Disable It?
-      - **Dual-boot issues**: Can prevent other operating systems from accessing Windows drives
-      - **Driver problems**: Some drivers don't reinitialize properly with Fast Startup
-      - **Update issues**: Windows updates may not apply correctly
-      - **Wake problems**: Can cause issues with wake from sleep
-      - **Disk encryption**: May cause issues with encrypted drives
-
-      ## Recommendation
-      Disable if you experience boot problems, dual-boot, or have driver issues. The boot time difference on SSDs is minimal.
-    options:
-      - label: "Fast Startup Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
-            value_name: "HiberbootEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Fast Startup Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
-            value_name: "HiberbootEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_modern_standby
-    name: "Disable Modern Standby (Enable S3 Sleep)"
-    description: "Force traditional S3 sleep instead of Modern Standby (S0 Low Power Idle)"
+  - id: sleep_mode
+    name: "Sleep Mode Configuration"
+    description: "Configure Windows sleep, hibernation, and fast startup behavior"
     risk_level: medium
     requires_admin: true
     requires_reboot: true
     info: |
       ## What This Does
-      Forces Windows to use traditional S3 sleep mode instead of Modern Standby (S0 Low Power Idle).
+      Controls how Windows handles sleep states, hibernation, and fast startup.
 
-      ## Why Change This?
-      - **Battery drain**: Modern Standby can drain laptop batteries significantly while "sleeping"
-      - **Heat issues**: Laptop may get hot in a bag due to background activity
-      - **Wake problems**: Some devices have issues waking from Modern Standby
-      - **Fan noise**: Fans may spin up during sleep with Modern Standby
+      ## Options Explained
+      - **Modern Standby (Default)**: S0 Low Power Idle with Fast Startup - fastest wake but may drain battery
+      - **Traditional S3 with Hibernate**: Classic S3 sleep with hibernation for power loss recovery
+      - **Traditional S3 (No Hibernate)**: Classic S3 sleep, saves disk space by removing hiberfil.sys
+      - **Maximum Disk Space**: Disables hibernation and fast startup, frees RAM-sized disk space
 
-      ## Caution
+      ## When to Use Each
+      - **Modern Standby**: Default for most users, instant wake
+      - **Traditional S3 + Hibernate**: Laptops that get hot in bags or drain battery during sleep
+      - **Traditional S3 No Hibernate**: Desktops that don't need hibernation
+      - **Maximum Disk Space**: When you need to free disk space (saves ~8GB on 8GB RAM system)
+
+      ## Compatibility Notes
       - Not all systems support S3 sleep (check with `powercfg /a`)
-      - Some features like instant-on may not work
-      - May not work on all hardware configurations
+      - Disabling hibernation also disables Fast Startup
     options:
-      - label: "Traditional S3 Sleep"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Power"
-            value_name: "PlatformAoAcOverride"
-            value_type: "REG_DWORD"
-            value: 0
       - label: "Modern Standby (Default)"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Control\\Power"
             value_name: "PlatformAoAcOverride"
             action: delete_value
-
-  - id: disable_hibernation
-    name: "Disable Hibernation"
-    description: "Disable hibernation to save disk space"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables the hibernation feature and deletes the hiberfil.sys file, which can be several gigabytes.
-
-      ## Benefits
-      - **Disk space**: Frees up space equal to your RAM size (8GB RAM = 8GB saved)
-      - **SSD longevity**: Reduces large writes to SSD
-
-      ## Drawbacks
-      - Cannot use "Hibernate" power option
-      - Fast Startup will also be disabled (uses hibernation)
-      - Cannot resume from power loss on laptops
-
-      ## Recommendation
-      Safe to disable on desktops. Consider keeping on laptops for power failure recovery.
-    options:
-      - label: "Hibernation Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Power"
-            value_name: "HibernateEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Hibernation Enabled"
-        registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Control\\Power"
             value_name: "HibernateEnabled"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Traditional S3 with Hibernate"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Traditional S3 (No Hibernate)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Maximum Disk Space"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+
+  # NOTE: disable_fast_startup, disable_modern_standby, disable_hibernation consolidated into sleep_mode above
 
   - id: disable_power_throttling
     name: "Disable Power Throttling"

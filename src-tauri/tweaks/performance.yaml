@@ -8,42 +8,84 @@ category:
   order: 2
 
 tweaks:
-  - id: disable_superfetch
-    name: "Disable Superfetch (SysMain)"
-    description: "Disable Superfetch service to reduce disk I/O"
+  - id: memory_prefetch_mode
+    name: "Memory Prefetch Mode"
+    description: "Configure Superfetch (SysMain) and Prefetch for your storage type"
     risk_level: low
     requires_admin: true
-    requires_reboot: false
+    requires_reboot: true
     info: |
       ## What This Does
-      Disables the SysMain service (formerly Superfetch) which preloads frequently-used applications into RAM.
+      Controls Windows memory preloading services that cache frequently-used data.
+
+      ## Options Explained
+      - **SSD Optimized**: Disables both Superfetch and Prefetch (recommended for SSD-only systems)
+      - **Superfetch Only**: Disables Superfetch service but keeps file prefetching
+      - **HDD Optimized**: Keeps both enabled (recommended for HDD or mixed storage)
+      - **Custom (Prefetch Only)**: Disables Superfetch, enables Prefetch
+
+      ## Superfetch vs Prefetch
+      - **Superfetch (SysMain)**: Preloads frequently-used applications into RAM
+      - **Prefetch**: Caches application data based on usage patterns
 
       ## When to Disable
       - **SSD users**: SSDs are fast enough that preloading provides minimal benefit
-      - **High disk usage**: If you see constant 100% disk usage, SysMain might be the cause
+      - **High disk usage**: If you see constant 100% disk usage, try disabling
       - **Low RAM systems**: Preloading can use RAM needed by active applications
 
-      ## When to Keep Enabled
-      - **HDD users**: Preloading significantly helps on spinning drives
-      - **8GB+ RAM**: Systems with plenty of RAM can benefit from preloading
-
       ## Recommendation
-      Safe to disable on SSD systems. Keep enabled on HDD systems.
+      Use "SSD Optimized" for SSD-only systems. Use "HDD Optimized" if you have any HDDs.
     options:
-      - label: "Disabled"
+      - label: "SSD Optimized (All Disabled)"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\SysMain"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-      - label: "Enabled"
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Superfetch Only Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\SysMain"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 3
+      - label: "Prefetch Only Disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\SysMain"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "HDD Optimized (All Enabled)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\SysMain"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 3
+
+  # NOTE: disable_superfetch, disable_prefetch consolidated into memory_prefetch_mode above
 
   - id: disable_search_indexing
     name: "Disable Windows Search Indexing"
@@ -262,43 +304,6 @@ tweaks:
             value_name: "VisualFXSetting"
             value_type: "REG_DWORD"
             value: 1
-
-  - id: disable_prefetch
-    name: "Disable Prefetch"
-    description: "Disable prefetch for better SSD performance"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Disables Windows Prefetch which preloads application data into memory based on usage patterns.
-
-      ## SSD Considerations
-      - On SSDs, apps load fast enough that prefetching provides minimal benefit
-      - Reduces unnecessary read/write operations on SSDs
-      - Can free up RAM used for prefetch data
-
-      ## HDD Considerations
-      - Keep enabled on HDDs where prefetching significantly helps
-      - Reduces application launch times on spinning drives
-
-      ## Recommendation
-      Safe to disable on SSD-only systems. Keep enabled if you have HDDs.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 3
 
   - id: enable_large_system_cache
     name: "Enable Large System Cache"
