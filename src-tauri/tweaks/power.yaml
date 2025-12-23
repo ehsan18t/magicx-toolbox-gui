@@ -1,0 +1,188 @@
+# Power Tweaks - Manage power settings and sleep behavior
+
+category:
+  id: power
+  name: "Power"
+  description: "Manage power settings, sleep behavior, and energy consumption"
+  icon: "mdi:lightning-bolt"
+  order: 8
+
+tweaks:
+  - id: disable_fast_startup
+    name: "Disable Fast Startup (Hiberboot)"
+    description: "Disable Windows Fast Startup hybrid shutdown feature"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Windows Fast Startup (also called Hiberboot), which saves the kernel session to disk on shutdown for faster boot times.
+
+      ## Why Disable It?
+      - **Dual-boot issues**: Can prevent other operating systems from accessing Windows drives
+      - **Driver problems**: Some drivers don't reinitialize properly with Fast Startup
+      - **Update issues**: Windows updates may not apply correctly
+      - **Wake problems**: Can cause issues with wake from sleep
+      - **Disk encryption**: May cause issues with encrypted drives
+
+      ## Recommendation
+      Disable if you experience boot problems, dual-boot, or have driver issues. The boot time difference on SSDs is minimal.
+    options:
+      - label: "Fast Startup Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Fast Startup Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_modern_standby
+    name: "Disable Modern Standby (Enable S3 Sleep)"
+    description: "Force traditional S3 sleep instead of Modern Standby (S0 Low Power Idle)"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Forces Windows to use traditional S3 sleep mode instead of Modern Standby (S0 Low Power Idle).
+
+      ## Why Change This?
+      - **Battery drain**: Modern Standby can drain laptop batteries significantly while "sleeping"
+      - **Heat issues**: Laptop may get hot in a bag due to background activity
+      - **Wake problems**: Some devices have issues waking from Modern Standby
+      - **Fan noise**: Fans may spin up during sleep with Modern Standby
+
+      ## Caution
+      - Not all systems support S3 sleep (check with `powercfg /a`)
+      - Some features like instant-on may not work
+      - May not work on all hardware configurations
+    options:
+      - label: "Traditional S3 Sleep"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Modern Standby (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            action: delete_value
+
+  - id: disable_hibernation
+    name: "Disable Hibernation"
+    description: "Disable hibernation to save disk space"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the hibernation feature and deletes the hiberfil.sys file, which can be several gigabytes.
+
+      ## Benefits
+      - **Disk space**: Frees up space equal to your RAM size (8GB RAM = 8GB saved)
+      - **SSD longevity**: Reduces large writes to SSD
+
+      ## Drawbacks
+      - Cannot use "Hibernate" power option
+      - Fast Startup will also be disabled (uses hibernation)
+      - Cannot resume from power loss on laptops
+
+      ## Recommendation
+      Safe to disable on desktops. Consider keeping on laptops for power failure recovery.
+    options:
+      - label: "Hibernation Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Hibernation Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_power_throttling
+    name: "Disable Power Throttling"
+    description: "Disable Windows power throttling for maximum CPU performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Prevents Windows from throttling CPU power for background applications to save energy.
+
+      ## Benefits
+      - **Maximum performance**: All apps get full CPU power
+      - **Consistent behavior**: No unexpected slowdowns in background apps
+      - **Gaming**: Better performance for games running with other apps
+
+      ## Drawbacks
+      - **Higher power consumption**: Especially on laptops
+      - **More heat**: CPU will run hotter under load
+      - **Battery life**: Reduced battery life on laptops
+
+      ## Recommendation
+      Enable on desktops for best performance. Keep default on laptops unless plugged in.
+    options:
+      - label: "Power Throttling Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
+            value_name: "PowerThrottlingOff"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Power Throttling Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
+            value_name: "PowerThrottlingOff"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: usb_selective_suspend
+    name: "USB Selective Suspend"
+    description: "Configure USB selective suspend power management"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Controls whether Windows can suspend individual USB ports to save power.
+
+      ## Why Disable It?
+      - **USB disconnects**: Some USB devices disconnect randomly
+      - **Gaming peripherals**: Mice/keyboards wake delay
+      - **Audio interfaces**: USB audio devices may have issues
+      - **External drives**: Drives may spin down unexpectedly
+
+      ## Recommendation
+      Disable if you have USB device disconnection issues. Keep enabled on laptops for battery life.
+    options:
+      - label: "Selective Suspend Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\USB"
+            value_name: "DisableSelectiveSuspend"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Selective Suspend Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\USB"
+            value_name: "DisableSelectiveSuspend"
+            value_type: "REG_DWORD"
+            value: 0

@@ -14,7 +14,20 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Recall captures screenshots of your activity every few seconds. This tweak completely disables it. Available on Windows 11 24H2+ with NPU."
+    info: |
+      ## What This Does
+      Completely disables Windows Recall, the AI feature that captures screenshots of your activity every few seconds.
+
+      ## Privacy Concerns
+      - **Screen recording**: Recall captures everything on your screen including passwords, banking info, and private messages
+      - **Local storage**: Screenshots are stored locally and indexed by AI
+      - **Data exposure**: Sensitive data could be exposed if your device is compromised
+
+      ## Availability
+      Available on Windows 11 24H2+ with compatible NPU (Neural Processing Unit). If your device doesn't have Recall, this tweak has no effect.
+
+      ## Recommendation
+      Strongly recommended for privacy. Disable unless you specifically need Recall's features.
     options:
       - label: "Recall Disabled"
         registry_changes:
@@ -50,17 +63,31 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Disables DiagTrack service and associated telemetry features"
+    info: |
+      ## What This Does
+      Disables the DiagTrack (Connected User Experiences and Telemetry) service which collects and sends diagnostic data to Microsoft.
+
+      ## Data Collected by DiagTrack
+      - Hardware configuration and capabilities
+      - Software inventory and usage patterns
+      - Application crashes and errors
+      - Device performance metrics
+
+      ## Impact
+      - Windows Insider features may not work
+      - Some troubleshooting features may be limited
+      - Windows will still function normally for most users
+
+      ## Recommendation
+      Safe for most users. Recommended for privacy-conscious users.
     options:
       - label: "Disabled"
         registry_changes:
-          # Common to both Win10 and Win11
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\DiagTrack"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-          # Win10 only - dmwappushservice
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\dmwappushservice"
             value_name: "Start"
@@ -69,13 +96,11 @@ tweaks:
             windows_versions: [10]
       - label: "Enabled"
         registry_changes:
-          # Common to both Win10 and Win11
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\DiagTrack"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
-          # Win10 only - dmwappushservice
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\dmwappushservice"
             value_name: "Start"
@@ -88,6 +113,17 @@ tweaks:
     description: "Disable advertising ID for personalized ads"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables your unique advertising ID that Windows shares with apps to show personalized ads.
+
+      ## Privacy Benefit
+      - Apps cannot track you using your advertising ID
+      - Reduces targeted advertising across Windows apps
+      - No functional impact on app usage
+
+      ## Recommendation
+      Strongly recommended. No downside to disabling this.
     options:
       - label: "Disabled"
         registry_changes:
@@ -110,7 +146,19 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Prevents Windows from collecting activity history used in Timeline and cross-device sync"
+    info: |
+      ## What This Does
+      Prevents Windows from collecting and syncing your activity history, including:
+      - Apps you use and when
+      - Files you open
+      - Websites you visit in Edge
+      - Clipboard history
+
+      ## Timeline Feature
+      This data powers the Task View Timeline feature. Disabling removes cross-device activity sync.
+
+      ## Recommendation
+      Recommended for privacy. Timeline is rarely used by most people.
     options:
       - label: "Disabled"
         registry_changes:

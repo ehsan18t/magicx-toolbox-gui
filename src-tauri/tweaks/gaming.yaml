@@ -13,7 +13,20 @@ tweaks:
     description: "Enable Windows Game Mode for optimized gaming"
     risk_level: low
     requires_reboot: false
-    info: "Game Mode reduces background processes and prioritizes gaming"
+    info: |
+      ## What This Does
+      Enables Windows Game Mode which optimizes system resources when games are running.
+
+      ## Benefits
+      - Prioritizes CPU and GPU resources for games
+      - Reduces background Windows Update activity during gaming
+      - Limits background processes from stealing resources
+
+      ## Compatibility
+      Works best with games that Windows recognizes. Most modern games are automatically detected.
+
+      ## Recommendation
+      Generally beneficial to enable. Some older games may not be recognized.
     options:
       - label: "Game Mode Enabled"
         registry_changes:
@@ -35,7 +48,22 @@ tweaks:
     description: "Configure Windows fullscreen behavior for games"
     risk_level: low
     requires_reboot: false
-    info: "Controls how Windows handles fullscreen games. Disabling can improve performance and reduce input lag in some games."
+    info: |
+      ## What This Does
+      Controls how Windows handles fullscreen games through Fullscreen Optimizations (FSO).
+
+      ## Options Explained
+      - **Disable All FSO**: Forces true exclusive fullscreen for lowest input lag
+      - **Per-Game Settings**: Respects individual game compatibility settings
+      - **Windows Default**: Uses hybrid fullscreen (borderless window)
+
+      ## Performance Impact
+      - Disabling FSO can reduce input latency by 1-5ms
+      - Some games may experience issues with Alt+Tab
+      - Older games often work better with FSO disabled
+
+      ## Recommendation
+      Try "Disable All FSO" for competitive gaming. Use "Per-Game" if you have issues.
     options:
       - label: "Disable All FSO (Best for Gaming)"
         registry_changes:
@@ -124,7 +152,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Improves gaming performance on compatible GPUs (Windows 10 build 2004+)"
+    info: |
+      ## What This Does
+      Enables Hardware-Accelerated GPU Scheduling (HAGS) which lets the GPU manage its own memory.
+
+      ## Requirements
+      - Windows 10 version 2004 or later
+      - Compatible GPU with updated drivers (NVIDIA 10 series+, AMD RX 5000+, Intel Gen 10+)
+
+      ## Benefits
+      - Reduced CPU overhead for graphics tasks
+      - Lower input latency in some games
+      - More consistent frame times
+
+      ## Potential Issues
+      - Some older games may experience issues
+      - Rare driver compatibility problems
+
+      ## Recommendation
+      Enable if you have a compatible GPU. Disable if you experience crashes or graphical issues.
     options:
       - label: "GPU Scheduling Enabled"
         registry_changes:
@@ -146,6 +192,20 @@ tweaks:
     description: "Disable Game Bar tips and notifications"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the startup tips and notifications from Xbox Game Bar.
+
+      ## Benefits
+      - No more "Press Win+G to open Game Bar" popups
+      - Cleaner gaming experience
+      - Game Bar still works if needed
+
+      ## Note
+      This only disables tips, not the Game Bar itself. You can still use Win+G if needed.
+
+      ## Recommendation
+      Safe to disable. Purely removes annoyance without losing functionality.
     options:
       - label: "Game Bar Tips Disabled"
         registry_changes:
@@ -162,35 +222,25 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_power_throttling
-    name: "Disable Power Throttling"
-    description: "Disable Windows power throttling for maximum performance"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: "Prevents Windows from throttling CPU power for background apps. Increases power consumption but improves performance."
-    options:
-      - label: "Power Throttling Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
-            value_name: "PowerThrottlingOff"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Power Throttling Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
-            value_name: "PowerThrottlingOff"
-            value_type: "REG_DWORD"
-            value: 0
-
   - id: disable_mouse_acceleration
     name: "Disable Mouse Acceleration"
     description: "Disable mouse pointer acceleration for gaming"
     risk_level: low
     requires_reboot: false
-    info: "Provides more consistent mouse movement for FPS games"
+    info: |
+      ## What This Does
+      Disables Windows mouse acceleration which changes pointer speed based on how fast you move the mouse.
+
+      ## Gaming Impact
+      - **FPS games**: Critical for consistent aim - muscle memory relies on 1:1 movement
+      - **RTS/MOBA**: Less critical but still beneficial for precision
+      - **Casual games**: Minimal impact
+
+      ## How It Works
+      With acceleration enabled, moving the mouse slowly moves the cursor a short distance, but moving quickly covers more distance proportionally.
+
+      ## Recommendation
+      Essential for competitive FPS gaming. Highly recommended for all gamers.
     options:
       - label: "Mouse Acceleration Disabled"
         registry_changes:
@@ -233,7 +283,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Disables background recording which can cause FPS drops and stuttering"
+    info: |
+      ## What This Does
+      Disables Xbox Game DVR's background recording and game clip features.
+
+      ## Performance Impact
+      - **FPS improvement**: 5-15% in some games
+      - **Reduced stuttering**: No background video encoding
+      - **Lower GPU usage**: No recording overhead
+
+      ## What You Lose
+      - "Record that" feature (Win+Alt+G)
+      - Background game recording
+      - Game clip capture
+
+      ## Alternative
+      Use dedicated recording software like OBS for better performance and quality.
+
+      ## Recommendation
+      Disable for competitive gaming. Keep enabled if you frequently clip gameplay.
     options:
       - label: "Game DVR Disabled"
         registry_changes:
@@ -277,7 +345,22 @@ tweaks:
     description: "Completely disable Xbox Game Bar overlay"
     risk_level: low
     requires_reboot: false
-    info: "Disables the game bar overlay which can cause stuttering in some games"
+    info: |
+      ## What This Does
+      Completely disables the Xbox Game Bar overlay that appears when you press Win+G.
+
+      ## Benefits
+      - Eliminates overlay-related stuttering
+      - Removes accidental Game Bar activations
+      - Reduces background resource usage
+
+      ## What You Lose
+      - Quick access to recording features
+      - Performance monitoring overlay
+      - Xbox social features
+
+      ## Recommendation
+      Disable if you don't use Game Bar features. Third-party overlays (Discord, NVIDIA) often work better.
     options:
       - label: "Game Bar Disabled"
         registry_changes:
@@ -320,7 +403,26 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    info: "Reduces TCP acknowledgment delay from 200ms to immediate. Improves responsiveness in online games but may increase network traffic."
+    info: |
+      ## What This Does
+      Configures Windows to send TCP acknowledgments immediately rather than waiting.
+
+      ## Technical Details
+      - **Default**: Windows waits up to 200ms to batch ACKs together
+      - **Optimized**: ACKs are sent immediately (TcpAckFrequency=1)
+      - **Nagle disabled**: Prevents small packet batching (TcpNoDelay=1)
+
+      ## Gaming Impact
+      - Reduced ping in online games
+      - More responsive network communication
+      - Better for competitive gaming
+
+      ## Potential Drawbacks
+      - Slightly increased network traffic
+      - May increase bandwidth usage marginally
+
+      ## Recommendation
+      Enable for online gaming. The latency improvement outweighs the minor traffic increase.
     options:
       - label: "Low Latency (Immediate ACK)"
         registry_changes:
@@ -350,7 +452,24 @@ tweaks:
     description: "Disable Windows enhanced pointer precision globally"
     risk_level: low
     requires_reboot: true
-    info: "Provides 1:1 mouse movement for better aim in FPS games"
+    info: |
+      ## What This Does
+      Disables Windows' enhanced pointer precision which applies a non-linear curve to mouse movement.
+
+      ## Difference from Mouse Acceleration
+      - **Mouse Acceleration**: Changes speed based on movement speed
+      - **Enhanced Pointer Precision**: Applies a curve that affects all movement
+
+      ## Gaming Impact
+      - Provides true 1:1 mouse movement
+      - Consistent aim regardless of movement speed
+      - Essential for building muscle memory
+
+      ## Technical Details
+      Sets flat mouse curves that provide linear movement.
+
+      ## Recommendation
+      Essential for FPS gaming. Also benefits precision work like photo editing.
     options:
       - label: "Enhanced Precision Disabled"
         registry_changes:
@@ -393,7 +512,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Increases priority of games to reduce stuttering"
+    info: |
+      ## What This Does
+      Configures the Windows Multimedia Class Scheduler Service (MMCSS) to prioritize games.
+
+      ## Settings Applied
+      - **GPU Priority**: Maximum priority for GPU access
+      - **CPU Priority**: High priority for CPU scheduling
+      - **Scheduling Category**: High priority scheduling
+      - **SFIO Priority**: High priority for storage I/O
+
+      ## Benefits
+      - Reduced stuttering in games
+      - More consistent frame times
+      - Better resource allocation when multitasking
+
+      ## Recommendation
+      Safe to enable. Provides measurable improvements in frame consistency.
     options:
       - label: "Gaming Priority High"
         registry_changes:

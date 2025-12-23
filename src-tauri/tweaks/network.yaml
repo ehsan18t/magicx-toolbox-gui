@@ -1,0 +1,330 @@
+# Network Tweaks - Optimize network performance and latency
+
+category:
+  id: network
+  name: "Network"
+  description: "Optimize network performance, latency, and connectivity"
+  icon: "mdi:wifi"
+  order: 9
+
+tweaks:
+  - id: disable_nagle_algorithm
+    name: "Disable Nagle's Algorithm"
+    description: "Reduce network latency by disabling TCP packet bundling"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Nagle's algorithm which bundles small TCP packets together before sending.
+
+      ## Benefits
+      - **Lower latency**: Packets sent immediately instead of waiting
+      - **Gaming**: Reduced input lag in online games
+      - **Real-time apps**: Better responsiveness for VoIP, streaming
+
+      ## Drawbacks
+      - **More network overhead**: More packets sent
+      - **Slightly higher bandwidth usage**: More packet headers
+
+      ## Recommendation
+      Enable for gaming and real-time applications. Most modern networks can handle the extra overhead.
+    options:
+      - label: "Nagle Disabled (Low Latency)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpAckFrequency"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpNoDelay"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpDelAckTicks"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Nagle Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpAckFrequency"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpNoDelay"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpDelAckTicks"
+            action: delete_value
+
+  - id: disable_teredo
+    name: "Disable Teredo IPv6 Tunneling"
+    description: "Disable Teredo IPv6 tunneling for reduced latency"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Teredo, an IPv6 transition technology that tunnels IPv6 over IPv4.
+
+      ## Benefits
+      - **Reduced latency**: Tunneling adds overhead
+      - **Gaming**: Some games have issues with Teredo
+      - **Security**: Reduces attack surface
+
+      ## When to Keep Enabled
+      - Xbox Live party chat may require Teredo
+      - Some P2P applications need it for NAT traversal
+
+      ## Recommendation
+      Safe to disable for most users. Re-enable if Xbox party chat stops working.
+    options:
+      - label: "Teredo Disabled"
+        pre_commands:
+          - "netsh interface teredo set state disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
+            value_name: "DisabledComponents"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Teredo Enabled (Default)"
+        pre_commands:
+          - "netsh interface teredo set state default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
+            value_name: "DisabledComponents"
+            action: delete_value
+
+  - id: disable_isatap
+    name: "Disable ISATAP IPv6 Tunneling"
+    description: "Disable ISATAP IPv6 transition technology"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables ISATAP (Intra-Site Automatic Tunnel Addressing Protocol), another IPv6 transition technology.
+
+      ## Benefits
+      - **Reduced overhead**: Tunneling adds latency
+      - **Simpler networking**: Fewer protocols to troubleshoot
+      - **Security**: Reduces potential attack vectors
+
+      ## Recommendation
+      Safe to disable unless your organization specifically requires ISATAP.
+    options:
+      - label: "ISATAP Disabled"
+        pre_commands:
+          - "netsh interface isatap set state disabled"
+        registry_changes: []
+      - label: "ISATAP Enabled (Default)"
+        pre_commands:
+          - "netsh interface isatap set state default"
+        registry_changes: []
+
+  - id: disable_network_throttling
+    name: "Disable Network Throttling"
+    description: "Disable Windows network throttling for multimedia applications"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Removes Windows' default network throttling that limits throughput to give CPU time for multimedia playback.
+
+      ## Benefits
+      - **Maximum throughput**: No artificial network limits
+      - **Gaming**: Better network performance during gameplay
+      - **Streaming**: Improved upload/download speeds
+
+      ## Technical Details
+      Windows by default limits network throughput to 10 packets per millisecond. This tweak removes that limit (0xFFFFFFFF = unlimited).
+
+      ## Recommendation
+      Safe to enable on modern hardware with sufficient CPU power.
+    options:
+      - label: "Throttling Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "NetworkThrottlingIndex"
+            value_type: "REG_DWORD"
+            value: 4294967295
+      - label: "Throttling Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "NetworkThrottlingIndex"
+            value_type: "REG_DWORD"
+            value: 10
+
+  - id: disable_netbios
+    name: "Disable NetBIOS over TCP/IP"
+    description: "Disable legacy NetBIOS name resolution protocol"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables NetBIOS over TCP/IP, a legacy protocol from the Windows 9x era.
+
+      ## Benefits
+      - **Security**: NetBIOS can be exploited for network attacks
+      - **Reduced noise**: Less broadcast traffic on network
+      - **Performance**: Fewer protocols to process
+
+      ## Caution
+      - **Old applications**: Some legacy apps require NetBIOS
+      - **Network shares**: Very old SMB implementations may need it
+      - **Printers**: Some older network printers use NetBIOS
+
+      ## Recommendation
+      Safe to disable on modern networks. Keep enabled if you have legacy devices.
+    options:
+      - label: "NetBIOS Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "NetBIOS Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            action: delete_value
+
+  - id: increase_irp_stack_size
+    name: "Increase Network IRP Stack Size"
+    description: "Increase I/O Request Packet stack size for better network performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Increases the IRP (I/O Request Packet) stack size used for network file operations.
+
+      ## Benefits
+      - **File sharing**: Improved SMB/network share performance
+      - **Complex networks**: Better handling of multi-hop file access
+      - **Multiple NICs**: Better performance with multiple network adapters
+
+      ## Technical Details
+      Default is 15-20 depending on Windows version. Increasing to 30 helps with complex network topologies.
+
+      ## Recommendation
+      Safe optimization for all users, especially those using network shares.
+    options:
+      - label: "Increased (30)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 30
+      - label: "Default (20)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 20
+
+  - id: disable_llmnr
+    name: "Disable LLMNR"
+    description: "Disable Link-Local Multicast Name Resolution for security"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables LLMNR (Link-Local Multicast Name Resolution), a protocol used when DNS fails.
+
+      ## Security Benefits
+      - **Prevents LLMNR poisoning**: A common network attack vector
+      - **Credential theft**: LLMNR can be exploited to capture password hashes
+      - **Reduced attack surface**: One less protocol to exploit
+
+      ## Caution
+      Name resolution may be slower if DNS is misconfigured, as LLMNR won't be available as a fallback.
+
+      ## Recommendation
+      Strongly recommended for security-conscious users and enterprise environments.
+    options:
+      - label: "LLMNR Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "LLMNR Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            action: delete_value
+
+  - id: disable_wpad
+    name: "Disable WPAD (Web Proxy Auto-Discovery)"
+    description: "Disable automatic proxy configuration discovery"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables WPAD (Web Proxy Auto-Discovery Protocol) which automatically finds proxy settings.
+
+      ## Security Benefits
+      - **Prevents WPAD attacks**: Attackers can set up rogue WPAD servers
+      - **Traffic interception**: WPAD can be used to redirect your traffic
+      - **Faster connections**: No need to search for proxy settings
+
+      ## When to Keep Enabled
+      - Corporate networks that use automatic proxy configuration
+      - Networks where proxy settings change frequently
+
+      ## Recommendation
+      Disable unless your network administrator requires it.
+    options:
+      - label: "WPAD Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "WPAD Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            action: delete_value

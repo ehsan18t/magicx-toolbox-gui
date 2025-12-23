@@ -14,6 +14,20 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Remote Desktop Protocol (RDP) which allows remote access to your computer.
+
+      ## Security Impact
+      - **When enabled**: Anyone with credentials can access your PC remotely
+      - **When disabled**: Remote access via RDP is blocked
+
+      ## When to Keep Enabled
+      - If you use Remote Desktop to access this PC from elsewhere
+      - IT-managed environments that require remote support
+
+      ## Recommendation
+      Disable if you don't use Remote Desktop. RDP is a common attack vector.
     options:
       - label: "Remote Desktop Disabled"
         registry_changes:
@@ -36,6 +50,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from automatically running programs when you insert removable media.
+
+      ## Security Risk of AutoPlay
+      - USB drives can contain malware that auto-executes
+      - CDs/DVDs may have malicious autorun scripts
+      - Infected devices can compromise your system instantly
+
+      ## Impact
+      - You'll need to manually open File Explorer to access drives
+      - Slightly less convenient, much more secure
+
+      ## Recommendation
+      Essential security measure. Always disable AutoPlay.
     options:
       - label: "AutoPlay Disabled"
         registry_changes:
@@ -58,6 +87,20 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents autorun.inf files from executing programs automatically.
+
+      ## Background
+      AutoRun scripts (autorun.inf) were historically used by CDs/DVDs to launch installers. Malware authors exploited this to spread viruses via USB drives.
+
+      ## Security Impact
+      - Blocks a major malware infection vector
+      - No legitimate modern software requires AutoRun
+      - Works alongside AutoPlay disable for complete protection
+
+      ## Recommendation
+      Always disable. There's no good reason to keep AutoRun enabled.
     options:
       - label: "AutoRun Scripts Disabled"
         registry_changes:
@@ -80,6 +123,20 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Requires pressing Ctrl+Alt+Del before the login screen appears.
+
+      ## Security Purpose
+      - Ctrl+Alt+Del cannot be simulated by software
+      - Protects against fake login screen attacks (credential theft)
+      - Ensures you're interacting with the real Windows login
+
+      ## Inconvenience Factor
+      One extra key combination at login - minor inconvenience for added security.
+
+      ## Recommendation
+      Enable for security-conscious users and business environments.
     options:
       - label: "Ctrl+Alt+Del Required"
         registry_changes:
@@ -105,7 +162,23 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    info: "SMBv1 is an old protocol with security vulnerabilities"
+    info: |
+      ## What This Does
+      Disables the legacy SMBv1 file sharing protocol.
+
+      ## Security Risks of SMBv1
+      - **WannaCry ransomware** exploited SMBv1 vulnerabilities
+      - No encryption of data in transit
+      - Weak authentication mechanisms
+      - Multiple known unpatched vulnerabilities
+
+      ## Compatibility
+      - Windows Vista and later don't need SMBv1
+      - Very old NAS devices might require it
+      - Windows XP file sharing requires it
+
+      ## Recommendation
+      Disable unless you have legacy devices that require it. SMBv2/v3 are secure.
     options:
       - label: "SMBv1 Disabled"
         registry_changes:
@@ -122,44 +195,27 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_netbios
-    name: "Disable NetBIOS over TCP/IP"
-    description: "Disable LMHOSTS lookup and NetBIOS name resolution"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    info: "Disables legacy NetBIOS name resolution. May break old network applications. Improves security."
-    options:
-      - label: "NetBIOS Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "EnableLMHOSTS"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "NodeType"
-            value_type: "REG_DWORD"
-            value: 2
-      - label: "NetBIOS Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "EnableLMHOSTS"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "NodeType"
-            action: delete_value
-
   - id: enforce_password_policy
     name: "Enforce Strong Password Policy"
     description: "Enforce strong password requirements"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Requires signing or sealing for network authentication, ensuring encrypted and signed communication.
+
+      ## Security Benefits
+      - Prevents man-in-the-middle attacks on network authentication
+      - Ensures password hashes aren't sent in clear text
+      - Protects against credential interception
+
+      ## Compatibility
+      - Works with all modern Windows systems
+      - May break very old network clients
+
+      ## Recommendation
+      Enable for improved network authentication security.
     options:
       - label: "Strong Password Policy Enforced"
         registry_changes:
@@ -182,7 +238,24 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
-    info: "WARNING: Reduces security. Only disable if you know what you're doing"
+    info: |
+      ## ⚠️ WARNING: High Risk Tweak
+
+      ## What This Does
+      Disables Windows SmartScreen which checks downloaded files and apps against Microsoft's database of known malware.
+
+      ## Security Impact
+      - **No warning** for potentially malicious downloads
+      - **No protection** against known malware
+      - **Bypasses** Microsoft's threat intelligence
+
+      ## Why Someone Would Disable It
+      - Privacy concerns about files being checked against Microsoft servers
+      - False positives blocking legitimate software
+      - Running custom/unsigned software frequently
+
+      ## Recommendation
+      **Keep enabled unless you have a specific reason to disable it.** This significantly reduces your protection against malware.
     options:
       - label: "SmartScreen Disabled"
         registry_changes:
@@ -205,7 +278,22 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Prevents automatic upload of suspicious files to Microsoft"
+    info: |
+      ## What This Does
+      Prevents Windows Defender from automatically uploading suspicious files to Microsoft for analysis.
+
+      ## Privacy Considerations
+      - Files flagged as suspicious are uploaded to Microsoft's cloud
+      - Could include sensitive documents if flagged incorrectly
+      - Helps Microsoft improve threat detection
+
+      ## Security Trade-off
+      - Disabling reduces your contribution to threat intelligence
+      - Your system still receives protection updates
+      - Manual submission is still possible
+
+      ## Recommendation
+      Disable if privacy is a major concern. The security impact is minimal.
     options:
       - label: "Sample Submission Disabled"
         registry_changes:
@@ -228,6 +316,20 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents the Malicious Software Removal Tool from reporting infection data to Microsoft.
+
+      ## Privacy Benefits
+      - No telemetry about infections sent to Microsoft
+      - Infection history stays local
+
+      ## Trade-off
+      - Doesn't affect your protection level
+      - Only affects reporting of what was found
+
+      ## Recommendation
+      Safe to disable for privacy. Your protection remains unchanged.
     options:
       - label: "Malware Reporting Disabled"
         registry_changes:
@@ -250,7 +352,22 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    info: "WPBT allows computer vendors to execute programs at boot. Disabling prevents potential malware injection via firmware."
+    info: |
+      ## What This Does
+      Disables the Windows Platform Binary Table (WPBT) - a UEFI feature that allows computer manufacturers to automatically install software at boot.
+
+      ## Security Concerns
+      - WPBT runs code from UEFI firmware
+      - Manufacturers have used it to install bloatware
+      - Lenovo used it for persistent software installation
+      - Potential vector for rootkit-like persistence
+
+      ## What This Blocks
+      - Vendor software that reinstalls after fresh Windows install
+      - "Persistent" manufacturer tools embedded in firmware
+
+      ## Recommendation
+      Safe to disable. Prevents unwanted manufacturer software from persisting.
     options:
       - label: "WPBT Disabled"
         registry_changes:
@@ -272,7 +389,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Essential for dual-boot systems with Linux. Fixes time sync issues between operating systems."
+    info: |
+      ## What This Does
+      Configures Windows to treat the hardware clock as UTC time instead of local time.
+
+      ## Why This Matters (Dual Boot)
+      - Linux stores UTC in hardware clock, Windows stores local time
+      - Results in time being wrong after switching OS
+      - Time jumps back/forward by timezone offset
+
+      ## Impact
+      - Fixes time synchronization issues between Windows and Linux
+      - Windows will now correctly interpret hardware clock
+
+      ## Recommendation
+      Essential for dual-boot with Linux. No reason to enable for single-boot systems.
     options:
       - label: "UTC (For Dual Boot)"
         registry_changes:
@@ -295,7 +426,23 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Blocks Razer, Corsair, and other third-party software from auto-installing. Hardware will still work with basic drivers."
+    info: |
+      ## What This Does
+      Prevents Windows Update from automatically installing third-party driver software and co-installers.
+
+      ## What Gets Blocked
+      - Razer Synapse auto-installation
+      - Corsair iCUE auto-installation
+      - Logitech G Hub auto-installation
+      - Other vendor bloatware that comes with drivers
+
+      ## What Still Works
+      - Basic device functionality (hardware still works)
+      - Microsoft's built-in drivers
+      - Manually installed drivers
+
+      ## Recommendation
+      Enable if you prefer to manually install peripheral software. Reduces bloatware.
     options:
       - label: "Third-Party Drivers Blocked"
         registry_changes:
@@ -328,7 +475,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Prevents error reports from being sent to Microsoft"
+    info: |
+      ## What This Does
+      Disables Windows Error Reporting which sends crash data and error reports to Microsoft.
+
+      ## Privacy Benefits
+      - No crash dumps sent to Microsoft
+      - Application error data stays local
+      - Reduced telemetry
+
+      ## What You Lose
+      - Microsoft won't receive data to fix issues
+      - Some apps rely on WER for crash recovery
+
+      ## Recommendation
+      Safe to disable for privacy. Crash reports rarely benefit individual users.
     options:
       - label: "Error Reporting Disabled"
         registry_changes:
@@ -351,7 +512,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "LM hashes are weak and easily cracked. Modern Windows doesn't need them."
+    info: |
+      ## What This Does
+      Prevents Windows from storing LAN Manager (LM) password hashes.
+
+      ## Security Issue with LM Hashes
+      - LM hashes use weak DES encryption
+      - Can be cracked in seconds with modern hardware
+      - Only needed for Windows 9x/ME compatibility
+
+      ## Modern Windows
+      - Uses NTLM or Kerberos instead
+      - LM hashes are a legacy liability
+      - No modern software requires them
+
+      ## Recommendation
+      Always disable. LM hashes are a significant security vulnerability.
     options:
       - label: "LM Hash Storage Disabled"
         registry_changes:
@@ -374,7 +550,23 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Prevents attackers from enumerating user accounts without credentials"
+    info: |
+      ## What This Does
+      Prevents unauthenticated users from enumerating user accounts and shares.
+
+      ## Attack Scenario
+      Without this, attackers can:
+      - List all user accounts without credentials
+      - Identify valid usernames for brute force attacks
+      - Enumerate network shares
+
+      ## Impact
+      - Blocks reconnaissance phase of attacks
+      - No impact on normal operations
+      - May break very old network applications
+
+      ## Recommendation
+      Enable for improved security. Standard security hardening practice.
     options:
       - label: "Anonymous Enumeration Disabled"
         registry_changes:
@@ -407,7 +599,22 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    info: "Reduces attack surface by disabling hidden admin shares. May break some remote administration tools."
+    info: |
+      ## What This Does
+      Disables the automatic creation of hidden administrative shares (C$, D$, ADMIN$, IPC$).
+
+      ## Security Risk of Admin Shares
+      - Accessible to anyone with admin credentials
+      - Common target for lateral movement in attacks
+      - Used by ransomware to spread across networks
+
+      ## What Breaks
+      - Some remote administration tools
+      - Certain backup software
+      - Network-based system management
+
+      ## Recommendation
+      Enable on personal computers. Consider impact carefully in managed environments.
     options:
       - label: "Admin Shares Disabled"
         registry_changes:
