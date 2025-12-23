@@ -13,6 +13,21 @@ tweaks:
     description: "Remove advertisements from lock screen"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the "Windows Spotlight" rotating images and ads that appear on your lock screen.
+
+      ## What Gets Removed
+      - Fun facts and tips overlaid on lock screen images
+      - Suggestions for apps from the Microsoft Store
+      - Rotating Bing wallpaper images
+
+      ## What You Keep
+      - Your custom lock screen wallpaper
+      - Time, date, and notification previews
+
+      ## Recommendation
+      Safe to disable. Many users find lock screen tips and ads distracting or unwanted.
     options:
       - label: "Ads Disabled"
         registry_changes:
@@ -35,6 +50,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Replaces Windows 11's simplified context menu with the full classic menu from Windows 10.
+
+      ## Why Use This
+      - Access all menu options with one click (no "Show more options" needed)
+      - Third-party app options appear directly in the menu
+      - Faster workflow for power users
+
+      ## What Changes
+      - Right-clicking shows the full context menu immediately
+      - No need to click "Show more options" for advanced features
+      - Restart Explorer or sign out for changes to take effect
+
+      ## Recommendation
+      Highly recommended for users who frequently use context menus. The Windows 11 menu hides many useful options.
     options:
       - label: "Classic Menu Enabled"
         registry_changes:
@@ -57,6 +88,22 @@ tweaks:
     description: "Disable web search results in Windows Start menu"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Bing web search results from appearing when you search in the Start menu.
+
+      ## Benefits
+      - Faster search results (no network requests)
+      - Local files and apps appear without web clutter
+      - Improved privacy (searches aren't sent to Bing)
+
+      ## What Still Works
+      - Local file and folder search
+      - Installed app search
+      - Settings search
+
+      ## Recommendation
+      Recommended for most users. The Start menu search is more useful when focused on local content.
     options:
       - label: "Web Search Disabled"
         registry_changes:
@@ -78,6 +125,22 @@ tweaks:
     description: "Always show file extensions in File Explorer"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Shows file extensions (like .txt, .exe, .pdf) for all files in File Explorer.
+
+      ## Security Benefits
+      - Identify disguised malware (e.g., "document.pdf.exe" becomes visible)
+      - Prevent accidentally opening executable files
+      - Quickly distinguish between file types
+
+      ## For Developers & Power Users
+      - Essential for programming and file management
+      - Easily rename file extensions
+      - Identify file types at a glance
+
+      ## Recommendation
+      Strongly recommended. Hidden extensions are a common vector for malware distribution.
     options:
       - label: "Extensions Visible"
         registry_changes:
@@ -99,6 +162,22 @@ tweaks:
     description: "Show hidden files and folders in File Explorer"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Displays files and folders with the "hidden" attribute in File Explorer.
+
+      ## What Becomes Visible
+      - AppData folder in your user directory
+      - Hidden system configuration files
+      - Files you or apps have marked as hidden
+
+      ## Use Cases
+      - Access app configuration files
+      - Troubleshoot software issues
+      - Clean up hidden temp files
+
+      ## Recommendation
+      Recommended for power users and developers. Regular users may find it clutters their view.
     options:
       - label: "Hidden Files Visible"
         registry_changes:
@@ -120,6 +199,21 @@ tweaks:
     description: "Disable window snap suggestions when dragging"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the popup that suggests other windows to snap alongside when you drag a window to the edge.
+
+      ## When Disabled
+      - Windows still snap to edges and corners
+      - No popup asking what to fill the remaining space with
+      - Faster, less intrusive window management
+
+      ## When Enabled
+      - After snapping, Windows shows thumbnails of other windows
+      - Click a thumbnail to fill the remaining space
+
+      ## Recommendation
+      Disable if you find the suggestions intrusive. Snapping still works normally without it.
     options:
       - label: "Snap Assist Disabled"
         registry_changes:
@@ -174,6 +268,20 @@ tweaks:
     description: "Hide the Chat icon from Windows 11 taskbar"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Removes the Microsoft Teams Chat icon from the Windows 11 taskbar.
+
+      ## What Gets Hidden
+      - The Teams Chat shortcut on the taskbar
+      - Quick access to personal Microsoft Teams
+
+      ## What Still Works
+      - Microsoft Teams app (if installed) works normally
+      - You can still open Teams from Start menu or desktop
+
+      ## Recommendation
+      Safe to hide if you don't use Teams Chat or prefer the full Teams app.
     options:
       - label: "Chat Icon Hidden"
         registry_changes:
@@ -197,6 +305,20 @@ tweaks:
     description: "Use smaller icons in the taskbar"
     risk_level: low
     requires_reboot: true
+    info: |
+      ## What This Does
+      Reduces the size of taskbar icons for a more compact appearance.
+
+      ## Benefits
+      - More vertical screen space
+      - Fit more icons on the taskbar
+      - Cleaner, less obtrusive look
+
+      ## Note
+      This primarily affects Windows 10. Windows 11 has limited support for taskbar customization.
+
+      ## Recommendation
+      Useful for users who want to maximize screen real estate or prefer a compact interface.
     options:
       - label: "Small Icons"
         registry_changes:
@@ -218,6 +340,22 @@ tweaks:
     description: "Disable window animation and transition effects"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables window minimize/maximize animations and transition effects.
+
+      ## Performance Benefits
+      - Faster perceived responsiveness
+      - Reduced CPU/GPU usage on older hardware
+      - Instant window operations
+
+      ## What Gets Disabled
+      - Window minimize/maximize animations
+      - Menu fade effects
+      - Tooltip animations
+
+      ## Recommendation
+      Enable for snappier feel or on low-powered devices. Purely cosmetic preference.
     options:
       - label: "Animations Disabled"
         registry_changes:
@@ -239,6 +377,22 @@ tweaks:
     description: "Check 'Do this for all current items' checkbox by default in file operations"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Pre-checks the "Do this for all current items" checkbox in file operation dialogs.
+
+      ## When This Helps
+      - Copying/moving multiple files with conflicts
+      - Replacing multiple files at once
+      - Deleting multiple protected files
+
+      ## Behavior Change
+      - Checkbox starts checked instead of unchecked
+      - One click applies action to all remaining items
+      - Reduces repetitive clicking during bulk operations
+
+      ## Recommendation
+      Useful time-saver for power users who frequently manage many files.
     options:
       - label: "Checkbox Pre-checked"
         registry_changes:
@@ -260,6 +414,24 @@ tweaks:
     description: "Disable the Action Center/Notification Center"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Windows 10 Action Center (notification panel on the right side of the screen).
+
+      ## What Gets Disabled
+      - Notification center slide-out panel
+      - Quick action tiles (Wi-Fi, Bluetooth, etc.)
+      - Notification grouping area
+
+      ## What Still Works
+      - Toast notifications still appear
+      - Settings app for quick toggles
+
+      ## Note
+      Windows 10 only. Windows 11 uses a different notification system.
+
+      ## Recommendation
+      Disable if you never use Action Center and find it intrusive.
     options:
       - label: "Action Center Disabled"
         registry_changes:
@@ -283,6 +455,22 @@ tweaks:
     description: "Disable sync provider notifications/ads in File Explorer"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Removes OneDrive and other sync provider promotional notifications from File Explorer.
+
+      ## What Gets Removed
+      - "Get more out of OneDrive" banners
+      - Sync provider suggestions in the navigation pane
+      - Promotional tips about cloud storage
+
+      ## What Still Works
+      - OneDrive syncing (if configured)
+      - Sync status icons
+      - All cloud storage functionality
+
+      ## Recommendation
+      Safe to disable. Removes Microsoft's promotional content from File Explorer.
     options:
       - label: "Sync Ads Disabled"
         registry_changes:
@@ -394,6 +582,22 @@ tweaks:
     description: "Hide the Task View button from the taskbar"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Hides the Task View button from the taskbar.
+
+      ## Task View Access
+      - Button hidden but feature still works
+      - Use Win + Tab keyboard shortcut instead
+      - Swipe with three fingers on touchpad
+
+      ## Benefits
+      - Cleaner taskbar
+      - More space for pinned apps
+      - Reduces accidental clicks
+
+      ## Recommendation
+      Safe to hide if you use keyboard shortcuts or don't use Task View.
     options:
       - label: "Hidden"
         registry_changes:
@@ -415,6 +619,21 @@ tweaks:
     description: "Set taskbar icon alignment in Windows 11"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Changes where taskbar icons are positioned on the Windows 11 taskbar.
+
+      ## Options
+      - **Left Aligned**: Classic Windows 10 style, icons start from the left
+      - **Center Aligned**: Default Windows 11 style, icons centered
+
+      ## Why Change This
+      - Familiarity with Windows 10 layout
+      - Easier muscle memory for left-aligned icons
+      - Personal preference
+
+      ## Recommendation
+      Pure personal preference. No functional difference.
     options:
       - label: "Left Aligned"
         registry_changes:
@@ -487,6 +706,23 @@ tweaks:
     description: "Hide account-related notifications in Start menu"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Removes Microsoft account-related notifications from the Start menu.
+
+      ## What Gets Hidden
+      - "Backup your files" reminders
+      - OneDrive storage warnings
+      - Microsoft 365 subscription prompts
+      - Account security notifications
+
+      ## What Still Works
+      - Your Microsoft account works normally
+      - OneDrive syncing continues
+      - Security features remain active
+
+      ## Recommendation
+      Safe to disable if you find these notifications annoying.
     options:
       - label: "Notifications Disabled"
         registry_changes:
@@ -508,6 +744,22 @@ tweaks:
     description: "Enable dark theme for Windows and apps"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Switches Windows and compatible apps to dark color theme.
+
+      ## What Changes
+      - Windows UI elements (Start menu, taskbar, settings)
+      - File Explorer and system dialogs
+      - Apps that respect system theme
+
+      ## Benefits
+      - Reduced eye strain in low light
+      - OLED screen battery savings
+      - Modern aesthetic
+
+      ## Recommendation
+      Personal preference. Dark mode is popular for nighttime use and OLED displays.
     options:
       - label: "Dark Mode"
         registry_changes:
@@ -539,6 +791,20 @@ tweaks:
     description: "Enable NumLock key by default when Windows starts"
     risk_level: low
     requires_reboot: true
+    info: |
+      ## What This Does
+      Automatically enables the NumLock key when Windows starts.
+
+      ## Useful For
+      - Users who frequently enter numbers
+      - Data entry workflows
+      - Anyone tired of pressing NumLock after each boot
+
+      ## Note
+      Some BIOS/UEFI settings also control NumLock state. This registry setting applies after Windows loads.
+
+      ## Recommendation
+      Enable if you always want the number pad ready for numeric input.
     options:
       - label: "NumLock Enabled"
         registry_changes:
@@ -616,6 +882,21 @@ tweaks:
     description: "Open File Explorer to This PC instead of Quick Access"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Changes what File Explorer shows when opened.
+
+      ## Options
+      - **This PC**: Shows drives (C:, D:, etc.) and folders like Documents, Downloads
+      - **Quick Access**: Shows recently used files and pinned folders
+
+      ## Why Choose This PC
+      - Traditional file management approach
+      - Direct access to all drives
+      - Privacy (no recent files shown)
+
+      ## Recommendation
+      Personal preference. Power users often prefer "This PC" for quick drive access.
     options:
       - label: "This PC"
         registry_changes:

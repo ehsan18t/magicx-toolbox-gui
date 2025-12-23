@@ -45,6 +45,7 @@
   import MdiEthernet from "~icons/mdi/ethernet";
   import MdiExpansionCard from "~icons/mdi/expansion-card";
   import MdiExport from "~icons/mdi/export";
+  import MdiEyeOffOutline from "~icons/mdi/eye-off-outline";
   import MdiFileCog from "~icons/mdi/file-cog";
   import MdiFileDocument from "~icons/mdi/file-document";
   import MdiFileDocumentMultiple from "~icons/mdi/file-document-multiple";
@@ -198,6 +199,7 @@
     "mdi:lightbulb-outline": MdiLightbulbOutline,
     "mdi:pin": MdiPin,
     "mdi:pin-outline": MdiPinOutline,
+    "mdi:eye-off-outline": MdiEyeOffOutline,
     "mdi:help-circle": MdiHelpCircle,
     "mdi:chart-bar": MdiChartBar,
     "mdi:alert": MdiAlert,

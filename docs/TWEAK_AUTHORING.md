@@ -334,7 +334,63 @@ options:
     pre_powershell: []           # Optional: PowerShell BEFORE changes
     post_commands: []            # Optional: Shell commands AFTER changes
     post_powershell: []          # Optional: PowerShell AFTER changes
+    registry_missing_is_match: bool   # Optional: Treat missing registry entries as matching (default: false)
+    service_missing_is_match: bool    # Optional: Treat missing services as matching (default: false)
+    scheduler_missing_is_match: bool  # Optional: Treat missing scheduled tasks as matching (default: false)
 ```
+
+### The `*_missing_is_match` Flags
+
+When a tweak modifies items that may not exist on all Windows editions (LTSC, Server, etc.), the status detection cannot determine if the tweak is applied because the items are missing.
+
+By setting the appropriate flag on an option, missing items are treated as matching that option. The UI will show an "Inferred" badge to indicate the status was determined by absence rather than actual values.
+
+| Flag                         | Applies To           | Use Case                                    |
+| ---------------------------- | -------------------- | ------------------------------------------- |
+| `registry_missing_is_match`  | Registry keys/values | Service registry entries that may not exist |
+| `service_missing_is_match`   | Windows services     | Services that don't exist on all editions   |
+| `scheduler_missing_is_match` | Scheduled tasks      | Tasks that may not exist on some systems    |
+
+**When to use:**
+- Services that don't exist on all Windows editions (e.g., Xbox services on Server)
+- Services removed in newer Windows versions (e.g., HomeGroup in 1803+)
+- Registry keys that only exist when a feature is installed
+- Scheduled tasks that only exist with certain features
+
+**Example (registry entries for service that may not exist):**
+
+```yaml
+options:
+  - label: "Disabled"
+    registry_missing_is_match: true  # If service registry key doesn't exist, consider it "disabled"
+    registry_changes:
+      - hive: HKLM
+        key: "System\\CurrentControlSet\\Services\\OptionalService"
+        value_name: "Start"
+        value_type: "REG_DWORD"
+        value: 4
+        skip_validation: true        # Also skip validation since service may not exist
+  - label: "Enabled"
+    registry_changes:
+      # ... enabled settings
+```
+
+**Example (service that may not exist):**
+
+```yaml
+options:
+  - label: "Disabled"
+    service_missing_is_match: true   # If service doesn't exist, consider it "disabled"
+    service_changes:
+      - name: OptionalService
+        startup: disabled
+        skip_validation: true
+  - label: "Enabled"
+    service_changes:
+      # ... enabled settings
+```
+
+**Important:** When using `*_missing_is_match: true`, you typically also want `skip_validation: true` on the individual changes to prevent apply failures when items don't exist.
 
 ---
 

@@ -14,7 +14,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Apps will only update when you manually check for updates in the Store"
+    info: |
+      ## What This Does
+      Prevents Microsoft Store apps from updating automatically in the background.
+
+      ## What Changes
+      - Store apps won't update automatically
+      - You control when updates are installed
+      - Manual "Get updates" button still works
+
+      ## Benefits
+      - Control over app versions
+      - Prevent unwanted UI changes
+      - Reduce background bandwidth usage
+
+      ## Recommendation
+      Enable if you want full control over app updates. Remember to update manually for security.
     options:
       - label: "Auto Updates Disabled"
         registry_changes:
@@ -36,7 +51,21 @@ tweaks:
     description: "Disable Windows Update peer-to-peer delivery optimization"
     risk_level: low
     requires_reboot: false
-    info: "Prevents Windows from downloading/uploading updates from/to other PCs"
+    info: |
+      ## What This Does
+      Disables peer-to-peer download of Windows updates.
+
+      ## How P2P Works
+      - Updates can download from other PCs on LAN or internet
+      - Your PC can upload updates to other computers
+      - Uses your bandwidth to help others update
+
+      ## Privacy Consideration
+      - With P2P, parts of updates come from unknown sources
+      - Your bandwidth is used for Microsoft's CDN
+
+      ## Recommendation
+      Disable if you have metered internet or privacy concerns. Updates still download from Microsoft directly.
     options:
       - label: "P2P Delivery Disabled"
         registry_changes:
@@ -59,6 +88,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows Update from updating other Microsoft products.
+
+      ## Affected Products
+      - Microsoft Office
+      - Microsoft 365 apps
+      - Silverlight, .NET Framework
+      - Other Microsoft software
+
+      ## When Disabled
+      - Only Windows itself gets updated
+      - Office and other MS apps need manual updates
+
+      ## Recommendation
+      Disable if you prefer to update Office and other MS products separately.
     options:
       - label: "MS Products Auto Update Disabled"
         registry_changes:
@@ -81,7 +126,21 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Useful if you prefer to install drivers manually from manufacturer"
+    info: |
+      ## What This Does
+      Prevents Windows Update from automatically installing driver updates.
+
+      ## Why Disable
+      - Windows drivers can override optimized manufacturer drivers
+      - GPU drivers from Windows Update are often outdated
+      - Some drivers cause compatibility issues
+
+      ## When to Keep Enabled
+      - New PC setup (lets Windows find basic drivers)
+      - You don't want to manage drivers manually
+
+      ## Recommendation
+      Recommended for gamers and power users who install drivers from manufacturers.
     options:
       - label: "Driver Updates Disabled"
         registry_changes:
@@ -248,7 +307,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Windows will notify you to restart but won't do it automatically"
+    info: |
+      ## What This Does
+      Prevents Windows from automatically restarting your PC after installing updates.
+
+      ## Default Behavior
+      - Windows schedules restarts during "inactive hours"
+      - Can interrupt work if you leave PC unattended
+      - May restart during downloads or long tasks
+
+      ## When Disabled
+      - You get notifications to restart
+      - PC won't restart without your action
+      - Updates wait until you choose to restart
+
+      ## Recommendation
+      Recommended for users who run long tasks or leave work open overnight.
     options:
       - label: "Auto Restart Disabled"
         registry_changes:
@@ -280,7 +354,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Feature updates will be delayed, giving time for initial bugs to be fixed"
+    info: |
+      ## What This Does
+      Delays major Windows feature updates (like 23H2, 24H2) by the specified number of days.
+
+      ## Why Defer
+      - Wait for initial bugs to be patched
+      - Avoid being an early adopter of new features
+      - Give enterprise software time to certify compatibility
+
+      ## Security Note
+      - Security updates are NOT affected by this setting
+      - Only major version upgrades are delayed
+
+      ## Recommendation
+      365 days is recommended for stability. Feature updates often have early issues.
     options:
       - label: "Defer 365 Days"
         registry_changes:
@@ -325,7 +413,24 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Security updates will be delayed. Use with caution."
+    info: |
+      ## ⚠️ Caution: Security Trade-off
+
+      ## What This Does
+      Delays monthly security and quality updates by the specified number of days.
+
+      ## Security Risk
+      - Security patches fix known vulnerabilities
+      - Delaying exposes you to exploits that are already public
+      - Bad actors actively target known vulnerabilities
+
+      ## Why Some Defer
+      - Avoid rare buggy patches
+      - Allow IT to test patches before deployment
+      - 7 days is usually enough to catch major issues
+
+      ## Recommendation
+      7 days maximum if you choose to defer. Longer delays significantly increase risk.
     options:
       - label: "Defer 30 Days"
         registry_changes:
@@ -370,7 +475,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Windows won't restart for updates during active hours"
+    info: |
+      ## What This Does
+      Sets the time range when Windows won't restart for updates.
+
+      ## Options Explained
+      - **Extended (6 AM - 11 PM)**: Maximum protection, 17-hour window
+      - **Business (9 AM - 6 PM)**: Standard work hours, 9-hour window
+      - **Auto**: Windows learns from your usage patterns
+
+      ## How It Works
+      - Updates can still install during active hours
+      - Automatic restarts only happen OUTSIDE active hours
+      - Maximum window is 18 hours
+
+      ## Recommendation
+      Extended hours recommended for home users. Business hours for predictable schedules.
     options:
       - label: "6 AM - 11 PM (Extended)"
         registry_changes:
@@ -415,7 +535,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Hides annoying restart notifications after updates"
+    info: |
+      ## What This Does
+      Hides the persistent restart notifications after updates are installed.
+
+      ## What Gets Disabled
+      - "Restart required" toast notifications
+      - Restart reminder pop-ups
+      - Update status in notification area
+
+      ## What Still Happens
+      - Updates still download and install
+      - Action Center still shows update status
+      - You just won't be nagged to restart
+
+      ## Recommendation
+      Enable if you find restart notifications annoying. Remember to restart periodically.
     options:
       - label: "Notifications Disabled"
         registry_changes:
@@ -447,7 +582,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Prevents Windows from sharing updates with other devices on your network or internet"
+    info: |
+      ## What This Does
+      Completely disables the Delivery Optimization service.
+
+      ## What Delivery Optimization Does
+      - Downloads updates from Microsoft and other PCs
+      - Can use your upload bandwidth for other PCs
+      - Caches updates locally for faster LAN distribution
+
+      ## When to Disable
+      - Metered or limited internet connection
+      - Privacy concerns about P2P downloads
+      - You want updates only from Microsoft servers
+
+      ## Note
+      Microsoft Store may show slower download speeds with this disabled.
+
+      ## Recommendation
+      Safe to disable. Updates download directly from Microsoft instead.
     options:
       - label: "Delivery Optimization Disabled"
         registry_changes:
@@ -479,7 +632,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Prevents Windows Update from saturating your internet connection"
+    info: |
+      ## What This Does
+      Limits how much of your internet bandwidth Windows Update can consume.
+
+      ## Options
+      - **25% Limit**: Minimal impact on your browsing, slower updates
+      - **50% Limit**: Balanced approach, updates at half speed
+      - **75% Limit**: Faster updates, some browsing impact
+
+      ## Background vs Foreground
+      - Background: When you're actively using PC
+      - Foreground: When Windows Update is open
+
+      ## Recommendation
+      25-50% limit for slower connections. Prevents updates from saturating your bandwidth.
     options:
       - label: "25% Bandwidth Limit"
         registry_changes:

@@ -609,12 +609,14 @@ tweaks:
       Disable if you don't use Xbox/Microsoft Store games. Keep enabled for Game Pass subscribers.
     options:
       - label: "Xbox Services Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\xbgm"
             value_name: "Start"
@@ -628,6 +630,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+            skip_validation: true
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\xbgm"
             value_name: "Start"

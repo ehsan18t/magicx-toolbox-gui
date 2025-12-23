@@ -89,11 +89,12 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     let snapshot_original_option_index = snapshot.map(|s| s.original_option_index);
 
     log::trace!(
-        "Tweak {} status: current_option={:?}, has_snapshot={}, original_option={:?}",
+        "Tweak {} status: current_option={:?}, has_snapshot={}, original_option={:?}, inferred={}",
         tweak_id,
         state.current_option_index,
         state.has_snapshot,
-        snapshot_original_option_index
+        snapshot_original_option_index,
+        state.status_inferred
     );
 
     Ok(TweakStatus {
@@ -103,6 +104,7 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
         has_backup: state.has_snapshot,
         current_option_index: state.current_option_index,
         snapshot_original_option_index,
+        status_inferred: state.status_inferred,
         error: None,
     })
 }
@@ -134,6 +136,7 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                         has_backup: state.has_snapshot,
                         current_option_index: state.current_option_index,
                         snapshot_original_option_index,
+                        status_inferred: state.status_inferred,
                         error: None,
                     }
                 }
@@ -148,6 +151,7 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                         has_backup: false,
                         current_option_index: None,
                         snapshot_original_option_index: None,
+                        status_inferred: false,
                         error: Some(format!("State detection failed: {}", e)),
                     }
                 }

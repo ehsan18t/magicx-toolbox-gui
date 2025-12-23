@@ -21,6 +21,32 @@ use super::storage::{delete_snapshot, get_applied_tweaks, load_snapshot, snapsho
 // State Detection
 // ============================================================================
 
+/// Result of a match check: whether it matched and whether status was inferred
+#[derive(Debug, Clone, Copy)]
+struct MatchResult {
+    /// Whether the option matches current system state
+    matches: bool,
+    /// Whether the match was inferred from missing items (via missing_is_match)
+    /// rather than detected from actual values
+    inferred: bool,
+}
+
+impl MatchResult {
+    fn matched() -> Self {
+        Self {
+            matches: true,
+            inferred: false,
+        }
+    }
+
+    fn not_matched() -> Self {
+        Self {
+            matches: false,
+            inferred: false,
+        }
+    }
+}
+
 /// Detect current state of a tweak by comparing against all options
 /// Returns TweakState with current_option_index = None if no option matches
 pub fn detect_tweak_state(
@@ -36,12 +62,14 @@ pub fn detect_tweak_state(
 
     // Try to match current state against each option
     for (index, option) in tweak.options.iter().enumerate() {
-        if option_matches_current_state(option, windows_version)? {
+        let result = option_matches_current_state(option, windows_version)?;
+        if result.matches {
             return Ok(TweakState {
                 tweak_id: tweak.id.clone(),
                 current_option_index: Some(index),
                 has_snapshot,
                 snapshot_option_index,
+                status_inferred: result.inferred,
             });
         }
     }
@@ -52,13 +80,17 @@ pub fn detect_tweak_state(
         current_option_index: None,
         has_snapshot,
         snapshot_option_index,
+        status_inferred: false,
     })
 }
 
 /// Check if all registry/service/scheduler changes in an option match current state
 /// Items with skip_validation=true are excluded from this check
 /// Uses parallel iteration for registry, service, and scheduler checks
-fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> Result<bool, Error> {
+fn option_matches_current_state(
+    option: &TweakOption,
+    windows_version: u32,
+) -> Result<MatchResult, Error> {
     // Count only validatable changes (those without skip_validation)
     let validatable_registry: Vec<_> = option
         .registry_changes
@@ -81,34 +113,52 @@ fn option_matches_current_state(option: &TweakOption, windows_version: u32) -> R
         && validatable_services.is_empty()
         && validatable_scheduler.is_empty()
     {
-        return Ok(false);
+        return Ok(MatchResult::not_matched());
     }
 
     // Use rayon to check all three categories in parallel using nested joins
     // Each category check is independent and can run concurrently
-    let ((registry_ok, services_ok), scheduler_ok) = rayon::join(
+    let ((registry_result, services_result), scheduler_result) = rayon::join(
         || {
             rayon::join(
-                || check_registry_matches(&validatable_registry),
-                || check_services_match(&validatable_services),
+                || check_registry_matches(&validatable_registry, option.registry_missing_is_match),
+                || check_services_match(&validatable_services, option.service_missing_is_match),
             )
         },
-        || check_scheduler_matches(&validatable_scheduler),
+        || check_scheduler_matches(&validatable_scheduler, option.scheduler_missing_is_match),
     );
 
-    Ok(registry_ok? && services_ok? && scheduler_ok?)
+    let registry_result = registry_result?;
+    let services_result = services_result?;
+    let scheduler_result = scheduler_result?;
+
+    // All must match for the option to match
+    if registry_result.matches && services_result.matches && scheduler_result.matches {
+        // Status is inferred if ANY component was inferred
+        let inferred =
+            registry_result.inferred || services_result.inferred || scheduler_result.inferred;
+        Ok(MatchResult {
+            matches: true,
+            inferred,
+        })
+    } else {
+        Ok(MatchResult::not_matched())
+    }
 }
 
 /// Check if all registry values match expected state (parallelized)
+/// When missing_is_match is true, missing registry keys/values are treated as matching
 fn check_registry_matches(
     validatable_registry: &[&crate::models::RegistryChange],
-) -> Result<bool, Error> {
+    missing_is_match: bool,
+) -> Result<MatchResult, Error> {
     if validatable_registry.is_empty() {
-        return Ok(true);
+        return Ok(MatchResult::matched());
     }
 
     // Use parallel iteration for registry checks, collect results
-    let results: Vec<Result<bool, Error>> = validatable_registry
+    // Each result is (matched, was_inferred)
+    let results: Vec<Result<(bool, bool), Error>> = validatable_registry
         .par_iter()
         .map(|change| {
             match change.action {
@@ -116,11 +166,11 @@ fn check_registry_matches(
                     // For Set action, check if the value matches
                     let value_type = match &change.value_type {
                         Some(vt) => vt,
-                        None => return Ok(false), // Invalid config
+                        None => return Ok((false, false)), // Invalid config
                     };
                     let expected_value = match &change.value {
                         Some(v) => v,
-                        None => return Ok(false), // Invalid config
+                        None => return Ok((false, false)), // Invalid config
                     };
 
                     let (current_value, existed) = read_registry_value(
@@ -131,10 +181,17 @@ fn check_registry_matches(
                     )?;
 
                     if !existed {
-                        return Ok(false);
+                        // Item doesn't exist - check missing_is_match flag
+                        if missing_is_match {
+                            return Ok((true, true)); // Inferred match
+                        }
+                        return Ok((false, false));
                     }
 
-                    Ok(values_match(&current_value, &Some(expected_value.clone())))
+                    Ok((
+                        values_match(&current_value, &Some(expected_value.clone())),
+                        false,
+                    ))
                 }
                 RegistryAction::DeleteValue => {
                     // For DeleteValue, check that the value doesn't exist
@@ -144,68 +201,103 @@ fn check_registry_matches(
                         &change.value_name,
                     )
                     .unwrap_or(false);
-                    Ok(!exists)
+                    Ok((!exists, false))
                 }
                 RegistryAction::DeleteKey => {
                     // For DeleteKey, check that the key doesn't exist
                     let exists =
                         registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
-                    Ok(!exists)
+                    Ok((!exists, false))
                 }
                 RegistryAction::CreateKey => {
                     // For CreateKey, check that the key exists
                     let exists =
                         registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
-                    Ok(exists)
+                    if !exists && missing_is_match {
+                        // Key doesn't exist but missing_is_match - treat as inferred match
+                        return Ok((true, true));
+                    }
+                    Ok((exists, false))
                 }
             }
         })
         .collect();
 
-    // Check if all results are Ok(true)
+    // Check if all results match and track if any were inferred
+    let mut any_inferred = false;
     for result in results {
-        if !result? {
-            return Ok(false);
+        let (matched, inferred) = result?;
+        if !matched {
+            return Ok(MatchResult::not_matched());
+        }
+        if inferred {
+            any_inferred = true;
         }
     }
 
-    Ok(true)
+    Ok(MatchResult {
+        matches: true,
+        inferred: any_inferred,
+    })
 }
 
 /// Check if all services match expected state (parallelized)
+/// When missing_is_match is true, services that don't exist are treated as matching
 fn check_services_match(
     validatable_services: &[&crate::models::ServiceChange],
-) -> Result<bool, Error> {
+    missing_is_match: bool,
+) -> Result<MatchResult, Error> {
     if validatable_services.is_empty() {
-        return Ok(true);
+        return Ok(MatchResult::matched());
     }
 
     // Use parallel iterator and collect results
-    let results: Vec<Result<bool, Error>> = validatable_services
+    // Each result is (matched, was_inferred)
+    let results: Vec<Result<(bool, bool), Error>> = validatable_services
         .par_iter()
         .map(|change| {
             let status = service_control::get_service_status(&change.name)?;
+
+            // Check if service exists
+            if !status.exists {
+                // Service doesn't exist - check missing_is_match flag
+                if missing_is_match {
+                    return Ok((true, true)); // Inferred match
+                }
+                return Ok((false, false));
+            }
+
             let current_startup = status.startup_type;
-            Ok(current_startup == Some(change.startup))
+            Ok((current_startup == Some(change.startup), false))
         })
         .collect();
 
-    // Check if all results are Ok(true)
+    // Check if all results match and track if any were inferred
+    let mut any_inferred = false;
     for result in results {
-        if !result? {
-            return Ok(false);
+        let (matched, inferred) = result?;
+        if !matched {
+            return Ok(MatchResult::not_matched());
+        }
+        if inferred {
+            any_inferred = true;
         }
     }
 
-    Ok(true)
+    Ok(MatchResult {
+        matches: true,
+        inferred: any_inferred,
+    })
 }
 
 /// Check if all scheduler tasks match expected state (parallelized)
+/// When missing_is_match is true, tasks that don't exist are treated as matching
 fn check_scheduler_matches(
     validatable_scheduler: &[&crate::models::SchedulerChange],
-) -> Result<bool, Error> {
+    missing_is_match: bool,
+) -> Result<MatchResult, Error> {
     if validatable_scheduler.is_empty() {
-        return Ok(true);
+        return Ok(MatchResult::matched());
     }
 
     // Process scheduler changes in parallel.
@@ -213,7 +305,8 @@ fn check_scheduler_matches(
     // NOTE: The scheduler_service uses the `schtasks.exe` CLI tool via std::process::Command,
     // which is thread-safe and does not share COM apartments between threads.
     // Therefore, it is safe to parallelize these checks.
-    let results: Vec<Result<bool, Error>> = validatable_scheduler
+    // Each result is (matched, was_inferred)
+    let results: Vec<Result<(bool, bool), Error>> = validatable_scheduler
         .par_iter()
         .map(|change| {
             // Determine expected state based on action
@@ -236,17 +329,25 @@ fn check_scheduler_matches(
                     .unwrap_or_default();
 
                 if tasks.is_empty() {
-                    // No tasks found - only matches if we expected deletion or ignore_not_found
-                    if expected_state != scheduler_service::TaskState::NotFound
-                        && !change.ignore_not_found
-                    {
-                        return Ok(false);
+                    // No tasks found - check various conditions
+                    if expected_state == scheduler_service::TaskState::NotFound {
+                        // Expected deletion, no tasks found = match
+                        return Ok((true, false));
                     }
+                    if change.ignore_not_found {
+                        // Tasks not found but ignore_not_found is set
+                        return Ok((true, false));
+                    }
+                    if missing_is_match {
+                        // Tasks not found but missing_is_match is set
+                        return Ok((true, true)); // Inferred match
+                    }
+                    return Ok((false, false));
                 } else {
                     // Check that all matching tasks have expected state
                     for task in tasks {
                         if !task_state_matches(&task.state, &expected_state) {
-                            return Ok(false);
+                            return Ok((false, false));
                         }
                     }
                 }
@@ -255,32 +356,47 @@ fn check_scheduler_matches(
                 let current_state = scheduler_service::get_task_state(&change.task_path, task_name)
                     .unwrap_or(scheduler_service::TaskState::NotFound);
 
-                // Handle ignore_not_found for exact names
-                if current_state == scheduler_service::TaskState::NotFound
-                    && change.ignore_not_found
-                {
-                    // Task not found but ignore_not_found is set - consider this as matching
-                    return Ok(true);
+                if current_state == scheduler_service::TaskState::NotFound {
+                    // Task not found
+                    if change.ignore_not_found {
+                        return Ok((true, false));
+                    }
+                    if missing_is_match {
+                        return Ok((true, true)); // Inferred match
+                    }
+                    // Only match if we expected deletion
+                    if expected_state == scheduler_service::TaskState::NotFound {
+                        return Ok((true, false));
+                    }
+                    return Ok((false, false));
                 }
 
                 if !task_state_matches(&current_state, &expected_state) {
-                    return Ok(false);
+                    return Ok((false, false));
                 }
             }
             // If neither pattern nor name, skip validation for this change (implicitly match)
 
-            Ok(true)
+            Ok((true, false))
         })
         .collect();
 
-    // Check if all results are Ok(true)
+    // Check if all results match and track if any were inferred
+    let mut any_inferred = false;
     for result in results {
-        if !result? {
-            return Ok(false);
+        let (matched, inferred) = result?;
+        if !matched {
+            return Ok(MatchResult::not_matched());
+        }
+        if inferred {
+            any_inferred = true;
         }
     }
 
-    Ok(true)
+    Ok(MatchResult {
+        matches: true,
+        inferred: any_inferred,
+    })
 }
 
 // ============================================================================

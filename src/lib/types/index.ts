@@ -158,6 +158,24 @@ export interface TweakOption {
   post_commands: string[];
   /** PowerShell commands to run AFTER applying changes (after post_commands) */
   post_powershell: string[];
+  /**
+   * If true, treat missing registry keys/values as matching this option.
+   * Used for tweaks that modify registry entries which may not exist on all Windows editions.
+   * When a registry entry doesn't exist and this flag is set, the status is inferred rather than detected.
+   */
+  registry_missing_is_match?: boolean;
+  /**
+   * If true, treat missing services as matching this option.
+   * Used for tweaks that disable services which may not exist on all Windows editions.
+   * When a service doesn't exist and this flag is set, the status is inferred rather than detected.
+   */
+  service_missing_is_match?: boolean;
+  /**
+   * If true, treat missing scheduled tasks as matching this option.
+   * Used for tweaks that disable tasks which may not exist on all Windows editions.
+   * When a task doesn't exist and this flag is set, the status is inferred rather than detected.
+   */
+  scheduler_missing_is_match?: boolean;
 }
 
 /** Category definition loaded from YAML file */
@@ -211,6 +229,12 @@ export interface TweakStatus {
    * Used by frontend to show "Default" segment when original state was unknown.
    */
   snapshot_original_option_index?: number | null;
+  /**
+   * True if the status was inferred from missing items (via missing_is_match flag)
+   * rather than detected from actual registry/service values.
+   * Used by frontend to show an indicator that the status is based on missing components.
+   */
+  status_inferred?: boolean;
   /** Error message if state detection failed (tweak still usable but with unknown state) */
   error?: string;
 }

@@ -473,6 +473,24 @@ pub struct TweakOption {
     /// PowerShell commands to run AFTER applying changes (after post_commands)
     #[serde(default)]
     pub post_powershell: Vec<String>,
+    /// If true, treat missing registry keys/values as matching this option.
+    /// Used for tweaks that modify registry entries which may not exist on all Windows editions.
+    /// When a registry key/value doesn't exist and this flag is set, the option is considered
+    /// a match (status is inferred rather than detected from actual values).
+    #[serde(default)]
+    pub registry_missing_is_match: bool,
+    /// If true, treat missing services as matching this option.
+    /// Used for tweaks that disable services which may not exist on all Windows editions.
+    /// When a service doesn't exist and this flag is set, the option is considered
+    /// a match (status is inferred rather than detected).
+    #[serde(default)]
+    pub service_missing_is_match: bool,
+    /// If true, treat missing scheduled tasks as matching this option.
+    /// Used for tweaks that disable tasks which may not exist on all Windows editions.
+    /// When a task doesn't exist and this flag is set, the option is considered
+    /// a match (status is inferred rather than detected).
+    #[serde(default)]
+    pub scheduler_missing_is_match: bool,
 }
 
 impl TweakOption {
@@ -697,6 +715,10 @@ pub struct TweakState {
     /// The option index from snapshot (if exists)
     #[serde(default)]
     pub snapshot_option_index: Option<usize>,
+    /// True if the status was inferred from missing items (via missing_is_match flag)
+    /// rather than detected from actual registry/service values
+    #[serde(default)]
+    pub status_inferred: bool,
 }
 
 /// Result of applying or reverting a tweak
@@ -730,6 +752,10 @@ pub struct TweakStatus {
     /// Used by frontend to show "Default" segment when original state was unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_original_option_index: Option<Option<usize>>,
+    /// True if the status was inferred from missing items (via missing_is_match flag)
+    /// rather than detected from actual registry/service values
+    #[serde(default)]
+    pub status_inferred: bool,
     /// Error message if state detection failed (tweak still returned but with unknown state)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -768,6 +794,9 @@ mod tests {
             post_commands: Vec::new(),
             pre_powershell: Vec::new(),
             post_powershell: Vec::new(),
+            registry_missing_is_match: false,
+            service_missing_is_match: false,
+            scheduler_missing_is_match: false,
         }
     }
 

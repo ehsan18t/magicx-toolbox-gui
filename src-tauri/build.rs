@@ -10,8 +10,31 @@ use std::io::Write;
 use std::path::Path;
 
 // ============================================================================
-// Mirror types from models/tweak.rs for build-time parsing
-// These must stay in sync with runtime types.
+// IMPORTANT: Mirror types from models/tweak.rs for build-time YAML parsing
+// ============================================================================
+//
+// These types MUST stay in sync with their counterparts in src/models/tweak.rs.
+// build.rs runs BEFORE the crate compiles, so we cannot import crate types.
+//
+// If you add/remove/rename a field in tweak.rs, you MUST update it here too.
+// The compiler will catch missing fields in YAML, but mismatched names will
+// cause runtime deserialization failures or missing data.
+//
+// Key types that must stay in sync:
+// - RiskLevel           (tweak.rs line ~17)
+// - CategoryDefinition  (tweak.rs line ~188)
+// - RegistryHive        (tweak.rs line ~39)
+// - RegistryValueType   (tweak.rs line ~57)
+// - RegistryAction      (tweak.rs line ~84)
+// - ServiceStartupType  (tweak.rs line ~113)
+// - SchedulerAction     (tweak.rs line ~160)
+// - RegistryChange      (tweak.rs line ~200)
+// - ServiceChange       (tweak.rs line ~240)
+// - SchedulerChange     (tweak.rs line ~260)
+// - TweakOption         (tweak.rs line ~446)
+// - TweakDefinitionRaw  (tweak.rs line ~515)
+//
+// To verify sync: Compare serialized JSON field names between build.rs and tweak.rs
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -164,6 +187,15 @@ struct TweakOption {
     pre_powershell: Vec<String>,
     #[serde(default)]
     post_powershell: Vec<String>,
+    /// If true, treat missing registry keys/values as matching this option
+    #[serde(default)]
+    registry_missing_is_match: bool,
+    /// If true, treat missing services as matching this option
+    #[serde(default)]
+    service_missing_is_match: bool,
+    /// If true, treat missing scheduled tasks as matching this option
+    #[serde(default)]
+    scheduler_missing_is_match: bool,
 }
 
 /// Raw tweak definition as loaded from YAML

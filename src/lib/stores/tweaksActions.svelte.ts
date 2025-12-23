@@ -140,7 +140,7 @@ export async function revertTweak(
     const result = await api.revertTweak(tweakId);
 
     if (result.success) {
-      // Query actual status after revert to get the correct current_option_index
+      // Query actual status after revert to get the correct current_option_index and status_inferred
       // (snapshot restored original values, which could be any option)
       const actualStatus = await api.getTweakStatus(tweakId);
 
@@ -148,6 +148,7 @@ export async function revertTweak(
         is_applied: false,
         has_backup: false,
         current_option_index: actualStatus.current_option_index,
+        status_inferred: actualStatus.status_inferred,
       });
 
       // Clear any pending changes for this tweak

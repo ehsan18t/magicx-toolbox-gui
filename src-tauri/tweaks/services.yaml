@@ -14,7 +14,20 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Disable if you don't use printing. Spooler service can be a security risk"
+    info: |
+      ## What This Does
+      Disables the Windows Print Spooler service which manages print jobs.
+
+      ## Security Consideration
+      - Print Spooler has been targeted by several critical vulnerabilities (PrintNightmare)
+      - Disabling eliminates this attack vector
+
+      ## Impact
+      - **Cannot print** when disabled
+      - Print-to-PDF still works via Microsoft Print to PDF
+
+      ## Recommendation
+      Disable if you never print. Keep enabled if you use any printer.
     options:
       - label: "Disabled"
         registry_changes:
@@ -39,6 +52,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Windows Fax and Scan service.
+
+      ## When to Disable
+      - You don't have a fax modem
+      - You don't use Windows Fax and Scan app
+      - Most home users don't need this
+
+      ## Impact
+      - No impact unless you actively use faxing
+      - Scanning functionality may depend on other services
+
+      ## Recommendation
+      Safe to disable for nearly all users. Fax technology is largely obsolete.
     options:
       - label: "Disabled"
         registry_changes:
@@ -75,7 +103,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Reduces overhead from compatibility scanning"
+    info: |
+      ## What This Does
+      Disables the Program Compatibility Assistant (PCA) service.
+
+      ## What PCA Does
+      - Detects known compatibility issues with older programs
+      - Suggests compatibility modes after crashes
+      - Monitors programs for potential problems
+
+      ## When to Disable
+      - You don't run legacy software
+      - You want slightly faster program launches
+      - You know how to set compatibility modes manually
+
+      ## Recommendation
+      Safe to disable. You can still right-click → Properties → Compatibility manually.
     options:
       - label: "Disabled"
         registry_changes:
@@ -98,7 +141,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Used for tracking file links across NTFS volumes. Rarely needed."
+    info: |
+      ## What This Does
+      Disables tracking of linked files across NTFS volumes.
+
+      ## What Link Tracking Does
+      - Maintains shortcuts to files even after they're moved
+      - Updates links when files are relocated on network
+      - Works with NTFS object identifiers
+
+      ## Modern Relevance
+      - Rarely needed in modern workflows
+      - Most users never notice this feature
+      - Mainly useful in enterprise environments
+
+      ## Recommendation
+      Safe to disable. Broken shortcuts can be recreated manually.
     options:
       - label: "Disabled"
         registry_changes:
@@ -121,9 +179,24 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "HomeGroup was removed in Windows 10 1803. Safe to disable on older Windows 10 builds."
+    info: |
+      ## What This Does
+      Disables the HomeGroup Provider and Listener services.
+
+      ## Important Note
+      - **HomeGroup was removed in Windows 10 version 1803**
+      - These services don't exist in Windows 10 1803+ or Windows 11
+      - Only affects older Windows 10 builds
+
+      ## What HomeGroup Was
+      - Simple home network file/printer sharing
+      - Replaced by standard SMB sharing and OneDrive
+
+      ## Recommendation
+      Safe to disable. The feature is deprecated and removed in modern Windows.
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\HomeGroupProvider"
@@ -164,9 +237,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "RetailDemo service only exists on devices configured for retail display. Safe to skip if not present."
+    info: |
+      ## What This Does
+      Disables the RetailDemo service used for store display demos.
+
+      ## What Retail Demo Does
+      - Powers the demo mode on store display PCs
+      - Resets device to demo state after idle
+      - Shows promotional content
+
+      ## Typical Systems
+      - Only present on devices configured for retail display
+      - Most consumer PCs don't have this service
+      - Safe to skip if service doesn't exist
+
+      ## Recommendation
+      Safe to disable. No impact unless you're running a retail demo device.
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\RetailDemo"
@@ -189,9 +278,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "WalletService is used for NFC payment features. May not exist on all Windows editions."
+    info: |
+      ## What This Does
+      Disables the WalletService used for NFC payment features.
+
+      ## What Wallet Service Does
+      - Manages NFC tap-to-pay functionality
+      - Stores payment cards for contactless payments
+      - Requires NFC-enabled hardware
+
+      ## Availability
+      - Not all Windows editions include this service
+      - Requires compatible NFC hardware
+      - Primarily for tablets and convertibles
+
+      ## Recommendation
+      Safe to disable unless you use NFC payments on your Windows device.
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\WalletService"
@@ -216,7 +321,25 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Safe to disable on non-touchscreen devices"
+    info: |
+      ## What This Does
+      Disables the TabletInputService for touch keyboard and handwriting.
+
+      ## What Gets Disabled
+      - On-screen touch keyboard
+      - Handwriting input panel
+      - Touch/pen text input features
+
+      ## When to Disable
+      - Desktop PC without touchscreen
+      - Laptop without touch input
+      - You never use on-screen keyboard
+
+      ## Note
+      Some emoji picker features may be affected.
+
+      ## Recommendation
+      Safe to disable on non-touchscreen devices.
     options:
       - label: "Disabled"
         registry_changes:
@@ -241,7 +364,24 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: true
-    info: "WARNING: Disabling BITS breaks Windows Update. Only disable if you manage updates manually."
+    info: |
+      ## ⚠️ WARNING: High Risk Tweak
+
+      ## What This Does
+      Disables BITS which manages background file transfers.
+
+      ## Critical Dependency
+      - **Windows Update requires BITS**
+      - Microsoft Store downloads use BITS
+      - Many enterprise tools depend on it
+
+      ## What Breaks
+      - Windows Update stops working
+      - Store app downloads fail
+      - Some third-party software updates
+
+      ## Recommendation
+      **Only disable if you manage updates manually.** Not recommended for most users.
     options:
       - label: "Disabled"
         registry_changes:
