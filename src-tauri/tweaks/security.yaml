@@ -123,26 +123,36 @@ tweaks:
             value: 1
 
   - id: disable_netbios
-    name: "Disable NetBIOS"
-    description: "Disable NetBIOS over TCP/IP"
+    name: "Disable NetBIOS over TCP/IP"
+    description: "Disable LMHOSTS lookup and NetBIOS name resolution"
     risk_level: medium
     requires_admin: true
     requires_reboot: true
+    info: "Disables legacy NetBIOS name resolution. May break old network applications. Improves security."
     options:
       - label: "NetBIOS Disabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-            value_name: "NetbiosOptions"
-            value_type: "REG_DWORD"
-            value: 2
-      - label: "NetBIOS Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-            value_name: "NetbiosOptions"
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "NetBIOS Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            action: delete_value
 
   - id: enforce_password_policy
     name: "Enforce Strong Password Policy"
@@ -233,3 +243,183 @@ tweaks:
             value_name: "DontReportInfectionInformation"
             value_type: "REG_DWORD"
             value: 0
+
+  - id: disable_wpbt
+    name: "Disable Windows Platform Binary Table"
+    description: "Disable WPBT which allows vendors to force-install software at boot"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: "WPBT allows computer vendors to execute programs at boot. Disabling prevents potential malware injection via firmware."
+    options:
+      - label: "WPBT Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager"
+            value_name: "DisableWpbtExecution"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "WPBT Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager"
+            value_name: "DisableWpbtExecution"
+            action: delete_value
+
+  - id: set_utc_time
+    name: "Set Hardware Clock to UTC (Dual Boot)"
+    description: "Set Windows to use UTC time for dual-boot with Linux"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Essential for dual-boot systems with Linux. Fixes time sync issues between operating systems."
+    options:
+      - label: "UTC (For Dual Boot)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\TimeZoneInformation"
+            value_name: "RealTimeIsUniversal"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Local Time (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\TimeZoneInformation"
+            value_name: "RealTimeIsUniversal"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: block_third_party_drivers
+    name: "Block Third-Party Driver Installs"
+    description: "Block automatic installation of third-party drivers from Windows Update"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: "Blocks Razer, Corsair, and other third-party software from auto-installing. Hardware will still work with basic drivers."
+    options:
+      - label: "Third-Party Drivers Blocked"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\DriverSearching"
+            value_name: "SearchOrderConfig"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Device Installer"
+            value_name: "DisableCoInstallers"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Third-Party Drivers Allowed (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\DriverSearching"
+            value_name: "SearchOrderConfig"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Device Installer"
+            value_name: "DisableCoInstallers"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_windows_error_reporting_service
+    name: "Disable Windows Error Reporting"
+    description: "Disable Windows Error Reporting completely"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Prevents error reports from being sent to Microsoft"
+    options:
+      - label: "Error Reporting Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "Disabled"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Error Reporting Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "Disabled"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_lmhash_storage
+    name: "Disable LM Hash Storage"
+    description: "Prevent storage of LAN Manager hash for passwords"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "LM hashes are weak and easily cracked. Modern Windows doesn't need them."
+    options:
+      - label: "LM Hash Storage Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "NoLMHash"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "LM Hash Storage Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "NoLMHash"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_anonymous_enum
+    name: "Disable Anonymous SAM Enumeration"
+    description: "Prevent anonymous enumeration of SAM accounts"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Prevents attackers from enumerating user accounts without credentials"
+    options:
+      - label: "Anonymous Enumeration Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymousSAM"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymous"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Anonymous Enumeration Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymousSAM"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymous"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_admin_shares
+    name: "Disable Administrative Shares"
+    description: "Disable automatic creation of administrative shares (C$, ADMIN$)"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: "Reduces attack surface by disabling hidden admin shares. May break some remote administration tools."
+    options:
+      - label: "Admin Shares Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "AutoShareWks"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Admin Shares Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "AutoShareWks"
+            value_type: "REG_DWORD"
+            value: 1

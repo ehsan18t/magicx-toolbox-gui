@@ -30,27 +30,93 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
 
-  - id: disable_fullscreen_optimizations
-    name: "Disable Fullscreen Optimizations"
-    description: "Disable fullscreen optimizations for games"
-    risk_level: medium
+  - id: fullscreen_optimizations
+    name: "Fullscreen Optimizations"
+    description: "Configure Windows fullscreen behavior for games"
+    risk_level: low
     requires_reboot: false
-    info: "Disabling can improve gaming performance and compatibility"
+    info: "Controls how Windows handles fullscreen games. Disabling can improve performance and reduce input lag in some games."
     options:
-      - label: "Fullscreen Optimizations Disabled"
+      - label: "Disable All FSO (Best for Gaming)"
         registry_changes:
           - hive: HKCU
             key: "System\\GameConfigStore"
             value_name: "GameDVR_FSEBehavior"
             value_type: "REG_DWORD"
             value: 2
-      - label: "Fullscreen Optimizations Enabled"
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_HonorUserFSEBehaviorMode"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_EFSEFeatureFlags"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_DXGIHonorFSEWindowsCompatible"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_FSEBehaviorMode"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "Per-Game Settings (Honor User)"
         registry_changes:
           - hive: HKCU
             key: "System\\GameConfigStore"
             value_name: "GameDVR_FSEBehavior"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_HonorUserFSEBehaviorMode"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_EFSEFeatureFlags"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_DXGIHonorFSEWindowsCompatible"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_FSEBehaviorMode"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Windows Default (FSO Enabled)"
+        registry_changes:
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_FSEBehavior"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_HonorUserFSEBehaviorMode"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_EFSEFeatureFlags"
+            action: delete_value
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_DXGIHonorFSEWindowsCompatible"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_FSEBehaviorMode"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: enable_gpu_scheduling
     name: "Enable Hardware-Accelerated GPU Scheduling"
@@ -96,26 +162,26 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: high_performance_power_plan
-    name: "Set High Performance Power Plan"
-    description: "Use high performance power plan for gaming"
+  - id: disable_power_throttling
+    name: "Disable Power Throttling"
+    description: "Disable Windows power throttling for maximum performance"
     risk_level: low
     requires_admin: true
-    requires_reboot: false
-    info: "Maximizes CPU and GPU performance for gaming"
+    requires_reboot: true
+    info: "Prevents Windows from throttling CPU power for background apps. Increases power consumption but improves performance."
     options:
-      - label: "High Performance Mode"
+      - label: "Power Throttling Disabled"
         registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
-            value_name: "StartupPercentage"
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
+            value_name: "PowerThrottlingOff"
             value_type: "REG_DWORD"
-            value: 100
-      - label: "Default Power Mode"
+            value: 1
+      - label: "Power Throttling Enabled (Default)"
         registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\PowerMenuObject"
-            value_name: "StartupPercentage"
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
+            value_name: "PowerThrottlingOff"
             value_type: "REG_DWORD"
             value: 0
 
@@ -160,3 +226,216 @@ tweaks:
             value_name: "MouseThreshold2"
             value_type: "REG_SZ"
             value: "10"
+
+  - id: disable_game_dvr
+    name: "Disable Game DVR"
+    description: "Completely disable Xbox Game DVR background recording"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Disables background recording which can cause FPS drops and stuttering"
+    options:
+      - label: "Game DVR Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
+            value_name: "AllowGameDVR"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Game DVR Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "System\\GameConfigStore"
+            value_name: "GameDVR_Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\GameDVR"
+            value_name: "AllowGameDVR"
+            action: delete_value
+
+  # NOTE: honor_user_fse_behavior, disable_efse_features, disable_dps_feature
+  # have been consolidated into fullscreen_optimizations tweak above
+
+  - id: disable_gamebar
+    name: "Disable Xbox Game Bar"
+    description: "Completely disable Xbox Game Bar overlay"
+    risk_level: low
+    requires_reboot: false
+    info: "Disables the game bar overlay which can cause stuttering in some games"
+    options:
+      - label: "Game Bar Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "AutoGameModeEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameBarEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Game Bar Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "AutoGameModeEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
+            value_name: "AppCaptureEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\GameBar"
+            value_name: "UseNexusForGameBarEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: optimize_tcp_ack_frequency
+    name: "Optimize TCP ACK Frequency"
+    description: "Reduce TCP acknowledgment delay for lower network latency"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: "Reduces TCP acknowledgment delay from 200ms to immediate. Improves responsiveness in online games but may increase network traffic."
+    options:
+      - label: "Low Latency (Immediate ACK)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpAckFrequency"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpNoDelay"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Default Latency"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpAckFrequency"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpNoDelay"
+            action: delete_value
+
+  - id: disable_pointer_precision
+    name: "Disable Enhanced Pointer Precision"
+    description: "Disable Windows enhanced pointer precision globally"
+    risk_level: low
+    requires_reboot: true
+    info: "Provides 1:1 mouse movement for better aim in FPS games"
+    options:
+      - label: "Enhanced Precision Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSensitivity"
+            value_type: "REG_SZ"
+            value: "10"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseXCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,C0,CC,0C,00,00,00,00,00,80,99,19,00,00,00,00,00,40,66,26,00,00,00,00,00,00,33,33,00,00,00,00,00"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseYCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,00,00,38,00,00,00,00,00,00,00,70,00,00,00,00,00,00,00,A8,00,00,00,00,00,00,00,E0,00,00,00,00,00"
+      - label: "Enhanced Precision Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseSensitivity"
+            value_type: "REG_SZ"
+            value: "10"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseXCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,15,6E,00,00,00,00,00,00,00,40,01,00,00,00,00,00,29,DC,03,00,00,00,00,00,00,00,28,00,00,00,00,00"
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "SmoothMouseYCurve"
+            value_type: "REG_BINARY"
+            value: "00,00,00,00,00,00,00,00,FD,11,01,00,00,00,00,00,00,24,04,00,00,00,00,00,00,FC,12,00,00,00,00,00,00,00,C0,BB,01,00,00,00,00"
+
+  - id: multimedia_priority_gaming
+    name: "Set Multimedia Priority for Gaming"
+    description: "Prioritize gaming in Windows multimedia class scheduler"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Increases priority of games to reduce stuttering"
+    options:
+      - label: "Gaming Priority High"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "GPU Priority"
+            value_type: "REG_DWORD"
+            value: 8
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "Priority"
+            value_type: "REG_DWORD"
+            value: 6
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "Scheduling Category"
+            value_type: "REG_SZ"
+            value: "High"
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "SFIO Priority"
+            value_type: "REG_SZ"
+            value: "High"
+      - label: "Gaming Priority Default"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "GPU Priority"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "Priority"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "Scheduling Category"
+            value_type: "REG_SZ"
+            value: "Medium"
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "SFIO Priority"
+            value_type: "REG_SZ"
+            value: "Normal"

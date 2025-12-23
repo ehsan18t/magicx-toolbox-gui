@@ -173,3 +173,277 @@ tweaks:
             skip_validation: true
           - name: "UsoSvc"
             startup: automatic
+
+  - id: disable_auto_restart_after_update
+    name: "Disable Auto Restart After Update"
+    description: "Prevent Windows from automatically restarting after updates"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Windows will notify you to restart but won't do it automatically"
+    options:
+      - label: "Auto Restart Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "NoAutoRebootWithLoggedOnUsers"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\MusNotification.exe"
+            value_name: "Debugger"
+            value_type: "REG_SZ"
+            value: "%systemroot%\\System32\\taskkill.exe"
+      - label: "Auto Restart Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU"
+            value_name: "NoAutoRebootWithLoggedOnUsers"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\MusNotification.exe"
+            value_name: "Debugger"
+            action: delete_value
+
+  - id: defer_feature_updates
+    name: "Defer Feature Updates"
+    description: "Delay feature updates (major Windows versions) by specified days"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Feature updates will be delayed, giving time for initial bugs to be fixed"
+    options:
+      - label: "Defer 365 Days"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferFeatureUpdates"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferFeatureUpdatesPeriodInDays"
+            value_type: "REG_DWORD"
+            value: 365
+      - label: "Defer 180 Days"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferFeatureUpdates"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferFeatureUpdatesPeriodInDays"
+            value_type: "REG_DWORD"
+            value: 180
+      - label: "No Deferral (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferFeatureUpdates"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferFeatureUpdatesPeriodInDays"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: defer_quality_updates
+    name: "Defer Quality Updates"
+    description: "Delay quality updates (security patches) by specified days"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: "Security updates will be delayed. Use with caution."
+    options:
+      - label: "Defer 30 Days"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferQualityUpdates"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferQualityUpdatesPeriodInDays"
+            value_type: "REG_DWORD"
+            value: 30
+      - label: "Defer 7 Days"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferQualityUpdates"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferQualityUpdatesPeriodInDays"
+            value_type: "REG_DWORD"
+            value: 7
+      - label: "No Deferral (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferQualityUpdates"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "DeferQualityUpdatesPeriodInDays"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: set_active_hours
+    name: "Set Custom Active Hours"
+    description: "Configure active hours to prevent update restarts during work time"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Windows won't restart for updates during active hours"
+    options:
+      - label: "6 AM - 11 PM (Extended)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "ActiveHoursStart"
+            value_type: "REG_DWORD"
+            value: 6
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "ActiveHoursEnd"
+            value_type: "REG_DWORD"
+            value: 23
+      - label: "9 AM - 6 PM (Business)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "ActiveHoursStart"
+            value_type: "REG_DWORD"
+            value: 9
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "ActiveHoursEnd"
+            value_type: "REG_DWORD"
+            value: 18
+      - label: "Auto (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "ActiveHoursStart"
+            value_type: "REG_DWORD"
+            value: 8
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "ActiveHoursEnd"
+            value_type: "REG_DWORD"
+            value: 17
+
+  - id: disable_update_notifications
+    name: "Disable Update Notifications"
+    description: "Disable Windows Update restart notifications"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Hides annoying restart notifications after updates"
+    options:
+      - label: "Notifications Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "SetUpdateNotificationLevel"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "UpdateNotificationLevel"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "Notifications Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "SetUpdateNotificationLevel"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "UpdateNotificationLevel"
+            action: delete_value
+
+  - id: disable_delivery_optimization_service
+    name: "Disable Delivery Optimization Service"
+    description: "Completely disable the Windows Update Delivery Optimization service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Prevents Windows from sharing updates with other devices on your network or internet"
+    options:
+      - label: "Delivery Optimization Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\DoSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DODownloadMode"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Delivery Optimization Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\DoSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DODownloadMode"
+            action: delete_value
+
+  - id: limit_update_bandwidth
+    name: "Limit Update Download Bandwidth"
+    description: "Limit the bandwidth Windows Update can use for downloads"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Prevents Windows Update from saturating your internet connection"
+    options:
+      - label: "25% Bandwidth Limit"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOPercentageMaxForegroundBandwidth"
+            value_type: "REG_DWORD"
+            value: 25
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOPercentageMaxBackgroundBandwidth"
+            value_type: "REG_DWORD"
+            value: 10
+      - label: "50% Bandwidth Limit"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOPercentageMaxForegroundBandwidth"
+            value_type: "REG_DWORD"
+            value: 50
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOPercentageMaxBackgroundBandwidth"
+            value_type: "REG_DWORD"
+            value: 25
+      - label: "Unlimited (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOPercentageMaxForegroundBandwidth"
+            action: delete_value
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOPercentageMaxBackgroundBandwidth"
+            action: delete_value

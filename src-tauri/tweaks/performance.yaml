@@ -117,42 +117,6 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1000
 
-  - id: disable_gamebar
-    name: "Disable Game Bar & DVR"
-    description: "Disable Xbox Game Bar and Game DVR features"
-    risk_level: low
-    requires_reboot: false
-    info: "Disables Game Bar and Game DVR which consume system resources"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          # Common to both
-          - hive: HKCU
-            key: "System\\GameConfigStore"
-            value_name: "GameDVR_Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          # Win10 only - AppCaptureEnabled
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-            windows_versions: [10]
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "System\\GameConfigStore"
-            value_name: "GameDVR_Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-            windows_versions: [10]
-
   - id: ssd_optimize_trim
     name: "Enable SSD TRIM Optimization"
     description: "Enable TRIM command for SSD optimization"
@@ -253,14 +217,14 @@ tweaks:
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management"
             value_name: "LargeSystemCache"
             value_type: "REG_DWORD"
             value: 1
       - label: "Disabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management"
             value_name: "LargeSystemCache"
             value_type: "REG_DWORD"
             value: 0
@@ -348,3 +312,162 @@ tweaks:
             value_name: "AllowUntriggeredNetworkTrafficOnSettingsPage"
             value_type: "REG_DWORD"
             value: 1
+
+  - id: enable_long_paths
+    name: "Enable Long File Paths"
+    description: "Enable support for file paths longer than 260 characters"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Removes the 260 character limit on file paths. Required for some development tools and games."
+    options:
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "LongPathsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "LongPathsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_network_throttling
+    name: "Disable Network Throttling"
+    description: "Disable network throttling for improved multimedia streaming and gaming"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Windows limits network traffic during multimedia playback. Disabling this improves network performance during gaming and streaming."
+    options:
+      - label: "Throttling Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "NetworkThrottlingIndex"
+            value_type: "REG_DWORD"
+            value: 4294967295
+      - label: "Throttling Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "NetworkThrottlingIndex"
+            value_type: "REG_DWORD"
+            value: 10
+
+  - id: system_responsiveness
+    name: "System Responsiveness Priority"
+    description: "Adjust system resource allocation for foreground applications"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Controls percentage of CPU resources reserved for low-priority system tasks. 0 = prioritize foreground apps fully."
+    options:
+      - label: "Gaming/Performance (0%)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "SystemResponsiveness"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Balanced (20% - Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "SystemResponsiveness"
+            value_type: "REG_DWORD"
+            value: 20
+
+  - id: enable_auto_end_tasks
+    name: "Enable Auto End Hung Tasks"
+    description: "Automatically end non-responding tasks during shutdown"
+    risk_level: low
+    requires_reboot: false
+    info: "Speeds up shutdown by automatically closing hung applications instead of waiting."
+    options:
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "AutoEndTasks"
+            value_type: "REG_SZ"
+            value: "1"
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "AutoEndTasks"
+            value_type: "REG_SZ"
+            value: "0"
+
+  - id: reduce_menu_show_delay
+    name: "Reduce Menu Show Delay"
+    description: "Reduce delay when opening menus for snappier UI"
+    risk_level: low
+    requires_reboot: false
+    info: "Default is 400ms. Reducing to 100ms makes menus feel more responsive."
+    options:
+      - label: "Fast (100ms)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "MenuShowDelay"
+            value_type: "REG_SZ"
+            value: "100"
+      - label: "Default (400ms)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "MenuShowDelay"
+            value_type: "REG_SZ"
+            value: "400"
+
+  - id: increase_irp_stack_size
+    name: "Increase Network Stack Size"
+    description: "Increase IRP stack size for better network performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Increases network stack size from 20 to 30 for improved network performance with multiple NICs or complex network environments."
+    options:
+      - label: "Increased (30)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 30
+      - label: "Default (20)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 20
+
+  - id: disable_ndu
+    name: "Disable Network Data Usage Monitor"
+    description: "Disable Windows Network Data Usage monitoring service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Reduces background CPU and disk usage from network monitoring. Network usage statistics in Settings will be unavailable."
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\ControlSet001\\Services\\Ndu"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\ControlSet001\\Services\\Ndu"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

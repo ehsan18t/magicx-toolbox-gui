@@ -320,3 +320,336 @@ tweaks:
             value_name: "SaveZoneInformation"
             value_type: "REG_DWORD"
             value: 2
+
+  - id: disable_copilot
+    name: "Disable Microsoft Copilot"
+    description: "Disable Microsoft Copilot AI assistant in Windows 11"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Disables Copilot AI built into Windows 11 23H2 and later. Removes the taskbar button and blocks Copilot from running."
+    options:
+      - label: "Copilot Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+            value_name: "TurnOffWindowsCopilot"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+            value_name: "TurnOffWindowsCopilot"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowCopilotButton"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Copilot Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+            value_name: "TurnOffWindowsCopilot"
+            action: delete_value
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+            value_name: "TurnOffWindowsCopilot"
+            action: delete_value
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowCopilotButton"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+
+  - id: enable_end_task_taskbar
+    name: "Enable End Task in Taskbar Right-Click"
+    description: "Add 'End Task' option to taskbar right-click menu for apps"
+    risk_level: low
+    requires_reboot: false
+    info: "Enables quick access to end unresponsive apps directly from the taskbar"
+    options:
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
+            value_name: "TaskbarEndTask"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Disabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
+            value_name: "TaskbarEndTask"
+            action: delete_value
+
+  - id: disable_task_view_button
+    name: "Hide Task View Button"
+    description: "Hide the Task View button from the taskbar"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowTaskViewButton"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Visible (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "ShowTaskViewButton"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: taskbar_alignment_win11
+    name: "Taskbar Alignment (Windows 11)"
+    description: "Set taskbar icon alignment in Windows 11"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Left Aligned"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "TaskbarAl"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Center Aligned (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "TaskbarAl"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+
+  - id: disable_start_recommendations
+    name: "Disable Start Menu Recommendations (Windows 11)"
+    description: "Hide the Recommended section in the Windows 11 Start menu"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Uses Education environment policy to hide recommendations in Start menu"
+    options:
+      - label: "Recommendations Hidden"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\PolicyManager\\current\\device\\Start"
+            value_name: "HideRecommendedSection"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+            value_name: "HideRecommendedSection"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_IrisRecommendations"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Recommendations Shown (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\PolicyManager\\current\\device\\Start"
+            value_name: "HideRecommendedSection"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
+            value_name: "HideRecommendedSection"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_IrisRecommendations"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+
+  - id: disable_start_account_notifications
+    name: "Disable Start Menu Account Notifications"
+    description: "Hide account-related notifications in Start menu"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Notifications Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_AccountNotifications"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Notifications Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_AccountNotifications"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: enable_dark_mode
+    name: "Enable Dark Mode"
+    description: "Enable dark theme for Windows and apps"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Dark Mode"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+            value_name: "AppsUseLightTheme"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+            value_name: "SystemUsesLightTheme"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Light Mode"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+            value_name: "AppsUseLightTheme"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+            value_name: "SystemUsesLightTheme"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: enable_numlock_startup
+    name: "Enable NumLock on Startup"
+    description: "Enable NumLock key by default when Windows starts"
+    risk_level: low
+    requires_reboot: true
+    options:
+      - label: "NumLock Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Keyboard"
+            value_name: "InitialKeyboardIndicators"
+            value_type: "REG_SZ"
+            value: "2"
+      - label: "NumLock Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Keyboard"
+            value_name: "InitialKeyboardIndicators"
+            value_type: "REG_SZ"
+            value: "0"
+
+  - id: enable_verbose_logon
+    name: "Enable Verbose Logon Messages"
+    description: "Show detailed messages during Windows logon/logoff"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: "Shows detailed status messages during startup and shutdown for troubleshooting"
+    options:
+      - label: "Verbose Messages Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "VerboseStatus"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Verbose Messages Disabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "VerboseStatus"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: enable_detailed_bsod
+    name: "Enable Detailed Blue Screen"
+    description: "Show detailed information on Blue Screen of Death"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Shows technical details on BSOD instead of just a sad face emoji"
+    options:
+      - label: "Detailed BSOD"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\CrashControl"
+            value_name: "DisplayParameters"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\CrashControl"
+            value_name: "DisableEmoticon"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Simple BSOD (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\CrashControl"
+            value_name: "DisplayParameters"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\CrashControl"
+            value_name: "DisableEmoticon"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: open_explorer_to_this_pc
+    name: "Open Explorer to This PC"
+    description: "Open File Explorer to This PC instead of Quick Access"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "This PC"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "LaunchTo"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Quick Access (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "LaunchTo"
+            value_type: "REG_DWORD"
+            value: 2
+
+  - id: disable_sticky_keys
+    name: "Disable Sticky Keys Popup"
+    description: "Disable the Sticky Keys popup when pressing Shift 5 times"
+    risk_level: low
+    requires_reboot: false
+    info: "Prevents the accessibility popup from appearing during gaming"
+    options:
+      - label: "Popup Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Accessibility\\StickyKeys"
+            value_name: "Flags"
+            value_type: "REG_SZ"
+            value: "58"
+      - label: "Popup Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Accessibility\\StickyKeys"
+            value_name: "Flags"
+            value_type: "REG_SZ"
+            value: "510"

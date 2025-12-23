@@ -8,6 +8,42 @@ category:
   order: 1
 
 tweaks:
+  - id: disable_recall_ai
+    name: "Disable Windows Recall AI"
+    description: "Disable Windows Recall AI screenshot capture feature"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Recall captures screenshots of your activity every few seconds. This tweak completely disables it. Available on Windows 11 24H2+ with NPU."
+    options:
+      - label: "Recall Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "DisableAIDataAnalysis"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "EnableSnapshots"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Recall Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "DisableAIDataAnalysis"
+            action: delete_value
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "EnableSnapshots"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+
   - id: disable_telemetry
     name: "Disable Telemetry"
     description: "Disable Windows telemetry and diagnostic data collection"
@@ -70,22 +106,34 @@ tweaks:
 
   - id: disable_activity_history
     name: "Disable Activity History"
-    description: "Disable Windows activity history tracking"
+    description: "Disable Windows activity history and timeline tracking"
     risk_level: low
+    requires_admin: true
     requires_reboot: false
+    info: "Prevents Windows from collecting activity history used in Timeline and cross-device sync"
     options:
       - label: "Disabled"
         registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-            value_name: "ShowFrequent"
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "PublishUserActivities"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "UploadUserActivities"
             value_type: "REG_DWORD"
             value: 0
       - label: "Enabled"
         registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-            value_name: "ShowFrequent"
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "PublishUserActivities"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "UploadUserActivities"
             value_type: "REG_DWORD"
             value: 1
 
@@ -152,27 +200,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
 
-  - id: disable_app_launch_tracking
-    name: "Disable App Launch Tracking"
-    description: "Prevent Windows from tracking which apps you launch"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "PublishUserActivities"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "PublishUserActivities"
-            value_type: "REG_DWORD"
-            value: 1
+  # NOTE: disable_app_launch_tracking removed - duplicate of disable_activity_history (same registry keys)
 
   - id: disable_suggested_content
     name: "Disable Suggested Content"
@@ -468,5 +496,212 @@ tweaks:
           - hive: HKCU
             key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
             value_name: "DisableThumbsDBOnNetworkFolders"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_consumer_features
+    name: "Disable Windows Consumer Features"
+    description: "Prevent automatic installation of third-party apps and game suggestions"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Disables Windows Consumer Features which automatically install apps from the Windows Store. Some default apps like Phone Link may become inaccessible."
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableWindowsConsumerFeatures"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableWindowsConsumerFeatures"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_oem_preinstalled_apps
+    name: "Disable OEM Pre-installed Apps"
+    description: "Prevent pre-installed OEM apps from appearing in Start menu"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "OemPreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEverEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "OemPreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEverEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_finish_setup_reminders
+    name: "Disable Finish Setup Reminders"
+    description: "Disable 'Let's finish setting up your device' reminders"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement"
+            value_name: "ScoobeSystemSettingEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement"
+            value_name: "ScoobeSystemSettingEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_remote_assistance
+    name: "Disable Remote Assistance"
+    description: "Disable Remote Assistance connections to this computer"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Prevents users from requesting Remote Assistance help"
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Remote Assistance"
+            value_name: "fAllowToGetHelp"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Remote Assistance"
+            value_name: "fAllowToGetHelp"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_people_bar
+    name: "Disable People Bar on Taskbar"
+    description: "Hide the People feature from the taskbar"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+            value_name: "PeopleBand"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+            value_name: "PeopleBand"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_meet_now
+    name: "Disable Meet Now Icon"
+    description: "Hide the Meet Now icon from the taskbar"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "HideSCAMeetNow"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "HideSCAMeetNow"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_news_interests
+    name: "Disable News and Interests"
+    description: "Disable News and Interests widget on taskbar (Windows 10)"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Feeds"
+            value_name: "ShellFeedsTaskbarViewMode"
+            value_type: "REG_DWORD"
+            value: 2
+            windows_versions: [10]
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Feeds"
+            value_name: "EnableFeeds"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [10]
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Feeds"
+            value_name: "ShellFeedsTaskbarViewMode"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [10]
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Feeds"
+            value_name: "EnableFeeds"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [10]
+
+  - id: disable_ad_info_reporting
+    name: "Disable Advertising Info Reporting"
+    description: "Disable sending advertising ID to apps"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
+            value_name: "DisabledByGroupPolicy"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
+            value_name: "DisabledByGroupPolicy"
             value_type: "REG_DWORD"
             value: 0
