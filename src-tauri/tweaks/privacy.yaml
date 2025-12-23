@@ -193,6 +193,25 @@ tweaks:
     description: "Disable location tracking services"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables location sensor permissions, preventing apps from accessing your location.
+
+      ## Privacy Benefits
+      - No location data shared with apps
+      - Windows won't track your physical location
+      - Improved privacy for sensitive locations
+
+      ## What Gets Disabled
+      - GPS and Wi-Fi based location
+      - Location-aware app features
+      - Maps and weather location detection
+
+      ## Note
+      Some apps may not work correctly without location access (maps, weather, find my device).
+
+      ## Recommendation
+      Enable if you prioritize privacy over location-based features.
     options:
       - label: "Disabled"
         registry_changes:
@@ -214,6 +233,21 @@ tweaks:
     description: "Disable Windows feedback and suggestion notifications"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Stops Windows from asking you to provide feedback about your experience.
+
+      ## What Gets Disabled
+      - "How likely are you to recommend Windows?" prompts
+      - Feedback Hub notifications
+      - Windows Insider feedback requests
+
+      ## What Still Works
+      - You can still submit feedback manually via Feedback Hub
+      - Windows Update and other notifications remain
+
+      ## Recommendation
+      Safe to disable unless you actively participate in Windows feedback programs.
     options:
       - label: "Disabled"
         registry_changes:
@@ -235,6 +269,21 @@ tweaks:
     description: "Disable collection of inking and typing data for personalization"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from collecting your handwriting and typing patterns for personalization.
+
+      ## Privacy Benefits
+      - Your typing patterns aren't analyzed
+      - Handwriting samples not collected
+      - Reduced data sent to Microsoft
+
+      ## Trade-off
+      - Slightly less accurate autocomplete
+      - Handwriting recognition may be less personalized
+
+      ## Recommendation
+      Recommended for privacy. The personalization benefits are minimal for most users.
     options:
       - label: "Disabled"
         registry_changes:
@@ -258,6 +307,21 @@ tweaks:
     description: "Disable suggested apps and content in Start menu and Settings"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Stops Windows from showing suggested apps and sponsored content.
+
+      ## What Gets Removed
+      - Suggested apps in Start menu
+      - Promoted content in Settings
+      - "You might like" recommendations
+
+      ## Privacy Impact
+      - Reduces tracking for personalized suggestions
+      - Less data used for content recommendations
+
+      ## Recommendation
+      Recommended. Removes promotional content from Windows interface.
     options:
       - label: "Disabled"
         registry_changes:
@@ -279,6 +343,21 @@ tweaks:
     description: "Disable tailored experiences based on your data"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Microsoft from using your diagnostic data to personalize tips, ads, and recommendations.
+
+      ## What Changes
+      - No personalized tips based on your usage
+      - Generic rather than targeted suggestions
+      - Less data analysis of your behavior
+
+      ## Diagnostic Data Still Collected
+      - This only affects how data is USED, not if it's collected
+      - Use "Set Diagnostic Data to Minimum" to reduce collection
+
+      ## Recommendation
+      Recommended for privacy. Stops Microsoft from profiling your usage patterns.
     options:
       - label: "Disabled"
         registry_changes:
@@ -491,6 +570,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from sending handwriting samples to Microsoft for recognition improvement.
+
+      ## Privacy Benefits
+      - Your handwriting isn't uploaded to Microsoft servers
+      - Sensitive handwritten content stays private
+      - Reduced data collection
+
+      ## Impact
+      - Handwriting recognition still works using local data
+      - No impact on everyday tablet/pen usage
+
+      ## Recommendation
+      Recommended for privacy, especially for tablet users.
     options:
       - label: "Disabled"
         registry_changes:
@@ -513,6 +607,20 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Stops Windows from sending handwriting recognition errors to Microsoft.
+
+      ## What Gets Blocked
+      - Reports when handwriting is misrecognized
+      - Error data used to improve recognition
+
+      ## Privacy Benefit
+      - Your handwritten content isn't sent even when misrecognized
+      - No analysis of your writing patterns
+
+      ## Recommendation
+      Safe to disable for privacy. Minimal benefit to users from error reporting.
     options:
       - label: "Disabled"
         registry_changes:
@@ -534,6 +642,21 @@ tweaks:
     description: "Prevent creation of thumbs.db files on network folders"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from creating Thumbs.db thumbnail cache files on network drives.
+
+      ## Why Disable
+      - Thumbs.db files can leak information about folder contents
+      - They cause "file in use" errors when deleting folders
+      - Network drives may have permission issues with these files
+
+      ## What Still Works
+      - Thumbnails still displayed (cached in memory)
+      - Local Thumbs.db files unaffected
+
+      ## Recommendation
+      Recommended, especially in shared network environments.
     options:
       - label: "Disabled"
         registry_changes:
@@ -578,6 +701,21 @@ tweaks:
     description: "Prevent pre-installed OEM apps from appearing in Start menu"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from promoting or silently installing manufacturer (OEM) apps.
+
+      ## What Gets Blocked
+      - Automatic app installations from PC manufacturer
+      - OEM app suggestions in Start menu
+      - Pre-installed trial software promotions
+
+      ## Note
+      - Already installed OEM apps remain until uninstalled
+      - This prevents NEW installations only
+
+      ## Recommendation
+      Recommended. Reduces bloatware from PC manufacturers.
     options:
       - label: "Disabled"
         registry_changes:
@@ -619,6 +757,22 @@ tweaks:
     description: "Disable 'Let's finish setting up your device' reminders"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Stops Windows from nagging you to complete device setup tasks.
+
+      ## What Gets Disabled
+      - "Let's finish setting up your device" notifications
+      - Sign in with Microsoft account prompts
+      - OneDrive and other setup reminders
+
+      ## What You Skip
+      - Microsoft account linking suggestions
+      - OneDrive backup prompts
+      - Phone Link setup
+
+      ## Recommendation
+      Safe to disable once you've configured Windows how you want it.
     options:
       - label: "Disabled"
         registry_changes:
@@ -668,6 +822,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Applies Group Policy to disable Windows Advertising ID sharing with apps.
+
+      ## Difference from Disable Advertising ID
+      - This uses Group Policy (machine-level)
+      - More comprehensive than user-level setting
+      - Enforces the setting for all users
+
+      ## Privacy Impact
+      - Apps can't use your unique advertising ID
+      - Reduces cross-app ad tracking
+      - Less personalized but more private advertising
+
+      ## Recommendation
+      Recommended for maximum privacy. Use alongside "Disable Advertising ID".
     options:
       - label: "Disabled"
         registry_changes:
