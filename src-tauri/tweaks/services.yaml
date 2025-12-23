@@ -131,12 +131,14 @@ tweaks:
             value_type: "REG_DWORD"
             value: 4
             windows_versions: [10]
+            skip_validation: true
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\HomeGroupListener"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
             windows_versions: [10]
+            skip_validation: true
       - label: "Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -145,12 +147,14 @@ tweaks:
             value_type: "REG_DWORD"
             value: 3
             windows_versions: [10]
+            skip_validation: true
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\HomeGroupListener"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 3
             windows_versions: [10]
+            skip_validation: true
 
   # NOTE: disable_geolocation moved to privacy.yaml (location tracking related)
 
@@ -160,6 +164,7 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: "RetailDemo service only exists on devices configured for retail display. Safe to skip if not present."
     options:
       - label: "Disabled"
         registry_changes:
@@ -168,6 +173,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
       - label: "Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -175,6 +181,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 3
+            skip_validation: true
 
   - id: disable_wallet_service
     name: "Disable Wallet Service"
@@ -182,6 +189,7 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: "WalletService is used for NFC payment features. May not exist on all Windows editions."
     options:
       - label: "Disabled"
         registry_changes:
@@ -190,6 +198,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
       - label: "Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -197,6 +206,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 3
+            skip_validation: true
 
   # NOTE: disable_security_center_service moved to security.yaml
 
