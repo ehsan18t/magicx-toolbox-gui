@@ -8,23 +8,86 @@ category:
   order: 1
 
 tweaks:
+  - id: disable_recall_ai
+    name: "Disable Windows Recall AI"
+    description: "Disable Windows Recall AI screenshot capture feature"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Completely disables Windows Recall, the AI feature that captures screenshots of your activity every few seconds.
+
+      ## Privacy Concerns
+      - **Screen recording**: Recall captures everything on your screen including passwords, banking info, and private messages
+      - **Local storage**: Screenshots are stored locally and indexed by AI
+      - **Data exposure**: Sensitive data could be exposed if your device is compromised
+
+      ## Availability
+      Available on Windows 11 24H2+ with compatible NPU (Neural Processing Unit). If your device doesn't have Recall, this tweak has no effect.
+
+      ## Recommendation
+      Strongly recommended for privacy. Disable unless you specifically need Recall's features.
+    options:
+      - label: "Recall Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "DisableAIDataAnalysis"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "EnableSnapshots"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "Recall Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "DisableAIDataAnalysis"
+            action: delete_value
+            windows_versions: [11]
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "EnableSnapshots"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+
   - id: disable_telemetry
     name: "Disable Telemetry"
     description: "Disable Windows telemetry and diagnostic data collection"
     risk_level: low
     requires_admin: true
     requires_reboot: false
-    info: "Disables DiagTrack service and associated telemetry features"
+    info: |
+      ## What This Does
+      Disables the DiagTrack (Connected User Experiences and Telemetry) service which collects and sends diagnostic data to Microsoft.
+
+      ## Data Collected by DiagTrack
+      - Hardware configuration and capabilities
+      - Software inventory and usage patterns
+      - Application crashes and errors
+      - Device performance metrics
+
+      ## Impact
+      - Windows Insider features may not work
+      - Some troubleshooting features may be limited
+      - Windows will still function normally for most users
+
+      ## Recommendation
+      Safe for most users. Recommended for privacy-conscious users.
     options:
       - label: "Disabled"
         registry_changes:
-          # Common to both Win10 and Win11
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\DiagTrack"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-          # Win10 only - dmwappushservice
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\dmwappushservice"
             value_name: "Start"
@@ -33,13 +96,11 @@ tweaks:
             windows_versions: [10]
       - label: "Enabled"
         registry_changes:
-          # Common to both Win10 and Win11
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\DiagTrack"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
-          # Win10 only - dmwappushservice
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\dmwappushservice"
             value_name: "Start"
@@ -52,6 +113,17 @@ tweaks:
     description: "Disable advertising ID for personalized ads"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables your unique advertising ID that Windows shares with apps to show personalized ads.
+
+      ## Privacy Benefit
+      - Apps cannot track you using your advertising ID
+      - Reduces targeted advertising across Windows apps
+      - No functional impact on app usage
+
+      ## Recommendation
+      Strongly recommended. No downside to disabling this.
     options:
       - label: "Disabled"
         registry_changes:
@@ -70,22 +142,46 @@ tweaks:
 
   - id: disable_activity_history
     name: "Disable Activity History"
-    description: "Disable Windows activity history tracking"
+    description: "Disable Windows activity history and timeline tracking"
     risk_level: low
+    requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from collecting and syncing your activity history, including:
+      - Apps you use and when
+      - Files you open
+      - Websites you visit in Edge
+      - Clipboard history
+
+      ## Timeline Feature
+      This data powers the Task View Timeline feature. Disabling removes cross-device activity sync.
+
+      ## Recommendation
+      Recommended for privacy. Timeline is rarely used by most people.
     options:
       - label: "Disabled"
         registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-            value_name: "ShowFrequent"
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "PublishUserActivities"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "UploadUserActivities"
             value_type: "REG_DWORD"
             value: 0
       - label: "Enabled"
         registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-            value_name: "ShowFrequent"
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "PublishUserActivities"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "UploadUserActivities"
             value_type: "REG_DWORD"
             value: 1
 
@@ -152,27 +248,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
 
-  - id: disable_app_launch_tracking
-    name: "Disable App Launch Tracking"
-    description: "Prevent Windows from tracking which apps you launch"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "PublishUserActivities"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "PublishUserActivities"
-            value_type: "REG_DWORD"
-            value: 1
+  # NOTE: disable_app_launch_tracking removed - duplicate of disable_activity_history (same registry keys)
 
   - id: disable_suggested_content
     name: "Disable Suggested Content"
@@ -470,3 +546,253 @@ tweaks:
             value_name: "DisableThumbsDBOnNetworkFolders"
             value_type: "REG_DWORD"
             value: 0
+
+  - id: disable_consumer_features
+    name: "Disable Windows Consumer Features"
+    description: "Prevent automatic installation of third-party apps and game suggestions"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Disables Windows Consumer Features which automatically install apps from the Windows Store. Some default apps like Phone Link may become inaccessible."
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableWindowsConsumerFeatures"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableWindowsConsumerFeatures"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_oem_preinstalled_apps
+    name: "Disable OEM Pre-installed Apps"
+    description: "Prevent pre-installed OEM apps from appearing in Start menu"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "OemPreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEverEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "OemPreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "PreInstalledAppsEverEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_finish_setup_reminders
+    name: "Disable Finish Setup Reminders"
+    description: "Disable 'Let's finish setting up your device' reminders"
+    risk_level: low
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement"
+            value_name: "ScoobeSystemSettingEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement"
+            value_name: "ScoobeSystemSettingEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_remote_assistance
+    name: "Disable Remote Assistance"
+    description: "Disable Remote Assistance connections to this computer"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Prevents users from requesting Remote Assistance help"
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Remote Assistance"
+            value_name: "fAllowToGetHelp"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Remote Assistance"
+            value_name: "fAllowToGetHelp"
+            value_type: "REG_DWORD"
+            value: 1
+
+  # NOTE: disable_people_bar moved to ui.yaml (taskbar UI customization)
+  # NOTE: disable_meet_now moved to ui.yaml (taskbar UI customization)
+  # NOTE: disable_news_interests moved to ui.yaml (taskbar UI customization)
+
+  - id: disable_ad_info_reporting
+    name: "Disable Advertising Info Reporting"
+    description: "Disable sending advertising ID to apps"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
+            value_name: "DisabledByGroupPolicy"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
+            value_name: "DisabledByGroupPolicy"
+            value_type: "REG_DWORD"
+            value: 0
+
+  # --- Services related to privacy (moved from services.yaml) ---
+
+  - id: disable_geolocation_service
+    name: "Disable Geolocation Service"
+    description: "Disable Windows Geolocation service for location tracking"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Windows Geolocation service which tracks your physical location.
+
+      ## Privacy Benefits
+      - No location data collected by Windows
+      - Apps cannot access your location
+      - Reduces data sent to Microsoft
+
+      ## What You Lose
+      - Weather app location features
+      - Maps app current location
+      - Find My Device feature
+      - Location-based Cortana features
+
+      ## Recommendation
+      Disable for maximum privacy. Keep enabled if you rely on location-aware apps.
+    options:
+      - label: "Geolocation Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\lfsvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Geolocation Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\lfsvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_dmwappushservice
+    name: "Disable WAP Push Service"
+    description: "Disable Device Management WAP Push message service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the WAP Push Message Routing Service used for telemetry and push notifications.
+
+      ## Privacy Benefits
+      - Reduces telemetry data transmission
+      - Blocks certain Microsoft push notifications
+      - Part of comprehensive telemetry reduction
+
+      ## Technical Details
+      This service routes messages from Windows to various services and is part of the telemetry infrastructure.
+
+      ## Recommendation
+      Safe to disable for privacy-focused users.
+    options:
+      - label: "WAP Push Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "WAP Push Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_cdpusersvc
+    name: "Disable Connected Devices Platform"
+    description: "Disable device synchronization and activity tracking service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables the Connected Devices Platform User Service which handles device sync and timeline features.
+
+      ## Privacy Benefits
+      - Stops cross-device activity synchronization
+      - Disables timeline data collection
+      - Reduces cloud sync of activity data
+
+      ## What You Lose
+      - Phone Link / Your Phone features
+      - Cross-device clipboard sync
+      - Activity history across devices
+      - "Continue where you left off" features
+
+      ## Recommendation
+      Disable for privacy. Keep enabled if you use Microsoft's cross-device features.
+    options:
+      - label: "CDP Service Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "CDP Service Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

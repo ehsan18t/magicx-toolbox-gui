@@ -1,7 +1,14 @@
 <script lang="ts">
   import { getBackupInfo, inspectTweak, type BackupInfo } from "$lib/api/tweaks";
-  import { Icon } from "$lib/components/shared";
-  import { CommandList, RegistryChangeItem, SchedulerChangeItem, ServiceChangeItem } from "$lib/components/tweaks";
+  import { Icon, MarkdownText } from "$lib/components/shared";
+  import {
+    CommandList,
+    FirewallChangeItem,
+    HostsChangeItem,
+    RegistryChangeItem,
+    SchedulerChangeItem,
+    ServiceChangeItem,
+  } from "$lib/components/tweaks";
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
@@ -394,7 +401,7 @@
       {#if tweak.definition.info}
         <div class="mt-4 flex items-start gap-3 rounded-xl border border-border/50 bg-surface/30 p-4">
           <Icon icon="mdi:information-outline" width="18" class="mt-0.5 shrink-0 text-accent" />
-          <p class="m-0 text-sm leading-relaxed text-foreground-muted">{tweak.definition.info}</p>
+          <MarkdownText content={tweak.definition.info} class="m-0" />
         </div>
       {/if}
 
@@ -526,6 +533,42 @@
                       <div class="space-y-2">
                         {#each option.scheduler_changes as change, idx (idx)}
                           <SchedulerChangeItem {change} />
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+
+                  <!-- Hosts Changes -->
+                  {#if option.hosts_changes && option.hosts_changes.length > 0}
+                    <div>
+                      <h4
+                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
+                      >
+                        <Icon icon="mdi:file-document-outline" width="14" />
+                        Hosts File Changes
+                        <Badge size="sm">{option.hosts_changes.length}</Badge>
+                      </h4>
+                      <div class="space-y-2">
+                        {#each option.hosts_changes as change, idx (idx)}
+                          <HostsChangeItem {change} />
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+
+                  <!-- Firewall Changes -->
+                  {#if option.firewall_changes && option.firewall_changes.length > 0}
+                    <div>
+                      <h4
+                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
+                      >
+                        <Icon icon="mdi:shield-outline" width="14" />
+                        Firewall Rules
+                        <Badge size="sm">{option.firewall_changes.length}</Badge>
+                      </h4>
+                      <div class="space-y-2">
+                        {#each option.firewall_changes as change, idx (idx)}
+                          <FirewallChangeItem {change} />
                         {/each}
                       </div>
                     </div>

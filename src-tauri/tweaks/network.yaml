@@ -1,0 +1,318 @@
+# Network Tweaks - Optimize network performance and latency
+
+category:
+  id: network
+  name: "Network"
+  description: "Optimize network performance, latency, and connectivity"
+  icon: "mdi:wifi"
+  order: 9
+
+tweaks:
+  - id: disable_nagle_algorithm
+    name: "Disable Nagle's Algorithm"
+    description: "Reduce network latency by disabling TCP packet bundling"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Nagle's algorithm which bundles small TCP packets together before sending.
+
+      ## Benefits
+      - **Lower latency**: Packets sent immediately instead of waiting
+      - **Gaming**: Reduced input lag in online games
+      - **Real-time apps**: Better responsiveness for VoIP, streaming
+
+      ## Drawbacks
+      - **More network overhead**: More packets sent
+      - **Slightly higher bandwidth usage**: More packet headers
+
+      ## Recommendation
+      Enable for gaming and real-time applications. Most modern networks can handle the extra overhead.
+    options:
+      - label: "Nagle Disabled (Low Latency)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpAckFrequency"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpNoDelay"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpDelAckTicks"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Nagle Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpAckFrequency"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpNoDelay"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpDelAckTicks"
+            action: delete_value
+
+  - id: ipv6_transition_mode
+    name: "IPv6 Transition Technologies"
+    description: "Configure Teredo and ISATAP IPv6 tunneling protocols"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls IPv6 transition technologies that tunnel IPv6 over IPv4 networks.
+
+      ## Options Explained
+      - **All Disabled**: Disables both Teredo and ISATAP (lowest latency)
+      - **Teredo Only**: Keeps Teredo for Xbox/P2P, disables ISATAP
+      - **ISATAP Only**: Keeps ISATAP for enterprise, disables Teredo
+      - **All Enabled**: Default Windows behavior
+
+      ## Teredo
+      - Used by Xbox Live for party chat
+      - Required for some P2P applications
+      - Tunnels IPv6 through NAT
+
+      ## ISATAP
+      - Enterprise IPv6 transition
+      - Rarely needed for home users
+      - Adds network overhead
+
+      ## Recommendation
+      "All Disabled" for gaming/low latency. "Teredo Only" if you use Xbox Live party chat.
+    options:
+      - label: "All Disabled (Lowest Latency)"
+        pre_commands:
+          - "netsh interface teredo set state disabled"
+          - "netsh interface isatap set state disabled"
+      - label: "Teredo Only (Xbox)"
+        pre_commands:
+          - "netsh interface teredo set state default"
+          - "netsh interface isatap set state disabled"
+      - label: "ISATAP Only (Enterprise)"
+        pre_commands:
+          - "netsh interface teredo set state disabled"
+          - "netsh interface isatap set state default"
+      - label: "All Enabled (Default)"
+        pre_commands:
+          - "netsh interface teredo set state default"
+          - "netsh interface isatap set state default"
+
+  # NOTE: disable_teredo, disable_isatap consolidated into ipv6_transition_mode above
+
+  - id: disable_network_throttling
+    name: "Disable Network Throttling"
+    description: "Disable Windows network throttling for multimedia applications"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Removes Windows' default network throttling that limits throughput to give CPU time for multimedia playback.
+
+      ## Benefits
+      - **Maximum throughput**: No artificial network limits
+      - **Gaming**: Better network performance during gameplay
+      - **Streaming**: Improved upload/download speeds
+
+      ## Technical Details
+      Windows by default limits network throughput to 10 packets per millisecond. This tweak removes that limit (0xFFFFFFFF = unlimited).
+
+      ## Recommendation
+      Safe to enable on modern hardware with sufficient CPU power.
+    options:
+      - label: "Throttling Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "NetworkThrottlingIndex"
+            value_type: "REG_DWORD"
+            value: 4294967295
+      - label: "Throttling Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "NetworkThrottlingIndex"
+            value_type: "REG_DWORD"
+            value: 10
+
+  - id: legacy_network_protocols
+    name: "Legacy Network Protocols"
+    description: "Configure legacy protocols (LLMNR, WPAD, NetBIOS) for security"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls legacy network protocols that can be exploited for attacks.
+
+      ## Options Explained
+      - **Maximum Security**: Disables LLMNR, WPAD, and NetBIOS (recommended)
+      - **NetBIOS Only Enabled**: Legacy device compatibility, other protocols disabled
+      - **WPAD Only Enabled**: For corporate proxy auto-discovery
+      - **All Enabled**: Default Windows behavior (less secure)
+
+      ## Security Risks
+      - **LLMNR**: Can be exploited for credential theft (LLMNR poisoning)
+      - **WPAD**: Attackers can redirect your traffic through rogue proxies
+      - **NetBIOS**: Legacy protocol vulnerable to various network attacks
+
+      ## Compatibility Notes
+      - Some old printers/devices may need NetBIOS
+      - Corporate networks may require WPAD for proxy configuration
+      - DNS misconfiguration may cause slow name resolution without LLMNR
+
+      ## Recommendation
+      Use "Maximum Security" unless you have specific compatibility requirements.
+    options:
+      - label: "Maximum Security (All Disabled)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "NetBIOS Only Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            action: delete_value
+      - label: "WPAD Only Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "All Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
+            value_name: "WpadOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "EnableLMHOSTS"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            action: delete_value
+
+  # NOTE: disable_netbios, disable_llmnr, disable_wpad consolidated into legacy_network_protocols above
+
+  - id: increase_irp_stack_size
+    name: "Increase Network IRP Stack Size"
+    description: "Increase I/O Request Packet stack size for better network performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Increases the IRP (I/O Request Packet) stack size used for network file operations.
+
+      ## Benefits
+      - **File sharing**: Improved SMB/network share performance
+      - **Complex networks**: Better handling of multi-hop file access
+      - **Multiple NICs**: Better performance with multiple network adapters
+
+      ## Technical Details
+      Default is 15-20 depending on Windows version. Increasing to 30 helps with complex network topologies.
+
+      ## Recommendation
+      Safe optimization for all users, especially those using network shares.
+    options:
+      - label: "Increased (30)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 30
+      - label: "Default (20)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 20

@@ -57,109 +57,203 @@ tweaks:
             value: 2
         service_changes: []
 
-  - id: disable_remote_registry
-    name: "Disable Remote Registry"
-    description: "Disable Remote Registry service"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
-    info: "Improves security by preventing remote registry access"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-        service_changes: []
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
+  # NOTE: disable_remote_registry moved to security.yaml
+  # NOTE: disable_xbox_services moved to gaming.yaml
 
-  - id: disable_xbox_services
-    name: "Disable Xbox Services"
-    description: "Disable Xbox Live Gaming Services"
+  # NOTE: disable_connected_user_experiences removed - duplicate of disable_telemetry in privacy.yaml
+  # NOTE: disable_windows_error_reporting removed - duplicate of disable_windows_error_reporting_service in security.yaml
+  # NOTE: disable_dmwappushservice moved to privacy.yaml (telemetry related)
+  # NOTE: disable_geolocation moved to privacy.yaml (location tracking)
+  # NOTE: disable_cdpusersvc moved to privacy.yaml (activity sync/timeline)
+
+  # NOTE: disable_sysmain (Superfetch) removed - duplicate of disable_superfetch in performance.yaml
+  # NOTE: disable_windows_search removed - duplicate of disable_search_indexing in performance.yaml
+
+  - id: disable_program_compatibility
+    name: "Disable Program Compatibility Assistant"
+    description: "Disable Program Compatibility Assistant service"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: "Reduces overhead from compatibility scanning"
     options:
       - label: "Disabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+            key: "System\\CurrentControlSet\\Services\\PcaSvc"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\xbgm"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-        service_changes: []
-      - label: "Enabled"
+      - label: "Enabled (Default)"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+            key: "System\\CurrentControlSet\\Services\\PcaSvc"
             value_name: "Start"
             value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\xbgm"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
+            value: 3
 
-  - id: disable_connected_user_experiences
-    name: "Disable Connected User Experiences"
-    description: "Disable Connected User Experiences and Telemetry"
+  - id: disable_distributed_link_tracking
+    name: "Disable Distributed Link Tracking"
+    description: "Disable Distributed Link Tracking Client service"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: "Used for tracking file links across NTFS volumes. Rarely needed."
     options:
       - label: "Disabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\DiagTrack"
+            key: "System\\CurrentControlSet\\Services\\TrkWks"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-        service_changes: []
-      - label: "Enabled"
+      - label: "Enabled (Default)"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\DiagTrack"
+            key: "System\\CurrentControlSet\\Services\\TrkWks"
             value_name: "Start"
             value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
+            value: 3
 
-  - id: disable_windows_error_reporting
-    name: "Disable Windows Error Reporting"
-    description: "Disable Windows Error Reporting service"
+  - id: disable_homegroup_provider
+    name: "Disable HomeGroup Services"
+    description: "Disable HomeGroup Provider service"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: "HomeGroup was removed in Windows 10 1803. Safe to disable on older Windows 10 builds."
     options:
       - label: "Disabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WerSvc"
+            key: "System\\CurrentControlSet\\Services\\HomeGroupProvider"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-        service_changes: []
-      - label: "Enabled"
-        registry_changes:
+            windows_versions: [10]
+            skip_validation: true
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WerSvc"
+            key: "System\\CurrentControlSet\\Services\\HomeGroupListener"
             value_name: "Start"
             value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
+            value: 4
+            windows_versions: [10]
+            skip_validation: true
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\HomeGroupProvider"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+            windows_versions: [10]
+            skip_validation: true
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\HomeGroupListener"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+            windows_versions: [10]
+            skip_validation: true
+
+  # NOTE: disable_geolocation moved to privacy.yaml (location tracking related)
+
+  - id: disable_retail_demo
+    name: "Disable Retail Demo Service"
+    description: "Disable Windows Retail Demo service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "RetailDemo service only exists on devices configured for retail display. Safe to skip if not present."
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\RetailDemo"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+            skip_validation: true
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\RetailDemo"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+            skip_validation: true
+
+  - id: disable_wallet_service
+    name: "Disable Wallet Service"
+    description: "Disable Windows Wallet Service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "WalletService is used for NFC payment features. May not exist on all Windows editions."
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WalletService"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+            skip_validation: true
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WalletService"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+            skip_validation: true
+
+  # NOTE: disable_security_center_service moved to security.yaml
+
+  - id: disable_touch_keyboard
+    name: "Disable Touch Keyboard Service"
+    description: "Disable Touch Keyboard and Handwriting Panel service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: "Safe to disable on non-touchscreen devices"
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\TabletInputService"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\TabletInputService"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  # NOTE: disable_cdpusersvc moved to privacy.yaml (activity sync/timeline)
+
+  - id: disable_bits
+    name: "Disable Background Intelligent Transfer"
+    description: "Disable BITS (Background Intelligent Transfer Service)"
+    risk_level: high
+    requires_admin: true
+    requires_reboot: true
+    info: "WARNING: Disabling BITS breaks Windows Update. Only disable if you manage updates manually."
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\BITS"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\BITS"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3

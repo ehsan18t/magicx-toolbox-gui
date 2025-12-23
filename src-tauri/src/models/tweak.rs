@@ -278,6 +278,168 @@ pub struct SchedulerChange {
     pub ignore_not_found: bool,
 }
 
+/// Action to perform on a hosts file entry
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum HostsAction {
+    /// Add entry (or ensure it exists)
+    Add,
+    /// Remove entry if it exists
+    Remove,
+}
+
+impl HostsAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HostsAction::Add => "add",
+            HostsAction::Remove => "remove",
+        }
+    }
+}
+
+/// Single hosts file modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostsChange {
+    /// IP address to map (e.g., "127.0.0.1", "0.0.0.0")
+    pub ip: String,
+    /// Domain/hostname to block or redirect (e.g., "telemetry.microsoft.com")
+    pub domain: String,
+    /// Action to perform: add or remove
+    pub action: HostsAction,
+    /// Optional comment to add after the entry (for documentation)
+    #[serde(default)]
+    pub comment: Option<String>,
+    /// If true, skip this change for tweak status validation
+    #[serde(default)]
+    pub skip_validation: bool,
+}
+
+/// Direction for firewall rules
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum FirewallDirection {
+    /// Inbound traffic
+    Inbound,
+    /// Outbound traffic
+    Outbound,
+}
+
+impl FirewallDirection {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FirewallDirection::Inbound => "in",
+            FirewallDirection::Outbound => "out",
+        }
+    }
+}
+
+/// Action for firewall rules
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum FirewallRuleAction {
+    /// Block traffic
+    Block,
+    /// Allow traffic
+    Allow,
+}
+
+impl FirewallRuleAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FirewallRuleAction::Block => "block",
+            FirewallRuleAction::Allow => "allow",
+        }
+    }
+}
+
+/// Protocol for firewall rules
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum FirewallProtocol {
+    /// Any protocol
+    Any,
+    /// TCP only
+    Tcp,
+    /// UDP only
+    Udp,
+    /// ICMP
+    Icmpv4,
+    /// ICMPv6
+    Icmpv6,
+}
+
+impl FirewallProtocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FirewallProtocol::Any => "any",
+            FirewallProtocol::Tcp => "tcp",
+            FirewallProtocol::Udp => "udp",
+            FirewallProtocol::Icmpv4 => "icmpv4",
+            FirewallProtocol::Icmpv6 => "icmpv6",
+        }
+    }
+}
+
+/// Firewall change operation type
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum FirewallOperation {
+    /// Create a new firewall rule
+    Create,
+    /// Delete an existing firewall rule by name
+    Delete,
+}
+
+impl FirewallOperation {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FirewallOperation::Create => "create",
+            FirewallOperation::Delete => "delete",
+        }
+    }
+}
+
+/// Single firewall rule modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FirewallChange {
+    /// Unique rule name (e.g., "Block DiagTrack Telemetry")
+    pub name: String,
+    /// Operation to perform: create or delete
+    pub operation: FirewallOperation,
+    /// Direction: inbound or outbound (required for create)
+    #[serde(default)]
+    pub direction: Option<FirewallDirection>,
+    /// Action: block or allow (required for create)
+    #[serde(default)]
+    pub action: Option<FirewallRuleAction>,
+    /// Protocol to match (defaults to any)
+    #[serde(default)]
+    pub protocol: Option<FirewallProtocol>,
+    /// Program/executable path to match (optional)
+    #[serde(default)]
+    pub program: Option<String>,
+    /// Service name to match (optional)
+    #[serde(default)]
+    pub service: Option<String>,
+    /// Remote addresses to match (optional, e.g., "157.56.0.0/16")
+    #[serde(default)]
+    pub remote_addresses: Option<Vec<String>>,
+    /// Remote ports to match (optional, e.g., "80,443")
+    #[serde(default)]
+    pub remote_ports: Option<String>,
+    /// Local ports to match (optional)
+    #[serde(default)]
+    pub local_ports: Option<String>,
+    /// Description for the rule
+    #[serde(default)]
+    pub description: Option<String>,
+    /// If true, skip this change for tweak status validation
+    #[serde(default)]
+    pub skip_validation: bool,
+}
+
 /// A single option within a tweak - contains all changes for that state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -293,6 +455,12 @@ pub struct TweakOption {
     /// Scheduled task modifications for this option
     #[serde(default)]
     pub scheduler_changes: Vec<SchedulerChange>,
+    /// Hosts file modifications for this option
+    #[serde(default)]
+    pub hosts_changes: Vec<HostsChange>,
+    /// Firewall rule modifications for this option
+    #[serde(default)]
+    pub firewall_changes: Vec<FirewallChange>,
     /// Shell commands (cmd.exe) to run BEFORE applying changes
     #[serde(default)]
     pub pre_commands: Vec<String>,
@@ -324,9 +492,17 @@ impl TweakOption {
             .any(|c| c.applies_to_version(version));
         let has_services = !self.service_changes.is_empty();
         let has_scheduler = !self.scheduler_changes.is_empty();
+        let has_hosts = !self.hosts_changes.is_empty();
+        let has_firewall = !self.firewall_changes.is_empty();
         let has_commands = !self.pre_commands.is_empty() || !self.post_commands.is_empty();
         let has_powershell = !self.pre_powershell.is_empty() || !self.post_powershell.is_empty();
-        has_registry || has_services || has_scheduler || has_commands || has_powershell
+        has_registry
+            || has_services
+            || has_scheduler
+            || has_hosts
+            || has_firewall
+            || has_commands
+            || has_powershell
     }
 }
 
@@ -586,6 +762,8 @@ mod tests {
             registry_changes,
             service_changes: Vec::new(),
             scheduler_changes: Vec::new(),
+            hosts_changes: Vec::new(),
+            firewall_changes: Vec::new(),
             pre_commands: Vec::new(),
             post_commands: Vec::new(),
             pre_powershell: Vec::new(),

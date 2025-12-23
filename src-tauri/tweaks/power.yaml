@@ -1,0 +1,176 @@
+# Power Tweaks - Manage power settings and sleep behavior
+
+category:
+  id: power
+  name: "Power"
+  description: "Manage power settings, sleep behavior, and energy consumption"
+  icon: "mdi:lightning-bolt"
+  order: 8
+
+tweaks:
+  - id: sleep_mode
+    name: "Sleep Mode Configuration"
+    description: "Configure Windows sleep, hibernation, and fast startup behavior"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls how Windows handles sleep states, hibernation, and fast startup.
+
+      ## Options Explained
+      - **Modern Standby (Default)**: S0 Low Power Idle with Fast Startup - fastest wake but may drain battery
+      - **Traditional S3 with Hibernate**: Classic S3 sleep with hibernation for power loss recovery
+      - **Traditional S3 (No Hibernate)**: Classic S3 sleep, saves disk space by removing hiberfil.sys
+      - **Maximum Disk Space**: Disables hibernation and fast startup, frees RAM-sized disk space
+
+      ## When to Use Each
+      - **Modern Standby**: Default for most users, instant wake
+      - **Traditional S3 + Hibernate**: Laptops that get hot in bags or drain battery during sleep
+      - **Traditional S3 No Hibernate**: Desktops that don't need hibernation
+      - **Maximum Disk Space**: When you need to free disk space (saves ~8GB on 8GB RAM system)
+
+      ## Compatibility Notes
+      - Not all systems support S3 sleep (check with `powercfg /a`)
+      - Disabling hibernation also disables Fast Startup
+    options:
+      - label: "Modern Standby (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Traditional S3 with Hibernate"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Traditional S3 (No Hibernate)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Maximum Disk Space"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "PlatformAoAcOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "HibernateEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Power"
+            value_name: "HiberbootEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+
+  # NOTE: disable_fast_startup, disable_modern_standby, disable_hibernation consolidated into sleep_mode above
+
+  - id: disable_power_throttling
+    name: "Disable Power Throttling"
+    description: "Disable Windows power throttling for maximum CPU performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Prevents Windows from throttling CPU power for background applications to save energy.
+
+      ## Benefits
+      - **Maximum performance**: All apps get full CPU power
+      - **Consistent behavior**: No unexpected slowdowns in background apps
+      - **Gaming**: Better performance for games running with other apps
+
+      ## Drawbacks
+      - **Higher power consumption**: Especially on laptops
+      - **More heat**: CPU will run hotter under load
+      - **Battery life**: Reduced battery life on laptops
+
+      ## Recommendation
+      Enable on desktops for best performance. Keep default on laptops unless plugged in.
+    options:
+      - label: "Power Throttling Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
+            value_name: "PowerThrottlingOff"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Power Throttling Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power\\PowerThrottling"
+            value_name: "PowerThrottlingOff"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: usb_selective_suspend
+    name: "USB Selective Suspend"
+    description: "Configure USB selective suspend power management"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Controls whether Windows can suspend individual USB ports to save power.
+
+      ## Why Disable It?
+      - **USB disconnects**: Some USB devices disconnect randomly
+      - **Gaming peripherals**: Mice/keyboards wake delay
+      - **Audio interfaces**: USB audio devices may have issues
+      - **External drives**: Drives may spin down unexpectedly
+
+      ## Recommendation
+      Disable if you have USB device disconnection issues. Keep enabled on laptops for battery life.
+    options:
+      - label: "Selective Suspend Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\USB"
+            value_name: "DisableSelectiveSuspend"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Selective Suspend Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\USB"
+            value_name: "DisableSelectiveSuspend"
+            value_type: "REG_DWORD"
+            value: 0

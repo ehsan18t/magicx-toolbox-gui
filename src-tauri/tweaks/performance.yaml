@@ -8,28 +8,84 @@ category:
   order: 2
 
 tweaks:
-  - id: disable_superfetch
-    name: "Disable Superfetch (SysMain)"
-    description: "Disable Superfetch service to reduce disk I/O"
+  - id: memory_prefetch_mode
+    name: "Memory Prefetch Mode"
+    description: "Configure Superfetch (SysMain) and Prefetch for your storage type"
     risk_level: low
     requires_admin: true
-    requires_reboot: false
-    info: "Superfetch (Windows 10) / SysMain (Windows 11) pre-loads data into RAM but can cause high disk usage"
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls Windows memory preloading services that cache frequently-used data.
+
+      ## Options Explained
+      - **SSD Optimized**: Disables both Superfetch and Prefetch (recommended for SSD-only systems)
+      - **Superfetch Only**: Disables Superfetch service but keeps file prefetching
+      - **HDD Optimized**: Keeps both enabled (recommended for HDD or mixed storage)
+      - **Custom (Prefetch Only)**: Disables Superfetch, enables Prefetch
+
+      ## Superfetch vs Prefetch
+      - **Superfetch (SysMain)**: Preloads frequently-used applications into RAM
+      - **Prefetch**: Caches application data based on usage patterns
+
+      ## When to Disable
+      - **SSD users**: SSDs are fast enough that preloading provides minimal benefit
+      - **High disk usage**: If you see constant 100% disk usage, try disabling
+      - **Low RAM systems**: Preloading can use RAM needed by active applications
+
+      ## Recommendation
+      Use "SSD Optimized" for SSD-only systems. Use "HDD Optimized" if you have any HDDs.
     options:
-      - label: "Disabled"
+      - label: "SSD Optimized (All Disabled)"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\SysMain"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
-      - label: "Enabled"
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Superfetch Only Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\SysMain"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 3
+      - label: "Prefetch Only Disabled"
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\SysMain"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "HDD Optimized (All Enabled)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\SysMain"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
+            value_name: "EnablePrefetcher"
+            value_type: "REG_DWORD"
+            value: 3
+
+  # NOTE: disable_superfetch, disable_prefetch consolidated into memory_prefetch_mode above
 
   - id: disable_search_indexing
     name: "Disable Windows Search Indexing"
@@ -37,7 +93,22 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Disabling search indexing speeds up file operations but slows down Windows Search"
+    info: |
+      ## What This Does
+      Disables the Windows Search indexing service which continuously indexes files for fast searching.
+
+      ## Benefits
+      - **Reduced disk I/O**: No background indexing activity
+      - **Lower CPU usage**: Indexing can be CPU-intensive
+      - **Better for SSDs**: Less unnecessary write activity
+
+      ## Drawbacks
+      - **Slow searches**: File searches will be much slower
+      - **Start menu search**: Search results may be incomplete
+      - **Outlook**: Email search will be affected
+
+      ## Recommendation
+      Only disable if you rarely use Windows Search. Consider using Everything search as an alternative.
     options:
       - label: "Disabled"
         registry_changes:
@@ -59,6 +130,17 @@ tweaks:
     description: "Disable Windows Tips notifications"
     risk_level: low
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the "Get tips, tricks, and suggestions as you use Windows" feature.
+
+      ## Benefits
+      - No annoying popup tips
+      - Slightly reduced background activity
+      - Cleaner notification experience
+
+      ## Recommendation
+      Safe to disable for experienced users. New Windows users may find tips helpful.
     options:
       - label: "Disabled"
         registry_changes:
@@ -80,6 +162,22 @@ tweaks:
     description: "Restrict background app permissions to improve performance"
     risk_level: medium
     requires_reboot: false
+    info: |
+      ## What This Does
+      Globally disables the ability for UWP/Store apps to run in the background.
+
+      ## Benefits
+      - **Better performance**: Fewer apps consuming resources
+      - **Battery life**: Improved on laptops
+      - **Privacy**: Apps can't collect data in background
+
+      ## Drawbacks
+      - **No notifications**: Apps won't receive push notifications
+      - **Delayed updates**: Live tiles won't update
+      - **Communication apps**: May miss messages in apps like WhatsApp
+
+      ## Recommendation
+      Enable selectively in Settings > Apps > Installed Apps > [App] > Advanced options.
     options:
       - label: "Disabled"
         registry_changes:
@@ -101,6 +199,22 @@ tweaks:
     description: "Reduce delay for startup apps to launch faster"
     risk_level: low
     requires_reboot: true
+    info: |
+      ## What This Does
+      Reduces or eliminates the artificial delay Windows adds before launching startup applications.
+
+      ## Technical Details
+      Windows intentionally delays startup apps to prioritize system initialization. Default is typically 10 seconds.
+
+      ## Benefits
+      - Faster app availability after boot
+      - Quicker time to productivity
+
+      ## Potential Issues
+      On slow systems, removing the delay might cause apps to compete with Windows for resources during boot.
+
+      ## Recommendation
+      Safe for SSD systems. Use with caution on older HDD systems.
     options:
       - label: "No Delay"
         registry_changes:
@@ -117,48 +231,26 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1000
 
-  - id: disable_gamebar
-    name: "Disable Game Bar & DVR"
-    description: "Disable Xbox Game Bar and Game DVR features"
-    risk_level: low
-    requires_reboot: false
-    info: "Disables Game Bar and Game DVR which consume system resources"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          # Common to both
-          - hive: HKCU
-            key: "System\\GameConfigStore"
-            value_name: "GameDVR_Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          # Win10 only - AppCaptureEnabled
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-            windows_versions: [10]
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "System\\GameConfigStore"
-            value_name: "GameDVR_Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR"
-            value_name: "AppCaptureEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-            windows_versions: [10]
-
   - id: ssd_optimize_trim
     name: "Enable SSD TRIM Optimization"
     description: "Enable TRIM command for SSD optimization"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      TRIM is a command that tells your SSD which data blocks are no longer in use and can be wiped internally.
+
+      ## Benefits
+      - **Maintains SSD speed**: Prevents write performance degradation over time
+      - **Extends SSD lifespan**: More efficient wear leveling
+      - **Better garbage collection**: SSD can optimize storage more effectively
+
+      ## Technical Details
+      When you delete files, Windows marks them as deleted but the SSD doesn't know. TRIM tells the SSD these blocks are free.
+
+      ## Recommendation
+      Should always be enabled on SSDs. Only disable for specific troubleshooting.
     options:
       - label: "TRIM Enabled"
         registry_changes:
@@ -175,34 +267,28 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_hibernation
-    name: "Disable Hibernation"
-    description: "Disable hibernation to save disk space"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
-    info: "Disables hibernation and frees up disk space used by hiberfil.sys"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Power"
-            value_name: "HibernateEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Power"
-            value_name: "HibernateEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
   - id: optimize_visual_effects
     name: "Optimize Visual Effects"
     description: "Disable unnecessary visual effects for better performance"
     risk_level: low
     requires_reboot: true
+    info: |
+      ## What This Does
+      Configures Windows visual effects to prioritize performance over appearance.
+
+      ## Performance Mode Disables
+      - Window animations
+      - Fade effects
+      - Shadow effects
+      - Smooth scrolling
+      - Font smoothing (in some cases)
+
+      ## Impact
+      - **Older hardware**: Noticeable performance improvement
+      - **Modern hardware**: Minimal difference, mostly cosmetic
+
+      ## Recommendation
+      Use Performance Mode on older systems or VMs. Modern systems can keep Best Appearance.
     options:
       - label: "Performance Mode"
         registry_changes:
@@ -219,48 +305,42 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_prefetch
-    name: "Disable Prefetch"
-    description: "Disable prefetch for better SSD performance"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    info: "Disables prefetch which can cause excessive disk I/O on SSDs"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 3
-
   - id: enable_large_system_cache
     name: "Enable Large System Cache"
     description: "Enable large system cache for improved performance (recommended for 8GB+ RAM)"
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    info: "Uses more RAM for file system cache, improving disk performance on systems with 8GB+ RAM"
+    info: |
+      ## What This Does
+      Configures Windows to use more RAM for file system caching, similar to server behavior.
+
+      ## Benefits
+      - Faster file operations
+      - Reduced disk I/O
+      - Better performance for file-intensive tasks
+
+      ## Requirements
+      - **Minimum 8GB RAM**: Below this, you may experience memory pressure
+      - **16GB+ recommended**: Allows Windows to cache more data effectively
+
+      ## Caution
+      On low-RAM systems, this can cause applications to be swapped to disk, hurting performance.
+
+      ## Recommendation
+      Enable only on systems with 8GB+ RAM. Leave disabled on 4GB or less.
     options:
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management"
             value_name: "LargeSystemCache"
             value_type: "REG_DWORD"
             value: 1
       - label: "Disabled"
         registry_changes:
           - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management"
             value_name: "LargeSystemCache"
             value_type: "REG_DWORD"
             value: 0
@@ -271,7 +351,22 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: true
-    info: "Larger icon cache reduces disk I/O when browsing folders with many icons"
+    info: |
+      ## What This Does
+      Increases the size of Windows' icon cache stored in memory.
+
+      ## Benefits
+      - **Faster folder loading**: Icons display immediately instead of loading
+      - **Reduced disk I/O**: Fewer cache misses requiring disk reads
+      - **Smoother experience**: Especially in folders with many files
+
+      ## Size Options
+      - **500KB (Default)**: Suitable for light users
+      - **4MB**: Good for developers and power users
+      - **8MB**: For users with large folders and many applications
+
+      ## Recommendation
+      4MB is a good balance. 8MB if you frequently work with folders containing hundreds of files.
     options:
       - label: "Default (500KB)"
         registry_changes:
@@ -301,6 +396,20 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the DiagTrack autologger which records diagnostic data for Windows telemetry.
+
+      ## Benefits
+      - Reduced disk write activity
+      - Less CPU usage from logging
+      - Improved privacy (less telemetry data collected)
+
+      ## What's Affected
+      This only affects diagnostic logging, not core Windows functionality.
+
+      ## Recommendation
+      Safe to disable. This is a privacy and performance improvement with no downsides.
     options:
       - label: "Disabled"
         registry_changes:
@@ -323,6 +432,21 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows Maps from automatically downloading map data in the background.
+
+      ## Benefits
+      - Saves bandwidth
+      - Reduces background data usage
+      - Less disk space used
+
+      ## Impact
+      - Maps app will need to download data on-demand
+      - Offline maps won't be available unless manually downloaded
+
+      ## Recommendation
+      Safe to disable if you don't use Windows Maps. Keep enabled if you rely on offline navigation.
     options:
       - label: "Disabled"
         registry_changes:
@@ -348,3 +472,187 @@ tweaks:
             value_name: "AllowUntriggeredNetworkTrafficOnSettingsPage"
             value_type: "REG_DWORD"
             value: 1
+
+  - id: enable_long_paths
+    name: "Enable Long File Paths"
+    description: "Enable support for file paths longer than 260 characters"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Removes the legacy 260 character limit on file paths in Windows.
+
+      ## Why This Matters
+      - **Development**: Node.js, npm, and many build tools create deep folder structures
+      - **Gaming**: Some games have deeply nested file structures
+      - **Cloud sync**: Files synced from other platforms may have long paths
+
+      ## Compatibility
+      - Modern applications support long paths
+      - Some older applications may have issues (rare)
+      - Windows 10 1607+ and Windows 11 supported
+
+      ## Recommendation
+      Safe to enable. Essential for developers and anyone using npm/node.
+    options:
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "LongPathsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "LongPathsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: system_responsiveness
+    name: "System Responsiveness Priority"
+    description: "Adjust system resource allocation for foreground applications"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls the percentage of CPU resources reserved for background system tasks.
+
+      ## Options Explained
+      - **Gaming/Performance (0%)**: All resources prioritize foreground apps
+      - **Balanced (20%)**: Default Windows behavior, reserves 20% for background tasks
+
+      ## Gaming Impact
+      Setting to 0% ensures games and active applications get maximum CPU priority.
+
+      ## Stability Note
+      Some background tasks may be delayed, but this rarely causes issues.
+
+      ## Recommendation
+      Use Gaming mode for gaming PCs. Use Balanced for general-purpose systems.
+    options:
+      - label: "Gaming/Performance (0%)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "SystemResponsiveness"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Balanced (20% - Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+            value_name: "SystemResponsiveness"
+            value_type: "REG_DWORD"
+            value: 20
+
+  - id: enable_auto_end_tasks
+    name: "Enable Auto End Hung Tasks"
+    description: "Automatically end non-responding tasks during shutdown"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Automatically closes applications that stop responding during shutdown or logoff.
+
+      ## Benefits
+      - Faster shutdown times
+      - No more "waiting for programs to close" dialogs
+      - Smoother restart experience
+
+      ## Potential Issue
+      Unsaved work in hung applications will be lost. However, if an app is hung, you likely can't save anyway.
+
+      ## Recommendation
+      Safe to enable. Makes shutdown much smoother.
+    options:
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "AutoEndTasks"
+            value_type: "REG_SZ"
+            value: "1"
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "AutoEndTasks"
+            value_type: "REG_SZ"
+            value: "0"
+
+  - id: reduce_menu_show_delay
+    name: "Reduce Menu Show Delay"
+    description: "Reduce delay when opening menus for snappier UI"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Reduces the delay before menus appear when hovering over menu items.
+
+      ## Default vs Fast
+      - **Default (400ms)**: Noticeable pause before menus open
+      - **Fast (100ms)**: Menus feel instant and responsive
+
+      ## Benefits
+      - More responsive user interface
+      - Faster navigation through menus
+      - Better overall desktop experience
+
+      ## Recommendation
+      100ms feels much snappier with no downsides. Highly recommended.
+    options:
+      - label: "Fast (100ms)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "MenuShowDelay"
+            value_type: "REG_SZ"
+            value: "100"
+      - label: "Default (400ms)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "MenuShowDelay"
+            value_type: "REG_SZ"
+            value: "400"
+
+  - id: disable_ndu
+    name: "Disable Network Data Usage Monitor"
+    description: "Disable Windows Network Data Usage monitoring service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables the Network Data Usage (NDU) driver which monitors network traffic for statistics.
+
+      ## Benefits
+      - Reduced background CPU usage
+      - Less disk I/O from logging
+      - Slightly lower memory usage
+
+      ## What You Lose
+      - Network usage statistics in Settings > Network & Internet
+      - Data usage tracking per app
+
+      ## Recommendation
+      Safe to disable if you don't use Windows' built-in network usage tracking.
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\ControlSet001\\Services\\Ndu"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\ControlSet001\\Services\\Ndu"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

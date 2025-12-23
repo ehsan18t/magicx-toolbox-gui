@@ -79,6 +79,63 @@ export interface SchedulerChange {
   ignore_not_found?: boolean;
 }
 
+/** Action for hosts file changes */
+export type HostsAction = "add" | "remove";
+
+/** Hosts file change within an option */
+export interface HostsChange {
+  /** IP address to map (e.g., "127.0.0.1", "0.0.0.0") */
+  ip: string;
+  /** Domain/hostname to block or redirect (e.g., "telemetry.microsoft.com") */
+  domain: string;
+  /** Action to perform: add or remove */
+  action: HostsAction;
+  /** Optional comment to add after the entry */
+  comment?: string;
+  /** If true, skip this change for tweak status validation */
+  skip_validation?: boolean;
+}
+
+/** Direction for firewall rules */
+export type FirewallDirection = "inbound" | "outbound";
+
+/** Action for firewall rules */
+export type FirewallRuleAction = "block" | "allow";
+
+/** Protocol for firewall rules */
+export type FirewallProtocol = "any" | "tcp" | "udp" | "icmpv4" | "icmpv6";
+
+/** Firewall operation type */
+export type FirewallOperation = "create" | "delete";
+
+/** Firewall rule change within an option */
+export interface FirewallChange {
+  /** Unique rule name (e.g., "Block DiagTrack Telemetry") */
+  name: string;
+  /** Operation to perform: create or delete */
+  operation: FirewallOperation;
+  /** Direction: inbound or outbound (required for create) */
+  direction?: FirewallDirection;
+  /** Action: block or allow (required for create) */
+  action?: FirewallRuleAction;
+  /** Protocol to match (defaults to any) */
+  protocol?: FirewallProtocol;
+  /** Program/executable path to match */
+  program?: string;
+  /** Service name to match */
+  service?: string;
+  /** Remote addresses to match (e.g., ["157.56.0.0/16"]) */
+  remote_addresses?: string[];
+  /** Remote ports to match (e.g., "80,443") */
+  remote_ports?: string;
+  /** Local ports to match */
+  local_ports?: string;
+  /** Description for the rule */
+  description?: string;
+  /** If true, skip this change for tweak status validation */
+  skip_validation?: boolean;
+}
+
 /** A single option within a tweak - contains all changes for that state */
 export interface TweakOption {
   /** Display label (e.g., "Enabled", "Disabled", "4MB") */
@@ -89,6 +146,10 @@ export interface TweakOption {
   service_changes: ServiceChange[];
   /** Scheduler task modifications for this option */
   scheduler_changes: SchedulerChange[];
+  /** Hosts file modifications for this option */
+  hosts_changes: HostsChange[];
+  /** Firewall rule modifications for this option */
+  firewall_changes: FirewallChange[];
   /** Shell commands to run BEFORE applying changes */
   pre_commands: string[];
   /** PowerShell commands to run BEFORE applying changes (after pre_commands) */

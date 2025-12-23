@@ -18,6 +18,8 @@
    - [Registry Changes](#registry-changes)
    - [Service Changes](#service-changes)
    - [Scheduler Changes](#scheduler-changes)
+   - [Hosts File Changes](#hosts-file-changes)
+   - [Firewall Changes](#firewall-changes)
    - [Shell Commands](#shell-commands)
    - [PowerShell Commands](#powershell-commands)
 8. [Execution Order & Atomicity](#execution-order--atomicity)
@@ -637,6 +639,133 @@ Common paths:
 
 ---
 
+### Hosts File Changes
+
+Modify the Windows hosts file (`C:\Windows\System32\drivers\etc\hosts`) to block or redirect domains.
+
+```yaml
+hosts_changes:
+  - ip: "0.0.0.0"
+    domain: "telemetry.microsoft.com"
+    action: add
+    comment: "Block telemetry"
+```
+
+#### Hosts Change Fields
+
+| Field             | Required | Description                                            |
+| ----------------- | -------- | ------------------------------------------------------ |
+| `ip`              | ✅        | IP address to map (e.g., `"0.0.0.0"`, `"127.0.0.1"`)   |
+| `domain`          | ✅        | Domain/hostname to block or redirect                   |
+| `action`          | ✅        | `add` (add entry) or `remove` (remove entry)           |
+| `comment`         | ❌        | Optional comment added after the entry                 |
+| `skip_validation` | ❌        | If `true`, don't fail if entry cannot be added/removed |
+
+#### Hosts Examples
+
+```yaml
+# Block telemetry domains
+hosts_changes:
+  - ip: "0.0.0.0"
+    domain: "telemetry.microsoft.com"
+    action: add
+    comment: "Block MS telemetry"
+  - ip: "0.0.0.0"
+    domain: "vortex.data.microsoft.com"
+    action: add
+  - ip: "0.0.0.0"
+    domain: "settings-win.data.microsoft.com"
+    action: add
+
+# Restore default (remove entries)
+hosts_changes:
+  - ip: "0.0.0.0"
+    domain: "telemetry.microsoft.com"
+    action: remove
+  - ip: "0.0.0.0"
+    domain: "vortex.data.microsoft.com"
+    action: remove
+```
+
+**Note:** Hosts file modifications require administrator privileges. MagicX Toolbox adds a marker comment (`# MagicX Toolbox`) before each managed entry for tracking.
+
+---
+
+### Firewall Changes
+
+Create or delete Windows Firewall rules to block or allow network traffic.
+
+```yaml
+firewall_changes:
+  - name: "Block DiagTrack Telemetry"
+    operation: create
+    direction: outbound
+    action: block
+    service: diagtrack
+```
+
+#### Firewall Change Fields
+
+| Field              | Required     | Description                                              |
+| ------------------ | ------------ | -------------------------------------------------------- |
+| `name`             | ✅            | Unique rule name (used for identification)               |
+| `operation`        | ✅            | `create` (add rule) or `delete` (remove rule)            |
+| `direction`        | For `create` | `inbound` or `outbound`                                  |
+| `action`           | For `create` | `block` or `allow`                                       |
+| `protocol`         | ❌            | `any`, `tcp`, `udp`, `icmpv4`, `icmpv6` (default: `any`) |
+| `program`          | ❌            | Program/executable path to match                         |
+| `service`          | ❌            | Service name to match (e.g., `diagtrack`)                |
+| `remote_addresses` | ❌            | Array of remote IPs/subnets (e.g., `["157.56.0.0/16"]`)  |
+| `remote_ports`     | ❌            | Remote ports to match (e.g., `"80,443"` or `"1-1024"`)   |
+| `local_ports`      | ❌            | Local ports to match                                     |
+| `description`      | ❌            | Description for the rule                                 |
+| `skip_validation`  | ❌            | If `true`, don't fail if rule cannot be created/deleted  |
+
+#### Firewall Examples
+
+```yaml
+# Block outbound traffic for a service
+firewall_changes:
+  - name: "Block DiagTrack Outbound"
+    operation: create
+    direction: outbound
+    action: block
+    service: diagtrack
+    description: "Block telemetry service network access"
+
+# Block specific IP ranges
+firewall_changes:
+  - name: "Block MS Telemetry IPs"
+    operation: create
+    direction: outbound
+    action: block
+    protocol: any
+    remote_addresses:
+      - "157.56.0.0/16"
+      - "168.62.0.0/16"
+      - "191.232.0.0/16"
+
+# Block specific ports for a program
+firewall_changes:
+  - name: "Block App Network Access"
+    operation: create
+    direction: outbound
+    action: block
+    program: "C:\\Program Files\\SomeApp\\app.exe"
+    remote_ports: "80,443"
+
+# Remove firewall rules (revert to default)
+firewall_changes:
+  - name: "Block DiagTrack Outbound"
+    operation: delete
+  - name: "Block MS Telemetry IPs"
+    operation: delete
+```
+
+**Note:** Firewall changes require administrator privileges and use Windows Firewall with Advanced Security (netsh advfirewall).
+
+---
+
 ### Shell Commands
 
 Run shell commands via `cmd.exe`.
@@ -710,15 +839,17 @@ When applying an option, changes execute in this **exact order**:
 1. pre_commands         ← Shell commands (cmd.exe)
 2. pre_powershell       ← PowerShell commands
 3. registry_changes     ← Registry modifications      ┐
-4. service_changes      ← Windows service changes     │ ATOMIC
-5. scheduler_changes    ← Task Scheduler changes      ┘
-6. post_commands        ← Shell commands (cmd.exe)
-7. post_powershell      ← PowerShell commands
+4. service_changes      ← Windows service changes     │
+5. scheduler_changes    ← Task Scheduler changes      │ ATOMIC
+6. hosts_changes        ← Hosts file modifications    │
+7. firewall_changes     ← Windows Firewall rules      ┘
+8. post_commands        ← Shell commands (cmd.exe)
+9. post_powershell      ← PowerShell commands
 ```
 
 ### What "Atomic" Means
 
-Steps 3, 4, and 5 (registry, services, scheduler) are **atomic**:
+Steps 3, 4, 5, 6, and 7 (registry, services, scheduler, hosts, firewall) are **atomic**:
 - If **ANY** of these steps fails, **ALL** changes are rolled back
 - Rollback uses the snapshot captured before step 1
 - You get either complete success or complete rollback
@@ -742,6 +873,8 @@ Steps 3, 4, and 5 (registry, services, scheduler) are **atomic**:
 | `registry_changes`  | ✅ **YES**       | ✅ **YES**                  | Rolls back all registry changes     |
 | `service_changes`   | ✅ **YES**       | ✅ **YES**                  | Rolls back everything from snapshot |
 | `scheduler_changes` | ✅ **YES**       | ✅ **YES**                  | Rolls back everything from snapshot |
+| `hosts_changes`     | ✅ **YES**       | ✅ **YES**                  | Rolls back everything from snapshot |
+| `firewall_changes`  | ✅ **YES**       | ✅ **YES**                  | Rolls back everything from snapshot |
 | `post_commands`     | ❌ **NO**        | ❌ No                       | Logged as warning, continues        |
 | `post_powershell`   | ❌ **NO**        | ❌ No                       | Logged as warning, continues        |
 

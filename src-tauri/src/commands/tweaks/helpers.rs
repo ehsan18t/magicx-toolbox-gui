@@ -5,6 +5,8 @@
 //! - Registry read/write operations
 //! - Service change application
 //! - Scheduler change application
+//! - Hosts file change application
+//! - Firewall rule change application
 //! - Atomic change orchestration
 
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
@@ -12,7 +14,10 @@ use crate::error::{Error, Result};
 use crate::models::{
     RegistryAction, RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition, TweakOption,
 };
-use crate::services::{registry_service, scheduler_service, service_control, trusted_installer};
+use crate::services::{
+    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
+    trusted_installer,
+};
 use tauri::AppHandle;
 
 // ============================================================================
@@ -308,7 +313,7 @@ fn restore_value(
 // Atomic Change Application
 // ============================================================================
 
-/// Apply ALL core changes atomically: registry, services, scheduler
+/// Apply ALL core changes atomically: registry, services, scheduler, hosts, firewall
 /// If any step fails, caller is responsible for full rollback from snapshot
 pub fn apply_all_changes_atomically(
     app: &AppHandle,
@@ -330,6 +335,18 @@ pub fn apply_all_changes_atomically(
         apply_scheduler_changes_atomic(app, option, tweak.requires_system, tweak.requires_ti)
     {
         log::error!("Scheduler changes failed, need full rollback: {}", e);
+        return Err(e);
+    }
+
+    // Step 4: Apply hosts file changes - fail-fast, return error for full rollback
+    if let Err(e) = apply_hosts_changes_atomic(app, option) {
+        log::error!("Hosts file changes failed, need full rollback: {}", e);
+        return Err(e);
+    }
+
+    // Step 5: Apply firewall changes - fail-fast, return error for full rollback
+    if let Err(e) = apply_firewall_changes_atomic(app, option) {
+        log::error!("Firewall changes failed, need full rollback: {}", e);
         return Err(e);
     }
 
@@ -1001,6 +1018,116 @@ fn apply_scheduler_exact(
             ),
             None,
         );
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Hosts File Operations
+// ============================================================================
+
+/// Apply all hosts file changes atomically
+fn apply_hosts_changes_atomic(app: &AppHandle, option: &TweakOption) -> Result<()> {
+    if option.hosts_changes.is_empty() {
+        return Ok(());
+    }
+
+    log::debug!("Applying {} hosts file changes", option.hosts_changes.len());
+
+    for change in &option.hosts_changes {
+        let action_str = change.action.as_str();
+        let entry_desc = format!("{} → {}", change.domain, change.ip);
+
+        log::debug!("Hosts change: {} {}", action_str, entry_desc);
+
+        let result = hosts_service::apply_hosts_change(change);
+
+        if let Err(e) = result {
+            if change.skip_validation {
+                log::warn!(
+                    "Failed to apply hosts change for '{}' (skip_validation, continuing): {}",
+                    entry_desc,
+                    e
+                );
+                continue;
+            } else {
+                return Err(Error::CommandExecution(format!(
+                    "Failed to apply hosts change for '{}': {}",
+                    entry_desc, e
+                )));
+            }
+        }
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                app,
+                DebugLevel::Info,
+                &format!("Hosts: {} {}", action_str, entry_desc),
+                None,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Firewall Operations
+// ============================================================================
+
+/// Apply all firewall rule changes atomically
+fn apply_firewall_changes_atomic(app: &AppHandle, option: &TweakOption) -> Result<()> {
+    if option.firewall_changes.is_empty() {
+        return Ok(());
+    }
+
+    log::debug!(
+        "Applying {} firewall rule changes",
+        option.firewall_changes.len()
+    );
+
+    for change in &option.firewall_changes {
+        let op_str = change.operation.as_str();
+        log::debug!("Firewall change: {} rule '{}'", op_str, change.name);
+
+        let result = firewall_service::apply_firewall_change(change);
+
+        if let Err(e) = result {
+            if change.skip_validation {
+                log::warn!(
+                    "Failed to apply firewall change for '{}' (skip_validation, continuing): {}",
+                    change.name,
+                    e
+                );
+                continue;
+            } else {
+                return Err(Error::CommandExecution(format!(
+                    "Failed to apply firewall change for '{}': {}",
+                    change.name, e
+                )));
+            }
+        }
+
+        if is_debug_enabled() {
+            let details = match change.operation {
+                crate::models::FirewallOperation::Create => {
+                    let dir = change.direction.map(|d| d.as_str()).unwrap_or("?");
+                    let act = change.action.map(|a| a.as_str()).unwrap_or("?");
+                    format!("{} {} {}", dir, act, change.name)
+                }
+                crate::models::FirewallOperation::Delete => {
+                    format!("delete {}", change.name)
+                }
+            };
+
+            emit_debug_log(
+                app,
+                DebugLevel::Info,
+                &format!("Firewall: {}", details),
+                None,
+            );
+        }
     }
 
     Ok(())

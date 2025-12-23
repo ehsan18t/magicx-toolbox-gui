@@ -8,12 +8,59 @@ category:
   order: 4
 
 tweaks:
+  - id: disable_remote_registry
+    name: "Disable Remote Registry"
+    description: "Disable Remote Registry service to prevent remote access"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Remote Registry service which allows remote computers to modify your registry.
+
+      ## Security Benefits
+      - Prevents remote registry manipulation attacks
+      - Blocks potential malware from remotely modifying system settings
+      - Reduces attack surface for network-based exploits
+
+      ## Recommendation
+      Always disable unless you specifically need remote registry access for IT management.
+    options:
+      - label: "Remote Registry Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Remote Registry Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+
   - id: disable_remote_desktop
     name: "Disable Remote Desktop"
     description: "Disable Remote Desktop Protocol (RDP) access"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Remote Desktop Protocol (RDP) which allows remote access to your computer.
+
+      ## Security Impact
+      - **When enabled**: Anyone with credentials can access your PC remotely
+      - **When disabled**: Remote access via RDP is blocked
+
+      ## When to Keep Enabled
+      - If you use Remote Desktop to access this PC from elsewhere
+      - IT-managed environments that require remote support
+
+      ## Recommendation
+      Disable if you don't use Remote Desktop. RDP is a common attack vector.
     options:
       - label: "Remote Desktop Disabled"
         registry_changes:
@@ -30,49 +77,80 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
 
-  - id: disable_autoplay
-    name: "Disable AutoPlay"
-    description: "Disable AutoPlay for removable drives"
+  - id: removable_media_behavior
+    name: "Removable Media Behavior"
+    description: "Configure AutoPlay and AutoRun for removable drives"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Controls how Windows handles removable media like USB drives and CDs/DVDs.
+
+      ## Options Explained
+      - **Maximum Security**: Disables both AutoPlay and AutoRun scripts (recommended)
+      - **AutoRun Only Disabled**: AutoPlay works but scripts don't execute
+      - **AutoPlay Only Disabled**: AutoPlay is off but AutoRun can execute (not recommended)
+      - **All Enabled**: Original Windows behavior (insecure)
+
+      ## Security Risks
+      - **AutoPlay**: Automatically runs programs when media is inserted
+      - **AutoRun (autorun.inf)**: Scripts on drives can execute automatically
+      - USB drives with malware can infect systems instantly with these enabled
+
+      ## Recommendation
+      Always use "Maximum Security". There's no legitimate reason to keep these enabled.
     options:
-      - label: "AutoPlay Disabled"
+      - label: "Maximum Security (All Disabled)"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoDriveTypeAutoRun"
             value_type: "REG_DWORD"
             value: 255
-      - label: "AutoPlay Enabled"
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoAutorun"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "AutoRun Only Disabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoDriveTypeAutoRun"
             value_type: "REG_DWORD"
             value: 0
-
-  - id: disable_autorun
-    name: "Disable AutoRun Scripts"
-    description: "Disable execution of autorun scripts"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "AutoRun Scripts Disabled"
-        registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoAutorun"
             value_type: "REG_DWORD"
             value: 1
-      - label: "AutoRun Scripts Enabled"
+      - label: "AutoPlay Only Disabled"
         registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoDriveTypeAutoRun"
+            value_type: "REG_DWORD"
+            value: 255
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
             value_name: "NoAutorun"
             value_type: "REG_DWORD"
             value: 0
+      - label: "All Enabled (Insecure)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoDriveTypeAutoRun"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "NoAutorun"
+            value_type: "REG_DWORD"
+            value: 0
+
+  # NOTE: disable_autoplay, disable_autorun consolidated into removable_media_behavior above
 
   - id: require_ctrlaltdel
     name: "Require Ctrl+Alt+Del to Unlock"
@@ -80,6 +158,20 @@ tweaks:
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Requires pressing Ctrl+Alt+Del before the login screen appears.
+
+      ## Security Purpose
+      - Ctrl+Alt+Del cannot be simulated by software
+      - Protects against fake login screen attacks (credential theft)
+      - Ensures you're interacting with the real Windows login
+
+      ## Inconvenience Factor
+      One extra key combination at login - minor inconvenience for added security.
+
+      ## Recommendation
+      Enable for security-conscious users and business environments.
     options:
       - label: "Ctrl+Alt+Del Required"
         registry_changes:
@@ -105,7 +197,23 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: true
-    info: "SMBv1 is an old protocol with security vulnerabilities"
+    info: |
+      ## What This Does
+      Disables the legacy SMBv1 file sharing protocol.
+
+      ## Security Risks of SMBv1
+      - **WannaCry ransomware** exploited SMBv1 vulnerabilities
+      - No encryption of data in transit
+      - Weak authentication mechanisms
+      - Multiple known unpatched vulnerabilities
+
+      ## Compatibility
+      - Windows Vista and later don't need SMBv1
+      - Very old NAS devices might require it
+      - Windows XP file sharing requires it
+
+      ## Recommendation
+      Disable unless you have legacy devices that require it. SMBv2/v3 are secure.
     options:
       - label: "SMBv1 Disabled"
         registry_changes:
@@ -122,34 +230,27 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: disable_netbios
-    name: "Disable NetBIOS"
-    description: "Disable NetBIOS over TCP/IP"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    options:
-      - label: "NetBIOS Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-            value_name: "NetbiosOptions"
-            value_type: "REG_DWORD"
-            value: 2
-      - label: "NetBIOS Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip"
-            value_name: "NetbiosOptions"
-            value_type: "REG_DWORD"
-            value: 0
-
   - id: enforce_password_policy
     name: "Enforce Strong Password Policy"
     description: "Enforce strong password requirements"
     risk_level: low
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Requires signing or sealing for network authentication, ensuring encrypted and signed communication.
+
+      ## Security Benefits
+      - Prevents man-in-the-middle attacks on network authentication
+      - Ensures password hashes aren't sent in clear text
+      - Protects against credential interception
+
+      ## Compatibility
+      - Works with all modern Windows systems
+      - May break very old network clients
+
+      ## Recommendation
+      Enable for improved network authentication security.
     options:
       - label: "Strong Password Policy Enforced"
         registry_changes:
@@ -172,7 +273,24 @@ tweaks:
     risk_level: high
     requires_admin: true
     requires_reboot: false
-    info: "WARNING: Reduces security. Only disable if you know what you're doing"
+    info: |
+      ## ⚠️ WARNING: High Risk Tweak
+
+      ## What This Does
+      Disables Windows SmartScreen which checks downloaded files and apps against Microsoft's database of known malware.
+
+      ## Security Impact
+      - **No warning** for potentially malicious downloads
+      - **No protection** against known malware
+      - **Bypasses** Microsoft's threat intelligence
+
+      ## Why Someone Would Disable It
+      - Privacy concerns about files being checked against Microsoft servers
+      - False positives blocking legitimate software
+      - Running custom/unsigned software frequently
+
+      ## Recommendation
+      **Keep enabled unless you have a specific reason to disable it.** This significantly reduces your protection against malware.
     options:
       - label: "SmartScreen Disabled"
         registry_changes:
@@ -195,7 +313,22 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
-    info: "Prevents automatic upload of suspicious files to Microsoft"
+    info: |
+      ## What This Does
+      Prevents Windows Defender from automatically uploading suspicious files to Microsoft for analysis.
+
+      ## Privacy Considerations
+      - Files flagged as suspicious are uploaded to Microsoft's cloud
+      - Could include sensitive documents if flagged incorrectly
+      - Helps Microsoft improve threat detection
+
+      ## Security Trade-off
+      - Disabling reduces your contribution to threat intelligence
+      - Your system still receives protection updates
+      - Manual submission is still possible
+
+      ## Recommendation
+      Disable if privacy is a major concern. The security impact is minimal.
     options:
       - label: "Sample Submission Disabled"
         registry_changes:
@@ -218,6 +351,20 @@ tweaks:
     risk_level: medium
     requires_admin: true
     requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents the Malicious Software Removal Tool from reporting infection data to Microsoft.
+
+      ## Privacy Benefits
+      - No telemetry about infections sent to Microsoft
+      - Infection history stays local
+
+      ## Trade-off
+      - Doesn't affect your protection level
+      - Only affects reporting of what was found
+
+      ## Recommendation
+      Safe to disable for privacy. Your protection remains unchanged.
     options:
       - label: "Malware Reporting Disabled"
         registry_changes:
@@ -233,3 +380,328 @@ tweaks:
             value_name: "DontReportInfectionInformation"
             value_type: "REG_DWORD"
             value: 0
+
+  - id: disable_wpbt
+    name: "Disable Windows Platform Binary Table"
+    description: "Disable WPBT which allows vendors to force-install software at boot"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables the Windows Platform Binary Table (WPBT) - a UEFI feature that allows computer manufacturers to automatically install software at boot.
+
+      ## Security Concerns
+      - WPBT runs code from UEFI firmware
+      - Manufacturers have used it to install bloatware
+      - Lenovo used it for persistent software installation
+      - Potential vector for rootkit-like persistence
+
+      ## What This Blocks
+      - Vendor software that reinstalls after fresh Windows install
+      - "Persistent" manufacturer tools embedded in firmware
+
+      ## Recommendation
+      Safe to disable. Prevents unwanted manufacturer software from persisting.
+    options:
+      - label: "WPBT Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager"
+            value_name: "DisableWpbtExecution"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "WPBT Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager"
+            value_name: "DisableWpbtExecution"
+            action: delete_value
+
+  - id: set_utc_time
+    name: "Set Hardware Clock to UTC (Dual Boot)"
+    description: "Set Windows to use UTC time for dual-boot with Linux"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Configures Windows to treat the hardware clock as UTC time instead of local time.
+
+      ## Why This Matters (Dual Boot)
+      - Linux stores UTC in hardware clock, Windows stores local time
+      - Results in time being wrong after switching OS
+      - Time jumps back/forward by timezone offset
+
+      ## Impact
+      - Fixes time synchronization issues between Windows and Linux
+      - Windows will now correctly interpret hardware clock
+
+      ## Recommendation
+      Essential for dual-boot with Linux. No reason to enable for single-boot systems.
+    options:
+      - label: "UTC (For Dual Boot)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\TimeZoneInformation"
+            value_name: "RealTimeIsUniversal"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Local Time (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\TimeZoneInformation"
+            value_name: "RealTimeIsUniversal"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: block_third_party_drivers
+    name: "Block Third-Party Driver Installs"
+    description: "Block automatic installation of third-party drivers from Windows Update"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows Update from automatically installing third-party driver software and co-installers.
+
+      ## What Gets Blocked
+      - Razer Synapse auto-installation
+      - Corsair iCUE auto-installation
+      - Logitech G Hub auto-installation
+      - Other vendor bloatware that comes with drivers
+
+      ## What Still Works
+      - Basic device functionality (hardware still works)
+      - Microsoft's built-in drivers
+      - Manually installed drivers
+
+      ## Recommendation
+      Enable if you prefer to manually install peripheral software. Reduces bloatware.
+    options:
+      - label: "Third-Party Drivers Blocked"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\DriverSearching"
+            value_name: "SearchOrderConfig"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Device Installer"
+            value_name: "DisableCoInstallers"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Third-Party Drivers Allowed (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\DriverSearching"
+            value_name: "SearchOrderConfig"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Device Installer"
+            value_name: "DisableCoInstallers"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_windows_error_reporting_service
+    name: "Disable Windows Error Reporting"
+    description: "Disable Windows Error Reporting completely"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Windows Error Reporting which sends crash data and error reports to Microsoft.
+
+      ## Privacy Benefits
+      - No crash dumps sent to Microsoft
+      - Application error data stays local
+      - Reduced telemetry
+
+      ## What You Lose
+      - Microsoft won't receive data to fix issues
+      - Some apps rely on WER for crash recovery
+
+      ## Recommendation
+      Safe to disable for privacy. Crash reports rarely benefit individual users.
+    options:
+      - label: "Error Reporting Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "Disabled"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Error Reporting Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "Disabled"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_lmhash_storage
+    name: "Disable LM Hash Storage"
+    description: "Prevent storage of LAN Manager hash for passwords"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Prevents Windows from storing LAN Manager (LM) password hashes.
+
+      ## Security Issue with LM Hashes
+      - LM hashes use weak DES encryption
+      - Can be cracked in seconds with modern hardware
+      - Only needed for Windows 9x/ME compatibility
+
+      ## Modern Windows
+      - Uses NTLM or Kerberos instead
+      - LM hashes are a legacy liability
+      - No modern software requires them
+
+      ## Recommendation
+      Always disable. LM hashes are a significant security vulnerability.
+    options:
+      - label: "LM Hash Storage Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "NoLMHash"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "LM Hash Storage Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "NoLMHash"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_anonymous_enum
+    name: "Disable Anonymous SAM Enumeration"
+    description: "Prevent anonymous enumeration of SAM accounts"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Prevents unauthenticated users from enumerating user accounts and shares.
+
+      ## Attack Scenario
+      Without this, attackers can:
+      - List all user accounts without credentials
+      - Identify valid usernames for brute force attacks
+      - Enumerate network shares
+
+      ## Impact
+      - Blocks reconnaissance phase of attacks
+      - No impact on normal operations
+      - May break very old network applications
+
+      ## Recommendation
+      Enable for improved security. Standard security hardening practice.
+    options:
+      - label: "Anonymous Enumeration Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymousSAM"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymous"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Anonymous Enumeration Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymousSAM"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RestrictAnonymous"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_admin_shares
+    name: "Disable Administrative Shares"
+    description: "Disable automatic creation of administrative shares (C$, ADMIN$)"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables the automatic creation of hidden administrative shares (C$, D$, ADMIN$, IPC$).
+
+      ## Security Risk of Admin Shares
+      - Accessible to anyone with admin credentials
+      - Common target for lateral movement in attacks
+      - Used by ransomware to spread across networks
+
+      ## What Breaks
+      - Some remote administration tools
+      - Certain backup software
+      - Network-based system management
+
+      ## Recommendation
+      Enable on personal computers. Consider impact carefully in managed environments.
+    options:
+      - label: "Admin Shares Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "AutoShareWks"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Admin Shares Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "AutoShareWks"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_security_center_service
+    name: "Disable Windows Security Center"
+    description: "Disable Windows Security Center service (wscsvc)"
+    risk_level: high
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## ⚠️ WARNING: High Risk Tweak
+
+      ## What This Does
+      Disables the Windows Security Center service which monitors your security status.
+
+      ## Security Impact
+      - **No security alerts**: You won't be notified of disabled firewall, antivirus issues
+      - **No status monitoring**: Security app won't show overall security health
+      - **Third-party AV**: May interfere with some antivirus software
+
+      ## Why Someone Would Disable It
+      - Using alternative security monitoring
+      - Reducing background services for specific use cases
+      - Running in a controlled environment
+
+      ## Recommendation
+      **Keep enabled unless you have a specific reason.** This significantly reduces security visibility.
+    options:
+      - label: "Security Center Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\wscsvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Security Center Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\wscsvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

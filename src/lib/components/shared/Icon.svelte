@@ -66,6 +66,7 @@
   import MdiLaptop from "~icons/mdi/laptop";
   import MdiLicense from "~icons/mdi/license";
   import MdiLightbulbOutline from "~icons/mdi/lightbulb-outline";
+  import MdiLightningBolt from "~icons/mdi/lightning-bolt";
   import MdiLoading from "~icons/mdi/loading";
   import MdiMagicStaff from "~icons/mdi/magic-staff";
   import MdiMagnify from "~icons/mdi/magnify";
@@ -108,6 +109,7 @@
   import MdiViewDashboard from "~icons/mdi/view-dashboard";
   import MdiWeb from "~icons/mdi/web";
   import MdiWidgets from "~icons/mdi/widgets";
+  import MdiWifi from "~icons/mdi/wifi";
   import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
@@ -271,6 +273,8 @@
     "mdi:play": MdiPlay,
     "mdi:plus": MdiPlus,
     "mdi:delete": MdiDelete,
+    "mdi:lightning-bolt": MdiLightningBolt,
+    "mdi:wifi": MdiWifi,
   };
 
   export function getIconComponent(name: string) {
