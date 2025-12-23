@@ -1,5 +1,7 @@
 pub mod backup;
 pub mod elevation;
+pub mod firewall_service;
+pub mod hosts_service;
 pub mod profile;
 pub mod registry_service;
 pub mod scheduler_service;
