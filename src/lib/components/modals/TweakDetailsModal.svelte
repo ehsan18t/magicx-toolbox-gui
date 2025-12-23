@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getBackupInfo, inspectTweak, type BackupInfo } from "$lib/api/tweaks";
-  import { Icon } from "$lib/components/shared";
+  import { Icon, MarkdownText } from "$lib/components/shared";
   import {
     CommandList,
     FirewallChangeItem,
@@ -401,7 +401,7 @@
       {#if tweak.definition.info}
         <div class="mt-4 flex items-start gap-3 rounded-xl border border-border/50 bg-surface/30 p-4">
           <Icon icon="mdi:information-outline" width="18" class="mt-0.5 shrink-0 text-accent" />
-          <p class="m-0 text-sm leading-relaxed text-foreground-muted">{tweak.definition.info}</p>
+          <MarkdownText content={tweak.definition.info} class="m-0" />
         </div>
       {/if}
 
