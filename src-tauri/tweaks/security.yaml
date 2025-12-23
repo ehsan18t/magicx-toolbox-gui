@@ -8,6 +8,39 @@ category:
   order: 4
 
 tweaks:
+  - id: disable_remote_registry
+    name: "Disable Remote Registry"
+    description: "Disable Remote Registry service to prevent remote access"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Remote Registry service which allows remote computers to modify your registry.
+
+      ## Security Benefits
+      - Prevents remote registry manipulation attacks
+      - Blocks potential malware from remotely modifying system settings
+      - Reduces attack surface for network-based exploits
+
+      ## Recommendation
+      Always disable unless you specifically need remote registry access for IT management.
+    options:
+      - label: "Remote Registry Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Remote Registry Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+
   - id: disable_remote_desktop
     name: "Disable Remote Desktop"
     description: "Disable Remote Desktop Protocol (RDP) access"
@@ -630,3 +663,43 @@ tweaks:
             value_name: "AutoShareWks"
             value_type: "REG_DWORD"
             value: 1
+
+  - id: disable_security_center_service
+    name: "Disable Windows Security Center"
+    description: "Disable Windows Security Center service (wscsvc)"
+    risk_level: high
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## ⚠️ WARNING: High Risk Tweak
+
+      ## What This Does
+      Disables the Windows Security Center service which monitors your security status.
+
+      ## Security Impact
+      - **No security alerts**: You won't be notified of disabled firewall, antivirus issues
+      - **No status monitoring**: Security app won't show overall security health
+      - **Third-party AV**: May interfere with some antivirus software
+
+      ## Why Someone Would Disable It
+      - Using alternative security monitoring
+      - Reducing background services for specific use cases
+      - Running in a controlled environment
+
+      ## Recommendation
+      **Keep enabled unless you have a specific reason.** This significantly reduces security visibility.
+    options:
+      - label: "Security Center Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\wscsvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Security Center Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\wscsvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

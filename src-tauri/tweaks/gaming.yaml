@@ -397,55 +397,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
 
-  - id: optimize_tcp_ack_frequency
-    name: "Optimize TCP ACK Frequency"
-    description: "Reduce TCP acknowledgment delay for lower network latency"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Configures Windows to send TCP acknowledgments immediately rather than waiting.
-
-      ## Technical Details
-      - **Default**: Windows waits up to 200ms to batch ACKs together
-      - **Optimized**: ACKs are sent immediately (TcpAckFrequency=1)
-      - **Nagle disabled**: Prevents small packet batching (TcpNoDelay=1)
-
-      ## Gaming Impact
-      - Reduced ping in online games
-      - More responsive network communication
-      - Better for competitive gaming
-
-      ## Potential Drawbacks
-      - Slightly increased network traffic
-      - May increase bandwidth usage marginally
-
-      ## Recommendation
-      Enable for online gaming. The latency improvement outweighs the minor traffic increase.
-    options:
-      - label: "Low Latency (Immediate ACK)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpAckFrequency"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpNoDelay"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Default Latency"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpAckFrequency"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpNoDelay"
-            action: delete_value
+  # NOTE: optimize_tcp_ack_frequency removed - consolidated into disable_nagle_algorithm in network.yaml
 
   - id: disable_pointer_precision
     name: "Disable Enhanced Pointer Precision"
@@ -574,3 +526,51 @@ tweaks:
             value_name: "SFIO Priority"
             value_type: "REG_SZ"
             value: "Normal"
+
+  - id: disable_xbox_services
+    name: "Disable Xbox Services"
+    description: "Disable Xbox Live Gaming Services for non-Xbox users"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Xbox-related background services that run even if you don't use Xbox features.
+
+      ## Benefits
+      - Reduces background resource usage
+      - Fewer startup services
+      - Slightly faster boot times
+
+      ## What You Lose
+      - Xbox Live integration
+      - Xbox Game Pass PC features
+      - Game Bar achievements sync
+
+      ## Recommendation
+      Disable if you don't use Xbox/Microsoft Store games. Keep enabled for Game Pass subscribers.
+    options:
+      - label: "Xbox Services Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\xbgm"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Xbox Services Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\xbgm"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

@@ -57,113 +57,14 @@ tweaks:
             value: 2
         service_changes: []
 
-  - id: disable_remote_registry
-    name: "Disable Remote Registry"
-    description: "Disable Remote Registry service"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
-    info: "Improves security by preventing remote registry access"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-        service_changes: []
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\RemoteRegistry"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
-
-  - id: disable_xbox_services
-    name: "Disable Xbox Services"
-    description: "Disable Xbox Live Gaming Services"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\xbgm"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-        service_changes: []
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\XboxGipSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\xbgm"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
+  # NOTE: disable_remote_registry moved to security.yaml
+  # NOTE: disable_xbox_services moved to gaming.yaml
 
   # NOTE: disable_connected_user_experiences removed - duplicate of disable_telemetry in privacy.yaml
-
-  - id: disable_windows_error_reporting
-    name: "Disable Windows Error Reporting"
-    description: "Disable Windows Error Reporting service"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WerSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-        service_changes: []
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WerSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-        service_changes: []
-
-  - id: disable_dmwappushservice
-    name: "Disable Device Management WAP Push"
-    description: "Disable WAP Push Message Routing Service"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: "Used for telemetry and push notifications from Microsoft"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
+  # NOTE: disable_windows_error_reporting removed - duplicate of disable_windows_error_reporting_service in security.yaml
+  # NOTE: disable_dmwappushservice moved to privacy.yaml (telemetry related)
+  # NOTE: disable_geolocation moved to privacy.yaml (location tracking)
+  # NOTE: disable_cdpusersvc moved to privacy.yaml (activity sync/timeline)
 
   # NOTE: disable_sysmain (Superfetch) removed - duplicate of disable_superfetch in performance.yaml
   # NOTE: disable_windows_search removed - duplicate of disable_search_indexing in performance.yaml
@@ -251,28 +152,7 @@ tweaks:
             value: 3
             windows_versions: [10]
 
-  - id: disable_geolocation
-    name: "Disable Geolocation Service"
-    description: "Disable Windows Geolocation service"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: "Disables location tracking. Weather and maps apps may not work."
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\lfsvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\lfsvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
+  # NOTE: disable_geolocation moved to privacy.yaml (location tracking related)
 
   - id: disable_retail_demo
     name: "Disable Retail Demo Service"
@@ -318,28 +198,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 3
 
-  - id: disable_security_center_service
-    name: "Disable Windows Security Center"
-    description: "Disable Windows Security Center service (wscsvc)"
-    risk_level: high
-    requires_admin: true
-    requires_reboot: false
-    info: "WARNING: Disables security status monitoring. You will not receive security alerts. Only recommended for advanced users."
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\wscsvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\wscsvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
+  # NOTE: disable_security_center_service moved to security.yaml
 
   - id: disable_touch_keyboard
     name: "Disable Touch Keyboard Service"
@@ -364,28 +223,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 3
 
-  - id: disable_cdpusersvc
-    name: "Disable Connected Devices Platform"
-    description: "Disable CDPUserSvc (Connected Devices Platform)"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: "Used for device synchronization and timeline features"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
+  # NOTE: disable_cdpusersvc moved to privacy.yaml (activity sync/timeline)
 
   - id: disable_bits
     name: "Disable Background Intelligent Transfer"

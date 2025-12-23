@@ -653,3 +653,106 @@ tweaks:
             value_name: "Flags"
             value_type: "REG_SZ"
             value: "510"
+
+  # --- Taskbar icons moved from privacy.yaml ---
+
+  - id: disable_people_bar
+    name: "Disable People Bar"
+    description: "Hide the People feature from the taskbar"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Removes the People icon from the Windows 10 taskbar.
+
+      ## Note
+      This feature was removed in Windows 11, so this only affects Windows 10.
+
+      ## Recommendation
+      Safe to disable if you don't use the People feature.
+    options:
+      - label: "People Bar Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+            value_name: "PeopleBand"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "People Bar Visible (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+            value_name: "PeopleBand"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_meet_now
+    name: "Disable Meet Now Icon"
+    description: "Hide the Meet Now icon from the taskbar system tray"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Removes the Meet Now (video calling) icon from the taskbar system tray area.
+
+      ## Recommendation
+      Safe to disable if you don't use Windows Meet Now feature.
+    options:
+      - label: "Meet Now Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "HideSCAMeetNow"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Meet Now Visible (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer"
+            value_name: "HideSCAMeetNow"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_news_interests
+    name: "Disable News and Interests"
+    description: "Disable News and Interests widget on taskbar (Windows 10)"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Removes the News and Interests weather/news widget from the Windows 10 taskbar.
+
+      ## Note
+      This is for Windows 10 only. Windows 11 uses the separate Widgets feature.
+
+      ## Recommendation
+      Disable if you find the widget distracting or don't use it.
+    options:
+      - label: "News & Interests Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Feeds"
+            value_name: "ShellFeedsTaskbarViewMode"
+            value_type: "REG_DWORD"
+            value: 2
+            windows_versions: [10]
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Feeds"
+            value_name: "EnableFeeds"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [10]
+      - label: "News & Interests Visible (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Feeds"
+            value_name: "ShellFeedsTaskbarViewMode"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [10]
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Feeds"
+            value_name: "EnableFeeds"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [10]
