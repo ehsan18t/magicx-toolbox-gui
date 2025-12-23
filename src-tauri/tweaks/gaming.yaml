@@ -353,10 +353,10 @@ tweaks:
       Controls Windows mouse acceleration and enhanced pointer precision settings.
 
       ## Options Explained
-      - **Raw Input (Gaming)**: Disables all acceleration and precision enhancements for true 1:1 movement
-      - **Acceleration Only Disabled**: Disables speed-based acceleration but keeps precision curves
-      - **Precision Only Disabled**: Disables precision curves but keeps acceleration
-      - **Windows Default**: All mouse enhancements enabled
+      - **Raw Input (Gaming)**: Disables all acceleration for true 1:1 movement (MarkC fix)
+      - **No Acceleration**: Disables acceleration via MouseSpeed=0
+      - **Windows Default (EPP On)**: Default Windows behavior with Enhanced Pointer Precision
+      - **Windows Default (EPP Off)**: Default behavior without Enhanced Pointer Precision
 
       ## Gaming Impact
       - **FPS games**: Raw Input is critical for consistent aim and muscle memory
@@ -364,14 +364,15 @@ tweaks:
       - **Casual games**: Windows Default is fine
 
       ## Technical Details
-      - **Acceleration**: Changes pointer speed based on how fast you move the mouse
-      - **Enhanced Precision**: Applies non-linear curves to all mouse movement
+      Uses the MarkC mouse fix technique - redefines the acceleration curve to be a flat 1:1 line.
+      This gives exact 1:1 mouse movement when pointer speed is at 6/11 (MouseSensitivity=10).
 
       ## Recommendation
       Use "Raw Input (Gaming)" for competitive FPS gaming. Essential for building muscle memory.
     options:
       - label: "Raw Input (Gaming)"
         registry_changes:
+          # Disable acceleration thresholds
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSpeed"
@@ -387,23 +388,27 @@ tweaks:
             value_name: "MouseThreshold2"
             value_type: "REG_SZ"
             value: "0"
+          # Set to 6/11 position (required for 1:1)
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSensitivity"
             value_type: "REG_SZ"
             value: "10"
+          # MarkC flat 1:1 curve for Windows 10/11 @ 100% DPI
+          # This makes EPP give 1:1 response even when enabled
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "SmoothMouseXCurve"
             value_type: "REG_BINARY"
-            value: "00,00,00,00,00,00,00,00,C0,CC,0C,00,00,00,00,00,80,99,19,00,00,00,00,00,40,66,26,00,00,00,00,00,00,33,33,00,00,00,00,00"
+            value: "00,00,00,00,00,00,00,00,00,A0,00,00,00,00,00,00,00,40,01,00,00,00,00,00,00,80,02,00,00,00,00,00,00,00,05,00,00,00,00,00"
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "SmoothMouseYCurve"
             value_type: "REG_BINARY"
             value: "00,00,00,00,00,00,00,00,00,00,38,00,00,00,00,00,00,00,70,00,00,00,00,00,00,00,A8,00,00,00,00,00,00,00,E0,00,00,00,00,00"
-      - label: "Acceleration Only Disabled"
+      - label: "No Acceleration"
         registry_changes:
+          # Disable acceleration via thresholds
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSpeed"
@@ -424,6 +429,7 @@ tweaks:
             value_name: "MouseSensitivity"
             value_type: "REG_SZ"
             value: "10"
+          # Keep default curves - acceleration disabled via MouseSpeed=0
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "SmoothMouseXCurve"
@@ -434,8 +440,9 @@ tweaks:
             value_name: "SmoothMouseYCurve"
             value_type: "REG_BINARY"
             value: "00,00,00,00,00,00,00,00,FD,11,01,00,00,00,00,00,00,24,04,00,00,00,00,00,00,FC,12,00,00,00,00,00,00,00,C0,BB,01,00,00,00,00"
-      - label: "Precision Only Disabled"
+      - label: "Windows Default (EPP On)"
         registry_changes:
+          # Enable acceleration (MouseSpeed=1)
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSpeed"
@@ -456,38 +463,41 @@ tweaks:
             value_name: "MouseSensitivity"
             value_type: "REG_SZ"
             value: "10"
+          # Windows default curves
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "SmoothMouseXCurve"
             value_type: "REG_BINARY"
-            value: "00,00,00,00,00,00,00,00,C0,CC,0C,00,00,00,00,00,80,99,19,00,00,00,00,00,40,66,26,00,00,00,00,00,00,33,33,00,00,00,00,00"
+            value: "00,00,00,00,00,00,00,00,15,6E,00,00,00,00,00,00,00,40,01,00,00,00,00,00,29,DC,03,00,00,00,00,00,00,00,28,00,00,00,00,00"
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "SmoothMouseYCurve"
             value_type: "REG_BINARY"
-            value: "00,00,00,00,00,00,00,00,00,00,38,00,00,00,00,00,00,00,70,00,00,00,00,00,00,00,A8,00,00,00,00,00,00,00,E0,00,00,00,00,00"
-      - label: "Windows Default"
+            value: "00,00,00,00,00,00,00,00,FD,11,01,00,00,00,00,00,00,24,04,00,00,00,00,00,00,FC,12,00,00,00,00,00,00,00,C0,BB,01,00,00,00,00"
+      - label: "Windows Default (EPP Off)"
         registry_changes:
+          # Disable acceleration
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSpeed"
             value_type: "REG_SZ"
-            value: "1"
+            value: "0"
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseThreshold1"
             value_type: "REG_SZ"
-            value: "6"
+            value: "0"
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseThreshold2"
             value_type: "REG_SZ"
-            value: "10"
+            value: "0"
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "MouseSensitivity"
             value_type: "REG_SZ"
             value: "10"
+          # Windows default curves (not used when MouseSpeed=0)
           - hive: HKCU
             key: "Control Panel\\Mouse"
             value_name: "SmoothMouseXCurve"
@@ -610,6 +620,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
       - label: "Xbox Services Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -622,3 +633,4 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+            skip_validation: true

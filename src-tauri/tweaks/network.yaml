@@ -95,40 +95,18 @@ tweaks:
         pre_commands:
           - "netsh interface teredo set state disabled"
           - "netsh interface isatap set state disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
-            value_name: "DisabledComponents"
-            value_type: "REG_DWORD"
-            value: 1
       - label: "Teredo Only (Xbox)"
         pre_commands:
           - "netsh interface teredo set state default"
           - "netsh interface isatap set state disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
-            value_name: "DisabledComponents"
-            action: delete_value
       - label: "ISATAP Only (Enterprise)"
         pre_commands:
           - "netsh interface teredo set state disabled"
           - "netsh interface isatap set state default"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
-            value_name: "DisabledComponents"
-            value_type: "REG_DWORD"
-            value: 1
       - label: "All Enabled (Default)"
         pre_commands:
           - "netsh interface teredo set state default"
           - "netsh interface isatap set state default"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip6\\Parameters"
-            value_name: "DisabledComponents"
-            action: delete_value
 
   # NOTE: disable_teredo, disable_isatap consolidated into ipv6_transition_mode above
 
