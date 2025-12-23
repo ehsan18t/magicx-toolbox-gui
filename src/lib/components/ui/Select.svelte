@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { cn } from "@/utils";
+  import { tick } from "svelte";
   import { cubicOut } from "svelte/easing";
   import { scale } from "svelte/transition";
   import Spinner from "./Spinner.svelte";
@@ -54,20 +55,42 @@
     highlightedIndex >= 0 && options[highlightedIndex] ? optionId(options[highlightedIndex]) : undefined,
   );
 
-  function updatePosition() {
+  async function updatePosition() {
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
+
+    // Initial position (downwards)
+    let top = rect.bottom + 4;
+    const left = rect.left;
+    const width = rect.width;
+
+    // Wait for the menu to be rendered to measure its height
+    await tick();
+
+    if (menuEl) {
+      const menuRect = menuEl.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+
+      // Check if it overflows the bottom
+      if (top + menuRect.height > viewportHeight) {
+        // Check if there is enough space above
+        if (rect.top - menuRect.height - 4 > 0) {
+          top = rect.top - menuRect.height - 4;
+        }
+      }
+    }
+
     menuPosition = {
-      top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
+      top,
+      left,
+      width,
     };
   }
 
-  function open() {
+  async function open() {
     if (disabled || loading) return;
-    updatePosition();
     isOpen = true;
+    await updatePosition();
     const selectedIdx = options.findIndex((o) => o.value === value);
     highlightedIndex = selectedIdx >= 0 ? selectedIdx : options.findIndex((o) => !o.disabled);
   }
@@ -241,7 +264,7 @@
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
     class="fixed z-9999 max-h-60 w-fit space-y-1 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
-    style="top: {menuPosition.top}px; left: {menuPosition.left}px; width: {menuPosition.width}px;"
+    style="top: {menuPosition.top}px; left: {menuPosition.left}px;"
   >
     {#each options as opt, i (opt.value)}
       <button
