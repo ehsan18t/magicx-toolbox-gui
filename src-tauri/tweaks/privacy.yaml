@@ -82,6 +82,7 @@ tweaks:
       Safe for most users. Recommended for privacy-conscious users.
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\DiagTrack"
@@ -94,6 +95,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 4
             windows_versions: [10]
+            skip_validation: true
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
@@ -107,6 +109,7 @@ tweaks:
             value_type: "REG_DWORD"
             value: 2
             windows_versions: [10]
+            skip_validation: true
 
   - id: disable_advertising_id
     name: "Disable Advertising ID"
@@ -708,12 +711,14 @@ tweaks:
       Disable for maximum privacy. Keep enabled if you rely on location-aware apps.
     options:
       - label: "Geolocation Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\lfsvc"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
       - label: "Geolocation Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -721,6 +726,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 3
+            skip_validation: true
 
   - id: disable_dmwappushservice
     name: "Disable WAP Push Service"
@@ -744,12 +750,14 @@ tweaks:
       Safe to disable for privacy-focused users.
     options:
       - label: "WAP Push Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\dmwappushservice"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
       - label: "WAP Push Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -757,6 +765,7 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 3
+            skip_validation: true
 
   - id: disable_cdpusersvc
     name: "Disable Connected Devices Platform"
@@ -783,12 +792,14 @@ tweaks:
       Disable for privacy. Keep enabled if you use Microsoft's cross-device features.
     options:
       - label: "CDP Service Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 4
+            skip_validation: true
       - label: "CDP Service Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -796,3 +807,4 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+            skip_validation: true

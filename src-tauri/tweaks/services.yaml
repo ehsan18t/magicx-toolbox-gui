@@ -124,6 +124,7 @@ tweaks:
     info: "HomeGroup was removed in Windows 10 1803. Safe to disable on older Windows 10 builds."
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\HomeGroupProvider"
@@ -167,6 +168,7 @@ tweaks:
     info: "RetailDemo service only exists on devices configured for retail display. Safe to skip if not present."
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\RetailDemo"
@@ -192,6 +194,7 @@ tweaks:
     info: "WalletService is used for NFC payment features. May not exist on all Windows editions."
     options:
       - label: "Disabled"
+        registry_missing_is_match: true
         registry_changes:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\WalletService"

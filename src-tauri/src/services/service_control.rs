@@ -48,6 +48,8 @@ pub struct ServiceStatus {
     pub name: String,
     pub state: ServiceState,
     pub startup_type: Option<ServiceStartupType>,
+    /// Whether the service exists in the Service Control Manager
+    pub exists: bool,
 }
 
 /// Get the current status of a Windows service
@@ -62,6 +64,24 @@ pub fn get_service_status(service_name: &str) -> Result<ServiceStatus, Error> {
         })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Check if service exists by looking for common error patterns
+    // sc query returns non-zero exit code and error message for non-existent services
+    let service_not_found = !output.status.success()
+        && (stdout.contains("FAILED 1060")
+            || stderr.contains("FAILED 1060")
+            || stdout.contains("service does not exist")
+            || stderr.contains("service does not exist"));
+
+    if service_not_found {
+        return Ok(ServiceStatus {
+            name: service_name.to_string(),
+            state: ServiceState::Unknown,
+            startup_type: None,
+            exists: false,
+        });
+    }
 
     // Parse state from output
     let state = parse_service_state(&stdout).unwrap_or(ServiceState::Unknown);
@@ -73,6 +93,7 @@ pub fn get_service_status(service_name: &str) -> Result<ServiceStatus, Error> {
         name: service_name.to_string(),
         state,
         startup_type,
+        exists: true,
     })
 }
 

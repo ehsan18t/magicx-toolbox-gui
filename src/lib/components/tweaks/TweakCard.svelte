@@ -275,6 +275,15 @@
               Unknown
             </span>
           {/if}
+          {#if tweak.status.status_inferred}
+            <span
+              class="bg-muted/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide text-foreground-muted"
+              use:tooltip={"Status inferred: The feature or service doesn't exist on this system, so the status is assumed based on its absence."}
+            >
+              <Icon icon="mdi:eye-off-outline" width="10" />
+              Inferred
+            </span>
+          {/if}
           {#if hasPending}
             <span
               class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
