@@ -3,13 +3,22 @@
  *
  * Manages core data: system info, categories, tweaks with their statuses.
  * Supports progressive loading for better perceived performance.
+ * System hardware info is cached in localStorage since it rarely changes.
  */
 
 import * as api from "$lib/api/tweaks";
-import type { CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "$lib/types";
+import type { CachedSystemInfo, CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "$lib/types";
+import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+
+// Storage key for cached hardware info
+const SYSTEM_INFO_CACHE_KEY = "magicx-system-info-cache";
+
+// Cached hardware info (static data that rarely changes)
+const systemInfoCache = new PersistentStore<CachedSystemInfo | null>(SYSTEM_INFO_CACHE_KEY, null);
 
 // === Loading States ===
 let systemInfoLoading = $state(true);
+let systemInfoRefreshing = $state(false);
 let categoriesLoading = $state(true);
 let tweaksLoading = $state(true);
 let initialLoadComplete = $state(false);
@@ -66,6 +75,39 @@ const categoryStats = $derived.by(() => {
   return result;
 });
 
+// Derived: cache timestamp for display
+const cacheTimestamp = $derived(systemInfoCache.value?.cachedAt ?? null);
+
+// === Helper Functions ===
+
+/**
+ * Update the cache with hardware info from fresh system info
+ */
+function updateCache(info: SystemInfo): void {
+  systemInfoCache.value = {
+    hardware: info.hardware,
+    device: info.device,
+    computer_name: info.computer_name,
+    cachedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Build a SystemInfo object using cached hardware data and fresh dynamic data
+ */
+function buildSystemInfoFromCache(cache: CachedSystemInfo, freshInfo: SystemInfo): SystemInfo {
+  return {
+    // Use fresh dynamic data
+    windows: freshInfo.windows,
+    username: freshInfo.username,
+    is_admin: freshInfo.is_admin,
+    // Use cached static data
+    hardware: cache.hardware,
+    device: cache.device,
+    computer_name: cache.computer_name,
+  };
+}
+
 // === Exports ===
 
 export const systemStore = {
@@ -77,20 +119,92 @@ export const systemStore = {
     return systemInfoLoading;
   },
 
+  /** Whether a manual refresh is in progress */
+  get isRefreshing() {
+    return systemInfoRefreshing;
+  },
+
+  /** ISO timestamp of when hardware info was last cached */
+  get cachedAt() {
+    return cacheTimestamp;
+  },
+
+  /**
+   * Load system info, using cache for hardware if available.
+   * On first load with no cache, fetches everything fresh.
+   * On subsequent loads, uses cached hardware + fresh dynamic info.
+   */
   async load() {
     systemInfoLoading = true;
     try {
-      const info = await api.getSystemInfo();
-      systemInfo = info;
-      return info;
+      const cached = systemInfoCache.value;
+
+      // Always fetch fresh info (for dynamic data like uptime, is_admin)
+      const freshInfo = await api.getSystemInfo();
+
+      if (cached) {
+        // Use cached hardware data, merge with fresh dynamic data
+        systemInfo = buildSystemInfoFromCache(cached, freshInfo);
+      } else {
+        // No cache - use fresh data and create cache
+        systemInfo = freshInfo;
+        updateCache(freshInfo);
+      }
+
+      return systemInfo;
     } catch (error) {
       console.error("Failed to load system info:", error);
-      // System info failure is recoverable - return null and let UI handle gracefully
-      // (Unlike categories which are critical for app structure)
+      // Try to use cached data as fallback
+      const cached = systemInfoCache.value;
+      if (cached) {
+        // Build partial info from cache (dynamic fields will be empty/default)
+        systemInfo = {
+          windows: {
+            version_string: "",
+            display_version: "",
+            build_number: "",
+            product_name: "Windows",
+            uptime_seconds: 0,
+            is_windows_11: false,
+            is_windows_server: false,
+            install_date: null,
+          },
+          username: "",
+          is_admin: false,
+          hardware: cached.hardware,
+          device: cached.device,
+          computer_name: cached.computer_name,
+        };
+        return systemInfo;
+      }
       return null;
     } finally {
       systemInfoLoading = false;
     }
+  },
+
+  /**
+   * Force refresh all system info including hardware (ignores cache).
+   * Use this when user wants to refresh hardware info.
+   */
+  async refresh() {
+    systemInfoRefreshing = true;
+    try {
+      const freshInfo = await api.getSystemInfo();
+      systemInfo = freshInfo;
+      updateCache(freshInfo);
+      return freshInfo;
+    } catch (error) {
+      console.error("Failed to refresh system info:", error);
+      throw error;
+    } finally {
+      systemInfoRefreshing = false;
+    }
+  },
+
+  /** Clear the cache (useful for debugging) */
+  clearCache() {
+    systemInfoCache.value = null;
   },
 };
 
@@ -193,6 +307,9 @@ export const getCategoryStats = () => categoryStats;
 export const loadingStateStore = {
   get systemInfoLoading() {
     return systemInfoLoading;
+  },
+  get systemInfoRefreshing() {
+    return systemInfoRefreshing;
   },
   get categoriesLoading() {
     return categoriesLoading;

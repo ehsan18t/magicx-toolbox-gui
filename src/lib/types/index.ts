@@ -420,6 +420,20 @@ export interface SystemInfo {
   device: DeviceInfo;
 }
 
+/**
+ * Cached system information with timestamp.
+ * Hardware info (CPU, RAM, GPU, disks) is static and can be cached.
+ * Dynamic info (uptime, is_admin) should be refreshed on each load.
+ */
+export interface CachedSystemInfo {
+  /** The cached hardware and device info (static data) */
+  hardware: HardwareInfo;
+  device: DeviceInfo;
+  computer_name: string;
+  /** ISO 8601 timestamp when the cache was last updated */
+  cachedAt: string;
+}
+
 /** Result of applying a tweak */
 export interface TweakResult {
   success: boolean;

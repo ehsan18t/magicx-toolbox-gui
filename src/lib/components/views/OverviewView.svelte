@@ -11,7 +11,24 @@
 
   // Loading states
   const systemInfoLoading = $derived(loadingStateStore.systemInfoLoading);
+  const systemInfoRefreshing = $derived(loadingStateStore.systemInfoRefreshing);
   const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
+
+  // Handle refresh button click
+  async function handleRefreshHardware() {
+    try {
+      await systemStore.refresh();
+    } catch (error) {
+      console.error("Failed to refresh hardware info:", error);
+    }
+  }
+
+  // Format cached time for tooltip
+  function formatCachedTime(isoString: string | null): string {
+    if (!isoString) return "Never";
+    const date = new Date(isoString);
+    return date.toLocaleString();
+  }
 
   /**
    * Handle keyboard navigation for category grid.
@@ -202,6 +219,25 @@
   <div class="flex flex-col gap-2">
     <div class="flex items-center justify-between">
       <h2 class="m-0 text-lg font-semibold text-foreground">Hardware</h2>
+      <div class="flex items-center gap-2">
+        {#if systemStore.cachedAt && !systemInfoLoading}
+          <span
+            class="text-xs text-foreground-muted"
+            use:tooltip={`Last updated: ${formatCachedTime(systemStore.cachedAt)}`}
+          >
+            Cached
+          </span>
+        {/if}
+        <button
+          type="button"
+          onclick={handleRefreshHardware}
+          disabled={systemInfoLoading || systemInfoRefreshing}
+          class="hover:bg-muted flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted"
+          use:tooltip={"Refresh hardware info"}
+        >
+          <Icon icon="mdi:refresh" width={18} class={systemInfoRefreshing ? "animate-spin" : ""} />
+        </button>
+      </div>
     </div>
 
     {#if systemInfoLoading}
