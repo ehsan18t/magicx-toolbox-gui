@@ -200,11 +200,3 @@ pub fn get_rule_details(name: &str) -> Result<Option<String>, Error> {
     Ok(Some(stdout.to_string()))
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_rule_query_format() {
-        // This is a unit test placeholder
-        // Actual testing requires elevated privileges
-    }
-}

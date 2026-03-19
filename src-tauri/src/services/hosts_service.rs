@@ -245,11 +245,3 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_parse_hosts_entry() {
-        // This is a unit test placeholder
-        // Actual testing would require mocking the file system
-    }
-}
