@@ -183,17 +183,42 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
     let content = fs::read_to_string(&hosts_path)
         .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?;
 
+    let lines: Vec<&str> = content.lines().collect();
     let mut new_lines: Vec<&str> = Vec::new();
 
-    for line in content.lines() {
-        let trimmed = line.trim();
+    // Two-pass approach: first identify which lines to remove,
+    // then only remove markers whose associated entry is being removed.
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
 
-        // Skip MagicX markers
+        // Check if this is a MagicX marker followed by the target entry
         if trimmed.starts_with(MAGICX_MARKER) {
+            // Look ahead to see if the next non-empty line is the entry we're removing
+            if let Some(next_line) = lines.get(i + 1) {
+                let next_trimmed = next_line.trim();
+                if !next_trimmed.is_empty() && !next_trimmed.starts_with('#') {
+                    let parts: Vec<&str> =
+                        next_trimmed.splitn(2, |c: char| c.is_whitespace()).collect();
+                    if parts.len() >= 2 {
+                        let line_ip = parts[0];
+                        let line_domain = parts[1].split_whitespace().next().unwrap_or("");
+                        if line_ip == ip && line_domain.eq_ignore_ascii_case(domain) {
+                            // Skip this marker and the next entry line
+                            log::info!("Removing hosts entry: {} -> {}", domain, ip);
+                            i += 2; // Skip marker + entry
+                            continue;
+                        }
+                    }
+                }
+            }
+            // Marker is for a different entry, keep it
+            new_lines.push(lines[i]);
+            i += 1;
             continue;
         }
 
-        // Check if this is the entry we want to remove
+        // Check if this is the entry we want to remove (without a preceding marker)
         if !trimmed.is_empty() && !trimmed.starts_with('#') {
             let parts: Vec<&str> = trimmed.splitn(2, |c: char| c.is_whitespace()).collect();
             if parts.len() >= 2 {
@@ -201,14 +226,15 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
                 let line_domain = parts[1].split_whitespace().next().unwrap_or("");
 
                 if line_ip == ip && line_domain.eq_ignore_ascii_case(domain) {
-                    // Skip this line (remove it)
                     log::info!("Removing hosts entry: {} -> {}", domain, ip);
+                    i += 1;
                     continue;
                 }
             }
         }
 
-        new_lines.push(line);
+        new_lines.push(lines[i]);
+        i += 1;
     }
 
     // Write back the modified content
