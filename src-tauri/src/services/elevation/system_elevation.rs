@@ -127,12 +127,10 @@ fn get_current_user_sid() -> Result<String, Error> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
-    const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
-
     // Use whoami /user to get the SID - cleaner than Windows API
     let output = Command::new("whoami")
         .args(["/user", "/fo", "csv", "/nh"])
-        .creation_flags(CREATE_NO_WINDOW_FLAG)
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::ServiceControl(format!("Failed to run whoami: {}", e)))?;
 

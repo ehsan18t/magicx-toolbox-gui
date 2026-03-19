@@ -42,7 +42,6 @@ pub struct PowerShellResult {
 /// Uses -NoProfile and -ExecutionPolicy Bypass for reliability
 pub fn run_powershell(script: &str) -> Result<PowerShellResult, Error> {
     use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
 
     log::info!("Running PowerShell command: {}", script);
 
@@ -57,7 +56,7 @@ pub fn run_powershell(script: &str) -> Result<PowerShellResult, Error> {
             "-Command",
             script,
         ])
-        .creation_flags(CREATE_NO_WINDOW_FLAG)
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to execute PowerShell: {}", e)))?;
 
