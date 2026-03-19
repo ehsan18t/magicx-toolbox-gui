@@ -7,9 +7,13 @@
 
 use crate::error::Error;
 use crate::models::{
-    RegistryHive, RegistryValueType, SchedulerSnapshot, ServiceSnapshot, TweakSnapshot,
+    FirewallSnapshot, HostsSnapshot, RegistryHive, RegistryValueType, SchedulerSnapshot,
+    ServiceSnapshot, TweakSnapshot,
 };
-use crate::services::{registry_service, scheduler_service, service_control, trusted_installer};
+use crate::services::{
+    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
+    trusted_installer,
+};
 
 use super::capture::read_registry_value;
 use super::helpers::{parse_hive, parse_value_type};
@@ -107,22 +111,44 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<RestoreResult, 
         }
     }
 
+    // Phase 4: Restore hosts file entries (collect failures)
+    for host in &snapshot.hosts_snapshots {
+        if let Err(e) = restore_hosts_state(host) {
+            let msg = format!("Hosts '{}->{}': {}", host.ip, host.domain, e);
+            log::error!("Failed to restore hosts entry: {}", msg);
+            failures.push(msg);
+        }
+    }
+
+    // Phase 5: Restore firewall rules (collect failures)
+    for fw in &snapshot.firewall_snapshots {
+        if let Err(e) = restore_firewall_state(fw) {
+            let msg = format!("Firewall '{}': {}", fw.name, e);
+            log::error!("Failed to restore firewall rule: {}", msg);
+            failures.push(msg);
+        }
+    }
+
     let success = failures.is_empty();
 
     if success {
         log::info!(
-            "Successfully restored {} registry, {} services, {} tasks",
+            "Successfully restored {} registry, {} services, {} tasks, {} hosts, {} firewall",
             completed_registry.len(),
             snapshot.service_snapshots.len(),
-            snapshot.scheduler_snapshots.len()
+            snapshot.scheduler_snapshots.len(),
+            snapshot.hosts_snapshots.len(),
+            snapshot.firewall_snapshots.len()
         );
     } else {
         log::warn!(
-            "Restore completed with {} failures out of {} registry, {} services, {} tasks",
+            "Restore completed with {} failures out of {} registry, {} services, {} tasks, {} hosts, {} firewall",
             failures.len(),
             snapshot.registry_snapshots.len(),
             snapshot.service_snapshots.len(),
-            snapshot.scheduler_snapshots.len()
+            snapshot.scheduler_snapshots.len(),
+            snapshot.hosts_snapshots.len(),
+            snapshot.firewall_snapshots.len()
         );
     }
 
@@ -372,6 +398,58 @@ fn restore_scheduler_state(snapshot: &SchedulerSnapshot, use_system: bool) -> Re
         }
     }
 
+    Ok(())
+}
+
+fn restore_hosts_state(snapshot: &HostsSnapshot) -> Result<(), Error> {
+    if snapshot.existed {
+        // Entry existed before - ensure it exists now
+        let currently_exists = hosts_service::entry_exists(&snapshot.ip, &snapshot.domain)?;
+        if !currently_exists {
+            hosts_service::add_hosts_entry(&snapshot.ip, &snapshot.domain, None)?;
+            log::info!(
+                "Restored hosts entry: {} -> {}",
+                snapshot.domain,
+                snapshot.ip
+            );
+        }
+    } else {
+        // Entry didn't exist before - remove it if present
+        let currently_exists = hosts_service::entry_exists(&snapshot.ip, &snapshot.domain)?;
+        if currently_exists {
+            hosts_service::remove_hosts_entry(&snapshot.ip, &snapshot.domain)?;
+            log::info!(
+                "Removed hosts entry: {} -> {} (didn't exist originally)",
+                snapshot.domain,
+                snapshot.ip
+            );
+        }
+    }
+    Ok(())
+}
+
+fn restore_firewall_state(snapshot: &FirewallSnapshot) -> Result<(), Error> {
+    if snapshot.existed {
+        // Rule existed before - we can't fully recreate it without storing the full rule config
+        // Just log a warning if it's missing now
+        let currently_exists = firewall_service::rule_exists(&snapshot.name)?;
+        if !currently_exists {
+            log::warn!(
+                "Firewall rule '{}' existed before but is now missing; cannot recreate without original rule config",
+                snapshot.name
+            );
+        }
+    } else {
+        // Rule didn't exist before - delete it if present
+        let currently_exists = firewall_service::rule_exists(&snapshot.name)?;
+        if currently_exists {
+            firewall_service::delete_firewall_rule(&snapshot.name)?;
+            log::info!(
+                "Deleted firewall rule '{}' (didn't exist originally)",
+                snapshot.name
+            );
+        }
+    }
     Ok(())
 }
 
