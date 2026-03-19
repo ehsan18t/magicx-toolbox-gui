@@ -45,6 +45,26 @@ pub struct SchedulerSnapshot {
     pub original_state: String,
 }
 
+/// Snapshot of a hosts file entry before modification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostsSnapshot {
+    /// IP address
+    pub ip: String,
+    /// Domain name
+    pub domain: String,
+    /// Whether the entry existed before modification
+    pub existed: bool,
+}
+
+/// Snapshot of a firewall rule before modification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirewallSnapshot {
+    /// Rule name
+    pub name: String,
+    /// Whether the rule existed before modification
+    pub existed: bool,
+}
+
 /// Complete snapshot of system state before applying a tweak option
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TweakSnapshot {
@@ -75,6 +95,12 @@ pub struct TweakSnapshot {
     /// Scheduled task states captured before changes
     #[serde(default)]
     pub scheduler_snapshots: Vec<SchedulerSnapshot>,
+    /// Hosts file entries captured before changes
+    #[serde(default)]
+    pub hosts_snapshots: Vec<HostsSnapshot>,
+    /// Firewall rules captured before changes
+    #[serde(default)]
+    pub firewall_snapshots: Vec<FirewallSnapshot>,
 }
 
 impl TweakSnapshot {
@@ -100,6 +126,8 @@ impl TweakSnapshot {
             registry_snapshots: Vec::new(),
             service_snapshots: Vec::new(),
             scheduler_snapshots: Vec::new(),
+            hosts_snapshots: Vec::new(),
+            firewall_snapshots: Vec::new(),
         }
     }
 
@@ -116,5 +144,15 @@ impl TweakSnapshot {
     /// Add a scheduler snapshot
     pub fn add_scheduler_snapshot(&mut self, snapshot: SchedulerSnapshot) {
         self.scheduler_snapshots.push(snapshot);
+    }
+
+    /// Add a hosts snapshot
+    pub fn add_hosts_snapshot(&mut self, snapshot: HostsSnapshot) {
+        self.hosts_snapshots.push(snapshot);
+    }
+
+    /// Add a firewall snapshot
+    pub fn add_firewall_snapshot(&mut self, snapshot: FirewallSnapshot) {
+        self.firewall_snapshots.push(snapshot);
     }
 }
