@@ -4,7 +4,6 @@ mod error;
 mod models;
 mod services;
 mod setup;
-mod state;
 mod window_watchdog;
 
 /// Generated tweak data compiled from YAML files at build time.
@@ -16,7 +15,6 @@ mod generated_tweaks {
 pub use debug::{emit_debug_log, is_debug_enabled, set_debug_enabled, DebugLevel, DebugLogEntry};
 pub use error::Error;
 pub use models::*;
-use state::AppState;
 use tauri_plugin_log::{Target, TargetKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -75,7 +73,6 @@ pub fn run() {
                 })
                 .build(),
         )
-        .manage(AppState(Default::default()))
         .setup(|app| {
             log::info!("Application starting...");
             log::debug!("Debug logging enabled");
