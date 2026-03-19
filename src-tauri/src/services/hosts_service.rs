@@ -105,17 +105,6 @@ pub fn entry_exists(ip: &str, domain: &str) -> Result<bool, Error> {
         .any(|e| e.ip == ip && e.domain.eq_ignore_ascii_case(domain)))
 }
 
-/// Check the current state of a hosts change
-#[allow(dead_code)]
-pub fn check_hosts_change_status(change: &HostsChange) -> Result<bool, Error> {
-    let exists = entry_exists(&change.ip, &change.domain)?;
-
-    match change.action {
-        HostsAction::Add => Ok(exists),
-        HostsAction::Remove => Ok(!exists),
-    }
-}
-
 /// Apply a hosts change
 pub fn apply_hosts_change(change: &HostsChange) -> Result<(), Error> {
     match change.action {

@@ -28,17 +28,6 @@ pub fn rule_exists(name: &str) -> Result<bool, Error> {
     Ok(!stdout.contains("No rules match the specified criteria"))
 }
 
-/// Check the current state of a firewall change
-#[allow(dead_code)]
-pub fn check_firewall_change_status(change: &FirewallChange) -> Result<bool, Error> {
-    let exists = rule_exists(&change.name)?;
-
-    match change.operation {
-        FirewallOperation::Create => Ok(exists),
-        FirewallOperation::Delete => Ok(!exists),
-    }
-}
-
 /// Apply a firewall change
 pub fn apply_firewall_change(change: &FirewallChange) -> Result<(), Error> {
     match change.operation {
@@ -176,27 +165,4 @@ pub fn delete_firewall_rule(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
-/// Get details about an existing firewall rule
-#[allow(dead_code)]
-pub fn get_rule_details(name: &str) -> Result<Option<String>, Error> {
-    let output = Command::new("netsh")
-        .args([
-            "advfirewall",
-            "firewall",
-            "show",
-            "rule",
-            &format!("name={}", name),
-            "verbose",
-        ])
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to query firewall rule: {}", e)))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    if stdout.contains("No rules match the specified criteria") {
-        return Ok(None);
-    }
-
-    Ok(Some(stdout.to_string()))
-}
 
