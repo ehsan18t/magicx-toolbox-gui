@@ -2,10 +2,13 @@ use super::capture::read_registry_value;
 use super::helpers::values_match;
 use crate::error::Error;
 use crate::models::{
-    OptionInspection, RegistryAction, RegistryMismatch, SchedulerAction, SchedulerMismatch,
-    ServiceMismatch, TweakDefinition, TweakInspection, TweakOption,
+    FirewallMismatch, HostsMismatch, OptionInspection, RegistryAction, RegistryMismatch,
+    SchedulerAction, SchedulerMismatch, ServiceMismatch, TweakDefinition, TweakInspection,
+    TweakOption,
 };
-use crate::services::{registry_service, scheduler_service, service_control};
+use crate::services::{
+    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
+};
 use rayon::prelude::*;
 
 /// Inspect a tweak to find exact system state vs expected state for all options
@@ -56,9 +59,20 @@ fn inspect_option(
     // Check scheduler changes
     let scheduler_results = inspect_scheduler_changes(option)?;
 
+    // Check hosts changes
+    let hosts_results = inspect_hosts_changes(option)?;
+
+    // Check firewall changes
+    let firewall_results = inspect_firewall_changes(option)?;
+
     // Determine if everything matches
-    let all_match =
-        calculate_overall_match(&registry_results, &service_results, &scheduler_results);
+    let all_match = calculate_overall_match(
+        &registry_results,
+        &service_results,
+        &scheduler_results,
+        &hosts_results,
+        &firewall_results,
+    );
 
     Ok(OptionInspection {
         option_index: index,
@@ -68,6 +82,8 @@ fn inspect_option(
         registry_results,
         service_results,
         scheduler_results,
+        hosts_results,
+        firewall_results,
         all_match,
     })
 }
@@ -76,6 +92,8 @@ fn calculate_overall_match(
     registry_results: &[RegistryMismatch],
     service_results: &[ServiceMismatch],
     scheduler_results: &[SchedulerMismatch],
+    hosts_results: &[HostsMismatch],
+    firewall_results: &[FirewallMismatch],
 ) -> bool {
     registry_results
         .iter()
@@ -89,6 +107,14 @@ fn calculate_overall_match(
             .iter()
             .filter(|s| !s.skip_validation)
             .all(|s| s.is_match)
+        && hosts_results
+            .iter()
+            .filter(|h| !h.skip_validation)
+            .all(|h| h.is_match)
+        && firewall_results
+            .iter()
+            .filter(|f| !f.skip_validation)
+            .all(|f| f.is_match)
 }
 
 fn inspect_registry_changes(
@@ -347,6 +373,62 @@ fn inspect_scheduler_changes(option: &TweakOption) -> Result<Vec<SchedulerMismat
     Ok(results)
 }
 
+fn inspect_hosts_changes(option: &TweakOption) -> Result<Vec<HostsMismatch>, Error> {
+    let mut results = Vec::new();
+
+    for change in &option.hosts_changes {
+        let exists = hosts_service::entry_exists(&change.ip, &change.domain)?;
+        let expected_exists = matches!(change.action, crate::models::tweak::HostsAction::Add);
+        let is_match = exists == expected_exists;
+
+        let description = if expected_exists {
+            format!("Add hosts entry {} -> {}", change.domain, change.ip)
+        } else {
+            format!("Remove hosts entry {} -> {}", change.domain, change.ip)
+        };
+
+        results.push(HostsMismatch {
+            ip: change.ip.clone(),
+            domain: change.domain.clone(),
+            expected_exists,
+            actual_exists: exists,
+            description,
+            is_match,
+            skip_validation: change.skip_validation,
+        });
+    }
+
+    Ok(results)
+}
+
+fn inspect_firewall_changes(option: &TweakOption) -> Result<Vec<FirewallMismatch>, Error> {
+    let mut results = Vec::new();
+
+    for change in &option.firewall_changes {
+        let exists = firewall_service::rule_exists(&change.name)?;
+        let expected_exists =
+            matches!(change.operation, crate::models::tweak::FirewallOperation::Create);
+        let is_match = exists == expected_exists;
+
+        let description = if expected_exists {
+            format!("Create firewall rule '{}'", change.name)
+        } else {
+            format!("Delete firewall rule '{}'", change.name)
+        };
+
+        results.push(FirewallMismatch {
+            name: change.name.clone(),
+            expected_exists,
+            actual_exists: exists,
+            description,
+            is_match,
+            skip_validation: change.skip_validation,
+        });
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,12 +475,16 @@ mod tests {
         assert!(calculate_overall_match(
             std::slice::from_ref(&registry_success),
             &[],
+            &[],
+            &[],
             &[]
         ));
 
         // One fail -> Fail
         assert!(!calculate_overall_match(
             &[registry_success.clone(), registry_fail.clone()],
+            &[],
+            &[],
             &[],
             &[]
         ));
@@ -407,12 +493,16 @@ mod tests {
         assert!(calculate_overall_match(
             &[registry_success.clone(), registry_fail_skip.clone()],
             &[],
+            &[],
+            &[],
             &[]
         ));
 
         // All skipped -> OK (technically vacuous truth)
         assert!(calculate_overall_match(
             std::slice::from_ref(&registry_fail_skip),
+            &[],
+            &[],
             &[],
             &[]
         ));

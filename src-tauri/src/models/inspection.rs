@@ -35,6 +35,27 @@ pub struct SchedulerMismatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostsMismatch {
+    pub ip: String,
+    pub domain: String,
+    pub expected_exists: bool,
+    pub actual_exists: bool,
+    pub description: String,
+    pub is_match: bool,
+    pub skip_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirewallMismatch {
+    pub name: String,
+    pub expected_exists: bool,
+    pub actual_exists: bool,
+    pub description: String,
+    pub is_match: bool,
+    pub skip_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OptionInspection {
     pub option_index: usize,
     pub label: String,
@@ -43,6 +64,10 @@ pub struct OptionInspection {
     pub registry_results: Vec<RegistryMismatch>,
     pub service_results: Vec<ServiceMismatch>,
     pub scheduler_results: Vec<SchedulerMismatch>,
+    #[serde(default)]
+    pub hosts_results: Vec<HostsMismatch>,
+    #[serde(default)]
+    pub firewall_results: Vec<FirewallMismatch>,
     pub all_match: bool,
 }
 
