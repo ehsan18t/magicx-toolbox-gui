@@ -19,16 +19,12 @@ fn get_hosts_path() -> PathBuf {
 
 /// Represents a single entry in the hosts file
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct HostsEntry {
     pub ip: String,
     pub domain: String,
-    pub comment: Option<String>,
-    pub is_magicx_managed: bool,
 }
 
 /// Read and parse the hosts file
-#[allow(dead_code)]
 pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
     let hosts_path = get_hosts_path();
 
@@ -40,20 +36,12 @@ pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
         .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?;
 
     let mut entries = Vec::new();
-    let mut next_is_magicx = false;
 
     for line in content.lines() {
         let trimmed = line.trim();
 
-        // Check for MagicX marker
-        if trimmed.starts_with(MAGICX_MARKER) {
-            next_is_magicx = true;
-            continue;
-        }
-
-        // Skip empty lines and comments
+        // Skip empty lines and comments (including MagicX markers)
         if trimmed.is_empty() || trimmed.starts_with('#') {
-            next_is_magicx = false;
             continue;
         }
 
@@ -63,35 +51,17 @@ pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
             let ip = parts[0].to_string();
             let rest = parts[1].trim();
 
-            // Check for inline comment
-            let (domain, comment) = if let Some(hash_pos) = rest.find('#') {
-                let domain = rest[..hash_pos].trim().to_string();
-                let comment = rest[hash_pos + 1..].trim().to_string();
-                (
-                    domain,
-                    if comment.is_empty() {
-                        None
-                    } else {
-                        Some(comment)
-                    },
-                )
+            // Extract domain (strip inline comments)
+            let domain = if let Some(hash_pos) = rest.find('#') {
+                rest[..hash_pos].trim().to_string()
             } else {
-                // Domain might have additional aliases, take the first one
-                let domain = rest.split_whitespace().next().unwrap_or("").to_string();
-                (domain, None)
+                rest.split_whitespace().next().unwrap_or("").to_string()
             };
 
             if !domain.is_empty() {
-                entries.push(HostsEntry {
-                    ip,
-                    domain,
-                    comment,
-                    is_magicx_managed: next_is_magicx,
-                });
+                entries.push(HostsEntry { ip, domain });
             }
         }
-
-        next_is_magicx = false;
     }
 
     Ok(entries)
