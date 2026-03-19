@@ -39,28 +39,8 @@ pub const STARTF_USESHOWWINDOW: u32 = 0x00000001;
 /// Timeout for waiting on elevated processes (30 seconds)
 pub const ELEVATED_PROCESS_TIMEOUT_MS: u32 = 30_000;
 
-// Windows Service state constants (dwCurrentState values)
-// These are defined for completeness and future use
-#[allow(dead_code)]
-/// Service is stopped
-pub const SERVICE_STOPPED: u32 = 1;
-#[allow(dead_code)]
-/// Service is starting
-pub const SERVICE_START_PENDING: u32 = 2;
-#[allow(dead_code)]
-/// Service is stopping
-pub const SERVICE_STOP_PENDING: u32 = 3;
-/// Service is running
+/// Service is running (dwCurrentState value)
 pub const SERVICE_RUNNING: u32 = 4;
-#[allow(dead_code)]
-/// Service continue is pending
-pub const SERVICE_CONTINUE_PENDING: u32 = 5;
-#[allow(dead_code)]
-/// Service pause is pending
-pub const SERVICE_PAUSE_PENDING: u32 = 6;
-#[allow(dead_code)]
-/// Service is paused
-pub const SERVICE_PAUSED: u32 = 7;
 
 // Windows error codes
 /// The service is already running
