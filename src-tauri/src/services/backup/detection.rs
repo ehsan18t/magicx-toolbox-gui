@@ -9,7 +9,7 @@ use crate::error::Error;
 use crate::models::{
     RegistryAction, RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState,
 };
-use crate::services::{registry_service, scheduler_service, service_control};
+use crate::services::{firewall_service, hosts_service, registry_service, scheduler_service, service_control};
 use rayon::prelude::*;
 use std::fs;
 
@@ -84,7 +84,7 @@ pub fn detect_tweak_state(
     })
 }
 
-/// Check if all registry/service/scheduler changes in an option match current state
+/// Check if all registry/service/scheduler/hosts/firewall changes in an option match current state
 /// Items with skip_validation=true are excluded from this check
 /// Uses parallel iteration for registry, service, and scheduler checks
 fn option_matches_current_state(
@@ -107,36 +107,84 @@ fn option_matches_current_state(
         .iter()
         .filter(|c| !c.skip_validation)
         .collect();
+    let validatable_hosts: Vec<_> = option
+        .hosts_changes
+        .iter()
+        .filter(|c| !c.skip_validation)
+        .collect();
+    let validatable_firewall: Vec<_> = option
+        .firewall_changes
+        .iter()
+        .filter(|c| !c.skip_validation)
+        .collect();
 
     // If option has no validatable changes, it can't match
     if validatable_registry.is_empty()
         && validatable_services.is_empty()
         && validatable_scheduler.is_empty()
+        && validatable_hosts.is_empty()
+        && validatable_firewall.is_empty()
     {
         return Ok(MatchResult::not_matched());
     }
 
-    // Use rayon to check all three categories in parallel using nested joins
+    // Use rayon to check all categories in parallel using nested joins
     // Each category check is independent and can run concurrently
-    let ((registry_result, services_result), scheduler_result) = rayon::join(
-        || {
-            rayon::join(
-                || check_registry_matches(&validatable_registry, option.registry_missing_is_match),
-                || check_services_match(&validatable_services, option.service_missing_is_match),
-            )
-        },
-        || check_scheduler_matches(&validatable_scheduler, option.scheduler_missing_is_match),
-    );
+    let (((registry_result, services_result), scheduler_result), (hosts_result, firewall_result)) =
+        rayon::join(
+            || {
+                rayon::join(
+                    || {
+                        rayon::join(
+                            || {
+                                check_registry_matches(
+                                    &validatable_registry,
+                                    option.registry_missing_is_match,
+                                )
+                            },
+                            || {
+                                check_services_match(
+                                    &validatable_services,
+                                    option.service_missing_is_match,
+                                )
+                            },
+                        )
+                    },
+                    || {
+                        check_scheduler_matches(
+                            &validatable_scheduler,
+                            option.scheduler_missing_is_match,
+                        )
+                    },
+                )
+            },
+            || {
+                rayon::join(
+                    || check_hosts_matches(&validatable_hosts),
+                    || check_firewall_matches(&validatable_firewall),
+                )
+            },
+        );
 
     let registry_result = registry_result?;
     let services_result = services_result?;
     let scheduler_result = scheduler_result?;
+    let hosts_result = hosts_result?;
+    let firewall_result = firewall_result?;
 
     // All must match for the option to match
-    if registry_result.matches && services_result.matches && scheduler_result.matches {
+    if registry_result.matches
+        && services_result.matches
+        && scheduler_result.matches
+        && hosts_result.matches
+        && firewall_result.matches
+    {
         // Status is inferred if ANY component was inferred
-        let inferred =
-            registry_result.inferred || services_result.inferred || scheduler_result.inferred;
+        let inferred = registry_result.inferred
+            || services_result.inferred
+            || scheduler_result.inferred
+            || hosts_result.inferred
+            || firewall_result.inferred;
         Ok(MatchResult {
             matches: true,
             inferred,
@@ -397,6 +445,47 @@ fn check_scheduler_matches(
         matches: true,
         inferred: any_inferred,
     })
+}
+
+/// Check if all hosts changes match current state
+/// For Add actions, check that the entry exists; for Remove, check it doesn't exist
+fn check_hosts_matches(
+    validatable_hosts: &[&crate::models::HostsChange],
+) -> Result<MatchResult, Error> {
+    if validatable_hosts.is_empty() {
+        return Ok(MatchResult::matched());
+    }
+
+    for change in validatable_hosts {
+        let exists = hosts_service::entry_exists(&change.ip, &change.domain)?;
+        let expected_exists = matches!(change.action, crate::models::tweak::HostsAction::Add);
+        if exists != expected_exists {
+            return Ok(MatchResult::not_matched());
+        }
+    }
+
+    Ok(MatchResult::matched())
+}
+
+/// Check if all firewall changes match current state
+/// For Create operations, check that the rule exists; for Delete, check it doesn't exist
+fn check_firewall_matches(
+    validatable_firewall: &[&crate::models::FirewallChange],
+) -> Result<MatchResult, Error> {
+    if validatable_firewall.is_empty() {
+        return Ok(MatchResult::matched());
+    }
+
+    for change in validatable_firewall {
+        let exists = firewall_service::rule_exists(&change.name)?;
+        let expected_exists =
+            matches!(change.operation, crate::models::tweak::FirewallOperation::Create);
+        if exists != expected_exists {
+            return Ok(MatchResult::not_matched());
+        }
+    }
+
+    Ok(MatchResult::matched())
 }
 
 // ============================================================================
