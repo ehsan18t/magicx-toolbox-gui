@@ -31,8 +31,15 @@ use std::path::Path;
 // - RegistryChange      (tweak.rs line ~200)
 // - ServiceChange       (tweak.rs line ~240)
 // - SchedulerChange     (tweak.rs line ~260)
+// - HostsAction         (tweak.rs line ~282)
+// - HostsChange         (tweak.rs line ~300)
+// - FirewallDirection   (tweak.rs line ~318)
+// - FirewallRuleAction  (tweak.rs line ~338)
+// - FirewallProtocol    (tweak.rs line ~357)
+// - FirewallOperation   (tweak.rs line ~384)
+// - FirewallChange      (tweak.rs line ~403)
 // - TweakOption         (tweak.rs line ~446)
-// - TweakDefinitionRaw  (tweak.rs line ~515)
+// - TweakDefinitionRaw  (tweak.rs line ~530)
 //
 // To verify sync: Compare serialized JSON field names between build.rs and tweak.rs
 // ============================================================================
@@ -168,6 +175,90 @@ struct SchedulerChange {
     ignore_not_found: bool,
 }
 
+/// Action to perform on a hosts file entry
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+enum HostsAction {
+    Add,
+    Remove,
+}
+
+/// Single hosts file modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HostsChange {
+    ip: String,
+    domain: String,
+    action: HostsAction,
+    #[serde(default)]
+    comment: Option<String>,
+    #[serde(default)]
+    skip_validation: bool,
+}
+
+/// Direction for firewall rules
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+enum FirewallDirection {
+    Inbound,
+    Outbound,
+}
+
+/// Action for firewall rules
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+enum FirewallRuleAction {
+    Block,
+    Allow,
+}
+
+/// Protocol for firewall rules
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+enum FirewallProtocol {
+    Any,
+    Tcp,
+    Udp,
+    Icmpv4,
+    Icmpv6,
+}
+
+/// Firewall change operation type
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+enum FirewallOperation {
+    Create,
+    Delete,
+}
+
+/// Single firewall rule modification within an option
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FirewallChange {
+    name: String,
+    operation: FirewallOperation,
+    #[serde(default)]
+    direction: Option<FirewallDirection>,
+    #[serde(default)]
+    action: Option<FirewallRuleAction>,
+    #[serde(default)]
+    protocol: Option<FirewallProtocol>,
+    #[serde(default)]
+    program: Option<String>,
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    remote_addresses: Option<Vec<String>>,
+    #[serde(default)]
+    remote_ports: Option<String>,
+    #[serde(default)]
+    local_ports: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    skip_validation: bool,
+}
+
 /// A single option within a tweak - contains all changes for that state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -179,6 +270,10 @@ struct TweakOption {
     service_changes: Vec<ServiceChange>,
     #[serde(default)]
     scheduler_changes: Vec<SchedulerChange>,
+    #[serde(default)]
+    hosts_changes: Vec<HostsChange>,
+    #[serde(default)]
+    firewall_changes: Vec<FirewallChange>,
     #[serde(default)]
     pre_commands: Vec<String>,
     #[serde(default)]
@@ -207,6 +302,9 @@ struct TweakDefinitionRaw {
     description: String,
     #[serde(default)]
     info: Option<String>,
+    /// Previous IDs this tweak was known by (for migration)
+    #[serde(default)]
+    aliases: Vec<String>,
     risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
@@ -231,6 +329,9 @@ struct TweakDefinition {
     description: String,
     #[serde(default)]
     info: Option<String>,
+    /// Previous IDs this tweak was known by (for migration)
+    #[serde(default)]
+    aliases: Vec<String>,
     risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
@@ -839,6 +940,73 @@ impl SchedulerChange {
     }
 }
 
+impl HostsChange {
+    /// Validate hosts change semantic correctness
+    fn validate(
+        &self,
+        ctx: &mut ValidationContext,
+        file: &str,
+        tweak_id: &str,
+        option_label: &str,
+    ) {
+        let location = format!("option '{}' hosts change", option_label);
+
+        if self.ip.trim().is_empty() {
+            ctx.tweak_error(
+                file,
+                tweak_id,
+                format!("{}: ip cannot be empty", location),
+            );
+        }
+        if self.domain.trim().is_empty() {
+            ctx.tweak_error(
+                file,
+                tweak_id,
+                format!("{}: domain cannot be empty", location),
+            );
+        }
+    }
+}
+
+impl FirewallChange {
+    /// Validate firewall change semantic correctness
+    fn validate(
+        &self,
+        ctx: &mut ValidationContext,
+        file: &str,
+        tweak_id: &str,
+        option_label: &str,
+    ) {
+        let location = format!("option '{}' firewall change '{}'", option_label, self.name);
+
+        if self.name.trim().is_empty() {
+            ctx.tweak_error(
+                file,
+                tweak_id,
+                format!("{}: firewall rule name cannot be empty", location),
+            );
+        }
+
+        // Create operation requires direction and action
+        if matches!(self.operation, FirewallOperation::Create) {
+            if self.direction.is_none() {
+                ctx.tweak_error(
+                    file,
+                    tweak_id,
+                    format!("{}: 'create' operation requires 'direction'", location),
+                );
+            }
+            if self.action.is_none() {
+                ctx.tweak_error(
+                    file,
+                    tweak_id,
+                    format!("{}: 'create' operation requires 'action'", location),
+                );
+            }
+        }
+    }
+}
+
 impl TweakOption {
     /// Validate option semantic correctness
     fn validate(&self, ctx: &mut ValidationContext, file: &str, tweak_id: &str) {
@@ -866,10 +1034,22 @@ impl TweakOption {
             change.validate(ctx, file, tweak_id, &self.label);
         }
 
+        // Validate all hosts changes
+        for change in &self.hosts_changes {
+            change.validate(ctx, file, tweak_id, &self.label);
+        }
+
+        // Validate all firewall changes
+        for change in &self.firewall_changes {
+            change.validate(ctx, file, tweak_id, &self.label);
+        }
+
         // Check for empty option (no changes at all)
         let has_any_changes = !self.registry_changes.is_empty()
             || !self.service_changes.is_empty()
             || !self.scheduler_changes.is_empty()
+            || !self.hosts_changes.is_empty()
+            || !self.firewall_changes.is_empty()
             || !self.pre_commands.is_empty()
             || !self.post_commands.is_empty()
             || !self.pre_powershell.is_empty()
@@ -880,7 +1060,7 @@ impl TweakOption {
                 file,
                 tweak_id,
                 format!(
-                    "option '{}' has no changes (registry, service, scheduler, or commands)",
+                    "option '{}' has no changes (registry, service, scheduler, hosts, firewall, or commands)",
                     self.label
                 ),
             );
@@ -1092,6 +1272,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 name: raw.name,
                 description: raw.description,
                 info: raw.info,
+                aliases: raw.aliases,
                 risk_level: raw.risk_level,
                 requires_admin,
                 requires_system,
