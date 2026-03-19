@@ -557,7 +557,7 @@ pub(crate) fn capture_scheduler_state(
 }
 
 /// Read a registry value (returns value and whether it existed)
-pub(crate) fn read_registry_value(
+pub fn read_registry_value(
     hive: &RegistryHive,
     key: &str,
     value_name: &str,

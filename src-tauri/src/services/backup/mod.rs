@@ -19,7 +19,7 @@ pub mod restore;
 pub mod storage;
 
 // Re-export public items from submodules
-pub use capture::{capture_current_state, capture_snapshot};
+pub use capture::{capture_current_state, capture_snapshot, read_registry_value};
 pub use detection::{cleanup_old_backups, detect_tweak_state, validate_all_snapshots};
 pub use inspection::inspect_tweak;
 pub use restore::restore_from_snapshot;

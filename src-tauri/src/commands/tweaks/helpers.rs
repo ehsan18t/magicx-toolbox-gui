@@ -148,41 +148,17 @@ pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Resu
 // ============================================================================
 
 /// Read a registry value
+/// Read a registry value, returning None if it doesn't exist.
+/// Delegates to the canonical implementation in backup::capture.
 pub fn read_registry_value(
     hive: &RegistryHive,
     key: &str,
     value_name: &str,
     value_type: &RegistryValueType,
 ) -> Result<Option<serde_json::Value>> {
-    let result = match value_type {
-        RegistryValueType::Dword => registry_service::read_dword(hive, key, value_name)
-            .map(|v| v.map(|val| serde_json::json!(val))),
-        RegistryValueType::String | RegistryValueType::ExpandString => {
-            registry_service::read_string(hive, key, value_name)
-                .map(|v| v.map(|val| serde_json::json!(val)))
-        }
-        RegistryValueType::Binary => registry_service::read_binary(hive, key, value_name)
-            .map(|v| v.map(|val| serde_json::json!(val))),
-        RegistryValueType::Qword => registry_service::read_qword(hive, key, value_name)
-            .map(|v| v.map(|val| serde_json::json!(val))),
-        RegistryValueType::MultiString => registry_service::read_string(hive, key, value_name)
-            .map(|v| v.map(|val| serde_json::json!(val))),
-    };
-
-    match result {
-        Ok(v) => Ok(v),
-        Err(Error::RegistryKeyNotFound(_)) => Ok(None),
-        Err(e) => {
-            log::debug!(
-                "Could not read {}\\{}\\{}: {}",
-                hive.as_str(),
-                key,
-                value_name,
-                e
-            );
-            Ok(None)
-        }
-    }
+    let (value, _existed) =
+        crate::services::backup::read_registry_value(hive, key, value_name, value_type)?;
+    Ok(value)
 }
 
 /// Write a registry value
