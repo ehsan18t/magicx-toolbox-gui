@@ -77,12 +77,14 @@ pub fn run() {
             log::info!("Application starting...");
             log::debug!("Debug logging enabled");
 
-            // Start window visibility watchdog
-            // If window isn't shown within 10 seconds, force show it
-            // This prevents the app from getting stuck hidden if frontend fails to mount
+            // Start window visibility watchdog.
+            // Dev startup can be slower (tooling, first-load optimization), so use a longer
+            // timeout in debug builds to avoid false fallback logs.
             let app_handle = app.handle().clone();
+            let watchdog_timeout_secs = if cfg!(debug_assertions) { 30 } else { 10 };
             tauri::async_runtime::spawn(async move {
-                window_watchdog::start_window_watchdog(app_handle, "main", 10).await;
+                window_watchdog::start_window_watchdog(app_handle, "main", watchdog_timeout_secs)
+                    .await;
             });
 
             setup::setup(app)
