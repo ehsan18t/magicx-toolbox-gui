@@ -533,11 +533,41 @@ tweaks:
             value_name: "Disabled"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WerSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "DontSendAdditionalData"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "LoggingDisabled"
+            value_type: "REG_DWORD"
+            value: 1
       - label: "Error Reporting Enabled (Default)"
         registry_changes:
           - hive: HKLM
             key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
             value_name: "Disabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WerSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "DontSendAdditionalData"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\Windows Error Reporting"
+            value_name: "LoggingDisabled"
             value_type: "REG_DWORD"
             value: 0
 
@@ -705,3 +735,477 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+
+  - id: smb_signing
+    name: "Enforce SMB Signing"
+    description: "Require digital signing for SMB network traffic"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Enforces SMB (Server Message Block) signing on both client and server connections. SMB signing ensures data integrity and prevents man-in-the-middle attacks on file sharing.
+
+      ## Security Benefit
+      - Prevents SMB relay attacks
+      - Ensures file sharing data integrity
+      - Required by many security compliance frameworks (CIS, STIG)
+
+      ## Performance Impact
+      - Minor CPU overhead for signing operations (~5-10%)
+      - Negligible on modern hardware
+
+      ## Recommendation
+      Enable for security. Minor performance impact is worth the protection.
+    options:
+      - label: "SMB Signing Required"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "RequireSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "EnableSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters"
+            value_name: "RequireSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters"
+            value_name: "EnableSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "SMB Signing Default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "RequireSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "EnableSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters"
+            value_name: "RequireSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters"
+            value_name: "EnableSecuritySignature"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: uac_level
+    name: "UAC Security Level"
+    description: "Configure User Account Control prompt behavior"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Controls how User Account Control (UAC) prompts behave for administrators and standard users.
+
+      ## Options Explained
+      - **Maximum Security**: Always prompt on secure desktop, auto-deny for standard users, filter built-in admin token
+      - **Standard (Default)**: Prompt for elevation on secure desktop for non-Windows binaries
+      - **Minimal Prompts**: Prompt without secure desktop (less secure but less intrusive)
+
+      ## Recommendation
+      "Maximum Security" for best protection. "Standard" for typical use.
+    options:
+      - label: "Maximum Security"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "ConsentPromptBehaviorAdmin"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "ConsentPromptBehaviorUser"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "PromptOnSecureDesktop"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "FilterAdministratorToken"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Standard (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "ConsentPromptBehaviorAdmin"
+            value_type: "REG_DWORD"
+            value: 5
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "ConsentPromptBehaviorUser"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "PromptOnSecureDesktop"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "FilterAdministratorToken"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Minimal Prompts"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "ConsentPromptBehaviorAdmin"
+            value_type: "REG_DWORD"
+            value: 5
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "ConsentPromptBehaviorUser"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "PromptOnSecureDesktop"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "FilterAdministratorToken"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: powershell_security
+    name: "PowerShell Security Logging"
+    description: "Enable PowerShell script block and module logging"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Enables comprehensive PowerShell logging to detect malicious scripts.
+
+      ## What Gets Logged
+      - **Script Block Logging**: Logs the content of all PowerShell scripts that execute
+      - **Module Logging**: Logs PowerShell module usage
+
+      ## Security Benefit
+      - Detect obfuscated malware scripts
+      - Forensic evidence of attacks
+      - Compliance with security frameworks
+
+      ## Recommendation
+      Enable for security. Logs stored in Windows Event Viewer.
+    options:
+      - label: "Logging Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging"
+            value_name: "EnableScriptBlockLogging"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging"
+            value_name: "EnableModuleLogging"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Logging Disabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging"
+            value_name: "EnableScriptBlockLogging"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging"
+            value_name: "EnableModuleLogging"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_llmnr
+    name: "Disable LLMNR"
+    description: "Disable Link-Local Multicast Name Resolution"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables LLMNR (Link-Local Multicast Name Resolution), a protocol that resolves hostnames on local networks when DNS fails.
+
+      ## Security Risk of LLMNR
+      - LLMNR responds to ANY name query on the network
+      - Attackers can respond with fake addresses (LLMNR poisoning)
+      - Used in credential theft attacks (Responder, MITM)
+      - One of the most common Windows network attack vectors
+
+      ## Recommendation
+      Always disable. DNS should handle name resolution. LLMNR is a significant security risk.
+    options:
+      - label: "LLMNR Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "LLMNR Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
+            value_name: "EnableMulticast"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_netbios
+    name: "Disable NetBIOS over TCP/IP"
+    description: "Disable NetBIOS name resolution for security"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Changes the NetBIOS node type to P-node (point-to-point only), effectively disabling NetBIOS broadcast name resolution.
+
+      ## Security Risk of NetBIOS
+      - NetBIOS broadcasts are vulnerable to spoofing
+      - Used alongside LLMNR in credential theft attacks
+      - Exposes computer names to the network
+
+      ## Compatibility
+      - Very old applications may require NetBIOS
+      - Modern networks use DNS exclusively
+      - May affect old printer/file sharing configurations
+
+      ## Recommendation
+      Disable alongside LLMNR for comprehensive protection against name resolution attacks.
+    options:
+      - label: "NetBIOS Disabled (P-Node)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "NetBIOS Default (B-Node)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
+            value_name: "NodeType"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_wdigest
+    name: "Disable WDigest Authentication"
+    description: "Prevent cleartext password storage in memory"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables WDigest authentication which stores plaintext passwords in memory. This is exploited by tools like Mimikatz to extract credentials.
+
+      ## Security Impact
+      - Passwords no longer stored in cleartext in LSASS memory
+      - Attackers with admin access cannot extract plain passwords
+      - Already disabled by default on Win10/11 but explicitly ensures it
+
+      ## Recommendation
+      Always ensure this is disabled. Critical security hardening.
+    options:
+      - label: "WDigest Disabled (Secure)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SecurityProviders\\WDigest"
+            value_name: "UseLogonCredential"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "WDigest Enabled (Insecure)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\SecurityProviders\\WDigest"
+            value_name: "UseLogonCredential"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: reduce_credential_caching
+    name: "Reduce Credential Caching"
+    description: "Reduce cached domain logon credentials"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Reduces the number of cached domain logon credentials from 10 to 1. Cached logons allow signing in when the domain controller is unreachable.
+
+      ## Security Benefit
+      - Fewer credentials stored locally to steal
+      - Reduces attack surface for offline credential attacks
+      - CIS Benchmark recommendation
+
+      ## Impact
+      - Only 1 previous logon cached (instead of 10)
+      - If domain controller is unreachable, only the last user can log in
+      - No impact on local accounts
+
+      ## Recommendation
+      Set to 1 for security. Only relevant for domain-joined machines.
+    options:
+      - label: "Minimal Caching (1)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+            value_name: "CachedLogonsCount"
+            value_type: "REG_SZ"
+            value: "1"
+      - label: "Default Caching (10)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+            value_name: "CachedLogonsCount"
+            value_type: "REG_SZ"
+            value: "10"
+
+  - id: enable_lsa_protection
+    name: "Enable LSA Protection"
+    description: "Run Local Security Authority as Protected Process"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Enables LSA (Local Security Authority) protection by running LSASS as a Protected Process Light (PPL). This prevents unauthorized access to credential material.
+
+      ## Security Benefit
+      - Blocks credential dumping tools (Mimikatz, etc.)
+      - Prevents injection of malicious code into LSASS
+      - Required by many security compliance frameworks
+
+      ## Compatibility
+      - May block some older security software
+      - Enabled by default on Windows 11 24H2
+      - Legacy drivers may need updating
+
+      ## Recommendation
+      Enable on all systems. Essential protection against credential theft.
+    options:
+      - label: "LSA Protection Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RunAsPPL"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "LSA Protection Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "RunAsPPL"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: enforce_ntlmv2
+    name: "Enforce NTLMv2 Only"
+    description: "Only allow NTLMv2 authentication, refuse LM and NTLMv1"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Configures Windows to only use NTLMv2 for NTLM authentication and refuse LM/NTLMv1 responses.
+
+      ## Security Benefit
+      - LM and NTLMv1 have known cryptographic weaknesses
+      - Prevents downgrade attacks to weaker protocols
+      - CIS Benchmark Level 1 requirement
+
+      ## Compatibility
+      - Very old systems (Windows 98/NT4 without patches) cannot connect
+      - All modern Windows systems support NTLMv2
+      - Safe for any network with Windows Vista or newer
+
+      ## Recommendation
+      Always enforce NTLMv2. No legitimate reason to allow LM/NTLMv1 on modern networks.
+    options:
+      - label: "NTLMv2 Only (Level 5)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "LmCompatibilityLevel"
+            value_type: "REG_DWORD"
+            value: 5
+      - label: "Default (Level 3)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Lsa"
+            value_name: "LmCompatibilityLevel"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: rdp_security_hardening
+    name: "Harden RDP Security"
+    description: "Enforce NLA and TLS encryption for Remote Desktop"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Hardens Remote Desktop Protocol security:
+      - **NLA Required**: Network Level Authentication must complete before session is established
+      - **TLS Security Layer**: Uses TLS instead of legacy RDP encryption
+      - **High Encryption**: Requires 128-bit encryption
+
+      ## Security Benefit
+      - Prevents credential exposure before authentication
+      - Protects against RDP man-in-the-middle attacks
+      - Blocks connections from very old RDP clients
+
+      ## Recommendation
+      Enable if RDP is used. These are best-practice settings.
+    options:
+      - label: "RDP Hardened"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp"
+            value_name: "UserAuthentication"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp"
+            value_name: "SecurityLayer"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp"
+            value_name: "MinEncryptionLevel"
+            value_type: "REG_DWORD"
+            value: 3
+      - label: "RDP Default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp"
+            value_name: "UserAuthentication"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp"
+            value_name: "SecurityLayer"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp"
+            value_name: "MinEncryptionLevel"
+            value_type: "REG_DWORD"
+            value: 1

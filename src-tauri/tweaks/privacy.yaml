@@ -43,6 +43,18 @@ tweaks:
             value_type: "REG_DWORD"
             value: 0
             windows_versions: [11]
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "TurnOffWindowsAI"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "DisableSavingSnapshots"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
       - label: "Recall Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -55,6 +67,18 @@ tweaks:
             value_name: "EnableSnapshots"
             value_type: "REG_DWORD"
             value: 1
+            windows_versions: [11]
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "TurnOffWindowsAI"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
+            value_name: "DisableSavingSnapshots"
+            value_type: "REG_DWORD"
+            value: 0
             windows_versions: [11]
 
   - id: disable_telemetry
@@ -96,6 +120,26 @@ tweaks:
             value: 4
             windows_versions: [10]
             skip_validation: true
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "AllowDeviceNameInDiagnosticData"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "LimitDiagnosticLogCollection"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "LimitDumpCollection"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "DisableOneSettingsDownloads"
+            value_type: "REG_DWORD"
+            value: 1
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
@@ -110,6 +154,26 @@ tweaks:
             value: 2
             windows_versions: [10]
             skip_validation: true
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "AllowDeviceNameInDiagnosticData"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "LimitDiagnosticLogCollection"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "LimitDumpCollection"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
+            value_name: "DisableOneSettingsDownloads"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_advertising_id
     name: "Disable Advertising ID"
@@ -175,6 +239,11 @@ tweaks:
             value_name: "UploadUserActivities"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "EnableActivityFeed"
+            value_type: "REG_DWORD"
+            value: 0
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
@@ -187,11 +256,17 @@ tweaks:
             value_name: "UploadUserActivities"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "EnableActivityFeed"
+            value_type: "REG_DWORD"
+            value: 1
 
   - id: disable_location_tracking
     name: "Disable Location Tracking"
     description: "Disable location tracking services"
     risk_level: low
+    requires_admin: true
     requires_reboot: false
     info: |
       ## What This Does
@@ -220,6 +295,21 @@ tweaks:
             value_name: "SensorPermissionState"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
+            value_name: "DisableLocation"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
+            value_name: "DisableWindowsLocationProvider"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
+            value_name: "DisableLocationScripting"
+            value_type: "REG_DWORD"
+            value: 1
       - label: "Enabled"
         registry_changes:
           - hive: HKCU
@@ -227,6 +317,21 @@ tweaks:
             value_name: "SensorPermissionState"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
+            value_name: "DisableLocation"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
+            value_name: "DisableWindowsLocationProvider"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
+            value_name: "DisableLocationScripting"
+            value_type: "REG_DWORD"
+            value: 0
 
   - id: disable_feedback_notifications
     name: "Disable Feedback Notifications"
@@ -256,12 +361,21 @@ tweaks:
             value_name: "NumberOfSIUFInPeriod"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Siuf\\Rules"
+            value_name: "PeriodInNanoSeconds"
+            value_type: "REG_DWORD"
+            value: 0
       - label: "Enabled"
         # Delete the value to restore default behavior (Windows prompts for feedback)
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Siuf\\Rules"
             value_name: "NumberOfSIUFInPeriod"
+            action: delete_value
+          - hive: HKCU
+            key: "Software\\Microsoft\\Siuf\\Rules"
+            value_name: "PeriodInNanoSeconds"
             action: delete_value
 
   - id: disable_inking_data
@@ -292,6 +406,16 @@ tweaks:
             value_name: "RestrictImplicitInkCollection"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\InputPersonalization"
+            value_name: "RestrictImplicitTextCollection"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\InputPersonalization\\TrainedDataStore"
+            value_name: "HarvestContacts"
+            value_type: "REG_DWORD"
+            value: 0
       - label: "Enabled"
         registry_changes:
           - hive: HKCU
@@ -299,6 +423,16 @@ tweaks:
             value_name: "RestrictImplicitInkCollection"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\InputPersonalization"
+            value_name: "RestrictImplicitTextCollection"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\InputPersonalization\\TrainedDataStore"
+            value_name: "HarvestContacts"
+            value_type: "REG_DWORD"
+            value: 1
 
   # NOTE: disable_app_launch_tracking removed - duplicate of disable_activity_history (same registry keys)
 
@@ -330,11 +464,81 @@ tweaks:
             value_name: "ContentDeliveryAllowed"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SoftLandingEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "FeatureManagementEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-353694Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-353696Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-88000326Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338393Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-353698Enabled"
+            value_type: "REG_DWORD"
+            value: 0
       - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
             value_name: "ContentDeliveryAllowed"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SoftLandingEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "FeatureManagementEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-353694Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-353696Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-88000326Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-338393Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+            value_name: "SubscribedContent-353698Enabled"
             value_type: "REG_DWORD"
             value: 1
 
@@ -422,6 +626,7 @@ tweaks:
     name: "Disable Cloud Clipboard Sync"
     description: "Disable syncing clipboard content to cloud"
     risk_level: low
+    requires_admin: true
     requires_reboot: false
     options:
       - label: "Disabled"
@@ -431,11 +636,31 @@ tweaks:
             value_name: "EnableCloudSync"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Clipboard"
+            value_name: "EnableClipboardHistory"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "AllowCrossDeviceClipboard"
+            value_type: "REG_DWORD"
+            value: 0
       - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Clipboard"
             value_name: "EnableCloudSync"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Clipboard"
+            value_name: "EnableClipboardHistory"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\System"
+            value_name: "AllowCrossDeviceClipboard"
             value_type: "REG_DWORD"
             value: 1
 
@@ -688,11 +913,31 @@ tweaks:
             value_name: "DisableWindowsConsumerFeatures"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableCloudOptimizedContent"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableThirdPartySuggestions"
+            value_type: "REG_DWORD"
+            value: 1
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
             value_name: "DisableWindowsConsumerFeatures"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableCloudOptimizedContent"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
+            value_name: "DisableThirdPartySuggestions"
             value_type: "REG_DWORD"
             value: 0
 
@@ -846,11 +1091,21 @@ tweaks:
             value_name: "DisabledByGroupPolicy"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKCU
+            key: "Control Panel\\International\\User Profile"
+            value_name: "HttpAcceptLanguageOptOut"
+            value_type: "REG_DWORD"
+            value: 1
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
             value_name: "DisabledByGroupPolicy"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Control Panel\\International\\User Profile"
+            value_name: "HttpAcceptLanguageOptOut"
             value_type: "REG_DWORD"
             value: 0
 
@@ -978,3 +1233,478 @@ tweaks:
             value_type: "REG_DWORD"
             value: 2
             skip_validation: true
+
+  # --- Additional privacy tweaks ---
+
+  - id: disable_online_speech_recognition
+    name: "Disable Online Speech Recognition"
+    description: "Disable online speech recognition and input personalization"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables online speech recognition which sends voice data to Microsoft servers for processing.
+
+      ## Privacy Impact
+      - Voice data is no longer sent to Microsoft cloud
+      - Local speech recognition still works
+      - Cortana voice features may be limited
+
+      ## Recommendation
+      Safe to disable unless you actively use cloud-based speech features.
+    options:
+      - label: "Speech Recognition Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy"
+            value_name: "HasAccepted"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\InputPersonalization"
+            value_name: "AllowInputPersonalization"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Speech Recognition Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy"
+            value_name: "HasAccepted"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\InputPersonalization"
+            value_name: "AllowInputPersonalization"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_find_my_device
+    name: "Disable Find My Device"
+    description: "Disable Find My Device location tracking feature"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Find My Device feature which periodically sends your device location to Microsoft.
+
+      ## Privacy Impact
+      - Device location no longer sent to Microsoft
+      - Cannot remotely locate or lock device
+      - Reduces background location usage
+
+      ## When to Keep Enabled
+      - Laptops that travel frequently
+      - High-theft risk environments
+
+      ## Recommendation
+      Disable on desktops. Consider keeping on laptops for theft recovery.
+    options:
+      - label: "Find My Device Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\FindMyDevice"
+            value_name: "AllowFindMyDevice"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Microsoft\\Settings\\FindMyDevice"
+            value_name: "LocationSyncEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Find My Device Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\FindMyDevice"
+            value_name: "AllowFindMyDevice"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Microsoft\\Settings\\FindMyDevice"
+            value_name: "LocationSyncEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_settings_sync
+    name: "Disable Settings Sync"
+    description: "Disable syncing Windows settings across devices"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from syncing your settings (theme, passwords, language preferences, etc.) across devices using your Microsoft account.
+
+      ## Privacy Impact
+      - Settings data no longer uploaded to Microsoft cloud
+      - Each device maintains independent settings
+      - Reduces Microsoft account data collection
+
+      ## Recommendation
+      Disable for privacy. Enable if you use multiple Windows devices with the same Microsoft account.
+    options:
+      - label: "Sync Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
+            value_name: "DisableSettingSync"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
+            value_name: "DisableSettingSyncUserOverride"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync"
+            value_name: "SyncPolicy"
+            value_type: "REG_DWORD"
+            value: 5
+      - label: "Sync Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
+            value_name: "DisableSettingSync"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
+            value_name: "DisableSettingSyncUserOverride"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync"
+            value_name: "SyncPolicy"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_app_telemetry
+    name: "Disable Application Telemetry"
+    description: "Disable application compatibility telemetry and CEIP"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables several application telemetry systems:
+      - **AITAgent**: Application Impact Telemetry that monitors program compatibility
+      - **CEIP**: Customer Experience Improvement Program data collection
+      - **UAR**: User Account Reporting
+      - **Inventory Collector**: Collects installed application information
+
+      ## Performance Benefit
+      - Reduces background CPU and disk usage from telemetry agents
+      - Fewer scheduled tasks running periodically
+
+      ## Recommendation
+      Safe to disable. These telemetry systems provide no user benefit.
+    options:
+      - label: "App Telemetry Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
+            value_name: "AITEnable"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
+            value_name: "DisableUAR"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
+            value_name: "DisableInventory"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\SQMClient\\Windows"
+            value_name: "CEIPEnable"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "App Telemetry Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
+            value_name: "AITEnable"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
+            value_name: "DisableUAR"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
+            value_name: "DisableInventory"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\SQMClient\\Windows"
+            value_name: "CEIPEnable"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_edge_telemetry
+    name: "Disable Edge Telemetry"
+    description: "Disable Microsoft Edge telemetry and usage reporting"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables telemetry collection by Microsoft Edge browser including:
+      - Usage metrics reporting
+      - Site information sharing
+      - Personalization reporting
+      - Diagnostic data collection
+
+      ## Impact
+      - No functional impact on browsing
+      - Edge still receives updates
+      - Only data collection is disabled
+
+      ## Recommendation
+      Safe to disable for all Edge users. No impact on functionality.
+    options:
+      - label: "Edge Telemetry Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "MetricsReportingEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "SendSiteInfoToImproveServices"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "PersonalizationReportingEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "DiagnosticData"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Edge Telemetry Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "MetricsReportingEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "SendSiteInfoToImproveServices"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "PersonalizationReportingEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Edge"
+            value_name: "DiagnosticData"
+            value_type: "REG_DWORD"
+            value: 2
+
+  - id: disable_cortana
+    name: "Disable Cortana"
+    description: "Disable Cortana voice assistant via Group Policy"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Cortana via Group Policy, preventing it from running on the device.
+
+      ## What Changes
+      - Cortana cannot be launched or used
+      - Cortana above lock screen is disabled
+      - Windows Search still works normally
+
+      ## Recommendation
+      Safe to disable. Cortana is deprecated in Windows 11 and provides limited functionality.
+    options:
+      - label: "Cortana Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowCortana"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowCortanaAboveLock"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Cortana Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowCortana"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowCortanaAboveLock"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_cloud_search
+    name: "Disable Cloud Search"
+    description: "Disable cloud and web search integration in Windows Search"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables cloud-based search features including:
+      - Cloud search results (OneDrive, Outlook, etc.)
+      - Web results in Windows Search
+      - Search location usage
+
+      ## Benefits
+      - Faster local-only search results
+      - No data sent to Microsoft for search queries
+      - Reduced network usage during searches
+
+      ## Recommendation
+      Safe to disable. Local search continues to work perfectly.
+    options:
+      - label: "Cloud Search Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowCloudSearch"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "ConnectedSearchUseWeb"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowSearchToUseLocation"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Cloud Search Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowCloudSearch"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "ConnectedSearchUseWeb"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
+            value_name: "AllowSearchToUseLocation"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_auto_signin_after_update
+    name: "Disable Auto Sign-in After Update"
+    description: "Prevent Windows from automatically signing in after updates"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from using your credentials to automatically sign in and finish setting up your device after an update or restart.
+
+      ## Security Benefit
+      - Credentials not cached for automatic restart sign-on
+      - Must manually enter password after updates
+      - Better security for shared or sensitive environments
+
+      ## Recommendation
+      Enable for better security. Disable if convenience is preferred.
+    options:
+      - label: "Auto Sign-in Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "DisableAutomaticRestartSignOn"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Auto Sign-in Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
+            value_name: "DisableAutomaticRestartSignOn"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_message_sync
+    name: "Disable Message Sync"
+    description: "Disable text message cloud syncing across devices"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows from syncing text messages between your phone and PC via the cloud.
+
+      ## Privacy Impact
+      - Messages not uploaded to Microsoft cloud
+      - Phone Link messaging still works via direct connection
+
+      ## Recommendation
+      Safe to disable for privacy-focused users.
+    options:
+      - label: "Message Sync Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Messaging"
+            value_name: "AllowMessageSync"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Message Sync Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Messaging"
+            value_name: "AllowMessageSync"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_experimentation
+    name: "Disable A/B Experiments"
+    description: "Prevent Microsoft from running A/B experiments on your device"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Microsoft from remotely enabling or disabling features on your device for A/B testing purposes.
+
+      ## What Microsoft Experiments Do
+      - Remotely toggle features on/off to test user engagement
+      - Change UI elements for testing
+      - May enable features you didn't request
+
+      ## Recommendation
+      Always disable. There is no benefit to being a test subject for Microsoft's experiments.
+    options:
+      - label: "Experiments Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\PolicyManager\\current\\device\\System"
+            value_name: "AllowExperimentation"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Experiments Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\PolicyManager\\current\\device\\System"
+            value_name: "AllowExperimentation"
+            value_type: "REG_DWORD"
+            value: 1

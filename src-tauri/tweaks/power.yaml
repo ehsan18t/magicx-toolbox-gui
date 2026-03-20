@@ -174,3 +174,89 @@ tweaks:
             value_name: "DisableSelectiveSuspend"
             value_type: "REG_DWORD"
             value: 0
+
+  - id: disable_connected_standby
+    name: "Disable Connected Standby"
+    description: "Disable Modern/Connected Standby (S0 Low Power Idle)"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Connected Standby (S0 Low Power Idle), the modern sleep state that keeps your device connected while sleeping.
+
+      ## Why Disable
+      - Prevents battery drain during sleep (laptop gets hot in bag)
+      - Stops background network activity during sleep
+      - Forces traditional S3 sleep state
+
+      ## Compatibility
+      - Not all systems support falling back to S3
+      - Check with `powercfg /a` to verify S3 availability
+      - Some newer hardware only supports S0
+
+      ## Recommendation
+      Disable on laptops that overheat during sleep or drain battery while "sleeping".
+    options:
+      - label: "Connected Standby Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "CsEnabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Connected Standby Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Power"
+            value_name: "CsEnabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_wake_timers
+    name: "Disable Wake Timers"
+    description: "Prevent scheduled tasks from waking the computer"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents scheduled tasks and Windows Update from waking your computer from sleep.
+
+      ## Benefits
+      - Computer stays asleep until you wake it
+      - No random wake-ups at night
+      - Prevents Windows Update from waking PC to install
+
+      ## What May Be Affected
+      - Scheduled backup tasks won't wake the PC
+      - Windows Update may not install on schedule
+      - Alarm apps may not wake the PC
+
+      ## Recommendation
+      Enable to prevent unwanted wake-ups. Manual waking is still normal.
+    options:
+      - label: "Wake Timers Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Power\\PowerSettings\\bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
+            value_name: "ACSettingIndex"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Power\\PowerSettings\\bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
+            value_name: "DCSettingIndex"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Wake Timers Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Power\\PowerSettings\\bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
+            value_name: "ACSettingIndex"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Power\\PowerSettings\\bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
+            value_name: "DCSettingIndex"
+            value_type: "REG_DWORD"
+            value: 1

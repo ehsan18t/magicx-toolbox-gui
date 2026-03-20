@@ -562,6 +562,11 @@ tweaks:
             value_name: "SFIO Priority"
             value_type: "REG_SZ"
             value: "High"
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "Background Only"
+            value_type: "REG_SZ"
+            value: "False"
       - label: "Gaming Priority Default"
         registry_changes:
           - hive: HKLM
@@ -584,6 +589,11 @@ tweaks:
             value_name: "SFIO Priority"
             value_type: "REG_SZ"
             value: "Normal"
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games"
+            value_name: "Background Only"
+            value_type: "REG_SZ"
+            value: "True"
 
   - id: disable_xbox_services
     name: "Disable Xbox Services"
@@ -637,3 +647,190 @@ tweaks:
             value_type: "REG_DWORD"
             value: 2
             skip_validation: true
+
+  - id: disable_multiplane_overlay
+    name: "Disable Multi-Plane Overlay"
+    description: "Disable MPO to fix micro-stuttering in games"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Multi-Plane Overlay (MPO), a DWM feature that can cause micro-stuttering on certain GPU/monitor combinations.
+
+      ## When to Disable
+      - Experiencing random micro-stutters in games
+      - Using mixed refresh rate monitors
+      - Using HDR with certain GPUs
+      - Especially common on Windows 11 24H2
+
+      ## Technical Details
+      MPO allows the GPU to composite multiple planes (game, overlay, cursor) directly, bypassing DWM. When it malfunctions, it causes frame pacing issues.
+
+      ## Recommendation
+      Disable if experiencing stuttering. Re-enable if no improvement.
+    options:
+      - label: "MPO Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\DWM"
+            value_name: "OverlayTestMode"
+            value_type: "REG_DWORD"
+            value: 5
+      - label: "MPO Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows\\DWM"
+            value_name: "OverlayTestMode"
+            action: delete_value
+
+  - id: disable_game_bar_presence_writer
+    name: "Disable Game Bar Presence Writer"
+    description: "Disable the Game Bar background presence writer process"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Game Bar Presence Writer, a background process that monitors which games are running.
+
+      ## Performance Impact
+      - Eliminates a background process during gaming
+      - Reduces minor CPU overhead from game detection
+      - Game Bar overlay features may stop working
+
+      ## What You Lose
+      - Game Bar overlay (Win+G) may not detect games
+      - Game activity tracking
+
+      ## Recommendation
+      Disable if you don't use Game Bar overlay. Complements disabling Xbox Game Bar.
+    options:
+      - label: "Presence Writer Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsRuntime\\ActivatableClassId\\Windows.Gaming.GameBar.PresenceServer.Internal.PresenceWriter"
+            value_name: "ActivationType"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Presence Writer Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsRuntime\\ActivatableClassId\\Windows.Gaming.GameBar.PresenceServer.Internal.PresenceWriter"
+            value_name: "ActivationType"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: timer_resolution_gaming
+    name: "Fix Timer Resolution (Windows 11)"
+    description: "Restore global timer resolution behavior for games"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Windows 11 24H2 changed timer resolution to be per-process instead of global. This means a game's request for 1ms timer resolution no longer affects the whole system, which can hurt performance in some games.
+
+      ## Technical Details
+      - `GlobalTimerResolutionRequests=1` restores the global timer behavior
+      - Some games rely on system-wide 1ms timer for smooth frame pacing
+      - Only affects Windows 11 (Windows 10 already uses global timers)
+
+      ## Impact
+      - Fixes frame pacing issues in games that don't call timeBeginPeriod
+      - May slightly increase idle power consumption
+      - Essential for competitive gaming on Win11
+
+      ## Recommendation
+      Enable on Windows 11 gaming PCs. Not needed on Windows 10.
+    options:
+      - label: "Global Timer Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\kernel"
+            value_name: "GlobalTimerResolutionRequests"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+      - label: "Per-Process Timer (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\kernel"
+            value_name: "GlobalTimerResolutionRequests"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+
+  - id: variable_refresh_rate
+    name: "Enable VRR for Windowed Games"
+    description: "Enable Variable Refresh Rate for windowed and borderless games"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Enables Variable Refresh Rate (VRR) optimizations for windowed and borderless windowed games.
+
+      ## Requirements
+      - FreeSync or G-Sync compatible monitor
+      - Compatible GPU with VRR-capable driver
+      - Windows 10 1903+ or Windows 11
+
+      ## Benefits
+      - Eliminates screen tearing in windowed mode
+      - Smoother frame delivery without exclusive fullscreen
+      - Works with borderless windowed games
+
+      ## Recommendation
+      Enable if you have a VRR-capable monitor. No effect without one.
+    options:
+      - label: "VRR Windowed Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\DirectX\\UserGpuPreferences"
+            value_name: "DirectXUserGlobalSettings"
+            value_type: "REG_SZ"
+            value: "VRROptimizeEnable=1;"
+      - label: "VRR Windowed Disabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\DirectX\\UserGpuPreferences"
+            value_name: "DirectXUserGlobalSettings"
+            value_type: "REG_SZ"
+            value: "VRROptimizeEnable=0;"
+
+  - id: gpu_preference_default
+    name: "Default GPU to High Performance"
+    description: "Set default GPU preference to high performance for all apps"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Sets the default GPU preference to "High Performance" for all applications.
+
+      ## When Useful
+      - Laptops with both integrated and discrete GPUs
+      - Ensures games and apps use the powerful GPU by default
+      - Eliminates need to set per-app GPU preference
+
+      ## Impact on Laptops
+      - Higher power consumption (discrete GPU used more)
+      - Reduced battery life
+      - Better graphics performance in all apps
+
+      ## Recommendation
+      Enable on gaming laptops plugged into power. Keep default on battery-focused laptops.
+    options:
+      - label: "High Performance GPU"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\DirectX\\UserGpuPreferences"
+            value_name: "DirectXUserGlobalSettings"
+            value_type: "REG_SZ"
+            value: "GpuPreference=2;"
+      - label: "Auto GPU Selection (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\DirectX\\UserGpuPreferences"
+            value_name: "DirectXUserGlobalSettings"
+            value_type: "REG_SZ"
+            value: "GpuPreference=0;"

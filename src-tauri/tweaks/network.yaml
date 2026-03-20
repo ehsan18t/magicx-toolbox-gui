@@ -202,6 +202,16 @@ tweaks:
             value_name: "NodeType"
             value_type: "REG_DWORD"
             value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "SMB1"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
       - label: "NetBIOS Only Enabled"
         registry_changes:
           - hive: HKLM
@@ -228,6 +238,16 @@ tweaks:
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
             value_name: "NodeType"
             action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "SMB1"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
       - label: "WPAD Only Enabled"
         registry_changes:
           - hive: HKLM
@@ -254,6 +274,16 @@ tweaks:
             value_name: "NodeType"
             value_type: "REG_DWORD"
             value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "SMB1"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
       - label: "All Enabled (Default)"
         registry_changes:
           - hive: HKLM
@@ -278,6 +308,16 @@ tweaks:
             key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
             value_name: "NodeType"
             action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
+            value_name: "SMB1"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
 
   # NOTE: disable_netbios, disable_llmnr, disable_wpad consolidated into legacy_network_protocols above
 
@@ -314,5 +354,178 @@ tweaks:
           - hive: HKLM
             key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
             value_name: "IRPStackSize"
+            value_type: "REG_DWORD"
+            value: 20
+
+  - id: tcp_optimization
+    name: "TCP Stack Optimization"
+    description: "Optimize TCP parameters for lower latency"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Optimizes TCP/IP stack parameters:
+      - **Window Scaling Only**: Enables TCP window scaling without timestamps (saves 12 bytes per packet)
+      - **Fewer Retransmissions**: Reduces max data retransmissions from 5 to 3 (faster failure detection)
+      - **Lower TTL**: Sets TTL to 64 (standard for Linux/Unix, reduces fingerprinting)
+
+      ## Performance Impact
+      - Slightly lower latency per packet
+      - Faster detection of dead connections
+      - Reduced packet overhead
+
+      ## Recommendation
+      Safe for most users. Beneficial for gaming and real-time applications.
+    options:
+      - label: "TCP Optimized"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "Tcp1323Opts"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpMaxDataRetransmissions"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "DefaultTTL"
+            value_type: "REG_DWORD"
+            value: 64
+      - label: "TCP Default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "Tcp1323Opts"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "TcpMaxDataRetransmissions"
+            value_type: "REG_DWORD"
+            value: 5
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "DefaultTTL"
+            value_type: "REG_DWORD"
+            value: 128
+
+  - id: tcp_fast_open
+    name: "Enable TCP Fast Open"
+    description: "Enable TCP Fast Open for faster connection establishment"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Enables TCP Fast Open (TFO) which allows data to be sent during the TCP handshake, reducing connection setup time by one round trip.
+
+      ## Performance Impact
+      - Faster initial connections to frequently visited websites
+      - Reduces latency by ~1 RTT for repeat connections
+      - Supported by most modern web servers
+
+      ## Recommendation
+      Safe to enable. Most modern networks and servers support TFO.
+    options:
+      - label: "TFO Enabled (Client+Server)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "EnableTFO"
+            value_type: "REG_DWORD"
+            value: 3
+      - label: "TFO Server Only (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+            value_name: "EnableTFO"
+            value_type: "REG_DWORD"
+            value: 2
+
+  - id: dns_cache_optimization
+    name: "Optimize DNS Cache"
+    description: "Reduce DNS negative cache times for faster recovery"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Reduces the time Windows caches failed DNS lookups. By default, a failed DNS lookup is cached for 5-15 minutes, meaning you can't reach a site even after the DNS issue resolves.
+
+      ## Changes
+      - **MaxNegativeCacheTtl**: 900s → 5s (max time to cache NXDOMAIN responses)
+      - **NegativeCacheTime**: 300s → 5s (default negative cache TTL)
+      - **NetFailureCacheTime**: 30s → 5s (network failure cache time)
+
+      ## Recommendation
+      Safe to enable. Faster recovery from temporary DNS failures.
+    options:
+      - label: "Fast DNS Recovery"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
+            value_name: "MaxNegativeCacheTtl"
+            value_type: "REG_DWORD"
+            value: 5
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
+            value_name: "NegativeCacheTime"
+            value_type: "REG_DWORD"
+            value: 5
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
+            value_name: "NetFailureCacheTime"
+            value_type: "REG_DWORD"
+            value: 5
+      - label: "DNS Cache Default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
+            value_name: "MaxNegativeCacheTtl"
+            value_type: "REG_DWORD"
+            value: 900
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
+            value_name: "NegativeCacheTime"
+            value_type: "REG_DWORD"
+            value: 300
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
+            value_name: "NetFailureCacheTime"
+            value_type: "REG_DWORD"
+            value: 30
+
+  - id: qos_reserved_bandwidth
+    name: "Remove QoS Reserved Bandwidth"
+    description: "Remove the 20% bandwidth reservation for QoS"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      By default, Windows reserves up to 20% of network bandwidth for QoS (Quality of Service) operations. This tweak removes that reservation.
+
+      ## Note
+      The reservation is only used when an application specifically requests QoS bandwidth. When no QoS requests are active, full bandwidth is available anyway.
+
+      ## Recommendation
+      Safe to set to 0. Most home users have no QoS-dependent applications.
+    options:
+      - label: "No Reserved Bandwidth"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Psched"
+            value_name: "NonBestEffortLimit"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "20% Reserved (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\Psched"
+            value_name: "NonBestEffortLimit"
             value_type: "REG_DWORD"
             value: 20

@@ -397,3 +397,276 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 3
+
+  - id: disable_bluetooth_services
+    name: "Disable Bluetooth Services"
+    description: "Disable Bluetooth support services"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Bluetooth support services. Only disable if you don't use any Bluetooth devices.
+
+      ## Impact
+      - All Bluetooth devices stop working (headphones, mice, keyboards)
+      - Bluetooth settings disappear from Settings
+
+      ## Recommendation
+      Only disable if you never use Bluetooth. Keep enabled for wireless peripherals.
+    options:
+      - label: "Bluetooth Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\bthserv"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\BluetoothUserService"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+            skip_validation: true
+        service_missing_is_match: true
+      - label: "Bluetooth Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\bthserv"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\BluetoothUserService"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+            skip_validation: true
+
+  - id: disable_alljoyn_router
+    name: "Disable AllJoyn Router"
+    description: "Disable the AllJoyn Router Service for IoT communication"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables AllJoyn Router Service which provides IoT device communication protocol.
+
+      ## When to Disable
+      - You don't use IoT/smart home devices that communicate via AllJoyn
+      - Most consumer devices don't use this protocol
+
+      ## Recommendation
+      Safe to disable for nearly all users.
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\AJRouter"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\AJRouter"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_phone_service
+    name: "Disable Phone Service"
+    description: "Disable Windows Phone Service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Phone Service used for phone call management and Phone Link app.
+
+      ## Impact
+      - Phone Link (Your Phone) may not work
+      - No phone call integration
+
+      ## Recommendation
+      Disable if you don't use Phone Link or phone-PC integration.
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\PhoneSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\PhoneSvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_ssdp_upnp
+    name: "Disable SSDP/UPnP Discovery"
+    description: "Disable network device discovery protocols"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables SSDP (Simple Service Discovery Protocol) and UPnP (Universal Plug and Play) services.
+
+      ## Security Benefit
+      - UPnP has known security vulnerabilities
+      - Prevents automatic port forwarding by malware
+      - Reduces network attack surface
+
+      ## Impact
+      - Smart home device discovery may stop
+      - Some network devices may not be found automatically
+      - Media streaming (DLNA) may be affected
+
+      ## Recommendation
+      Disable for security. Keep enabled if you use DLNA streaming or smart home devices.
+    options:
+      - label: "Discovery Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\SSDPSRV"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\upnphost"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Discovery Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\SSDPSRV"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\upnphost"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_windows_insider
+    name: "Disable Windows Insider Service"
+    description: "Disable Windows Insider Program service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Windows Insider Service which manages Windows Insider preview builds.
+
+      ## Recommendation
+      Safe to disable unless you're enrolled in the Windows Insider Program.
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\wisvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\wisvc"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_diagnostic_services
+    name: "Disable Diagnostic Services"
+    description: "Disable Windows diagnostic tracking services"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables multiple diagnostic-related services:
+      - **DPS**: Diagnostic Policy Service (problem detection)
+      - **WdiServiceHost**: Diagnostic Service Host
+      - **WdiSystemHost**: Diagnostic System Host
+
+      ## Impact
+      - Windows troubleshooters may not work
+      - Automatic problem detection disabled
+      - Reduced background CPU and disk usage
+
+      ## Recommendation
+      Safe for experienced users who troubleshoot manually. Keep enabled if you rely on Windows diagnostics.
+    options:
+      - label: "Diagnostics Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\DPS"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WdiServiceHost"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WdiSystemHost"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Diagnostics Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\DPS"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WdiServiceHost"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\WdiSystemHost"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 3
+
+  - id: disable_maps_broker
+    name: "Disable Maps Broker Service"
+    description: "Disable the Downloaded Maps Manager service"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the Maps Broker service which manages offline map data.
+
+      ## Impact
+      - Offline maps features stop working
+      - Maps app may require internet for all operations
+
+      ## Recommendation
+      Safe to disable if you don't use Windows Maps offline features.
+    options:
+      - label: "Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\MapsBroker"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 4
+      - label: "Enabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Services\\MapsBroker"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 2

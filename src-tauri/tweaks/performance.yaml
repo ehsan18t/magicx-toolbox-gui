@@ -161,6 +161,7 @@ tweaks:
     name: "Disable Background App Permissions"
     description: "Restrict background app permissions to improve performance"
     risk_level: medium
+    requires_admin: true
     requires_reboot: false
     info: |
       ## What This Does
@@ -186,11 +187,21 @@ tweaks:
             value_name: "GlobalUserDisabled"
             value_type: "REG_DWORD"
             value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppPrivacy"
+            value_name: "LetAppsRunInBackground"
+            value_type: "REG_DWORD"
+            value: 2
       - label: "Enabled"
         registry_changes:
           - hive: HKCU
             key: "Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
             value_name: "GlobalUserDisabled"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\AppPrivacy"
+            value_name: "LetAppsRunInBackground"
             value_type: "REG_DWORD"
             value: 0
 
@@ -418,10 +429,30 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 0
+          - hive: HKLM
+            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\SQMLogger"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\CloudExperienceHostOobe"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 0
       - label: "Enabled"
         registry_changes:
           - hive: HKLM
             key: "System\\ControlSet001\\Control\\WMI\\Autologger\\AutoLogger-Diagtrack-Listener"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\SQMLogger"
+            value_name: "Start"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\CloudExperienceHostOobe"
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 1
@@ -553,6 +584,7 @@ tweaks:
     name: "Enable Auto End Hung Tasks"
     description: "Automatically end non-responding tasks during shutdown"
     risk_level: low
+    requires_admin: true
     requires_reboot: false
     info: |
       ## What This Does
@@ -576,6 +608,21 @@ tweaks:
             value_name: "AutoEndTasks"
             value_type: "REG_SZ"
             value: "1"
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "HungAppTimeout"
+            value_type: "REG_SZ"
+            value: "2000"
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "WaitToKillAppTimeout"
+            value_type: "REG_SZ"
+            value: "2000"
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control"
+            value_name: "WaitToKillServiceTimeout"
+            value_type: "REG_SZ"
+            value: "2000"
       - label: "Disabled"
         registry_changes:
           - hive: HKCU
@@ -583,6 +630,21 @@ tweaks:
             value_name: "AutoEndTasks"
             value_type: "REG_SZ"
             value: "0"
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "HungAppTimeout"
+            value_type: "REG_SZ"
+            value: "5000"
+          - hive: HKCU
+            key: "Control Panel\\Desktop"
+            value_name: "WaitToKillAppTimeout"
+            value_type: "REG_SZ"
+            value: "20000"
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control"
+            value_name: "WaitToKillServiceTimeout"
+            value_type: "REG_SZ"
+            value: "5000"
 
   - id: reduce_menu_show_delay
     name: "Reduce Menu Show Delay"
@@ -656,3 +718,433 @@ tweaks:
             value_name: "Start"
             value_type: "REG_DWORD"
             value: 2
+
+  - id: ntfs_optimizations
+    name: "NTFS Optimizations"
+    description: "Optimize NTFS filesystem for SSDs and performance"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Applies three NTFS filesystem optimizations:
+      - **Disable Last Access Timestamp**: Prevents updating the access time on every file read (reduces write overhead)
+      - **Disable 8.3 Short Names**: Stops creating legacy DOS-compatible short filenames (reduces directory overhead)
+      - **Increase NTFS Memory**: Allocates more memory for NTFS paged-pool operations
+
+      ## Performance Impact
+      - Significant reduction in unnecessary disk writes
+      - Faster file creation and directory listing
+      - Particularly beneficial for SSDs
+
+      ## Compatibility
+      - 8.3 names only needed by very old 16-bit DOS programs
+      - Last access timestamps rarely used by modern software
+      - Safe for all modern Windows installations
+
+      ## Recommendation
+      Strongly recommended for SSD systems. Safe for HDD systems too.
+    options:
+      - label: "NTFS Optimized"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "NtfsDisableLastAccessUpdate"
+            value_type: "REG_DWORD"
+            value: 2147483649
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "NtfsDisable8dot3NameCreation"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "NtfsMemoryUsage"
+            value_type: "REG_DWORD"
+            value: 2
+      - label: "NTFS Default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "NtfsDisableLastAccessUpdate"
+            value_type: "REG_DWORD"
+            value: 2147483651
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "NtfsDisable8dot3NameCreation"
+            value_type: "REG_DWORD"
+            value: 2
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\FileSystem"
+            value_name: "NtfsMemoryUsage"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_paging_executive
+    name: "Keep Kernel in RAM"
+    description: "Prevent Windows kernel from being paged to disk"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Keeps kernel-mode drivers and system code in physical RAM instead of allowing them to be paged to the swap file.
+
+      ## Performance Impact
+      - Faster system calls and kernel operations
+      - Eliminates page faults for kernel code
+      - Uses more physical RAM for system code
+
+      ## Requirements
+      - Recommended for systems with 8GB+ RAM
+      - Not recommended for systems with less than 4GB RAM
+
+      ## Recommendation
+      Enable on modern systems with adequate RAM (8GB+).
+    options:
+      - label: "Kernel Locked in RAM"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "DisablePagingExecutive"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Kernel Pageable (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "DisablePagingExecutive"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: process_scheduling
+    name: "Process Scheduling Priority"
+    description: "Configure CPU scheduling for foreground applications"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls how Windows allocates CPU time between foreground and background processes via the Win32PrioritySeparation value.
+
+      ## Options Explained
+      - **Desktop Responsive**: Short variable quanta with maximum foreground boost (value 38/0x26). Best for desktop responsiveness.
+      - **Gaming Optimized**: Short variable quanta with high foreground boost (value 22/0x16). Reduces context switching.
+      - **Server Balanced**: Long fixed quanta with minimal boost (value 24/0x18). Equal time for all processes.
+      - **Windows Default**: Default scheduling (value 2). Long variable quanta.
+
+      ## How It Works
+      The value encodes: [Quantum Length 2bit][Quantum Type 2bit][Foreground Boost 2bit]
+      - Quantum Length: Short (reduces latency) vs Long (reduces overhead)
+      - Quantum Type: Fixed vs Variable
+      - Foreground Boost: How much extra CPU time foreground apps get
+
+      ## Recommendation
+      "Desktop Responsive" for general use, "Gaming Optimized" for gaming.
+    options:
+      - label: "Desktop Responsive"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\PriorityControl"
+            value_name: "Win32PrioritySeparation"
+            value_type: "REG_DWORD"
+            value: 38
+      - label: "Gaming Optimized"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\PriorityControl"
+            value_name: "Win32PrioritySeparation"
+            value_type: "REG_DWORD"
+            value: 22
+      - label: "Server Balanced"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\PriorityControl"
+            value_name: "Win32PrioritySeparation"
+            value_type: "REG_DWORD"
+            value: 24
+      - label: "Windows Default"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\PriorityControl"
+            value_name: "Win32PrioritySeparation"
+            value_type: "REG_DWORD"
+            value: 2
+
+  - id: disable_vbs_hvci
+    name: "Disable VBS / Core Isolation"
+    description: "Disable Virtualization Based Security and Core Isolation"
+    risk_level: critical
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables Virtualization Based Security (VBS) and Hypervisor-enforced Code Integrity (HVCI), also known as "Core Isolation / Memory Integrity" in Windows Security.
+
+      ## Performance Impact
+      - **5-25% FPS improvement** in games (documented by Tom's Hardware, TechPowerUp)
+      - Significant CPU overhead reduction for all workloads
+      - Win11 24H2 enables this by default on new installs
+
+      ## Security Trade-off
+      - Reduces protection against kernel-level exploits
+      - Credential Guard may be affected
+      - Less isolation between user/kernel mode
+
+      ## Recommendation
+      Disable for gaming/performance PCs. Keep enabled on work machines handling sensitive data.
+    options:
+      - label: "VBS/HVCI Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\DeviceGuard"
+            value_name: "EnableVirtualizationBasedSecurity"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
+            value_name: "Enabled"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "VBS/HVCI Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\DeviceGuard"
+            value_name: "EnableVirtualizationBasedSecurity"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
+            value_name: "Enabled"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_spectre_meltdown
+    name: "Disable Spectre/Meltdown Mitigations"
+    description: "Disable CPU vulnerability mitigations for maximum performance"
+    risk_level: critical
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Disables software mitigations for Spectre V2 and Meltdown CPU vulnerabilities.
+
+      ## Performance Impact
+      - **5-30% improvement** on I/O-heavy and syscall-heavy workloads
+      - Database, compilation, and file operations see largest gains
+      - Gaming improvement varies (0-10%)
+
+      ## Security Risk
+      - Exposes system to Spectre/Meltdown side-channel attacks
+      - Only safe on air-gapped or trusted networks
+      - Modern CPUs (12th gen+) have hardware mitigations making this less impactful
+
+      ## Recommendation
+      Only disable on dedicated gaming/benchmark machines. Never on internet-facing servers.
+    options:
+      - label: "Mitigations Disabled"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "FeatureSettingsOverride"
+            value_type: "REG_DWORD"
+            value: 3
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "FeatureSettingsOverrideMask"
+            value_type: "REG_DWORD"
+            value: 3
+      - label: "Mitigations Enabled (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "FeatureSettingsOverride"
+            action: delete_value
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "FeatureSettingsOverrideMask"
+            action: delete_value
+
+  - id: disable_storage_sense
+    name: "Disable Storage Sense"
+    description: "Disable automatic disk cleanup by Storage Sense"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Storage Sense which automatically deletes temporary files, empties recycle bin, and removes old downloads.
+
+      ## Why Disable
+      - Prevents unexpected file deletion
+      - You control when cleanup happens
+      - Avoids accidental removal of needed temp files
+
+      ## Recommendation
+      Disable if you prefer manual disk cleanup control. Keep enabled on low-storage devices.
+    options:
+      - label: "Storage Sense Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\StorageSense\\Parameters\\StoragePolicy"
+            value_name: "01"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Storage Sense Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\StorageSense\\Parameters\\StoragePolicy"
+            value_name: "01"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: font_cache_size
+    name: "Increase Font Cache"
+    description: "Increase font cache size for faster text rendering"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Doubles the font cache from 4MB to 8MB, reducing font rendering delays.
+
+      ## Performance Impact
+      - Faster text rendering in applications with many fonts
+      - Reduces font cache misses
+      - Minimal memory overhead (4MB additional)
+
+      ## Recommendation
+      Safe to enable on all systems. Especially beneficial for design applications.
+    options:
+      - label: "8MB Font Cache"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Font Management"
+            value_name: "Font Cache Max Size"
+            value_type: "REG_DWORD"
+            value: 8
+      - label: "4MB Font Cache (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Font Management"
+            value_name: "Font Cache Max Size"
+            value_type: "REG_DWORD"
+            value: 4
+
+  - id: clear_page_file_shutdown
+    name: "Clear Page File at Shutdown"
+    description: "Clear the virtual memory page file when shutting down"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Overwrites the page file (pagefile.sys) with zeros during shutdown to prevent sensitive data from being recovered.
+
+      ## Security Benefit
+      - Passwords and encryption keys in memory cannot be recovered from page file
+      - Protects against offline attacks on the disk
+
+      ## Trade-off
+      - Shutdown takes longer (proportional to page file size)
+      - No impact on startup or runtime performance
+
+      ## Recommendation
+      Enable for security-sensitive systems. Skip if fast shutdown is a priority.
+    options:
+      - label: "Clear at Shutdown"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "ClearPageFileAtShutdown"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Don't Clear (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "ClearPageFileAtShutdown"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: io_page_lock_limit
+    name: "I/O Page Lock Limit"
+    description: "Configure maximum memory for I/O operations"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: true
+    info: |
+      ## What This Does
+      Controls how much RAM can be locked for I/O operations. Higher values allow more concurrent I/O.
+
+      ## Options Explained
+      - **2MB (16GB+ RAM)**: Maximum I/O throughput for high-memory systems
+      - **960KB (8GB+ RAM)**: Good balance for most modern systems
+      - **Auto (Default)**: Windows manages automatically
+
+      ## Recommendation
+      Use "960KB" for 8-16GB systems, "2MB" for 16GB+. Leave "Auto" if unsure.
+    options:
+      - label: "2MB (16GB+ RAM)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "IoPageLockLimit"
+            value_type: "REG_DWORD"
+            value: 2097152
+      - label: "960KB (8GB+ RAM)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "IoPageLockLimit"
+            value_type: "REG_DWORD"
+            value: 983040
+      - label: "Auto (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
+            value_name: "IoPageLockLimit"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: delivery_optimization_cache
+    name: "Limit Delivery Optimization Cache"
+    description: "Minimize disk space used by Windows Update cache"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Limits the Delivery Optimization cache which stores Windows Update files for potential sharing.
+
+      ## Benefits
+      - Frees disk space used by cached update files
+      - Prevents stale update files from accumulating
+      - Works alongside P2P delivery settings
+
+      ## Recommendation
+      Safe to enable. Update files are re-downloaded when needed.
+    options:
+      - label: "Cache Minimized"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOMaxCacheSize"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOMaxCacheAge"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Cache Default (20% Disk)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOMaxCacheSize"
+            value_type: "REG_DWORD"
+            value: 20
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
+            value_name: "DOMaxCacheAge"
+            value_type: "REG_DWORD"
+            value: 259200

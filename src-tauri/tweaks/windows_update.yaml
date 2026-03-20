@@ -682,3 +682,96 @@ tweaks:
             key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
             value_name: "DOPercentageMaxBackgroundBandwidth"
             action: delete_value
+
+  - id: target_release_version
+    name: "Lock Windows Version"
+    description: "Prevent Windows from upgrading to a newer feature version"
+    risk_level: medium
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Locks your Windows installation to a specific feature version, preventing major upgrades while still receiving security updates.
+
+      ## Use Cases
+      - Stay on a known-stable version
+      - Prevent unwanted feature updates
+      - Control upgrade timing
+
+      ## Important
+      - Security updates still install normally
+      - Only blocks feature/version upgrades
+      - You can change the target version anytime
+
+      ## Recommendation
+      Useful for stability-focused environments. Update the target when ready to upgrade.
+    options:
+      - label: "Lock to 24H2"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "TargetReleaseVersion"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "TargetReleaseVersionInfo"
+            value_type: "REG_SZ"
+            value: "24H2"
+      - label: "Lock to 23H2"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "TargetReleaseVersion"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "TargetReleaseVersionInfo"
+            value_type: "REG_SZ"
+            value: "23H2"
+      - label: "No Lock (Default)"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "TargetReleaseVersion"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKLM
+            key: "Software\\Policies\\Microsoft\\Windows\\WindowsUpdate"
+            value_name: "TargetReleaseVersionInfo"
+            value_type: "REG_SZ"
+            value: ""
+
+  - id: disable_metered_auto_download
+    name: "Block Updates on Metered Connection"
+    description: "Prevent automatic updates over metered network connections"
+    risk_level: low
+    requires_admin: true
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Prevents Windows Update from automatically downloading updates when on a metered network connection.
+
+      ## Benefits
+      - Saves bandwidth on limited data plans
+      - Prevents unexpected data charges
+      - Updates only download on unmetered networks
+
+      ## Recommendation
+      Enable if you use metered connections (mobile hotspot, limited data plans).
+    options:
+      - label: "Block on Metered"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "AllowAutoWindowsUpdateDownloadOverMeteredNetwork"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Allow on Metered"
+        registry_changes:
+          - hive: HKLM
+            key: "Software\\Microsoft\\WindowsUpdate\\UX\\Settings"
+            value_name: "AllowAutoWindowsUpdateDownloadOverMeteredNetwork"
+            value_type: "REG_DWORD"
+            value: 1

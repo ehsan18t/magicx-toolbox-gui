@@ -927,6 +927,16 @@ tweaks:
             value_name: "Flags"
             value_type: "REG_SZ"
             value: "58"
+          - hive: HKCU
+            key: "Control Panel\\Accessibility\\ToggleKeys"
+            value_name: "Flags"
+            value_type: "REG_SZ"
+            value: "58"
+          - hive: HKCU
+            key: "Control Panel\\Accessibility\\Keyboard Response"
+            value_name: "Flags"
+            value_type: "REG_SZ"
+            value: "122"
       - label: "Popup Enabled (Default)"
         registry_changes:
           - hive: HKCU
@@ -934,6 +944,16 @@ tweaks:
             value_name: "Flags"
             value_type: "REG_SZ"
             value: "510"
+          - hive: HKCU
+            key: "Control Panel\\Accessibility\\ToggleKeys"
+            value_name: "Flags"
+            value_type: "REG_SZ"
+            value: "62"
+          - hive: HKCU
+            key: "Control Panel\\Accessibility\\Keyboard Response"
+            value_name: "Flags"
+            value_type: "REG_SZ"
+            value: "126"
 
   # --- Taskbar icons moved from privacy.yaml ---
 
@@ -1037,3 +1057,442 @@ tweaks:
             value_type: "REG_DWORD"
             value: 1
             windows_versions: [10]
+
+  - id: taskbar_search_mode
+    name: "Taskbar Search Mode"
+    description: "Configure the taskbar search display style"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Controls how the Windows Search appears in the taskbar.
+
+      ## Options
+      - **Hidden**: No search visible on taskbar (use Win key to search)
+      - **Icon Only**: Small search icon
+      - **Search Box**: Full search box (default on Windows 10)
+
+      ## Recommendation
+      "Icon Only" saves taskbar space. "Hidden" for maximum space.
+    options:
+      - label: "Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+            value_name: "SearchboxTaskbarMode"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Icon Only"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+            value_name: "SearchboxTaskbarMode"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Search Box (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+            value_name: "SearchboxTaskbarMode"
+            value_type: "REG_DWORD"
+            value: 2
+
+  - id: expand_to_open_folder
+    name: "Expand to Current Folder"
+    description: "Auto-expand navigation pane to current folder in Explorer"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Makes File Explorer's navigation pane automatically expand to show the current folder's location in the tree.
+
+      ## Benefits
+      - Always see where you are in the folder hierarchy
+      - Easier navigation in deep folder structures
+
+      ## Recommendation
+      Enable for power users who navigate complex folder structures.
+    options:
+      - label: "Expand Enabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "NavPaneExpandToCurrentFolder"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Expand Disabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "NavPaneExpandToCurrentFolder"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: explorer_full_path_title
+    name: "Show Full Path in Title Bar"
+    description: "Display the complete folder path in Explorer title bar"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Shows the full folder path in File Explorer's title bar instead of just the folder name.
+
+      ## Benefits
+      - Always know the exact path of the current folder
+      - Useful when multiple folders have the same name
+
+      ## Recommendation
+      Enable for developers and power users.
+    options:
+      - label: "Full Path Shown"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\CabinetState"
+            value_name: "FullPath"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Folder Name Only (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\CabinetState"
+            value_name: "FullPath"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: title_bar_accent_color
+    name: "Title Bar Accent Color"
+    description: "Show accent color on window title bars"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Applies your chosen accent color to window title bars and borders.
+
+      ## What Changes
+      - Active window title bars use your accent color
+      - Window borders show accent color
+      - Easier to identify the active window
+
+      ## Recommendation
+      Personal preference. Makes active windows more visually distinct.
+    options:
+      - label: "Accent Color on Title Bars"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\DWM"
+            value_name: "ColorPrevalence"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "No Accent Color (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\DWM"
+            value_name: "ColorPrevalence"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_transparency
+    name: "Disable Transparency Effects"
+    description: "Disable window transparency and blur effects"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables Acrylic and Mica transparency effects in Windows.
+
+      ## Performance Benefit
+      - Reduces GPU compositing overhead
+      - Slightly faster window rendering
+      - Lower GPU memory usage
+
+      ## Recommendation
+      Disable on low-end hardware or for pure performance focus. Keep for visual aesthetics.
+    options:
+      - label: "Transparency Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+            value_name: "EnableTransparency"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Transparency Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+            value_name: "EnableTransparency"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_toast_notifications
+    name: "Disable Toast Notifications"
+    description: "Disable all popup toast notifications"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables all toast (popup) notifications from appearing in the corner of your screen.
+
+      ## Impact
+      - No notification popups from any app
+      - Notifications still appear in Action Center/Notification Center
+      - Critical system notifications may also be suppressed
+
+      ## Recommendation
+      Disable for a distraction-free environment. Keep if you rely on notification popups.
+    options:
+      - label: "Toast Notifications Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\CurrentVersion\\PushNotifications"
+            value_name: "NoToastApplicationNotification"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Toast Notifications Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Policies\\Microsoft\\Windows\\CurrentVersion\\PushNotifications"
+            value_name: "NoToastApplicationNotification"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: start_menu_layout_win11
+    name: "Start Menu Layout (Windows 11)"
+    description: "Configure Start menu pins vs recommendations ratio"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Controls the layout of the Windows 11 Start menu, specifically the ratio between pinned items and recommendations.
+
+      ## Options
+      - **More Pins**: Maximizes space for pinned apps, minimizes recommendations
+      - **Default**: Standard balance between pins and recommendations
+      - **More Recommendations**: Maximizes space for recommendations
+
+      ## Recommendation
+      "More Pins" for productivity. Fewer distracting recommendations.
+    options:
+      - label: "More Pins"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_Layout"
+            value_type: "REG_DWORD"
+            value: 1
+            windows_versions: [11]
+      - label: "Default Layout"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_Layout"
+            value_type: "REG_DWORD"
+            value: 0
+            windows_versions: [11]
+      - label: "More Recommendations"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_Layout"
+            value_type: "REG_DWORD"
+            value: 2
+            windows_versions: [11]
+
+  - id: disable_balloon_tips
+    name: "Disable Balloon Tips"
+    description: "Disable system tray balloon tip notifications"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the balloon tip popups from the system tray area.
+
+      ## Recommendation
+      Safe to disable for a cleaner desktop experience.
+    options:
+      - label: "Balloon Tips Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "EnableBalloonTips"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Balloon Tips Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "EnableBalloonTips"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_recent_files
+    name: "Disable Recent Files & Folders"
+    description: "Hide recent files and frequent folders in File Explorer"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables tracking and display of recently accessed files and frequently used folders in File Explorer's Quick Access.
+
+      ## Privacy Benefit
+      - Others can't see what files you recently opened
+      - Quick Access shows only pinned items
+      - Start menu recent items also hidden
+
+      ## Recommendation
+      Enable for privacy on shared computers.
+    options:
+      - label: "Recent Files Hidden"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+            value_name: "ShowRecent"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+            value_name: "ShowFrequent"
+            value_type: "REG_DWORD"
+            value: 0
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_TrackDocs"
+            value_type: "REG_DWORD"
+            value: 0
+      - label: "Recent Files Shown (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+            value_name: "ShowRecent"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+            value_name: "ShowFrequent"
+            value_type: "REG_DWORD"
+            value: 1
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "Start_TrackDocs"
+            value_type: "REG_DWORD"
+            value: 1
+
+  - id: disable_aero_shake
+    name: "Disable Aero Shake"
+    description: "Disable shake-to-minimize window behavior"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the "Aero Shake" feature where shaking a window minimizes all other windows.
+
+      ## Why Disable
+      - Prevents accidental minimizing when dragging windows
+      - Common source of frustration for users
+
+      ## Recommendation
+      Disable if you accidentally trigger Aero Shake.
+    options:
+      - label: "Aero Shake Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "DisallowShaking"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Aero Shake Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "DisallowShaking"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: edge_tabs_alt_tab
+    name: "Edge Tabs in Alt+Tab"
+    description: "Configure whether Edge browser tabs appear in Alt+Tab"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Controls whether Microsoft Edge browser tabs appear as separate entries when you press Alt+Tab.
+
+      ## Options
+      - **Windows Only**: Only show open windows (no Edge tabs)
+      - **Windows + All Tabs**: Show all Edge tabs as separate entries (default)
+
+      ## Recommendation
+      "Windows Only" for a cleaner Alt+Tab experience.
+    options:
+      - label: "Windows Only"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "MultiTaskingAltTabFilter"
+            value_type: "REG_DWORD"
+            value: 3
+      - label: "Windows + All Tabs (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "MultiTaskingAltTabFilter"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: disable_desktop_peek
+    name: "Disable Desktop Peek"
+    description: "Disable the desktop preview when hovering over the taskbar edge"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Disables the desktop peek feature where hovering over the far-right corner of the taskbar makes all windows transparent.
+
+      ## Recommendation
+      Disable if you find it distracting or accidentally trigger it.
+    options:
+      - label: "Desktop Peek Disabled"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "DisablePreviewDesktop"
+            value_type: "REG_DWORD"
+            value: 1
+      - label: "Desktop Peek Enabled (Default)"
+        registry_changes:
+          - hive: HKCU
+            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+            value_name: "DisablePreviewDesktop"
+            value_type: "REG_DWORD"
+            value: 0
+
+  - id: mouse_hover_time
+    name: "Reduce Mouse Hover Delay"
+    description: "Speed up tooltip and hover popup appearance"
+    risk_level: low
+    requires_reboot: false
+    info: |
+      ## What This Does
+      Reduces the delay before tooltips and hover popups appear from 400ms to 10ms.
+
+      ## Benefits
+      - Tooltips appear almost instantly
+      - Faster UI response feel
+      - Quicker taskbar thumbnail previews
+
+      ## Recommendation
+      Enable for a snappier desktop feel.
+    options:
+      - label: "Fast Hover (10ms)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseHoverTime"
+            value_type: "REG_SZ"
+            value: "10"
+      - label: "Default Hover (400ms)"
+        registry_changes:
+          - hive: HKCU
+            key: "Control Panel\\Mouse"
+            value_name: "MouseHoverTime"
+            value_type: "REG_SZ"
+            value: "400"
