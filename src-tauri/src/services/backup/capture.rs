@@ -10,7 +10,9 @@ use crate::models::{
     FirewallSnapshot, HostsSnapshot, RegistryAction, RegistryHive, RegistrySnapshot,
     RegistryValueType, SchedulerSnapshot, ServiceSnapshot, TweakDefinition, TweakSnapshot,
 };
-use crate::services::{firewall_service, hosts_service, registry_service, scheduler_service, service_control};
+use crate::services::{
+    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
+};
 use rayon::prelude::*;
 
 /// Capture complete state before applying a tweak option (parallelized)
@@ -374,128 +376,127 @@ pub fn capture_current_state(
     let hosts_entries: Vec<_> = unique_hosts.values().cloned().collect();
     let firewall_names: Vec<_> = unique_firewall.iter().cloned().collect();
 
-    let (
-        (registry_result, (services_result, scheduler_result)),
-        (hosts_result, firewall_result),
-    ) = rayon::join(
-        || {
-            rayon::join(
-                || {
-                    // Parallel registry capture
-                    registry_changes
-                        .par_iter()
-                        .map(|change| {
-                            let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
-                            let (value, existed) = read_registry_value(
-                                &change.hive,
-                                &change.key,
-                                &change.value_name,
-                                &value_type,
-                            )?;
+    let ((registry_result, (services_result, scheduler_result)), (hosts_result, firewall_result)) =
+        rayon::join(
+            || {
+                rayon::join(
+                    || {
+                        // Parallel registry capture
+                        registry_changes
+                            .par_iter()
+                            .map(|change| {
+                                let value_type =
+                                    change.value_type.unwrap_or(RegistryValueType::Dword);
+                                let (value, existed) = read_registry_value(
+                                    &change.hive,
+                                    &change.key,
+                                    &change.value_name,
+                                    &value_type,
+                                )?;
 
-                            Ok(RegistrySnapshot {
-                                hive: change.hive.as_str().to_string(),
-                                key: change.key.clone(),
-                                value_name: change.value_name.clone(),
-                                value_type: if existed {
-                                    Some(value_type.as_str().to_string())
-                                } else {
-                                    None
-                                },
-                                value,
-                                existed,
+                                Ok(RegistrySnapshot {
+                                    hive: change.hive.as_str().to_string(),
+                                    key: change.key.clone(),
+                                    value_name: change.value_name.clone(),
+                                    value_type: if existed {
+                                        Some(value_type.as_str().to_string())
+                                    } else {
+                                        None
+                                    },
+                                    value,
+                                    existed,
+                                })
                             })
-                        })
-                        .collect::<Result<Vec<_>, Error>>()
-                },
-                || {
-                    rayon::join(
-                        || {
-                            // Parallel service capture
-                            service_names
-                                .par_iter()
-                                .map(|name| capture_service_state(name))
-                                .collect::<Result<Vec<_>, Error>>()
-                        },
-                        || {
-                            // Scheduler capture
-                            let mut snapshots = Vec::new();
-                            let mut captured_tasks_set: HashSet<String> = HashSet::new();
+                            .collect::<Result<Vec<_>, Error>>()
+                    },
+                    || {
+                        rayon::join(
+                            || {
+                                // Parallel service capture
+                                service_names
+                                    .par_iter()
+                                    .map(|name| capture_service_state(name))
+                                    .collect::<Result<Vec<_>, Error>>()
+                            },
+                            || {
+                                // Scheduler capture
+                                let mut snapshots = Vec::new();
+                                let mut captured_tasks_set: HashSet<String> = HashSet::new();
 
-                            for (task_path, pattern) in &unique_task_patterns {
-                                if let Ok(matching_tasks) =
-                                    scheduler_service::find_tasks_by_pattern(task_path, pattern)
-                                {
-                                    for task in matching_tasks {
-                                        let task_id = format!("{}\\{}", task_path, task.name);
-                                        if !captured_tasks_set.contains(&task_id) {
-                                            captured_tasks_set.insert(task_id);
-                                            snapshots.push(SchedulerSnapshot {
-                                                task_path: task_path.to_string(),
-                                                task_name: task.name.clone(),
-                                                original_state: task.state.as_str().to_string(),
-                                            });
+                                for (task_path, pattern) in &unique_task_patterns {
+                                    if let Ok(matching_tasks) =
+                                        scheduler_service::find_tasks_by_pattern(task_path, pattern)
+                                    {
+                                        for task in matching_tasks {
+                                            let task_id = format!("{}\\{}", task_path, task.name);
+                                            if !captured_tasks_set.contains(&task_id) {
+                                                captured_tasks_set.insert(task_id);
+                                                snapshots.push(SchedulerSnapshot {
+                                                    task_path: task_path.to_string(),
+                                                    task_name: task.name.clone(),
+                                                    original_state: task.state.as_str().to_string(),
+                                                });
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            for (task_path, task_name) in &unique_tasks {
-                                let task_id = format!("{}\\{}", task_path, task_name);
-                                if !captured_tasks_set.contains(&task_id) {
-                                    captured_tasks_set.insert(task_id);
-                                    match capture_scheduler_state(task_path, task_name) {
-                                        Ok(task_snapshot) => snapshots.push(task_snapshot),
-                                        Err(e) => {
-                                            log::debug!(
+                                for (task_path, task_name) in &unique_tasks {
+                                    let task_id = format!("{}\\{}", task_path, task_name);
+                                    if !captured_tasks_set.contains(&task_id) {
+                                        captured_tasks_set.insert(task_id);
+                                        match capture_scheduler_state(task_path, task_name) {
+                                            Ok(task_snapshot) => snapshots.push(task_snapshot),
+                                            Err(e) => {
+                                                log::debug!(
                                                 "Could not capture state for task {}\\{}: {} (may not exist)",
                                                 task_path,
                                                 task_name,
                                                 e
                                             );
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            Ok::<_, Error>(snapshots)
-                        },
-                    )
-                },
-            )
-        },
-        || {
-            rayon::join(
-                || {
-                    // Hosts capture
-                    hosts_entries
-                        .iter()
-                        .map(|(ip, domain)| {
-                            let existed = hosts_service::entry_exists(ip, domain)?;
-                            Ok(HostsSnapshot {
-                                ip: ip.to_string(),
-                                domain: domain.to_string(),
-                                existed,
+                                Ok::<_, Error>(snapshots)
+                            },
+                        )
+                    },
+                )
+            },
+            || {
+                rayon::join(
+                    || {
+                        // Hosts capture
+                        hosts_entries
+                            .iter()
+                            .map(|(ip, domain)| {
+                                let existed = hosts_service::entry_exists(ip, domain)?;
+                                Ok(HostsSnapshot {
+                                    ip: ip.to_string(),
+                                    domain: domain.to_string(),
+                                    existed,
+                                })
                             })
-                        })
-                        .collect::<Result<Vec<_>, Error>>()
-                },
-                || {
-                    // Firewall capture
-                    firewall_names
-                        .iter()
-                        .map(|name| {
-                            let existed = firewall_service::rule_exists(name)?;
-                            Ok(FirewallSnapshot {
-                                name: name.clone(),
-                                existed,
+                            .collect::<Result<Vec<_>, Error>>()
+                    },
+                    || {
+                        // Firewall capture
+                        firewall_names
+                            .iter()
+                            .map(|name| {
+                                let existed = firewall_service::rule_exists(name)?;
+                                Ok(FirewallSnapshot {
+                                    name: name.clone(),
+                                    existed,
+                                })
                             })
-                        })
-                        .collect::<Result<Vec<_>, Error>>()
-                },
-            )
-        },
-    );
+                            .collect::<Result<Vec<_>, Error>>()
+                    },
+                )
+            },
+        );
 
     // Add results to snapshot
     for reg in registry_result? {

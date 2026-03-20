@@ -952,11 +952,7 @@ impl HostsChange {
         let location = format!("option '{}' hosts change", option_label);
 
         if self.ip.trim().is_empty() {
-            ctx.tweak_error(
-                file,
-                tweak_id,
-                format!("{}: ip cannot be empty", location),
-            );
+            ctx.tweak_error(file, tweak_id, format!("{}: ip cannot be empty", location));
         }
         if self.domain.trim().is_empty() {
             ctx.tweak_error(

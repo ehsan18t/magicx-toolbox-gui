@@ -406,8 +406,10 @@ fn inspect_firewall_changes(option: &TweakOption) -> Result<Vec<FirewallMismatch
 
     for change in &option.firewall_changes {
         let exists = firewall_service::rule_exists(&change.name)?;
-        let expected_exists =
-            matches!(change.operation, crate::models::tweak::FirewallOperation::Create);
+        let expected_exists = matches!(
+            change.operation,
+            crate::models::tweak::FirewallOperation::Create
+        );
         let is_match = exists == expected_exists;
 
         let description = if expected_exists {

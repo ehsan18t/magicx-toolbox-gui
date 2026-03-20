@@ -164,5 +164,3 @@ pub fn delete_firewall_rule(name: &str) -> Result<(), Error> {
     log::info!("Deleted firewall rule: {}", name);
     Ok(())
 }
-
-

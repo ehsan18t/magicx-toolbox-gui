@@ -157,8 +157,9 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
             if let Some(next_line) = lines.get(i + 1) {
                 let next_trimmed = next_line.trim();
                 if !next_trimmed.is_empty() && !next_trimmed.starts_with('#') {
-                    let parts: Vec<&str> =
-                        next_trimmed.splitn(2, |c: char| c.is_whitespace()).collect();
+                    let parts: Vec<&str> = next_trimmed
+                        .splitn(2, |c: char| c.is_whitespace())
+                        .collect();
                     if parts.len() >= 2 {
                         let line_ip = parts[0];
                         let line_domain = parts[1].split_whitespace().next().unwrap_or("");
@@ -203,4 +204,3 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
 
     Ok(())
 }
-

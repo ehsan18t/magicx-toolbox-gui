@@ -9,7 +9,9 @@ use crate::error::Error;
 use crate::models::{
     RegistryAction, RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState,
 };
-use crate::services::{firewall_service, hosts_service, registry_service, scheduler_service, service_control};
+use crate::services::{
+    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
+};
 use rayon::prelude::*;
 use std::fs;
 
@@ -478,8 +480,10 @@ fn check_firewall_matches(
 
     for change in validatable_firewall {
         let exists = firewall_service::rule_exists(&change.name)?;
-        let expected_exists =
-            matches!(change.operation, crate::models::tweak::FirewallOperation::Create);
+        let expected_exists = matches!(
+            change.operation,
+            crate::models::tweak::FirewallOperation::Create
+        );
         if exists != expected_exists {
             return Ok(MatchResult::not_matched());
         }
