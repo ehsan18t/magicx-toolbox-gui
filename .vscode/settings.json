@@ -157,5 +157,10 @@
   ],
   "svelte.enable-ts-plugin": true,
   "typescript.tsdk": "node_modules/typescript/lib",
-  "eslint.validate": ["javascript", "typescript", "svelte"]
+  "eslint.validate": ["javascript", "typescript", "svelte"],
+  "chat.mcp.serverSampling": {
+    "magicx-toolbox-gui/.vscode/mcp.json: context-mode": {
+      "allowedModels": ["claude-code/claude-opus-4.6"]
+    }
+  }
 }
