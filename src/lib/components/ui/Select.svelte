@@ -23,16 +23,8 @@
     onchange?: (value: string | number) => void;
   }
 
-  let { value = $bindable(), ...rest }: Props = $props();
-
-  const instanceId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? `select-${crypto.randomUUID()}`
-      : `select-${Math.random().toString(36).slice(2)}`;
-  const listboxId = `${instanceId}-listbox`;
-  const optionId = (opt: Option) => `${instanceId}-option-${String(opt.value)}`;
-
-  const {
+  let {
+    value = $bindable(),
     options,
     placeholder = "Select...",
     pending = false,
@@ -40,7 +32,14 @@
     disabled = false,
     class: className = "",
     onchange,
-  } = rest;
+  }: Props = $props();
+
+  const instanceId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `select-${crypto.randomUUID()}`
+      : `select-${Math.random().toString(36).slice(2)}`;
+  const listboxId = `${instanceId}-listbox`;
+  const optionId = (opt: Option) => `${instanceId}-option-${String(opt.value)}`;
 
   let isOpen = $state(false);
   let triggerEl = $state<HTMLButtonElement | null>(null);
