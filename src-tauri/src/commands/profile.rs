@@ -103,9 +103,9 @@ pub async fn profile_export(
 ) -> Result<(), Error> {
     log::info!("Exporting profile '{}' to '{}'", name, file_path);
 
-    let system_info = system_info_service::get_system_info()?;
-    let windows_version = system_info.windows.version_number();
-    let windows_build: u32 = system_info.windows.build_number.parse().unwrap_or(0);
+    let runtime = system_info_service::get_runtime_context()?;
+    let windows_version = runtime.windows_version();
+    let windows_build = runtime.windows_build();
     let tweaks = tweak_loader::get_tweaks_for_version(windows_version)?;
     let available_tweaks: Vec<TweakDefinition> = tweaks.values().cloned().collect();
 
@@ -135,8 +135,8 @@ pub fn profile_import(
 ) -> Result<(ConfigurationProfile, ProfileValidation), Error> {
     log::info!("Importing profile from '{}'", file_path);
 
-    let system_info = system_info_service::get_system_info()?;
-    let windows_version = system_info.windows.version_number();
+    let runtime = system_info_service::get_runtime_context()?;
+    let windows_version = runtime.windows_version();
     let tweaks = tweak_loader::get_tweaks_for_version(windows_version)?;
     let available_tweaks: Vec<TweakDefinition> = tweaks.values().cloned().collect();
     let path = PathBuf::from(file_path);
@@ -149,8 +149,8 @@ pub fn profile_import(
 pub fn profile_validate(profile: ConfigurationProfile) -> Result<ProfileValidation, Error> {
     log::info!("Validating profile '{}'", profile.metadata.name);
 
-    let system_info = system_info_service::get_system_info()?;
-    let windows_version = system_info.windows.version_number();
+    let runtime = system_info_service::get_runtime_context()?;
+    let windows_version = runtime.windows_version();
     let tweaks = tweak_loader::get_tweaks_for_version(windows_version)?;
     let available_tweaks: Vec<TweakDefinition> = tweaks.values().cloned().collect();
 
@@ -168,8 +168,8 @@ pub async fn profile_apply(
 ) -> Result<ProfileApplyResult, Error> {
     log::info!("Applying profile '{}'", profile.metadata.name);
 
-    let system_info = system_info_service::get_system_info()?;
-    let windows_version = system_info.windows.version_number();
+    let runtime = system_info_service::get_runtime_context()?;
+    let windows_version = runtime.windows_version();
     let tweaks = tweak_loader::get_tweaks_for_version(windows_version)?;
     let available_tweaks: Vec<TweakDefinition> = tweaks.values().cloned().collect();
 
@@ -279,8 +279,8 @@ fn validate_profile_apply_options(options: &ApplyOptions) -> Result<(), Error> {
 /// Get the current Windows version for the UI.
 #[tauri::command]
 pub fn get_windows_version() -> Result<u32, Error> {
-    let system_info = system_info_service::get_system_info()?;
-    Ok(system_info.windows.version_number())
+    let runtime = system_info_service::get_runtime_context()?;
+    Ok(runtime.windows_version())
 }
 
 #[cfg(test)]

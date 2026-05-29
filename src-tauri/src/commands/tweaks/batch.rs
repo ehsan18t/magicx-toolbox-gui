@@ -19,9 +19,9 @@ pub async fn batch_apply_tweaks(
         operations.len()
     );
 
-    let system_info = system_info_service::get_system_info()?;
+    let runtime = system_info_service::get_runtime_context()?;
 
-    if !system_info.is_admin {
+    if !runtime.is_admin {
         log::warn!("Batch apply requires admin privileges");
         return Err(Error::RequiresAdmin);
     }
@@ -125,9 +125,9 @@ pub async fn batch_apply_tweaks(
 pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Result<TweakResult> {
     log::info!("Command: batch_revert_tweaks({} tweaks)", tweak_ids.len());
 
-    let system_info = system_info_service::get_system_info()?;
+    let runtime = system_info_service::get_runtime_context()?;
 
-    if !system_info.is_admin {
+    if !runtime.is_admin {
         return Err(Error::RequiresAdmin);
     }
 

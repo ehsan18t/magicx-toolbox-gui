@@ -43,8 +43,8 @@ pub async fn apply_tweak(
     }
 
     let option = &tweak.options[option_index];
-    let system_info = system_info_service::get_system_info()?;
-    let version = system_info.windows.version_number();
+    let runtime = system_info_service::get_runtime_context()?;
+    let version = runtime.windows_version();
 
     log::debug!(
         "Applying option '{}' for '{}' on Windows {}",
@@ -54,7 +54,7 @@ pub async fn apply_tweak(
     );
 
     // Check admin if required
-    if tweak.requires_admin && !system_info.is_admin {
+    if tweak.requires_admin && !runtime.is_admin {
         log::warn!("Tweak '{}' requires admin, but running as user", tweak.name);
         return Err(Error::RequiresAdmin);
     }
@@ -228,10 +228,10 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
         Error::NotFound(format!("Tweak '{}'", tweak_id))
     })?;
 
-    let system_info = system_info_service::get_system_info()?;
+    let runtime = system_info_service::get_runtime_context()?;
 
     // Check admin if required
-    if tweak.requires_admin && !system_info.is_admin {
+    if tweak.requires_admin && !runtime.is_admin {
         log::warn!("Tweak '{}' requires admin, but running as user", tweak.name);
         return Err(Error::RequiresAdmin);
     }
