@@ -92,6 +92,45 @@ pub fn read_string(
     }
 }
 
+/// Read a multi-string value from registry
+pub fn read_multi_string(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+) -> Result<Option<Vec<String>>, Error> {
+    log::trace!(
+        "Reading MultiString {}\\{}\\{}",
+        hive_name(hive),
+        key_path,
+        value_name
+    );
+    let hive_key = get_hive_key(hive)?;
+    let reg_key = RegKey::predef(hive_key)
+        .open_subkey_with_flags(key_path, KEY_READ)
+        .map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
+            } else {
+                Error::RegistryAccessDenied(e.to_string())
+            }
+        })?;
+
+    match reg_key.get_value::<Vec<String>, _>(value_name) {
+        Ok(v) => {
+            log::trace!("Read MultiString value with {} entries", v.len());
+            Ok(Some(v))
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            log::trace!("MultiString value not found");
+            Ok(None)
+        }
+        Err(e) => Err(Error::RegistryOperation(format!(
+            "Failed to read MultiString from {}: {}",
+            value_name, e
+        ))),
+    }
+}
+
 /// Read binary data from registry
 pub fn read_binary(
     hive: &RegistryHive,
@@ -245,6 +284,78 @@ pub fn set_string(
 
     log::trace!("String value set successfully");
     Ok(())
+}
+
+/// Set an expandable string value in registry
+pub fn set_expand_string(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    value: &str,
+) -> Result<(), Error> {
+    log::debug!(
+        "Setting ExpandString {}\\{}\\{} = {}",
+        hive_name(hive),
+        key_path,
+        value_name,
+        value
+    );
+    require_write_access(hive)?;
+    let hive_key = get_hive_key(hive)?;
+
+    let (reg_key, _) = RegKey::predef(hive_key)
+        .create_subkey_with_flags(key_path, KEY_WRITE)
+        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+
+    let reg_value = RegValue {
+        vtype: REG_EXPAND_SZ,
+        bytes: encode_utf16_registry_string(value),
+    };
+    reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
+        Error::RegistryOperation(format!("Failed to set ExpandString {}: {}", value_name, e))
+    })?;
+
+    log::trace!("ExpandString value set successfully");
+    Ok(())
+}
+
+/// Set a multi-string value in registry
+pub fn set_multi_string(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    value: &[String],
+) -> Result<(), Error> {
+    log::debug!(
+        "Setting MultiString {}\\{}\\{} ({} entries)",
+        hive_name(hive),
+        key_path,
+        value_name,
+        value.len()
+    );
+    require_write_access(hive)?;
+    let hive_key = get_hive_key(hive)?;
+
+    let (reg_key, _) = RegKey::predef(hive_key)
+        .create_subkey_with_flags(key_path, KEY_WRITE)
+        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+
+    reg_key
+        .set_value(value_name, &value.to_vec())
+        .map_err(|e| {
+            Error::RegistryOperation(format!("Failed to set MultiString {}: {}", value_name, e))
+        })?;
+
+    log::trace!("MultiString value set successfully");
+    Ok(())
+}
+
+fn encode_utf16_registry_string(value: &str) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(u16::to_le_bytes)
+        .collect()
 }
 
 /// Set binary data in registry

@@ -575,8 +575,10 @@ pub fn read_registry_value(
             .map(|v| v.map(|val| serde_json::json!(val))),
         RegistryValueType::Qword => registry_service::read_qword(hive, key, value_name)
             .map(|v| v.map(|val| serde_json::json!(val))),
-        RegistryValueType::MultiString => registry_service::read_string(hive, key, value_name)
-            .map(|v| v.map(|val| serde_json::json!(val))),
+        RegistryValueType::MultiString => {
+            registry_service::read_multi_string(hive, key, value_name)
+                .map(|v| v.map(|val| serde_json::json!(val)))
+        }
     };
 
     match result {

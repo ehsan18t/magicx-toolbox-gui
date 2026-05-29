@@ -11,8 +11,8 @@ use crate::models::{
     ServiceSnapshot, TweakSnapshot,
 };
 use crate::services::{
-    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
-    trusted_installer,
+    firewall_service, hosts_service, registry_service, registry_value, scheduler_service,
+    service_control, trusted_installer,
 };
 
 use super::capture::read_registry_value;
@@ -225,39 +225,8 @@ fn restore_registry_normal(
     value_type: &str,
     value: &serde_json::Value,
 ) -> Result<(), Error> {
-    match value_type {
-        "REG_DWORD" => {
-            if let Some(v) = value.as_u64() {
-                registry_service::set_dword(hive, key, value_name, v as u32)?;
-            }
-        }
-        "REG_SZ" | "REG_EXPAND_SZ" => {
-            if let Some(v) = value.as_str() {
-                registry_service::set_string(hive, key, value_name, v)?;
-            }
-        }
-        "REG_BINARY" => {
-            if let Some(arr) = value.as_array() {
-                let binary: Vec<u8> = arr
-                    .iter()
-                    .filter_map(|v| v.as_u64().map(|u| u as u8))
-                    .collect();
-                registry_service::set_binary(hive, key, value_name, &binary)?;
-            }
-        }
-        "REG_QWORD" => {
-            if let Some(v) = value.as_u64() {
-                registry_service::set_qword(hive, key, value_name, v)?;
-            }
-        }
-        _ => {
-            return Err(Error::BackupFailed(format!(
-                "Unsupported value type: {}",
-                value_type
-            )));
-        }
-    }
-    Ok(())
+    let value_type = parse_value_type(value_type)?;
+    registry_value::write_registry_json_value(hive, key, value_name, &value_type, value, false)
 }
 
 fn restore_registry_with_system(
@@ -267,25 +236,8 @@ fn restore_registry_with_system(
     value_type: &str,
     value: &serde_json::Value,
 ) -> Result<(), Error> {
-    let value_data = match value_type {
-        "REG_DWORD" | "REG_QWORD" => value.as_u64().map(|v| v.to_string()),
-        "REG_SZ" | "REG_EXPAND_SZ" => value.as_str().map(|s| format!("\"{}\"", s)),
-        _ => {
-            log::warn!("SYSTEM elevation not supported for {}", value_type);
-            return Ok(());
-        }
-    };
-
-    if let Some(data) = value_data {
-        trusted_installer::set_registry_value_as_system(
-            hive.as_str(),
-            key,
-            value_name,
-            value_type,
-            &data,
-        )?;
-    }
-    Ok(())
+    let value_type = parse_value_type(value_type)?;
+    registry_value::write_registry_json_value(hive, key, value_name, &value_type, value, true)
 }
 
 fn restore_service_state(snapshot: &ServiceSnapshot, use_system: bool) -> Result<(), Error> {

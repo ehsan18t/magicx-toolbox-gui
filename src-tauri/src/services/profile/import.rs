@@ -14,7 +14,7 @@ use crate::services::backup::{
 };
 use crate::services::profile::archive::read_profile_archive;
 use crate::services::profile::validation::validate_profile;
-use crate::services::{registry_service, scheduler_service, service_control};
+use crate::services::{registry_service, registry_value, scheduler_service, service_control};
 
 /// Import and validate a profile from a file.
 pub fn import_profile(
@@ -315,47 +315,5 @@ fn write_registry_value(
     value_type: &crate::models::RegistryValueType,
     value: &serde_json::Value,
 ) -> Result<(), Error> {
-    use crate::models::RegistryValueType;
-
-    match value_type {
-        RegistryValueType::Dword => {
-            let v = value.as_u64().ok_or_else(|| {
-                Error::ValidationError(format!("Expected u64 for DWORD, got: {}", value))
-            })?;
-            registry_service::set_dword(hive, key, value_name, v as u32)?;
-        }
-        RegistryValueType::String | RegistryValueType::ExpandString => {
-            let v = value.as_str().ok_or_else(|| {
-                Error::ValidationError(format!(
-                    "Expected string for {}, got: {}",
-                    value_type.as_str(),
-                    value
-                ))
-            })?;
-            registry_service::set_string(hive, key, value_name, v)?;
-        }
-        RegistryValueType::Binary => {
-            let arr = value.as_array().ok_or_else(|| {
-                Error::ValidationError(format!("Expected array for BINARY, got: {}", value))
-            })?;
-            let binary: Vec<u8> = arr
-                .iter()
-                .filter_map(|v| v.as_u64().map(|u| u as u8))
-                .collect();
-            registry_service::set_binary(hive, key, value_name, &binary)?;
-        }
-        RegistryValueType::Qword => {
-            let v = value.as_u64().ok_or_else(|| {
-                Error::ValidationError(format!("Expected u64 for QWORD, got: {}", value))
-            })?;
-            registry_service::set_qword(hive, key, value_name, v)?;
-        }
-        RegistryValueType::MultiString => {
-            return Err(Error::ValidationError(
-                "MultiString registry values are not supported".into(),
-            ));
-        }
-    }
-
-    Ok(())
+    registry_value::write_registry_json_value(hive, key, value_name, value_type, value, false)
 }

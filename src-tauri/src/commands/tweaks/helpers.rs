@@ -15,8 +15,8 @@ use crate::models::{
     RegistryAction, RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition, TweakOption,
 };
 use crate::services::{
-    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
-    trusted_installer,
+    firewall_service, hosts_service, registry_service, registry_value, scheduler_service,
+    service_control, trusted_installer,
 };
 use tauri::AppHandle;
 
@@ -170,94 +170,7 @@ fn write_registry_value(
     value: &serde_json::Value,
     use_system: bool,
 ) -> Result<()> {
-    if use_system {
-        return write_registry_value_as_system(hive, key, value_name, value_type, value);
-    }
-
-    match value_type {
-        RegistryValueType::Dword => {
-            let v = value.as_u64().ok_or_else(|| {
-                Error::ValidationError(format!(
-                    "Expected u64 for DWORD registry value, got: {}",
-                    value
-                ))
-            })?;
-            registry_service::set_dword(hive, key, value_name, v as u32)?;
-        }
-        RegistryValueType::String | RegistryValueType::ExpandString => {
-            let v = value.as_str().ok_or_else(|| {
-                Error::ValidationError(format!(
-                    "Expected string for {} registry value, got: {}",
-                    value_type.as_str(),
-                    value
-                ))
-            })?;
-            registry_service::set_string(hive, key, value_name, v)?;
-        }
-        RegistryValueType::Binary => {
-            let arr = value.as_array().ok_or_else(|| {
-                Error::ValidationError(format!(
-                    "Expected array for BINARY registry value, got: {}",
-                    value
-                ))
-            })?;
-            let binary: Vec<u8> = arr
-                .iter()
-                .filter_map(|v| v.as_u64().map(|u| u as u8))
-                .collect();
-            registry_service::set_binary(hive, key, value_name, &binary)?;
-        }
-        RegistryValueType::Qword => {
-            let v = value.as_u64().ok_or_else(|| {
-                Error::ValidationError(format!(
-                    "Expected u64 for QWORD registry value, got: {}",
-                    value
-                ))
-            })?;
-            registry_service::set_qword(hive, key, value_name, v)?;
-        }
-        RegistryValueType::MultiString => {
-            return Err(Error::ValidationError(
-                "MultiString registry values are not supported for write operations".into(),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-/// Write a registry value as SYSTEM
-fn write_registry_value_as_system(
-    hive: &RegistryHive,
-    key: &str,
-    value_name: &str,
-    value_type: &RegistryValueType,
-    value: &serde_json::Value,
-) -> Result<()> {
-    let value_data = match value_type {
-        RegistryValueType::Dword | RegistryValueType::Qword => {
-            value.as_u64().map(|v| v.to_string())
-        }
-        RegistryValueType::String | RegistryValueType::ExpandString => {
-            value.as_str().map(|s| format!("\"{}\"", s))
-        }
-        _ => {
-            log::warn!("SYSTEM elevation not supported for {:?}", value_type);
-            return Ok(());
-        }
-    };
-
-    if let Some(data) = value_data {
-        trusted_installer::set_registry_value_as_system(
-            hive.as_str(),
-            key,
-            value_name,
-            value_type.as_str(),
-            &data,
-        )?;
-    }
-
-    Ok(())
+    registry_value::write_registry_json_value(hive, key, value_name, value_type, value, use_system)
 }
 
 /// Restore a value (guess type from JSON value)

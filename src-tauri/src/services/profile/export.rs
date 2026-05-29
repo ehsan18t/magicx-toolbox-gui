@@ -323,10 +323,10 @@ fn read_registry_value(
                 Err(_) => (false, None),
             },
             RegistryValueType::MultiString => {
-                // Not supported, just check if value exists
-                match registry_service::value_exists(hive, key, value_name) {
-                    Ok(true) => (true, None),
-                    _ => (false, None),
+                match registry_service::read_multi_string(hive, key, value_name) {
+                    Ok(Some(v)) => (true, Some(serde_json::json!(v))),
+                    Ok(None) => (false, None),
+                    Err(_) => (false, None),
                 }
             }
         }

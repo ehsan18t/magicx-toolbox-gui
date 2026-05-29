@@ -10,13 +10,14 @@ use crate::models::{
     RegistryAction, RegistryValueType, TweakDefinition, TweakOption, TweakSnapshot, TweakState,
 };
 use crate::services::{
-    firewall_service, hosts_service, registry_service, scheduler_service, service_control,
+    firewall_service, hosts_service, registry_service, registry_value, scheduler_service,
+    service_control,
 };
 use rayon::prelude::*;
 use std::fs;
 
 use super::capture::read_registry_value;
-use super::helpers::{parse_hive, parse_value_type, task_state_matches, values_match};
+use super::helpers::{parse_hive, parse_value_type, task_state_matches};
 use super::storage::{delete_snapshot, get_applied_tweaks, load_snapshot, snapshot_exists};
 
 // ============================================================================
@@ -239,7 +240,11 @@ fn check_registry_matches(
                     }
 
                     Ok((
-                        values_match(&current_value, &Some(expected_value.clone())),
+                        registry_value::registry_values_match(
+                            value_type,
+                            &current_value,
+                            &Some(expected_value.clone()),
+                        )?,
                         false,
                     ))
                 }
@@ -601,7 +606,7 @@ fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Erro
             let matches = if !reg.existed && !current_exists {
                 true
             } else if reg.existed && current_exists {
-                values_match(&reg.value, &current_value)
+                registry_value::registry_values_match(&value_type, &current_value, &reg.value)?
             } else {
                 false
             };

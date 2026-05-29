@@ -4,6 +4,7 @@ pub mod firewall_service;
 pub mod hosts_service;
 pub mod profile;
 pub mod registry_service;
+pub mod registry_value;
 pub mod scheduler_service;
 pub mod service_control;
 pub mod system_info_service;
