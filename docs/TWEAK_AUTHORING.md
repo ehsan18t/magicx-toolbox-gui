@@ -442,8 +442,8 @@ registry_changes:
 | `REG_QWORD`     | `value: 12345678900`    | 64-bit unsigned (0 to 18446744073709551615) |
 | `REG_SZ`        | `value: "string"`       | String value                                |
 | `REG_EXPAND_SZ` | `value: "%PATH%"`       | Expandable string                           |
-| `REG_BINARY`    | `value: [0, 1, 2, 255]` | Binary data (array of bytes)                |
-| `REG_MULTI_SZ`  | *(Limited support)*     | Multi-string (read-only)                    |
+| `REG_BINARY`    | `value: [0, 1, 2, 255]` or `value: "00,A0,FF"` | Binary data (byte array or hex string)      |
+| `REG_MULTI_SZ`  | `value: ["a", "b"]`     | Multi-string value                          |
 
 #### Registry Examples
 
@@ -1734,7 +1734,7 @@ The tweak system includes a **strict validation engine** that runs at build time
 | `REG_SZ`        | String                               | `value: "text"`                |
 | `REG_EXPAND_SZ` | String (with environment variables)  | `value: "%USERPROFILE%\\path"` |
 | `REG_MULTI_SZ`  | Array of strings                     | `value: ["a", "b"]`            |
-| `REG_BINARY`    | Array of bytes (0-255) or hex string | `value: [0, 1, 255]`           |
+| `REG_BINARY`    | Array of bytes (0-255) or hex string | `value: [0, 1, 255]` or `value: "00,01,FF"` |
 
 ### Common Validation Errors
 
@@ -2008,6 +2008,8 @@ Some changes only work on fresh installs or after updates.
 | String    | REG_SZ        | `value: "text"`        | Plain string                      |
 | String    | REG_EXPAND_SZ | `value: "%PATH%"`      | Expandable environment vars       |
 | Array     | REG_BINARY    | `value: [0, 255, 128]` | Byte array                        |
+| String    | REG_BINARY    | `value: "00,FF,80"`    | Hex byte string                    |
+| Array     | REG_MULTI_SZ  | `value: ["a", "b"]`    | Multi-string                       |
 | Null      | (delete)      | `value: null`          | Deletes the value                 |
 
 ---

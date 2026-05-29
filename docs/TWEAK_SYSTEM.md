@@ -3,7 +3,7 @@
 > Internal reference for the unified option-based tweak system.
 > For YAML authoring guide, see [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md).
 
-*Updated: 2026-03-19*
+*Updated: 2026-05-29*
 
 ---
 
@@ -108,7 +108,7 @@ If no option matches → "System Default" (unmatched state).
 - **First apply**: Capture pre-change state → save as snapshot
 - **Option switch**: Capture current state → apply atomically → rollback on failure
 - **Revert**: Restore from original snapshot → delete snapshot
-- **Stale detection**: On startup, validate all snapshots; remove if externally reverted
+- **Stale detection**: On startup, validate registry, service, scheduler, hosts, and firewall snapshots; remove only when the captured original state is verifiably restored
 
 Snapshots include: registry values, service states, scheduler task states, hosts entries, firewall rules.
 
@@ -116,8 +116,9 @@ Storage: JSON files in app data directory with file locking (fs4).
 
 ### Profile System
 
-- Export: ZIP archive of snapshot files + metadata
-- Import: Validate against current tweak definitions, handle renamed tweaks via `aliases`
+- Export: `.mgx` ZIP archive containing `manifest.json`, `profile.json`, and optional `system_state.json`
+- Import: Validate against current tweak definitions, handle renamed tweaks via `aliases`, and resolve moved options by content hash when possible
+- Apply: Uses the same tweak apply engine as manual apply, including snapshots, rollback, elevation, scheduler patterns, hosts, firewall, and command hooks
 - `aliases` field on TweakDefinition maps old IDs to current ID for migration
 
 ---
@@ -156,6 +157,7 @@ Storage: JSON files in app data directory with file locking (fs4).
 | File                   | Purpose                                      |
 | ---------------------- | -------------------------------------------- |
 | `registry_service.rs`  | Windows Registry read/write operations       |
+| `registry_value.rs`    | Canonical registry value parsing/writing/comparison |
 | `service_control.rs`   | Windows Service query/start/stop/set-startup |
 | `scheduler_service.rs` | Task Scheduler query/enable/disable/delete   |
 | `hosts_service.rs`     | Hosts file entry management                  |

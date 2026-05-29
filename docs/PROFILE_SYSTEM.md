@@ -12,7 +12,7 @@ The Profile System allows users to export their tweak configurations and import 
 | ------------------------- | -------------------------------- | ------------------------------ |
 | **Internal Snapshots**    | Atomic rollback for single tweak | `snapshots/{id}.json` (hidden) |
 | **Configuration Profile** | User's desired tweak selections  | `.mgx` archive file            |
-| **System State Snapshot** | Full system state for validation | Optional in `.mgx` archive     |
+| **System State Snapshot** | Optional export-time reference data | Optional in `.mgx` archive     |
 
 ## Profile Archive Format
 
@@ -22,10 +22,10 @@ Profiles use the `.mgx` extension (ZIP archive):
 profile.mgx
 ├── manifest.json          # Version, checksums, metadata
 ├── profile.json           # Tweak selections
-├── system_state.json      # Optional: state at export time
-└── signatures/
-    └── sha256.txt         # Integrity verification
+└── system_state.json      # Optional: state at export time
 ```
+
+The manifest stores SHA-256 checksums for archive integrity checks. Profiles are not signed; integrity checks detect accidental corruption or archive edits, not trust in an untrusted profile source.
 
 ## Schema Versioning
 
@@ -53,8 +53,10 @@ Before applying a profile, the system validates:
 1. **Tweak Existence**: Does the tweak ID still exist? (with alias fallback)
 2. **Option Validity**: Is the selected option index valid? (with content-hash fallback)
 3. **Windows Compatibility**: Does this tweak apply to the target OS version?
-4. **Permission Requirements**: Does the user have necessary privileges?
+4. **Permission Requirements**: Does the user have necessary administrator privileges?
 5. **Resource Availability**: Do required services/tasks exist?
+
+Option content hashes cover the full option definition. If an option moved to another array index, validation resolves it by hash and warns. Legacy hashes from older exports are also accepted where possible.
 
 ## User Workflows
 
@@ -96,7 +98,7 @@ const validation = await validateProfileFile("/path/to/profile.mgx");
 // Apply with options
 const result = await applyProfile(profileData, {
   skipTweakIds: ["incompatible_tweak"],
-  createRestorePoint: true
+  skipAlreadyApplied: true
 });
 ```
 
@@ -104,8 +106,9 @@ const result = await applyProfile(profileData, {
 
 - Profiles only contain tweak IDs and option indices
 - Actual system changes come from the app's tweak definitions
-- SHA-256 checksums detect tampering
-- Same permission model as manual tweak application
+- SHA-256 checksums verify archive integrity
+- Profile apply uses the same tweak apply engine as manual apply, including snapshots, rollback, elevation, scheduler patterns, hosts, firewall, and command hooks
+- Windows restore point creation is not implemented yet; requests for that reserved option are rejected
 
 ---
 
@@ -150,6 +153,8 @@ See source files:
 - `src-tauri/src/services/profile/` - Core logic
 - `src-tauri/src/commands/profile.rs` - Tauri commands
 - `src/lib/components/profile/` - UI components
+
+`system_state.json` is currently exported and checksum-verified when included, but profile validation primarily uses live system state and current tweak definitions.
 
 ---
 
