@@ -220,10 +220,6 @@ fn validate_selection(
     // Build change preview
     let changes = build_change_details(target_option, windows_version);
 
-    // Check if this tweak has commands that will be skipped during profile apply
-    let has_skipped_commands =
-        !target_option.pre_commands.is_empty() || !target_option.post_commands.is_empty();
-
     let change_preview = TweakChangePreview {
         tweak_id: tweak.id.clone(),
         original_tweak_id: if tweak.id != selection.tweak_id {
@@ -241,7 +237,7 @@ fn validate_selection(
         skip_reason: None,
         risk_level: tweak.risk_level.as_str().to_string(),
         already_applied,
-        has_skipped_commands,
+        has_skipped_commands: false,
         changes,
     };
 
@@ -399,4 +395,78 @@ fn build_change_details(
     }
 
     changes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{
+        ConfigurationProfile, ProfileMetadata, RiskLevel, TweakDefinition, TweakOption,
+        TweakSelection,
+    };
+
+    #[test]
+    fn command_backed_profile_tweaks_are_not_marked_as_skipped() {
+        let tweak = TweakDefinition {
+            id: "command_tweak".to_string(),
+            name: "Command tweak".to_string(),
+            description: "Uses command hooks".to_string(),
+            info: None,
+            aliases: Vec::new(),
+            risk_level: RiskLevel::Low,
+            requires_admin: false,
+            requires_system: false,
+            requires_ti: false,
+            requires_reboot: false,
+            force_dropdown: false,
+            options: vec![
+                TweakOption {
+                    label: "Apply".to_string(),
+                    pre_commands: vec!["echo apply".to_string()],
+                    ..empty_option()
+                },
+                TweakOption {
+                    label: "Restore".to_string(),
+                    post_powershell: vec!["Write-Output restore".to_string()],
+                    ..empty_option()
+                },
+            ],
+            category_id: "test".to_string(),
+        };
+        let metadata =
+            ProfileMetadata::new("Test".to_string(), None, "3.0.0".to_string(), 11, 22631);
+        let profile = ConfigurationProfile::new(
+            metadata,
+            vec![TweakSelection {
+                tweak_id: "command_tweak".to_string(),
+                selected_option_index: 0,
+                selected_option_label: "Apply".to_string(),
+                option_content_hash: None,
+                category_id: Some("test".to_string()),
+            }],
+        );
+
+        let validation = validate_profile(&profile, &[tweak], 11).unwrap();
+
+        assert!(validation.is_valid);
+        assert!(!validation.preview[0].has_skipped_commands);
+    }
+
+    fn empty_option() -> TweakOption {
+        TweakOption {
+            label: String::new(),
+            registry_changes: Vec::new(),
+            service_changes: Vec::new(),
+            scheduler_changes: Vec::new(),
+            hosts_changes: Vec::new(),
+            firewall_changes: Vec::new(),
+            pre_commands: Vec::new(),
+            post_commands: Vec::new(),
+            pre_powershell: Vec::new(),
+            post_powershell: Vec::new(),
+            registry_missing_is_match: false,
+            service_missing_is_match: false,
+            scheduler_missing_is_match: false,
+        }
+    }
 }

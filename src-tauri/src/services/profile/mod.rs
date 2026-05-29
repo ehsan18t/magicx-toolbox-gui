@@ -1,6 +1,6 @@
 //! Profile Service Module
 //!
-//! Handles configuration profile export, import, validation, and application.
+//! Handles configuration profile export, import, and validation.
 
 pub mod archive;
 mod export;
@@ -14,7 +14,7 @@ use crate::models::TweakOption;
 
 // Re-export main functions
 pub use export::export_profile;
-pub use import::{apply_profile, import_profile};
+pub use import::import_profile;
 pub use validation::validate_profile;
 
 /// Compute a hash of option content for schema change detection.

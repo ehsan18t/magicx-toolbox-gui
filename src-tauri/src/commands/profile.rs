@@ -7,11 +7,13 @@ use tauri::Manager;
 
 use crate::error::Error;
 use crate::models::{
-    ApplyOptions, ConfigurationProfile, ExportOptions, ProfileApplyResult, ProfileValidation,
-    TweakDefinition,
+    ApplyFailure, ApplyOptions, ConfigurationProfile, ExportOptions, ProfileApplyResult,
+    ProfileValidation, TweakDefinition,
 };
-use crate::services::profile::{apply_profile, export_profile, import_profile, validate_profile};
+use crate::services::profile::{export_profile, import_profile, validate_profile};
 use crate::services::{system_info_service, tweak_loader};
+
+use super::tweaks::apply::apply_tweak;
 
 /// Get the profile directory for storing/reading profiles.
 /// Returns an error if the app data directory cannot be determined.
@@ -157,7 +159,8 @@ pub fn profile_validate(profile: ConfigurationProfile) -> Result<ProfileValidati
 
 /// Apply a validated profile to the system.
 #[tauri::command]
-pub fn profile_apply(
+pub async fn profile_apply(
+    app_handle: tauri::AppHandle,
     profile: ConfigurationProfile,
     skip_tweak_ids: Vec<String>,
     skip_already_applied: bool,
@@ -176,7 +179,96 @@ pub fn profile_apply(
         create_restore_point,
     };
 
-    apply_profile(&profile, &available_tweaks, windows_version, &options)
+    let validation = validate_profile(&profile, &available_tweaks, windows_version)?;
+    let mut applied_count = 0;
+    let mut skipped_count = 0;
+    let mut failures = Vec::new();
+    let mut reboot_required_tweaks = Vec::new();
+
+    if options.create_restore_point {
+        log::warn!(
+            "Profile apply requested create_restore_point, but Windows restore point creation is not implemented"
+        );
+    }
+
+    for preview in &validation.preview {
+        if options.skip_tweak_ids.contains(&preview.tweak_id) {
+            log::debug!("Skipping tweak '{}' (in skip list)", preview.tweak_id);
+            skipped_count += 1;
+            continue;
+        }
+
+        if preview.already_applied && options.skip_already_applied {
+            log::debug!(
+                "Skipping tweak '{}' (already at target state)",
+                preview.tweak_id
+            );
+            skipped_count += 1;
+            continue;
+        }
+
+        if !preview.applicable {
+            log::debug!(
+                "Skipping tweak '{}' (not applicable: {:?})",
+                preview.tweak_id,
+                preview.skip_reason
+            );
+            skipped_count += 1;
+            continue;
+        }
+
+        let tweak = match available_tweaks.iter().find(|t| t.id == preview.tweak_id) {
+            Some(tweak) => tweak,
+            None => {
+                log::warn!("Tweak '{}' not found during apply", preview.tweak_id);
+                skipped_count += 1;
+                continue;
+            }
+        };
+
+        match apply_tweak(
+            app_handle.clone(),
+            preview.tweak_id.clone(),
+            preview.target_option_index,
+        )
+        .await
+        {
+            Ok(result) if result.success => {
+                applied_count += 1;
+                if result.requires_reboot {
+                    reboot_required_tweaks.push(preview.tweak_id.clone());
+                }
+            }
+            Ok(result) => {
+                failures.push(ApplyFailure {
+                    tweak_id: tweak.id.clone(),
+                    tweak_name: tweak.name.clone(),
+                    error: result.message,
+                    was_rolled_back: true,
+                });
+            }
+            Err(error) => {
+                failures.push(ApplyFailure {
+                    tweak_id: tweak.id.clone(),
+                    tweak_name: tweak.name.clone(),
+                    error: error.to_string(),
+                    was_rolled_back: true,
+                });
+            }
+        }
+    }
+
+    let failed_count = failures.len();
+
+    Ok(ProfileApplyResult {
+        success: failed_count == 0,
+        applied_count,
+        skipped_count,
+        failed_count,
+        failures,
+        requires_reboot: !reboot_required_tweaks.is_empty(),
+        reboot_required_tweaks,
+    })
 }
 
 /// Get the current Windows version for the UI.
