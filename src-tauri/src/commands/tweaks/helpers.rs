@@ -40,7 +40,10 @@ pub fn run_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
         match trusted_installer::run_command_as_ti(cmd) {
             Ok(exit_code) => {
                 if exit_code != 0 {
-                    log::warn!("Command (TI) returned exit code {}: {}", exit_code, cmd);
+                    return Err(Error::CommandExecution(format!(
+                        "Command (TI) failed with exit code {}: {}",
+                        exit_code, cmd
+                    )));
                 }
                 Ok(())
             }
@@ -53,7 +56,10 @@ pub fn run_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
         match trusted_installer::run_command_as_system(cmd) {
             Ok(exit_code) => {
                 if exit_code != 0 {
-                    log::warn!("Command (SYSTEM) returned exit code {}: {}", exit_code, cmd);
+                    return Err(Error::CommandExecution(format!(
+                        "Command (SYSTEM) failed with exit code {}: {}",
+                        exit_code, cmd
+                    )));
                 }
                 Ok(())
             }
@@ -72,11 +78,11 @@ pub fn run_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
             .map_err(|e| Error::CommandExecution(e.to_string()))?;
 
         if !output.status.success() {
-            log::warn!(
+            return Err(Error::CommandExecution(format!(
                 "Command failed with exit code {}: {}",
                 output.status.code().unwrap_or(-1),
                 String::from_utf8_lossy(&output.stderr)
-            );
+            )));
         }
         Ok(())
     }
@@ -98,7 +104,10 @@ pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Resu
         match trusted_installer::run_powershell_as_ti(cmd) {
             Ok(exit_code) => {
                 if exit_code != 0 {
-                    log::warn!("PowerShell (TI) returned exit code {}", exit_code);
+                    return Err(Error::CommandExecution(format!(
+                        "PowerShell (TI) failed with exit code {}",
+                        exit_code
+                    )));
                 }
                 Ok(())
             }
@@ -111,7 +120,10 @@ pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Resu
         match trusted_installer::run_powershell_as_system(cmd) {
             Ok(exit_code) => {
                 if exit_code != 0 {
-                    log::warn!("PowerShell (SYSTEM) returned exit code {}", exit_code);
+                    return Err(Error::CommandExecution(format!(
+                        "PowerShell (SYSTEM) failed with exit code {}",
+                        exit_code
+                    )));
                 }
                 Ok(())
             }
@@ -124,16 +136,15 @@ pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Resu
         match trusted_installer::run_powershell(cmd) {
             Ok(ps_result) => {
                 if ps_result.exit_code != 0 {
-                    log::warn!(
-                        "PowerShell returned exit code {}: {}",
-                        ps_result.exit_code,
-                        ps_result.stderr
-                    );
+                    return Err(Error::CommandExecution(format!(
+                        "PowerShell failed with exit code {}: {}",
+                        ps_result.exit_code, ps_result.stderr
+                    )));
                 }
                 if !ps_result.stdout.is_empty() {
                     log::debug!("PowerShell stdout: {}", ps_result.stdout);
                 }
-                if !ps_result.stderr.is_empty() && ps_result.exit_code != 0 {
+                if !ps_result.stderr.is_empty() {
                     log::debug!("PowerShell stderr: {}", ps_result.stderr);
                 }
                 Ok(())
@@ -1020,4 +1031,23 @@ fn apply_firewall_changes_atomic(app: &AppHandle, option: &TweakOption) -> Resul
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_returns_error_on_nonzero_exit_code() {
+        let err = run_command("exit /b 7", false, false).unwrap_err();
+
+        assert!(err.to_string().contains("exit code 7"));
+    }
+
+    #[test]
+    fn powershell_returns_error_on_nonzero_exit_code() {
+        let err = run_powershell_command("exit 7", false, false).unwrap_err();
+
+        assert!(err.to_string().contains("exit code 7"));
+    }
 }
