@@ -27,7 +27,6 @@
 
   // Options
   let skipAlreadyApplied = $state(true);
-  let createRestorePoint = $state(true);
 
   // Tweaks to skip - use const since we only mutate, never reassign
   const skipTweakIds = new SvelteSet<string>();
@@ -66,7 +65,6 @@
       }
       // Always reset options
       skipAlreadyApplied = true;
-      createRestorePoint = true;
       skipTweakIds.clear();
     }
   });
@@ -175,7 +173,6 @@
     const success = await profileStore.applyProfile({
       skipTweakIds: Array.from(skipTweakIds),
       skipAlreadyApplied,
-      createRestorePoint,
     });
 
     if (!success && profileStore.applyError) {
@@ -417,15 +414,6 @@
           <div class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3">
             <span class="text-sm text-foreground">Skip already-applied tweaks</span>
             <Switch checked={skipAlreadyApplied} onchange={(v) => (skipAlreadyApplied = v)} />
-          </div>
-          <div class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3">
-            <div>
-              <span class="block text-sm text-foreground">Create restore points</span>
-              <span class="text-xs text-foreground-muted"
-                >Backs up current values before applying each tweak for easy undo</span
-              >
-            </div>
-            <Switch checked={createRestorePoint} onchange={(v) => (createRestorePoint = v)} />
           </div>
         </div>
       </div>

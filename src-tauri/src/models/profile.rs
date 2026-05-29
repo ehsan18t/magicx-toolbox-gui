@@ -459,7 +459,8 @@ pub struct ApplyOptions {
     /// Tweak IDs to skip
     #[serde(default)]
     pub skip_tweak_ids: Vec<String>,
-    /// Whether to create a Windows restore point
+    /// Reserved for future Windows restore point support.
+    /// The backend rejects this option until real restore point creation exists.
     #[serde(default)]
     pub create_restore_point: bool,
     /// Whether to skip tweaks already at desired state

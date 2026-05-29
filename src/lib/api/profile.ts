@@ -251,7 +251,7 @@ export async function applyProfile(
     profile,
     skipTweakIds: options?.skipTweakIds ?? [],
     skipAlreadyApplied: options?.skipAlreadyApplied ?? true,
-    createRestorePoint: options?.createRestorePoint ?? true,
+    createRestorePoint: options?.createRestorePoint ?? false,
   });
 }
 

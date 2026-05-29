@@ -178,18 +178,13 @@ pub async fn profile_apply(
         skip_already_applied,
         create_restore_point,
     };
+    validate_profile_apply_options(&options)?;
 
     let validation = validate_profile(&profile, &available_tweaks, windows_version)?;
     let mut applied_count = 0;
     let mut skipped_count = 0;
     let mut failures = Vec::new();
     let mut reboot_required_tweaks = Vec::new();
-
-    if options.create_restore_point {
-        log::warn!(
-            "Profile apply requested create_restore_point, but Windows restore point creation is not implemented"
-        );
-    }
 
     for preview in &validation.preview {
         if options.skip_tweak_ids.contains(&preview.tweak_id) {
@@ -271,9 +266,36 @@ pub async fn profile_apply(
     })
 }
 
+fn validate_profile_apply_options(options: &ApplyOptions) -> Result<(), Error> {
+    if options.create_restore_point {
+        return Err(Error::ProfileError(
+            "Windows restore point creation is not implemented".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Get the current Windows version for the UI.
 #[tauri::command]
 pub fn get_windows_version() -> Result<u32, Error> {
     let system_info = system_info_service::get_system_info()?;
     Ok(system_info.windows.version_number())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_unimplemented_windows_restore_point_option() {
+        let options = ApplyOptions {
+            create_restore_point: true,
+            ..ApplyOptions::default()
+        };
+
+        let err = validate_profile_apply_options(&options).unwrap_err();
+
+        assert!(err.to_string().contains("not implemented"));
+    }
 }
