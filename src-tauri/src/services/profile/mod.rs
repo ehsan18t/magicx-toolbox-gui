@@ -23,9 +23,23 @@ pub use validation::validate_profile;
 /// between when a profile was created and when it's being imported.
 /// Uses first 32 characters (128 bits) for good collision resistance.
 pub fn hash_option_content(option: &TweakOption) -> String {
+    let canonical = serde_json::to_vec(option)
+        .expect("TweakOption serialization for profile hashing should never fail");
+    let mut hasher = Sha256::new();
+    hasher.update(b"profile-option-v2");
+    hasher.update(canonical);
+
+    // Use first 32 characters (128 bits) for good collision resistance
+    hex::encode(hasher.finalize())[..32].to_string()
+}
+
+pub(crate) fn option_content_hash_matches(option: &TweakOption, stored_hash: &str) -> bool {
+    hash_option_content(option) == stored_hash || hash_option_content_legacy(option) == stored_hash
+}
+
+fn hash_option_content_legacy(option: &TweakOption) -> String {
     let mut hasher = Sha256::new();
 
-    // Hash registry changes
     for change in &option.registry_changes {
         hasher.update(change.hive.as_str().as_bytes());
         hasher.update(change.key.as_bytes());
@@ -35,13 +49,11 @@ pub fn hash_option_content(option: &TweakOption) -> String {
         }
     }
 
-    // Hash service changes
     for service in &option.service_changes {
         hasher.update(service.name.as_bytes());
         hasher.update(service.startup.as_str().as_bytes());
     }
 
-    // Hash scheduler changes
     for task in &option.scheduler_changes {
         hasher.update(task.task_path.as_bytes());
         if let Some(ref name) = task.task_name {

@@ -9,14 +9,28 @@ use crate::models::{
     ValidationWarning, WarningCode, PROFILE_SCHEMA_VERSION,
 };
 use crate::services::backup::detect_tweak_state;
-use crate::services::profile::hash_option_content;
-use crate::services::{scheduler_service, service_control};
+use crate::services::profile::option_content_hash_matches;
+use crate::services::{scheduler_service, service_control, system_info_service};
 
 /// Validate a profile against current system state.
 pub fn validate_profile(
     profile: &ConfigurationProfile,
     available_tweaks: &[TweakDefinition],
     windows_version: u32,
+) -> Result<ProfileValidation, Error> {
+    validate_profile_with_admin_state(
+        profile,
+        available_tweaks,
+        windows_version,
+        system_info_service::is_running_as_admin(),
+    )
+}
+
+fn validate_profile_with_admin_state(
+    profile: &ConfigurationProfile,
+    available_tweaks: &[TweakDefinition],
+    windows_version: u32,
+    is_admin: bool,
 ) -> Result<ProfileValidation, Error> {
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
@@ -56,7 +70,7 @@ pub fn validate_profile(
 
     // Validate each selection
     for selection in &profile.selections {
-        match validate_selection(selection, available_tweaks, windows_version) {
+        match validate_selection(selection, available_tweaks, windows_version, is_admin) {
             SelectionResult::Valid {
                 change_preview,
                 selection_warnings,
@@ -106,6 +120,7 @@ fn validate_selection(
     selection: &TweakSelection,
     available_tweaks: &[TweakDefinition],
     windows_version: u32,
+    is_admin: bool,
 ) -> SelectionResult {
     let mut selection_warnings = Vec::new();
 
@@ -156,38 +171,21 @@ fn validate_selection(
         };
     }
 
-    // Resolve option index
-    let resolved_option_index = if selection.selected_option_index < tweak.options.len() {
-        selection.selected_option_index
-    } else {
+    if (tweak.requires_admin || tweak.requires_system || tweak.requires_ti) && !is_admin {
         return SelectionResult::Invalid {
             error: ValidationError {
                 tweak_id: selection.tweak_id.clone(),
-                code: ErrorCode::InvalidOptionIndex,
-                message: format!(
-                    "Option index {} is out of bounds (tweak has {} options)",
-                    selection.selected_option_index,
-                    tweak.options.len()
-                ),
+                code: ErrorCode::InsufficientPermissions,
+                message: format!("Tweak '{}' requires administrator privileges", tweak.name),
             },
         };
-    };
-
-    // Check for schema changes using option content hash
-    let target_option = &tweak.options[resolved_option_index];
-    if let Some(ref stored_hash) = selection.option_content_hash {
-        let current_hash = hash_option_content(target_option);
-        if stored_hash != &current_hash {
-            selection_warnings.push(ValidationWarning {
-                tweak_id: selection.tweak_id.clone(),
-                code: WarningCode::TweakSchemaChanged,
-                message: format!(
-                    "Option '{}' for tweak '{}' has changed since profile was created",
-                    target_option.label, tweak.name
-                ),
-            });
-        }
     }
+
+    let resolved_option_index =
+        match resolve_option_index(selection, tweak, &mut selection_warnings) {
+            Ok(index) => index,
+            Err(error) => return SelectionResult::Invalid { error },
+        };
 
     // Get current tweak state
     let current_state = detect_tweak_state(tweak, windows_version).ok();
@@ -245,6 +243,67 @@ fn validate_selection(
         change_preview: Box::new(change_preview),
         selection_warnings,
     }
+}
+
+fn resolve_option_index(
+    selection: &TweakSelection,
+    tweak: &TweakDefinition,
+    warnings: &mut Vec<ValidationWarning>,
+) -> Result<usize, ValidationError> {
+    let index_in_bounds = selection.selected_option_index < tweak.options.len();
+
+    if let Some(stored_hash) = selection.option_content_hash.as_deref() {
+        if index_in_bounds
+            && option_content_hash_matches(
+                &tweak.options[selection.selected_option_index],
+                stored_hash,
+            )
+        {
+            return Ok(selection.selected_option_index);
+        }
+
+        if let Some((hash_index, option)) = tweak
+            .options
+            .iter()
+            .enumerate()
+            .find(|(_, option)| option_content_hash_matches(option, stored_hash))
+        {
+            warnings.push(ValidationWarning {
+                tweak_id: selection.tweak_id.clone(),
+                code: WarningCode::OptionResolvedByHash,
+                message: format!(
+                    "Option '{}' for tweak '{}' was resolved by content hash",
+                    option.label, tweak.name
+                ),
+            });
+            return Ok(hash_index);
+        }
+
+        if index_in_bounds {
+            let target_option = &tweak.options[selection.selected_option_index];
+            warnings.push(ValidationWarning {
+                tweak_id: selection.tweak_id.clone(),
+                code: WarningCode::TweakSchemaChanged,
+                message: format!(
+                    "Option '{}' for tweak '{}' has changed since profile was created",
+                    target_option.label, tweak.name
+                ),
+            });
+            return Ok(selection.selected_option_index);
+        }
+    } else if index_in_bounds {
+        return Ok(selection.selected_option_index);
+    }
+
+    Err(ValidationError {
+        tweak_id: selection.tweak_id.clone(),
+        code: ErrorCode::InvalidOptionIndex,
+        message: format!(
+            "Option index {} is out of bounds (tweak has {} options)",
+            selection.selected_option_index,
+            tweak.options.len()
+        ),
+    })
 }
 
 fn validate_option_resources(
@@ -401,9 +460,10 @@ fn build_change_details(
 mod tests {
     use super::*;
     use crate::models::{
-        ConfigurationProfile, ProfileMetadata, RiskLevel, TweakDefinition, TweakOption,
-        TweakSelection,
+        ConfigurationProfile, ProfileMetadata, RegistryAction, RegistryChange, RegistryHive,
+        RegistryValueType, RiskLevel, TweakDefinition, TweakOption, TweakSelection,
     };
+    use crate::services::profile::hash_option_content;
 
     #[test]
     fn command_backed_profile_tweaks_are_not_marked_as_skipped() {
@@ -452,6 +512,56 @@ mod tests {
         assert!(!validation.preview[0].has_skipped_commands);
     }
 
+    #[test]
+    fn moved_option_is_resolved_by_content_hash() {
+        let target_option = option_with_registry_value("Target", "TargetValue", 1);
+        let stored_hash = hash_option_content(&target_option);
+        let tweak = tweak_with_options(vec![
+            option_with_registry_value("Other", "OtherValue", 2),
+            target_option,
+        ]);
+        let profile = profile_with_selection(TweakSelection {
+            tweak_id: "profile_tweak".to_string(),
+            selected_option_index: 0,
+            selected_option_label: "Target".to_string(),
+            option_content_hash: Some(stored_hash),
+            category_id: Some("test".to_string()),
+        });
+
+        let validation = validate_profile_with_admin_state(&profile, &[tweak], 11, true).unwrap();
+
+        assert!(validation.is_valid);
+        assert_eq!(validation.preview[0].target_option_index, 1);
+        assert!(validation
+            .warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::OptionResolvedByHash));
+    }
+
+    #[test]
+    fn admin_required_tweak_is_invalid_without_admin_privileges() {
+        let mut tweak = tweak_with_options(vec![
+            option_with_registry_value("Apply", "AdminValue", 1),
+            option_with_registry_value("Restore", "AdminValue", 0),
+        ]);
+        tweak.requires_admin = true;
+        let profile = profile_with_selection(TweakSelection {
+            tweak_id: "profile_tweak".to_string(),
+            selected_option_index: 0,
+            selected_option_label: "Apply".to_string(),
+            option_content_hash: None,
+            category_id: Some("test".to_string()),
+        });
+
+        let validation = validate_profile_with_admin_state(&profile, &[tweak], 11, false).unwrap();
+
+        assert!(!validation.is_valid);
+        assert_eq!(
+            validation.errors[0].code,
+            ErrorCode::InsufficientPermissions
+        );
+    }
+
     fn empty_option() -> TweakOption {
         TweakOption {
             label: String::new(),
@@ -467,6 +577,47 @@ mod tests {
             registry_missing_is_match: false,
             service_missing_is_match: false,
             scheduler_missing_is_match: false,
+        }
+    }
+
+    fn profile_with_selection(selection: TweakSelection) -> ConfigurationProfile {
+        let metadata =
+            ProfileMetadata::new("Test".to_string(), None, "3.0.0".to_string(), 11, 22631);
+        ConfigurationProfile::new(metadata, vec![selection])
+    }
+
+    fn tweak_with_options(options: Vec<TweakOption>) -> TweakDefinition {
+        TweakDefinition {
+            id: "profile_tweak".to_string(),
+            name: "Profile tweak".to_string(),
+            description: "Profile validation test tweak".to_string(),
+            info: None,
+            aliases: Vec::new(),
+            risk_level: RiskLevel::Low,
+            requires_admin: false,
+            requires_system: false,
+            requires_ti: false,
+            requires_reboot: false,
+            force_dropdown: false,
+            options,
+            category_id: "test".to_string(),
+        }
+    }
+
+    fn option_with_registry_value(label: &str, value_name: &str, value: u32) -> TweakOption {
+        TweakOption {
+            label: label.to_string(),
+            registry_changes: vec![RegistryChange {
+                hive: RegistryHive::Hkcu,
+                key: "Software\\MagicXTest".to_string(),
+                value_name: value_name.to_string(),
+                action: RegistryAction::Set,
+                value_type: Some(RegistryValueType::Dword),
+                value: Some(serde_json::json!(value)),
+                windows_versions: None,
+                skip_validation: true,
+            }],
+            ..empty_option()
         }
     }
 }
