@@ -579,14 +579,30 @@ pub fn validate_all_snapshots() -> Result<u32, Error> {
     Ok(removed_count)
 }
 
-/// Check if current registry state matches the snapshot state (parallelized)
-/// (indicating tweak was externally reverted)
+/// Check if current system state matches the snapshot state
+/// (indicating tweak was externally reverted).
+///
+/// If a captured resource cannot be verified, return the error so startup cleanup
+/// preserves the snapshot instead of deleting rollback data.
 fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Error> {
-    if snapshot.registry_snapshots.is_empty() {
-        return Ok(true);
+    let has_any_snapshot = !snapshot.registry_snapshots.is_empty()
+        || !snapshot.service_snapshots.is_empty()
+        || !snapshot.scheduler_snapshots.is_empty()
+        || !snapshot.hosts_snapshots.is_empty()
+        || !snapshot.firewall_snapshots.is_empty();
+
+    if !has_any_snapshot {
+        return Ok(false);
     }
 
-    // Use parallel iteration to check all registry values and collect results
+    Ok(registry_snapshots_match(snapshot)?
+        && service_snapshots_match(snapshot)?
+        && scheduler_snapshots_match(snapshot)?
+        && hosts_snapshots_match(snapshot)?
+        && firewall_snapshots_match(snapshot)?)
+}
+
+fn registry_snapshots_match(snapshot: &TweakSnapshot) -> Result<bool, Error> {
     let results: Vec<Result<bool, Error>> = snapshot
         .registry_snapshots
         .par_iter()
@@ -602,20 +618,80 @@ fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Erro
             let (current_value, current_exists) =
                 read_registry_value(&hive, &reg.key, &reg.value_name, &value_type)?;
 
-            // Check if current state matches snapshot state
-            let matches = if !reg.existed && !current_exists {
-                true
-            } else if reg.existed && current_exists {
-                registry_value::registry_values_match(&value_type, &current_value, &reg.value)?
-            } else {
-                false
-            };
+            if !reg.existed && !current_exists {
+                return Ok(true);
+            }
 
-            Ok(matches)
+            if reg.existed && current_exists {
+                return registry_value::registry_values_match(
+                    &value_type,
+                    &current_value,
+                    &reg.value,
+                );
+            }
+
+            Ok(false)
         })
         .collect();
 
-    // Check if all results match
+    all_match(results)
+}
+
+fn service_snapshots_match(snapshot: &TweakSnapshot) -> Result<bool, Error> {
+    for service in &snapshot.service_snapshots {
+        let status = service_control::get_service_status(&service.name)?;
+        let current_startup = status
+            .startup_type
+            .map(|startup| startup.as_str().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let current_running = status.state == service_control::ServiceState::Running;
+
+        if current_startup != service.startup_type || current_running != service.was_running {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn scheduler_snapshots_match(snapshot: &TweakSnapshot) -> Result<bool, Error> {
+    for task in &snapshot.scheduler_snapshots {
+        let current_state = scheduler_service::get_task_state(&task.task_path, &task.task_name)?;
+        let expected_state = scheduler_service::TaskState::from_str(&task.original_state);
+
+        if !task_state_matches(&current_state, &expected_state) {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn hosts_snapshots_match(snapshot: &TweakSnapshot) -> Result<bool, Error> {
+    for host in &snapshot.hosts_snapshots {
+        let current_exists = hosts_service::entry_exists(&host.ip, &host.domain)?;
+
+        if current_exists != host.existed {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn firewall_snapshots_match(snapshot: &TweakSnapshot) -> Result<bool, Error> {
+    for firewall in &snapshot.firewall_snapshots {
+        let current_exists = firewall_service::rule_exists(&firewall.name)?;
+
+        if current_exists != firewall.existed {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn all_match(results: Vec<Result<bool, Error>>) -> Result<bool, Error> {
     for result in results {
         if !result? {
             return Ok(false);
@@ -623,4 +699,37 @@ fn snapshot_matches_current_state(snapshot: &TweakSnapshot) -> Result<bool, Erro
     }
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::ServiceSnapshot;
+
+    #[test]
+    fn service_only_snapshot_is_not_stale_when_original_service_state_differs() {
+        let mut snapshot = empty_snapshot();
+        snapshot.service_snapshots.push(ServiceSnapshot {
+            name: "__mgx_missing_service_for_stale_snapshot_test__".to_string(),
+            startup_type: "manual".to_string(),
+            was_running: false,
+        });
+
+        let matches = snapshot_matches_current_state(&snapshot).unwrap();
+
+        assert!(!matches);
+    }
+
+    #[test]
+    fn empty_snapshot_is_not_stale() {
+        let snapshot = empty_snapshot();
+
+        let matches = snapshot_matches_current_state(&snapshot).unwrap();
+
+        assert!(!matches);
+    }
+
+    fn empty_snapshot() -> TweakSnapshot {
+        TweakSnapshot::new("test_tweak", "Test Tweak", 0, "Apply", 11, false, None)
+    }
 }
