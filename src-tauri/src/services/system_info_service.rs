@@ -22,10 +22,6 @@ impl RuntimeContext {
     pub fn windows_version(&self) -> u32 {
         self.windows.version_number()
     }
-
-    pub fn windows_build(&self) -> u32 {
-        self.windows.build_number.parse().unwrap_or(0)
-    }
 }
 
 // WMI query structs

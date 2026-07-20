@@ -116,14 +116,6 @@ pub fn run() {
             commands::backup::get_backup_system_status,
             commands::backup::cleanup_old_backups,
             commands::backup::validate_snapshots,
-            // Profile commands
-            commands::profile::profile_export,
-            commands::profile::profile_import,
-            commands::profile::profile_validate,
-            commands::profile::profile_apply,
-            commands::profile::get_windows_version,
-            commands::profile::get_saved_profiles,
-            commands::profile::delete_saved_profile,
             // Elevation commands
             commands::elevation::apply_registry_as_system,
             commands::elevation::delete_registry_as_system,

@@ -100,7 +100,10 @@
   }
 
   onMount(() => {
-    profileStore.loadSavedProfiles();
+    // NOTE: loadSavedProfiles() is deliberately not called. The v1 profile
+    // backend was deleted and is being rebuilt (docs/spec/profile-v1.md), so
+    // invoking it here would surface an error toast every time this tab opens.
+    // Restore this call along with the backend.
 
     // Set up native drag-drop listener
     let cancelled = false;
@@ -138,6 +141,21 @@
 </script>
 
 <div class="flex h-full flex-col gap-5 overflow-hidden p-6">
+  <!--
+    Temporarily disabled: the v1 profile backend was deleted and is being rebuilt.
+    The UI is kept so the feature reads as "coming back" rather than "gone".
+    Remove this banner when the backend returns. See docs/TWEAK_SYSTEM_PLAN.md.
+  -->
+  <div class="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 px-5 py-4" role="status">
+    <Icon icon="mdi:hammer-wrench" width="22" class="mt-0.5 shrink-0 text-warning" />
+    <div>
+      <p class="m-0 text-sm font-semibold text-foreground">Profiles are being rebuilt</p>
+      <p class="mt-1 mb-0 text-sm text-foreground-muted">
+        Exporting, importing and applying profiles are unavailable for now. Your tweaks and snapshots are unaffected.
+      </p>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="flex flex-wrap items-center justify-between gap-6">
     <div class="flex items-center gap-4">
