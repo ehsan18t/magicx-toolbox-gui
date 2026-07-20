@@ -72,7 +72,7 @@
   function handleKeydown(e: KeyboardEvent) {
     if (disabled || loading) return;
 
-    let newIndex = selectedIndex;
+    let newIndex: number;
 
     if (e.key === "ArrowRight" || e.key === "ArrowDown") {
       e.preventDefault();
