@@ -1,31 +1,46 @@
 //! Windows Task Scheduler service for managing scheduled tasks.
 //!
-//! Provides functionality to enable, disable, and delete scheduled tasks
-//! using the Windows `schtasks.exe` command-line tool.
+//! Uses the Task Scheduler 2.0 COM API (via the `windows` crate) rather than parsing
+//! `schtasks.exe` text output. `IRegisteredTask::State()` returns a numeric `TASK_STATE`, which is
+//! the actual fix for the locale class: the old code parsed the localized "Status:" line, so it
+//! silently misread state on non-English Windows.
 //!
 //! Supports both exact task names and regex patterns for matching multiple tasks.
 
 use crate::error::Error;
 use crate::models::tweak::SchedulerAction;
 use regex_lite::Regex;
-use std::os::windows::process::CommandExt;
-use std::process::Command;
 
-/// CREATE_NO_WINDOW flag to prevent console window from appearing
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use windows::core::BSTR;
+use windows::Win32::Foundation::{VARIANT_FALSE, VARIANT_TRUE};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+};
+use windows::Win32::System::TaskScheduler::{ITaskService, TaskScheduler, TASK_ENUM_HIDDEN};
+use windows::Win32::System::Variant::VARIANT;
 
-/// State of a scheduled task
+// TASK_STATE numeric values (the locale-free source of truth).
+const TASK_STATE_DISABLED: i32 = 1;
+const TASK_STATE_QUEUED: i32 = 2;
+const TASK_STATE_READY: i32 = 3;
+const TASK_STATE_RUNNING: i32 = 4;
+
+// "Not found" HRESULTs (ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND as HRESULT).
+const HRESULT_FILE_NOT_FOUND: u32 = 0x8007_0002;
+const HRESULT_PATH_NOT_FOUND: u32 = 0x8007_0003;
+
+/// State of a scheduled task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskState {
-    /// Task is enabled and ready to run
+    /// Task is enabled and ready to run.
     Ready,
-    /// Task is disabled
+    /// Task is disabled.
     Disabled,
-    /// Task is currently running
+    /// Task is currently running.
     Running,
-    /// Task was not found
+    /// Task was not found.
     NotFound,
-    /// Unknown state
+    /// Unknown state.
     Unknown(String),
 }
 
@@ -50,132 +65,118 @@ impl TaskState {
     }
 }
 
-/// Get the full task path combining path and name
-fn get_full_task_path(task_path: &str, task_name: &str) -> String {
-    let path = task_path.trim_end_matches('\\');
-    if path.is_empty() {
-        format!("\\{}", task_name)
-    } else {
-        format!("{}\\{}", path, task_name)
+/// Represents a task found in a folder.
+#[derive(Debug, Clone)]
+pub struct TaskInfo {
+    pub name: String,
+    pub state: TaskState,
+}
+
+fn com_err(e: windows::core::Error) -> Error {
+    Error::CommandExecution(format!("Task Scheduler COM error: {}", e))
+}
+
+fn is_not_found(e: &windows::core::Error) -> bool {
+    let code = e.code().0 as u32;
+    code == HRESULT_FILE_NOT_FOUND || code == HRESULT_PATH_NOT_FOUND
+}
+
+/// Map the numeric `TASK_STATE` to our locale-free `TaskState`. A queued task is enabled (an
+/// instance is merely waiting), so it is treated as `Ready` for detection purposes.
+fn task_state_from_com(state: i32) -> TaskState {
+    match state {
+        TASK_STATE_DISABLED => TaskState::Disabled,
+        TASK_STATE_READY | TASK_STATE_QUEUED => TaskState::Ready,
+        TASK_STATE_RUNNING => TaskState::Running,
+        other => TaskState::Unknown(format!("TASK_STATE({})", other)),
     }
 }
 
-/// Get the current state of a scheduled task
+/// Connect to the local Task Scheduler service. COM is initialized on the current thread if it is
+/// not already; an existing initialization (any apartment) is tolerated.
+fn task_service() -> Result<ITaskService, Error> {
+    // SAFETY: standard Task Scheduler 2.0 connect sequence.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let service: ITaskService =
+            CoCreateInstance(&TaskScheduler, None, CLSCTX_ALL).map_err(com_err)?;
+        service
+            .Connect(
+                &VARIANT::default(),
+                &VARIANT::default(),
+                &VARIANT::default(),
+                &VARIANT::default(),
+            )
+            .map_err(com_err)?;
+        Ok(service)
+    }
+}
+
+/// Get the current state of a scheduled task.
 pub fn get_task_state(task_path: &str, task_name: &str) -> Result<TaskState, Error> {
-    let full_path = get_full_task_path(task_path, task_name);
-    log::debug!("Getting state of scheduled task: {}", full_path);
-
-    let output = Command::new("schtasks")
-        .args(["/Query", "/TN", &full_path, "/FO", "LIST", "/V"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Check if task doesn't exist
-        if stderr.contains("does not exist") || stderr.contains("cannot find") {
-            log::debug!("Scheduled task not found: {}", full_path);
-            return Ok(TaskState::NotFound);
-        }
-        return Err(Error::CommandExecution(format!(
-            "Failed to query task '{}': {}",
-            full_path, stderr
-        )));
+    // SAFETY: interface pointers are owned by RAII wrappers from the `windows` crate.
+    unsafe {
+        let service = task_service()?;
+        let folder = match service.GetFolder(&BSTR::from(task_path)) {
+            Ok(f) => f,
+            Err(e) if is_not_found(&e) => return Ok(TaskState::NotFound),
+            Err(e) => return Err(com_err(e)),
+        };
+        let task = match folder.GetTask(&BSTR::from(task_name)) {
+            Ok(t) => t,
+            Err(e) if is_not_found(&e) => return Ok(TaskState::NotFound),
+            Err(e) => return Err(com_err(e)),
+        };
+        Ok(task_state_from_com(task.State().map_err(com_err)?.0))
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Parse the output to find the Status line
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.starts_with("Status:") {
-            let state_str = line.strip_prefix("Status:").unwrap_or("").trim();
-            let state = TaskState::from_str(state_str);
-            log::debug!("Task '{}' state: {:?}", full_path, state);
-            return Ok(state);
-        }
-    }
-
-    log::warn!("Could not parse state for task: {}", full_path);
-    Ok(TaskState::Unknown("Could not parse state".to_string()))
 }
 
-/// Enable a scheduled task
+/// Enable a scheduled task.
 pub fn enable_task(task_path: &str, task_name: &str) -> Result<(), Error> {
-    let full_path = get_full_task_path(task_path, task_name);
-    log::info!("Enabling scheduled task: {}", full_path);
-
-    let output = Command::new("schtasks")
-        .args(["/Change", "/TN", &full_path, "/Enable"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::CommandExecution(format!(
-            "Failed to enable task '{}': {}",
-            full_path, stderr
-        )));
+    log::info!("Enabling scheduled task: {}\\{}", task_path, task_name);
+    // SAFETY: as above.
+    unsafe {
+        let service = task_service()?;
+        let folder = service.GetFolder(&BSTR::from(task_path)).map_err(com_err)?;
+        let task = folder.GetTask(&BSTR::from(task_name)).map_err(com_err)?;
+        task.SetEnabled(VARIANT_TRUE).map_err(com_err)?;
     }
-
-    log::info!("Successfully enabled scheduled task: {}", full_path);
     Ok(())
 }
 
-/// Disable a scheduled task
+/// Disable a scheduled task.
 pub fn disable_task(task_path: &str, task_name: &str) -> Result<(), Error> {
-    let full_path = get_full_task_path(task_path, task_name);
-    log::info!("Disabling scheduled task: {}", full_path);
-
-    let output = Command::new("schtasks")
-        .args(["/Change", "/TN", &full_path, "/Disable"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::CommandExecution(format!(
-            "Failed to disable task '{}': {}",
-            full_path, stderr
-        )));
+    log::info!("Disabling scheduled task: {}\\{}", task_path, task_name);
+    // SAFETY: as above.
+    unsafe {
+        let service = task_service()?;
+        let folder = service.GetFolder(&BSTR::from(task_path)).map_err(com_err)?;
+        let task = folder.GetTask(&BSTR::from(task_name)).map_err(com_err)?;
+        task.SetEnabled(VARIANT_FALSE).map_err(com_err)?;
     }
-
-    log::info!("Successfully disabled scheduled task: {}", full_path);
     Ok(())
 }
 
-/// Delete a scheduled task
+/// Delete a scheduled task. A task (or folder) that is already gone is treated as success.
 pub fn delete_task(task_path: &str, task_name: &str) -> Result<(), Error> {
-    let full_path = get_full_task_path(task_path, task_name);
-    log::info!("Deleting scheduled task: {}", full_path);
-
-    let output = Command::new("schtasks")
-        .args(["/Delete", "/TN", &full_path, "/F"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // If task doesn't exist, consider it a success
-        if stderr.contains("does not exist") || stderr.contains("cannot find") {
-            log::debug!("Task already deleted or not found: {}", full_path);
-            return Ok(());
+    log::info!("Deleting scheduled task: {}\\{}", task_path, task_name);
+    // SAFETY: as above.
+    unsafe {
+        let service = task_service()?;
+        let folder = match service.GetFolder(&BSTR::from(task_path)) {
+            Ok(f) => f,
+            Err(e) if is_not_found(&e) => return Ok(()),
+            Err(e) => return Err(com_err(e)),
+        };
+        match folder.DeleteTask(&BSTR::from(task_name), 0) {
+            Ok(()) => Ok(()),
+            Err(e) if is_not_found(&e) => Ok(()),
+            Err(e) => Err(com_err(e)),
         }
-        return Err(Error::CommandExecution(format!(
-            "Failed to delete task '{}': {}",
-            full_path, stderr
-        )));
     }
-
-    log::info!("Successfully deleted scheduled task: {}", full_path);
-    Ok(())
 }
 
-/// Apply a scheduler change based on the action type
+/// Apply a scheduler change based on the action type.
 pub fn apply_scheduler_change(
     task_path: &str,
     task_name: &str,
@@ -188,84 +189,32 @@ pub fn apply_scheduler_change(
     }
 }
 
-/// Represents a task found in a folder
-#[derive(Debug, Clone)]
-pub struct TaskInfo {
-    pub name: String,
-    pub state: TaskState,
-}
-
-/// List all tasks in a folder path
+/// List all tasks directly in a folder path. A missing folder yields an empty list.
 pub fn list_tasks_in_folder(task_path: &str) -> Result<Vec<TaskInfo>, Error> {
-    let path = task_path.trim_end_matches('\\');
-    log::debug!("Listing tasks in folder: {}", path);
+    // SAFETY: as above; the collection is 1-indexed per the Task Scheduler contract.
+    unsafe {
+        let service = task_service()?;
+        let folder = match service.GetFolder(&BSTR::from(task_path)) {
+            Ok(f) => f,
+            Err(e) if is_not_found(&e) => return Ok(Vec::new()),
+            Err(e) => return Err(com_err(e)),
+        };
+        let tasks = folder.GetTasks(TASK_ENUM_HIDDEN.0).map_err(com_err)?;
+        let count = tasks.Count().map_err(com_err)?;
 
-    let output = Command::new("schtasks")
-        .args(["/Query", "/TN", &format!("{}\\", path), "/FO", "LIST", "/V"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to execute schtasks: {}", e)))?;
-
-    // If folder doesn't exist, return empty list
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("does not exist") || stderr.contains("cannot find") {
-            log::debug!("Task folder not found: {}", path);
-            return Ok(Vec::new());
+        let mut result = Vec::with_capacity(count.max(0) as usize);
+        for i in 1..=count {
+            let item = tasks.get_Item(&VARIANT::from(i)).map_err(com_err)?;
+            let name = item.Name().map_err(com_err)?.to_string();
+            let state = task_state_from_com(item.State().map_err(com_err)?.0);
+            result.push(TaskInfo { name, state });
         }
-        return Err(Error::CommandExecution(format!(
-            "Failed to list tasks in '{}': {}",
-            path, stderr
-        )));
+        Ok(result)
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut tasks = Vec::new();
-    let mut current_name: Option<String> = None;
-    let mut current_state: Option<TaskState> = None;
-
-    // Parse the LIST /V output which contains multiple tasks
-    // Each task has "TaskName:" and "Status:" fields
-    for line in stdout.lines() {
-        let line = line.trim();
-
-        if line.starts_with("TaskName:") {
-            // Save previous task if we have one
-            if let (Some(name), Some(state)) = (current_name.take(), current_state.take()) {
-                tasks.push(TaskInfo { name, state });
-            }
-
-            // Extract task name (full path, we just want the name part)
-            let full_name = line.strip_prefix("TaskName:").unwrap_or("").trim();
-            // Get just the task name from full path like \Microsoft\Windows\Folder\TaskName
-            if let Some(name) = full_name.rsplit('\\').next() {
-                if !name.is_empty() {
-                    current_name = Some(name.to_string());
-                }
-            }
-        } else if line.starts_with("Status:") {
-            let state_str = line.strip_prefix("Status:").unwrap_or("").trim();
-            current_state = Some(TaskState::from_str(state_str));
-        }
-    }
-
-    // Don't forget the last task
-    if let (Some(name), Some(state)) = (current_name, current_state) {
-        tasks.push(TaskInfo { name, state });
-    }
-
-    log::debug!("Found {} tasks in folder '{}'", tasks.len(), path);
-    Ok(tasks)
 }
 
-/// Find tasks matching a regex pattern in a folder
+/// Find tasks matching a regex pattern in a folder.
 pub fn find_tasks_by_pattern(task_path: &str, pattern: &str) -> Result<Vec<TaskInfo>, Error> {
-    log::debug!(
-        "Finding tasks matching pattern '{}' in '{}'",
-        pattern,
-        task_path
-    );
-
     let regex = Regex::new(pattern).map_err(|e| {
         Error::CommandExecution(format!("Invalid regex pattern '{}': {}", pattern, e))
     })?;
@@ -286,8 +235,8 @@ pub fn find_tasks_by_pattern(task_path: &str, pattern: &str) -> Result<Vec<TaskI
     Ok(matching)
 }
 
-/// Apply action to multiple tasks found by pattern
-/// Returns (success_count, error_count, errors)
+/// Apply action to multiple tasks found by pattern.
+/// Returns `(success_count, error_count, errors)`.
 pub fn apply_action_to_pattern(
     task_path: &str,
     pattern: &str,
@@ -325,13 +274,10 @@ pub fn apply_action_to_pattern(
         );
 
         match apply_scheduler_change(task_path, &task.name, action) {
-            Ok(()) => {
-                success_count += 1;
-            }
+            Ok(()) => success_count += 1,
             Err(e) => {
                 error_count += 1;
-                let err_msg = format!("{}\\{}: {}", task_path, task.name, e);
-                errors.push(err_msg);
+                errors.push(format!("{}\\{}: {}", task_path, task.name, e));
             }
         }
     }
@@ -344,23 +290,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_full_task_path() {
-        assert_eq!(
-            get_full_task_path("\\Microsoft\\Windows\\Test", "TaskName"),
-            "\\Microsoft\\Windows\\Test\\TaskName"
-        );
-        assert_eq!(
-            get_full_task_path("\\Microsoft\\Windows\\Test\\", "TaskName"),
-            "\\Microsoft\\Windows\\Test\\TaskName"
-        );
-        assert_eq!(get_full_task_path("", "TaskName"), "\\TaskName");
+    fn task_state_from_com_maps_numeric_states() {
+        assert_eq!(task_state_from_com(TASK_STATE_DISABLED), TaskState::Disabled);
+        assert_eq!(task_state_from_com(TASK_STATE_READY), TaskState::Ready);
+        assert_eq!(task_state_from_com(TASK_STATE_QUEUED), TaskState::Ready);
+        assert_eq!(task_state_from_com(TASK_STATE_RUNNING), TaskState::Running);
+        assert!(matches!(task_state_from_com(0), TaskState::Unknown(_)));
     }
 
     #[test]
-    fn test_task_state_from_str() {
+    fn task_state_from_str_parses_known_states() {
         assert_eq!(TaskState::from_str("Ready"), TaskState::Ready);
         assert_eq!(TaskState::from_str("Disabled"), TaskState::Disabled);
         assert_eq!(TaskState::from_str("Running"), TaskState::Running);
         assert_eq!(TaskState::from_str("  READY  "), TaskState::Ready);
+    }
+
+    #[test]
+    fn nonexistent_task_reports_not_found() {
+        // The root folder exists; the task does not.
+        let s = get_task_state("\\", "MagicXNoSuchTask_zzq").unwrap();
+        assert_eq!(s, TaskState::NotFound);
+    }
+
+    #[test]
+    fn listing_root_folder_succeeds() {
+        // Exercises Connect -> GetFolder -> GetTasks -> Count/Item/Name/State without needing a
+        // specific task to exist. Root may hold zero or more tasks; either way it must not error.
+        let tasks = list_tasks_in_folder("\\").expect("listing root tasks folder should succeed");
+        // Every returned task has a non-empty name and a mapped state.
+        for t in &tasks {
+            assert!(!t.name.is_empty());
+        }
     }
 }

@@ -79,6 +79,14 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
 ] }
+# High-level COM wrappers (Task Scheduler). Coexists with windows-sys; the elevated broker (TI
+# stage) reuses this crate for Owned<HANDLE> cleanup.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_TaskScheduler",
+    "Win32_System_Variant",
+] }
 
 # Release profile optimizations
 [profile.release]
