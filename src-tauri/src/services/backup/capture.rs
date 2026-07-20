@@ -166,8 +166,7 @@ fn capture_registry_snapshots(
                 }
                 RegistryAction::DeleteKey => {
                     // For DeleteKey, just note if the key existed
-                    let existed =
-                        registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+                    let existed = registry_service::key_exists(&change.hive, &change.key)?;
 
                     Ok(RegistrySnapshot {
                         hive: change.hive.as_str().to_string(),
@@ -180,8 +179,7 @@ fn capture_registry_snapshots(
                 }
                 RegistryAction::CreateKey => {
                     // For CreateKey, note if the key already existed
-                    let existed =
-                        registry_service::key_exists(&change.hive, &change.key).unwrap_or(false);
+                    let existed = registry_service::key_exists(&change.hive, &change.key)?;
 
                     Ok(RegistrySnapshot {
                         hive: change.hive.as_str().to_string(),
@@ -581,19 +579,53 @@ pub fn read_registry_value(
         }
     };
 
+    classify_read_result(result)
+}
+
+/// Classify a raw registry read into `(value, existed)`, distinguishing a value that is
+/// **verifiably absent** from one we simply **could not read**.
+///
+/// A missing value (`Ok(None)`) or a missing key (`RegistryKeyNotFound`) means the value is
+/// genuinely absent, so `existed = false`. Any other error — notably `RegistryAccessDenied` — must
+/// NOT be coerced to "absent": recording `existed = false` for a value we could not read makes a
+/// later revert delete a value that actually existed (ADR-0002 / ADR-0003). Those errors propagate.
+fn classify_read_result(
+    result: Result<Option<serde_json::Value>, Error>,
+) -> Result<(Option<serde_json::Value>, bool), Error> {
     match result {
         Ok(Some(value)) => Ok((Some(value), true)),
         Ok(None) => Ok((None, false)),
         Err(Error::RegistryKeyNotFound(_)) => Ok((None, false)),
-        Err(e) => {
-            log::warn!(
-                "Failed to read {}\\{}\\{}: {}",
-                hive.as_str(),
-                key,
-                value_name,
-                e
-            );
-            Ok((None, false))
-        }
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod classify_read_tests {
+    use super::*;
+
+    #[test]
+    fn present_value_is_existed_true() {
+        let r = classify_read_result(Ok(Some(serde_json::json!(1)))).unwrap();
+        assert_eq!(r, (Some(serde_json::json!(1)), true));
+    }
+
+    #[test]
+    fn absent_value_is_existed_false() {
+        assert_eq!(classify_read_result(Ok(None)).unwrap(), (None, false));
+    }
+
+    #[test]
+    fn missing_key_is_existed_false() {
+        let r = classify_read_result(Err(Error::RegistryKeyNotFound("k".into()))).unwrap();
+        assert_eq!(r, (None, false));
+    }
+
+    #[test]
+    fn access_denied_propagates_never_absent() {
+        // The ADR-0003 blocker: a value we could not read must NOT be recorded as absent, or a
+        // later revert deletes a value that existed.
+        let classified = classify_read_result(Err(Error::RegistryAccessDenied("denied".into())));
+        assert!(matches!(classified, Err(Error::RegistryAccessDenied(_))));
     }
 }
