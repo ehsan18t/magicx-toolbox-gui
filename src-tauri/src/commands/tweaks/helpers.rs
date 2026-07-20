@@ -14,6 +14,7 @@ use crate::error::{Error, Result};
 use crate::models::{
     RegistryAction, RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition, TweakOption,
 };
+use crate::services::elevation::Elevation;
 use crate::services::{
     firewall_service, hosts_service, registry_service, registry_value, scheduler_service,
     service_control, trusted_installer,
@@ -24,115 +25,69 @@ use crate::services::{
 // ============================================================================
 
 /// Run a shell command (as user, SYSTEM, or TrustedInstaller)
-pub fn run_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
-    let elevation_label = if use_ti {
-        " as TrustedInstaller"
-    } else if use_system {
-        " as SYSTEM"
+pub fn run_command(cmd: &str, elevation: Elevation) -> Result<()> {
+    let label_suffix = if elevation.is_elevated() {
+        format!(" as {}", elevation.label())
     } else {
-        ""
+        String::new()
     };
-    log::info!("Running command{}: {}", elevation_label, cmd);
+    log::info!("Running command{}: {}", label_suffix, cmd);
 
-    if use_ti {
-        // TrustedInstaller has highest privilege
-        match trusted_installer::run_command_as_ti(cmd) {
-            Ok(exit_code) => {
-                if exit_code != 0 {
-                    return Err(Error::CommandExecution(format!(
-                        "Command (TI) failed with exit code {}: {}",
-                        exit_code, cmd
-                    )));
-                }
-                Ok(())
-            }
-            Err(e) => Err(Error::CommandExecution(format!(
-                "TrustedInstaller command failed: {}",
-                e
-            ))),
-        }
-    } else if use_system {
-        match trusted_installer::run_command_as_system(cmd) {
-            Ok(exit_code) => {
-                if exit_code != 0 {
-                    return Err(Error::CommandExecution(format!(
-                        "Command (SYSTEM) failed with exit code {}: {}",
-                        exit_code, cmd
-                    )));
-                }
-                Ok(())
-            }
-            Err(e) => Err(Error::CommandExecution(format!(
-                "SYSTEM command failed: {}",
-                e
-            ))),
-        }
-    } else {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let output = std::process::Command::new("cmd")
-            .raw_arg(format!("/C {}", cmd))
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| Error::CommandExecution(e.to_string()))?;
+    match elevation {
+        Elevation::None => {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let output = std::process::Command::new("cmd")
+                .raw_arg(format!("/C {}", cmd))
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .map_err(|e| Error::CommandExecution(e.to_string()))?;
 
-        if !output.status.success() {
-            return Err(Error::CommandExecution(format!(
-                "Command failed with exit code {}: {}",
-                output.status.code().unwrap_or(-1),
-                String::from_utf8_lossy(&output.stderr)
-            )));
+            if !output.status.success() {
+                return Err(Error::CommandExecution(format!(
+                    "Command failed with exit code {}: {}",
+                    output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+            Ok(())
         }
-        Ok(())
+        // SYSTEM and TrustedInstaller share the same executor signature; only the executor
+        // and the label differ.
+        elevated => {
+            let execute: fn(&str) -> std::result::Result<i32, Error> = match elevated {
+                Elevation::TrustedInstaller => trusted_installer::run_command_as_ti,
+                _ => trusted_installer::run_command_as_system,
+            };
+            match execute(cmd) {
+                Ok(exit_code) if exit_code != 0 => Err(Error::CommandExecution(format!(
+                    "Command ({}) failed with exit code {}: {}",
+                    elevated.label(),
+                    exit_code,
+                    cmd
+                ))),
+                Ok(_) => Ok(()),
+                Err(e) => Err(Error::CommandExecution(format!(
+                    "{} command failed: {}",
+                    elevated.label(),
+                    e
+                ))),
+            }
+        }
     }
 }
 
 /// Run a PowerShell command (as user, SYSTEM, or TrustedInstaller)
-pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Result<()> {
-    let elevation_label = if use_ti {
-        " as TrustedInstaller"
-    } else if use_system {
-        " as SYSTEM"
+pub fn run_powershell_command(cmd: &str, elevation: Elevation) -> Result<()> {
+    let label_suffix = if elevation.is_elevated() {
+        format!(" as {}", elevation.label())
     } else {
-        ""
+        String::new()
     };
-    log::info!("Running PowerShell{}: {}", elevation_label, cmd);
+    log::info!("Running PowerShell{}: {}", label_suffix, cmd);
 
-    if use_ti {
-        // TrustedInstaller has highest privilege
-        match trusted_installer::run_powershell_as_ti(cmd) {
-            Ok(exit_code) => {
-                if exit_code != 0 {
-                    return Err(Error::CommandExecution(format!(
-                        "PowerShell (TI) failed with exit code {}",
-                        exit_code
-                    )));
-                }
-                Ok(())
-            }
-            Err(e) => Err(Error::CommandExecution(format!(
-                "PowerShell (TrustedInstaller) failed: {}",
-                e
-            ))),
-        }
-    } else if use_system {
-        match trusted_installer::run_powershell_as_system(cmd) {
-            Ok(exit_code) => {
-                if exit_code != 0 {
-                    return Err(Error::CommandExecution(format!(
-                        "PowerShell (SYSTEM) failed with exit code {}",
-                        exit_code
-                    )));
-                }
-                Ok(())
-            }
-            Err(e) => Err(Error::CommandExecution(format!(
-                "PowerShell (SYSTEM) failed: {}",
-                e
-            ))),
-        }
-    } else {
-        match trusted_installer::run_powershell(cmd) {
+    match elevation {
+        Elevation::None => match trusted_installer::run_powershell(cmd) {
             Ok(ps_result) => {
                 if ps_result.exit_code != 0 {
                     return Err(Error::CommandExecution(format!(
@@ -149,6 +104,26 @@ pub fn run_powershell_command(cmd: &str, use_system: bool, use_ti: bool) -> Resu
                 Ok(())
             }
             Err(e) => Err(Error::CommandExecution(format!("PowerShell failed: {}", e))),
+        },
+        // SYSTEM and TrustedInstaller share the same executor signature.
+        elevated => {
+            let execute: fn(&str) -> std::result::Result<i32, Error> = match elevated {
+                Elevation::TrustedInstaller => trusted_installer::run_powershell_as_ti,
+                _ => trusted_installer::run_powershell_as_system,
+            };
+            match execute(cmd) {
+                Ok(exit_code) if exit_code != 0 => Err(Error::CommandExecution(format!(
+                    "PowerShell ({}) failed with exit code {}",
+                    elevated.label(),
+                    exit_code
+                ))),
+                Ok(_) => Ok(()),
+                Err(e) => Err(Error::CommandExecution(format!(
+                    "PowerShell ({}) failed: {}",
+                    elevated.label(),
+                    e
+                ))),
+            }
         }
     }
 }
@@ -223,14 +198,13 @@ pub fn apply_all_changes_atomically(
     apply_registry_changes(tweak, option, windows_version)?;
 
     // Step 2: Apply service changes - fail-fast, return error for full rollback
-    if let Err(e) = apply_service_changes_atomic(option, tweak.requires_system, tweak.requires_ti) {
+    if let Err(e) = apply_service_changes_atomic(option, tweak.elevation()) {
         log::error!("Service changes failed, need full rollback: {}", e);
         return Err(e);
     }
 
     // Step 3: Apply scheduler changes - fail-fast, return error for full rollback
-    if let Err(e) = apply_scheduler_changes_atomic(option, tweak.requires_system, tweak.requires_ti)
-    {
+    if let Err(e) = apply_scheduler_changes_atomic(option, tweak.elevation()) {
         log::error!("Scheduler changes failed, need full rollback: {}", e);
         return Err(e);
     }
@@ -529,11 +503,7 @@ fn apply_registry_changes(
 }
 
 /// Apply all service changes for an option atomically
-fn apply_service_changes_atomic(
-    option: &TweakOption,
-    use_system: bool,
-    use_ti: bool,
-) -> Result<()> {
+fn apply_service_changes_atomic(option: &TweakOption, elevation: Elevation) -> Result<()> {
     for change in &option.service_changes {
         let status = match service_control::get_service_status(&change.name) {
             Ok(status) => Some(status),
@@ -556,12 +526,10 @@ fn apply_service_changes_atomic(
 
         let startup_matches = current_startup == Some(change.startup);
 
-        let elevation = if use_ti {
-            " (TrustedInstaller)"
-        } else if use_system {
-            " (SYSTEM)"
+        let elevation_label = if elevation.is_elevated() {
+            format!(" ({})", elevation.label())
         } else {
-            ""
+            String::new()
         };
 
         let start_type = change.startup.to_sc_start_type();
@@ -576,7 +544,7 @@ fn apply_service_changes_atomic(
         } else {
             log::info!(
                 "Setting service{}{} '{}' startup to {:?}",
-                elevation,
+                elevation_label,
                 if change.skip_validation {
                     " (skip_validation)"
                 } else {
@@ -589,12 +557,18 @@ fn apply_service_changes_atomic(
 
         let result = if startup_matches {
             Ok(())
-        } else if use_ti {
-            trusted_installer::set_service_startup_as_ti(&change.name, start_type)
-        } else if use_system {
-            trusted_installer::set_service_startup_as_system(&change.name, start_type)
         } else {
-            service_control::set_service_startup(&change.name, &change.startup)
+            match elevation {
+                Elevation::TrustedInstaller => {
+                    trusted_installer::set_service_startup_as_ti(&change.name, start_type)
+                }
+                Elevation::System => {
+                    trusted_installer::set_service_startup_as_system(&change.name, start_type)
+                }
+                Elevation::None => {
+                    service_control::set_service_startup(&change.name, &change.startup)
+                }
+            }
         };
 
         if let Err(e) = result {
@@ -614,23 +588,31 @@ fn apply_service_changes_atomic(
 
         // 2) Stop if desired
         if desired_stop && !matches!(current_state, Some(service_control::ServiceState::Stopped)) {
-            if use_ti {
-                let _ = trusted_installer::stop_service_as_ti(&change.name);
-            } else if use_system {
-                let _ = trusted_installer::stop_service_as_system(&change.name);
-            } else {
-                let _ = service_control::stop_service(&change.name);
+            match elevation {
+                Elevation::TrustedInstaller => {
+                    let _ = trusted_installer::stop_service_as_ti(&change.name);
+                }
+                Elevation::System => {
+                    let _ = trusted_installer::stop_service_as_system(&change.name);
+                }
+                Elevation::None => {
+                    let _ = service_control::stop_service(&change.name);
+                }
             }
         }
 
         // 3) Start if explicitly requested
         if desired_start && !matches!(current_state, Some(service_control::ServiceState::Running)) {
-            if use_ti {
-                let _ = trusted_installer::start_service_as_ti(&change.name);
-            } else if use_system {
-                let _ = trusted_installer::start_service_as_system(&change.name);
-            } else {
-                let _ = service_control::start_service(&change.name);
+            match elevation {
+                Elevation::TrustedInstaller => {
+                    let _ = trusted_installer::start_service_as_ti(&change.name);
+                }
+                Elevation::System => {
+                    let _ = trusted_installer::start_service_as_system(&change.name);
+                }
+                Elevation::None => {
+                    let _ = service_control::start_service(&change.name);
+                }
             }
         }
 
@@ -650,13 +632,7 @@ fn apply_service_changes_atomic(
 }
 
 /// Apply all scheduler changes for an option atomically
-fn apply_scheduler_changes_atomic(
-    option: &TweakOption,
-    use_system: bool,
-    use_ti: bool,
-) -> Result<()> {
-    let use_elevated = use_ti || use_system;
-
+fn apply_scheduler_changes_atomic(option: &TweakOption, elevation: Elevation) -> Result<()> {
     for change in &option.scheduler_changes {
         let is_pattern = change.task_name_pattern.is_some();
         let identifier = if let Some(ref pattern) = change.task_name_pattern {
@@ -670,12 +646,10 @@ fn apply_scheduler_changes_atomic(
             ));
         };
 
-        let elevation_str = if use_ti {
-            " (TrustedInstaller)"
-        } else if use_system {
-            " (SYSTEM)"
+        let elevation_str = if elevation.is_elevated() {
+            format!(" ({})", elevation.label())
         } else {
-            ""
+            String::new()
         };
 
         let flags_str = {
@@ -706,9 +680,9 @@ fn apply_scheduler_changes_atomic(
         );
 
         if is_pattern {
-            apply_scheduler_pattern(change, use_elevated, use_ti, &flags_str)?;
+            apply_scheduler_pattern(change, elevation, &flags_str)?;
         } else {
-            apply_scheduler_exact(change, use_elevated, use_ti, &flags_str)?;
+            apply_scheduler_exact(change, elevation, &flags_str)?;
         }
     }
     Ok(())
@@ -717,8 +691,7 @@ fn apply_scheduler_changes_atomic(
 /// Apply scheduler change for a pattern match
 fn apply_scheduler_pattern(
     change: &crate::models::SchedulerChange,
-    use_elevated: bool,
-    use_ti: bool,
+    elevation: Elevation,
     flags_str: &str,
 ) -> Result<()> {
     let pattern = match change.task_name_pattern.as_deref() {
@@ -731,7 +704,12 @@ fn apply_scheduler_pattern(
         }
     };
 
-    if use_elevated {
+    if elevation.is_elevated() {
+        // SYSTEM and TrustedInstaller share the schtasks executor signature.
+        let run_schtasks: fn(&str) -> std::result::Result<i32, Error> = match elevation {
+            Elevation::TrustedInstaller => trusted_installer::run_schtasks_as_ti,
+            _ => trusted_installer::run_schtasks_as_system,
+        };
         let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)?;
 
         if tasks.is_empty() {
@@ -764,13 +742,9 @@ fn apply_scheduler_pattern(
                 SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", escaped_path),
             };
 
-            let result = if use_ti {
-                trusted_installer::run_schtasks_as_ti(&schtasks_args)
-            } else {
-                trusted_installer::run_schtasks_as_system(&schtasks_args)
-            }
-            .map(|_| ())
-            .map_err(|e| Error::CommandExecution(e.to_string()));
+            let result = run_schtasks(&schtasks_args)
+                .map(|_| ())
+                .map_err(|e| Error::CommandExecution(e.to_string()));
 
             if let Err(e) = result {
                 if change.skip_validation {
@@ -840,8 +814,7 @@ fn apply_scheduler_pattern(
 /// Apply scheduler change for an exact task name
 fn apply_scheduler_exact(
     change: &crate::models::SchedulerChange,
-    use_elevated: bool,
-    use_ti: bool,
+    elevation: Elevation,
     flags_str: &str,
 ) -> Result<()> {
     let task_name = match change.task_name.as_deref() {
@@ -855,20 +828,20 @@ fn apply_scheduler_exact(
     };
     let full_path = format!("{}\\{}", change.task_path, task_name);
 
-    let result = if use_elevated {
+    let result = if elevation.is_elevated() {
         let escaped_path = trusted_installer::escape_shell_arg(&full_path);
         let schtasks_args = match change.action {
             SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", escaped_path),
             SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", escaped_path),
             SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", escaped_path),
         };
-        if use_ti {
-            trusted_installer::run_schtasks_as_ti(&schtasks_args)
-        } else {
-            trusted_installer::run_schtasks_as_system(&schtasks_args)
-        }
-        .map(|_| ())
-        .map_err(|e| Error::CommandExecution(e.to_string()))
+        let run_schtasks: fn(&str) -> std::result::Result<i32, Error> = match elevation {
+            Elevation::TrustedInstaller => trusted_installer::run_schtasks_as_ti,
+            _ => trusted_installer::run_schtasks_as_system,
+        };
+        run_schtasks(&schtasks_args)
+            .map(|_| ())
+            .map_err(|e| Error::CommandExecution(e.to_string()))
     } else {
         scheduler_service::apply_scheduler_change(&change.task_path, task_name, change.action)
     };
@@ -1022,14 +995,14 @@ mod tests {
 
     #[test]
     fn command_returns_error_on_nonzero_exit_code() {
-        let err = run_command("exit /b 7", false, false).unwrap_err();
+        let err = run_command("exit /b 7", Elevation::None).unwrap_err();
 
         assert!(err.to_string().contains("exit code 7"));
     }
 
     #[test]
     fn powershell_returns_error_on_nonzero_exit_code() {
-        let err = run_powershell_command("exit 7", false, false).unwrap_err();
+        let err = run_powershell_command("exit 7", Elevation::None).unwrap_err();
 
         assert!(err.to_string().contains("exit code 7"));
     }

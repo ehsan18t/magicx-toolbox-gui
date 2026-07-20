@@ -143,7 +143,7 @@ pub async fn apply_tweak(tweak_id: String, option_index: usize) -> Result<TweakR
 
     // Step 2: Run pre_commands if defined (non-reversible, fail-fast)
     for cmd in &option.pre_commands {
-        if let Err(e) = run_command(cmd, tweak.requires_system, tweak.requires_ti) {
+        if let Err(e) = run_command(cmd, tweak.elevation()) {
             log::error!("Pre-command failed, aborting: {}", e);
             if !is_switching_options {
                 if let Err(del_err) = backup_service::delete_snapshot(&tweak_id) {
@@ -163,7 +163,7 @@ pub async fn apply_tweak(tweak_id: String, option_index: usize) -> Result<TweakR
 
     // Step 3: Run pre_powershell if defined (non-reversible, fail-fast)
     for ps_cmd in &option.pre_powershell {
-        if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system, tweak.requires_ti) {
+        if let Err(e) = run_powershell_command(ps_cmd, tweak.elevation()) {
             log::error!("Pre-PowerShell command failed, aborting: {}", e);
             if !is_switching_options {
                 if let Err(del_err) = backup_service::delete_snapshot(&tweak_id) {
@@ -271,14 +271,14 @@ pub async fn apply_tweak(tweak_id: String, option_index: usize) -> Result<TweakR
 
     // Step 8: Run post_commands (non-fatal, no rollback)
     for cmd in &option.post_commands {
-        if let Err(e) = run_command(cmd, tweak.requires_system, tweak.requires_ti) {
+        if let Err(e) = run_command(cmd, tweak.elevation()) {
             log::warn!("Post-command failed (non-fatal): {}", e);
         }
     }
 
     // Step 9: Run post_powershell (non-fatal, no rollback)
     for ps_cmd in &option.post_powershell {
-        if let Err(e) = run_powershell_command(ps_cmd, tweak.requires_system, tweak.requires_ti) {
+        if let Err(e) = run_powershell_command(ps_cmd, tweak.elevation()) {
             log::warn!("Post-PowerShell command failed (non-fatal): {}", e);
         }
     }

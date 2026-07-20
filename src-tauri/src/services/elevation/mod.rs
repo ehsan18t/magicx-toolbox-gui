@@ -23,9 +23,13 @@
 //! ```
 
 mod common;
+mod level;
 mod service_ops;
 mod system_elevation;
 mod ti_elevation;
+
+// Re-export the elevation level enum (the single dispatch value for the apply chain)
+pub use level::Elevation;
 
 // Re-export common utilities
 pub use common::escape_shell_arg;

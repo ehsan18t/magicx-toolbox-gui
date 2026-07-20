@@ -554,6 +554,11 @@ impl TweakDefinition {
             .iter()
             .any(|opt| opt.has_changes_for_version(version))
     }
+
+    /// The privilege level this tweak's operations run at, derived from its declared flags.
+    pub fn elevation(&self) -> crate::services::elevation::Elevation {
+        crate::services::elevation::Elevation::from_flags(self.requires_system, self.requires_ti)
+    }
 }
 
 // ============================================================================
