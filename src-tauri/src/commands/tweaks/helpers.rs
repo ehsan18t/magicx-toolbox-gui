@@ -18,7 +18,6 @@ use crate::services::{
     firewall_service, hosts_service, registry_service, registry_value, scheduler_service,
     service_control, trusted_installer,
 };
-use tauri::AppHandle;
 
 // ============================================================================
 // Command Execution
@@ -216,13 +215,12 @@ fn restore_value(
 /// Apply ALL core changes atomically: registry, services, scheduler, hosts, firewall
 /// If any step fails, caller is responsible for full rollback from snapshot
 pub fn apply_all_changes_atomically(
-    app: &AppHandle,
     tweak: &TweakDefinition,
     option: &TweakOption,
     windows_version: u32,
 ) -> Result<()> {
     // Step 1: Apply registry changes (already has internal rollback on failure)
-    apply_registry_changes(app, tweak, option, windows_version)?;
+    apply_registry_changes(tweak, option, windows_version)?;
 
     // Step 2: Apply service changes - fail-fast, return error for full rollback
     if let Err(e) = apply_service_changes_atomic(option, tweak.requires_system, tweak.requires_ti) {
@@ -231,21 +229,20 @@ pub fn apply_all_changes_atomically(
     }
 
     // Step 3: Apply scheduler changes - fail-fast, return error for full rollback
-    if let Err(e) =
-        apply_scheduler_changes_atomic(app, option, tweak.requires_system, tweak.requires_ti)
+    if let Err(e) = apply_scheduler_changes_atomic(option, tweak.requires_system, tweak.requires_ti)
     {
         log::error!("Scheduler changes failed, need full rollback: {}", e);
         return Err(e);
     }
 
     // Step 4: Apply hosts file changes - fail-fast, return error for full rollback
-    if let Err(e) = apply_hosts_changes_atomic(app, option) {
+    if let Err(e) = apply_hosts_changes_atomic(option) {
         log::error!("Hosts file changes failed, need full rollback: {}", e);
         return Err(e);
     }
 
     // Step 5: Apply firewall changes - fail-fast, return error for full rollback
-    if let Err(e) = apply_firewall_changes_atomic(app, option) {
+    if let Err(e) = apply_firewall_changes_atomic(option) {
         log::error!("Firewall changes failed, need full rollback: {}", e);
         return Err(e);
     }
@@ -273,7 +270,6 @@ enum RegistryRollback {
 
 /// Apply all registry changes for an option atomically
 fn apply_registry_changes(
-    app: &AppHandle,
     tweak: &TweakDefinition,
     option: &TweakOption,
     windows_version: u32,
@@ -516,7 +512,6 @@ fn apply_registry_changes(
                 RegistryAction::CreateKey => "Created key".to_string(),
             };
             emit_debug_log(
-                app,
                 DebugLevel::Info,
                 &format!(
                     "{}{} {}",
@@ -656,7 +651,6 @@ fn apply_service_changes_atomic(
 
 /// Apply all scheduler changes for an option atomically
 fn apply_scheduler_changes_atomic(
-    app: &AppHandle,
     option: &TweakOption,
     use_system: bool,
     use_ti: bool,
@@ -712,9 +706,9 @@ fn apply_scheduler_changes_atomic(
         );
 
         if is_pattern {
-            apply_scheduler_pattern(app, change, use_elevated, use_ti, &flags_str)?;
+            apply_scheduler_pattern(change, use_elevated, use_ti, &flags_str)?;
         } else {
-            apply_scheduler_exact(app, change, use_elevated, use_ti, &flags_str)?;
+            apply_scheduler_exact(change, use_elevated, use_ti, &flags_str)?;
         }
     }
     Ok(())
@@ -722,7 +716,6 @@ fn apply_scheduler_changes_atomic(
 
 /// Apply scheduler change for a pattern match
 fn apply_scheduler_pattern(
-    app: &AppHandle,
     change: &crate::models::SchedulerChange,
     use_elevated: bool,
     use_ti: bool,
@@ -796,7 +789,6 @@ fn apply_scheduler_pattern(
 
             if is_debug_enabled() {
                 emit_debug_log(
-                    app,
                     DebugLevel::Info,
                     &format!(
                         "Scheduler{}: {} → {:?}",
@@ -833,7 +825,6 @@ fn apply_scheduler_pattern(
 
         if is_debug_enabled() {
             emit_debug_log(
-                app,
                 DebugLevel::Info,
                 &format!(
                     "Scheduler{}: {}\\[{}] → {:?} ({} tasks)",
@@ -848,7 +839,6 @@ fn apply_scheduler_pattern(
 
 /// Apply scheduler change for an exact task name
 fn apply_scheduler_exact(
-    app: &AppHandle,
     change: &crate::models::SchedulerChange,
     use_elevated: bool,
     use_ti: bool,
@@ -910,7 +900,6 @@ fn apply_scheduler_exact(
 
     if is_debug_enabled() {
         emit_debug_log(
-            app,
             DebugLevel::Info,
             &format!(
                 "Scheduler{}: {} → {:?}",
@@ -928,7 +917,7 @@ fn apply_scheduler_exact(
 // ============================================================================
 
 /// Apply all hosts file changes atomically
-fn apply_hosts_changes_atomic(app: &AppHandle, option: &TweakOption) -> Result<()> {
+fn apply_hosts_changes_atomic(option: &TweakOption) -> Result<()> {
     if option.hosts_changes.is_empty() {
         return Ok(());
     }
@@ -961,7 +950,6 @@ fn apply_hosts_changes_atomic(app: &AppHandle, option: &TweakOption) -> Result<(
 
         if is_debug_enabled() {
             emit_debug_log(
-                app,
                 DebugLevel::Info,
                 &format!("Hosts: {} {}", action_str, entry_desc),
                 None,
@@ -977,7 +965,7 @@ fn apply_hosts_changes_atomic(app: &AppHandle, option: &TweakOption) -> Result<(
 // ============================================================================
 
 /// Apply all firewall rule changes atomically
-fn apply_firewall_changes_atomic(app: &AppHandle, option: &TweakOption) -> Result<()> {
+fn apply_firewall_changes_atomic(option: &TweakOption) -> Result<()> {
     if option.firewall_changes.is_empty() {
         return Ok(());
     }
@@ -1021,12 +1009,7 @@ fn apply_firewall_changes_atomic(app: &AppHandle, option: &TweakOption) -> Resul
                 }
             };
 
-            emit_debug_log(
-                app,
-                DebugLevel::Info,
-                &format!("Firewall: {}", details),
-                None,
-            );
+            emit_debug_log(DebugLevel::Info, &format!("Firewall: {}", details), None);
         }
     }
 

@@ -24,17 +24,12 @@ pub struct HostsEntry {
     pub domain: String,
 }
 
-/// Read and parse the hosts file
-pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
-    let hosts_path = get_hosts_path();
-
-    if !hosts_path.exists() {
-        return Ok(Vec::new());
-    }
-
-    let content = fs::read_to_string(&hosts_path)
-        .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?;
-
+/// Parse hosts-file text into entries.
+///
+/// Split out from `read_hosts_file` so the parsing rules can be tested without
+/// touching `C:\Windows\System32\drivers\etc\hosts`, which needs admin and is
+/// machine-global.
+pub fn parse_hosts_lines(content: &str) -> Vec<HostsEntry> {
     let mut entries = Vec::new();
 
     for line in content.lines() {
@@ -64,7 +59,21 @@ pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
         }
     }
 
-    Ok(entries)
+    entries
+}
+
+/// Read and parse the hosts file
+pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
+    let hosts_path = get_hosts_path();
+
+    if !hosts_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&hosts_path)
+        .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?;
+
+    Ok(parse_hosts_lines(&content))
 }
 
 /// Check if a specific hosts entry exists
@@ -203,4 +212,93 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
         .map_err(|e| Error::WindowsApi(format!("Failed to write hosts file: {}", e)))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The parser must not care about line endings. Windows hosts files are CRLF,
+    /// but a file touched by another tool can end up mixed.
+    #[test]
+    fn parses_crlf_lf_and_mixed_line_endings_identically() {
+        let lf = "0.0.0.0 a.example\n127.0.0.1 b.example\n";
+        let crlf = "0.0.0.0 a.example\r\n127.0.0.1 b.example\r\n";
+        let mixed = "0.0.0.0 a.example\r\n127.0.0.1 b.example\n";
+
+        for (label, text) in [("lf", lf), ("crlf", crlf), ("mixed", mixed)] {
+            let e = parse_hosts_lines(text);
+            assert_eq!(e.len(), 2, "{label}: wrong entry count");
+            assert_eq!(e[0].ip, "0.0.0.0", "{label}");
+            assert_eq!(e[0].domain, "a.example", "{label}");
+            assert_eq!(e[1].domain, "b.example", "{label}");
+        }
+    }
+
+    #[test]
+    fn ignores_comments_blank_lines_and_our_own_marker() {
+        let text = concat!(
+            "# Copyright (c) 1993-2009 Microsoft Corp.\r\n",
+            "\r\n",
+            "       \r\n",
+            "# 102.54.94.97     rhino.acme.com          # source server\r\n",
+            "# MagicX Toolbox\r\n",
+            "0.0.0.0 telemetry.example\r\n"
+        );
+        let e = parse_hosts_lines(text);
+        assert_eq!(e.len(), 1, "only the real entry should parse");
+        assert_eq!(e[0].domain, "telemetry.example");
+    }
+
+    #[test]
+    fn strips_inline_comments_from_the_domain() {
+        let e = parse_hosts_lines("0.0.0.0 telemetry.example # blocked by us\r\n");
+        assert_eq!(e.len(), 1);
+        assert_eq!(
+            e[0].domain, "telemetry.example",
+            "the trailing comment leaked into the domain"
+        );
+    }
+
+    #[test]
+    fn tolerates_tabs_and_repeated_spaces_as_separators() {
+        let e = parse_hosts_lines("0.0.0.0\t\ttelemetry.example\r\n127.0.0.1    local.example\r\n");
+        assert_eq!(e.len(), 2);
+        assert_eq!(e[0].domain, "telemetry.example");
+        assert_eq!(e[1].domain, "local.example");
+    }
+
+    /// KNOWN LIMITATION, pinned deliberately rather than asserted as correct.
+    ///
+    /// A hosts line may map one IP to several hostnames. The parser keeps only the
+    /// first, so `entry_exists` returns false for the others -- which is what makes
+    /// `remove_hosts_entry` delete the whole line, taking the unrelated hostnames
+    /// with it. Fixing that means returning every hostname on the line; when it is
+    /// fixed this test should be updated to expect 3 entries.
+    #[test]
+    fn only_the_first_hostname_on_a_multi_host_line_is_parsed() {
+        let e = parse_hosts_lines("127.0.0.1 alpha.example beta.example gamma.example\r\n");
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].domain, "alpha.example");
+    }
+
+    /// A UTF-8 BOM is attached to the first line, so the first entry's IP is
+    /// corrupted rather than the line being skipped. Pinned to make the failure
+    /// mode explicit: it is silent, not loud.
+    #[test]
+    fn a_utf8_bom_corrupts_the_first_entry() {
+        let e = parse_hosts_lines("\u{feff}0.0.0.0 telemetry.example\r\n127.0.0.1 ok.example\r\n");
+        assert_eq!(e.len(), 2);
+        assert_ne!(
+            e[0].ip, "0.0.0.0",
+            "if the BOM is now stripped, update this test to assert the correct IP"
+        );
+        assert_eq!(e[1].ip, "127.0.0.1", "later lines are unaffected");
+    }
+
+    #[test]
+    fn lines_without_a_hostname_are_skipped() {
+        let e = parse_hosts_lines("0.0.0.0\r\n\r\n0.0.0.0   \r\n");
+        assert!(e.is_empty(), "an IP with no hostname is not an entry");
+    }
 }

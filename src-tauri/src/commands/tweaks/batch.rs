@@ -5,15 +5,11 @@ use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::TweakResult;
 use crate::services::system_info_service;
-use tauri::AppHandle;
 
 /// Batch apply multiple tweak options
 /// Input: Vec of (tweak_id, option_index) tuples
 #[tauri::command]
-pub async fn batch_apply_tweaks(
-    app: AppHandle,
-    operations: Vec<(String, usize)>,
-) -> Result<TweakResult> {
+pub async fn batch_apply_tweaks(operations: Vec<(String, usize)>) -> Result<TweakResult> {
     log::info!(
         "Command: batch_apply_tweaks({} operations)",
         operations.len()
@@ -28,7 +24,6 @@ pub async fn batch_apply_tweaks(
 
     if is_debug_enabled() {
         emit_debug_log(
-            &app,
             DebugLevel::Info,
             &format!("Batch applying {} tweaks", operations.len()),
             None,
@@ -41,7 +36,7 @@ pub async fn batch_apply_tweaks(
     let mut failures: Vec<(String, String)> = Vec::new();
 
     for (tweak_id, option_index) in &operations {
-        let result = Box::pin(apply_tweak(app.clone(), tweak_id.clone(), *option_index)).await;
+        let result = Box::pin(apply_tweak(tweak_id.clone(), *option_index)).await;
 
         match result {
             Ok(res) => {
@@ -101,7 +96,6 @@ pub async fn batch_apply_tweaks(
 
     if is_debug_enabled() {
         emit_debug_log(
-            &app,
             DebugLevel::Success,
             &message,
             if requires_reboot {
@@ -122,7 +116,7 @@ pub async fn batch_apply_tweaks(
 
 /// Batch revert multiple tweaks
 #[tauri::command]
-pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Result<TweakResult> {
+pub async fn batch_revert_tweaks(tweak_ids: Vec<String>) -> Result<TweakResult> {
     log::info!("Command: batch_revert_tweaks({} tweaks)", tweak_ids.len());
 
     let runtime = system_info_service::get_runtime_context()?;
@@ -137,7 +131,7 @@ pub async fn batch_revert_tweaks(app: AppHandle, tweak_ids: Vec<String>) -> Resu
     let mut failures: Vec<(String, String)> = Vec::new();
 
     for tweak_id in &tweak_ids {
-        let result = Box::pin(revert_tweak(app.clone(), tweak_id.clone())).await;
+        let result = Box::pin(revert_tweak(tweak_id.clone())).await;
 
         match result {
             Ok(res) => {

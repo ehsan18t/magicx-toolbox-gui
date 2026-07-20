@@ -5,7 +5,6 @@ use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::TweakResult;
 use crate::services::{backup_service, system_info_service, tweak_loader};
-use tauri::AppHandle;
 
 /// Outcome of the automatic rollback that follows a failed apply.
 ///
@@ -55,11 +54,7 @@ fn classify_rollback(rollback: Option<Result<backup_service::RestoreResult>>) ->
 /// For dropdown tweaks (is_toggle: false):
 /// - option_index corresponds to the options array index
 #[tauri::command]
-pub async fn apply_tweak(
-    app: AppHandle,
-    tweak_id: String,
-    option_index: usize,
-) -> Result<TweakResult> {
+pub async fn apply_tweak(tweak_id: String, option_index: usize) -> Result<TweakResult> {
     log::info!(
         "Command: apply_tweak({}, option_index={})",
         tweak_id,
@@ -116,7 +111,6 @@ pub async fn apply_tweak(
 
     if is_debug_enabled() {
         emit_debug_log(
-            &app,
             DebugLevel::Info,
             &format!("Applying: {} → {}", tweak.name, option.label),
             None,
@@ -188,7 +182,7 @@ pub async fn apply_tweak(
     }
 
     // Steps 4-6: Apply all core changes ATOMICALLY
-    if let Err(e) = apply_all_changes_atomically(&app, &tweak, option, version) {
+    if let Err(e) = apply_all_changes_atomically(&tweak, option, version) {
         log::error!("Failed to apply changes for '{}': {}", tweak.name, e);
 
         // Roll back based on context. The result is deliberately NOT discarded:
@@ -237,7 +231,6 @@ pub async fn apply_tweak(
 
         if is_debug_enabled() {
             emit_debug_log(
-                &app,
                 DebugLevel::Error,
                 &format!("Rollback incomplete: {}", tweak.name),
                 Some(&format!(
@@ -303,7 +296,6 @@ pub async fn apply_tweak(
 
     if is_debug_enabled() {
         emit_debug_log(
-            &app,
             DebugLevel::Success,
             &format!("Applied: {} → {}", tweak.name, option.label),
             if tweak.requires_reboot {
@@ -324,7 +316,7 @@ pub async fn apply_tweak(
 
 /// Revert a tweak to its original state (restore from snapshot)
 #[tauri::command]
-pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResult> {
+pub async fn revert_tweak(tweak_id: String) -> Result<TweakResult> {
     log::info!("Command: revert_tweak({})", tweak_id);
 
     let tweak = tweak_loader::get_tweak(&tweak_id)?.ok_or_else(|| {
@@ -354,7 +346,6 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
 
     if is_debug_enabled() {
         emit_debug_log(
-            &app,
             DebugLevel::Info,
             &format!("Reverting: {}", tweak.name),
             Some(&format!(
@@ -385,7 +376,6 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
 
         if is_debug_enabled() {
             emit_debug_log(
-                &app,
                 DebugLevel::Success,
                 &format!("Reverted: {}", tweak.name),
                 if tweak.requires_reboot {
@@ -412,7 +402,6 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
 
         if is_debug_enabled() {
             emit_debug_log(
-                &app,
                 DebugLevel::Warn,
                 &format!("Partial revert: {}", tweak.name),
                 Some(&format!(

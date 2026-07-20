@@ -8,5 +8,5 @@
 
 pub mod apply;
 pub mod batch;
-mod helpers;
+pub(crate) mod helpers;
 pub mod query;

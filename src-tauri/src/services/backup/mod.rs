@@ -11,6 +11,9 @@
 //! - `detection`: State detection and snapshot validation
 //! - `helpers`: Parsing and comparison utilities
 
+#[cfg(test)]
+mod roundtrip_tests;
+
 mod capture;
 mod detection;
 mod helpers;

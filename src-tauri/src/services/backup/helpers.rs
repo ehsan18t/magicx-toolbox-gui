@@ -103,6 +103,55 @@ mod tests {
         assert!(!values_match(&Some(serde_json::json!(1)), &None));
     }
 
+    /// Documents a KNOWN DIVERGENCE, and is written to pass against it.
+    ///
+    /// There are two comparison implementations in the codebase and they disagree:
+    ///
+    /// - `detection.rs` compares through `registry_value::registry_values_match`,
+    ///   which normalises both sides by their declared `RegistryValueType` first.
+    /// - `inspection.rs` compares through `values_match` above, which is raw
+    ///   `serde_json` equality with an integer-width fallback and knows nothing
+    ///   about registry types.
+    ///
+    /// So a REG_BINARY value authored in the documented `"00,A0,FF"` hex form
+    /// MATCHES in detection and MISMATCHES in inspection: the tweak card reads
+    /// "applied" while the details modal lists a mismatch for the same value.
+    /// `registry_value.rs`'s own test asserts the normalising form is correct, so
+    /// `values_match` is the wrong one.
+    ///
+    /// The 2026-05-29 plan's Task 1 was supposed to unify these -- its acceptance
+    /// criterion required REG_BINARY to "apply, restore, export/import, and detect
+    /// consistently" -- but the unification reached `detection.rs` and stopped.
+    ///
+    /// This test pins the CURRENT behaviour so the divergence is visible and cannot
+    /// widen unnoticed. When the two comparison paths are collapsed onto one core,
+    /// this test SHOULD start failing: that is the signal the collapse worked, and
+    /// it should then be deleted rather than adjusted.
+    #[test]
+    fn values_match_disagrees_with_registry_values_match_on_binary_hex_strings() {
+        let byte_array = Some(serde_json::json!([0, 160, 255]));
+        let hex_string = Some(serde_json::json!("00,A0,FF"));
+
+        // The registry-aware comparison correctly treats these as the same bytes.
+        assert!(
+            crate::services::registry_value::registry_values_match(
+                &RegistryValueType::Binary,
+                &byte_array,
+                &hex_string,
+            )
+            .unwrap(),
+            "registry_values_match should normalise both forms to the same bytes"
+        );
+
+        // The type-blind comparison does not, because it only sees an array and a string.
+        assert!(
+            !values_match(&byte_array, &hex_string),
+            "values_match unexpectedly handles REG_BINARY hex strings -- if this now \
+             passes, the two comparison paths have been unified and this test should \
+             be deleted rather than inverted"
+        );
+    }
+
     #[test]
     fn test_task_state_matches() {
         assert!(task_state_matches(

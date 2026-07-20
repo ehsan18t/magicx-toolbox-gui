@@ -210,6 +210,68 @@ paths, which is the real fix for the injection surface — no crate does this, i
 
 ---
 
+## Stage 2 outcome — what is covered, and what is deliberately not
+
+Tests went 57 → 75. The approach that made it possible was not the one planned.
+
+**No mocking, and almost no seams.** Because the app is Windows-only and CI runs on
+Windows, the tests drive the **real** registry under `HKCU\Software\MagicXToolboxTest`.
+`require_write_access` only demands admin for HKLM, so this works unelevated locally and
+on CI. Per-test unique subkeys give parallel isolation with no serialisation, and cleanup
+runs in a `Drop` guard — which the test profile honours on panic, since `panic = "abort"`
+applies to `[profile.release]` only. Snapshot storage needed no seam either: under
+`cargo test`, `current_exe()` already resolves to `target/debug/deps`.
+
+A mock would have been written against our *belief* about what Windows returns, which is
+precisely what the audit found to be wrong in several places.
+
+**The one seam taken: `AppHandle` removed from the apply chain.** It was threaded through
+11 signatures and ~13 call sites purely to reach `emit_debug_log`, which no-ops unless
+debug mode is on; `app.emit`/`state`/`path` appear nowhere in the chain. `debug.rs` now
+holds it in a `OnceLock` set during setup. Rejected: threading `<R: Runtime>` through all
+11 signatures, and tauri's `test` feature (which does not help alone — `mock_app` yields
+`AppHandle<MockRuntime>`).
+
+### Covered
+
+| Area | Guards |
+| --- | --- |
+| capture → apply → detect → restore | 5 real round trips, incl. a never-existed value being **deleted** not zeroed, and an option switch leaving the original snapshot reachable (ADR-0002) |
+| Hosts parsing | CRLF/LF/mixed, comments, inline comments, tabs, hostname-less lines |
+| Firewall arg building | minimal vector, required fields, optional fields, hostile input staying in one argv element |
+| build ↔ runtime type drift | embedded data must deserialize into the runtime types |
+| Comparison divergence | `values_match` vs `registry_values_match` on REG_BINARY hex |
+
+### Accepted gaps — recorded, not overlooked
+
+- **`apply_tweak` / `revert_tweak` / `batch_*` orchestration.** They resolve tweaks from the
+  compiled-in `TWEAKS` map, so a test can only pass a real shipped id — i.e. mutate the
+  developer's actual machine. They also branch on `get_runtime_context().is_admin`, which
+  differs between an elevated CI runner and a normal developer shell. Splitting resolution
+  from orchestration (`apply_resolved_tweak`) would fix this and is worth doing; it was not
+  done here because it moves the body of the app's most dangerous function and deserves its
+  own reviewable commit.
+- **Service, scheduler and firewall apply/restore end-to-end.** There is no per-user scratch
+  namespace equivalent to HKCU; creating a real scratch service or firewall rule needs admin
+  and mutates the runner. The honest ceiling without elevation is the existing
+  nonexistent-name pattern plus parser fixtures. Mitigated by `restore.rs` collecting these
+  as failures rather than aborting.
+- **`get_applied_tweaks` / `validate_all_snapshots`.** Both enumerate the whole snapshots
+  directory and `validate_all_snapshots` *deletes* what it judges stale, so under the
+  parallel harness they would see and destroy other tests' fixtures. Testable behind a
+  shared `Mutex` with containment assertions; not yet written.
+
+### Corrections stage 2 made to the audit
+
+- **The firewall injection finding is wrong for that path.** Arguments go to
+  `Command::new("netsh").args()`, which builds argv through `CreateProcessW` with no shell,
+  so shell metacharacters are inert. The real risk is narrower — netsh's own `key=value`
+  parsing — and now has a regression guard. The PowerShell and `cmd.exe` hooks build command
+  *strings* and remain a genuine concern.
+- **New finding, not previously anchored:** `remove_hosts_entry` rebuilds the file with
+  `new_lines.join("\n")` (`hosts_service.rs:210`), so removing any entry rewrites every line
+  ending in the file to LF and drops the trailing newline.
+
 ## Phase 3 — Detection, status, and the parse/clone question
 
 - **Collapse `detection.rs` + `inspection.rs` onto one comparison core** (−331 LOC, highest-value item).
