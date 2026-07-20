@@ -4,8 +4,10 @@
 root = true
 
 # All files
+# Windows-only application: CRLF everywhere, matching .gitattributes.
 [*]
 charset = utf-8
+end_of_line = crlf
 insert_final_newline = true
 trim_trailing_whitespace = true
 

@@ -1,2 +1,22 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# MagicX Toolbox is a Windows-only application. It is never built or run on
+# any other platform, so the working tree is CRLF everywhere, unconditionally.
+#
+# `eol=crlf` makes this a property of the REPOSITORY rather than of each
+# developer's `core.autocrlf` setting: every checkout gets CRLF regardless of
+# local git config. Blobs are still stored LF-normalized in the object database,
+# which is what keeps diffs, merges and blame readable.
+* text=auto eol=crlf
+
+# Binary assets — never touch these.
+*.woff2 binary
+*.png   binary
+*.ico   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.pdf   binary
+*.zip   binary
+*.mgx   binary
+*.exe   binary
+*.dll   binary

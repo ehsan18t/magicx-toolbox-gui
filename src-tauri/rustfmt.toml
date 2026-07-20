@@ -12,8 +12,9 @@ tab_spaces = 4
 # Line length
 max_width = 100
 
-# Line endings (Auto style - adapts to platform)
-newline_style = "Auto"
+# Line endings — Windows-only application, always CRLF.
+# "Auto" preserves whatever a file already has, which lets LF creep in.
+newline_style = "Windows"
 
 # Imports
 reorder_imports = true
