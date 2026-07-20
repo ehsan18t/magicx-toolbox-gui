@@ -2,6 +2,7 @@
 
 use crate::Error;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::process::Command;
 
 /// GitHub Release asset information
@@ -90,72 +91,59 @@ fn is_newer_version(current: &str, latest: &str) -> bool {
 /// than the current version. It also finds the appropriate asset based on the
 /// provided regex pattern.
 #[tauri::command]
-pub async fn check_for_update(
-    app: tauri::AppHandle,
-    config: UpdateConfig,
-) -> Result<UpdateInfo, Error> {
+pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<UpdateInfo, Error> {
     log::info!("Checking for updates from GitHub...");
 
     let current_version = app.package_info().version.to_string();
     log::debug!("Current version: {}", current_version);
 
-    // Fetch latest release from GitHub API
-    let client = reqwest::Client::builder()
-        .user_agent("MagicX-Toolbox-Updater")
+    // Fetch latest release from GitHub API. ureq surfaces a non-2xx status as `Err(Status(..))`,
+    // so the rate-limit (403) and no-releases (404) cases are handled in the error arm.
+    let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| Error::Update(format!("Failed to create HTTP client: {}", e)))?;
+        .build();
 
-    let response = client
+    let response = match agent
         .get(&config.releases_api_url)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("Failed to fetch releases: {}", e);
-            if e.is_timeout() {
-                Error::Update("Request timed out. Please check your internet connection.".into())
-            } else if e.is_connect() {
-                Error::Update("Failed to connect. Please check your internet connection.".into())
-            } else {
-                Error::Update(format!("Failed to fetch update info: {}", e))
-            }
-        })?;
+        .set("User-Agent", "MagicX-Toolbox-Updater")
+        .call()
+    {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(403, resp)) => {
+            let remaining = resp.header("x-ratelimit-remaining").unwrap_or("unknown");
+            log::warn!("GitHub API rate limit. Remaining: {}", remaining);
+            return Err(Error::Update(
+                "GitHub API rate limit exceeded. Please try again later.".into(),
+            ));
+        }
+        Err(ureq::Error::Status(404, _)) => {
+            log::warn!("No releases found");
+            return Ok(UpdateInfo {
+                available: false,
+                current_version,
+                latest_version: None,
+                release_notes: None,
+                download_url: None,
+                published_at: None,
+                asset_name: None,
+                asset_size: None,
+            });
+        }
+        Err(ureq::Error::Status(code, _)) => {
+            return Err(Error::Update(format!(
+                "GitHub API returned status: {}",
+                code
+            )));
+        }
+        Err(ureq::Error::Transport(t)) => {
+            log::error!("Failed to fetch releases: {}", t);
+            return Err(Error::Update(
+                "Failed to fetch update info. Please check your internet connection.".into(),
+            ));
+        }
+    };
 
-    // Handle rate limiting
-    if response.status() == reqwest::StatusCode::FORBIDDEN {
-        let remaining = response
-            .headers()
-            .get("x-ratelimit-remaining")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("unknown");
-        log::warn!("GitHub API rate limit. Remaining: {}", remaining);
-        return Err(Error::Update(
-            "GitHub API rate limit exceeded. Please try again later.".into(),
-        ));
-    }
-
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        log::warn!("No releases found");
-        return Ok(UpdateInfo {
-            available: false,
-            current_version,
-            latest_version: None,
-            release_notes: None,
-            download_url: None,
-            published_at: None,
-            asset_name: None,
-            asset_size: None,
-        });
-    }
-
-    if !response.status().is_success() {
-        return Err(Error::Update(format!(
-            "GitHub API returned status: {}",
-            response.status()
-        )));
-    }
-
-    let release: GitHubRelease = response.json().await.map_err(|e| {
+    let release: GitHubRelease = response.into_json().map_err(|e| {
         log::error!("Failed to parse release JSON: {}", e);
         Error::Update("Failed to parse update information".into())
     })?;
@@ -215,7 +203,7 @@ fn is_trusted_download_url(url: &str) -> bool {
 /// Downloads the update asset to a temporary location and launches the installer.
 /// The app should exit after calling this to allow the installer to complete.
 #[tauri::command]
-pub async fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
+pub fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
     log::info!("Starting update download: {}", asset_name);
 
     // Security: Validate download URL is from trusted source
@@ -251,29 +239,28 @@ pub async fn install_update(download_url: String, asset_name: String) -> Result<
 
     log::debug!("Downloading to: {:?}", download_path);
 
-    // Download the file
-    let client = reqwest::Client::builder()
-        .user_agent("MagicX-Toolbox-Updater")
+    // Download the file. ureq returns Err on a non-2xx status, so a failed download is caught here.
+    let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(300)) // 5 minute timeout for downloads
-        .build()
-        .map_err(|e| Error::Update(format!("Failed to create HTTP client: {}", e)))?;
+        .build();
 
-    let response = client.get(&download_url).send().await.map_err(|e| {
-        log::error!("Failed to download update: {}", e);
-        Error::Update(format!("Failed to download update: {}", e))
-    })?;
+    let response = agent
+        .get(&download_url)
+        .set("User-Agent", "MagicX-Toolbox-Updater")
+        .call()
+        .map_err(|e| {
+            log::error!("Failed to download update: {}", e);
+            Error::Update(format!("Failed to download update: {}", e))
+        })?;
 
-    if !response.status().is_success() {
-        return Err(Error::Update(format!(
-            "Download failed with status: {}",
-            response.status()
-        )));
-    }
-
-    let bytes = response.bytes().await.map_err(|e| {
-        log::error!("Failed to read download: {}", e);
-        Error::Update(format!("Failed to read downloaded data: {}", e))
-    })?;
+    let mut bytes = Vec::new();
+    response
+        .into_reader()
+        .read_to_end(&mut bytes)
+        .map_err(|e| {
+            log::error!("Failed to read download: {}", e);
+            Error::Update(format!("Failed to read downloaded data: {}", e))
+        })?;
 
     // Write to temp file
     std::fs::write(&download_path, &bytes).map_err(|e| {
