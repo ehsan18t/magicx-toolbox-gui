@@ -1,19 +1,58 @@
-//! Windows Service Control Manager operations
+//! Windows Service Control Manager operations (typed, via `windows-sys`).
 //!
-//! Provides functions for managing Windows services:
-//! - Getting service status and startup type
-//! - Starting and stopping services
-//! - Changing service startup type (disabled, manual, automatic)
+//! Replaces the previous `sc.exe` / `net.exe` / `reg.exe` string-parsing implementation, which was
+//! locale-dependent and swallowed real failures. State and control go through the SCM
+//! (`QueryServiceStatusEx`, `ChangeServiceConfigW`, `StartServiceW`, `ControlService`); the startup
+//! type is read from the service's typed `Start` registry value (a numeric DWORD — locale-free).
+//!
+//! The four public signatures (`get_service_status`, `set_service_startup`, `start_service`,
+//! `stop_service`) are unchanged so callers do not move. `panic = "abort"` in release means `Drop`
+//! does not run on a panic, but the `ScHandle` guard still covers the normal and `?`-early-return
+//! paths — strictly better than manual `CloseServiceHandle`.
 
 use crate::error::Error;
-use crate::models::ServiceStartupType;
-use std::os::windows::process::CommandExt;
-use std::process::Command;
+use crate::models::{RegistryHive, ServiceStartupType};
+use crate::services::registry_service;
+use std::ffi::OsStr;
+use std::os::windows::ffi::OsStrExt;
+use std::ptr;
 
-/// CREATE_NO_WINDOW flag to prevent console window from appearing
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use windows_sys::Win32::Foundation::GetLastError;
+use windows_sys::Win32::System::Services::{
+    ChangeServiceConfigW, CloseServiceHandle, ControlService, EnumDependentServicesW,
+    OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW, ENUM_SERVICE_STATUSW,
+    SC_HANDLE, SC_STATUS_PROCESS_INFO, SERVICE_STATUS, SERVICE_STATUS_PROCESS,
+};
 
-/// Service running state
+// --- Win32 constants (stable ABI values; defined locally to avoid version-specific import churn) ---
+const SC_MANAGER_CONNECT: u32 = 0x0001;
+const SERVICE_QUERY_STATUS: u32 = 0x0004;
+const SERVICE_CHANGE_CONFIG: u32 = 0x0002;
+const SERVICE_START_ACCESS: u32 = 0x0010; // SERVICE_START
+const SERVICE_STOP_ACCESS: u32 = 0x0020; // SERVICE_STOP
+const SERVICE_ENUMERATE_DEPENDENTS: u32 = 0x0008;
+const SERVICE_NO_CHANGE: u32 = 0xffff_ffff;
+const SERVICE_CONTROL_STOP: u32 = 0x0000_0001;
+const SERVICE_ACTIVE: u32 = 0x0000_0001;
+
+// dwCurrentState values
+const SVC_STOPPED: u32 = 1;
+const SVC_START_PENDING: u32 = 2;
+const SVC_STOP_PENDING: u32 = 3;
+const SVC_RUNNING: u32 = 4;
+const SVC_CONTINUE_PENDING: u32 = 5;
+const SVC_PAUSE_PENDING: u32 = 6;
+const SVC_PAUSED: u32 = 7;
+
+// GetLastError codes
+const ERROR_SERVICE_DOES_NOT_EXIST: u32 = 1060;
+const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
+const ERROR_SERVICE_NOT_ACTIVE: u32 = 1062;
+const ERROR_MORE_DATA: u32 = 234;
+
+const STOP_TIMEOUT_MS: u128 = 30_000;
+
+/// Service running state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceState {
     Running,
@@ -26,68 +65,144 @@ pub enum ServiceState {
     Unknown,
 }
 
-impl ServiceState {
-    fn from_sc_output(state_str: &str) -> Self {
-        match state_str.trim().to_uppercase().as_str() {
-            "RUNNING" => ServiceState::Running,
-            "STOPPED" => ServiceState::Stopped,
-            "START_PENDING" => ServiceState::StartPending,
-            "STOP_PENDING" => ServiceState::StopPending,
-            "PAUSED" => ServiceState::Paused,
-            "PAUSE_PENDING" => ServiceState::PausePending,
-            "CONTINUE_PENDING" => ServiceState::ContinuePending,
-            _ => ServiceState::Unknown,
-        }
-    }
-}
-
-/// Service status information
+/// Service status information.
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // name field reserved for future use
 pub struct ServiceStatus {
     pub name: String,
     pub state: ServiceState,
     pub startup_type: Option<ServiceStartupType>,
-    /// Whether the service exists in the Service Control Manager
+    /// Whether the service exists in the Service Control Manager.
     pub exists: bool,
 }
 
-/// Get the current status of a Windows service
-pub fn get_service_status(service_name: &str) -> Result<ServiceStatus, Error> {
-    // Query service state using sc.exe
-    let output = Command::new("sc")
-        .args(["query", service_name])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| {
-            Error::ServiceControl(format!("Failed to query service '{}': {}", service_name, e))
-        })?;
+/// RAII guard that closes an `SC_HANDLE` on drop (normal and `?`-early-return paths).
+struct ScHandle(SC_HANDLE);
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Check if service exists by looking for common error patterns
-    // sc query returns non-zero exit code and error message for non-existent services
-    let service_not_found = !output.status.success()
-        && (stdout.contains("FAILED 1060")
-            || stderr.contains("FAILED 1060")
-            || stdout.contains("service does not exist")
-            || stderr.contains("service does not exist"));
-
-    if service_not_found {
-        return Ok(ServiceStatus {
-            name: service_name.to_string(),
-            state: ServiceState::Unknown,
-            startup_type: None,
-            exists: false,
-        });
+impl Drop for ScHandle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: handle is non-null and owned by this guard.
+            unsafe { CloseServiceHandle(self.0) };
+        }
     }
+}
 
-    // Parse state from output
-    let state = parse_service_state(&stdout).unwrap_or(ServiceState::Unknown);
+fn wide(s: &str) -> Vec<u16> {
+    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+}
 
-    // Get startup type from registry
-    let startup_type = get_service_startup_type(service_name).ok();
+/// SAFETY: `p` must be a valid, NUL-terminated wide string for its whole length.
+unsafe fn wide_to_string(p: *const u16) -> String {
+    let mut len = 0usize;
+    while *p.add(len) != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(std::slice::from_raw_parts(p, len))
+}
+
+/// Open the SCM and a service handle. `Ok(None)` means the service does not exist; `Err` is a real
+/// SCM/open failure. The returned SCM guard is kept alive alongside the service guard.
+fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>, Error> {
+    // SAFETY: standard SCM open sequence; both handles are wrapped in RAII guards.
+    unsafe {
+        let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
+        if scm.is_null() {
+            return Err(Error::ServiceControl(format!(
+                "OpenSCManager failed: {}",
+                GetLastError()
+            )));
+        }
+        let scm = ScHandle(scm);
+
+        let wname = wide(name);
+        let svc = OpenServiceW(scm.0, wname.as_ptr(), access);
+        if svc.is_null() {
+            let err = GetLastError();
+            if err == ERROR_SERVICE_DOES_NOT_EXIST {
+                return Ok(None);
+            }
+            return Err(Error::ServiceControl(format!(
+                "OpenService '{}' failed: {}",
+                name, err
+            )));
+        }
+        Ok(Some((scm, ScHandle(svc))))
+    }
+}
+
+fn state_from_dword(s: u32) -> ServiceState {
+    match s {
+        SVC_STOPPED => ServiceState::Stopped,
+        SVC_START_PENDING => ServiceState::StartPending,
+        SVC_STOP_PENDING => ServiceState::StopPending,
+        SVC_RUNNING => ServiceState::Running,
+        SVC_CONTINUE_PENDING => ServiceState::ContinuePending,
+        SVC_PAUSE_PENDING => ServiceState::PausePending,
+        SVC_PAUSED => ServiceState::Paused,
+        _ => ServiceState::Unknown,
+    }
+}
+
+fn start_type_dword(t: &ServiceStartupType) -> u32 {
+    match t {
+        ServiceStartupType::Boot => 0,
+        ServiceStartupType::System => 1,
+        ServiceStartupType::Automatic => 2,
+        ServiceStartupType::Manual => 3,
+        ServiceStartupType::Disabled => 4,
+    }
+}
+
+/// Query a service's current `dwCurrentState` via `QueryServiceStatusEx`.
+fn query_current_state(svc: SC_HANDLE) -> Result<u32, Error> {
+    // SAFETY: `svc` is a valid service handle with SERVICE_QUERY_STATUS access; the buffer is a
+    // correctly-sized, zeroed SERVICE_STATUS_PROCESS.
+    unsafe {
+        let mut status: SERVICE_STATUS_PROCESS = std::mem::zeroed();
+        let mut needed: u32 = 0;
+        let ok = QueryServiceStatusEx(
+            svc,
+            SC_STATUS_PROCESS_INFO,
+            &mut status as *mut SERVICE_STATUS_PROCESS as *mut u8,
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
+            &mut needed,
+        );
+        if ok == 0 {
+            return Err(Error::ServiceControl(format!(
+                "QueryServiceStatusEx failed: {}",
+                GetLastError()
+            )));
+        }
+        Ok(status.dwCurrentState)
+    }
+}
+
+/// Read a service's startup type from its typed `Start` registry value (locale-free).
+fn read_startup_type(service_name: &str) -> Option<ServiceStartupType> {
+    let key = format!("System\\CurrentControlSet\\Services\\{}", service_name);
+    match registry_service::read_dword(&RegistryHive::Hklm, &key, "Start") {
+        Ok(Some(v)) => ServiceStartupType::from_registry_value(v),
+        _ => None,
+    }
+}
+
+/// Get the current status of a Windows service.
+pub fn get_service_status(service_name: &str) -> Result<ServiceStatus, Error> {
+    let (_scm, svc) = match open_service(service_name, SERVICE_QUERY_STATUS)? {
+        None => {
+            return Ok(ServiceStatus {
+                name: service_name.to_string(),
+                state: ServiceState::Unknown,
+                startup_type: None,
+                exists: false,
+            })
+        }
+        Some(pair) => pair,
+    };
+
+    let state = state_from_dword(query_current_state(svc.0)?);
+    let startup_type = read_startup_type(service_name);
 
     Ok(ServiceStatus {
         name: service_name.to_string(),
@@ -97,72 +212,12 @@ pub fn get_service_status(service_name: &str) -> Result<ServiceStatus, Error> {
     })
 }
 
-/// Parse service state from sc query output
-fn parse_service_state(output: &str) -> Option<ServiceState> {
-    for line in output.lines() {
-        let line = line.trim();
-        if line.starts_with("STATE") {
-            // Format: "STATE              : 4  RUNNING"
-            if let Some(state_part) = line.split(':').nth(1) {
-                // Extract the text state (e.g., "RUNNING" from "4  RUNNING")
-                let parts: Vec<&str> = state_part.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    return Some(ServiceState::from_sc_output(parts[1]));
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Get the startup type of a service from registry
-fn get_service_startup_type(service_name: &str) -> Result<ServiceStartupType, Error> {
-    let key_path = format!("System\\CurrentControlSet\\Services\\{}", service_name);
-
-    let output = Command::new("reg")
-        .args(["query", &format!("HKLM\\{}", key_path), "/v", "Start"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| {
-            Error::ServiceControl(format!("Failed to query service startup type: {}", e))
-        })?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Parse REG_DWORD value from output
-    for line in stdout.lines() {
-        if line.contains("Start") && line.contains("REG_DWORD") {
-            if let Some(value_str) = line.split_whitespace().last() {
-                // Parse hex value (e.g., "0x4")
-                let value = if let Some(stripped) = value_str.strip_prefix("0x") {
-                    u32::from_str_radix(stripped, 16).ok()
-                } else {
-                    value_str.parse::<u32>().ok()
-                };
-
-                if let Some(v) = value {
-                    return ServiceStartupType::from_registry_value(v).ok_or_else(|| {
-                        Error::ServiceControl(format!("Unknown startup type value: {}", v))
-                    });
-                }
-            }
-        }
-    }
-
-    Err(Error::ServiceControl(format!(
-        "Could not determine startup type for service '{}'",
-        service_name
-    )))
-}
-
-/// Set the startup type of a Windows service
+/// Set the startup type of a Windows service.
 pub fn set_service_startup(
     service_name: &str,
     startup_type: &ServiceStartupType,
 ) -> Result<(), Error> {
-    let start_type = startup_type.to_sc_start_type();
-
-    // Check if already disabled to avoid error/work
+    // Preserve prior behavior: skip if already disabled.
     if matches!(startup_type, ServiceStartupType::Disabled) {
         if let Ok(true) = is_service_disabled(service_name) {
             log::info!(
@@ -173,116 +228,206 @@ pub fn set_service_startup(
         }
     }
 
+    let (_scm, svc) = open_service(service_name, SERVICE_CHANGE_CONFIG)?.ok_or_else(|| {
+        Error::ServiceControl(format!("Service does not exist: {}", service_name))
+    })?;
+
     log::info!(
-        "Setting service '{}' startup to '{}'",
+        "Setting service '{}' startup to {:?}",
         service_name,
-        start_type
+        startup_type
     );
 
-    let output = Command::new("sc")
-        .args(["config", service_name, &format!("start={}", start_type)])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| {
-            Error::ServiceControl(format!(
-                "Failed to configure service '{}': {}",
-                service_name, e
-            ))
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::ServiceControl(format!(
-            "Failed to set service '{}' startup to '{}': {}",
-            service_name, start_type, stderr
-        )));
-    }
-
-    log::debug!(
-        "Successfully set service '{}' startup to '{}'",
-        service_name,
-        start_type
-    );
-    Ok(())
-}
-
-/// Start a Windows service
-pub fn start_service(service_name: &str) -> Result<(), Error> {
-    log::info!("Starting service '{}'", service_name);
-
-    let output = Command::new("net")
-        .args(["start", service_name])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| {
-            Error::ServiceControl(format!("Failed to start service '{}': {}", service_name, e))
-        })?;
-
-    // net start returns success even if already running
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Ignore "already started" errors
-        if !stderr.contains("already been started") && !stderr.contains("2182") {
+    // SAFETY: `svc` has SERVICE_CHANGE_CONFIG access. SERVICE_NO_CHANGE leaves every field but the
+    // start type untouched; all string params are NULL (not empty) to mean "unchanged".
+    unsafe {
+        let ok = ChangeServiceConfigW(
+            svc.0,
+            SERVICE_NO_CHANGE,
+            start_type_dword(startup_type),
+            SERVICE_NO_CHANGE,
+            ptr::null(),
+            ptr::null(),
+            ptr::null_mut(),
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+        );
+        if ok == 0 {
             return Err(Error::ServiceControl(format!(
-                "Failed to start service '{}': {}",
-                service_name, stderr
+                "Failed to set service '{}' startup: {}",
+                service_name,
+                GetLastError()
             )));
         }
     }
 
     log::debug!(
-        "Service '{}' started (or was already running)",
-        service_name
+        "Successfully set service '{}' startup to {:?}",
+        service_name,
+        startup_type
     );
     Ok(())
 }
 
-/// Stop a Windows service
+/// Start a Windows service. `ERROR_SERVICE_ALREADY_RUNNING` is idempotent success.
+pub fn start_service(service_name: &str) -> Result<(), Error> {
+    let (_scm, svc) = open_service(service_name, SERVICE_START_ACCESS | SERVICE_QUERY_STATUS)?
+        .ok_or_else(|| Error::ServiceControl(format!("Service does not exist: {}", service_name)))?;
+
+    log::info!("Starting service '{}'", service_name);
+
+    // SAFETY: `svc` has SERVICE_START access; no start arguments.
+    unsafe {
+        let ok = StartServiceW(svc.0, 0, ptr::null());
+        if ok == 0 {
+            let err = GetLastError();
+            if err != ERROR_SERVICE_ALREADY_RUNNING {
+                return Err(Error::ServiceControl(format!(
+                    "Failed to start service '{}': {}",
+                    service_name, err
+                )));
+            }
+        }
+    }
+
+    log::debug!("Service '{}' started (or was already running)", service_name);
+    Ok(())
+}
+
+/// Stop a Windows service. Stops active dependents first (as `net stop` did — `ControlService`
+/// alone does not), treats an already-stopped service as success, and polls for `STOPPED`.
 pub fn stop_service(service_name: &str) -> Result<(), Error> {
-    // Check if running first
-    if let Ok(false) = is_service_running(service_name) {
+    let (_scm, svc) = open_service(
+        service_name,
+        SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS | SERVICE_ENUMERATE_DEPENDENTS,
+    )?
+    .ok_or_else(|| Error::ServiceControl(format!("Service does not exist: {}", service_name)))?;
+
+    if query_current_state(svc.0)? == SVC_STOPPED {
         log::info!("Service '{}' is not running, skipping stop.", service_name);
         return Ok(());
     }
 
     log::info!("Stopping service '{}'", service_name);
 
-    let output = Command::new("net")
-        .args(["stop", service_name])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| {
-            Error::ServiceControl(format!("Failed to stop service '{}': {}", service_name, e))
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Ignore "not started" errors
-        if !stderr.contains("not started") && !stderr.contains("3521") {
-            return Err(Error::ServiceControl(format!(
-                "Failed to stop service '{}': {}",
-                service_name, stderr
-            )));
+    // Stop active dependents first (best-effort; the target stop below is authoritative).
+    for dep in active_dependents(svc.0)? {
+        if let Some((_s, dsvc)) =
+            open_service(&dep, SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS)?
+        {
+            let _ = send_stop(dsvc.0);
+            let _ = wait_for_stop(dsvc.0);
         }
     }
 
-    log::debug!(
-        "Service '{}' stopped (or was already stopped)",
-        service_name
-    );
+    send_stop(svc.0)?;
+    wait_for_stop(svc.0)?;
+
+    log::debug!("Service '{}' stopped", service_name);
     Ok(())
 }
 
-/// Check if a service is currently running
-pub fn is_service_running(service_name: &str) -> Result<bool, Error> {
-    let status = get_service_status(service_name)?;
-    Ok(status.state == ServiceState::Running)
+/// Send a STOP control. `ERROR_SERVICE_NOT_ACTIVE` is idempotent success.
+fn send_stop(svc: SC_HANDLE) -> Result<(), Error> {
+    // SAFETY: `svc` has SERVICE_STOP access; `status` is a zeroed out-param.
+    unsafe {
+        let mut status: SERVICE_STATUS = std::mem::zeroed();
+        let ok = ControlService(svc, SERVICE_CONTROL_STOP, &mut status);
+        if ok == 0 {
+            let err = GetLastError();
+            if err != ERROR_SERVICE_NOT_ACTIVE {
+                return Err(Error::ServiceControl(format!(
+                    "ControlService(STOP) failed: {}",
+                    err
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
-/// Check if a service is disabled
+/// Poll until the service reports `STOPPED`, or time out.
+fn wait_for_stop(svc: SC_HANDLE) -> Result<(), Error> {
+    let start = std::time::Instant::now();
+    loop {
+        if query_current_state(svc)? == SVC_STOPPED {
+            return Ok(());
+        }
+        if start.elapsed().as_millis() > STOP_TIMEOUT_MS {
+            return Err(Error::ServiceControl(
+                "Timed out waiting for service to stop".to_string(),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+/// Names of a service's currently-active dependent services.
+fn active_dependents(svc: SC_HANDLE) -> Result<Vec<String>, Error> {
+    // SAFETY: two-call sizing pattern; the second buffer is usize-aligned (>= pointer alignment)
+    // and sized to `bytes_needed`, matching what the first call reported.
+    unsafe {
+        let mut bytes_needed: u32 = 0;
+        let mut count: u32 = 0;
+
+        let ok = EnumDependentServicesW(
+            svc,
+            SERVICE_ACTIVE,
+            ptr::null_mut(),
+            0,
+            &mut bytes_needed,
+            &mut count,
+        );
+        if ok != 0 {
+            // Succeeded with a zero-size buffer => no dependents.
+            return Ok(Vec::new());
+        }
+        let err = GetLastError();
+        if err != ERROR_MORE_DATA {
+            return Err(Error::ServiceControl(format!(
+                "EnumDependentServices sizing failed: {}",
+                err
+            )));
+        }
+        if bytes_needed == 0 {
+            return Ok(Vec::new());
+        }
+
+        let words = (bytes_needed as usize).div_ceil(std::mem::size_of::<usize>());
+        let mut buf: Vec<usize> = vec![0usize; words];
+        let entries = buf.as_mut_ptr() as *mut ENUM_SERVICE_STATUSW;
+
+        let ok2 = EnumDependentServicesW(
+            svc,
+            SERVICE_ACTIVE,
+            entries,
+            bytes_needed,
+            &mut bytes_needed,
+            &mut count,
+        );
+        if ok2 == 0 {
+            return Err(Error::ServiceControl(format!(
+                "EnumDependentServices failed: {}",
+                GetLastError()
+            )));
+        }
+
+        let mut names = Vec::with_capacity(count as usize);
+        for i in 0..count as usize {
+            let entry = &*entries.add(i);
+            if !entry.lpServiceName.is_null() {
+                names.push(wide_to_string(entry.lpServiceName as *const u16));
+            }
+        }
+        Ok(names)
+    }
+}
+
+/// Check if a service is disabled.
 pub fn is_service_disabled(service_name: &str) -> Result<bool, Error> {
-    let status = get_service_status(service_name)?;
-    Ok(status.startup_type == Some(ServiceStartupType::Disabled))
+    Ok(get_service_status(service_name)?.startup_type == Some(ServiceStartupType::Disabled))
 }
 
 #[cfg(test)]
@@ -290,25 +435,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_service_state_running() {
-        let output = r#"
-SERVICE_NAME: wuauserv
-        TYPE               : 20  WIN32_SHARE_PROCESS
-        STATE              : 4  RUNNING
-                                (STOPPABLE, NOT_PAUSABLE, ACCEPTS_PRESHUTDOWN)
-        WIN32_EXIT_CODE    : 0  (0x0)
-        "#;
-        assert_eq!(parse_service_state(output), Some(ServiceState::Running));
+    fn nonexistent_service_reports_absent() {
+        let s = get_service_status("MagicXNoSuchService_zzq").unwrap();
+        assert!(!s.exists);
+        assert_eq!(s.state, ServiceState::Unknown);
+        assert_eq!(s.startup_type, None);
     }
 
     #[test]
-    fn test_parse_service_state_stopped() {
-        let output = r#"
-SERVICE_NAME: wuauserv
-        TYPE               : 20  WIN32_SHARE_PROCESS
-        STATE              : 1  STOPPED
-        WIN32_EXIT_CODE    : 0  (0x0)
-        "#;
-        assert_eq!(parse_service_state(output), Some(ServiceState::Stopped));
+    fn known_service_reports_present_with_startup() {
+        // "Schedule" (Task Scheduler) exists on every Windows edition.
+        let s = get_service_status("Schedule").unwrap();
+        assert!(s.exists);
+        assert!(
+            s.startup_type.is_some(),
+            "expected a readable Start value for Schedule"
+        );
+    }
+
+    #[test]
+    fn start_type_dword_round_trips_through_from_registry_value() {
+        for t in [
+            ServiceStartupType::Boot,
+            ServiceStartupType::System,
+            ServiceStartupType::Automatic,
+            ServiceStartupType::Manual,
+            ServiceStartupType::Disabled,
+        ] {
+            let n = start_type_dword(&t);
+            assert_eq!(ServiceStartupType::from_registry_value(n), Some(t));
+        }
     }
 }
