@@ -13,9 +13,8 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 - Batch apply and batch revert tweaks.
 - Detect current system state by comparing live Windows state against tweak options.
 - Capture internal snapshots before first apply for rollback.
-- Revert tweaks from snapshots.
-- Export selected tweak intent to `.mgx` configuration profiles.
-- Import, validate, preview, and apply profiles on another machine.
+- Revert tweaks from snapshots; a partial revert enters "Needs Attention" (snapshot kept for retry or explicit keep-current-state).
+- Select "System Default" to revert whenever a snapshot exists.
 - Display Windows/system/hardware details.
 - Check for GitHub releases and launch official installers.
 - Debug panel and progress/toast feedback for long operations.
@@ -37,43 +36,31 @@ See `docs/TWEAK_AUTHORING.md` for the authoring contract.
 
 Manual tweak apply is handled by `src-tauri/src/commands/tweaks/apply.rs` and `helpers.rs`.
 
-- First apply captures an internal snapshot in app data.
-- Switching options captures current state for failure rollback, then updates snapshot metadata on success.
-- Core changes are applied in order: registry, services, scheduler, hosts, firewall.
-- Registry changes are atomic within their phase; broader rollback restores from captured snapshot.
-- Pre-command and pre-PowerShell failures abort before core changes.
-- Post-command and post-PowerShell failures are logged and do not roll back successful core changes.
-- `requires_admin`, `requires_system`, and `requires_ti` determine elevation needs.
+- First apply captures an internal snapshot in a portable `snapshots/` folder next to the executable (written atomically: temp file + rename).
+- Switching options captures the current state for failure rollback, then updates snapshot metadata on success.
+- Core changes apply in order: registry, services, scheduler, hosts, firewall. Each phase is atomic *in intent*; a failed phase rolls the whole tweak back from the snapshot.
+- Revert restores all five phases and collects failures; the snapshot is released only on a fully verified restore. A partial revert enters "Needs Attention" — the snapshot is kept and the user can retry or explicitly "keep current state" (ADR-0001 / ADR-0002).
+- Pre-command and pre-PowerShell failures abort before core changes; post-hook failures are logged and do not roll back successful core changes.
+- `requires_admin` / `requires_system` / `requires_ti` determine elevation; privileged operations run through the typed broker (no shell strings) and a failed privileged op surfaces as an error.
 
 Do not duplicate system-change application logic. New profile/batch paths should reuse the same apply engine or shared helpers.
 
 ## Snapshot System
 
-Snapshots are stored as JSON files in the app data `snapshots/` directory. They can include registry values, service states, scheduled task states, hosts entries, and firewall rules.
+Snapshots are one JSON file per tweak in a `snapshots/` directory next to the executable (portable). They record registry values, service states, scheduled task states, hosts entries, and firewall rules, plus a schema version, the capturing machine's `MachineGuid` (a load-time mismatch warns), and a Needs-Attention marker with the unrestorable-resource list. Writes are atomic (temp file + rename); the metadata read-modify-write path takes an exclusive `std::fs::File::lock`.
 
 On startup, stale snapshot validation removes a snapshot only when every captured resource is verifiably back at the original state. If a resource cannot be checked safely, the snapshot is preserved.
 
 ## Profile System
 
-Profiles are `.mgx` ZIP archives containing:
-
-- `manifest.json`
-- `profile.json`
-- optional `system_state.json`
-
-Profiles store tweak IDs, option indexes, labels, category IDs, and option content hashes. Validation resolves renamed tweaks through aliases and moved options through content hashes. Profile apply uses the same tweak apply engine as manual apply.
-
-Windows restore point creation is not implemented. The reserved `create_restore_point` option is rejected by the backend.
-
-See `docs/PROFILE_SYSTEM.md` for details.
+The profile system (`.mgx` export/import) was removed in the current build and its UI is disabled. A rebuild is planned for later, sharing one machine-identity mechanism with the snapshot install ID; the v1 archive format is preserved in `docs/spec/profile-v1.md` so existing archives remain recoverable. Windows restore-point creation is not implemented.
 
 ## Backend Map
 
 - `src-tauri/src/models/`: shared Rust data models.
 - `src-tauri/src/commands/`: Tauri command handlers.
 - `src-tauri/src/commands/tweaks/`: tweak query/apply/batch commands.
-- `src-tauri/src/services/backup/`: snapshot capture, restore, storage, detection, inspection.
-- `src-tauri/src/services/profile/`: profile archive, export, import, migration, validation.
+- `src-tauri/src/services/backup/`: snapshot capture, restore (all-phase), storage (atomic), detection, inspection.
 - `src-tauri/src/services/registry_value.rs`: canonical registry JSON parsing, writing, and comparison.
 - `src-tauri/src/services/elevation/`: SYSTEM and TrustedInstaller execution.
 - `src-tauri/src/services/system_info_service.rs`: lightweight runtime context and full WMI-backed system information.

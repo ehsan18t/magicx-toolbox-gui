@@ -53,7 +53,7 @@ Tweaks use a **unified option-based model** where every tweak has an `options` a
 | **Toggle Tweak**     | Has exactly 2 options, displays as a segmented switch             |
 | **Dropdown Tweak**   | Has 3+ options, displays as a dropdown selector                   |
 | **Snapshot**         | Captured original state before applying a tweak (for reverting)   |
-| **Atomic Execution** | Registry, services, and scheduler changes are all-or-nothing      |
+| **Atomic Execution** | Core changes are *attempted* all-or-nothing; a rollback that can't fully complete surfaces as Needs Attention |
 
 ---
 
@@ -905,10 +905,10 @@ When applying an option, changes execute in this **exact order**:
 
 ### What "Atomic" Means
 
-Steps 3, 4, 5, 6, and 7 (registry, services, scheduler, hosts, firewall) are **atomic**:
-- If **ANY** of these steps fails, **ALL** changes are rolled back
-- Rollback uses the snapshot captured before step 1
-- You get either complete success or complete rollback
+Steps 3, 4, 5, 6, and 7 (registry, services, scheduler, hosts, firewall) are **atomic in intent**:
+- If **any** of these steps fails, the tweak is rolled back from the snapshot captured before step 1.
+- But rollback is itself a pile of Windows operations that can fail (a locked service, access denied). So "atomic" here means *attempted atomically, with any failure surfaced* — **not** a guarantee of all-or-nothing.
+- A rollback that cannot fully complete leaves the tweak in **Needs Attention**: the snapshot is kept, the resources that could not be restored are named, and the user can retry or explicitly accept the current state (ADR-0001). See [Snapshot & Revert System](#snapshot--revert-system).
 
 ### What's NOT Atomic
 
@@ -938,7 +938,7 @@ Steps 3, 4, 5, 6, and 7 (registry, services, scheduler, hosts, firewall) are **a
 
 1. **Pre-commands are fail-fast**: If `pre_commands` or `pre_powershell` fail, the operation aborts immediately. No changes are made.
 
-2. **Core changes are atomic**: If registry, service, or scheduler changes fail, everything rolls back to the original state.
+2. **Core changes are atomic in intent**: if registry, service, or scheduler changes fail, the tweak is rolled back from the snapshot — and if that rollback can't fully complete, the tweak enters Needs Attention (see [Snapshot & Revert System](#snapshot--revert-system)) rather than silently leaving the machine half-changed.
 
 3. **Post-commands are non-fatal**: If `post_commands` or `post_powershell` fail, the tweak is still considered "applied". Errors are logged but don't abort.
 
@@ -1092,6 +1092,8 @@ Before applying any tweak, the app captures a **snapshot** of the original state
 - All registry values that will be modified
 - All service startup types and running states
 - All scheduled task states (enabled/disabled)
+- All hosts-file entries and firewall rules touched
+- A snapshot schema version and the capturing machine's `MachineGuid` (a load-time mismatch warns that the snapshot came from another system)
 
 ### Snapshot Storage
 
@@ -1101,12 +1103,14 @@ Before applying any tweak, the app captures a **snapshot** of the original state
 
 ### Revert Behavior
 
-When reverting:
-1. Load snapshot for the tweak
-2. Restore all registry values to original
-3. Restore all service states to original
-4. Restore all scheduler states to original
-5. Delete the snapshot
+When reverting, all five phases are attempted (registry, services, scheduler, hosts, firewall) and their failures collected — one failed phase never abandons the rest (ADR-0001):
+
+1. Load the snapshot for the tweak.
+2. Restore registry values, service states, scheduler states, hosts entries, and firewall rules to their original state.
+3. If everything is verifiably restored, delete the snapshot.
+4. If any resource could not be restored, keep the snapshot and enter **Needs Attention** — the user can retry, or explicitly "keep current state" to release the snapshot (ADR-0002).
+
+**System Default is a Revert (ADR-0003).** Whenever a snapshot exists, the UI offers "System Default" as a selectable state in both the toggle and the dropdown; choosing it performs exactly this revert.
 
 ### Snapshot Lifecycle
 
@@ -1127,8 +1131,9 @@ Switching Options (snapshot exists):
 
 Revert:
   1. Load snapshot
-  2. Restore original pre-tweak state
-  3. Delete snapshot
+  2. Restore original pre-tweak state (all five phases, collecting failures)
+  3. On full success: delete snapshot
+  4. On partial failure: keep snapshot, enter Needs Attention (retry / keep current state)
 ```
 
 ### Rollback Behavior
@@ -1139,17 +1144,18 @@ The rollback system handles failures differently based on context:
 | --------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
 | **First apply fails**       | Restore from original snapshot, delete it | System returns to original state, tweak not applied          |
 | **Switching options fails** | Restore from pre-apply state              | System stays at previous option, original snapshot preserved |
-| **Revert**                  | Restore from original snapshot            | System returns to original pre-tweak state                   |
+| **Revert (full)**           | Restore all five phases from snapshot     | System returns to original pre-tweak state; snapshot deleted |
+| **Revert (partial)**        | Keep the snapshot, name what failed       | Tweak enters Needs Attention (retry, or keep current state)  |
 
 **Key Insight:** When switching between options (e.g., "Disabled" → "Enabled"), if the apply fails midway, the system rolls back to the **previous option state**, not the original pre-tweak state. This prevents losing your current configuration due to a partial failure.
 
 ### Snapshot Contents
 
 The snapshot stores:
-- `applied_option_index` / `applied_option_label`: Which option was last successfully applied
-- `registry_snapshots`: Original registry values before first apply
-- `service_snapshots`: Original service states before first apply
-- `scheduler_snapshots`: Original task states before first apply
+- `applied_option_index` / `applied_option_label`: which option was last successfully applied
+- `registry_snapshots` / `service_snapshots` / `scheduler_snapshots` / `hosts_snapshots` / `firewall_snapshots`: the original pre-tweak state of each touched resource
+- `schema_version` / `machine_guid`: the format version and the capturing machine's identity
+- `needs_attention` / `unrestorable_resources`: set when a revert only partially succeeded (Needs Attention)
 
 **Important:** The registry/service/scheduler values in the snapshot represent the **original pre-tweak state**, not the current option's state. The snapshot metadata (option index/label) is updated when switching options successfully.
 
