@@ -156,7 +156,7 @@
     "xbgm"
   ],
   "svelte.enable-ts-plugin": true,
-  "typescript.tsdk": "node_modules/typescript/lib",
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
   "eslint.validate": ["javascript", "typescript", "svelte"],
   "chat.mcp.serverSampling": {
     "magicx-toolbox-gui/.vscode/mcp.json: context-mode": {
