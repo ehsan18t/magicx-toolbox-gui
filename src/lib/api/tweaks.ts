@@ -101,6 +101,14 @@ export async function revertTweak(tweakId: string): Promise<TweakResult> {
 }
 
 /**
+ * Explicitly accept the current state and release the tweak's snapshot (ADR-0002 consent).
+ * The way out of "Needs Attention" when the user is fine with the current (partially reverted) state.
+ */
+export async function keepCurrentState(tweakId: string): Promise<TweakResult> {
+  return await invoke<TweakResult>("keep_current_state", { tweakId });
+}
+
+/**
  * Apply multiple tweak options at once
  * @param operations - Array of [tweakId, optionIndex] tuples
  */

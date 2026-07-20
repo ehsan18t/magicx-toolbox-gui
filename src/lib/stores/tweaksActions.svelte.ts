@@ -149,6 +149,8 @@ export async function revertTweak(
         has_backup: false,
         current_option_index: actualStatus.current_option_index,
         status_inferred: actualStatus.status_inferred,
+        needs_attention: false,
+        unrestorable_resources: [],
       });
 
       // Clear any pending changes for this tweak
@@ -178,6 +180,13 @@ export async function revertTweak(
 
       errorStore.setError(tweakId, failureDetails);
 
+      // Needs Attention (ADR-0001): the snapshot is kept; record what couldn't be restored so the
+      // card surfaces it immediately (the backend also persists this on the snapshot).
+      tweaksStore.updateStatus(tweakId, {
+        needs_attention: true,
+        unrestorable_resources: result.failures?.map(([, msg]) => msg) ?? [],
+      });
+
       if (showToast) {
         // Use warning instead of error for partial success
         toastStore.warning(`Partial revert: ${result.failures?.length ?? 0} operations failed`, {
@@ -188,6 +197,46 @@ export async function revertTweak(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to revert tweak";
+    errorStore.setError(tweakId, message);
+    if (showToast) {
+      toastStore.error(message, { tweakName });
+    }
+    return false;
+  } finally {
+    loadingStore.stop(tweakId);
+  }
+}
+
+/**
+ * Explicitly accept the current state and release the snapshot (ADR-0002 consent).
+ * The way out of Needs Attention when the user is fine with the current, partially reverted state.
+ */
+export async function keepCurrentState(
+  tweakId: string,
+  options?: { showToast?: boolean; tweakName?: string },
+): Promise<boolean> {
+  const showToast = options?.showToast ?? true;
+  const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
+
+  loadingStore.start(tweakId);
+  try {
+    await api.keepCurrentState(tweakId);
+
+    // Snapshot released by user decision: no backup, and no longer Needs Attention.
+    tweaksStore.updateStatus(tweakId, {
+      has_backup: false,
+      needs_attention: false,
+      unrestorable_resources: [],
+    });
+    errorStore.clearError(tweakId);
+    pendingRebootStore.remove(tweakId);
+
+    if (showToast) {
+      toastStore.success("Current state kept", { tweakName });
+    }
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to keep current state";
     errorStore.setError(tweakId, message);
     if (showToast) {
       toastStore.error(message, { tweakName });

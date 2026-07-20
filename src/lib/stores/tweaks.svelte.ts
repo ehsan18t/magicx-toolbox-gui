@@ -45,6 +45,7 @@ export {
   applyTweak,
   batchRevertTweaks,
   filterStore,
+  keepCurrentState,
   revertTweak,
   stageChange,
   toggleTweak,

@@ -237,6 +237,10 @@ export interface TweakStatus {
   status_inferred?: boolean;
   /** Error message if state detection failed (tweak still usable but with unknown state) */
   error?: string;
+  /** True when the last revert did not fully succeed and the snapshot was kept for retry (ADR-0001). */
+  needs_attention?: boolean;
+  /** Resources a partial revert could not restore (present only when needs_attention). */
+  unrestorable_resources?: string[];
 }
 
 /** Combined tweak info for UI display */

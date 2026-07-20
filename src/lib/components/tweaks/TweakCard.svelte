@@ -9,6 +9,7 @@
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import {
     errorStore,
+    keepCurrentState,
     loadingStore,
     pendingChangesStore,
     revertTweak,
@@ -53,6 +54,7 @@
 
   let showConfirmDialog = $state(false);
   let showRestoreConfirmDialog = $state(false);
+  let showKeepStateConfirmDialog = $state(false);
 
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
   const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
@@ -79,6 +81,12 @@
   // Has a snapshot that can be restored
   const hasSnapshot = $derived(tweak.status.has_backup);
 
+  // Needs Attention (ADR-0001): the last revert didn't fully succeed and the snapshot was kept.
+  const needsAttention = $derived(tweak.status.needs_attention ?? false);
+  const unrestorableResources = $derived(tweak.status.unrestorable_resources ?? []);
+  // When in Needs Attention, the Restore button IS the retry.
+  const restoreLabel = $derived(needsAttention ? "Retry" : "Restore");
+
   // Get options from tweak definition
   const options = $derived(tweak.definition.options);
 
@@ -91,9 +99,12 @@
   // Original option index from snapshot (undefined = no snapshot, null = unknown original, number = known original)
   const snapshotOriginalOptionIndex = $derived(tweak.status.snapshot_original_option_index);
 
-  // Determine if we should show the "Default" segment in segmented switch
-  // Show when: current state is unknown OR snapshot exists with unknown original state
-  const showDefaultSegment = $derived(currentOptionIndex === null || snapshotOriginalOptionIndex === null);
+  // Determine if we should show the "Default" segment in the segmented switch.
+  // ADR-0003: System Default is selectable whenever a snapshot exists (choosing it reverts); also
+  // shown when the current state is unknown so there is something to display.
+  const showDefaultSegment = $derived(
+    hasSnapshot || currentOptionIndex === null || snapshotOriginalOptionIndex === null,
+  );
 
   // Get pending change for this tweak
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
@@ -156,9 +167,10 @@
   const selectOptions = $derived.by(() => {
     const opts: { value: number; label: string; disabled?: boolean }[] = [];
 
-    // Add "System Default" placeholder if current state is unknown
-    if (currentOptionIndex === null) {
-      opts.push({ value: -1, label: "System Default", disabled: true });
+    // ADR-0003: offer "System Default" whenever a snapshot exists (selectable → Revert), and as a
+    // display-only placeholder when the current state is unknown with nothing to restore.
+    if (hasSnapshot || currentOptionIndex === null) {
+      opts.push({ value: -1, label: "System Default", disabled: !hasSnapshot });
     }
 
     // Add actual options
@@ -173,9 +185,10 @@
   let pendingHighRiskValue: number | null = $state(null);
 
   function handleSegmentChange(newValue: number) {
-    // Handle "Default" selection - just unstage any pending change
+    // "System Default": cancel any pending change, and — with a snapshot — Revert to it (ADR-0003).
     if (newValue === -1) {
       unstageChange(tweak.definition.id);
+      if (hasSnapshot) handleRestoreClick();
       return;
     }
 
@@ -213,6 +226,13 @@
     // Guard against invalid values
     if (isNaN(optionIndex)) return;
 
+    // "System Default": cancel any pending change, and — with a snapshot — Revert to it (ADR-0003).
+    if (optionIndex === -1) {
+      unstageChange(tweak.definition.id);
+      if (hasSnapshot) handleRestoreClick();
+      return;
+    }
+
     if (optionIndex === currentOptionIndex) {
       unstageChange(tweak.definition.id);
     } else {
@@ -231,6 +251,14 @@
   async function executeRestore() {
     showRestoreConfirmDialog = false;
     await revertTweak(tweak.definition.id, {
+      showToast: true,
+      tweakName: tweak.definition.name,
+    });
+  }
+
+  async function executeKeepCurrentState() {
+    showKeepStateConfirmDialog = false;
+    await keepCurrentState(tweak.definition.id, {
       showToast: true,
       tweakName: tweak.definition.name,
     });
@@ -282,6 +310,17 @@
             >
               <Icon icon="mdi:eye-off-outline" width="10" />
               Inferred
+            </span>
+          {/if}
+          {#if needsAttention}
+            <span
+              class="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-error"
+              use:tooltip={unrestorableResources.length
+                ? `The last revert didn't fully restore: ${unrestorableResources.join("; ")}. The snapshot is kept — retry, or keep the current state.`
+                : "The last revert didn't fully succeed. The snapshot is kept for retry."}
+            >
+              <Icon icon="mdi:alert-circle" width="10" />
+              Needs Attention
             </span>
           {/if}
           {#if hasPending}
@@ -404,11 +443,27 @@
             class="card-action inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-accent transition-all duration-150 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleRestoreClick}
             disabled={isLoading}
-            aria-label="Restore snapshot"
-            use:tooltip={"Restore to original state from snapshot"}
+            aria-label={needsAttention ? "Retry revert" : "Restore snapshot"}
+            use:tooltip={needsAttention
+              ? "Retry restoring the original state"
+              : "Restore to original state from snapshot"}
           >
             <Icon icon="mdi:history" width="18" class="card-action-icon" />
-            <span class="card-action-label">Restore</span>
+            <span class="card-action-label">{restoreLabel}</span>
+          </button>
+        {/if}
+
+        {#if needsAttention}
+          <button
+            type="button"
+            class="card-action hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-all duration-150 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onclick={() => (showKeepStateConfirmDialog = true)}
+            disabled={isLoading}
+            aria-label="Keep current state"
+            use:tooltip={"Accept the current state and release the snapshot"}
+          >
+            <Icon icon="mdi:check" width="18" class="card-action-icon" />
+            <span class="card-action-label">Keep</span>
           </button>
         {/if}
 
@@ -451,6 +506,16 @@
   cancelText="Cancel"
   onconfirm={executeRestore}
   oncancel={() => (showRestoreConfirmDialog = false)}
+/>
+
+<ConfirmDialog
+  open={showKeepStateConfirmDialog}
+  title="Keep Current State?"
+  message="This releases the saved snapshot and accepts the current state as-is. The original state can no longer be restored for this tweak."
+  confirmText="Keep current state"
+  cancelText="Cancel"
+  onconfirm={executeKeepCurrentState}
+  oncancel={() => (showKeepStateConfirmDialog = false)}
 />
 
 <style>
