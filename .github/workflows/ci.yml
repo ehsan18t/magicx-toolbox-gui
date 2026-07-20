@@ -1,0 +1,119 @@
+name: CI
+
+# Windows-only by design: this application is never built or run on another
+# platform, and the Rust code calls Win32 APIs directly.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Deliberately NOT setting `RUSTFLAGS: -D warnings`: it applies to dependencies
+  # too, so an upstream crate emitting a warning would fail our build. The
+  # `lint:rust` step inside `bun run validate` already passes -D warnings to
+  # clippy for this crate only, which is the behaviour we actually want.
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      # The project's own gate, per .github/copilot-instructions.md:
+      # prettier, tsc, svelte-check, cargo fmt, cargo clippy, eslint.
+      - name: bun run validate
+        run: bun run validate
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --all-targets
+
+  line-endings:
+    name: Line endings
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # .gitattributes pins the working tree to CRLF. If a file is committed such
+      # that checkout produces something else, catch it here rather than letting
+      # `cargo fmt --check` fail confusingly on newline_style = "Windows".
+      - name: Assert the checkout is CRLF
+        shell: bash
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            case "$f" in *.woff2|*.png|*.ico|*.jpg|*.jpeg|*.gif|*.webp|*.pdf|LICENSE) continue;; esac
+            [ -f "$f" ] || continue
+            # A tracked text file with no CRLF at all is suspicious; empty and
+            # single-line-without-newline files are not, so require at least one LF.
+            if grep -qU $'\n' "$f" && ! grep -qU $'\r$' "$f"; then
+              echo "::error file=$f::expected CRLF line endings"
+              fail=1
+            fi
+          done < <(git ls-files)
+          exit $fail
+
+  reproducible-build:
+    name: Reproducible tweak data
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # build.rs compiles tweaks/*.yaml into tweaks.json. That artifact must be a
+      # pure function of the YAML: it previously used a HashMap, so key order --
+      # and therefore the bytes -- changed on every build. Guard the property.
+      - name: Same input produces identical output
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          find_artifact() { find target/debug/build -name tweaks.json | head -1; }
+          touch tweaks/privacy.yaml && cargo build --quiet
+          first=$(sha256sum "$(find_artifact)" | cut -d' ' -f1)
+          touch tweaks/privacy.yaml && cargo build --quiet
+          second=$(sha256sum "$(find_artifact)" | cut -d' ' -f1)
+          echo "build 1: $first"
+          echo "build 2: $second"
+          if [ "$first" != "$second" ]; then
+            echo "::error::tweaks.json is not reproducible across builds"
+            exit 1
+          fi
+
+  audit:
+    name: Dependency audit
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
