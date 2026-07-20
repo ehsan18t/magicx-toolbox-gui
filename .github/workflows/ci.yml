@@ -24,7 +24,7 @@ jobs:
     name: Validate
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -54,7 +54,7 @@ jobs:
     name: Line endings
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # .gitattributes pins the working tree to CRLF. If a file is committed such
       # that checkout produces something else, catch it here rather than letting
@@ -79,7 +79,7 @@ jobs:
     name: Reproducible tweak data
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -110,10 +110,10 @@ jobs:
     name: Dependency audit
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: rustsec/audit-check@v2
+      - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
