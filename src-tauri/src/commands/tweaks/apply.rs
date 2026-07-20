@@ -7,6 +7,45 @@ use crate::models::TweakResult;
 use crate::services::{backup_service, system_info_service, tweak_loader};
 use tauri::AppHandle;
 
+/// Outcome of the automatic rollback that follows a failed apply.
+///
+/// Rollback is itself a sequence of Windows operations that can fail. The
+/// difference between "the machine is back where it started" and "the machine is
+/// half-changed and the snapshot is the only way back" is decided entirely here,
+/// so the decision is kept separate from the I/O and unit-tested.
+///
+/// See `docs/adr/0001-rollback-failure-is-a-first-class-state.md` and
+/// `docs/adr/0002-snapshot-deletion-requires-verification-or-consent.md`.
+#[derive(Debug, PartialEq, Eq)]
+enum RollbackOutcome {
+    /// Nothing had been captured, so there was nothing to roll back to.
+    NothingToRollBack,
+    /// Every captured resource was verifiably restored.
+    Verified,
+    /// The machine may be partly changed. These operations could not be restored.
+    Incomplete(Vec<String>),
+}
+
+/// Classify a rollback attempt. `None` means no rollback was attempted.
+///
+/// Only `Verified` and `NothingToRollBack` permit releasing a snapshot.
+fn classify_rollback(rollback: Option<Result<backup_service::RestoreResult>>) -> RollbackOutcome {
+    match rollback {
+        None => RollbackOutcome::NothingToRollBack,
+        Some(Ok(result)) if result.success => RollbackOutcome::Verified,
+        // `success` is derived from `failures.is_empty()`, but do not lean on that
+        // invariant: a restore reporting failure without detail is still not verified.
+        Some(Ok(result)) if result.failures.is_empty() => {
+            RollbackOutcome::Incomplete(vec!["restore reported failure without detail".into()])
+        }
+        Some(Ok(result)) => RollbackOutcome::Incomplete(result.failures),
+        // A hard error aborts the restore partway -- the registry phase returns Err
+        // and the service/scheduler/hosts/firewall phases never run -- so this is
+        // strictly worse than a collected per-item failure.
+        Some(Err(e)) => RollbackOutcome::Incomplete(vec![format!("restore aborted: {}", e)]),
+    }
+}
+
 /// Apply a specific option for a tweak
 ///
 /// For toggle tweaks (is_toggle: true):
@@ -152,19 +191,84 @@ pub async fn apply_tweak(
     if let Err(e) = apply_all_changes_atomically(&app, &tweak, option, version) {
         log::error!("Failed to apply changes for '{}': {}", tweak.name, e);
 
-        // Rollback based on context
-        if let Some(ref current_state) = pre_apply_state {
-            log::warn!("Rolling back to previous option state (switching options failed)...");
-            let _ = backup_service::restore_from_snapshot(current_state);
-        } else {
-            if let Some(snapshot) = backup_service::load_snapshot(&tweak_id)? {
-                log::warn!("Rolling back ALL changes to original state (first apply failed)...");
-                let _ = backup_service::restore_from_snapshot(&snapshot);
+        // Roll back based on context. The result is deliberately NOT discarded:
+        // rollback can itself fail, and when it does the machine is left partly
+        // changed with the snapshot as the only remaining route back (ADR-0002).
+        let rollback = match pre_apply_state {
+            Some(ref previous_option_state) => {
+                log::warn!("Rolling back to previous option state (switching options failed)...");
+                Some(backup_service::restore_from_snapshot(previous_option_state))
             }
-            backup_service::delete_snapshot(&tweak_id)?;
+            None => backup_service::load_snapshot(&tweak_id)?.map(|snapshot| {
+                log::warn!("Rolling back ALL changes to original state (first apply failed)...");
+                backup_service::restore_from_snapshot(&snapshot)
+            }),
+        };
+
+        let rollback_failures = match classify_rollback(rollback) {
+            RollbackOutcome::NothingToRollBack | RollbackOutcome::Verified => {
+                // The machine is provably back at its pre-apply state. On a first
+                // apply the snapshot now describes a state we are no longer in, so
+                // it is safe to release. A delete failure must never mask the real
+                // apply error, so it is logged rather than propagated with `?`.
+                if !is_switching_options {
+                    if let Err(del_err) = backup_service::delete_snapshot(&tweak_id) {
+                        log::warn!(
+                            "Failed to delete snapshot for '{}' after a verified rollback: {}",
+                            tweak_id,
+                            del_err
+                        );
+                    }
+                }
+                return Err(e);
+            }
+            RollbackOutcome::Incomplete(failures) => failures,
+        };
+
+        // Rollback did not fully succeed. Keep the snapshot -- switching options
+        // preserves the original by design, and on a first apply it is now the only
+        // way back to the user's original state.
+        log::error!(
+            "Rollback for '{}' was incomplete: {} operation(s) could not be restored. \
+             Snapshot kept so the revert can be retried.",
+            tweak.name,
+            rollback_failures.len()
+        );
+
+        if is_debug_enabled() {
+            emit_debug_log(
+                &app,
+                DebugLevel::Error,
+                &format!("Rollback incomplete: {}", tweak.name),
+                Some(&format!(
+                    "{} operation(s) not restored - snapshot kept for retry",
+                    rollback_failures.len()
+                )),
+            );
         }
 
-        return Err(e);
+        // Report the apply failure AND every resource left in a changed state.
+        // Returning Ok(success: false) mirrors revert_tweak's partial-failure shape
+        // so the UI can surface the detail instead of a bare error string.
+        let incomplete_count = rollback_failures.len();
+        let mut failures: Vec<(String, String)> =
+            vec![(tweak_id.clone(), format!("apply failed: {}", e))];
+        failures.extend(
+            rollback_failures
+                .into_iter()
+                .map(|msg| (tweak_id.clone(), format!("rollback: {}", msg))),
+        );
+
+        return Ok(TweakResult {
+            success: false,
+            message: format!(
+                "Apply failed and rollback was incomplete: {} operation(s) could not be \
+                 restored. The snapshot has been kept so you can retry reverting.",
+                incomplete_count
+            ),
+            requires_reboot: false,
+            failures,
+        });
     }
 
     // Step 7: If switching options succeeded, update the snapshot metadata
@@ -336,5 +440,111 @@ pub async fn revert_tweak(app: AppHandle, tweak_id: String) -> Result<TweakResul
             requires_reboot: tweak.requires_reboot,
             failures,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::backup_service::RestoreResult;
+
+    /// Regression guard. `apply_tweak` used to do:
+    ///
+    /// ```ignore
+    /// let _ = backup_service::restore_from_snapshot(&snapshot);
+    /// backup_service::delete_snapshot(&tweak_id)?;
+    /// ```
+    ///
+    /// discarding the rollback result and deleting the snapshot unconditionally.
+    /// A partially-failed rollback therefore left the machine half-changed with the
+    /// user's original state gone and no indication anything was wrong.
+    ///
+    /// Every case below that is NOT `Verified` / `NothingToRollBack` must keep the
+    /// snapshot. That is the whole contract of ADR-0002.
+    #[test]
+    fn only_a_verified_rollback_permits_releasing_the_snapshot() {
+        let releasable = |outcome: &RollbackOutcome| {
+            matches!(
+                outcome,
+                RollbackOutcome::NothingToRollBack | RollbackOutcome::Verified
+            )
+        };
+
+        assert!(releasable(&classify_rollback(None)));
+        assert!(releasable(&classify_rollback(Some(Ok(RestoreResult {
+            success: true,
+            failures: vec![],
+        })))));
+
+        assert!(!releasable(&classify_rollback(Some(Ok(RestoreResult {
+            success: false,
+            failures: vec!["service DiagTrack could not be restored".into()],
+        })))));
+        assert!(!releasable(&classify_rollback(Some(Err(
+            crate::error::Error::BackupFailed("registry restore aborted".into())
+        )))));
+    }
+
+    #[test]
+    fn no_rollback_attempted_is_not_an_incomplete_rollback() {
+        assert_eq!(classify_rollback(None), RollbackOutcome::NothingToRollBack);
+    }
+
+    #[test]
+    fn a_clean_restore_is_verified() {
+        assert_eq!(
+            classify_rollback(Some(Ok(RestoreResult {
+                success: true,
+                failures: vec![],
+            }))),
+            RollbackOutcome::Verified
+        );
+    }
+
+    #[test]
+    fn collected_restore_failures_are_reported_verbatim() {
+        assert_eq!(
+            classify_rollback(Some(Ok(RestoreResult {
+                success: false,
+                failures: vec!["service Spooler".into(), "task ScheduleScan".into()],
+            }))),
+            RollbackOutcome::Incomplete(vec!["service Spooler".into(), "task ScheduleScan".into()])
+        );
+    }
+
+    /// `success` is derived from `failures.is_empty()`, so this state should not
+    /// occur -- but treating an unexplained failure as "verified" would delete the
+    /// snapshot, so it must still resolve to `Incomplete`.
+    #[test]
+    fn failure_without_detail_is_still_incomplete() {
+        let outcome = classify_rollback(Some(Ok(RestoreResult {
+            success: false,
+            failures: vec![],
+        })));
+        match outcome {
+            RollbackOutcome::Incomplete(failures) => assert_eq!(failures.len(), 1),
+            other => panic!("expected Incomplete, got {:?}", other),
+        }
+    }
+
+    /// A hard `Err` is worse than collected failures: the registry phase returns
+    /// early and the service/scheduler/hosts/firewall phases never run at all.
+    #[test]
+    fn an_aborted_restore_is_incomplete_and_says_so() {
+        let outcome = classify_rollback(Some(Err(crate::error::Error::BackupFailed(
+            "hive locked".into(),
+        ))));
+        match outcome {
+            RollbackOutcome::Incomplete(failures) => {
+                assert_eq!(failures.len(), 1);
+                assert!(
+                    failures[0].contains("restore aborted"),
+                    "message should identify this as an aborted restore, got: {}",
+                    failures[0]
+                );
+                assert!(failures[0].contains("hive locked"), "underlying cause lost");
+            }
+            other => panic!("expected Incomplete, got {:?}", other),
+        }
     }
 }

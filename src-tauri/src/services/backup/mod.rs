@@ -22,7 +22,7 @@ pub mod storage;
 pub use capture::{capture_current_state, capture_snapshot, read_registry_value};
 pub use detection::{cleanup_old_backups, detect_tweak_state, validate_all_snapshots};
 pub use inspection::inspect_tweak;
-pub use restore::restore_from_snapshot;
+pub use restore::{restore_from_snapshot, RestoreResult};
 pub use storage::{
     delete_snapshot, get_applied_tweaks, get_snapshots_dir, load_snapshot, save_snapshot,
     snapshot_exists, update_snapshot_metadata,
