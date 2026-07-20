@@ -44,6 +44,14 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
     // Get snapshot info if exists (for last_applied timestamp and original_option_index)
     let snapshot = backup_service::load_snapshot(&tweak_id)?;
     let last_applied = snapshot.as_ref().map(|s| s.created_at.clone());
+    let needs_attention = snapshot
+        .as_ref()
+        .map(|s| s.needs_attention)
+        .unwrap_or(false);
+    let unrestorable_resources = snapshot
+        .as_ref()
+        .map(|s| s.unrestorable_resources.clone())
+        .unwrap_or_default();
     // Get original_option_index from snapshot: Some(Some(i)) if matched, Some(None) if unknown
     let snapshot_original_option_index = snapshot.map(|s| s.original_option_index);
 
@@ -65,6 +73,8 @@ pub async fn get_tweak_status(tweak_id: String) -> Result<TweakStatus> {
         snapshot_original_option_index,
         status_inferred: state.status_inferred,
         error: None,
+        needs_attention,
+        unrestorable_resources,
     })
 }
 
@@ -87,6 +97,14 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                 Ok(state) => {
                     let snapshot = backup_service::load_snapshot(&id).ok().flatten();
                     let last_applied = snapshot.as_ref().map(|s| s.created_at.clone());
+                    let needs_attention = snapshot
+                        .as_ref()
+                        .map(|s| s.needs_attention)
+                        .unwrap_or(false);
+                    let unrestorable_resources = snapshot
+                        .as_ref()
+                        .map(|s| s.unrestorable_resources.clone())
+                        .unwrap_or_default();
                     let snapshot_original_option_index = snapshot.map(|s| s.original_option_index);
 
                     TweakStatus {
@@ -98,6 +116,8 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                         snapshot_original_option_index,
                         status_inferred: state.status_inferred,
                         error: None,
+                        needs_attention,
+                        unrestorable_resources,
                     }
                 }
                 Err(e) => {
@@ -113,6 +133,8 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
                         snapshot_original_option_index: None,
                         status_inferred: false,
                         error: Some(format!("State detection failed: {}", e)),
+                        needs_attention: false,
+                        unrestorable_resources: Vec::new(),
                     }
                 }
             }

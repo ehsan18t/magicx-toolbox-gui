@@ -411,6 +411,14 @@ pub async fn revert_tweak(tweak_id: String) -> Result<TweakResult> {
             );
         }
 
+        // ADR-0001: persist Needs Attention on the kept snapshot so a fresh app load surfaces it,
+        // not just this immediate result. A retried revert clears it on verified success.
+        if let Err(e) =
+            backup_service::mark_needs_attention(&tweak_id, restore_result.failures.clone())
+        {
+            log::warn!("Failed to mark '{}' as needs-attention: {}", tweak_id, e);
+        }
+
         // Convert failures to (tweak_id, error) format for TweakResult
         let failures: Vec<(String, String)> = restore_result
             .failures
@@ -430,6 +438,36 @@ pub async fn revert_tweak(tweak_id: String) -> Result<TweakResult> {
             failures,
         })
     }
+}
+
+/// Explicitly accept the current state of a tweak and release its snapshot (ADR-0002 consent).
+///
+/// Besides a fully-verified revert, this is the only sanctioned way to delete a snapshot. It gives a
+/// tweak stuck in Needs Attention a legitimate way out: the user decides the current (possibly
+/// partially-reverted) state is acceptable and lets the Original State go.
+#[tauri::command]
+pub async fn keep_current_state(tweak_id: String) -> Result<TweakResult> {
+    log::info!("Command: keep_current_state({})", tweak_id);
+
+    if !backup_service::snapshot_exists(&tweak_id)? {
+        return Err(Error::BackupFailed(format!(
+            "No snapshot to release for tweak '{}'",
+            tweak_id
+        )));
+    }
+
+    backup_service::delete_snapshot(&tweak_id)?;
+    log::info!(
+        "Released snapshot for '{}' by user decision (keep current state)",
+        tweak_id
+    );
+
+    Ok(TweakResult {
+        success: true,
+        message: "Current state kept; snapshot released.".to_string(),
+        requires_reboot: false,
+        failures: Vec::new(),
+    })
 }
 
 #[cfg(test)]

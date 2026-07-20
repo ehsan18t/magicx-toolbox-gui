@@ -190,6 +190,24 @@ pub fn delete_snapshot(tweak_id: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// Record that a tweak's revert did not fully succeed, so its status surfaces as Needs Attention
+/// (ADR-0001). Only the flag and the unrestorable list are set; the snapshot's restore data is left
+/// intact so a later retry still has the original values.
+pub fn mark_needs_attention(tweak_id: &str, unrestorable: Vec<String>) -> Result<(), Error> {
+    if let Some(mut snapshot) = load_snapshot(tweak_id)? {
+        snapshot.needs_attention = true;
+        snapshot.unrestorable_resources = unrestorable;
+        let count = snapshot.unrestorable_resources.len();
+        save_snapshot(&snapshot)?;
+        log::info!(
+            "Marked tweak '{}' as Needs Attention ({} unrestorable resource(s))",
+            tweak_id,
+            count
+        );
+    }
+    Ok(())
+}
+
 /// Get list of all applied tweak IDs (by listing snapshot files)
 pub fn get_applied_tweaks() -> Result<Vec<String>, Error> {
     let dir = get_snapshots_dir()?;
@@ -235,6 +253,31 @@ mod tests {
             load_snapshot(&id).unwrap().unwrap().applied_option_label,
             "v2"
         );
+
+        delete_snapshot(&id).unwrap();
+    }
+
+    #[test]
+    fn mark_needs_attention_flags_the_snapshot_and_keeps_the_restore_data() {
+        // ADR-0001: a partial revert marks the kept snapshot as Needs Attention without touching the
+        // restore data, so a retry still has the original values.
+        let id = format!("__wp5_needs_attention_{}", std::process::id());
+        let snap = TweakSnapshot::new(&id, "T", 0, "opt", 11, false, None);
+        assert!(
+            !snap.needs_attention,
+            "a fresh snapshot is not Needs Attention"
+        );
+        save_snapshot(&snap).unwrap();
+
+        mark_needs_attention(&id, vec!["Service 'X': access denied".to_string()]).unwrap();
+
+        let loaded = load_snapshot(&id).unwrap().unwrap();
+        assert!(loaded.needs_attention);
+        assert_eq!(
+            loaded.unrestorable_resources,
+            vec!["Service 'X': access denied".to_string()]
+        );
+        assert_eq!(loaded.tweak_id, id, "restore identity is preserved");
 
         delete_snapshot(&id).unwrap();
     }

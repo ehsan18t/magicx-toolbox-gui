@@ -115,6 +115,7 @@ pub fn run() {
             // Tweak apply commands
             commands::tweaks::apply::apply_tweak,
             commands::tweaks::apply::revert_tweak,
+            commands::tweaks::apply::keep_current_state,
             // Tweak batch commands
             commands::tweaks::batch::batch_apply_tweaks,
             commands::tweaks::batch::batch_revert_tweaks,

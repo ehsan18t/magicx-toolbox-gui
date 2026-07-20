@@ -30,6 +30,6 @@ pub use detection::{detect_tweak_state, validate_all_snapshots};
 pub use inspection::inspect_tweak;
 pub use restore::{restore_from_snapshot, RestoreResult};
 pub use storage::{
-    delete_snapshot, get_applied_tweaks, load_snapshot, save_snapshot, snapshot_exists,
-    update_snapshot_metadata,
+    delete_snapshot, get_applied_tweaks, load_snapshot, mark_needs_attention, save_snapshot,
+    snapshot_exists, update_snapshot_metadata,
 };

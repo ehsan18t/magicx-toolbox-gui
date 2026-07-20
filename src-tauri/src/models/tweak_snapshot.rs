@@ -92,6 +92,14 @@ pub struct TweakSnapshot {
     /// load time means the snapshot came from a different machine, so `load_snapshot` warns.
     #[serde(default)]
     pub machine_guid: Option<String>,
+    /// Set when a revert of this tweak did not fully succeed (ADR-0001). The snapshot is kept so the
+    /// user can retry; the snapshot is released only by a fully-verified revert or an explicit
+    /// "keep current state" decision (ADR-0002).
+    #[serde(default)]
+    pub needs_attention: bool,
+    /// Human-readable descriptions of the resources a partial revert could not restore.
+    #[serde(default)]
+    pub unrestorable_resources: Vec<String>,
     /// Whether SYSTEM elevation was used for this tweak
     #[serde(default)]
     pub requires_system: bool,
@@ -135,6 +143,8 @@ impl TweakSnapshot {
             windows_version,
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             machine_guid: crate::services::system_info_service::machine_guid(),
+            needs_attention: false,
+            unrestorable_resources: Vec::new(),
             requires_system,
             original_option_index,
             registry_snapshots: Vec::new(),

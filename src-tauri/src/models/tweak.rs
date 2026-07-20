@@ -267,6 +267,13 @@ pub struct TweakStatus {
     /// Error message if state detection failed (tweak still returned but with unknown state)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// True when the last revert did not fully succeed and the snapshot was kept for retry
+    /// (ADR-0001 "Needs Attention").
+    #[serde(default)]
+    pub needs_attention: bool,
+    /// Resources a partial revert could not restore (empty unless `needs_attention`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unrestorable_resources: Vec<String>,
 }
 
 // ============================================================================
