@@ -96,18 +96,6 @@ pub fn run_powershell_as_system(script: &str) -> Result<i32, Error> {
     .map(|()| 0)
 }
 
-/// Run a scheduled task command as SYSTEM (for protected tasks) via the elevated broker.
-pub fn run_schtasks_as_system(args: &str) -> Result<i32, Error> {
-    log::info!("Running schtasks as SYSTEM: {}", args);
-    run_one(
-        Elevation::System,
-        BrokerOp::RawCmd {
-            command: format!("schtasks {}", args),
-        },
-    )
-    .map(|()| 0)
-}
-
 // ============================================================================
 // TRUSTEDINSTALLER ELEVATION
 // ============================================================================
@@ -423,14 +411,3 @@ pub fn run_powershell_as_ti(script: &str) -> Result<i32, Error> {
     .map(|()| 0)
 }
 
-/// Run schtasks as TrustedInstaller (for protected tasks) via the elevated broker.
-pub fn run_schtasks_as_ti(args: &str) -> Result<i32, Error> {
-    log::info!("Running schtasks as TrustedInstaller: {}", args);
-    run_one(
-        Elevation::TrustedInstaller,
-        BrokerOp::RawCmd {
-            command: format!("schtasks {}", args),
-        },
-    )
-    .map(|()| 0)
-}

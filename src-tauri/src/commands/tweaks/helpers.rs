@@ -12,7 +12,7 @@
 use crate::debug::{emit_debug_log, is_debug_enabled, DebugLevel};
 use crate::error::{Error, Result};
 use crate::models::{
-    RegistryAction, RegistryHive, RegistryValueType, SchedulerAction, TweakDefinition, TweakOption,
+    RegistryAction, RegistryHive, RegistryValueType, TweakDefinition, TweakOption,
 };
 use crate::services::elevation::Elevation;
 use crate::services::{
@@ -703,11 +703,7 @@ fn apply_scheduler_pattern(
     };
 
     if elevation.is_elevated() {
-        // SYSTEM and TrustedInstaller share the schtasks executor signature.
-        let run_schtasks: fn(&str) -> std::result::Result<i32, Error> = match elevation {
-            Elevation::TrustedInstaller => trusted_installer::run_schtasks_as_ti,
-            _ => trusted_installer::run_schtasks_as_system,
-        };
+        // Resolve matching task names (read-only), then apply each through the typed op below.
         let tasks = scheduler_service::find_tasks_by_pattern(&change.task_path, pattern)?;
 
         if tasks.is_empty() {
@@ -733,16 +729,12 @@ fn apply_scheduler_pattern(
 
         for task in tasks {
             let full_path = format!("{}\\{}", change.task_path, task.name);
-            let escaped_path = trusted_installer::escape_shell_arg(&full_path);
-            let schtasks_args = match change.action {
-                SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", escaped_path),
-                SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", escaped_path),
-                SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", escaped_path),
-            };
-
-            let result = run_schtasks(&schtasks_args)
-                .map(|_| ())
-                .map_err(|e| Error::CommandExecution(e.to_string()));
+            let result = trusted_installer::run_scheduler_op(
+                elevation,
+                &change.task_path,
+                &task.name,
+                change.action,
+            );
 
             if let Err(e) = result {
                 if change.skip_validation {
@@ -826,23 +818,10 @@ fn apply_scheduler_exact(
     };
     let full_path = format!("{}\\{}", change.task_path, task_name);
 
-    let result = if elevation.is_elevated() {
-        let escaped_path = trusted_installer::escape_shell_arg(&full_path);
-        let schtasks_args = match change.action {
-            SchedulerAction::Enable => format!("/Change /TN \"{}\" /Enable", escaped_path),
-            SchedulerAction::Disable => format!("/Change /TN \"{}\" /Disable", escaped_path),
-            SchedulerAction::Delete => format!("/Delete /TN \"{}\" /F", escaped_path),
-        };
-        let run_schtasks: fn(&str) -> std::result::Result<i32, Error> = match elevation {
-            Elevation::TrustedInstaller => trusted_installer::run_schtasks_as_ti,
-            _ => trusted_installer::run_schtasks_as_system,
-        };
-        run_schtasks(&schtasks_args)
-            .map(|_| ())
-            .map_err(|e| Error::CommandExecution(e.to_string()))
-    } else {
-        scheduler_service::apply_scheduler_change(&change.task_path, task_name, change.action)
-    };
+    // One typed op for every elevation: unelevated runs it in-process, SYSTEM/TI run it inside the
+    // broker. No schtasks string, so a task name with cmd metacharacters can't be corrupted (C3).
+    let result =
+        trusted_installer::run_scheduler_op(elevation, &change.task_path, task_name, change.action);
 
     if let Err(e) = result {
         let is_not_found =

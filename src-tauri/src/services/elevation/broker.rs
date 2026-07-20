@@ -326,6 +326,27 @@ pub(super) fn run_one(level: Elevation, op: BrokerOp) -> Result<(), Error> {
     .into_single()
 }
 
+/// Apply a scheduler change (enable / disable / delete) at `level` via the typed `Scheduler` op.
+///
+/// Unelevated runs the COM op in-process; SYSTEM / TrustedInstaller run the *same* typed op inside
+/// the elevated broker. No `schtasks` command string is composed, so a task name containing cmd
+/// metacharacters (`& | < > ^ %`) can no longer be corrupted by shell escaping (finding C3).
+pub fn run_scheduler_op(
+    level: Elevation,
+    task_path: &str,
+    task_name: &str,
+    action: SchedulerAction,
+) -> Result<(), Error> {
+    run_one(
+        level,
+        BrokerOp::Scheduler {
+            task_path: task_path.to_string(),
+            task_name: task_name.to_string(),
+            action,
+        },
+    )
+}
+
 /// Run a PowerShell script via `-EncodedCommand` (base64 of UTF-16LE). No shell parses the script.
 fn run_powershell_encoded(script: &str) -> Result<(), Error> {
     use std::os::windows::process::CommandExt;

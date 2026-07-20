@@ -7,12 +7,12 @@
 
 use crate::error::Error;
 use crate::models::{
-    FirewallSnapshot, HostsSnapshot, RegistryHive, RegistryValueType, SchedulerSnapshot,
-    ServiceSnapshot, TweakSnapshot,
+    FirewallSnapshot, HostsSnapshot, RegistryHive, RegistryValueType, SchedulerAction,
+    SchedulerSnapshot, ServiceSnapshot, TweakSnapshot,
 };
 use crate::services::{
-    firewall_service, hosts_service, registry_service, registry_value, scheduler_service,
-    service_control, trusted_installer,
+    firewall_service, hosts_service, registry_service, registry_value, service_control,
+    trusted_installer,
 };
 
 use super::capture::read_registry_value;
@@ -293,40 +293,34 @@ fn restore_scheduler_state(snapshot: &SchedulerSnapshot, use_system: bool) -> Re
         use_system
     );
 
+    // One typed op for both elevations (no schtasks string): SYSTEM runs it in the broker,
+    // otherwise in-process.
+    let level = if use_system {
+        trusted_installer::Elevation::System
+    } else {
+        trusted_installer::Elevation::None
+    };
+
     match snapshot.original_state.as_str() {
         "Ready" | "Running" => {
-            // Task was enabled, re-enable it
-            if use_system {
-                let escaped_path = trusted_installer::escape_shell_arg(&task_path);
-                let args = format!("/Change /TN \"{}\" /Enable", escaped_path);
-                let exit_code = trusted_installer::run_schtasks_as_system(&args)?;
-                if exit_code != 0 {
-                    return Err(Error::CommandExecution(format!(
-                        "schtasks enable failed with exit code {}",
-                        exit_code
-                    )));
-                }
-                log::info!("Enabled scheduled task (SYSTEM): {}", task_path);
-            } else {
-                scheduler_service::enable_task(&snapshot.task_path, &snapshot.task_name)?;
-            }
+            // Task was enabled — re-enable it.
+            trusted_installer::run_scheduler_op(
+                level,
+                &snapshot.task_path,
+                &snapshot.task_name,
+                SchedulerAction::Enable,
+            )?;
+            log::info!("Enabled scheduled task: {}", task_path);
         }
         "Disabled" => {
-            // Task was disabled, ensure it's disabled
-            if use_system {
-                let escaped_path = trusted_installer::escape_shell_arg(&task_path);
-                let args = format!("/Change /TN \"{}\" /Disable", escaped_path);
-                let exit_code = trusted_installer::run_schtasks_as_system(&args)?;
-                if exit_code != 0 {
-                    return Err(Error::CommandExecution(format!(
-                        "schtasks disable failed with exit code {}",
-                        exit_code
-                    )));
-                }
-                log::info!("Disabled scheduled task (SYSTEM): {}", task_path);
-            } else {
-                scheduler_service::disable_task(&snapshot.task_path, &snapshot.task_name)?;
-            }
+            // Task was disabled — ensure it stays disabled.
+            trusted_installer::run_scheduler_op(
+                level,
+                &snapshot.task_path,
+                &snapshot.task_name,
+                SchedulerAction::Disable,
+            )?;
+            log::info!("Disabled scheduled task: {}", task_path);
         }
         "NotFound" => {
             // Task didn't exist before - we can't restore a deleted task

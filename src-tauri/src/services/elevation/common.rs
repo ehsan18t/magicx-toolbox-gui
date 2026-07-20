@@ -63,31 +63,6 @@ pub fn char_to_lower(c: u16) -> u16 {
     }
 }
 
-/// Escape a string for safe use in shell commands.
-/// This prevents command injection by escaping special characters.
-///
-/// For Windows cmd.exe, we need to:
-/// 1. Escape existing double quotes by doubling them
-/// 2. Escape special shell characters: & | < > ^ %
-pub fn escape_shell_arg(s: &str) -> String {
-    let mut escaped = String::with_capacity(s.len() + 10);
-    for c in s.chars() {
-        match c {
-            '"' => escaped.push_str("\"\""), // Double quotes
-            '&' | '|' | '<' | '>' | '^' => {
-                escaped.push('^'); // Escape with caret
-                escaped.push(c);
-            }
-            '%' => {
-                escaped.push('%'); // Escape percent with percent
-                escaped.push('%');
-            }
-            _ => escaped.push(c),
-        }
-    }
-    escaped
-}
-
 /// Enable SeDebugPrivilege for the current process
 pub fn enable_debug_privilege() -> Result<(), Error> {
     // SAFETY: Windows API calls for privilege management. All handles are properly
@@ -322,32 +297,3 @@ pub(super) unsafe fn wait_and_reap(pi: &PROCESS_INFORMATION, label: &str) -> Res
     Ok(exit_code as i32)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_escape_shell_arg_no_special() {
-        assert_eq!(escape_shell_arg("hello"), "hello");
-    }
-
-    #[test]
-    fn test_escape_shell_arg_quotes() {
-        assert_eq!(escape_shell_arg("hello\"world"), "hello\"\"world");
-    }
-
-    #[test]
-    fn test_escape_shell_arg_ampersand() {
-        assert_eq!(escape_shell_arg("a&b"), "a^&b");
-    }
-
-    #[test]
-    fn test_escape_shell_arg_pipe() {
-        assert_eq!(escape_shell_arg("a|b"), "a^|b");
-    }
-
-    #[test]
-    fn test_escape_shell_arg_percent() {
-        assert_eq!(escape_shell_arg("100%"), "100%%");
-    }
-}

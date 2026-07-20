@@ -36,12 +36,10 @@ mod ti_elevation;
 // Re-export the elevation level enum (the single dispatch value for the apply chain)
 pub use level::Elevation;
 
-// Re-export the broker entrypoint (called from the `--broker` subcommand in lib.rs). The broker
-// protocol types stay internal to this module — the elevated wrappers build them.
-pub use broker::run_broker;
-
-// Re-export common utilities
-pub use common::escape_shell_arg;
+// Re-export the broker entrypoint (called from the `--broker` subcommand in lib.rs) and the typed
+// scheduler op. The broker protocol types stay internal to this module — the elevated wrappers
+// build them.
+pub use broker::{run_broker, run_scheduler_op};
 
 // Re-export SYSTEM elevation functions
 pub use system_elevation::{
@@ -53,6 +51,5 @@ pub use system_elevation::{
 // Re-export TrustedInstaller elevation functions
 pub use ti_elevation::{
     run_command_as_ti, run_powershell, run_powershell_as_system, run_powershell_as_ti,
-    run_schtasks_as_system, run_schtasks_as_ti, set_service_startup_as_ti, start_service_as_ti,
-    stop_service_as_ti,
+    set_service_startup_as_ti, start_service_as_ti, stop_service_as_ti,
 };
