@@ -6,6 +6,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Current on-disk snapshot schema version. Additive fields guarded by `#[serde(default)]` don't
+/// require a bump; bump only when the meaning of an existing field changes. Snapshots written
+/// before versioning existed deserialize as 0.
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+
 /// Snapshot of a single registry value before modification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrySnapshot {
@@ -80,6 +85,13 @@ pub struct TweakSnapshot {
     pub created_at: String,
     /// Windows version when snapshot was created (10 or 11)
     pub windows_version: u32,
+    /// On-disk schema version (0 = a snapshot written before versioning existed).
+    #[serde(default)]
+    pub schema_version: u32,
+    /// The machine this snapshot was captured on (MachineGuid), if it was readable. A mismatch at
+    /// load time means the snapshot came from a different machine, so `load_snapshot` warns.
+    #[serde(default)]
+    pub machine_guid: Option<String>,
     /// Whether SYSTEM elevation was used for this tweak
     #[serde(default)]
     pub requires_system: bool,
@@ -121,6 +133,8 @@ impl TweakSnapshot {
             applied_option_label: applied_option_label.to_string(),
             created_at: chrono::Local::now().to_rfc3339(),
             windows_version,
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            machine_guid: crate::services::system_info_service::machine_guid(),
             requires_system,
             original_option_index,
             registry_snapshots: Vec::new(),
@@ -154,5 +168,44 @@ impl TweakSnapshot {
     /// Add a firewall snapshot
     pub fn add_firewall_snapshot(&mut self, snapshot: FirewallSnapshot) {
         self.firewall_snapshots.push(snapshot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_snapshot_stamps_the_current_schema_version() {
+        let s = TweakSnapshot::new("t", "T", 0, "opt", 11, false, None);
+        assert_eq!(s.schema_version, SNAPSHOT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_pre_versioning_snapshot_still_deserializes_with_defaults() {
+        // Snapshots written before schema_version/machine_guid existed must keep loading. The
+        // additive #[serde(default)] fields make the migration a compile-time-safe no-op (finding #18).
+        let json = r#"{
+            "tweak_id": "t", "tweak_name": "T", "applied_option_index": 0,
+            "applied_option_label": "opt", "created_at": "2020-01-01T00:00:00Z",
+            "windows_version": 11, "registry_snapshots": [], "service_snapshots": []
+        }"#;
+        let s: TweakSnapshot = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            s.schema_version, 0,
+            "missing version defaults to 0 (pre-versioning)"
+        );
+        assert_eq!(s.machine_guid, None);
+        assert_eq!(s.tweak_id, "t");
+    }
+
+    #[test]
+    fn schema_version_and_machine_guid_round_trip() {
+        let mut s = TweakSnapshot::new("t", "T", 0, "opt", 11, false, None);
+        s.machine_guid = Some("ABC-123".to_string());
+        let back: TweakSnapshot =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(back.machine_guid.as_deref(), Some("ABC-123"));
     }
 }

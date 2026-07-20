@@ -149,6 +149,23 @@ pub fn load_snapshot(tweak_id: &str) -> Result<Option<TweakSnapshot>, Error> {
     let snapshot: TweakSnapshot = serde_json::from_str(&content)
         .map_err(|e| Error::BackupFailed(format!("Failed to parse snapshot: {}", e)))?;
 
+    // Warn (don't block) if the snapshot came from a different machine: its captured "original
+    // state" describes another system, so restoring it here could target the wrong values.
+    if let (Some(snap_guid), Some(current)) = (
+        snapshot.machine_guid.as_deref(),
+        crate::services::system_info_service::machine_guid(),
+    ) {
+        if snap_guid != current {
+            log::warn!(
+                "Snapshot for tweak '{}' was captured on a different machine (MachineGuid {} != {}); \
+                 restoring it may target the wrong state",
+                tweak_id,
+                snap_guid,
+                current
+            );
+        }
+    }
+
     log::debug!("Loaded snapshot for tweak '{}'", tweak_id);
     Ok(Some(snapshot))
 }
