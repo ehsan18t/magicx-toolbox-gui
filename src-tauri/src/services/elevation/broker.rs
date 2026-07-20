@@ -67,6 +67,11 @@ pub enum BrokerOp {
 /// A batch of operations for one broker invocation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BrokerRequest {
+    /// Transport nonce. Assigned freshly by [`run_elevated_broker`] at send time and echoed back in
+    /// the response, so a stale or foreign response file (e.g. a leftover from a prior run at a
+    /// reused pid) is detected rather than read as a fresh success. Callers may leave it 0.
+    #[serde(default)]
+    pub nonce: u64,
     pub ops: Vec<BrokerOp>,
 }
 
@@ -80,6 +85,9 @@ pub enum OpOutcome {
 /// The broker's typed response.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BrokerResponse {
+    /// Echoes the request's [`BrokerRequest::nonce`] so the parent can reject a stale/foreign file.
+    #[serde(default)]
+    pub nonce: u64,
     pub results: Vec<OpOutcome>,
 }
 
@@ -152,7 +160,10 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
             Err(e) => OpOutcome::Err(e.to_string()),
         })
         .collect();
-    BrokerResponse { results }
+    BrokerResponse {
+        nonce: request.nonce,
+        results,
+    }
 }
 
 /// Broker entrypoint: read a request file, execute it, write a response file. Returns a process
@@ -191,8 +202,39 @@ pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
     0
 }
 
-/// Sequence counter for unique broker temp-file names within this process.
+/// Monotonic counter mixed into the per-invocation transport nonce.
 static BROKER_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A per-invocation transport nonce. Mixes wall-clock, a process-local counter, and the pid so two
+/// invocations get distinct nonces even across a process restart that reuses our pid and resets the
+/// counter — the exact conjunction that could otherwise let a stale response file be read as a
+/// fresh success.
+fn next_nonce() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seq = BROKER_SEQ.fetch_add(1, Ordering::SeqCst);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    nanos
+        .rotate_left(17)
+        ^ seq.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ ((std::process::id() as u64) << 32)
+}
+
+/// Parse a broker response, rejecting it unless its nonce matches the one we sent. This is what
+/// turns a stale or foreign response file into a hard error instead of a silent success.
+fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerResponse, Error> {
+    let resp: BrokerResponse = serde_json::from_slice(resp_bytes)
+        .map_err(|e| Error::ServiceControl(format!("parse broker response: {}", e)))?;
+    if resp.nonce != expected_nonce {
+        return Err(Error::ServiceControl(format!(
+            "broker response nonce mismatch (sent {:#018x}, got {:#018x}): stale or foreign response",
+            expected_nonce, resp.nonce
+        )));
+    }
+    Ok(resp)
+}
 
 /// Run a batch of typed operations at the given elevation.
 ///
@@ -202,6 +244,11 @@ static BROKER_SEQ: AtomicU64 = AtomicU64::new(0);
 /// / TI parent-spoof primitives), then read the typed response back. No shell parses the
 /// operations, and the request *data* never appears on a command line — only our controlled
 /// temp-file paths do.
+///
+/// Trust in the response is gated three ways: the response path is pre-cleared, the child's exit
+/// code must be 0 (run_broker returns 0 only *after* writing the response), and the response's
+/// nonce must match the one sent — so a leftover file from a prior run can never be read as this
+/// run's result.
 pub fn run_elevated_broker(
     level: Elevation,
     request: &BrokerRequest,
@@ -213,12 +260,21 @@ pub fn run_elevated_broker(
     let exe = std::env::current_exe()
         .map_err(|e| Error::ServiceControl(format!("current_exe failed: {}", e)))?;
 
-    let seq = BROKER_SEQ.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir();
-    let req_path = dir.join(format!("magicx-broker-{}-{}-req.json", std::process::id(), seq));
-    let resp_path = dir.join(format!("magicx-broker-{}-{}-resp.json", std::process::id(), seq));
+    let nonce = next_nonce();
+    let wire = BrokerRequest {
+        nonce,
+        ops: request.ops.clone(),
+    };
 
-    let req_json = serde_json::to_vec(request)
+    let dir = std::env::temp_dir();
+    let pid = std::process::id();
+    let req_path = dir.join(format!("magicx-broker-{}-{:016x}-req.json", pid, nonce));
+    let resp_path = dir.join(format!("magicx-broker-{}-{:016x}-resp.json", pid, nonce));
+
+    // Never trust a leftover file at the response path.
+    let _ = std::fs::remove_file(&resp_path);
+
+    let req_json = serde_json::to_vec(&wire)
         .map_err(|e| Error::ServiceControl(format!("serialize broker request: {}", e)))?;
     std::fs::write(&req_path, &req_json)
         .map_err(|e| Error::ServiceControl(format!("write broker request: {}", e)))?;
@@ -238,24 +294,36 @@ pub fn run_elevated_broker(
         Elevation::None => unreachable!("handled above"),
     };
 
+    // Gate on the child's real exit code before trusting the file: a non-zero exit means the broker
+    // did not finish writing the response, so any bytes at resp_path are stale or partial.
     let read = spawn.and_then(|exit| {
-        std::fs::read(&resp_path).map_err(|e| {
-            Error::ServiceControl(format!("broker wrote no response (exit {}): {}", exit, e))
-        })
+        if exit != 0 {
+            return Err(Error::ServiceControl(format!(
+                "broker process exited with code {} without completing (transport failure)",
+                exit
+            )));
+        }
+        std::fs::read(&resp_path)
+            .map_err(|e| Error::ServiceControl(format!("broker wrote no response: {}", e)))
     });
 
     let _ = std::fs::remove_file(&req_path);
     let _ = std::fs::remove_file(&resp_path);
 
-    let resp_bytes = read?;
-    serde_json::from_slice::<BrokerResponse>(&resp_bytes)
-        .map_err(|e| Error::ServiceControl(format!("parse broker response: {}", e)))
+    validate_response(&read?, nonce)
 }
 
 /// Run a single operation at the given elevation, returning `Ok(())` on success. The elevated
 /// wrappers (`*_as_ti` / `*_as_system`) submit exactly one op through this.
 pub(super) fn run_one(level: Elevation, op: BrokerOp) -> Result<(), Error> {
-    run_elevated_broker(level, &BrokerRequest { ops: vec![op] })?.into_single()
+    run_elevated_broker(
+        level,
+        &BrokerRequest {
+            nonce: 0,
+            ops: vec![op],
+        },
+    )?
+    .into_single()
 }
 
 /// Run a PowerShell script via `-EncodedCommand` (base64 of UTF-16LE). No shell parses the script.
@@ -377,6 +445,7 @@ mod tests {
     #[test]
     fn request_round_trips_through_json() {
         let req = BrokerRequest {
+            nonce: 0xDEAD_BEEF,
             ops: vec![
                 BrokerOp::RegSet {
                     hive: RegistryHive::Hklm,
@@ -443,6 +512,7 @@ mod tests {
     fn execute_request_reports_per_op_outcomes() {
         let scratch = Scratch::new();
         let req = BrokerRequest {
+            nonce: 0,
             ops: vec![
                 BrokerOp::RegCreateKey {
                     hive: RegistryHive::Hkcu,
@@ -473,6 +543,7 @@ mod tests {
             dir.join(format!("magicx-brokertest-{}-{}-resp.json", std::process::id(), seq));
 
         let req = BrokerRequest {
+            nonce: 0,
             ops: vec![
                 BrokerOp::RegCreateKey {
                     hive: RegistryHive::Hkcu,
@@ -509,6 +580,7 @@ mod tests {
         // Elevation::None takes the in-process path (no spawn), exercising the dispatch wrapper.
         let scratch = Scratch::new();
         let req = BrokerRequest {
+            nonce: 0,
             ops: vec![BrokerOp::RegSet {
                 hive: RegistryHive::Hkcu,
                 key: scratch.key.clone(),
@@ -523,5 +595,44 @@ mod tests {
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "N").unwrap(),
             Some(5)
         );
+    }
+
+    #[test]
+    fn execute_request_echoes_the_request_nonce() {
+        let resp = execute_request(&BrokerRequest {
+            nonce: 0xABCD_1234,
+            ops: vec![],
+        });
+        assert_eq!(resp.nonce, 0xABCD_1234);
+        assert!(resp.results.is_empty());
+    }
+
+    #[test]
+    fn a_response_with_a_mismatched_nonce_is_rejected() {
+        // A stale/foreign response file carries a different nonce than the one we sent — the guard
+        // that stops a leftover file from being read as this invocation's success.
+        let stale = serde_json::to_vec(&BrokerResponse {
+            nonce: 111,
+            results: vec![OpOutcome::Ok],
+        })
+        .unwrap();
+        let err = validate_response(&stale, 222).expect_err("mismatched nonce must be rejected");
+        assert!(matches!(err, Error::ServiceControl(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn a_response_with_the_expected_nonce_is_accepted() {
+        let good = serde_json::to_vec(&BrokerResponse {
+            nonce: 222,
+            results: vec![OpOutcome::Ok],
+        })
+        .unwrap();
+        let resp = validate_response(&good, 222).expect("matching nonce must validate");
+        assert_eq!(resp.results, vec![OpOutcome::Ok]);
+    }
+
+    #[test]
+    fn next_nonce_values_are_distinct() {
+        assert_ne!(next_nonce(), next_nonce());
     }
 }

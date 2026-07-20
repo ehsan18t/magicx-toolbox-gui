@@ -11,9 +11,9 @@ use super::broker::{run_one, BrokerOp};
 use super::Elevation;
 
 use super::common::{
-    enable_debug_privilege, find_process_by_name, get_process_token, to_wide_string, CloseHandle,
-    CreateProcessWithTokenW, GetLastError, CREATE_NO_WINDOW, ELEVATED_PROCESS_TIMEOUT_MS, FALSE,
-    HANDLE, LOGON_WITH_PROFILE, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW, SW_HIDE,
+    enable_debug_privilege, find_process_by_name, get_process_token, to_wide_string, wait_and_reap,
+    CloseHandle, CreateProcessWithTokenW, GetLastError, CREATE_NO_WINDOW, FALSE, HANDLE,
+    LOGON_WITH_PROFILE, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW, SW_HIDE,
 };
 
 /// Get SYSTEM token from winlogon.exe
@@ -87,40 +87,7 @@ pub(super) fn spawn_as_system(command_line: &str) -> Result<i32, Error> {
             )));
         }
 
-        // Wait for the process to complete (with timeout)
-        let wait_result = windows_sys::Win32::System::Threading::WaitForSingleObject(
-            process_info.hProcess,
-            ELEVATED_PROCESS_TIMEOUT_MS,
-        );
-
-        // Check if we timed out (WAIT_TIMEOUT = 0x102)
-        if wait_result == 0x102 {
-            log::warn!(
-                "SYSTEM command timed out after {}ms",
-                ELEVATED_PROCESS_TIMEOUT_MS
-            );
-            // Terminate the hung process
-            windows_sys::Win32::System::Threading::TerminateProcess(process_info.hProcess, 1);
-            CloseHandle(process_info.hProcess);
-            CloseHandle(process_info.hThread);
-            return Err(Error::ServiceControl(format!(
-                "SYSTEM command timed out after {}ms",
-                ELEVATED_PROCESS_TIMEOUT_MS
-            )));
-        }
-
-        // Get exit code
-        let mut exit_code: u32 = 0;
-        windows_sys::Win32::System::Threading::GetExitCodeProcess(
-            process_info.hProcess,
-            &mut exit_code,
-        );
-
-        CloseHandle(process_info.hProcess);
-        CloseHandle(process_info.hThread);
-
-        log::debug!("SYSTEM command completed with exit code: {}", exit_code);
-        Ok(exit_code as i32)
+        wait_and_reap(&process_info, "SYSTEM command")
     }
 }
 

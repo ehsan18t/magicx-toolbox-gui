@@ -262,6 +262,66 @@ pub fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
     }
 }
 
+/// Wait for a spawned elevated process to finish, reap it, and return its real exit code.
+///
+/// Replaces two byte-identical inline copies and — crucially — distinguishes the three wait
+/// outcomes those copies collapsed, so a wait failure can never masquerade as a completed process
+/// with exit code 0 (which the broker would then read as success):
+/// - `WAIT_OBJECT_0` → the process exited; return its exit code (the `GetExitCodeProcess` BOOL is
+///   checked, not assumed).
+/// - `WAIT_TIMEOUT`  → terminate the hung process and return a timeout error.
+/// - anything else (`WAIT_FAILED`, …) → return an error carrying `GetLastError`, never `Ok(0)`.
+///
+/// # Safety
+/// `pi` must hold valid process and thread handles from a successful `CreateProcess*`. Both handles
+/// are closed on every return path.
+pub(super) unsafe fn wait_and_reap(pi: &PROCESS_INFORMATION, label: &str) -> Result<i32, Error> {
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, TerminateProcess, WaitForSingleObject,
+    };
+    const WAIT_OBJECT_0: u32 = 0x0000_0000;
+    const WAIT_TIMEOUT: u32 = 0x0000_0102;
+
+    let wait_result = WaitForSingleObject(pi.hProcess, ELEVATED_PROCESS_TIMEOUT_MS);
+
+    if wait_result == WAIT_TIMEOUT {
+        log::warn!("{} timed out after {}ms", label, ELEVATED_PROCESS_TIMEOUT_MS);
+        TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return Err(Error::ServiceControl(format!(
+            "{} timed out after {}ms",
+            label, ELEVATED_PROCESS_TIMEOUT_MS
+        )));
+    }
+
+    if wait_result != WAIT_OBJECT_0 {
+        // WAIT_FAILED (0xFFFF_FFFF) or any unexpected value: do NOT fall through to a bogus Ok(0).
+        let err = GetLastError();
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return Err(Error::ServiceControl(format!(
+            "{} wait failed (result {:#x}): {}",
+            label, wait_result, err
+        )));
+    }
+
+    let mut exit_code: u32 = 0;
+    let got = GetExitCodeProcess(pi.hProcess, &mut exit_code);
+    let query_err = if got == FALSE { GetLastError() } else { 0 };
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    if got == FALSE {
+        return Err(Error::ServiceControl(format!(
+            "{} exit-code query failed: {}",
+            label, query_err
+        )));
+    }
+
+    log::debug!("{} completed with exit code: {}", label, exit_code);
+    Ok(exit_code as i32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

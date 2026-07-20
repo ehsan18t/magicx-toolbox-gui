@@ -7,10 +7,10 @@ use crate::error::Error;
 use std::ptr;
 
 use super::common::{
-    enable_debug_privilege, to_wide_string, CloseHandle, CloseServiceHandle, CreateProcessW,
-    DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList, OpenProcess,
-    OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW, UpdateProcThreadAttribute,
-    CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, ELEVATED_PROCESS_TIMEOUT_MS,
+    enable_debug_privilege, to_wide_string, wait_and_reap, CloseHandle, CloseServiceHandle,
+    CreateProcessW, DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList,
+    OpenProcess, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
+    UpdateProcThreadAttribute, CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT,
     ERROR_SERVICE_ALREADY_RUNNING, EXTENDED_STARTUPINFO_PRESENT, FALSE, HANDLE,
     LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_CREATE_PROCESS, PROCESS_INFORMATION,
     PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
@@ -361,43 +361,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Erro
             )));
         }
 
-        // Wait for the process to complete (with timeout)
-        let wait_result = windows_sys::Win32::System::Threading::WaitForSingleObject(
-            process_info.hProcess,
-            ELEVATED_PROCESS_TIMEOUT_MS,
-        );
-
-        // Check if we timed out (WAIT_TIMEOUT = 0x102)
-        if wait_result == 0x102 {
-            log::warn!(
-                "TrustedInstaller command timed out after {}ms",
-                ELEVATED_PROCESS_TIMEOUT_MS
-            );
-            // Terminate the hung process
-            windows_sys::Win32::System::Threading::TerminateProcess(process_info.hProcess, 1);
-            CloseHandle(process_info.hProcess);
-            CloseHandle(process_info.hThread);
-            return Err(Error::ServiceControl(format!(
-                "TrustedInstaller command timed out after {}ms",
-                ELEVATED_PROCESS_TIMEOUT_MS
-            )));
-        }
-
-        // Get exit code
-        let mut exit_code: u32 = 0;
-        windows_sys::Win32::System::Threading::GetExitCodeProcess(
-            process_info.hProcess,
-            &mut exit_code,
-        );
-
-        CloseHandle(process_info.hProcess);
-        CloseHandle(process_info.hThread);
-
-        log::debug!(
-            "TrustedInstaller command completed with exit code: {}",
-            exit_code
-        );
-        Ok(exit_code as i32)
+        wait_and_reap(&process_info, "TrustedInstaller command")
     }
 }
 
