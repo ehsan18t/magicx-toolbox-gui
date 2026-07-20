@@ -1225,7 +1225,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
         let content = fs::read_to_string(&path)?;
 
-        let tweak_file: TweakFile = match serde_yml::from_str(&content) {
+        let tweak_file: TweakFile = match serde_yaml_bw::from_str(&content) {
             Ok(tf) => tf,
             Err(e) => {
                 parse_errors.push(format!("[{}] Parse error: {}", file_name, e));

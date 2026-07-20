@@ -72,7 +72,25 @@ pulls `models`' impls into `build.rs` alongside build's own, and they collide.
 re-exports them and keeps every impl block where it is; `build.rs` includes only the schema file and keeps
 its own impls. Same outcome, actually compiles.
 
-### 3. Snapshot location — three docs are wrong, not one
+### 3. YAML parser choice — `serde_yaml_bw`, not `serde_yaml_ng`
+
+The crate research recommended `serde_yaml_ng` and rationalized its staleness as
+*"'frozen' is an acceptable and arguably desirable property"* for a build-time parser. That reasoning is
+defensible in isolation, but it was reached without `serde_yaml_bw` in the candidate set. With the full
+picture, only one fork is actually alive:
+
+| Crate | Latest | Last release | State |
+| --- | --- | --- | --- |
+| `serde_yaml_bw` | 2.5.6 | 2026-05-02 | 6 releases since Nov 2025 — actively developed |
+| `serde_yaml_ng` | 0.10.0 | 2024-05-26 | ~2 years stale |
+| `serde_norway` | 0.9.42 | 2024-12-21 | ~1.5 years stale |
+| `serde_yml` | 0.0.13 | 2026-05-27 | that release *is* the deprecation notice; archived + RUSTSEC |
+| `serde_yaml` | 0.9.34 | 2024-03-25 | deprecated upstream |
+
+Verified before adopting: output is byte-identical across all 189 tweaks; the `deny_unknown_fields` error
+still enumerates every valid field; and `value: null` still deserializes to `None`, so ADR-0004 is unaffected.
+
+### 4. Snapshot location — three docs are wrong, not one
 
 Review finding #39 caught `TWEAK_SYSTEM.md` claiming snapshots live in app data when the code writes them
 next to the executable. `docs/APP_CONTEXT.md:52` carries the identical wrong claim. Fix all three
@@ -134,7 +152,7 @@ These have no dependencies and shipping them late costs real user harm.
 | Change | Why now |
 |---|---|
 | **`apply.rs:156-165` — the critical patch** | Bind the rollback result; delete the snapshot only on verified success; stop `?` swallowing the real apply error. `revert_tweak:270` already has the correct shape to copy. Every day this ships is a day someone can permanently lose their original state. |
-| **`serde_yml` → `serde_yaml_ng`** | **RUSTSEC-2025-0068** — affects all versions, no patch exists, repo archived. Two-line swap. Build-time-only over trusted input so not exploitable, but there is no reason to carry it. Do **not** follow serde_yml's own deprecation notice to `noyalib` — same maintainer as the archived unsound crate. |
+| **`serde_yml` → `serde_yaml_bw`** | **RUSTSEC-2025-0068** — affects all versions, no patch exists, repo archived. Two-line swap. Build-time-only over trusted input so not exploitable, but there is no reason to carry it. Do **not** follow serde_yml's own deprecation notice to `noyalib` — same maintainer as the archived unsound crate. See "YAML parser choice" below for why `serde_yaml_bw` and not `serde_yaml_ng`. |
 | **Dead-code deletion** (−~500 LOC) | rustc already flags most of it. `models/backup.rs` (whole file, dead), the dead YAML pipeline at `tweak.rs:527-621`, seven unused helpers, three never-constructed `Error` variants, dead struct fields hidden behind `#[allow(dead_code)]` masks. Pure deletion, compiler-verified. |
 | **Doc fixes that describe unchanged behavior** | `hosts_changes`/`firewall_changes` into Option Structure; document `aliases`; rewrite Common Mistake #2; delete the `value: null` appendix row and fix Example 4 to `action: delete_value` (ADR-0004). |
 
