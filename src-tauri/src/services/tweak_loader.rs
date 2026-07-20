@@ -53,16 +53,52 @@ pub fn get_tweaks_for_version(version: u32) -> Result<HashMap<String, TweakDefin
     Ok(filtered)
 }
 
-/// Filter tweaks by category.
-pub fn get_tweaks_by_category(category: &str) -> Result<HashMap<String, TweakDefinition>, Error> {
-    log::debug!("Getting tweaks for category: {}", category);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let filtered: HashMap<_, _> = TWEAKS
-        .iter()
-        .filter(|(_, tweak)| tweak.category_id.eq_ignore_ascii_case(category))
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    /// Guards the build.rs <-> models/tweak.rs type mirror.
+    ///
+    /// build.rs parses the YAML with its own hand-written copy of these types and
+    /// serializes the result to tweaks.json; the runtime types here deserialize it.
+    /// The two are maintained by hand and drift silently: a field renamed on one
+    /// side only, or added to the build mirror but not to `TweakDefinition` (which
+    /// is `deny_unknown_fields`), produces a panic inside a `LazyLock` on the first
+    /// tweak lookup -- i.e. at runtime, on a user's machine, not at compile time.
+    ///
+    /// Touching either side runs this, so the drift surfaces here instead.
+    #[test]
+    fn embedded_tweak_data_deserializes_into_the_runtime_types() {
+        // Forcing the LazyLock is the whole point: this is where the .expect() lives.
+        let tweak_count = TWEAKS.len();
+        let category_count = CATEGORIES.len();
 
-    log::debug!("Found {} tweaks in category '{}'", filtered.len(), category);
-    Ok(filtered)
+        assert!(tweak_count > 0, "no tweaks were compiled into the binary");
+        assert!(
+            category_count > 0,
+            "no categories were compiled into the binary"
+        );
+        assert_eq!(
+            category_count,
+            crate::generated_tweaks::CATEGORY_COUNT,
+            "CATEGORY_COUNT disagrees with the embedded category data"
+        );
+
+        // Every tweak must satisfy the invariant build.rs validates, so a build-time
+        // rule that stops being enforced does not pass unnoticed.
+        for (id, tweak) in TWEAKS.iter() {
+            assert!(
+                tweak.options.len() >= 2,
+                "tweak '{}' has {} option(s); the minimum is 2",
+                id,
+                tweak.options.len()
+            );
+            assert_eq!(id, &tweak.id, "map key and tweak.id disagree");
+            assert!(
+                !tweak.category_id.is_empty(),
+                "tweak '{}' has no category_id",
+                id
+            );
+        }
+    }
 }

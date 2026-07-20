@@ -302,9 +302,6 @@ struct TweakDefinitionRaw {
     description: String,
     #[serde(default)]
     info: Option<String>,
-    /// Previous IDs this tweak was known by (for migration)
-    #[serde(default)]
-    aliases: Vec<String>,
     risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
@@ -329,9 +326,6 @@ struct TweakDefinition {
     description: String,
     #[serde(default)]
     info: Option<String>,
-    /// Previous IDs this tweak was known by (for migration)
-    #[serde(default)]
-    aliases: Vec<String>,
     risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
@@ -1274,7 +1268,6 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 name: raw.name,
                 description: raw.description,
                 info: raw.info,
-                aliases: raw.aliases,
                 risk_level: raw.risk_level,
                 requires_admin,
                 requires_system,
@@ -1338,12 +1331,8 @@ pub static TWEAKS: LazyLock<HashMap<String, TweakDefinition>> = LazyLock::new(||
 #[allow(dead_code)]
 pub const CATEGORY_COUNT: usize = {category_count};
 
-/// Number of tweaks compiled into the binary
-#[allow(dead_code)]
-pub const TWEAK_COUNT: usize = {tweak_count};
 "#,
         category_count = categories.len(),
-        tweak_count = tweaks.len(),
     );
 
     // Write the generated Rust file

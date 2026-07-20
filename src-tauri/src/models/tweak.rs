@@ -494,14 +494,6 @@ pub struct TweakOption {
 }
 
 impl TweakOption {
-    /// Get registry changes filtered for a specific Windows version
-    pub fn get_registry_changes_for_version(&self, version: u32) -> Vec<&RegistryChange> {
-        self.registry_changes
-            .iter()
-            .filter(|change| change.applies_to_version(version))
-            .collect()
-    }
-
     /// Check if this option has any effective changes for the given Windows version
     pub fn has_changes_for_version(&self, version: u32) -> bool {
         let has_registry = self
@@ -524,36 +516,6 @@ impl TweakOption {
     }
 }
 
-/// Raw tweak definition as loaded from YAML (before category assignment)
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TweakDefinitionRaw {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    #[serde(default)]
-    pub info: Option<String>,
-    /// Previous IDs this tweak was known by (for migration)
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    pub risk_level: RiskLevel,
-    #[serde(default)]
-    pub requires_admin: bool,
-    #[serde(default)]
-    pub requires_system: bool,
-    /// If true, run as TrustedInstaller (for protected services like WaaSMedicSvc)
-    #[serde(default)]
-    pub requires_ti: bool,
-    #[serde(default)]
-    pub requires_reboot: bool,
-    /// If true, force dropdown display even for 2 options (default: false)
-    /// By default, 2 options = toggle, 3+ options = dropdown
-    #[serde(default)]
-    pub force_dropdown: bool,
-    /// Array of available states/options
-    pub options: Vec<TweakOption>,
-}
-
 /// Complete tweak definition with category assignment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -563,9 +525,6 @@ pub struct TweakDefinition {
     pub description: String,
     #[serde(default)]
     pub info: Option<String>,
-    /// Previous IDs this tweak was known by (for migration)
-    #[serde(default)]
-    pub aliases: Vec<String>,
     pub risk_level: RiskLevel,
     #[serde(default)]
     pub requires_admin: bool,
@@ -588,76 +547,6 @@ pub struct TweakDefinition {
 }
 
 impl TweakDefinition {
-    /// Create from raw definition and category id.
-    ///
-    /// Permission hierarchy: ti > system > admin
-    /// - If `requires_ti: true` is set, `requires_system` and `requires_admin` are implied
-    /// - If `requires_system: true` is set, `requires_admin` is implied
-    ///
-    /// This allows YAML authors to only specify the highest required permission.
-    pub fn from_raw(raw: TweakDefinitionRaw, category_id: &str) -> Self {
-        // Infer lower permissions from higher ones
-        // ti implies system implies admin
-        let requires_ti = raw.requires_ti;
-        let requires_system = raw.requires_system || requires_ti;
-        let requires_admin = raw.requires_admin || requires_system;
-
-        TweakDefinition {
-            id: raw.id,
-            name: raw.name,
-            description: raw.description,
-            info: raw.info,
-            aliases: raw.aliases,
-            risk_level: raw.risk_level,
-            requires_admin,
-            requires_system,
-            requires_ti,
-            requires_reboot: raw.requires_reboot,
-            force_dropdown: raw.force_dropdown,
-            options: raw.options,
-            category_id: category_id.to_string(),
-        }
-    }
-
-    /// Validate tweak structure
-    pub fn validate(&self) -> Result<(), String> {
-        if self.options.len() < 2 {
-            return Err(format!(
-                "Tweak '{}' must have at least 2 options, found {}",
-                self.id,
-                self.options.len()
-            ));
-        }
-        Ok(())
-    }
-
-    /// Get all unique registry keys across all options (for state detection)
-    pub fn all_registry_keys(&self) -> Vec<(RegistryHive, String, String)> {
-        let mut keys = Vec::new();
-        for option in &self.options {
-            for change in &option.registry_changes {
-                let key = (change.hive, change.key.clone(), change.value_name.clone());
-                if !keys.contains(&key) {
-                    keys.push(key);
-                }
-            }
-        }
-        keys
-    }
-
-    /// Get all unique service names across all options
-    pub fn all_service_names(&self) -> Vec<String> {
-        let mut names = Vec::new();
-        for option in &self.options {
-            for change in &option.service_changes {
-                if !names.contains(&change.name) {
-                    names.push(change.name.clone());
-                }
-            }
-        }
-        names
-    }
-
     /// Check if this tweak applies to a given Windows version
     /// (has at least one option with changes for that version)
     pub fn applies_to_version(&self, version: u32) -> bool {
@@ -665,39 +554,6 @@ impl TweakDefinition {
             .iter()
             .any(|opt| opt.has_changes_for_version(version))
     }
-
-    /// Get all Windows versions this tweak applies to
-    /// Returns empty Vec if applies to all versions
-    pub fn applicable_versions(&self) -> Vec<u32> {
-        let mut versions = std::collections::HashSet::new();
-        let mut has_specific = false;
-
-        for option in &self.options {
-            for change in &option.registry_changes {
-                if let Some(v) = &change.windows_versions {
-                    if !v.is_empty() {
-                        has_specific = true;
-                        versions.extend(v.iter());
-                    }
-                }
-            }
-        }
-
-        if !has_specific {
-            return Vec::new();
-        }
-
-        let mut result: Vec<_> = versions.into_iter().collect();
-        result.sort();
-        result
-    }
-}
-
-/// YAML file structure with category and tweaks
-#[derive(Debug, Clone, Deserialize)]
-pub struct TweakFile {
-    pub category: CategoryDefinition,
-    pub tweaks: Vec<TweakDefinitionRaw>,
 }
 
 // ============================================================================
@@ -782,42 +638,6 @@ mod tests {
         }
     }
 
-    fn make_option(registry_changes: Vec<RegistryChange>) -> TweakOption {
-        TweakOption {
-            label: "Test".to_string(),
-            registry_changes,
-            service_changes: Vec::new(),
-            scheduler_changes: Vec::new(),
-            hosts_changes: Vec::new(),
-            firewall_changes: Vec::new(),
-            pre_commands: Vec::new(),
-            post_commands: Vec::new(),
-            pre_powershell: Vec::new(),
-            post_powershell: Vec::new(),
-            registry_missing_is_match: false,
-            service_missing_is_match: false,
-            scheduler_missing_is_match: false,
-        }
-    }
-
-    fn make_tweak(force_dropdown: bool, options: Vec<TweakOption>) -> TweakDefinition {
-        TweakDefinition {
-            id: "test_tweak".to_string(),
-            name: "Test Tweak".to_string(),
-            description: "A test tweak".to_string(),
-            info: None,
-            aliases: Vec::new(),
-            risk_level: RiskLevel::Low,
-            requires_admin: false,
-            requires_system: false,
-            requires_ti: false,
-            requires_reboot: false,
-            force_dropdown,
-            options,
-            category_id: "test".to_string(),
-        }
-    }
-
     #[test]
     fn test_registry_change_applies_to_version() {
         let change = make_registry_change(1, None);
@@ -831,90 +651,5 @@ mod tests {
         let change = make_registry_change(1, Some(vec![10, 11]));
         assert!(change.applies_to_version(10));
         assert!(change.applies_to_version(11));
-    }
-
-    #[test]
-    fn test_option_count_validation() {
-        // 2 options - valid
-        let tweak = make_tweak(
-            false,
-            vec![
-                make_option(vec![make_registry_change(1, None)]),
-                make_option(vec![make_registry_change(0, None)]),
-            ],
-        );
-        assert!(tweak.validate().is_ok());
-
-        // 1 option - invalid (need minimum 2)
-        let tweak = make_tweak(
-            false,
-            vec![make_option(vec![make_registry_change(1, None)])],
-        );
-        assert!(tweak.validate().is_err());
-
-        // 0 options - invalid
-        let tweak = make_tweak(false, vec![]);
-        assert!(tweak.validate().is_err());
-    }
-
-    #[test]
-    fn test_dropdown_validation() {
-        let tweak = make_tweak(
-            false,
-            vec![
-                make_option(vec![make_registry_change(1, None)]),
-                make_option(vec![make_registry_change(2, None)]),
-                make_option(vec![make_registry_change(3, None)]),
-            ],
-        );
-        assert!(tweak.validate().is_ok());
-    }
-
-    #[test]
-    fn test_all_registry_keys() {
-        let tweak = make_tweak(
-            false,
-            vec![
-                make_option(vec![
-                    make_registry_change(1, None),
-                    RegistryChange {
-                        hive: RegistryHive::Hklm,
-                        key: "SOFTWARE\\Other".to_string(),
-                        value_name: "Other".to_string(),
-                        action: RegistryAction::Set,
-                        value_type: Some(RegistryValueType::Dword),
-                        value: Some(serde_json::json!(1)),
-                        windows_versions: None,
-                        skip_validation: false,
-                    },
-                ]),
-                make_option(vec![make_registry_change(2, None)]),
-            ],
-        );
-        let keys = tweak.all_registry_keys();
-        assert_eq!(keys.len(), 2);
-    }
-
-    #[test]
-    fn test_applicable_versions() {
-        // Universal tweak
-        let tweak = make_tweak(
-            true,
-            vec![
-                make_option(vec![make_registry_change(1, None)]),
-                make_option(vec![make_registry_change(0, None)]),
-            ],
-        );
-        assert!(tweak.applicable_versions().is_empty());
-
-        // Version-specific tweak
-        let tweak = make_tweak(
-            true,
-            vec![
-                make_option(vec![make_registry_change(1, Some(vec![11]))]),
-                make_option(vec![make_registry_change(0, Some(vec![11]))]),
-            ],
-        );
-        assert_eq!(tweak.applicable_versions(), vec![11]);
     }
 }

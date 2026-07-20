@@ -14,7 +14,6 @@ use crate::services::{
     service_control,
 };
 use rayon::prelude::*;
-use std::fs;
 
 use super::capture::read_registry_value;
 use super::helpers::{parse_hive, parse_value_type, task_state_matches};
@@ -500,30 +499,6 @@ fn check_firewall_matches(
 // ============================================================================
 // Migration & Validation
 // ============================================================================
-
-/// Clean up old backup files (one-time migration)
-pub fn cleanup_old_backups() -> Result<(), Error> {
-    let exe_dir = std::env::current_exe()
-        .map_err(|e| Error::BackupFailed(format!("Failed to get executable path: {}", e)))?
-        .parent()
-        .ok_or_else(|| Error::BackupFailed("Failed to get executable directory".into()))?
-        .to_path_buf();
-
-    let old_backups_dir = exe_dir.join("backups");
-
-    if old_backups_dir.exists() {
-        log::info!("Cleaning up old backup files from {:?}", old_backups_dir);
-        if let Ok(entries) = fs::read_dir(&old_backups_dir) {
-            for entry in entries.flatten() {
-                let _ = fs::remove_file(entry.path());
-            }
-        }
-        let _ = fs::remove_dir(&old_backups_dir);
-        log::info!("Old backup cleanup complete");
-    }
-
-    Ok(())
-}
 
 /// Validate all snapshots on app startup (parallelized)
 /// Removes stale snapshots where tweak was externally reverted
