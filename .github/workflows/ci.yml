@@ -41,7 +41,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      # The project's own gate, per .github/copilot-instructions.md:
+      # The project's own gate, per CLAUDE.md:
       # prettier, tsc, svelte-check, cargo fmt, cargo clippy, eslint.
       - name: bun run validate
         run: bun run validate

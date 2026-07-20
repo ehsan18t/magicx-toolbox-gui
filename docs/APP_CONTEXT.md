@@ -78,7 +78,7 @@ Use existing UI primitives before creating new components.
 
 ## Contributor Rules
 
-- Follow `.github/copilot-instructions.md`.
+- Follow the repo `CLAUDE.md`.
 - When tweak runtime behavior changes, update `docs/TWEAK_AUTHORING.md`.
 - Keep types, constants, helpers, and components in focused files.
 - Avoid duplicating registry/apply/validation logic.
