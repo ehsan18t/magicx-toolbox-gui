@@ -106,11 +106,7 @@ export interface ConfigurationProfile {
 
 /** Warning code for validation warnings */
 export type WarningCode =
-  | "WindowsVersionMismatch"
-  | "TweakSchemaChanged"
-  | "OptionResolvedByHash"
-  | "TweakResolvedByAlias"
-  | "AlreadyApplied";
+  "WindowsVersionMismatch" | "TweakSchemaChanged" | "OptionResolvedByHash" | "TweakResolvedByAlias" | "AlreadyApplied";
 
 /** Error code for validation errors */
 export type ErrorCode =

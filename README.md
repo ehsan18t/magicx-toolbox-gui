@@ -51,19 +51,19 @@ If you are a developer looking to contribute or build from source, read the sect
 
 | Command                | Description                                                                           |
 | :--------------------- | :------------------------------------------------------------------------------------ |
-| `bun run dev`          | Starts the Tauri development server with hot-reloading for both frontend and backend. |
-| `bun run build`        | Builds and bundles the application for production.                                    |
-| `bun run build:debug`  | Creates a debug build of the application.                                             |
+| `pnpm run dev`          | Starts the Tauri development server with hot-reloading for both frontend and backend. |
+| `pnpm run build`        | Builds and bundles the application for production.                                    |
+| `pnpm run build:debug`  | Creates a debug build of the application.                                             |
 |                        |                                                                                       |
-| `bun run format`       | Formats all source files with Prettier.                                               |
-| `bun run format:check` | Checks for formatting errors without modifying files.                                 |
-| `bun run lint`         | Lints the source files using ESLint.                                                  |
-| `bun run lint:fix`     | Lints and automatically fixes problems.                                               |
-| `bun run check`        | Runs the Svelte type-checker.                                                         |
-| `bun run validate`     | Runs all quality checks: format, lint, and type-check.                                |
+| `pnpm run format`       | Formats all source files with Prettier.                                               |
+| `pnpm run format:check` | Checks for formatting errors without modifying files.                                 |
+| `pnpm run lint`         | Lints the source files using ESLint.                                                  |
+| `pnpm run lint:fix`     | Lints and automatically fixes problems.                                               |
+| `pnpm run check`        | Runs the Svelte type-checker.                                                         |
+| `pnpm run validate`     | Runs all quality checks: format, lint, and type-check.                                |
 |                        |                                                                                       |
-| `bun run clean`        | Removes all build artifacts and temporary directories.                                |
-| `bun run prepare`      | SvelteKit's command to generate types                                                 |
+| `pnpm run clean`        | Removes all build artifacts and temporary directories.                                |
+| `pnpm run prepare`      | SvelteKit's command to generate types                                                 |
 
 ### Project Structure
 

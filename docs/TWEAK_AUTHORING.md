@@ -1942,7 +1942,7 @@ cargo build
 ### 2. Check in Dev Mode
 
 ```powershell
-bun run dev
+pnpm run dev
 # Navigate to your category and test:
 # - Can you see the tweak?
 # - Does the toggle/dropdown work?

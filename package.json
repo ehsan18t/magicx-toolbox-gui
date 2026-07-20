@@ -17,13 +17,14 @@
     "starter-template"
   ],
   "type": "module",
+  "packageManager": "pnpm@10.33.3",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
     "build:debug": "tauri build --debug",
     "prepare": "svelte-kit sync || echo ''",
     "copy-icons": "cpy src-tauri/icons/Toolbox.ico static/icons --flat",
-    "postinstall": "bun run copy-icons",
+    "postinstall": "pnpm run copy-icons",
     "clean": "rimraf .svelte-kit dist src-tauri/target",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -36,7 +37,7 @@
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "lint:rust:fix": "cd src-tauri && cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged",
     "type-check": "tsc --noEmit",
-    "validate": "bun run format:check && bun run type-check && bun run check && bun run format:rust:check && bun run lint:rust && bun run lint",
+    "validate": "pnpm run format:check && pnpm run type-check && pnpm run check && pnpm run format:rust:check && pnpm run lint:rust && pnpm run lint",
     "tauri": "tauri"
   },
   "dependencies": {

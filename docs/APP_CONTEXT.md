@@ -84,10 +84,10 @@ Use existing UI primitives before creating new components.
 - Avoid duplicating registry/apply/validation logic.
 - Do not silently ignore privileged operation failures.
 - Use the lightweight runtime context for tweak/profile hot paths.
-- Run `bun run validate` before committing.
+- Run `pnpm run validate` before committing.
 
 ## Validation
 
-- Full stack: `bun run validate`
-- Frontend only: `bun run lint && bun run type-check`
+- Full stack: `pnpm run validate`
+- Frontend only: `pnpm run lint && pnpm run type-check`
 - Backend only: `cd src-tauri && cargo check && cargo clippy --all-targets --all-features -- -D warnings`

@@ -16,7 +16,7 @@ env:
   CARGO_TERM_COLOR: always
   # Deliberately NOT setting `RUSTFLAGS: -D warnings`: it applies to dependencies
   # too, so an upstream crate emitting a warning would fail our build. The
-  # `lint:rust` step inside `bun run validate` already passes -D warnings to
+  # `lint:rust` step inside `pnpm run validate` already passes -D warnings to
   # clippy for this crate only, which is the behaviour we actually want.
 
 jobs:
@@ -26,9 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
         with:
-          bun-version: latest
+          node-version: 24
+          cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -39,12 +42,12 @@ jobs:
           workspaces: src-tauri
 
       - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       # The project's own gate, per CLAUDE.md:
       # prettier, tsc, svelte-check, cargo fmt, cargo clippy, eslint.
-      - name: bun run validate
-        run: bun run validate
+      - name: pnpm run validate
+        run: pnpm run validate
 
       - name: Rust tests
         working-directory: src-tauri

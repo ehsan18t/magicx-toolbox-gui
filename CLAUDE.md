@@ -9,10 +9,10 @@ pure cost.
 
 ## The gate — run before every commit
 
-- **Full stack:** `bun run validate` (prettier, tsc, svelte-check, `cargo fmt --check`, clippy
+- **Full stack:** `pnpm run validate` (prettier, tsc, svelte-check, `cargo fmt --check`, clippy
   `-D warnings`, eslint).
 - **Backend only:** `cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings && cargo test`
-- **Frontend only:** `bun run check && bun run type-check && bun run lint`
+- **Frontend only:** `pnpm run check && pnpm run type-check && pnpm run lint`
 
 Fix every issue the gate reports, whether or not your change caused it. Two scheduler tests that
 activate the live Task Scheduler COM service are `#[ignore]`d (they race libtest's per-test
