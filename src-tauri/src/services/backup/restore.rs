@@ -177,11 +177,7 @@ fn execute_registry_restore(op: &RegistryRestoreOp, use_system: bool) -> Result<
         );
 
         if use_system {
-            trusted_installer::delete_registry_value_as_system(
-                op.hive.as_str(),
-                &op.key,
-                &op.value_name,
-            )?;
+            trusted_installer::delete_registry_value_as_system(op.hive, &op.key, &op.value_name)?;
         } else {
             match registry_service::delete_value(&op.hive, &op.key, &op.value_name) {
                 Ok(()) => {}
@@ -262,8 +258,7 @@ fn restore_service_state(snapshot: &ServiceSnapshot, use_system: bool) -> Result
 
     // Set startup type (with SYSTEM elevation if needed)
     if use_system {
-        let start_type = startup.to_sc_start_type();
-        trusted_installer::set_service_startup_as_system(&snapshot.name, start_type)?;
+        trusted_installer::set_service_startup_as_system(&snapshot.name, &startup)?;
     } else {
         service_control::set_service_startup(&snapshot.name, &startup)?;
     }

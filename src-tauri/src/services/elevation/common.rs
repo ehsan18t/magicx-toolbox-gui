@@ -88,21 +88,6 @@ pub fn escape_shell_arg(s: &str) -> String {
     escaped
 }
 
-/// Validate that a registry path contains only safe characters.
-/// Returns an error if the path contains potentially dangerous characters.
-pub fn validate_registry_path(path: &str) -> Result<(), Error> {
-    // Allow alphanumeric, backslash, underscore, hyphen, period, and space
-    for c in path.chars() {
-        if !c.is_alphanumeric() && !matches!(c, '\\' | '_' | '-' | '.' | ' ' | '{' | '}') {
-            return Err(Error::ServiceControl(format!(
-                "Invalid character '{}' in registry path: {}",
-                c, path
-            )));
-        }
-    }
-    Ok(())
-}
-
 /// Enable SeDebugPrivilege for the current process
 pub fn enable_debug_privilege() -> Result<(), Error> {
     // SAFETY: Windows API calls for privilege management. All handles are properly
@@ -304,20 +289,5 @@ mod tests {
     #[test]
     fn test_escape_shell_arg_percent() {
         assert_eq!(escape_shell_arg("100%"), "100%%");
-    }
-
-    #[test]
-    fn test_validate_registry_path_valid() {
-        assert!(validate_registry_path("SOFTWARE\\Microsoft\\Windows").is_ok());
-    }
-
-    #[test]
-    fn test_validate_registry_path_with_braces() {
-        assert!(validate_registry_path("CLSID\\{12345}").is_ok());
-    }
-
-    #[test]
-    fn test_validate_registry_path_invalid_char() {
-        assert!(validate_registry_path("SOFTWARE;DROP TABLE").is_err());
     }
 }

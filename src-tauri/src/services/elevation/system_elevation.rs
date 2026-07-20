@@ -4,13 +4,16 @@
 //! Includes registry operations and service control.
 
 use crate::error::Error;
+use crate::models::{RegistryHive, RegistryValueType, ServiceStartupType};
 use std::ptr;
 
+use super::broker::{run_one, BrokerOp};
+use super::Elevation;
+
 use super::common::{
-    enable_debug_privilege, escape_shell_arg, find_process_by_name, get_process_token,
-    to_wide_string, validate_registry_path, CloseHandle, CreateProcessWithTokenW, GetLastError,
-    CREATE_NO_WINDOW, ELEVATED_PROCESS_TIMEOUT_MS, FALSE, HANDLE, LOGON_WITH_PROFILE,
-    PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW, SW_HIDE,
+    enable_debug_privilege, find_process_by_name, get_process_token, to_wide_string, CloseHandle,
+    CreateProcessWithTokenW, GetLastError, CREATE_NO_WINDOW, ELEVATED_PROCESS_TIMEOUT_MS, FALSE,
+    HANDLE, LOGON_WITH_PROFILE, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW, SW_HIDE,
 };
 
 /// Get SYSTEM token from winlogon.exe
@@ -21,15 +24,14 @@ fn get_system_token() -> Result<HANDLE, Error> {
     get_process_token(pid)
 }
 
-/// Execute a command as SYSTEM and wait for it to complete
-/// Returns the exit code
-pub fn execute_command_as_system(command_line: &str) -> Result<i32, Error> {
+/// Spawn a raw command line as SYSTEM (no `cmd.exe` wrapper) and wait for it to complete.
+/// Returns the exit code. This is the broker launcher; `execute_command_as_system` wraps a shell
+/// command in `cmd.exe /c` and delegates here.
+pub(super) fn spawn_as_system(command_line: &str) -> Result<i32, Error> {
     let token = get_system_token()?;
-    log::debug!("Got SYSTEM token, executing command: {}", command_line);
+    log::debug!("Got SYSTEM token, spawning: {}", command_line);
 
-    // Build command line: cmd.exe /c <command>
-    let full_command = format!("cmd.exe /c {}", command_line);
-    let mut command_wide = to_wide_string(&full_command);
+    let mut command_wide = to_wide_string(command_line);
 
     // SAFETY: Windows API calls for creating a process with impersonation token.
     // Process and thread handles are closed after waiting for completion.
@@ -122,154 +124,43 @@ pub fn execute_command_as_system(command_line: &str) -> Result<i32, Error> {
     }
 }
 
-/// Get the current user's SID (for converting HKCU to HKU\<SID>)
-fn get_current_user_sid() -> Result<String, Error> {
-    use std::os::windows::process::CommandExt;
-    use std::process::Command;
-
-    // Use whoami /user to get the SID - cleaner than Windows API
-    let output = Command::new("whoami")
-        .args(["/user", "/fo", "csv", "/nh"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::ServiceControl(format!("Failed to run whoami: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(Error::ServiceControl("whoami failed".to_string()));
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    // Output format: "DOMAIN\User","S-1-5-21-..."
-    let parts: Vec<&str> = output_str.trim().split(',').collect();
-    if parts.len() >= 2 {
-        let sid = parts[1].trim_matches('"').to_string();
-        log::debug!("Current user SID: {}", sid);
-        Ok(sid)
-    } else {
-        Err(Error::ServiceControl(format!(
-            "Failed to parse SID from whoami output: {}",
-            output_str
-        )))
-    }
-}
-
-/// Set a registry value as SYSTEM using reg.exe
-/// This bypasses normal permission checks by running reg.exe as SYSTEM
+/// Set a registry value as SYSTEM via the elevated broker (typed `RegSetValueExW`, no reg.exe).
+/// The typed value crosses to the broker as data, dissolving the injection and REG_SZ-corruption
+/// classes the old `reg add` + `escape_shell_arg` path carried.
 pub fn set_registry_value_as_system(
-    hive: &str,
+    hive: RegistryHive,
     key: &str,
     value_name: &str,
-    value_type: &str,
-    value_data: &str,
+    value_type: RegistryValueType,
+    value: serde_json::Value,
 ) -> Result<(), Error> {
-    log::info!(
-        "Setting registry value as SYSTEM: {}\\{}\\{} = {} ({})",
-        hive,
-        key,
-        value_name,
-        value_data,
-        value_type
-    );
-
-    // Validate inputs to prevent command injection
-    validate_registry_path(key)?;
-    validate_registry_path(value_name)?;
-
-    // For HKCU, we need to use HKU\<SID> since SYSTEM's HKCU is different
-    let full_key = if hive.eq_ignore_ascii_case("HKCU") {
-        let sid = get_current_user_sid()?;
-        log::debug!("Converting HKCU to HKU\\{}", sid);
-        format!("HKU\\{}\\{}", sid, key)
-    } else {
-        format!("{}\\{}", hive, key)
-    };
-
-    // Escape shell arguments to prevent command injection
-    let escaped_key = escape_shell_arg(&full_key);
-    let escaped_value_name = escape_shell_arg(value_name);
-    let escaped_value_data = escape_shell_arg(value_data);
-
-    // Build reg.exe command with escaped arguments
-    // reg add "HKLM\Software\..." /v "ValueName" /t REG_DWORD /d 1 /f
-    let command = format!(
-        "reg add \"{}\" /v \"{}\" /t {} /d {} /f",
-        escaped_key, escaped_value_name, value_type, escaped_value_data
-    );
-
-    let exit_code = execute_command_as_system(&command)?;
-
-    if exit_code == 0 {
-        log::info!("Successfully set registry value as SYSTEM");
-        Ok(())
-    } else {
-        Err(Error::ServiceControl(format!(
-            "reg.exe failed with exit code: {}",
-            exit_code
-        )))
-    }
+    run_one(
+        Elevation::System,
+        BrokerOp::RegSet {
+            hive,
+            key: key.to_string(),
+            value_name: value_name.to_string(),
+            value_type,
+            value,
+        },
+    )
 }
 
-/// Delete a registry value as SYSTEM using reg.exe
+/// Delete a registry value as SYSTEM via the elevated broker (typed `RegDeleteValueW`, no reg.exe).
+/// An absent value is reported as success by the broker.
 pub fn delete_registry_value_as_system(
-    hive: &str,
+    hive: RegistryHive,
     key: &str,
     value_name: &str,
 ) -> Result<(), Error> {
-    log::info!(
-        "Deleting registry value as SYSTEM: {}\\{}\\{}",
-        hive,
-        key,
-        value_name
-    );
-
-    // Validate inputs to prevent command injection
-    validate_registry_path(key)?;
-    validate_registry_path(value_name)?;
-
-    // For HKCU, we need to use HKU\<SID> since SYSTEM's HKCU is different
-    let full_key = if hive.eq_ignore_ascii_case("HKCU") {
-        let sid = get_current_user_sid()?;
-        format!("HKU\\{}\\{}", sid, key)
-    } else {
-        format!("{}\\{}", hive, key)
-    };
-
-    // Escape shell arguments to prevent command injection
-    let escaped_key = escape_shell_arg(&full_key);
-    let escaped_value_name = escape_shell_arg(value_name);
-
-    let command = format!(
-        "reg delete \"{}\" /v \"{}\" /f",
-        escaped_key, escaped_value_name
-    );
-
-    let exit_code = execute_command_as_system(&command)?;
-
-    if exit_code == 0 {
-        log::info!("Successfully deleted registry value as SYSTEM");
-        Ok(())
-    } else {
-        // reg.exe uses non-zero codes for "not found" as well as other failures.
-        // If the value is already absent, treat this as success.
-        let query_command = format!(
-            "reg query \"{}\" /v \"{}\"",
-            escaped_key, escaped_value_name
-        );
-        let query_exit = execute_command_as_system(&query_command)?;
-
-        if query_exit != 0 {
-            log::debug!(
-                "reg delete returned {} but value appears absent; treating as success",
-                exit_code
-            );
-            Ok(())
-        } else {
-            Err(Error::ServiceControl(format!(
-                "reg.exe delete failed with exit code: {}",
-                exit_code
-            )))
-        }
-    }
+    run_one(
+        Elevation::System,
+        BrokerOp::RegDeleteValue {
+            hive,
+            key: key.to_string(),
+            value_name: value_name.to_string(),
+        },
+    )
 }
 
 /// Check if SYSTEM elevation is available (running as admin)
@@ -277,41 +168,48 @@ pub fn can_use_system_elevation() -> bool {
     crate::services::system_info_service::is_running_as_admin()
 }
 
-/// Execute an arbitrary command as SYSTEM
-/// This is useful for running pre/post commands that need SYSTEM privileges
+/// Execute an arbitrary command as SYSTEM (via the elevated broker; `cmd /c` inside it).
 pub fn run_command_as_system(command: &str) -> Result<i32, Error> {
     log::info!("Running command as SYSTEM: {}", command);
-    execute_command_as_system(command)
+    run_one(
+        Elevation::System,
+        BrokerOp::RawCmd {
+            command: command.to_string(),
+        },
+    )
+    .map(|()| 0)
 }
 
-/// Set a Windows service startup type as SYSTEM using sc.exe
-/// This bypasses normal permission checks for protected services
-pub fn set_service_startup_as_system(service_name: &str, startup_type: &str) -> Result<(), Error> {
-    use super::service_ops::{set_service_startup_elevated, ElevationLevel};
-    set_service_startup_elevated(
-        service_name,
-        startup_type,
-        ElevationLevel::System,
-        execute_command_as_system,
+/// Set a Windows service startup type as SYSTEM (typed `ChangeServiceConfigW`, via the broker).
+pub fn set_service_startup_as_system(
+    service_name: &str,
+    startup: &ServiceStartupType,
+) -> Result<(), Error> {
+    run_one(
+        Elevation::System,
+        BrokerOp::SvcSetStartup {
+            name: service_name.to_string(),
+            startup: *startup,
+        },
     )
 }
 
-/// Stop a Windows service as SYSTEM using net stop
+/// Stop a Windows service as SYSTEM (typed `ControlService`, via the broker).
 pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
-    use super::service_ops::{stop_service_elevated, ElevationLevel};
-    stop_service_elevated(
-        service_name,
-        ElevationLevel::System,
-        execute_command_as_system,
+    run_one(
+        Elevation::System,
+        BrokerOp::SvcStop {
+            name: service_name.to_string(),
+        },
     )
 }
 
-/// Start a Windows service as SYSTEM using net start
+/// Start a Windows service as SYSTEM (typed `StartServiceW`, via the broker).
 pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
-    use super::service_ops::{start_service_elevated, ElevationLevel};
-    start_service_elevated(
-        service_name,
-        ElevationLevel::System,
-        execute_command_as_system,
+    run_one(
+        Elevation::System,
+        BrokerOp::SvcStart {
+            name: service_name.to_string(),
+        },
     )
 }

@@ -1,35 +1,44 @@
 //! # Elevation Services (SYSTEM and TrustedInstaller)
 //!
-//! Provides functionality to execute commands with elevated privileges on Windows.
+//! Executes privileged operations on Windows via the **broker**: the main app spawns this binary
+//! with a SYSTEM or TrustedInstaller token (`--broker`), and the child runs the same effect
+//! services the unelevated path uses — no shell command strings, results cross back typed.
 //!
 //! ## Module Organization
 //!
-//! - `common`: Shared utilities, constants, and Windows API imports
-//! - `service_ops`: Generic service operations for elevated contexts
-//! - `system_elevation`: SYSTEM-level elevation (via winlogon.exe token)
-//! - `ti_elevation`: TrustedInstaller-level elevation (via parent process spoofing)
+//! - `level`: the `Elevation` enum — the single dispatch value for the apply chain
+//! - `broker`: the elevated effect broker (protocol, executor, `--broker` entrypoint, `run_elevated_broker`)
+//! - `common`: shared utilities, constants, and Windows API imports
+//! - `system_elevation`: SYSTEM token duplication (winlogon.exe) + spawn, and the SYSTEM wrappers
+//! - `ti_elevation`: TrustedInstaller parent-process spoof + spawn, and the TI wrappers
 //!
 //! ## Usage
 //!
 //! ```ignore
-//! // Check if elevation is available
 //! if can_use_system_elevation() {
-//!     // Run command as SYSTEM
 //!     run_command_as_system("cmd /c echo hello")?;
-//!
-//!     // Set registry value as SYSTEM
-//!     set_registry_value_as_system("HKLM", "SOFTWARE\\Test", "Value", "REG_DWORD", "1")?;
+//!     set_registry_value_as_system(
+//!         RegistryHive::Hklm,
+//!         "SOFTWARE\\Test",
+//!         "Value",
+//!         RegistryValueType::Dword,
+//!         serde_json::json!(1),
+//!     )?;
 //! }
 //! ```
 
+mod broker;
 mod common;
 mod level;
-mod service_ops;
 mod system_elevation;
 mod ti_elevation;
 
 // Re-export the elevation level enum (the single dispatch value for the apply chain)
 pub use level::Elevation;
+
+// Re-export the broker entrypoint (called from the `--broker` subcommand in lib.rs). The broker
+// protocol types stay internal to this module — the elevated wrappers build them.
+pub use broker::run_broker;
 
 // Re-export common utilities
 pub use common::escape_shell_arg;

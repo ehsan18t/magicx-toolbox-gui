@@ -18,8 +18,9 @@ use super::common::{
     STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
 };
 
-// Re-export execute_command_as_system for use in run_powershell_as_system
-use super::system_elevation::execute_command_as_system;
+use super::broker::{run_one, BrokerOp};
+use super::Elevation;
+use crate::models::ServiceStartupType;
 
 // ============================================================================
 // POWERSHELL EXECUTION
@@ -83,39 +84,28 @@ pub fn run_powershell(script: &str) -> Result<PowerShellResult, Error> {
     Ok(result)
 }
 
-/// Execute a PowerShell command as SYSTEM
-/// The command is wrapped and executed via CreateProcessWithTokenW
+/// Execute a PowerShell command as SYSTEM via the elevated broker (`-EncodedCommand`; no shell).
 pub fn run_powershell_as_system(script: &str) -> Result<i32, Error> {
     log::info!("Running PowerShell command as SYSTEM: {}", script);
-
-    // Escape double quotes in the script for the command line
-    let escaped_script = script.replace('"', "\\\"");
-
-    // Build the full command to run PowerShell as SYSTEM
-    let command = format!(
-        "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{}\"",
-        escaped_script
-    );
-
-    let exit_code = execute_command_as_system(&command)?;
-
-    if exit_code == 0 {
-        log::info!("PowerShell command as SYSTEM completed successfully");
-    } else {
-        log::warn!(
-            "PowerShell command as SYSTEM failed with exit code: {}",
-            exit_code
-        );
-    }
-
-    Ok(exit_code)
+    run_one(
+        Elevation::System,
+        BrokerOp::Powershell {
+            script: script.to_string(),
+        },
+    )
+    .map(|()| 0)
 }
 
-/// Run a scheduled task command as SYSTEM (for protected tasks)
+/// Run a scheduled task command as SYSTEM (for protected tasks) via the elevated broker.
 pub fn run_schtasks_as_system(args: &str) -> Result<i32, Error> {
     log::info!("Running schtasks as SYSTEM: {}", args);
-    let command = format!("schtasks {}", args);
-    execute_command_as_system(&command)
+    run_one(
+        Elevation::System,
+        BrokerOp::RawCmd {
+            command: format!("schtasks {}", args),
+        },
+    )
+    .map(|()| 0)
 }
 
 // ============================================================================
@@ -253,17 +243,15 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     }
 }
 
-/// Execute a command as TrustedInstaller using parent process spoofing
-/// This creates a process with TrustedInstaller.exe as its parent,
-/// causing it to inherit the TI token.
-pub fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, Error> {
-    log::info!("Executing command as TrustedInstaller: {}", command_line);
+/// Spawn a raw command line as TrustedInstaller via parent-process spoofing (no `cmd.exe` wrapper).
+/// This creates a process with TrustedInstaller.exe as its parent, inheriting the TI token.
+/// `execute_command_as_trusted_installer` wraps a shell command in `cmd.exe /c` and delegates here.
+pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Error> {
+    log::info!("Spawning as TrustedInstaller: {}", command_line);
 
     let ti_handle = get_trusted_installer_handle()?;
 
-    // Build command line: cmd.exe /c <command>
-    let full_command = format!("cmd.exe /c {}", command_line);
-    let mut command_wide = to_wide_string(&full_command);
+    let mut command_wide = to_wide_string(command_line);
 
     // SAFETY: Windows API calls for parent process spoofing. This creates a process
     // with TrustedInstaller.exe as parent, inheriting its privileges. All handles
@@ -413,60 +401,72 @@ pub fn execute_command_as_trusted_installer(command_line: &str) -> Result<i32, E
     }
 }
 
-/// Set a Windows service startup type as TrustedInstaller
-/// This is needed for protected services like WaaSMedicSvc
-pub fn set_service_startup_as_ti(service_name: &str, startup_type: &str) -> Result<(), Error> {
-    use super::service_ops::{set_service_startup_elevated, ElevationLevel};
-    set_service_startup_elevated(
-        service_name,
-        startup_type,
-        ElevationLevel::TrustedInstaller,
-        execute_command_as_trusted_installer,
+/// Set a Windows service startup type as TrustedInstaller (for protected services like WaaSMedicSvc).
+pub fn set_service_startup_as_ti(
+    service_name: &str,
+    startup: &ServiceStartupType,
+) -> Result<(), Error> {
+    run_one(
+        Elevation::TrustedInstaller,
+        BrokerOp::SvcSetStartup {
+            name: service_name.to_string(),
+            startup: *startup,
+        },
     )
 }
 
-/// Stop a Windows service as TrustedInstaller
+/// Stop a Windows service as TrustedInstaller.
 pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
-    use super::service_ops::{stop_service_elevated, ElevationLevel};
-    stop_service_elevated(
-        service_name,
-        ElevationLevel::TrustedInstaller,
-        execute_command_as_trusted_installer,
+    run_one(
+        Elevation::TrustedInstaller,
+        BrokerOp::SvcStop {
+            name: service_name.to_string(),
+        },
     )
 }
 
-/// Start a Windows service as TrustedInstaller
+/// Start a Windows service as TrustedInstaller.
 pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
-    use super::service_ops::{start_service_elevated, ElevationLevel};
-    start_service_elevated(
-        service_name,
-        ElevationLevel::TrustedInstaller,
-        execute_command_as_trusted_installer,
+    run_one(
+        Elevation::TrustedInstaller,
+        BrokerOp::SvcStart {
+            name: service_name.to_string(),
+        },
     )
 }
 
-/// Run an arbitrary command as TrustedInstaller
+/// Run an arbitrary command as TrustedInstaller (via the elevated broker; `cmd /c` inside it).
 pub fn run_command_as_ti(command: &str) -> Result<i32, Error> {
     log::info!("Running command as TrustedInstaller: {}", command);
-    execute_command_as_trusted_installer(command)
+    run_one(
+        Elevation::TrustedInstaller,
+        BrokerOp::RawCmd {
+            command: command.to_string(),
+        },
+    )
+    .map(|()| 0)
 }
 
-/// Run a PowerShell command as TrustedInstaller
+/// Run a PowerShell command as TrustedInstaller via the elevated broker (`-EncodedCommand`; no shell).
 pub fn run_powershell_as_ti(script: &str) -> Result<i32, Error> {
     log::info!("Running PowerShell command as TrustedInstaller: {}", script);
-
-    let escaped_script = script.replace('"', "\\\"");
-    let command = format!(
-        "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"{}\"",
-        escaped_script
-    );
-
-    execute_command_as_trusted_installer(&command)
+    run_one(
+        Elevation::TrustedInstaller,
+        BrokerOp::Powershell {
+            script: script.to_string(),
+        },
+    )
+    .map(|()| 0)
 }
 
-/// Run schtasks as TrustedInstaller (for protected tasks)
+/// Run schtasks as TrustedInstaller (for protected tasks) via the elevated broker.
 pub fn run_schtasks_as_ti(args: &str) -> Result<i32, Error> {
     log::info!("Running schtasks as TrustedInstaller: {}", args);
-    let command = format!("schtasks {}", args);
-    execute_command_as_trusted_installer(&command)
+    run_one(
+        Elevation::TrustedInstaller,
+        BrokerOp::RawCmd {
+            command: format!("schtasks {}", args),
+        },
+    )
+    .map(|()| 0)
 }

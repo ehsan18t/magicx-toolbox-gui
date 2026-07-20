@@ -532,8 +532,6 @@ fn apply_service_changes_atomic(option: &TweakOption, elevation: Elevation) -> R
             String::new()
         };
 
-        let start_type = change.startup.to_sc_start_type();
-
         // 1) Startup config
         if startup_matches {
             log::info!(
@@ -560,10 +558,10 @@ fn apply_service_changes_atomic(option: &TweakOption, elevation: Elevation) -> R
         } else {
             match elevation {
                 Elevation::TrustedInstaller => {
-                    trusted_installer::set_service_startup_as_ti(&change.name, start_type)
+                    trusted_installer::set_service_startup_as_ti(&change.name, &change.startup)
                 }
                 Elevation::System => {
-                    trusted_installer::set_service_startup_as_system(&change.name, start_type)
+                    trusted_installer::set_service_startup_as_system(&change.name, &change.startup)
                 }
                 Elevation::None => {
                     service_control::set_service_startup(&change.name, &change.startup)

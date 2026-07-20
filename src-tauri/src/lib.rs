@@ -17,6 +17,20 @@ pub use error::Error;
 pub use models::*;
 use tauri_plugin_log::{Target, TargetKind};
 
+/// If this process was launched as `--broker <request-file> <response-file>`, run the elevated
+/// effect broker and return its exit code; returns `None` for a normal launch (start the GUI).
+///
+/// The main app spawns the app binary with this flag under a SYSTEM/TrustedInstaller token; the
+/// child executes typed operations against the effect services and writes a typed response. No
+/// shell is involved. Must be checked before any GUI/Tauri initialization.
+pub fn run_broker_if_requested() -> Option<i32> {
+    let args: Vec<String> = std::env::args().collect();
+    let pos = args.iter().position(|a| a == "--broker")?;
+    let req = args.get(pos + 1)?;
+    let resp = args.get(pos + 2)?;
+    Some(services::elevation::run_broker(req, resp))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

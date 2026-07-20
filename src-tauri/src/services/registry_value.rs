@@ -24,21 +24,6 @@ impl RegistryValue {
             RegistryValue::Binary(value) => serde_json::json!(value),
         }
     }
-
-    fn reg_exe_data(&self) -> String {
-        match self {
-            RegistryValue::Dword(value) => value.to_string(),
-            RegistryValue::Qword(value) => value.to_string(),
-            RegistryValue::String(value) | RegistryValue::ExpandString(value) => {
-                format!("\"{}\"", value)
-            }
-            RegistryValue::MultiString(value) => value.join("\\0"),
-            RegistryValue::Binary(value) => value
-                .iter()
-                .map(|byte| format!("{:02x}", byte))
-                .collect::<String>(),
-        }
-    }
 }
 
 pub fn parse_registry_value(
@@ -89,8 +74,17 @@ pub fn write_registry_json_value(
 ) -> Result<(), Error> {
     let parsed = parse_registry_value(value_type, value)?;
 
-    if use_system {
-        return write_registry_json_value_as_system(hive, key, value_name, value_type, &parsed);
+    // HKCU is the user's own hive — always writable directly, so no elevation is needed even for a
+    // requires_system tweak (running as SYSTEM would target SYSTEM's own HKCU, not the user's).
+    // Only HKLM under use_system needs the elevated broker (typed RegSetValueExW as SYSTEM).
+    if use_system && matches!(hive, RegistryHive::Hklm) {
+        return trusted_installer::set_registry_value_as_system(
+            *hive,
+            key,
+            value_name,
+            *value_type,
+            value.clone(),
+        );
     }
 
     match parsed {
@@ -105,22 +99,6 @@ pub fn write_registry_json_value(
         }
         RegistryValue::Binary(value) => registry_service::set_binary(hive, key, value_name, &value),
     }
-}
-
-fn write_registry_json_value_as_system(
-    hive: &RegistryHive,
-    key: &str,
-    value_name: &str,
-    value_type: &RegistryValueType,
-    value: &RegistryValue,
-) -> Result<(), Error> {
-    trusted_installer::set_registry_value_as_system(
-        hive.as_str(),
-        key,
-        value_name,
-        value_type.as_str(),
-        &value.reg_exe_data(),
-    )
 }
 
 fn parse_u64(value: &serde_json::Value, value_type: &RegistryValueType) -> Result<u64, Error> {
