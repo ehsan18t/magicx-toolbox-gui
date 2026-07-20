@@ -7,7 +7,7 @@
 
 use crate::error::Error;
 use crate::models::{
-    FirewallSnapshot, HostsSnapshot, RegistryHive, RegistryValueType, SchedulerAction,
+    FirewallSnapshot, HostsSnapshot, RegistryHive, RegistrySnapshot, SchedulerAction,
     SchedulerSnapshot, ServiceSnapshot, TweakSnapshot,
 };
 use crate::services::{
@@ -15,7 +15,6 @@ use crate::services::{
     trusted_installer,
 };
 
-use super::capture::read_registry_value;
 use super::helpers::{parse_hive, parse_value_type};
 
 /// Result of a restore operation with detailed failure information
@@ -42,58 +41,25 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<RestoreResult, 
         snapshot.requires_system
     );
 
+    // ADR-0001: rollback never aborts early. Every phase is attempted and its failures collected,
+    // so one failed phase can't abandon the rest — and nothing is rolled back on a partial restore
+    // (that would un-restore already-restored values). The caller keeps the snapshot whenever any
+    // failure remains, so the user can retry (Needs Attention).
     let mut failures: Vec<String> = Vec::new();
 
-    // Phase 1: Restore registry values (atomic - all or nothing)
-    let mut completed_registry: Vec<(RegistryRestoreOp, Option<serde_json::Value>, bool)> =
-        Vec::new();
-
+    // Phase 1: Restore registry values
     for reg in &snapshot.registry_snapshots {
-        let hive = parse_hive(&reg.hive)?;
-
-        // Capture current value for rollback
-        let value_type = reg
-            .value_type
-            .as_ref()
-            .map(|t| parse_value_type(t))
-            .transpose()?
-            .unwrap_or(RegistryValueType::Dword);
-
-        let (current_value, current_exists) =
-            read_registry_value(&hive, &reg.key, &reg.value_name, &value_type)?;
-
-        let op = RegistryRestoreOp {
-            hive,
-            key: reg.key.clone(),
-            value_name: reg.value_name.clone(),
-            value_type: reg.value_type.clone(),
-            value: reg.value.clone(),
-            existed: reg.existed,
-        };
-
-        match execute_registry_restore(&op, snapshot.requires_system) {
-            Ok(()) => {
-                completed_registry.push((op, current_value, current_exists));
-            }
-            Err(e) => {
-                log::error!(
-                    "Restore failed for {}\\{}\\{}: {}",
-                    reg.hive,
-                    reg.key,
-                    reg.value_name,
-                    e
-                );
-                rollback_registry_operations(&completed_registry);
-                return Err(Error::BackupFailed(format!(
-                    "Failed to restore registry, rolled back {} changes: {}",
-                    completed_registry.len(),
-                    e
-                )));
-            }
+        if let Err(e) = restore_one_registry(reg, snapshot.requires_system) {
+            let msg = format!(
+                "Registry '{}\\{}\\{}': {}",
+                reg.hive, reg.key, reg.value_name, e
+            );
+            log::error!("Failed to restore registry: {}", msg);
+            failures.push(msg);
         }
     }
 
-    // Phase 2: Restore service states (collect failures, don't stop)
+    // Phase 2: Restore service states
     for svc in &snapshot.service_snapshots {
         if let Err(e) = restore_service_state(svc, snapshot.requires_system) {
             let msg = format!("Service '{}': {}", svc.name, e);
@@ -134,7 +100,7 @@ pub fn restore_from_snapshot(snapshot: &TweakSnapshot) -> Result<RestoreResult, 
     if success {
         log::info!(
             "Successfully restored {} registry, {} services, {} tasks, {} hosts, {} firewall",
-            completed_registry.len(),
+            snapshot.registry_snapshots.len(),
             snapshot.service_snapshots.len(),
             snapshot.scheduler_snapshots.len(),
             snapshot.hosts_snapshots.len(),
@@ -163,6 +129,20 @@ struct RegistryRestoreOp {
     value_type: Option<String>,
     value: Option<serde_json::Value>,
     existed: bool,
+}
+
+/// Restore a single registry value from its snapshot.
+fn restore_one_registry(reg: &RegistrySnapshot, use_system: bool) -> Result<(), Error> {
+    let hive = parse_hive(&reg.hive)?;
+    let op = RegistryRestoreOp {
+        hive,
+        key: reg.key.clone(),
+        value_name: reg.value_name.clone(),
+        value_type: reg.value_type.clone(),
+        value: reg.value.clone(),
+        existed: reg.existed,
+    };
+    execute_registry_restore(&op, use_system)
 }
 
 /// Execute a single registry restore operation
@@ -394,30 +374,42 @@ fn restore_firewall_state(snapshot: &FirewallSnapshot) -> Result<(), Error> {
     Ok(())
 }
 
-/// Rollback completed registry operations on failure
-fn rollback_registry_operations(
-    completed: &[(RegistryRestoreOp, Option<serde_json::Value>, bool)],
-) {
-    log::warn!("Rolling back {} registry operations", completed.len());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    for (op, original_value, original_existed) in completed.iter().rev() {
-        let rollback_op = RegistryRestoreOp {
-            hive: op.hive,
-            key: op.key.clone(),
-            value_name: op.value_name.clone(),
-            value_type: op.value_type.clone(),
-            value: original_value.clone(),
-            existed: *original_existed,
-        };
+    #[test]
+    fn a_failed_phase_does_not_abort_the_remaining_phases() {
+        // ADR-0001: rollback attempts all five phases and collects failures. A registry restore that
+        // fails must not abandon the service phase — previously the registry phase rolled back and
+        // returned Err, abandoning services / scheduler / hosts / firewall entirely.
+        let mut snap = TweakSnapshot::new("__wp4_test", "T", 0, "opt", 11, false, None);
 
-        if let Err(e) = execute_registry_restore(&rollback_op, false) {
-            log::error!(
-                "Failed to rollback {}\\{}\\{}: {}",
-                op.hive.as_str(),
-                op.key,
-                op.value_name,
-                e
-            );
-        }
+        // A registry op that fails immediately (unknown hive), before touching the registry.
+        snap.registry_snapshots.push(RegistrySnapshot {
+            hive: "BOGUS_HIVE".to_string(),
+            key: "Software\\X".to_string(),
+            value_name: "V".to_string(),
+            value_type: Some("REG_DWORD".to_string()),
+            value: Some(serde_json::json!(1)),
+            existed: true,
+        });
+        // A service op for a service that does not exist — this later phase must still be attempted.
+        snap.service_snapshots.push(ServiceSnapshot {
+            name: "MagicXNoSuchService_wp4".to_string(),
+            startup_type: "manual".to_string(),
+            was_running: false,
+        });
+
+        let result = restore_from_snapshot(&snap).unwrap();
+        assert!(!result.success);
+        assert_eq!(
+            result.failures.len(),
+            2,
+            "both phases must be attempted and both fail: {:?}",
+            result.failures
+        );
+        assert!(result.failures.iter().any(|f| f.starts_with("Registry")));
+        assert!(result.failures.iter().any(|f| f.starts_with("Service")));
     }
 }
