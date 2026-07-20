@@ -4,7 +4,7 @@
 //! When YAML files change, Cargo automatically rebuilds thanks to `rerun-if-changed`.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -1197,7 +1197,13 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
 
     // Collect all categories and tweaks
     let mut categories: Vec<CategoryDefinition> = Vec::new();
-    let mut tweaks: HashMap<String, TweakDefinition> = HashMap::new();
+    // BTreeMap, not HashMap: this map is serialized straight to tweaks.json, and
+    // HashMap's randomly-seeded hasher emits the keys in a different order on every
+    // build. That made the generated artifact differ byte-for-byte between builds of
+    // identical input, which defeats build caching and makes it impossible to verify
+    // that a change to the parser or the YAML left the output untouched.
+    // The runtime still deserializes into a HashMap; JSON object order is irrelevant there.
+    let mut tweaks: BTreeMap<String, TweakDefinition> = BTreeMap::new();
     let mut parse_errors: Vec<String> = Vec::new();
 
     // First pass: parse all files and collect categories
