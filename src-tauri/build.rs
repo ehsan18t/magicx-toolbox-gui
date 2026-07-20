@@ -4,7 +4,7 @@
 //! When YAML files change, Cargo automatically rebuilds thanks to `rerun-if-changed`.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -302,9 +302,6 @@ struct TweakDefinitionRaw {
     description: String,
     #[serde(default)]
     info: Option<String>,
-    /// Previous IDs this tweak was known by (for migration)
-    #[serde(default)]
-    aliases: Vec<String>,
     risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
@@ -329,9 +326,6 @@ struct TweakDefinition {
     description: String,
     #[serde(default)]
     info: Option<String>,
-    /// Previous IDs this tweak was known by (for migration)
-    #[serde(default)]
-    aliases: Vec<String>,
     risk_level: RiskLevel,
     #[serde(default)]
     requires_admin: bool,
@@ -1197,7 +1191,13 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
 
     // Collect all categories and tweaks
     let mut categories: Vec<CategoryDefinition> = Vec::new();
-    let mut tweaks: HashMap<String, TweakDefinition> = HashMap::new();
+    // BTreeMap, not HashMap: this map is serialized straight to tweaks.json, and
+    // HashMap's randomly-seeded hasher emits the keys in a different order on every
+    // build. That made the generated artifact differ byte-for-byte between builds of
+    // identical input, which defeats build caching and makes it impossible to verify
+    // that a change to the parser or the YAML left the output untouched.
+    // The runtime still deserializes into a HashMap; JSON object order is irrelevant there.
+    let mut tweaks: BTreeMap<String, TweakDefinition> = BTreeMap::new();
     let mut parse_errors: Vec<String> = Vec::new();
 
     // First pass: parse all files and collect categories
@@ -1219,7 +1219,7 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
         let content = fs::read_to_string(&path)?;
 
-        let tweak_file: TweakFile = match serde_yml::from_str(&content) {
+        let tweak_file: TweakFile = match serde_yaml_bw::from_str(&content) {
             Ok(tf) => tf,
             Err(e) => {
                 parse_errors.push(format!("[{}] Parse error: {}", file_name, e));
@@ -1268,7 +1268,6 @@ fn generate_tweak_data() -> Result<(), Box<dyn std::error::Error>> {
                 name: raw.name,
                 description: raw.description,
                 info: raw.info,
-                aliases: raw.aliases,
                 risk_level: raw.risk_level,
                 requires_admin,
                 requires_system,
@@ -1332,12 +1331,8 @@ pub static TWEAKS: LazyLock<HashMap<String, TweakDefinition>> = LazyLock::new(||
 #[allow(dead_code)]
 pub const CATEGORY_COUNT: usize = {category_count};
 
-/// Number of tweaks compiled into the binary
-#[allow(dead_code)]
-pub const TWEAK_COUNT: usize = {tweak_count};
 "#,
         category_count = categories.len(),
-        tweak_count = tweaks.len(),
     );
 
     // Write the generated Rust file

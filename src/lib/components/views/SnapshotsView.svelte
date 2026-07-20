@@ -151,16 +151,18 @@
       <ActionButton
         intent="default"
         icon="mdi:export"
+        disabled
         onclick={() => modalStore.open("profileExport")}
-        tooltip="Export current configuration to a file"
+        tooltip="Profiles are being rebuilt and are temporarily unavailable"
       >
         Export
       </ActionButton>
       <ActionButton
         intent="default"
         icon="mdi:import"
+        disabled
         onclick={() => modalStore.open("profileImport")}
-        tooltip="Import configuration from a file"
+        tooltip="Profiles are being rebuilt and are temporarily unavailable"
       >
         Import
       </ActionButton>

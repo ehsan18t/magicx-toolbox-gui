@@ -60,7 +60,13 @@
       </p>
 
       <div class="flex flex-wrap gap-3">
-        <Button variant="secondary" class="flex-1" onclick={handleExportProfile}>
+        <Button
+          variant="secondary"
+          class="flex-1"
+          disabled
+          title="Profiles are being rebuilt and are temporarily unavailable"
+          onclick={handleExportProfile}
+        >
           <Icon icon="mdi:export" width="18" />
           Export Profile
           {#if appliedCount > 0}
@@ -68,7 +74,13 @@
           {/if}
         </Button>
 
-        <Button variant="secondary" class="flex-1" onclick={handleImportProfile}>
+        <Button
+          variant="secondary"
+          class="flex-1"
+          disabled
+          title="Profiles are being rebuilt and are temporarily unavailable"
+          onclick={handleImportProfile}
+        >
           <Icon icon="mdi:import" width="18" />
           Import Profile
         </Button>

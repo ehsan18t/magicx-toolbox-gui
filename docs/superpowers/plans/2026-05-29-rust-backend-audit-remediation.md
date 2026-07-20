@@ -1,5 +1,34 @@
 # Rust Backend Audit Remediation Implementation Plan
 
+> ## STATUS: SUPERSEDED — 2026-07-20
+>
+> Most of this plan was executed (see commits `08fa2e6`, `522d9e1`, `5131569`, `2621dda`), but the
+> checkboxes were never updated, so it reads as pending when it is not. They are left as-is rather than
+> ticked, because ticking boxes without re-verifying each one would be worse than leaving them ambiguous.
+>
+> Superseded by [TWEAK_SYSTEM_PLAN.md](../../TWEAK_SYSTEM_PLAN.md), informed by
+> [TWEAK_SYSTEM_REVIEW.md](../../TWEAK_SYSTEM_REVIEW.md).
+>
+> **Carried forward — verified still outstanding:**
+>
+> - **Task 1 is incomplete.** Its acceptance criterion was *"`REG_BINARY` authored values apply, restore,
+>   export/import, and **detect** consistently."* `detection.rs:243` uses the normalized
+>   `registry_value::registry_values_match`, but `inspection.rs:156` still uses `helpers::values_match`
+>   (raw JSON equality). A `REG_BINARY` value authored in the supported `"00,A0,FF"` hex form therefore
+>   matches in detection and mismatches in inspection. The unification stopped one file short. Addressed
+>   by the detection/inspection collapse in the new plan's stage 4.
+>
+> **No longer applicable:**
+>
+> - **Tasks 2, 3 and 6** concern the profile system, which is being deleted and rebuilt. See
+>   "Profile system — delete now, rebuild later" in the new plan.
+>
+> **Still binding — its contributor rules outlived the plan:**
+>
+> - *"Do not silently ignore privileged operation failures"* is exactly the rule that
+>   `let _ = restore_from_snapshot(..)` violated in `apply.rs`. Fixed in `881ad57`.
+> - *"ALWAYS run `bun run validate` before committing"* — still the gate.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix the impactful Rust backend correctness issues found in the audit, then update the docs so future humans and AI agents can understand the app and avoid reintroducing drift.

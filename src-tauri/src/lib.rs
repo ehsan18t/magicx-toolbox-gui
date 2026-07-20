@@ -95,9 +95,6 @@ pub fn run() {
             // Tweak query commands
             commands::tweaks::query::get_categories,
             commands::tweaks::query::get_available_tweaks,
-            commands::tweaks::query::get_available_tweaks_for_version,
-            commands::tweaks::query::get_tweaks_by_category,
-            commands::tweaks::query::get_tweak,
             commands::tweaks::query::get_tweak_status,
             commands::tweaks::query::get_all_tweak_statuses,
             commands::tweaks::query::get_tweak_inspection,
@@ -108,25 +105,12 @@ pub fn run() {
             commands::tweaks::batch::batch_apply_tweaks,
             commands::tweaks::batch::batch_revert_tweaks,
             commands::debug::set_debug_mode,
-            commands::debug::get_debug_mode,
             // Backup commands
             commands::backup::has_backup,
             commands::backup::list_backups,
             commands::backup::get_backup_info,
-            commands::backup::get_backup_system_status,
-            commands::backup::cleanup_old_backups,
             commands::backup::validate_snapshots,
-            // Profile commands
-            commands::profile::profile_export,
-            commands::profile::profile_import,
-            commands::profile::profile_validate,
-            commands::profile::profile_apply,
-            commands::profile::get_windows_version,
-            commands::profile::get_saved_profiles,
-            commands::profile::delete_saved_profile,
             // Elevation commands
-            commands::elevation::apply_registry_as_system,
-            commands::elevation::delete_registry_as_system,
             commands::elevation::can_use_system_elevation,
             commands::elevation::restart_as_admin,
             // Update commands

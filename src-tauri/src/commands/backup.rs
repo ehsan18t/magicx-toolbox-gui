@@ -43,32 +43,6 @@ pub fn get_backup_info(tweak_id: String) -> Result<Option<BackupInfo>> {
     }
 }
 
-/// Get status of the backup system
-#[derive(Debug, Clone, Serialize)]
-pub struct BackupSystemStatus {
-    pub total_applied_tweaks: usize,
-    pub snapshots_dir: String,
-}
-
-#[tauri::command]
-pub fn get_backup_system_status() -> Result<BackupSystemStatus> {
-    let applied = backup_service::get_applied_tweaks()?;
-    let snapshots_dir = backup_service::get_snapshots_dir()?
-        .to_string_lossy()
-        .to_string();
-
-    Ok(BackupSystemStatus {
-        total_applied_tweaks: applied.len(),
-        snapshots_dir,
-    })
-}
-
-/// Clean up old backup files (migration from old format)
-#[tauri::command]
-pub fn cleanup_old_backups() -> Result<()> {
-    backup_service::cleanup_old_backups()
-}
-
 /// Validate all snapshots on app startup
 /// Removes stale snapshots where current registry state matches the snapshot state
 /// Returns the number of stale snapshots removed

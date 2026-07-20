@@ -21,9 +21,6 @@ pub enum Error {
     #[error("Backup failed: {0}")]
     BackupFailed(String),
 
-    #[error("Unsupported Windows version")]
-    UnsupportedWindowsVersion,
-
     #[error("Requires administrator privileges")]
     RequiresAdmin,
 
@@ -36,20 +33,11 @@ pub enum Error {
     #[error("Command execution failed: {0}")]
     CommandExecution(String),
 
-    #[error("Failed to acquire state lock")]
-    StateLock,
-
     #[error("Resource not found: {0}")]
     NotFound(String),
 
     #[error("Validation failed: {0}")]
     ValidationError(String),
-
-    #[error("Operation timed out: {0}")]
-    Timeout(String),
-
-    #[error("Profile error: {0}")]
-    ProfileError(String),
 }
 
 impl Error {
@@ -63,16 +51,12 @@ impl Error {
             Error::RegistryOperation(_) => "REGISTRY_OPERATION_FAILED",
             Error::WindowsApi(_) => "WINDOWS_API_ERROR",
             Error::BackupFailed(_) => "BACKUP_FAILED",
-            Error::UnsupportedWindowsVersion => "UNSUPPORTED_WINDOWS_VERSION",
             Error::RequiresAdmin => "REQUIRES_ADMIN",
             Error::ServiceControl(_) => "SERVICE_CONTROL_FAILED",
             Error::Update(_) => "UPDATE_ERROR",
             Error::CommandExecution(_) => "COMMAND_EXECUTION_FAILED",
-            Error::StateLock => "STATE_LOCK_FAILED",
             Error::NotFound(_) => "NOT_FOUND",
             Error::ValidationError(_) => "VALIDATION_FAILED",
-            Error::Timeout(_) => "TIMEOUT",
-            Error::ProfileError(_) => "PROFILE_ERROR",
         }
     }
 }

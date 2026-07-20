@@ -5,7 +5,27 @@
  * to share tweak configurations across machines or backups.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+// ============================================================================
+// TEMPORARILY DISABLED
+// ============================================================================
+// The v1 profile backend was deleted in the 2026-07 cleanup and is being
+// rebuilt from scratch. See docs/spec/profile-v1.md and docs/TWEAK_SYSTEM_PLAN.md.
+//
+// The UI is deliberately kept rather than removed, so the feature reads as
+// "coming back" rather than "gone". Every backend call is neutralized here at a
+// single choke point: the type definitions below have no backend dependency and
+// still compile, and no `invoke()` reaches a command that no longer exists.
+//
+// To restore: reinstate the Tauri commands, then replace `profileBackendUnavailable()`
+// with the original `invoke(...)` bodies (see git history for this file).
+// ============================================================================
+
+/** Message shown wherever a profile action is attempted while the backend is absent. */
+export const PROFILE_UNAVAILABLE_MESSAGE = "Profiles are temporarily unavailable while the system is rebuilt.";
+
+function profileBackendUnavailable(): Promise<never> {
+  return Promise.reject(new Error(PROFILE_UNAVAILABLE_MESSAGE));
+}
 
 // ============================================================================
 // Types
@@ -195,21 +215,15 @@ export interface ProfileApplyResult {
  * @param options - Optional export options
  */
 export async function exportProfile(
-  filePath: string,
-  profileName: string,
-  tweakIds: string[],
-  options?: {
+  _filePath: string,
+  _profileName: string,
+  _tweakIds: string[],
+  _options?: {
     description?: string;
     includeSystemState?: boolean;
   },
 ): Promise<void> {
-  return invoke("profile_export", {
-    filePath,
-    name: profileName,
-    description: options?.description ?? null,
-    tweakIds,
-    includeSystemState: options?.includeSystemState ?? false,
-  });
+  return profileBackendUnavailable();
 }
 
 /**
@@ -218,8 +232,8 @@ export async function exportProfile(
  * @param filePath - Path to the profile file
  * @returns The profile and validation result
  */
-export async function importProfile(filePath: string): Promise<[ConfigurationProfile, ProfileValidation]> {
-  return invoke("profile_import", { filePath });
+export async function importProfile(_filePath: string): Promise<[ConfigurationProfile, ProfileValidation]> {
+  return profileBackendUnavailable();
 }
 
 /**
@@ -228,8 +242,8 @@ export async function importProfile(filePath: string): Promise<[ConfigurationPro
  * @param profile - The profile to validate
  * @returns Validation result
  */
-export async function validateProfile(profile: ConfigurationProfile): Promise<ProfileValidation> {
-  return invoke("profile_validate", { profile });
+export async function validateProfile(_profile: ConfigurationProfile): Promise<ProfileValidation> {
+  return profileBackendUnavailable();
 }
 
 /**
@@ -240,26 +254,21 @@ export async function validateProfile(profile: ConfigurationProfile): Promise<Pr
  * @returns Apply result
  */
 export async function applyProfile(
-  profile: ConfigurationProfile,
-  options?: {
+  _profile: ConfigurationProfile,
+  _options?: {
     skipTweakIds?: string[];
     skipAlreadyApplied?: boolean;
     createRestorePoint?: boolean;
   },
 ): Promise<ProfileApplyResult> {
-  return invoke("profile_apply", {
-    profile,
-    skipTweakIds: options?.skipTweakIds ?? [],
-    skipAlreadyApplied: options?.skipAlreadyApplied ?? true,
-    createRestorePoint: options?.createRestorePoint ?? false,
-  });
+  return profileBackendUnavailable();
 }
 
 /**
  * Get list of saved profiles from the app data directory or a custom path.
  */
-export async function getSavedProfiles(customPath?: string | null): Promise<ProfileMetadata[]> {
-  return invoke("get_saved_profiles", { customPath });
+export async function getSavedProfiles(_customPath?: string | null): Promise<ProfileMetadata[]> {
+  return profileBackendUnavailable();
 }
 
 /**
@@ -267,6 +276,6 @@ export async function getSavedProfiles(customPath?: string | null): Promise<Prof
  * @param name Profile name (without extension)
  * @param customPath Optional custom directory path
  */
-export async function deleteSavedProfile(name: string, customPath?: string | null): Promise<void> {
-  return invoke("delete_saved_profile", { name, customPath });
+export async function deleteSavedProfile(_name: string, _customPath?: string | null): Promise<void> {
+  return profileBackendUnavailable();
 }
