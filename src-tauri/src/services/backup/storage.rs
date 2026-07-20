@@ -7,7 +7,6 @@
 
 use crate::error::Error;
 use crate::models::TweakSnapshot;
-use fs4::fs_std::FileExt;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -39,26 +38,27 @@ pub(crate) fn get_snapshot_path(tweak_id: &str) -> Result<PathBuf, Error> {
     Ok(get_snapshots_dir()?.join(format!("{}.json", tweak_id)))
 }
 
-/// Save snapshot to disk with exclusive file locking
+/// Save a snapshot to disk atomically.
+///
+/// The snapshot is the only record of the machine's original state, so a crash mid-write must never
+/// leave a truncated or half-written file. Write to a temp file in the same directory, then
+/// atomically rename it over the target (`NamedTempFile::persist` = `MoveFileExW` +
+/// `MOVEFILE_REPLACE_EXISTING` on Windows). The replace is atomic, so no lock is needed and the last
+/// writer wins with a complete file.
 pub fn save_snapshot(snapshot: &TweakSnapshot) -> Result<(), Error> {
-    let path = get_snapshot_path(&snapshot.tweak_id)?;
+    let dir = get_snapshots_dir()?;
+    let path = dir.join(format!("{}.json", snapshot.tweak_id));
 
     let json = serde_json::to_string_pretty(snapshot)
         .map_err(|e| Error::BackupFailed(format!("Failed to serialize snapshot: {}", e)))?;
 
-    // Create/open file and acquire exclusive lock
-    let file = File::create(&path)
-        .map_err(|e| Error::BackupFailed(format!("Failed to create snapshot file: {}", e)))?;
-
-    file.lock_exclusive()
-        .map_err(|e| Error::BackupFailed(format!("Failed to acquire file lock: {}", e)))?;
-
-    // Write content while holding lock
-    let mut file = file;
-    file.write_all(json.as_bytes())
+    let mut tmp = tempfile::NamedTempFile::new_in(&dir)
+        .map_err(|e| Error::BackupFailed(format!("Failed to create temp snapshot file: {}", e)))?;
+    tmp.write_all(json.as_bytes())
         .map_err(|e| Error::BackupFailed(format!("Failed to write snapshot: {}", e)))?;
+    tmp.persist(&path)
+        .map_err(|e| Error::BackupFailed(format!("Failed to persist snapshot: {}", e)))?;
 
-    // Lock is automatically released when file is dropped
     log::debug!("Saved snapshot to {:?}", path);
     Ok(())
 }
@@ -87,7 +87,8 @@ pub fn update_snapshot_metadata(
         .open(&path)
         .map_err(|e| Error::BackupFailed(format!("Failed to open snapshot: {}", e)))?;
 
-    file.lock_exclusive()
+    // Exclusive lock (std::fs::File::lock) for the read-modify-write, released when `file` drops.
+    file.lock()
         .map_err(|e| Error::BackupFailed(format!("Failed to acquire file lock: {}", e)))?;
 
     // Read current content
@@ -207,4 +208,34 @@ pub fn get_applied_tweaks() -> Result<Vec<String>, Error> {
     }
 
     Ok(tweaks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_snapshot_atomically_replaces_an_existing_snapshot() {
+        // Regression: the atomic write must *replace* an existing snapshot, not fail on
+        // "file already exists" (a Windows rename hazard) — and it must leave a complete file.
+        let id = format!("__wp2_atomic_test_{}", std::process::id());
+
+        let mut v1 = TweakSnapshot::new(&id, "T", 0, "v1", 11, false, None);
+        v1.applied_option_label = "v1".to_string();
+        save_snapshot(&v1).unwrap();
+        assert_eq!(
+            load_snapshot(&id).unwrap().unwrap().applied_option_label,
+            "v1"
+        );
+
+        let mut v2 = TweakSnapshot::new(&id, "T", 1, "v2", 11, false, None);
+        v2.applied_option_label = "v2".to_string();
+        save_snapshot(&v2).unwrap();
+        assert_eq!(
+            load_snapshot(&id).unwrap().unwrap().applied_option_label,
+            "v2"
+        );
+
+        delete_snapshot(&id).unwrap();
+    }
 }
