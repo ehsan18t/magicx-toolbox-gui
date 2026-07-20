@@ -51,6 +51,7 @@ const ERROR_SERVICE_NOT_ACTIVE: u32 = 1062;
 const ERROR_MORE_DATA: u32 = 234;
 
 const STOP_TIMEOUT_MS: u128 = 30_000;
+const START_TIMEOUT_MS: u128 = 30_000;
 
 /// Service running state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,7 +272,13 @@ pub fn set_service_startup(
     Ok(())
 }
 
-/// Start a Windows service. `ERROR_SERVICE_ALREADY_RUNNING` is idempotent success.
+/// Start a Windows service and wait until it is actually RUNNING.
+///
+/// `StartServiceW` only *queues* the start — the service enters START_PENDING and its return says
+/// nothing about whether it reached RUNNING. Without a poll, a service that accepts the request then
+/// fails async init is reported as success (finding B1). So, symmetrically with `stop_service`, we
+/// poll to RUNNING; a fall-back to STOPPED or a timeout is a failure.
+/// `ERROR_SERVICE_ALREADY_RUNNING` is idempotent success (and already running, so no poll needed).
 pub fn start_service(service_name: &str) -> Result<(), Error> {
     let (_scm, svc) = open_service(service_name, SERVICE_START_ACCESS | SERVICE_QUERY_STATUS)?
         .ok_or_else(|| Error::ServiceControl(format!("Service does not exist: {}", service_name)))?;
@@ -279,20 +286,28 @@ pub fn start_service(service_name: &str) -> Result<(), Error> {
     log::info!("Starting service '{}'", service_name);
 
     // SAFETY: `svc` has SERVICE_START access; no start arguments.
-    unsafe {
+    let already_running = unsafe {
         let ok = StartServiceW(svc.0, 0, ptr::null());
         if ok == 0 {
             let err = GetLastError();
-            if err != ERROR_SERVICE_ALREADY_RUNNING {
+            if err == ERROR_SERVICE_ALREADY_RUNNING {
+                true
+            } else {
                 return Err(Error::ServiceControl(format!(
                     "Failed to start service '{}': {}",
                     service_name, err
                 )));
             }
+        } else {
+            false
         }
+    };
+
+    if !already_running {
+        wait_for_running(svc.0)?;
     }
 
-    log::debug!("Service '{}' started (or was already running)", service_name);
+    log::debug!("Service '{}' is running", service_name);
     Ok(())
 }
 
@@ -358,6 +373,47 @@ fn wait_for_stop(svc: SC_HANDLE) -> Result<(), Error> {
         if start.elapsed().as_millis() > STOP_TIMEOUT_MS {
             return Err(Error::ServiceControl(
                 "Timed out waiting for service to stop".to_string(),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+/// Classification of a `dwCurrentState` sample while waiting for a service to start.
+#[derive(Debug, PartialEq, Eq)]
+enum StartPoll {
+    /// Reached RUNNING — the start succeeded.
+    Running,
+    /// Fell back to STOPPED — the start was accepted but the service failed to come up.
+    Failed,
+    /// START_PENDING or another transient state — keep polling.
+    Pending,
+}
+
+fn classify_start_state(state: u32) -> StartPoll {
+    match state {
+        SVC_RUNNING => StartPoll::Running,
+        SVC_STOPPED => StartPoll::Failed,
+        _ => StartPoll::Pending,
+    }
+}
+
+/// Poll until the service reports `RUNNING`; fail on a fall-back to `STOPPED` or a timeout.
+fn wait_for_running(svc: SC_HANDLE) -> Result<(), Error> {
+    let start = std::time::Instant::now();
+    loop {
+        match classify_start_state(query_current_state(svc)?) {
+            StartPoll::Running => return Ok(()),
+            StartPoll::Failed => {
+                return Err(Error::ServiceControl(
+                    "Service returned to STOPPED after a start request (start failed)".to_string(),
+                ))
+            }
+            StartPoll::Pending => {}
+        }
+        if start.elapsed().as_millis() > START_TIMEOUT_MS {
+            return Err(Error::ServiceControl(
+                "Timed out waiting for service to start".to_string(),
             ));
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -451,6 +507,17 @@ mod tests {
             s.startup_type.is_some(),
             "expected a readable Start value for Schedule"
         );
+    }
+
+    #[test]
+    fn start_poll_treats_stopped_as_failure_and_running_as_success() {
+        // B1 regression: StartServiceW only queues the start, so the poll must treat a fall-back to
+        // STOPPED as a failed start (not a spurious success), RUNNING as success, and START_PENDING
+        // as "keep waiting". (Starting a real service mutates the runner — the accepted gap — so the
+        // poll *decision* is what we pin here.)
+        assert_eq!(classify_start_state(SVC_RUNNING), StartPoll::Running);
+        assert_eq!(classify_start_state(SVC_STOPPED), StartPoll::Failed);
+        assert_eq!(classify_start_state(SVC_START_PENDING), StartPoll::Pending);
     }
 
     #[test]
