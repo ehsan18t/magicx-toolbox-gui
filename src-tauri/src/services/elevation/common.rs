@@ -260,7 +260,11 @@ pub(super) unsafe fn wait_and_reap(pi: &PROCESS_INFORMATION, label: &str) -> Res
     let wait_result = WaitForSingleObject(pi.hProcess, ELEVATED_PROCESS_TIMEOUT_MS);
 
     if wait_result == WAIT_TIMEOUT {
-        log::warn!("{} timed out after {}ms", label, ELEVATED_PROCESS_TIMEOUT_MS);
+        log::warn!(
+            "{} timed out after {}ms",
+            label,
+            ELEVATED_PROCESS_TIMEOUT_MS
+        );
         TerminateProcess(pi.hProcess, 1);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -296,4 +300,3 @@ pub(super) unsafe fn wait_and_reap(pi: &PROCESS_INFORMATION, label: &str) -> Res
     log::debug!("{} completed with exit code: {}", label, exit_code);
     Ok(exit_code as i32)
 }
-

@@ -317,7 +317,10 @@ mod tests {
 
     #[test]
     fn task_state_from_com_maps_numeric_states() {
-        assert_eq!(task_state_from_com(TASK_STATE_DISABLED), TaskState::Disabled);
+        assert_eq!(
+            task_state_from_com(TASK_STATE_DISABLED),
+            TaskState::Disabled
+        );
         assert_eq!(task_state_from_com(TASK_STATE_READY), TaskState::Ready);
         assert_eq!(task_state_from_com(TASK_STATE_QUEUED), TaskState::Ready);
         assert_eq!(task_state_from_com(TASK_STATE_RUNNING), TaskState::Running);

@@ -59,13 +59,19 @@ mod tests {
     fn from_flags_maps_the_three_reachable_states() {
         assert_eq!(Elevation::from_flags(false, false), Elevation::None);
         assert_eq!(Elevation::from_flags(true, false), Elevation::System);
-        assert_eq!(Elevation::from_flags(true, true), Elevation::TrustedInstaller);
+        assert_eq!(
+            Elevation::from_flags(true, true),
+            Elevation::TrustedInstaller
+        );
     }
 
     #[test]
     fn requires_ti_without_system_still_resolves_to_ti() {
         // The nonsense input a bool pair allowed must never produce a hybrid.
-        assert_eq!(Elevation::from_flags(false, true), Elevation::TrustedInstaller);
+        assert_eq!(
+            Elevation::from_flags(false, true),
+            Elevation::TrustedInstaller
+        );
     }
 
     #[test]

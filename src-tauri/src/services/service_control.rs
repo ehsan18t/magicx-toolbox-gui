@@ -90,7 +90,10 @@ impl Drop for ScHandle {
 }
 
 fn wide(s: &str) -> Vec<u16> {
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 /// SAFETY: `p` must be a valid, NUL-terminated wide string for its whole length.
@@ -281,7 +284,9 @@ pub fn set_service_startup(
 /// `ERROR_SERVICE_ALREADY_RUNNING` is idempotent success (and already running, so no poll needed).
 pub fn start_service(service_name: &str) -> Result<(), Error> {
     let (_scm, svc) = open_service(service_name, SERVICE_START_ACCESS | SERVICE_QUERY_STATUS)?
-        .ok_or_else(|| Error::ServiceControl(format!("Service does not exist: {}", service_name)))?;
+        .ok_or_else(|| {
+            Error::ServiceControl(format!("Service does not exist: {}", service_name))
+        })?;
 
     log::info!("Starting service '{}'", service_name);
 
@@ -329,9 +334,7 @@ pub fn stop_service(service_name: &str) -> Result<(), Error> {
 
     // Stop active dependents first (best-effort; the target stop below is authoritative).
     for dep in active_dependents(svc.0)? {
-        if let Some((_s, dsvc)) =
-            open_service(&dep, SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS)?
-        {
+        if let Some((_s, dsvc)) = open_service(&dep, SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS)? {
             let _ = send_stop(dsvc.0);
             let _ = wait_for_stop(dsvc.0);
         }

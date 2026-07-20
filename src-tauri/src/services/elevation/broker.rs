@@ -131,9 +131,7 @@ pub fn execute_op(op: &BrokerOp) -> Result<(), Error> {
             key,
             value_name,
         } => delete_ok(registry_service::delete_value(hive, key, value_name)),
-        BrokerOp::RegDeleteKey { hive, key } => {
-            delete_ok(registry_service::delete_key(hive, key))
-        }
+        BrokerOp::RegDeleteKey { hive, key } => delete_ok(registry_service::delete_key(hive, key)),
         BrokerOp::RegCreateKey { hive, key } => registry_service::create_key(hive, key),
         BrokerOp::SvcSetStartup { name, startup } => {
             service_control::set_service_startup(name, startup)
@@ -216,8 +214,7 @@ fn next_nonce() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
-    nanos
-        .rotate_left(17)
+    nanos.rotate_left(17)
         ^ seq.wrapping_mul(0x9E37_79B9_7F4A_7C15)
         ^ ((std::process::id() as u64) << 32)
 }
@@ -402,8 +399,7 @@ fn run_raw_cmd(command: &str) -> Result<(), Error> {
 
 /// Standard base64 (RFC 4648) encoder — small enough not to justify a dependency.
 fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
@@ -475,7 +471,9 @@ mod tests {
                     value_type: RegistryValueType::Dword,
                     value: serde_json::json!(1),
                 },
-                BrokerOp::SvcStop { name: "Spooler".into() },
+                BrokerOp::SvcStop {
+                    name: "Spooler".into(),
+                },
             ],
         };
         let json = serde_json::to_vec(&req).unwrap();
@@ -558,10 +556,16 @@ mod tests {
         let scratch = Scratch::new();
         let dir = std::env::temp_dir();
         let seq = SCRATCH_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let req_path =
-            dir.join(format!("magicx-brokertest-{}-{}-req.json", std::process::id(), seq));
-        let resp_path =
-            dir.join(format!("magicx-brokertest-{}-{}-resp.json", std::process::id(), seq));
+        let req_path = dir.join(format!(
+            "magicx-brokertest-{}-{}-req.json",
+            std::process::id(),
+            seq
+        ));
+        let resp_path = dir.join(format!(
+            "magicx-brokertest-{}-{}-resp.json",
+            std::process::id(),
+            seq
+        ));
 
         let req = BrokerRequest {
             nonce: 0,

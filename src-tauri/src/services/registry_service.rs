@@ -172,7 +172,10 @@ fn set_typed<T: ToRegValue>(
     );
     let reg_key = open_write_key(hive, key_path)?;
     reg_key.set_value(value_name, value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set {} {}: {}", type_label, value_name, e))
+        Error::RegistryOperation(format!(
+            "Failed to set {} {}: {}",
+            type_label, value_name, e
+        ))
     })?;
     log::trace!("{} value set successfully", type_label);
     Ok(())
@@ -237,7 +240,10 @@ fn set_raw(
     let reg_key = open_write_key(hive, key_path)?;
     let reg_value = RegValue { vtype, bytes };
     reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set {} {}: {}", type_label, value_name, e))
+        Error::RegistryOperation(format!(
+            "Failed to set {} {}: {}",
+            type_label, value_name, e
+        ))
     })?;
     log::trace!("{} value set successfully", type_label);
     Ok(())
