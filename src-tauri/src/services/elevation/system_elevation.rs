@@ -136,7 +136,7 @@ pub fn can_use_system_elevation() -> bool {
 }
 
 /// Execute an arbitrary command as SYSTEM (via the elevated broker; `cmd /c` inside it).
-pub fn run_command_as_system(command: &str) -> Result<i32, Error> {
+pub fn run_command_as_system(command: &str) -> Result<(), Error> {
     log::info!("Running command as SYSTEM: {}", command);
     run_one(
         Elevation::System,
@@ -144,7 +144,6 @@ pub fn run_command_as_system(command: &str) -> Result<i32, Error> {
             command: command.to_string(),
         },
     )
-    .map(|()| 0)
 }
 
 /// Set a Windows service startup type as SYSTEM (typed `ChangeServiceConfigW`, via the broker).

@@ -85,7 +85,7 @@ pub fn run_powershell(script: &str) -> Result<PowerShellResult, Error> {
 }
 
 /// Execute a PowerShell command as SYSTEM via the elevated broker (`-EncodedCommand`; no shell).
-pub fn run_powershell_as_system(script: &str) -> Result<i32, Error> {
+pub fn run_powershell_as_system(script: &str) -> Result<(), Error> {
     log::info!("Running PowerShell command as SYSTEM: {}", script);
     run_one(
         Elevation::System,
@@ -93,7 +93,6 @@ pub fn run_powershell_as_system(script: &str) -> Result<i32, Error> {
             script: script.to_string(),
         },
     )
-    .map(|()| 0)
 }
 
 // ============================================================================
@@ -388,7 +387,7 @@ pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
 }
 
 /// Run an arbitrary command as TrustedInstaller (via the elevated broker; `cmd /c` inside it).
-pub fn run_command_as_ti(command: &str) -> Result<i32, Error> {
+pub fn run_command_as_ti(command: &str) -> Result<(), Error> {
     log::info!("Running command as TrustedInstaller: {}", command);
     run_one(
         Elevation::TrustedInstaller,
@@ -396,11 +395,10 @@ pub fn run_command_as_ti(command: &str) -> Result<i32, Error> {
             command: command.to_string(),
         },
     )
-    .map(|()| 0)
 }
 
 /// Run a PowerShell command as TrustedInstaller via the elevated broker (`-EncodedCommand`; no shell).
-pub fn run_powershell_as_ti(script: &str) -> Result<i32, Error> {
+pub fn run_powershell_as_ti(script: &str) -> Result<(), Error> {
     log::info!("Running PowerShell command as TrustedInstaller: {}", script);
     run_one(
         Elevation::TrustedInstaller,
@@ -408,6 +406,4 @@ pub fn run_powershell_as_ti(script: &str) -> Result<i32, Error> {
             script: script.to_string(),
         },
     )
-    .map(|()| 0)
 }
-

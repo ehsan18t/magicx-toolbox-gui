@@ -137,9 +137,7 @@ fn capture_value_snapshot(
 }
 
 /// Snapshot a key-level change (DeleteKey / CreateKey): record only whether the key already exists.
-fn capture_key_snapshot(
-    change: &crate::models::RegistryChange,
-) -> Result<RegistrySnapshot, Error> {
+fn capture_key_snapshot(change: &crate::models::RegistryChange) -> Result<RegistrySnapshot, Error> {
     let existed = registry_service::key_exists(&change.hive, &change.key)?;
 
     Ok(RegistrySnapshot {
@@ -372,19 +370,20 @@ pub fn capture_current_state(
                                 let mut captured_tasks_set: HashSet<String> = HashSet::new();
 
                                 for (task_path, pattern) in &unique_task_patterns {
-                                    if let Ok(matching_tasks) =
-                                        scheduler_service::find_tasks_by_pattern(task_path, pattern)
-                                    {
-                                        for task in matching_tasks {
-                                            let task_id = format!("{}\\{}", task_path, task.name);
-                                            if !captured_tasks_set.contains(&task_id) {
-                                                captured_tasks_set.insert(task_id);
-                                                snapshots.push(SchedulerSnapshot {
-                                                    task_path: task_path.to_string(),
-                                                    task_name: task.name.clone(),
-                                                    original_state: task.state.as_str().to_string(),
-                                                });
-                                            }
+                                    // Propagate a read failure rather than silently dropping these
+                                    // tasks from the rollback snapshot.
+                                    let matching_tasks = scheduler_service::find_tasks_by_pattern(
+                                        task_path, pattern,
+                                    )?;
+                                    for task in matching_tasks {
+                                        let task_id = format!("{}\\{}", task_path, task.name);
+                                        if !captured_tasks_set.contains(&task_id) {
+                                            captured_tasks_set.insert(task_id);
+                                            snapshots.push(SchedulerSnapshot {
+                                                task_path: task_path.to_string(),
+                                                task_name: task.name.clone(),
+                                                original_state: task.state.as_str().to_string(),
+                                            });
                                         }
                                     }
                                 }

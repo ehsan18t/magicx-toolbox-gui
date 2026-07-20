@@ -55,24 +55,13 @@ pub fn run_command(cmd: &str, elevation: Elevation) -> Result<()> {
         // SYSTEM and TrustedInstaller share the same executor signature; only the executor
         // and the label differ.
         elevated => {
-            let execute: fn(&str) -> std::result::Result<i32, Error> = match elevated {
+            let execute: fn(&str) -> std::result::Result<(), Error> = match elevated {
                 Elevation::TrustedInstaller => trusted_installer::run_command_as_ti,
                 _ => trusted_installer::run_command_as_system,
             };
-            match execute(cmd) {
-                Ok(exit_code) if exit_code != 0 => Err(Error::CommandExecution(format!(
-                    "Command ({}) failed with exit code {}: {}",
-                    elevated.label(),
-                    exit_code,
-                    cmd
-                ))),
-                Ok(_) => Ok(()),
-                Err(e) => Err(Error::CommandExecution(format!(
-                    "{} command failed: {}",
-                    elevated.label(),
-                    e
-                ))),
-            }
+            execute(cmd).map_err(|e| {
+                Error::CommandExecution(format!("{} command failed: {}", elevated.label(), e))
+            })
         }
     }
 }
@@ -107,23 +96,13 @@ pub fn run_powershell_command(cmd: &str, elevation: Elevation) -> Result<()> {
         },
         // SYSTEM and TrustedInstaller share the same executor signature.
         elevated => {
-            let execute: fn(&str) -> std::result::Result<i32, Error> = match elevated {
+            let execute: fn(&str) -> std::result::Result<(), Error> = match elevated {
                 Elevation::TrustedInstaller => trusted_installer::run_powershell_as_ti,
                 _ => trusted_installer::run_powershell_as_system,
             };
-            match execute(cmd) {
-                Ok(exit_code) if exit_code != 0 => Err(Error::CommandExecution(format!(
-                    "PowerShell ({}) failed with exit code {}",
-                    elevated.label(),
-                    exit_code
-                ))),
-                Ok(_) => Ok(()),
-                Err(e) => Err(Error::CommandExecution(format!(
-                    "PowerShell ({}) failed: {}",
-                    elevated.label(),
-                    e
-                ))),
-            }
+            execute(cmd).map_err(|e| {
+                Error::CommandExecution(format!("PowerShell ({}) failed: {}", elevated.label(), e))
+            })
         }
     }
 }
@@ -584,32 +563,50 @@ fn apply_service_changes_atomic(option: &TweakOption, elevation: Elevation) -> R
             )));
         }
 
-        // 2) Stop if desired
+        // 2) Stop if desired. A failed stop is a real failure (honoring skip_validation) — not a
+        // silently-swallowed no-op.
         if desired_stop && !matches!(current_state, Some(service_control::ServiceState::Stopped)) {
-            match elevation {
-                Elevation::TrustedInstaller => {
-                    let _ = trusted_installer::stop_service_as_ti(&change.name);
-                }
-                Elevation::System => {
-                    let _ = trusted_installer::stop_service_as_system(&change.name);
-                }
-                Elevation::None => {
-                    let _ = service_control::stop_service(&change.name);
+            let stop_result = match elevation {
+                Elevation::TrustedInstaller => trusted_installer::stop_service_as_ti(&change.name),
+                Elevation::System => trusted_installer::stop_service_as_system(&change.name),
+                Elevation::None => service_control::stop_service(&change.name),
+            };
+            if let Err(e) = stop_result {
+                if change.skip_validation {
+                    log::warn!(
+                        "Failed to stop service '{}' (skip_validation, continuing): {}",
+                        change.name,
+                        e
+                    );
+                } else {
+                    return Err(Error::ServiceControl(format!(
+                        "Failed to stop service '{}': {}",
+                        change.name, e
+                    )));
                 }
             }
         }
 
-        // 3) Start if explicitly requested
+        // 3) Start if explicitly requested. Likewise surfaced, so a service that fails to start is
+        // not reported as a successful apply.
         if desired_start && !matches!(current_state, Some(service_control::ServiceState::Running)) {
-            match elevation {
-                Elevation::TrustedInstaller => {
-                    let _ = trusted_installer::start_service_as_ti(&change.name);
-                }
-                Elevation::System => {
-                    let _ = trusted_installer::start_service_as_system(&change.name);
-                }
-                Elevation::None => {
-                    let _ = service_control::start_service(&change.name);
+            let start_result = match elevation {
+                Elevation::TrustedInstaller => trusted_installer::start_service_as_ti(&change.name),
+                Elevation::System => trusted_installer::start_service_as_system(&change.name),
+                Elevation::None => service_control::start_service(&change.name),
+            };
+            if let Err(e) = start_result {
+                if change.skip_validation {
+                    log::warn!(
+                        "Failed to start service '{}' (skip_validation, continuing): {}",
+                        change.name,
+                        e
+                    );
+                } else {
+                    return Err(Error::ServiceControl(format!(
+                        "Failed to start service '{}': {}",
+                        change.name, e
+                    )));
                 }
             }
         }
