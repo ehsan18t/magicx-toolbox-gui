@@ -9,7 +9,13 @@ use crate::models::tweak::{
 };
 use std::process::Command;
 
-/// Check if a firewall rule exists by name
+/// Check if a firewall rule exists by name.
+///
+/// Keys on netsh's **exit status**, not on the localized "No rules match the specified criteria"
+/// text: `netsh advfirewall firewall show rule name=X` exits 0 when the rule exists and non-zero
+/// when it does not. This is locale-independent and, unlike the old text check, no longer lets a
+/// genuine netsh failure masquerade as "rule exists" — which previously made `create` silently
+/// no-op (a failed existence probe was read as `!contains("No rules match") == true`).
 pub fn rule_exists(name: &str) -> Result<bool, Error> {
     let output = Command::new("netsh")
         .args([
@@ -22,10 +28,7 @@ pub fn rule_exists(name: &str) -> Result<bool, Error> {
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to query firewall rule: {}", e)))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // If the rule doesn't exist, netsh returns "No rules match the specified criteria"
-    Ok(!stdout.contains("No rules match the specified criteria"))
+    Ok(output.status.success())
 }
 
 /// Apply a firewall change
@@ -295,5 +298,14 @@ mod tests {
             .collect();
         assert_eq!(descs.len(), 1);
         assert_eq!(descs[0], "description=first\r\nsecond");
+    }
+
+    #[test]
+    fn a_nonexistent_rule_is_reported_absent_not_present() {
+        // Locale-free: netsh exits non-zero for a name that matches no rule, so rule_exists must
+        // return Ok(false) — never Ok(true) (which would make create silently no-op) and never
+        // Err. This also empirically confirms the exit-code contract on the running machine.
+        let exists = rule_exists("MagicXNoSuchFirewallRule_zzq").unwrap();
+        assert!(!exists, "a non-existent rule must be reported as absent");
     }
 }
