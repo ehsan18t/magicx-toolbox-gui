@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::models::RegistryHive;
 use std::io;
 use winreg::enums::*;
+use winreg::types::{FromRegValue, ToRegValue};
 use winreg::RegKey;
 use winreg::RegValue;
 use winreg::HKEY;
@@ -14,43 +15,70 @@ fn hive_name(hive: &RegistryHive) -> &'static str {
     }
 }
 
+/// Get registry hive key
+fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
+    match hive {
+        RegistryHive::Hkcu => Ok(HKEY_CURRENT_USER),
+        RegistryHive::Hklm => Ok(HKEY_LOCAL_MACHINE),
+    }
+}
+
+/// Classify a subkey-open failure: a *missing key* is `RegistryKeyNotFound`, anything else is
+/// `RegistryAccessDenied`.
+///
+/// This is the single source of truth for that distinction. Every key-open path routes through it,
+/// so a NotFound can never again be silently folded into AccessDenied — the bug that made
+/// `delete_value` reject deletes of an already-absent key. The apply/revert/broker "did-it-work"
+/// idempotency shims treat `RegistryKeyNotFound` as "already gone → success", so mislabelling it as
+/// AccessDenied turned a no-op delete into a hard failure.
+fn classify_open_error(e: &io::Error, not_found_ctx: &str) -> Error {
+    if e.kind() == io::ErrorKind::NotFound {
+        Error::RegistryKeyNotFound(not_found_ctx.to_string())
+    } else {
+        Error::RegistryAccessDenied(e.to_string())
+    }
+}
+
+/// Open a subkey for reading, classifying a missing key via [`classify_open_error`].
+fn open_read_key(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<RegKey, Error> {
+    let hive_key = get_hive_key(hive)?;
+    RegKey::predef(hive_key)
+        .open_subkey_with_flags(key_path, KEY_READ)
+        .map_err(|e| classify_open_error(&e, &format!("{}\\{}", key_path, value_name)))
+}
+
+/// Read a typed value. An absent *value* maps to `None`; an absent *key* is an error (via the open).
+fn read_typed<T: FromRegValue>(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    type_label: &str,
+) -> Result<Option<T>, Error> {
+    log::trace!(
+        "Reading {} {}\\{}\\{}",
+        type_label,
+        hive_name(hive),
+        key_path,
+        value_name
+    );
+    let reg_key = open_read_key(hive, key_path, value_name)?;
+    match reg_key.get_value::<T, _>(value_name) {
+        Ok(v) => Ok(Some(v)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(Error::RegistryOperation(format!(
+            "Failed to read {} from {}: {}",
+            type_label, value_name, e
+        ))),
+    }
+}
+
 /// Read a DWORD value from registry
 pub fn read_dword(
     hive: &RegistryHive,
     key_path: &str,
     value_name: &str,
 ) -> Result<Option<u32>, Error> {
-    log::trace!(
-        "Reading DWORD {}\\{}\\{}",
-        hive_name(hive),
-        key_path,
-        value_name
-    );
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = RegKey::predef(hive_key)
-        .open_subkey_with_flags(key_path, KEY_READ)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
-
-    match reg_key.get_value::<u32, _>(value_name) {
-        Ok(v) => {
-            log::trace!("Read DWORD value: {}", v);
-            Ok(Some(v))
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            log::trace!("DWORD value not found");
-            Ok(None)
-        }
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to read DWORD from {}: {}",
-            value_name, e
-        ))),
-    }
+    read_typed(hive, key_path, value_name, "DWORD")
 }
 
 /// Read a String value from registry
@@ -59,37 +87,7 @@ pub fn read_string(
     key_path: &str,
     value_name: &str,
 ) -> Result<Option<String>, Error> {
-    log::trace!(
-        "Reading String {}\\{}\\{}",
-        hive_name(hive),
-        key_path,
-        value_name
-    );
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = RegKey::predef(hive_key)
-        .open_subkey_with_flags(key_path, KEY_READ)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
-
-    match reg_key.get_value::<String, _>(value_name) {
-        Ok(v) => {
-            log::trace!("Read String value: {}", v);
-            Ok(Some(v))
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            log::trace!("String value not found");
-            Ok(None)
-        }
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to read String from {}: {}",
-            value_name, e
-        ))),
-    }
+    read_typed(hive, key_path, value_name, "String")
 }
 
 /// Read a multi-string value from registry
@@ -98,40 +96,19 @@ pub fn read_multi_string(
     key_path: &str,
     value_name: &str,
 ) -> Result<Option<Vec<String>>, Error> {
-    log::trace!(
-        "Reading MultiString {}\\{}\\{}",
-        hive_name(hive),
-        key_path,
-        value_name
-    );
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = RegKey::predef(hive_key)
-        .open_subkey_with_flags(key_path, KEY_READ)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
-
-    match reg_key.get_value::<Vec<String>, _>(value_name) {
-        Ok(v) => {
-            log::trace!("Read MultiString value with {} entries", v.len());
-            Ok(Some(v))
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            log::trace!("MultiString value not found");
-            Ok(None)
-        }
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to read MultiString from {}: {}",
-            value_name, e
-        ))),
-    }
+    read_typed(hive, key_path, value_name, "MultiString")
 }
 
-/// Read binary data from registry
+/// Read a QWORD (u64) value from registry
+pub fn read_qword(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+) -> Result<Option<u64>, Error> {
+    read_typed(hive, key_path, value_name, "QWORD")
+}
+
+/// Read binary data from registry (raw bytes, regardless of the stored value type)
 pub fn read_binary(
     hive: &RegistryHive,
     key_path: &str,
@@ -143,26 +120,10 @@ pub fn read_binary(
         key_path,
         value_name
     );
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = RegKey::predef(hive_key)
-        .open_subkey_with_flags(key_path, KEY_READ)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
-
+    let reg_key = open_read_key(hive, key_path, value_name)?;
     match reg_key.get_raw_value(value_name) {
-        Ok(v) => {
-            log::trace!("Read Binary value ({} bytes)", v.bytes.len());
-            Ok(Some(v.bytes))
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            log::trace!("Binary value not found");
-            Ok(None)
-        }
+        Ok(v) => Ok(Some(v.bytes)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(Error::RegistryOperation(format!(
             "Failed to read Binary from {}: {}",
             value_name, e
@@ -170,61 +131,50 @@ pub fn read_binary(
     }
 }
 
-/// Read a QWORD (u64) value from registry
-pub fn read_qword(
-    hive: &RegistryHive,
-    key_path: &str,
-    value_name: &str,
-) -> Result<Option<u64>, Error> {
-    log::trace!(
-        "Reading QWORD {}\\{}\\{}",
-        hive_name(hive),
-        key_path,
-        value_name
-    );
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = RegKey::predef(hive_key)
-        .open_subkey_with_flags(key_path, KEY_READ)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
-
-    match reg_key.get_value::<u64, _>(value_name) {
-        Ok(v) => {
-            log::trace!("Read QWORD value: {}", v);
-            Ok(Some(v))
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            log::trace!("QWORD value not found");
-            Ok(None)
-        }
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to read QWORD from {}: {}",
-            value_name, e
-        ))),
-    }
-}
-
-/// Get registry hive key
-fn get_hive_key(hive: &RegistryHive) -> Result<HKEY, Error> {
-    match hive {
-        RegistryHive::Hkcu => Ok(HKEY_CURRENT_USER),
-        RegistryHive::Hklm => Ok(HKEY_LOCAL_MACHINE),
-    }
-}
-
-/// Check if write access is allowed for the given hive
-/// HKLM modifications require admin privileges
+/// Check if write access is allowed for the given hive.
+/// HKLM modifications require admin privileges.
 fn require_write_access(hive: &RegistryHive) -> Result<(), Error> {
     use crate::services::system_info_service::is_running_as_admin;
     if matches!(hive, RegistryHive::Hklm) && !is_running_as_admin() {
         log::warn!("HKLM modification requires admin privileges");
         return Err(Error::RequiresAdmin);
     }
+    Ok(())
+}
+
+/// Enforce write access, then create-or-open the target subkey for writing.
+///
+/// Every setter and `create_key` shares this prologue, so admin-gating and the create-subkey open
+/// live in exactly one place.
+fn open_write_key(hive: &RegistryHive, key_path: &str) -> Result<RegKey, Error> {
+    require_write_access(hive)?;
+    let hive_key = get_hive_key(hive)?;
+    let (reg_key, _) = RegKey::predef(hive_key)
+        .create_subkey_with_flags(key_path, KEY_WRITE)
+        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+    Ok(reg_key)
+}
+
+/// Set a value winreg encodes natively via `set_value` (DWORD / QWORD / String / MultiString).
+fn set_typed<T: ToRegValue>(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    value: &T,
+    type_label: &str,
+) -> Result<(), Error> {
+    log::debug!(
+        "Setting {} {}\\{}\\{}",
+        type_label,
+        hive_name(hive),
+        key_path,
+        value_name
+    );
+    let reg_key = open_write_key(hive, key_path)?;
+    reg_key.set_value(value_name, value).map_err(|e| {
+        Error::RegistryOperation(format!("Failed to set {} {}: {}", type_label, value_name, e))
+    })?;
+    log::trace!("{} value set successfully", type_label);
     Ok(())
 }
 
@@ -235,26 +185,7 @@ pub fn set_dword(
     value_name: &str,
     value: u32,
 ) -> Result<(), Error> {
-    log::debug!(
-        "Setting DWORD {}\\{}\\{} = {}",
-        hive_name(hive),
-        key_path,
-        value_name,
-        value
-    );
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    let (reg_key, _) = RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    reg_key.set_value(value_name, &value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set DWORD {}: {}", value_name, e))
-    })?;
-
-    log::trace!("DWORD value set successfully");
-    Ok(())
+    set_typed(hive, key_path, value_name, &value, "DWORD")
 }
 
 /// Set a String value in registry
@@ -264,25 +195,51 @@ pub fn set_string(
     value_name: &str,
     value: &str,
 ) -> Result<(), Error> {
+    set_typed(hive, key_path, value_name, &value, "String")
+}
+
+/// Set a multi-string value in registry
+pub fn set_multi_string(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    value: &[String],
+) -> Result<(), Error> {
+    set_typed(hive, key_path, value_name, &value.to_vec(), "MultiString")
+}
+
+/// Set a QWORD (u64) value in registry
+pub fn set_qword(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    value: u64,
+) -> Result<(), Error> {
+    set_typed(hive, key_path, value_name, &value, "QWORD")
+}
+
+/// Set a value with an explicit (non-native) `vtype` via `set_raw_value`.
+fn set_raw(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+    vtype: winreg::enums::RegType,
+    bytes: Vec<u8>,
+    type_label: &str,
+) -> Result<(), Error> {
     log::debug!(
-        "Setting String {}\\{}\\{} = {}",
+        "Setting {} {}\\{}\\{}",
+        type_label,
         hive_name(hive),
         key_path,
-        value_name,
-        value
+        value_name
     );
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    let (reg_key, _) = RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    reg_key.set_value(value_name, &value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set String {}: {}", value_name, e))
+    let reg_key = open_write_key(hive, key_path)?;
+    let reg_value = RegValue { vtype, bytes };
+    reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
+        Error::RegistryOperation(format!("Failed to set {} {}: {}", type_label, value_name, e))
     })?;
-
-    log::trace!("String value set successfully");
+    log::trace!("{} value set successfully", type_label);
     Ok(())
 }
 
@@ -293,69 +250,14 @@ pub fn set_expand_string(
     value_name: &str,
     value: &str,
 ) -> Result<(), Error> {
-    log::debug!(
-        "Setting ExpandString {}\\{}\\{} = {}",
-        hive_name(hive),
+    set_raw(
+        hive,
         key_path,
         value_name,
-        value
-    );
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    let (reg_key, _) = RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    let reg_value = RegValue {
-        vtype: REG_EXPAND_SZ,
-        bytes: encode_utf16_registry_string(value),
-    };
-    reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set ExpandString {}: {}", value_name, e))
-    })?;
-
-    log::trace!("ExpandString value set successfully");
-    Ok(())
-}
-
-/// Set a multi-string value in registry
-pub fn set_multi_string(
-    hive: &RegistryHive,
-    key_path: &str,
-    value_name: &str,
-    value: &[String],
-) -> Result<(), Error> {
-    log::debug!(
-        "Setting MultiString {}\\{}\\{} ({} entries)",
-        hive_name(hive),
-        key_path,
-        value_name,
-        value.len()
-    );
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    let (reg_key, _) = RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    reg_key
-        .set_value(value_name, &value.to_vec())
-        .map_err(|e| {
-            Error::RegistryOperation(format!("Failed to set MultiString {}: {}", value_name, e))
-        })?;
-
-    log::trace!("MultiString value set successfully");
-    Ok(())
-}
-
-fn encode_utf16_registry_string(value: &str) -> Vec<u8> {
-    value
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .flat_map(u16::to_le_bytes)
-        .collect()
+        REG_EXPAND_SZ,
+        encode_utf16_registry_string(value),
+        "ExpandString",
+    )
 }
 
 /// Set binary data in registry
@@ -365,59 +267,22 @@ pub fn set_binary(
     value_name: &str,
     value: &[u8],
 ) -> Result<(), Error> {
-    log::debug!(
-        "Setting Binary {}\\{}\\{} ({} bytes)",
-        hive_name(hive),
+    set_raw(
+        hive,
         key_path,
         value_name,
-        value.len()
-    );
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    let (reg_key, _) = RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    let reg_value = RegValue {
-        vtype: REG_BINARY,
-        bytes: value.to_vec(),
-    };
-    reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set Binary {}: {}", value_name, e))
-    })?;
-
-    log::trace!("Binary value set successfully");
-    Ok(())
+        REG_BINARY,
+        value.to_vec(),
+        "Binary",
+    )
 }
 
-/// Set a QWORD (u64) value in registry
-pub fn set_qword(
-    hive: &RegistryHive,
-    key_path: &str,
-    value_name: &str,
-    value: u64,
-) -> Result<(), Error> {
-    log::debug!(
-        "Setting QWORD {}\\{}\\{} = {}",
-        hive_name(hive),
-        key_path,
-        value_name,
-        value
-    );
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
-    let (reg_key, _) = RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
-    reg_key.set_value(value_name, &value).map_err(|e| {
-        Error::RegistryOperation(format!("Failed to set QWORD {}: {}", value_name, e))
-    })?;
-
-    log::trace!("QWORD value set successfully");
-    Ok(())
+fn encode_utf16_registry_string(value: &str) -> Vec<u8> {
+    value
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(u16::to_le_bytes)
+        .collect()
 }
 
 /// Delete a registry value
@@ -431,9 +296,12 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
     require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
 
+    // A missing key here must surface as RegistryKeyNotFound (not AccessDenied): the caller's
+    // idempotency shim treats "already absent" as success, so this is how a no-op delete stays a
+    // no-op. See [`classify_open_error`].
     let reg_key = RegKey::predef(hive_key)
         .open_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+        .map_err(|e| classify_open_error(&e, &format!("{}\\{}", key_path, value_name)))?;
 
     reg_key.delete_value(value_name).map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
@@ -467,13 +335,7 @@ pub fn delete_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
 
     let parent_key = RegKey::predef(hive_key)
         .open_subkey_with_flags(parent_path, KEY_WRITE)
-        .map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::RegistryKeyNotFound(format!("Parent key not found: {}", parent_path))
-            } else {
-                Error::RegistryAccessDenied(e.to_string())
-            }
-        })?;
+        .map_err(|e| classify_open_error(&e, &format!("Parent key not found: {}", parent_path)))?;
 
     // delete_subkey_all deletes the key and all subkeys recursively
     parent_key.delete_subkey_all(child_name).map_err(|e| {
@@ -521,14 +383,8 @@ pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
 /// Create a registry key without setting any value
 pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     log::debug!("Creating key {}\\{}", hive_name(hive), key_path);
-    require_write_access(hive)?;
-    let hive_key = get_hive_key(hive)?;
-
     // create_subkey creates the key if it doesn't exist, or opens it if it does
-    RegKey::predef(hive_key)
-        .create_subkey_with_flags(key_path, KEY_WRITE)
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
-
+    open_write_key(hive, key_path)?;
     log::trace!("Key created successfully");
     Ok(())
 }
@@ -536,16 +392,6 @@ pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Check if a registry key exists (test utility)
-    fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
-        let hive_key = get_hive_key(hive)?;
-        match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
-            Ok(_) => Ok(true),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(Error::RegistryAccessDenied(e.to_string())),
-        }
-    }
 
     #[test]
     fn test_key_exists_hkcu() {
@@ -556,5 +402,23 @@ mod tests {
         );
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    #[test]
+    fn deleting_a_value_under_a_missing_key_reports_not_found_not_access_denied() {
+        // Regression for the did-it-work idempotency contract: apply/revert/broker treat a
+        // RegistryKeyNotFound on delete as "already absent → success". Before the fix, delete_value
+        // folded the missing-key open error into RegistryAccessDenied, so those shims saw a hard
+        // failure and aborted a no-op delete. HKCU needs no admin, so this runs everywhere.
+        let err = delete_value(
+            &RegistryHive::Hkcu,
+            "Software\\MagicxToolboxTests\\wp1_definitely_absent_key",
+            "AnyValue",
+        )
+        .expect_err("deleting a value under a nonexistent key must be an error");
+        assert!(
+            matches!(err, Error::RegistryKeyNotFound(_)),
+            "expected RegistryKeyNotFound, got {err:?}"
+        );
     }
 }
