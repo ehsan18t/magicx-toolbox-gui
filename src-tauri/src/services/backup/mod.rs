@@ -9,12 +9,15 @@
 //! - `capture`: State capture before applying tweaks
 //! - `restore`: Atomic restore with rollback support
 //! - `detection`: State detection and snapshot validation
+//! - `inspection`: Per-item mismatch report for the UI
+//! - `compare`: The shared option-vs-current comparison core (detection + inspection)
 //! - `helpers`: Parsing and comparison utilities
 
 #[cfg(test)]
 mod roundtrip_tests;
 
 mod capture;
+mod compare;
 mod detection;
 mod helpers;
 pub mod inspection;
