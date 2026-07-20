@@ -6,17 +6,16 @@
 use crate::error::Error;
 use crate::generated_tweaks::{CATEGORIES, TWEAKS};
 use crate::models::{CategoryDefinition, TweakDefinition};
-use std::collections::HashMap;
 
 /// Load all categories (pre-compiled at build time).
 ///
 /// Categories are sorted by their `order` field.
-pub fn load_all_categories() -> Result<Vec<CategoryDefinition>, Error> {
+pub fn load_all_categories() -> Result<&'static [CategoryDefinition], Error> {
     log::debug!(
         "Returning {} pre-compiled categories",
         crate::generated_tweaks::CATEGORY_COUNT
     );
-    Ok(CATEGORIES.clone())
+    Ok(CATEGORIES.as_slice())
 }
 
 /// Get a specific tweak by ID.
@@ -34,14 +33,14 @@ pub fn get_tweak(tweak_id: &str) -> Result<Option<TweakDefinition>, Error> {
 /// Filter tweaks by Windows version (u32: 10 or 11).
 ///
 /// Returns only tweaks that have registry changes applicable to the given version.
-pub fn get_tweaks_for_version(version: u32) -> Result<HashMap<String, TweakDefinition>, Error> {
+pub fn get_tweaks_for_version(version: u32) -> Result<Vec<&'static TweakDefinition>, Error> {
     log::debug!("Getting tweaks for Windows version: {}", version);
     let total = TWEAKS.len();
 
-    let filtered: HashMap<_, _> = TWEAKS
-        .iter()
-        .filter(|(_, tweak)| tweak.applies_to_version(version))
-        .map(|(k, v)| (k.clone(), v.clone()))
+    // Borrow from the compiled-in map instead of deep-cloning up to 189 definitions per call.
+    let filtered: Vec<&'static TweakDefinition> = TWEAKS
+        .values()
+        .filter(|tweak| tweak.applies_to_version(version))
         .collect();
 
     log::info!(

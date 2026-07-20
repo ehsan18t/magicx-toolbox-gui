@@ -7,7 +7,7 @@ use rayon::prelude::*;
 
 /// Get all available categories (auto-discovered from YAML files)
 #[tauri::command]
-pub async fn get_categories() -> Result<Vec<CategoryDefinition>> {
+pub async fn get_categories() -> Result<&'static [CategoryDefinition]> {
     log::debug!("Command: get_categories");
     let categories = tweak_loader::load_all_categories()?;
     log::debug!("Returning {} categories", categories.len());
@@ -16,7 +16,7 @@ pub async fn get_categories() -> Result<Vec<CategoryDefinition>> {
 
 /// Get all available tweaks filtered by current Windows version
 #[tauri::command]
-pub async fn get_available_tweaks() -> Result<Vec<TweakDefinition>> {
+pub async fn get_available_tweaks() -> Result<Vec<&'static TweakDefinition>> {
     log::debug!("Command: get_available_tweaks");
     let windows_info = system_info_service::get_windows_info()?;
     let version = windows_info.version_number();
@@ -24,7 +24,7 @@ pub async fn get_available_tweaks() -> Result<Vec<TweakDefinition>> {
 
     let tweaks = tweak_loader::get_tweaks_for_version(version)?;
     log::debug!("Returning {} tweaks for Windows {}", tweaks.len(), version);
-    Ok(tweaks.into_values().collect())
+    Ok(tweaks)
 }
 
 /// Get status of a specific tweak
@@ -81,8 +81,9 @@ pub async fn get_all_tweak_statuses() -> Result<Vec<TweakStatus>> {
     // This is a CPU-bound + IO-bound task that benefits from parallelization
     let statuses: Vec<TweakStatus> = tweaks
         .into_par_iter()
-        .map(|(id, tweak)| {
-            match backup_service::detect_tweak_state(&tweak, version) {
+        .map(|tweak| {
+            let id = tweak.id.clone();
+            match backup_service::detect_tweak_state(tweak, version) {
                 Ok(state) => {
                     let snapshot = backup_service::load_snapshot(&id).ok().flatten();
                     let last_applied = snapshot.as_ref().map(|s| s.created_at.clone());
