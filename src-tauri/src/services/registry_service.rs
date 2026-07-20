@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::models::RegistryHive;
+use crate::models::{RegistryHive, RegistryValueType};
 use std::io;
 use winreg::enums::*;
 use winreg::types::{FromRegValue, ToRegValue};
@@ -387,6 +387,44 @@ pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     open_write_key(hive, key_path)?;
     log::trace!("Key created successfully");
     Ok(())
+}
+
+/// Map a stored winreg value type to our `RegistryValueType` (unknown/rare types fall back to
+/// Binary, whose raw-bytes snapshot round-trips losslessly).
+fn reg_type_to_value_type(vtype: RegType) -> RegistryValueType {
+    match vtype {
+        REG_DWORD | REG_DWORD_BIG_ENDIAN => RegistryValueType::Dword,
+        REG_QWORD => RegistryValueType::Qword,
+        REG_SZ => RegistryValueType::String,
+        REG_EXPAND_SZ => RegistryValueType::ExpandString,
+        REG_MULTI_SZ => RegistryValueType::MultiString,
+        _ => RegistryValueType::Binary,
+    }
+}
+
+/// Detect the actual type of a stored value, or `None` if the value (or its key) is absent.
+///
+/// Snapshot capture uses this when a change declares no `value_type` (legal for delete/create):
+/// reading with a guessed type (DWORD) fails on any non-DWORD value with `ERROR_BAD_FILE_TYPE`,
+/// which would abort the capture and lose the rollback value.
+pub fn detect_value_type(
+    hive: &RegistryHive,
+    key_path: &str,
+    value_name: &str,
+) -> Result<Option<RegistryValueType>, Error> {
+    let reg_key = match open_read_key(hive, key_path, value_name) {
+        Ok(k) => k,
+        Err(Error::RegistryKeyNotFound(_)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    match reg_key.get_raw_value(value_name) {
+        Ok(v) => Ok(Some(reg_type_to_value_type(v.vtype))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(Error::RegistryOperation(format!(
+            "Failed to inspect value type of {}: {}",
+            value_name, e
+        ))),
+    }
 }
 
 #[cfg(test)]

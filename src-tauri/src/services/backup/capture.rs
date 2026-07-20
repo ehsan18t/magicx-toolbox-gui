@@ -108,6 +108,50 @@ pub fn capture_snapshot(
     Ok(snapshot)
 }
 
+/// Snapshot the current value at a registry change's target, recording it with the value's ACTUAL
+/// type. `value_type` is optional for delete/create actions, so we detect the stored type rather
+/// than guessing DWORD — a wrong guess made a non-DWORD value fail to read and aborted the capture.
+fn capture_value_snapshot(
+    change: &crate::models::RegistryChange,
+) -> Result<RegistrySnapshot, Error> {
+    let value_type = match change.value_type {
+        Some(t) => t,
+        None => registry_service::detect_value_type(&change.hive, &change.key, &change.value_name)?
+            .unwrap_or(RegistryValueType::Dword),
+    };
+    let (value, existed) =
+        read_registry_value(&change.hive, &change.key, &change.value_name, &value_type)?;
+
+    Ok(RegistrySnapshot {
+        hive: change.hive.as_str().to_string(),
+        key: change.key.clone(),
+        value_name: change.value_name.clone(),
+        value_type: if existed {
+            Some(value_type.as_str().to_string())
+        } else {
+            None
+        },
+        value,
+        existed,
+    })
+}
+
+/// Snapshot a key-level change (DeleteKey / CreateKey): record only whether the key already exists.
+fn capture_key_snapshot(
+    change: &crate::models::RegistryChange,
+) -> Result<RegistrySnapshot, Error> {
+    let existed = registry_service::key_exists(&change.hive, &change.key)?;
+
+    Ok(RegistrySnapshot {
+        hive: change.hive.as_str().to_string(),
+        key: change.key.clone(),
+        value_name: String::new(), // Key-level operation, no specific value
+        value_type: None,
+        value: None,
+        existed,
+    })
+}
+
 /// Capture registry values in parallel
 fn capture_registry_snapshots(
     registry_changes: &[crate::models::RegistryChange],
@@ -116,81 +160,9 @@ fn capture_registry_snapshots(
     registry_changes
         .par_iter()
         .filter(|change| change.applies_to_version(windows_version))
-        .map(|change| {
-            match change.action {
-                RegistryAction::Set => {
-                    // For Set, capture the current value
-                    let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
-                    let (value, existed) = read_registry_value(
-                        &change.hive,
-                        &change.key,
-                        &change.value_name,
-                        &value_type,
-                    )?;
-
-                    Ok(RegistrySnapshot {
-                        hive: change.hive.as_str().to_string(),
-                        key: change.key.clone(),
-                        value_name: change.value_name.clone(),
-                        value_type: if existed {
-                            Some(value_type.as_str().to_string())
-                        } else {
-                            None
-                        },
-                        value,
-                        existed,
-                    })
-                }
-                RegistryAction::DeleteValue => {
-                    // For DeleteValue, capture if value exists and its current value
-                    let value_type = change.value_type.unwrap_or(RegistryValueType::Dword);
-                    let (value, existed) = read_registry_value(
-                        &change.hive,
-                        &change.key,
-                        &change.value_name,
-                        &value_type,
-                    )?;
-
-                    Ok(RegistrySnapshot {
-                        hive: change.hive.as_str().to_string(),
-                        key: change.key.clone(),
-                        value_name: change.value_name.clone(),
-                        value_type: if existed {
-                            Some(value_type.as_str().to_string())
-                        } else {
-                            None
-                        },
-                        value,
-                        existed,
-                    })
-                }
-                RegistryAction::DeleteKey => {
-                    // For DeleteKey, just note if the key existed
-                    let existed = registry_service::key_exists(&change.hive, &change.key)?;
-
-                    Ok(RegistrySnapshot {
-                        hive: change.hive.as_str().to_string(),
-                        key: change.key.clone(),
-                        value_name: String::new(), // Key-level operation, no specific value
-                        value_type: None,
-                        value: None,
-                        existed,
-                    })
-                }
-                RegistryAction::CreateKey => {
-                    // For CreateKey, note if the key already existed
-                    let existed = registry_service::key_exists(&change.hive, &change.key)?;
-
-                    Ok(RegistrySnapshot {
-                        hive: change.hive.as_str().to_string(),
-                        key: change.key.clone(),
-                        value_name: String::new(), // Key-level operation, no specific value
-                        value_type: None,
-                        value: None,
-                        existed,
-                    })
-                }
-            }
+        .map(|change| match change.action {
+            RegistryAction::Set | RegistryAction::DeleteValue => capture_value_snapshot(change),
+            RegistryAction::DeleteKey | RegistryAction::CreateKey => capture_key_snapshot(change),
         })
         .collect()
 }
@@ -379,32 +351,10 @@ pub fn capture_current_state(
             || {
                 rayon::join(
                     || {
-                        // Parallel registry capture
+                        // Parallel registry capture (same value-detection as capture_snapshot).
                         registry_changes
                             .par_iter()
-                            .map(|change| {
-                                let value_type =
-                                    change.value_type.unwrap_or(RegistryValueType::Dword);
-                                let (value, existed) = read_registry_value(
-                                    &change.hive,
-                                    &change.key,
-                                    &change.value_name,
-                                    &value_type,
-                                )?;
-
-                                Ok(RegistrySnapshot {
-                                    hive: change.hive.as_str().to_string(),
-                                    key: change.key.clone(),
-                                    value_name: change.value_name.clone(),
-                                    value_type: if existed {
-                                        Some(value_type.as_str().to_string())
-                                    } else {
-                                        None
-                                    },
-                                    value,
-                                    existed,
-                                })
-                            })
+                            .map(|&change| capture_value_snapshot(change))
                             .collect::<Result<Vec<_>, Error>>()
                     },
                     || {
@@ -627,5 +577,43 @@ mod classify_read_tests {
         // later revert deletes a value that existed.
         let classified = classify_read_result(Err(Error::RegistryAccessDenied("denied".into())));
         assert!(matches!(classified, Err(Error::RegistryAccessDenied(_))));
+    }
+}
+
+#[cfg(test)]
+mod capture_value_tests {
+    use super::*;
+    use crate::models::RegistryChange;
+
+    #[test]
+    fn captures_a_non_dword_delete_value_with_no_declared_type() {
+        // A2 regression: value_type is None (legal for delete) and the stored value is REG_SZ.
+        // Before the fix, capture guessed DWORD, the read failed with ERROR_BAD_FILE_TYPE, and the
+        // whole snapshot aborted — losing the rollback value. HKCU needs no admin, so this runs
+        // everywhere.
+        let key = format!(
+            "Software\\MagicXToolboxTest\\capture_a2_{}",
+            std::process::id()
+        );
+        registry_service::set_string(&RegistryHive::Hkcu, &key, "Name", "hello").unwrap();
+
+        let change = RegistryChange {
+            hive: RegistryHive::Hkcu,
+            key: key.clone(),
+            value_name: "Name".to_string(),
+            action: RegistryAction::DeleteValue,
+            value_type: None,
+            value: None,
+            windows_versions: None,
+            skip_validation: false,
+        };
+
+        let snap = capture_value_snapshot(&change)
+            .expect("capture must not abort on a non-DWORD value with no declared type");
+        assert!(snap.existed);
+        assert_eq!(snap.value, Some(serde_json::json!("hello")));
+        assert_eq!(snap.value_type.as_deref(), Some("REG_SZ"));
+
+        let _ = registry_service::delete_key(&RegistryHive::Hkcu, &key);
     }
 }
