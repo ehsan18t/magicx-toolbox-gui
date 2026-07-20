@@ -117,10 +117,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: rustsec/audit-check@v2.0.0
+      - uses: taiki-e/install-action@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # Cargo.lock lives in src-tauri/, not the repo root; without this the
-          # action runs cargo-audit where there is no lockfile and fails with
-          # "Unexpected end of JSON input".
-          working-directory: src-tauri
+          tool: cargo-audit
+
+      # rustsec/audit-check is effectively unmaintained and, even once it finds
+      # the lockfile, dies POSTing a GitHub check-run the default token cannot
+      # create ("Resource not accessible by integration"). Run cargo-audit
+      # directly instead. Cargo.lock lives in src-tauri/; cargo-audit fails only
+      # on vulnerabilities, not on the allowed unmaintained/unsound warnings.
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
