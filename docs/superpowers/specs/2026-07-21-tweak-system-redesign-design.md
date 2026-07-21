@@ -27,7 +27,7 @@ patch-list — the rules below stand on their own merit.
 
 **Non-goals**
 - Not rewriting the Svelte frontend. The Tauri command contract adapts as needed but the UI model
-  (status, System Default selection, Needs Attention) is preserved.
+  (status, the System-Default *status*, Restore Snapshot, Needs Attention) is preserved.
 - Not migrating the full ~189-tweak corpus in this effort (see §12). The engine ships with a small
   converted starter set; the rest is follow-up.
 - No dual-schema compatibility layer. Clean break (see §12).
@@ -39,7 +39,7 @@ These were settled during brainstorming and are fixed for this design:
 | Decision | Choice |
 |---|---|
 | **Scope** | Executors + shared lifecycle + snapshot format + YAML schema + `build.rs`. Frontend adapts. |
-| **Core model** | Declarative typed **Settings** (desired value per option + runtime-captured baseline) with one representation feeding apply/detect/revert; imperative **Actions** as an explicit escape hatch. |
+| **Core model** | Declarative typed **Settings** (desired value per option + runtime-captured value) with one representation feeding apply/detect/restore; imperative **Actions** as an explicit escape hatch. |
 | **Escape hatch** | Actions carry a required `apply` and **optional** `undo` and `probe`. Absent `undo` ⇒ typed non-reversible; absent `probe` ⇒ typed non-detectable. Honest one-way behavior, never silent. |
 | **Engine structure** | Hybrid: effect **data** is a serializable enum (exhaustiveness, atomic ordering, snapshots for free); each kind's **behavior** lives in its own deep module behind an `EffectKind` trait. |
 | **Migration** | Engine + schema first with a small converted starter set; full corpus later; clean break; old on-disk snapshots invalidated by a schema-version bump. |
@@ -50,10 +50,10 @@ These were settled during brainstorming and are fixed for this design:
 YAML corpus  ──build.rs──▶  compiled Tweak model  (data: Vec<Opt>, each = value-map over a shared surface)
                                      │
                                      ▼
-                        Engine  (lifecycle: apply · detect · revert · verify · atomic rollback · per-tweak lock)
+                        Engine  (lifecycle: apply · detect · restore · verify · atomic rollback · per-tweak lock)
                                      │  dispatches each Effect (enum) to →
                                      ▼
-                    EffectKind modules  (registry / service / task / action — read+apply+revert+detect co-located)
+        EffectKind modules  (registry / service / task / hosts / firewall / action — read+apply+revert+detect co-located)
                                      │  execute through →
                                      ▼
                     Execution context  (existing typed elevation broker: user / admin / system / TI)
@@ -63,7 +63,7 @@ YAML corpus  ──build.rs──▶  compiled Tweak model  (data: Vec<Opt>, eac
 - Each **EffectKind module** owns how *one kind* reads/applies/reverts a value.
 - The **broker** owns privilege. It is reused as-is (it already replaced shell-string elevation with a
   typed, verified path); it gains a grouped-execution entry point (§9).
-- **Snapshots** are the serialized baseline `Value`s — the same type as the corpus — so a capture and its
+- **Snapshots** are serialized captured `Value`s — the same type as the corpus — so a capture and its
   restore are one code path, not two.
 
 ## 5. The core abstraction — `Effect`
@@ -74,7 +74,7 @@ An `Effect` is one atomic unit of change, in one of two categories:
   desired value. Kinds: `Registry` (a typed value at hive\key\name), `Service` (a service's startup
   type), `Task` (a scheduled task's enabled-state), `Hosts` (a hosts-file entry — present/absent), and
   `Firewall` (a firewall rule — present/absent). Operations: **read** → current value, **apply** →
-  drive to desired, **revert** → drive to baseline. *Detect is read + compare.* All four share one
+  drive to desired, **revert** → drive to the captured value. *Detect is read + compare.* All four share one
   address+value type and one comparison, so they cannot disagree.
 - **`Action`** — imperative, optionally reversible. A `cmd`/`powershell` script or a structural registry
   op (key create / key-tree delete). Carries `apply` (required), `undo` (optional), `probe` (optional).
@@ -111,17 +111,21 @@ end up byte-identical.
 id: disable_telemetry
 name: "Telemetry"
 risk_level: low
-elevation: admin            # per-Tweak FLOOR level: user | admin | system | ti (declared, never inferred)
-reversible: true            # computed: every effect is a Setting or an ephemeral Action (§7), so nothing
-                            #   is one-way. Build-checked against the real value.
+elevation: admin            # per-Tweak FLOOR: user | admin | system | ti (declared, never inferred)
+reversible: true            # computed: all effects are Settings, Actions with `undo`, or ephemeral
+                            #   Actions (§7) — none one-way here. Build-checked against the real value.
 
 effects:                    # the managed surface — declared ONCE
-  - id: allow_telemetry     # a Setting (reversible by construction); runs at the admin floor
+  - id: allow_telemetry     # Registry Setting (HKLM) — runs at the admin floor
     registry: { hive: HKLM, key: "...\\DataCollection", name: AllowTelemetry, type: REG_DWORD }
-  - id: diagtrack           # a Setting
+  - id: tailored_ads        # Registry Setting (HKCU) — ignores the floor, runs in-process as the real user (§9)
+    registry: { hive: HKCU, key: "...\\AdvertisingInfo", name: Enabled, type: REG_DWORD }
+  - id: diagtrack           # Service Setting
     service: { name: DiagTrack }
     elevation: ti           # per-STEP escalate: effective = max(admin floor, ti) = ti; the rest stay admin
-  - id: flush_dns           # an ephemeral Action — transient side-effect, no undo/probe, exempt from
+  - id: block_vortex        # Hosts Setting (typed kind — present/absent, reversible by construction)
+    hosts: { ip: 0.0.0.0, domain: vortex.data.microsoft.com }
+  - id: flush_dns           # ephemeral Action — transient side-effect, no undo/probe, exempt from
                             #   reversibility & detectability (never makes the tweak one-way)
     command:
       shell: powershell
@@ -132,7 +136,9 @@ options:                    # ONLY the real states we offer — "System Default"
   - label: "Telemetry Off"
     values:
       allow_telemetry: 0
+      tailored_ads: 0
       diagtrack: disabled
+      block_vortex: present        # add the hosts entry (revert removes it)
       flush_dns: run               # run the action on apply for this option
 ```
 
@@ -140,7 +146,9 @@ options:                    # ONLY the real states we offer — "System Default"
 tweak offers; the app shows **System Default** when the live surface matches *none* of them. There is no
 `is_default` option and no declared stock/default values anywhere. Consequently the UI states are
 *authored options + 1 implicit System Default*, which shifts the shape rule: **1 authored option ⇒ toggle**
-(Default ↔ On), **≥2 authored ⇒ dropdown** (Default / A / B …).
+(Default ↔ On), **≥2 authored ⇒ dropdown** (Default / A / B …). The **Default** position is the computed
+status (§8), not a selectable target: the user leaves it by applying an option and returns toward it via
+**Restore Snapshot** (§8), never a "revert to Default" action.
 
 Compiled model:
 
@@ -155,15 +163,15 @@ enum   OptValue  { Set(Value), Run }   // Settings carry a Value; an Action entr
 **Consequences:**
 - **No authored defaults at all.** Because the default state is computed (no option matches), there are
   no declared stock/default values anywhere, so an author cannot guess a stock default wrong, and two
-  tweaks cannot disagree about one. Returning to stock is handled by restoring the **captured baseline**
-  (§8), never a hand-authored default. (The display label for this computed state is cosmetic — "System
+  tweaks cannot disagree about one. Returning toward a prior state is handled by **Restore Snapshot**,
+  which walks the captured return-point history (§8), never a hand-authored default. (The display label for this computed state is cosmetic — "System
   Default" is just the default name.)
 - **Build-checkable structure.** Because the surface is explicit and each option is a value-map over it,
   `build.rs` can prove no two options are byte-identical, no option omits a managed setting, and no two
   tweaks manage the same address with option values that fight each other. See §10.
 - **Reversibility is computed.** `reversible` = every effect is a Setting, an Action with an `undo`, **or
   an `ephemeral` Action** (transient side-effects don't count against it — §7). Build-checked against the
-  declared flag and surfaced to the UI, so a one-way tweak is labelled up front, not discovered at revert
+  declared flag and surfaced to the UI, so a one-way tweak is labelled up front, not discovered at restore
   time.
 
 **Windows-version applicability.** An effect (or a specific value) may be scoped by OS **major version
@@ -200,7 +208,7 @@ conditionals, multi-step logic). The contract:
 - **Whether an action needs `undo` follows one question — *can the change it makes persistently alter or
   break the system?*** Changing a service's start type can (→ it needs `undo`); flushing DNS or clearing a
   cache cannot (→ `ephemeral`, no `undo`). A single **non-ephemeral** no-`undo` action makes the whole
-  tweak `reversible: false`; on revert, all Settings and undo-carrying actions still revert, only the
+  tweak `reversible: false`; on restore, all Settings and undo-carrying actions still revert, only the
   genuinely one-way actions cannot, and *those* are surfaced as Needs Attention. "Partial" never means
   "nothing reverts," and an ephemeral action never makes a tweak one-way.
 - **`probe` is state-based, not history-based, and exists because scripts have no readable state.** A
@@ -280,7 +288,7 @@ because the build guard makes option value-maps mutually distinct on the **detec
 no option matches, the status is System Default** — "the author never defined this state, or the surface
 has drifted out of every defined one." Detection is therefore **decoupled from the snapshot history**:
 System Default is a *status*, never a restore target, so return-point snapshots may still exist (they only
-drive the Restore button). `build.rs` guarantees ≥1 detectable effect per tweak, so an option is always
+drive the Restore button). `build.rs` guarantees ≥1 detectable effect per option, so an option is always
 distinguishable from System Default and from its siblings. `is_applied` means simply *"the tweak has a
 snapshot history to restore from."* **Needs Attention is not a detection verdict** — it is the separate
 outcome of a rollback/restore that could not fully complete (§8 rollback, ADR-0001).
@@ -496,7 +504,7 @@ Each has a recommended default so it is not blocking:
   exact representation, and how the detectability guard iterates it, are finalized in the plan; default: an
   explicit milestone list the validator loops over.
 - **`requires_reboot` granularity.** Default: a per-tweak flag; per-option reboot needs are deferred.
-- **Profile/import layer.** Out of scope for this engine; it drives the same apply/revert entry points and
+- **Profile/import layer.** Out of scope for this engine; it drives the same apply/restore entry points and
   identifies options by label within a tweak.
 
 ## 15. Normative invariants
@@ -504,14 +512,14 @@ Each has a recommended default so it is not blocking:
 The non-negotiable rules the implementation and its tests must uphold. Each maps to the section that
 details it; these are the traceable acceptance criteria.
 
-1. **One representation.** A change's desired value, captured baseline, current reading, and detection
+1. **One representation.** A change's desired value, captured pre-apply value, current reading, and detection
    comparison use one typed `Value` and one comparison per kind (§5).
 2. **Did-it-work.** Every effect op returns `Result`; a failed apply/read/revert surfaces as `Err`, never a
    benign value; no `let _ =` on a privileged call (§8/§11).
 3. **Each apply captures the pre-apply state** as a return-point in the snapshot history, before any
    mutation — authored-option captures dedup (one per option), System-Default/non-defined captures are all
    kept (§8/§11).
-4. **Baselines are captured before any mutation;** an unreadable baseline aborts before mutating (§8).
+4. **The pre-apply state is captured before any mutation;** an unreadable value aborts before mutating (§8).
 5. **Options are mutually exclusive** — a tweak is in exactly one authored option *or* System Default at
    any time (§6/§8).
 6. **A matching option always wins** over System Default in detection; at most one option can match; no
