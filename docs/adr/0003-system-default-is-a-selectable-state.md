@@ -2,20 +2,18 @@
 status: accepted
 ---
 
-# System Default is a selectable state, and selecting it is a Revert
+# System Default is a computed status, not a restore target; restore walks the snapshot history
 
-A machine's setting is frequently not at its Stock Default before we touch it — a prior tool, a group policy, or the user got there first. That Original State is a legitimate destination, so **System Default is offered as a selectable state whenever a Snapshot exists**, in both the two-option control and the dropdown, and choosing it performs a Revert: restore the Original State, then release the Snapshot on verified success.
+A machine's setting is frequently not at its stock default before we touch it — a prior tool, a group policy, or the user got there first. In the redesigned engine, **System Default is a computed *status***: it means the live surface **matches no authored option** (the author never defined this state, or the machine drifted out of every defined one). It is **not** a selectable or restorable target — there is no "revert to System Default" action.
 
-Previously the affordance was rendered but inert. The two-option control showed a clickable "Default" segment whose handler only unstaged a pending change and never restored anything, while the dropdown showed a permanently disabled "System Default" entry that also vanished as soon as any option was applied. The two controls disagreed with each other and neither one worked.
+The **only** restore action is **Restore Snapshot**, which drives the system to the **most recent** entry in the tweak's snapshot history and, on verified success, **consumes** it (the system now matches it, so the return-point is spent). Pressing Restore repeatedly walks back through the captured history; when the last entry is popped the surface matches no option again — i.e. it simply *reads* as System Default, reached by exhausting the history rather than by a dedicated button. A future *select-a-snapshot* control may restore a specific entry; the default is always most-recent.
 
 ## Considered Options
 
-- **Restore but keep the Snapshot** (a distinct operation from Revert) — so that cycling System Default ↔ an Option never re-captures, and the first good capture is kept forever. Genuinely attractive, because re-capture is not currently reliable: an access-denied registry read is recorded as "this value did not exist", which would trade a good Snapshot for a corrupt one.
+- **Offer System Default as a selectable state that performs a revert** (the previous system's behaviour) — rejected: it made System Default behave like an authored option, gave snapshots no natural end of life, and forced a single "the original" target when the redesign keeps a full history of return-points.
 
-  Rejected because it makes System Default behave unlike every other state and leaves Snapshots with no natural end of life. The re-capture hazard is a capture bug and is being fixed on its own merits; we would rather fix it than design around it.
-
-- **Keep the Snapshot only when the Original State matched no Option** — rejected as a special case that is hard to explain and hard to test.
+- **A single snapshot ("the original"); restore always returns to it** — rejected: it discards the intermediate states the user passed through. The history preserves every state the user actually had and lets a power user step back one at a time (or delete the most-recent to skip it).
 
 ## Consequences
 
-Once at System Default there is nothing left to restore, so releasing the Snapshot loses nothing — the next Apply captures afresh. This depends on capture being correct, which makes the access-denied capture bug a blocker for this change rather than an independent cleanup.
+Detection is decoupled from the snapshot count: status is purely live-surface-vs-options, so leftover return-points never turn a clean System-Default machine into Needs Attention. `is_applied` means only "there is a history to restore from." A snapshot is released the moment the live system matches the state it holds — via a verified restore or the startup stale-cleanup (which compares **checkable Settings** only, never scripts) — so the history self-prunes without ever dropping a state the user is not currently standing on.
