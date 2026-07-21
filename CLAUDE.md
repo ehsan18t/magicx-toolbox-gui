@@ -7,6 +7,14 @@ Svelte 5 + Tailwind CSS v4 frontend. It applies curated Windows tweaks from embe
 snapshots so changes can be reverted. Because it is Windows-only, cross-platform dependency bloat is
 pure cost.
 
+## Code style
+
+- Write no more code than the task needs — keep it small and optimized. "Small" is never an excuse to
+  cut what's genuinely required; use what's necessary.
+- Comment sparingly and with intent: capture decisions, non-obvious rationale, and gotchas — the things
+  worth knowing for that block — not the obvious. "Minimal" is never an excuse to drop a genuinely useful
+  comment.
+
 ## The gate — run before every commit
 
 - **Full stack:** `pnpm run validate` (prettier, tsc, svelte-check, `cargo fmt --check`, clippy
