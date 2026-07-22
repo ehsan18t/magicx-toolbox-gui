@@ -29,6 +29,9 @@ schema:
 - The YAML-null hazard this ADR closed stays closed: `null`, an omitted entry, and a bare value are
   still build errors (the coverage guard independently rejects omission — every option must value
   every Setting effect). The error message now names **`absent`** as the alternative.
-- Because `absent` is a reserved word, a `REG_SZ` whose literal content is `absent` must be written
-  `{ literal: absent }`; an ambiguous bare scalar is a build error naming that escape. `value: ""`
-  remains a legitimate empty string.
+- A bare `absent` is **always** the keyword, for every value type — including `REG_SZ` — because a
+  type class with no deletion spelling would be a hole, not a safeguard. The escape
+  `{ literal: absent }` exists for the rare string whose content really is that word. `value: ""`
+  remains a legitimate empty string. The hazard this ADR closes is the *forgotten* value
+  (`null`/omitted/bare), which stays a build error; deliberately typing `absent` was never that
+  hazard.

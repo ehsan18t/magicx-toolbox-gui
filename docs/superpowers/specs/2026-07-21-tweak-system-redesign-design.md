@@ -232,12 +232,15 @@ the user returns toward prior states only via **Restore Snapshot**.
 - `REG_BINARY`: `.reg` hex-pair form — `"90,12,03,80"` (commas or spaces).
 - `REG_MULTI_SZ`: a real YAML string list; `[]` clears it (deliberately better than `.reg`'s
   unwritable `hex(7):`).
-- **`absent` is one reserved keyword** meaning "does not exist," accepted at all three depths — value,
-  key, field. A `REG_SZ` whose literal content is the word `absent` must be written
-  `{ literal: absent }`; a bare ambiguous scalar is a **build error naming the escape** (ADR-0004, as
-  amended). The same reservation rule covers positional keywords (`present`, `claim`, `run`, …).
-  A `null` or empty option entry (`some_effect:` with nothing after it) is likewise a **build error
-  naming `absent`** — a forgotten value must never become a silent delete.
+- **`absent` is one reserved keyword** meaning "does not exist," accepted uniformly at all three
+  depths — value, key, field — and for **every** value type including `REG_SZ` / `REG_EXPAND_SZ`.
+  A bare `absent` is *always* the keyword; that is what keeps deletion expressible everywhere
+  (invariant 13). A string value whose literal content is the word `absent` uses the escape
+  `{ literal: absent }`, which is the escape's entire purpose. The same reservation rule covers
+  positional keywords (`present`, `claim`, `run`, …) in their own positions.
+  A `null` or empty option entry (`some_effect:` with nothing after it) is a **build error naming
+  `absent`** — a *forgotten* value must never become a silent delete, which is ADR-0004's actual
+  principle; a deliberately typed `absent` is not a forgotten value.
 - **No `-` delete spellings and no `.reg` import** — the YAML schema is the single source of truth. A
   dev-side `.reg → YAML` scaffolding tool may exist later, outside the engine.
 - Kind-specific keywords: services take `disabled | manual | automatic | automatic_delayed | boot |
@@ -598,7 +601,7 @@ unrecoverable items; `Unknown` carries the exact unreadable effects and why.
   once, on the last release; detection honest throughout.
 - **Validator regression tests:** known-bad YAML for every §10 guard (duplicate addresses,
   shared+direct overlap, all-optional options, per-milestone identical options, bad paths, revision
-  without pinned build, bare `absent`-ambiguous literals) — each must fail the build.
+  without pinned build, null/empty option values) — each must fail the build.
 
 ## 12. Migration plan
 
@@ -707,8 +710,10 @@ details it.
     (`optional`/`if_missing`); driving to `Missing` is a defined no-op; the engine never installs or
     uninstalls resources; unsatisfiable options are unavailable-on-this-machine, not silently skipped
     (§5.4).
-13. **`absent` is the only absence spelling**, uniform at value/key/field depth; a bare ambiguous
-    literal is a build error naming the `{ literal: … }` escape (§6.2, ADR-0004 as amended).
+13. **`absent` is the only absence spelling**, uniform at value/key/field depth and across every
+    value type: a bare `absent` is always the keyword, `{ literal: … }` is the escape for a string
+    whose content is that word, and a null/empty/omitted value is a build error naming `absent`
+    (§6.2, ADR-0004 as amended).
 14. **No unconditional structural inverses.** Parent keys auto-create on apply; key existence is a
     captured `Present(bool)` Setting; `create_key`/`delete_value` Actions do not exist; delete-tree
     is explicitly one-way unless the author supplies `undo` (§5.1/§7).
