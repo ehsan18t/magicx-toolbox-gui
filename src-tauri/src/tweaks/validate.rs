@@ -611,7 +611,10 @@ fn build_expr_contains(expr: BuildExpr, build: u32) -> bool {
 /// `revision` to pin a single exact `build`, so it adds nothing at this granularity. An invalid
 /// `products` entry can't occur here — schema.rs already rejected it at load time via the same
 /// `expand_product`; `is_ok_and` just avoids a panic path over an already-loaded corpus.
-fn scope_admits(scope: Option<&WindowsScope>, milestone: &Milestone) -> bool {
+///
+/// `pub(crate)`: `tweaks::snapshot`'s `classify` reuses this verbatim for `TargetUnavailable`
+/// (spec §8.3) instead of reimplementing Windows-version admission.
+pub(crate) fn scope_admits(scope: Option<&WindowsScope>, milestone: &Milestone) -> bool {
     let Some(scope) = scope else { return true };
     let build_ok = scope
         .build
@@ -660,6 +663,29 @@ fn applicable_value<'a>(
         return None;
     }
     Some(value)
+}
+
+/// Whether `opt` is unavailable as a restore target on `milestone` (spec §8.3/§8.4) — reused by
+/// `tweaks::snapshot::classify`'s `TargetUnavailable` instead of a tweak-level-only approximation.
+/// Unavailable means `opt` has **no surviving in-surface effect at all** — mirrors
+/// `has_detectable_effect`'s any-survives quantification, negated. It is NOT "any covered effect is
+/// scoped out": an option that drives several effects and only some of them are scoped out on this
+/// milestone is still a perfectly good restore target for the ones that remain (the engine simply
+/// skips the inapplicable effect, exactly as `applicable_value`'s own doc says) — only an option
+/// left with *nothing* to drive here is actually unavailable. Two ways to end up with nothing: the
+/// tweak's own applicable surface is empty (folded in via `applicable_surface`'s tweak-level
+/// `windows:` check), or every effect `opt` answers for has its own per-option-value `windows:`
+/// scope exclude this exact milestone — a gap narrower than the four `SUPPORT_MATRIX` builds the
+/// build-time coverage guard quantifies over, so a running build outside that matrix can hit it
+/// even on a corpus that passed every build-time guard.
+pub(crate) fn option_unavailable(tweak: &Tweak, opt: &Opt, milestone: &Milestone) -> bool {
+    let surface = applicable_surface(tweak, milestone);
+    if surface.is_empty() {
+        return true;
+    }
+    !surface
+        .iter()
+        .any(|effect| applicable_value(opt, &effect.id, milestone).is_some())
 }
 
 fn is_ephemeral(kind: &Effect) -> bool {
