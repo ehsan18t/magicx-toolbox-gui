@@ -1,7 +1,8 @@
 //! The `EffectKind` contract (spec §5): one trait every address kind implements, so the engine
 //! (a later task) can treat Registry/RegistryKey/Service/Task/Hosts/Firewall uniformly and mock
-//! any of them in tests. This task implements it only for `Setting::Registry` and
-//! `Setting::RegistryKey` (see [`registry`]); Tasks 6-8 add the rest.
+//! any of them in tests. Task 5 implemented `Setting::Registry` and `Setting::RegistryKey` (see
+//! [`registry`]); this task adds `Setting::Service` and `Setting::Task` (see [`service`] and
+//! [`task`]); Task 7 adds Hosts/Firewall.
 //!
 //! ## `ExecCx` and the broker seam (read this before wiring System/TI in a later task)
 //!
@@ -31,7 +32,10 @@
 //!   kind's `System`/`Ti` branch change.
 
 pub mod registry;
+pub mod service;
+pub mod task;
 
+use crate::error::Error as BackendError;
 use crate::tweaks::model::{Level, RegType, Setting, Value};
 use crate::tweaks::parse::ParseError;
 
@@ -75,14 +79,23 @@ pub enum Error {
     #[error("{0:?} elevation is not yet routed by this build")]
     UnsupportedLevel(Level),
 
+    /// The addressed service or task does not exist, but the caller asked to drive it to a real
+    /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4,
+    /// invariant 12), so this is a typed refusal, never a silent no-op — distinct from driving
+    /// *to* `Missing`, which is a defined no-op (`Ok(())`) regardless of whether the resource
+    /// exists.
+    #[error("{0}")]
+    ResourceMissing(String),
+
     /// A caller routed a `Setting`/`Value` this kind does not own to it — an engine dispatch bug,
     /// not a runtime condition. Kept typed rather than a panic: this trait also runs inside the
     /// elevated broker process, where a panic would abort an entire batch.
     #[error("{0}")]
     Invalid(&'static str),
 
-    /// Anything else the backing primitive reported.
-    #[error("registry operation failed: {0}")]
+    /// Anything else the backing primitive reported (registry, service, or task -- kept
+    /// kind-neutral since `map_backend_error` routes all three kinds through this variant).
+    #[error("operation failed: {0}")]
     Backend(String),
 }
 
@@ -111,4 +124,32 @@ pub trait EffectKind: Send + Sync {
 
     /// Drives `s`'s address to `target`.
     fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), Error>;
+}
+
+// --- helpers shared by the service and task kinds ------------------------------------------------
+//
+// The registry kind (`registry.rs`) predates these and keeps its own private copies so Task 5's
+// already-reviewed file stays untouched; these exist once here because two new kinds need them.
+
+/// `Level::User`/`Level::Admin` run in-process; `System`/`Ti` need the elevation broker, which
+/// this build does not wire up yet (see the module docs above).
+fn guard_level(cx: &ExecCx) -> Result<(), Error> {
+    match cx.level() {
+        Level::User | Level::Admin => Ok(()),
+        other => Err(Error::UnsupportedLevel(other)),
+    }
+}
+
+/// Backend-error fallback for kinds whose primitive exposes no richer typed distinction than this
+/// (service/task): a declared "requires admin" signal becomes our typed [`Error::AccessDenied`];
+/// anything else is the least-specific [`Error::Backend`] bucket. Never produces `Value::Missing`
+/// — that is exclusively the caller's job when the resource genuinely does not exist (invariant
+/// 2), so a backend error here can never be confused with an absent resource.
+fn map_backend_error(e: BackendError) -> Error {
+    match e {
+        BackendError::RequiresAdmin => {
+            Error::AccessDenied("requires administrator privileges".to_string())
+        }
+        other => Error::Backend(other.to_string()),
+    }
 }
