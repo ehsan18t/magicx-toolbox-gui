@@ -327,6 +327,17 @@ pub fn delete_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     require_write_access(hive)?;
     let hive_key = get_hive_key(hive)?;
 
+    // A leading backslash yields an empty parent_path after the split below, which winreg opens
+    // as "another handle to itself" (the hive root) -- silently bypassing the "no top-level
+    // delete" guard for what would otherwise be a bare top-level name (confirmed empirically: a
+    // single-segment "\Foo" against a real top-level HKCU key deletes it and returns `Ok(())`).
+    if key_path.starts_with('\\') {
+        return Err(Error::RegistryOperation(format!(
+            "Cannot delete key {:?}: leading backslash",
+            key_path
+        )));
+    }
+
     // Need to open parent key and delete the child
     // Split path into parent and child
     let (parent_path, child_name) = match key_path.rsplit_once('\\') {
@@ -338,6 +349,16 @@ pub fn delete_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
             ));
         }
     };
+    // A trailing backslash yields an empty child name, which routes `delete_subkey_all` to its
+    // NULL-subkey form (RegDeleteTreeW with no subkey pointer): confirmed empirically to delete
+    // the key's *own* descendants in place -- and it can still report `Err` (access denied) while
+    // having already deleted them, an even sharper "did-it-work" violation than a silent success.
+    if child_name.is_empty() {
+        return Err(Error::RegistryOperation(format!(
+            "Cannot delete key {:?}: trailing backslash yields an empty child name",
+            key_path
+        )));
+    }
 
     let parent_key = RegKey::predef(hive_key)
         .open_subkey_with_flags(parent_path, KEY_WRITE)
@@ -436,6 +457,73 @@ pub fn detect_value_type(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    /// Deletes its HKCU scratch subtree on drop, even if the test panics, so parallel tests never
+    /// collide and a failed assertion never leaks a key.
+    struct DeleteGuard {
+        path: String,
+    }
+    impl DeleteGuard {
+        fn new(label: &str) -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+            DeleteGuard {
+                path: format!(
+                    "Software\\MagicXToolboxTest\\regsvc_{label}_{}_{n}",
+                    std::process::id()
+                ),
+            }
+        }
+    }
+    impl Drop for DeleteGuard {
+        fn drop(&mut self) {
+            let _ = delete_key(&RegistryHive::Hkcu, &self.path);
+        }
+    }
+
+    #[test]
+    fn delete_key_guards() {
+        let guard = DeleteGuard::new("delete_key_guards");
+        let child = format!("{}\\Child", guard.path);
+        let grandchild = format!("{}\\Grandchild", child);
+        create_key(&RegistryHive::Hkcu, &grandchild).unwrap();
+
+        // Trailing backslash must not fall through to `delete_subkey_all`'s NULL-subkey form,
+        // which (confirmed empirically) deletes the key's own descendants in place instead of
+        // failing cleanly -- silently destroying Grandchild even on the pre-fix code path.
+        let trailing = format!("{}\\", child);
+        delete_key(&RegistryHive::Hkcu, &trailing)
+            .expect_err("trailing backslash must be rejected");
+        assert!(
+            key_exists(&RegistryHive::Hkcu, &grandchild).unwrap(),
+            "a rejected trailing-backslash delete must not touch the key's descendants"
+        );
+
+        // A leading backslash on a SINGLE-segment path yields an empty parent_path, which winreg
+        // opens as the hive root -- bypassing the "no top-level delete" guard for what would
+        // otherwise be a bare top-level name. Confirmed empirically: without this guard, deleting
+        // "\<top>" against a real top-level HKCU key succeeds and removes it. A multi-segment
+        // leading-backslash path (e.g. "\Software\X\Y") is also rejected by this same guard, but
+        // is not separately re-proven here: Windows itself already rejects that shape (a
+        // non-empty parent_path that still starts with a backslash) with ERROR_BAD_PATHNAME
+        // before this guard would even matter, so it cannot distinguish "guarded" from
+        // "incidentally safe" the way the single-segment case can.
+        let top = format!("MagicXToolboxTestTopLevel_{}", std::process::id());
+        create_key(&RegistryHive::Hkcu, &top).unwrap();
+        let leading = format!("\\{top}");
+        let leading_result = delete_key(&RegistryHive::Hkcu, &leading);
+        let top_survived = key_exists(&RegistryHive::Hkcu, &top).unwrap();
+        // Clean up the top-level scratch key unconditionally before asserting, so a failed
+        // assertion never leaks it.
+        let _ = delete_key(&RegistryHive::Hkcu, &top);
+        leading_result.expect_err("leading backslash must be rejected");
+        assert!(
+            top_survived,
+            "the top-level key must survive a rejected leading-backslash delete"
+        );
+    }
 
     #[test]
     fn test_key_exists_hkcu() {
