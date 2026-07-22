@@ -248,15 +248,17 @@ pub struct ScopedValue {
     pub windows: Option<WindowsScope>,
 }
 
-/// What one option says about one effect on the surface (spec §6). Only `Set` carries a value —
-/// `Run`/`Claim`/`Unclaimed` are the whole answer for Action/Shared effects, so they carry no
-/// scope of their own.
+/// What one option says about one effect on the surface (spec §6). `Set` carries a `Value` plus
+/// its own per-option-value scope; `Run`/`Claim`/`Unclaimed` are the whole *answer* for
+/// Action/Shared effects, but each still carries that same optional scope — spec §6.6 does not
+/// restrict the third (per-option-value) scoping level to Settings, so "run this action only on
+/// 26100+" is a real authoring need.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OptValue {
     Set(ScopedValue),
-    Run,
-    Claim,
-    Unclaimed,
+    Run(Option<WindowsScope>),
+    Claim(Option<WindowsScope>),
+    Unclaimed(Option<WindowsScope>),
 }
 
 /// One selectable state: a label plus a value for every effect on the tweak's surface (spec §6.1,

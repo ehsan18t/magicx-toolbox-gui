@@ -292,6 +292,10 @@ windows:
   `build` pins a **single** build (revision counters reset per build line — a cross-build revision
   range is a build error). H-names (22H2, …) do not exist in the schema.
 - Allowed at **tweak level** (whole tweak scoped), **effect level**, and **per-option-value** level.
+  A scoped option value is written as a two-key map — `effect_id: { value: <literal>, windows: {…} }` —
+  which cannot collide with any other option-value form (the only other map-shaped value is the
+  single-key `{ literal: … }` escape; `absent` / `present` / `claim` / `run` are bare scalars). It
+  applies uniformly to Setting, Shared, and Action values.
 - Runtime reads the build via `RtlGetVersion` (never `GetVersionEx`) and the revision via the
   `UBR` registry value. A scoped-out effect is **excluded entirely** — not applied, not read, not
   counted. A tweak whose applicable surface is empty on the running build is shown **unavailable,

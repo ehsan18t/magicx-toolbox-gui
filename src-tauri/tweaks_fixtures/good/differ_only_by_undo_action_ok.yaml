@@ -1,0 +1,30 @@
+category:
+  id: differ_only_by_undo_action_ok
+  name: "Fixture"
+  icon: "mdi:check"
+  description: "Two options differ only by an undo-carrying probeable action — a legal sole distinguisher (spec §10)."
+
+tweaks:
+  - id: undo_carrying_tweak
+    name: "Undo Carrying"
+    description: "Enabled runs a reversible, probed action; Disabled omits it. Strict expectations keep the two exclusive."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: reversible_probed_action
+        action:
+          apply: "reg.exe add HKCU\\Software\\ExampleCo\\Widget\\Legacy /f"
+          undo: "reg.exe delete HKCU\\Software\\ExampleCo\\Widget\\Legacy /f"
+          probe: "reg.exe query HKCU\\Software\\ExampleCo\\Widget\\Legacy >nul 2>&1"
+          shell: cmd
+    options:
+      - label: "Enabled"
+        values:
+          marker: 1
+          reversible_probed_action: run
+      - label: "Disabled"
+        values:
+          marker: 1

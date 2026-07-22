@@ -55,3 +55,21 @@ tweaks:
       - label: "Disabled"
         values:
           swap_effect_field: "0"
+
+  - id: build_26100_only_tweak
+    name: "26100-Only Feature"
+    description: "Tweak-level windows: build >=26100 — inapplicable (not errored) on earlier support-matrix milestones (spec §6.6, Task 4 Fix 3)."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: only_effect
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget26100', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          only_effect: 1
+      - label: "Off"
+        values:
+          only_effect: 0

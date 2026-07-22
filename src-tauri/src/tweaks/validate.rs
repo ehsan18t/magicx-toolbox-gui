@@ -1,18 +1,20 @@
-//! Build-time structural guards (spec §10) — the STRUCTURAL subset only: ownership/duplicate
-//! address, kind canonicalization, option coverage, path/literal validity (via `ValidationError`
-//! variants that wrap `parse::ParseError`), reversibility honesty, and TI self-availability over
-//! typed effects. Per-milestone quantification, detectability, and distinctness are Task 4's job —
-//! they need the declared support matrix, which this task does not touch.
+//! Build-time guards (spec §10). Two parts:
+//! - **Structural** (Task 3): ownership/duplicate address, kind canonicalization, option coverage,
+//!   path/literal validity (via `ValidationError` variants that wrap `parse::ParseError`),
+//!   reversibility honesty, TI self-availability, and `if_missing` requiring `optional` (Task 4).
+//! - **Semantic** (Task 4, [`validate_semantic`]): per-milestone quantification over each tweak's
+//!   applicable projection — detectability, and distinctness (byte, detectable-projection,
+//!   non-shared, and the Residue rule).
 //!
-//! No YAML here: `validate_structural` runs over the already-loaded [`Corpus`], so this module
-//! compiles into the shipped binary same as `model`/`parse` (only `schema.rs`, the YAML binding
-//! layer, is test-only).
+//! No YAML here: both entry points run over the already-loaded [`Corpus`], so this module compiles
+//! into the shipped binary same as `model`/`parse` (only `schema.rs`, the YAML binding layer, is
+//! test-only).
 
 use super::model::{
-    ActionDef, Corpus, Effect, EffectId, Hive, OptLabel, OptValue, ScopedValue, Setting, SharedId,
-    StartupType, Tweak, Value,
+    ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Opt, OptLabel, OptValue,
+    ScopedValue, Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
 };
-use super::parse::ParseError;
+use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
 
 /// Identifies which side of a [`ValidationError::DuplicateAddress`] conflict an owner is — a
@@ -143,6 +145,93 @@ pub enum ValidationError {
         "tweak `{tweak}` effect `{effect}` disables the TrustedInstaller service via a typed effect — this would strand the app's own TI elevation path"
     )]
     TrustedInstallerDisabled { tweak: String, effect: EffectId },
+
+    /// A `windows:` block (tweak, effect, or option-value level, spec §6.6) failed to parse —
+    /// a bad build/revision expression, an unknown product, or `revision` without a pinned build.
+    #[error("tweak `{tweak}` {context}: {source}")]
+    InvalidWindowsScope {
+        tweak: String,
+        context: String,
+        #[source]
+        source: ParseError,
+    },
+
+    /// An effect's `if_missing:` literal failed to parse against its own Setting domain (§5.4).
+    #[error("tweak `{tweak}` effect `{effect}` if_missing: {reason}")]
+    InvalidIfMissing {
+        tweak: String,
+        effect: EffectId,
+        reason: String,
+    },
+
+    /// `if_missing:` declares a Missing-reading without `optional: true` — dead authoring, since a
+    /// non-optional effect is a typed error the moment it reads Missing, never `if_missing` (§5.4).
+    #[error(
+        "tweak `{tweak}` effect `{effect}` declares if_missing without optional: true — add `optional: true`, or drop if_missing"
+    )]
+    IfMissingWithoutOptional { tweak: String, effect: EffectId },
+
+    /// spec §10 Detectability: this option has no non-optional detectable effect on `build` — an
+    /// optional effect may read `Missing` on a real machine, so the option would become
+    /// indistinguishable from every other state there. `build` is the first milestone this failed
+    /// on (deduped across the support matrix — an author fixes the option, not each build).
+    #[error(
+        "tweak `{tweak}` option `{option}` has no non-optional detectable effect on Windows build {build} — every option must stay distinguishable without effects that may read Missing"
+    )]
+    NotDetectable {
+        tweak: String,
+        option: OptLabel,
+        build: u32,
+    },
+
+    /// spec §10 Distinctness (1/3): two options are byte-identical over the whole applicable
+    /// projection on `build` — nothing at all, of any kind, differs between them.
+    #[error(
+        "tweak `{tweak}` options `{first}` and `{second}` are byte-identical on Windows build {build} — merge them or give one a distinct value"
+    )]
+    OptionsByteIdentical {
+        tweak: String,
+        first: OptLabel,
+        second: OptLabel,
+        build: u32,
+    },
+
+    /// spec §10 Distinctness (2/3): two options differ, but only on effects that never
+    /// contribute to detection (probe-less Actions) — `detect()` cannot tell them apart on `build`.
+    #[error(
+        "tweak `{tweak}` options `{first}` and `{second}` are identical on their detectable projection on Windows build {build} — they differ only by effects detection cannot observe (e.g. a probe-less Action)"
+    )]
+    OptionsNotDetectablyDistinct {
+        tweak: String,
+        first: OptLabel,
+        second: OptLabel,
+        build: u32,
+    },
+
+    /// spec §10 Distinctness (3/3): every differing effect between two options is a `shared`
+    /// reference — a claim can be held by other tweaks too, so it cannot be the sole distinguisher.
+    #[error(
+        "tweak `{tweak}` options `{first}` and `{second}` differ only by a shared effect on Windows build {build} — a claimed shared value can be held by another tweak too, so it cannot be the sole distinguisher"
+    )]
+    SharedOnlyDistinguisher {
+        tweak: String,
+        first: OptLabel,
+        second: OptLabel,
+        build: u32,
+    },
+
+    /// The Residue rule (spec §8.4/§10): every differing effect is a no-undo (or probe-less, or
+    /// shared) effect — none of them keeps at most one option matching once the state is reached,
+    /// since a one-way action's Residue is tolerated by the omitting option (§8.4).
+    #[error(
+        "tweak `{tweak}` options `{first}` and `{second}` have no reliable distinguisher on Windows build {build} — add a Setting or an undo-carrying probeable Action that differs between them; a no-undo Action's Residue lets the omitting option match too once it has run"
+    )]
+    ResidueOnlyDistinguisher {
+        tweak: String,
+        first: OptLabel,
+        second: OptLabel,
+        build: u32,
+    },
 }
 
 /// Runs every structural guard in scope for this task (spec §10) over an already-loaded corpus.
@@ -157,6 +246,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_coverage(tweak, &mut errors);
         check_reversibility(tweak, &mut errors);
         check_ti_self_availability(tweak, &mut errors);
+        check_if_missing_requires_optional(tweak, &mut errors);
     }
     errors
 }
@@ -379,7 +469,7 @@ fn check_coverage(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
                 Effect::Shared(_) => {
                     if !matches!(
                         opt.values.get(&effect.id),
-                        Some(OptValue::Claim) | Some(OptValue::Unclaimed)
+                        Some(OptValue::Claim(_)) | Some(OptValue::Unclaimed(_))
                     ) {
                         errors.push(ValidationError::SharedNotExplicit {
                             tweak: tweak.id.clone(),
@@ -439,6 +529,266 @@ fn check_ti_self_availability(tweak: &Tweak, errors: &mut Vec<ValidationError>) 
             });
         }
     }
+}
+
+/// `if_missing:` only means something on an `optional` effect — a non-optional effect never reads
+/// `Missing` (it is a typed error instead, §5.4), so `if_missing` there would be dead authoring.
+fn check_if_missing_requires_optional(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    for effect in &tweak.surface {
+        if effect.if_missing.is_some() && !effect.optional {
+            errors.push(ValidationError::IfMissingWithoutOptional {
+                tweak: tweak.id.clone(),
+                effect: effect.id.clone(),
+            });
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// Semantic guards (spec §10, Task 4): per-milestone quantification over each tweak's applicable
+// projection — detectability, and three-way distinctness plus the Residue rule.
+// -------------------------------------------------------------------------------------------
+
+/// One supported Windows build (spec §10/§14). Milestones are build-only: `revision`/UBR is a
+/// finer runtime axis than the build-time guards quantify over (see `scope_admits`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Milestone {
+    pub build: u32,
+}
+
+/// The declared support matrix (spec §14 default) — the single source of truth every guard loops
+/// over: Win10 22H2, then Win11 21H2 / 22H2 / 24H2.
+pub const SUPPORT_MATRIX: &[Milestone] = &[
+    Milestone { build: 19045 },
+    Milestone { build: 22621 },
+    Milestone { build: 22631 },
+    Milestone { build: 26100 },
+];
+
+fn build_expr_contains(expr: BuildExpr, build: u32) -> bool {
+    match expr {
+        BuildExpr::Exact(n) => build == n,
+        BuildExpr::Min(n) => build >= n,
+        BuildExpr::Max(n) => build <= n,
+        BuildExpr::Range(lo, hi) => (lo..=hi).contains(&build),
+    }
+}
+
+/// Whether a `windows:` scope (tweak/effect/option-value level, spec §6.6) admits `milestone`.
+/// `revision` is intentionally ignored: milestones are build-only, and §6.6 already requires
+/// `revision` to pin a single exact `build`, so it adds nothing at this granularity. An invalid
+/// `products` entry can't occur here — schema.rs already rejected it at load time via the same
+/// `expand_product`; `is_ok_and` just avoids a panic path over an already-loaded corpus.
+fn scope_admits(scope: Option<&WindowsScope>, milestone: &Milestone) -> bool {
+    let Some(scope) = scope else { return true };
+    let build_ok = scope
+        .build
+        .is_none_or(|expr| build_expr_contains(expr, milestone.build));
+    let product_ok = scope.products.as_ref().is_none_or(|products| {
+        products.iter().any(|&p| {
+            expand_product(p).is_ok_and(|expr| build_expr_contains(expr, milestone.build))
+        })
+    });
+    build_ok && product_ok
+}
+
+/// One tweak's applicable surface for one milestone (spec §6.6): effects excluded by their own
+/// effect-level scope are dropped entirely (the tweak-level scope gates the whole call — an
+/// excluded tweak returns empty), and so are ephemeral Actions (spec §7: "exempt from the
+/// reversibility and detectability computations" — a transient side-effect leaves no persistent
+/// state for detection to observe, so it cannot carry either requirement). Per-option-value
+/// scoping is resolved separately per option, since it can differ between options sharing one
+/// effect (`applicable_value`).
+fn applicable_surface<'a>(tweak: &'a Tweak, milestone: &Milestone) -> Vec<&'a EffectDef> {
+    if !scope_admits(tweak.windows.as_ref(), milestone) {
+        return Vec::new();
+    }
+    tweak
+        .surface
+        .iter()
+        .filter(|e| scope_admits(e.windows.as_ref(), milestone) && !is_ephemeral(&e.kind))
+        .collect()
+}
+
+/// One option's answer for one in-scope effect, on one milestone — `None` if the option's own
+/// per-value `windows:` scope (spec §6.6's third scoping level) excludes this milestone, in which
+/// case the option simply has no answer for this effect here, as if it did not cover it. Every
+/// `OptValue` variant carries that same optional scope (model.rs) — not just `Set`.
+fn applicable_value<'a>(
+    opt: &'a Opt,
+    effect: &EffectId,
+    milestone: &Milestone,
+) -> Option<&'a OptValue> {
+    let value = opt.values.get(effect)?;
+    let windows = match value {
+        OptValue::Set(scoped) => scoped.windows.as_ref(),
+        OptValue::Run(w) | OptValue::Claim(w) | OptValue::Unclaimed(w) => w.as_ref(),
+    };
+    if !scope_admits(windows, milestone) {
+        return None;
+    }
+    Some(value)
+}
+
+fn is_ephemeral(kind: &Effect) -> bool {
+    matches!(
+        kind,
+        Effect::Action(ActionDef::Script {
+            ephemeral: true,
+            ..
+        })
+    )
+}
+
+/// Whether `kind` can ever contribute a detection signal at all (spec §6.4/§8.6): Settings and
+/// Shared claims always can; a probe-less Action (including `DeleteTree`, which has no probe
+/// field) never can.
+fn is_detectable_dimension(kind: &Effect) -> bool {
+    match kind {
+        Effect::Setting(_) | Effect::Shared(_) => true,
+        Effect::Action(ActionDef::Script { probe, .. }) => probe.is_some(),
+        Effect::Action(ActionDef::DeleteTree { .. }) => false,
+    }
+}
+
+/// Whether `kind` is a *reliable* sole distinguisher — one that keeps at most one option matching
+/// once the runtime actually reaches that state (spec §8.4/§10). Settings always are. A Shared
+/// claim never is (held corpus-wide by any claimant, §8.6 — the dedicated non-shared guard already
+/// requires a different differentiator). An Action is iff it carries both `probe` (or there is
+/// nothing to read) and `undo` (or a no-undo action's Residue lets the omitting option match too
+/// once it has run — the Residue rule, §8.4).
+fn is_reliable_dimension(kind: &Effect) -> bool {
+    matches!(
+        kind,
+        Effect::Setting(_)
+            | Effect::Action(ActionDef::Script {
+                probe: Some(_),
+                undo: Some(_),
+                ..
+            })
+    )
+}
+
+/// The effects (within `surface`) where options `a` and `b` disagree on `milestone` — the full
+/// applicable-projection diff every distinctness check below is defined over (spec §10).
+fn differing_effects<'a>(
+    a: &Opt,
+    b: &Opt,
+    surface: &[&'a EffectDef],
+    milestone: &Milestone,
+) -> Vec<&'a EffectDef> {
+    surface
+        .iter()
+        .filter(|e| applicable_value(a, &e.id, milestone) != applicable_value(b, &e.id, milestone))
+        .copied()
+        .collect()
+}
+
+/// spec §10 Detectability: does `opt` have ≥1 non-optional detectable effect in `surface` on
+/// `milestone`? A per-option-value-scoped-out effect (`applicable_value` returning `None`) can't
+/// count. A Shared effect additionally needs `opt`'s own answer to be `Claim` — `Unclaimed` is
+/// excluded from *this option's* detectable projection (spec §8.6: a claim can be satisfied by any
+/// claimant corpus-wide, but "unclaimed" asserts nothing at all). This is evaluated here, with the
+/// option's actual `OptValue` in hand, deliberately unlike `is_detectable_dimension` above (which
+/// stays kind-only, Shared always counted "detectable" — that domain feeds check 2's pairwise
+/// cascade, where a shared-only difference must fall through to check 3's non-shared guard, not be
+/// caught here).
+fn has_detectable_effect(opt: &Opt, surface: &[&EffectDef], milestone: &Milestone) -> bool {
+    surface.iter().any(|effect| {
+        if effect.optional {
+            return false;
+        }
+        let Some(value) = applicable_value(opt, &effect.id, milestone) else {
+            return false;
+        };
+        match &effect.kind {
+            Effect::Shared(_) => matches!(value, OptValue::Claim(_)),
+            kind => is_detectable_dimension(kind),
+        }
+    })
+}
+
+/// Runs every semantic guard (spec §10) over `corpus`, quantified per milestone in `milestones`.
+/// A tweak whose applicable surface is empty on a milestone is skipped there, not an error (spec
+/// §6.6: it is simply unavailable at runtime). Each violation is reported once — the first
+/// milestone it is observed on — never once per failing milestone, so an author fixes the option
+/// or pair, not each build separately.
+pub fn validate_semantic(corpus: &Corpus, milestones: &[Milestone]) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+    let mut reported_detect: HashSet<(String, OptLabel)> = HashSet::new();
+    let mut reported_byte: HashSet<(String, OptLabel, OptLabel)> = HashSet::new();
+    let mut reported_detectable: HashSet<(String, OptLabel, OptLabel)> = HashSet::new();
+    let mut reported_shared: HashSet<(String, OptLabel, OptLabel)> = HashSet::new();
+    let mut reported_residue: HashSet<(String, OptLabel, OptLabel)> = HashSet::new();
+
+    for milestone in milestones {
+        for tweak in &corpus.tweaks {
+            let surface = applicable_surface(tweak, milestone);
+            if surface.is_empty() {
+                continue; // inapplicable on this milestone — not an error (spec §6.6)
+            }
+
+            for opt in &tweak.options {
+                if has_detectable_effect(opt, &surface, milestone) {
+                    continue;
+                }
+                let key = (tweak.id.clone(), opt.label.clone());
+                if reported_detect.insert(key) {
+                    errors.push(ValidationError::NotDetectable {
+                        tweak: tweak.id.clone(),
+                        option: opt.label.clone(),
+                        build: milestone.build,
+                    });
+                }
+            }
+
+            for (i, a) in tweak.options.iter().enumerate() {
+                for b in &tweak.options[i + 1..] {
+                    let diff = differing_effects(a, b, &surface, milestone);
+                    let pair_key = || (tweak.id.clone(), a.label.clone(), b.label.clone());
+
+                    if diff.is_empty() {
+                        if reported_byte.insert(pair_key()) {
+                            errors.push(ValidationError::OptionsByteIdentical {
+                                tweak: tweak.id.clone(),
+                                first: a.label.clone(),
+                                second: b.label.clone(),
+                                build: milestone.build,
+                            });
+                        }
+                    } else if diff.iter().all(|e| !is_detectable_dimension(&e.kind)) {
+                        if reported_detectable.insert(pair_key()) {
+                            errors.push(ValidationError::OptionsNotDetectablyDistinct {
+                                tweak: tweak.id.clone(),
+                                first: a.label.clone(),
+                                second: b.label.clone(),
+                                build: milestone.build,
+                            });
+                        }
+                    } else if diff.iter().all(|e| matches!(e.kind, Effect::Shared(_))) {
+                        if reported_shared.insert(pair_key()) {
+                            errors.push(ValidationError::SharedOnlyDistinguisher {
+                                tweak: tweak.id.clone(),
+                                first: a.label.clone(),
+                                second: b.label.clone(),
+                                build: milestone.build,
+                            });
+                        }
+                    } else if diff.iter().all(|e| !is_reliable_dimension(&e.kind))
+                        && reported_residue.insert(pair_key())
+                    {
+                        errors.push(ValidationError::ResidueOnlyDistinguisher {
+                            tweak: tweak.id.clone(),
+                            first: a.label.clone(),
+                            second: b.label.clone(),
+                            build: milestone.build,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    errors
 }
 
 #[cfg(test)]
@@ -722,5 +1072,234 @@ mod tests {
             errors.is_empty(),
             "expected no structural errors, got {errors:?}"
         );
+    }
+
+    #[test]
+    fn if_missing_without_optional_is_rejected() {
+        let errors = errors_for("if_missing_without_optional.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::IfMissingWithoutOptional { tweak, effect } = &errors[0] else {
+            panic!("expected IfMissingWithoutOptional, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "bad_if_missing_tweak");
+        assert_eq!(effect.0, "some_effect");
+    }
+
+    // --- Task 4 semantic guards (spec §10) ----------------------------------------------------
+
+    /// Loads one `bad/` fixture and runs the semantic guards over the declared support matrix.
+    /// Panics (via `errors_for`'s `Err` arm-equivalent) would hide a structural problem as a
+    /// semantic one, so each test also asserts `validate_structural` is clean first.
+    fn semantic_errors_for(name: &str) -> Vec<ValidationError> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tweaks_fixtures/bad")
+            .join(name);
+        let corpus = load_corpus(&path).unwrap_or_else(|e| panic!("{name} must load: {e:?}"));
+        assert!(
+            validate_structural(&corpus).is_empty(),
+            "{name} must be structurally clean so the semantic guard is isolated"
+        );
+        validate_semantic(&corpus, SUPPORT_MATRIX)
+    }
+
+    #[test]
+    fn undetectable_on_one_milestone_is_rejected() {
+        let errors = semantic_errors_for("undetectable_on_one_milestone.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::NotDetectable {
+            tweak,
+            option,
+            build,
+        } = &errors[0]
+        else {
+            panic!("expected NotDetectable, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "scoped_detector_tweak");
+        assert_eq!(option.0, "On");
+        assert_eq!(*build, 19045);
+    }
+
+    #[test]
+    fn all_optional_option_is_rejected() {
+        let errors = semantic_errors_for("all_optional_option.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error (deduped across all 4 milestones), got {errors:?}"
+        );
+        let ValidationError::NotDetectable { tweak, option, .. } = &errors[0] else {
+            panic!("expected NotDetectable, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "all_optional_tweak");
+        assert_eq!(option.0, "Enabled");
+    }
+
+    /// Fix 1 (code review): a single-option tweak whose only effect is a shared reference left
+    /// `unclaimed` has zero detectable signal (spec §8.6) — no pairwise guard can catch this,
+    /// since there is no second option to compare against.
+    #[test]
+    fn shared_unclaimed_undetectable_is_rejected() {
+        let errors = semantic_errors_for("shared_unclaimed_undetectable.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::NotDetectable { tweak, option, .. } = &errors[0] else {
+            panic!("expected NotDetectable, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "shared_unclaimed_tweak");
+        assert_eq!(option.0, "Leaves It");
+    }
+
+    #[test]
+    fn identical_on_detectable_projection_is_rejected() {
+        let errors = semantic_errors_for("identical_on_detectable_projection.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::OptionsNotDetectablyDistinct {
+            tweak,
+            first,
+            second,
+            ..
+        } = &errors[0]
+        else {
+            panic!("expected OptionsNotDetectablyDistinct, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "silent_action_tweak");
+        let labels = format!("{first} {second}");
+        assert!(
+            labels.contains("Run It") && labels.contains("Skip It"),
+            "{labels}"
+        );
+    }
+
+    #[test]
+    fn differ_only_by_noundo_action_is_rejected() {
+        let errors = semantic_errors_for("differ_only_by_noundo_action.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::ResidueOnlyDistinguisher {
+            tweak,
+            first,
+            second,
+            ..
+        } = &errors[0]
+        else {
+            panic!("expected ResidueOnlyDistinguisher, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "residue_risk_tweak");
+        let labels = format!("{first} {second}");
+        assert!(
+            labels.contains("Enabled") && labels.contains("Disabled"),
+            "{labels}"
+        );
+    }
+
+    #[test]
+    fn shared_only_distinguisher_is_rejected() {
+        let errors = semantic_errors_for("shared_only_distinguisher.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::SharedOnlyDistinguisher {
+            tweak,
+            first,
+            second,
+            ..
+        } = &errors[0]
+        else {
+            panic!("expected SharedOnlyDistinguisher, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "shared_only_tweak");
+        let labels = format!("{first} {second}");
+        assert!(
+            labels.contains("Claims It") && labels.contains("Leaves It"),
+            "{labels}"
+        );
+    }
+
+    /// The one fixture that must PASS: an undo-carrying probeable Action is a legal sole
+    /// distinguisher (spec §10), unlike its no-undo counterpart above.
+    #[test]
+    fn differ_only_by_undo_action_ok_validates_clean() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tweaks_fixtures/good/differ_only_by_undo_action_ok.yaml");
+        let corpus = load_corpus(&path).expect("fixture must load");
+        assert!(validate_structural(&corpus).is_empty());
+        let errors = validate_semantic(&corpus, SUPPORT_MATRIX);
+        assert!(
+            errors.is_empty(),
+            "expected no semantic errors, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn good_corpus_validates_semantically_clean() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/good");
+        let corpus = load_corpus(&dir).expect("the good fixture corpus must load");
+        let errors = validate_semantic(&corpus, SUPPORT_MATRIX);
+        assert!(
+            errors.is_empty(),
+            "expected no semantic errors, got {errors:?}"
+        );
+    }
+
+    /// Fix 3 (code review): the empty-applicable-surface skip (spec §6.6) driven end-to-end, not
+    /// just at the `scope_admits` primitive — a tweak-level `windows:` scope that excludes most of
+    /// the support matrix must load clean, proving a build-specific tweak can ship at all.
+    #[test]
+    fn build_specific_tweak_is_skipped_not_errored_before_its_windows_scope() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/good");
+        let corpus = load_corpus(&dir).expect("the good fixture corpus must load");
+        let tweak = corpus
+            .tweaks
+            .iter()
+            .find(|t| t.id == "build_26100_only_tweak")
+            .expect("build_26100_only_tweak must load");
+
+        // Sanity: the scope genuinely empties the surface on the earlier milestones and genuinely
+        // admits it on 26100 — proves the skip path is actually exercised, not vacuously true.
+        assert!(applicable_surface(tweak, &Milestone { build: 19045 }).is_empty());
+        assert!(applicable_surface(tweak, &Milestone { build: 22621 }).is_empty());
+        assert!(applicable_surface(tweak, &Milestone { build: 22631 }).is_empty());
+        assert!(!applicable_surface(tweak, &Milestone { build: 26100 }).is_empty());
+
+        let errors = validate_semantic(&corpus, SUPPORT_MATRIX);
+        assert!(
+            errors.is_empty(),
+            "expected no semantic errors, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn tweak_scoped_out_on_a_milestone_is_skipped_not_errored() {
+        // A tweak entirely out of scope for a milestone (spec §6.6) must not be flagged, even
+        // though a single option can never be "distinct" from nothing.
+        let milestone = Milestone { build: 19045 };
+        assert!(scope_admits(None, &milestone));
+        let scope = super::super::model::WindowsScope {
+            products: None,
+            build: Some(BuildExpr::Min(22000)),
+            revision: None,
+        };
+        assert!(!scope_admits(Some(&scope), &milestone));
+        assert!(scope_admits(Some(&scope), &Milestone { build: 22621 }));
     }
 }

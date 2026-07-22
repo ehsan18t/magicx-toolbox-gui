@@ -1,0 +1,22 @@
+category:
+  id: all_optional_option
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Every effect on the surface is optional, so the option has zero non-optional detectable effects."
+
+tweaks:
+  - id: all_optional_tweak
+    name: "All Optional"
+    description: "The only effect is optional; on a machine where the service is Missing, this option is invisible to detection."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: only_effect
+        service: { name: SomeOptionalSvc }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Enabled"
+        values:
+          only_effect: automatic

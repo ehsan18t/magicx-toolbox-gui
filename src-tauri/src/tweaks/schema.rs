@@ -3,18 +3,22 @@
 //! calls the Task 2 parsers — path/literal/scope logic is never reimplemented here.
 //!
 //! Scope note: Registry, RegistryKey, Service, Task, Hosts, Shared-reference, and Action(Script)
-//! authoring surfaces are wired up. `Firewall` is deliberately NOT wired — `RuleAddr` is still the
-//! Task 1 placeholder (`{ name: String }`); its full rule definition is a Task 7 decision.
-//! `ActionDef::DeleteTree`, `windows:` scoping, and per-effect `optional`/`if_missing`/`elevation`
-//! are real compiled-model fields with no YAML mapping yet — deferred to whichever task first
-//! needs to author them (see the Task 3 report's Deviations).
+//! authoring surfaces are wired up, along with tweak/effect/option-value `windows:` scoping and
+//! per-effect `optional`/`if_missing`/`elevation` (Task 4). `Firewall` is deliberately NOT wired —
+//! `RuleAddr` is still the Task 1 placeholder (`{ name: String }`); its full rule definition is a
+//! Task 7 decision. `ActionDef::DeleteTree` has no YAML mapping yet — deferred to whichever task
+//! first needs to author it.
 
 use super::model::{
     ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr, HostsAddr, KeyAddr,
     Level, Opt, OptLabel, OptValue, PackedFormat, RegAddr, RegType, RiskLevel, ScopedValue, Script,
     Setting, SharedDef, SharedId, Shell, StartupType, SvcAddr, TaskAddr, Tweak, Value,
+    WindowsScope,
 };
-use super::parse::{parse_reg_path, parse_value_literal, LiteralInput, LiteralTarget, ParseError};
+use super::parse::{
+    expand_product, parse_build_expr, parse_reg_path, parse_value_literal, validate_windows_scope,
+    LiteralInput, LiteralTarget, ParseError,
+};
 use super::validate::ValidationError;
 use serde::Deserialize;
 use serde_yaml_bw::Value as YamlValue;
@@ -62,6 +66,42 @@ struct TweakRaw {
     reversible: bool,
     effects: Vec<EffectRaw>,
     options: Vec<OptRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
+}
+
+/// A `windows:` block, authored identically at tweak/effect/option-value level (spec §6.6).
+/// `build`/`revision` stay strings here — parsed by the shared `parse_build_expr` grammar in
+/// [`convert_windows_scope`], never reimplemented.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WindowsRaw {
+    #[serde(default)]
+    products: Option<Vec<u8>>,
+    #[serde(default)]
+    build: Option<String>,
+    #[serde(default)]
+    revision: Option<String>,
+}
+
+/// Converts one `windows:` block via the Task 2 grammar (spec §6.6) — never reimplemented here.
+/// `products` are validated with [`expand_product`] but stored raw: the compiled model keeps the
+/// authored ids (`WindowsScope::products: Option<Vec<u8>>`); expansion is a guard/runtime concern.
+fn convert_windows_scope(raw: &WindowsRaw) -> Result<WindowsScope, ParseError> {
+    let build = raw.build.as_deref().map(parse_build_expr).transpose()?;
+    let revision = raw.revision.as_deref().map(parse_build_expr).transpose()?;
+    if let Some(products) = &raw.products {
+        for &product in products {
+            expand_product(product)?;
+        }
+    }
+    let scope = WindowsScope {
+        products: raw.products.clone(),
+        build,
+        revision,
+    };
+    validate_windows_scope(&scope)?;
+    Ok(scope)
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -230,47 +270,149 @@ enum EffectRaw {
     Action(ActionEffectRaw),
 }
 
+impl EffectRaw {
+    fn windows(&self) -> Option<&WindowsRaw> {
+        match self {
+            EffectRaw::Registry(r) => r.windows.as_ref(),
+            EffectRaw::RegistryKey(r) => r.windows.as_ref(),
+            EffectRaw::Service(r) => r.windows.as_ref(),
+            EffectRaw::Task(r) => r.windows.as_ref(),
+            EffectRaw::Hosts(r) => r.windows.as_ref(),
+            EffectRaw::Shared(r) => r.windows.as_ref(),
+            EffectRaw::Action(r) => r.windows.as_ref(),
+        }
+    }
+
+    fn elevation(&self) -> Option<LevelRaw> {
+        match self {
+            EffectRaw::Registry(r) => r.elevation,
+            EffectRaw::RegistryKey(r) => r.elevation,
+            EffectRaw::Service(r) => r.elevation,
+            EffectRaw::Task(r) => r.elevation,
+            EffectRaw::Hosts(r) => r.elevation,
+            EffectRaw::Shared(r) => r.elevation,
+            EffectRaw::Action(r) => r.elevation,
+        }
+    }
+
+    fn optional(&self) -> bool {
+        match self {
+            EffectRaw::Registry(r) => r.optional,
+            EffectRaw::RegistryKey(r) => r.optional,
+            EffectRaw::Service(r) => r.optional,
+            EffectRaw::Task(r) => r.optional,
+            EffectRaw::Hosts(r) => r.optional,
+            EffectRaw::Shared(_) | EffectRaw::Action(_) => false,
+        }
+    }
+
+    /// Only the five Setting-kind variants carry `if_missing` (spec §5.4 is a Setting-presence
+    /// concept) — Action/Shared authoring a stray `if_missing` is rejected as an unknown field.
+    fn if_missing(&self) -> Option<&YamlValue> {
+        match self {
+            EffectRaw::Registry(r) => r.if_missing.as_ref(),
+            EffectRaw::RegistryKey(r) => r.if_missing.as_ref(),
+            EffectRaw::Service(r) => r.if_missing.as_ref(),
+            EffectRaw::Task(r) => r.if_missing.as_ref(),
+            EffectRaw::Hosts(r) => r.if_missing.as_ref(),
+            EffectRaw::Shared(_) | EffectRaw::Action(_) => None,
+        }
+    }
+}
+
+// `optional`/`if_missing` are only meaningful on a Setting's own domain (spec §5.4 — a resource
+// that can be genuinely Missing), so `if_missing` is wired only on the five Setting-kind variants.
+// `windows`/`elevation` apply to every kind (spec §6.6/§9) and so appear on all seven.
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RegistryEffectRaw {
     id: String,
     registry: RegistryRaw,
+    #[serde(default)]
+    optional: bool,
+    #[serde(default)]
+    if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RegistryKeyEffectRaw {
     id: String,
     registry_key: RegistryKeyRaw,
+    #[serde(default)]
+    optional: bool,
+    #[serde(default)]
+    if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ServiceEffectRaw {
     id: String,
     service: ServiceRaw,
+    #[serde(default)]
+    optional: bool,
+    #[serde(default)]
+    if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TaskEffectRaw {
     id: String,
     task: TaskRaw,
+    #[serde(default)]
+    optional: bool,
+    #[serde(default)]
+    if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HostsEffectRaw {
     id: String,
     hosts: HostsRaw,
+    #[serde(default)]
+    optional: bool,
+    #[serde(default)]
+    if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SharedRefEffectRaw {
     id: String,
     shared: String,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActionEffectRaw {
     id: String,
     action: ActionRaw,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
 }
 
 /// One corpus-level `shared:` entry: `id` + exactly one Setting kind + the target `value`
@@ -435,22 +577,51 @@ fn setting_value_for(setting: &Setting, node: &YamlValue) -> Result<Value, Strin
     }
 }
 
-/// Parses one `options: [...].values` entry against the effect it addresses.
+/// Splits a per-option-value node into its literal-value node and an optional per-value
+/// `windows:` scope — the third scoping level (spec §6.6): `{ value: <literal>, windows: {...} }`.
+/// A bare literal (including the `{ literal: ... }` escape, spec §6.2 — its only key is `literal`,
+/// never `value`) passes through unscoped; `classify` still owns that shape untouched.
+fn split_scoped_node(node: &YamlValue) -> Result<(&YamlValue, Option<WindowsScope>), String> {
+    let YamlValue::Mapping(map) = node else {
+        return Ok((node, None));
+    };
+    if node.get("value").is_none() {
+        return Ok((node, None));
+    }
+    if let Some((key, _)) = map
+        .iter()
+        .find(|(k, _)| !matches!(k.as_str(), Some("value" | "windows")))
+    {
+        return Err(format!(
+            "{key:?} is not a valid key here — a mapped option value only accepts `value` and `windows`"
+        ));
+    }
+    let windows = node
+        .get("windows")
+        .map(|w| {
+            let raw: WindowsRaw = serde_yaml_bw::from_value(w.clone())
+                .map_err(|e| format!("invalid windows scope: {e}"))?;
+            convert_windows_scope(&raw).map_err(|e| e.to_string())
+        })
+        .transpose()?;
+    Ok((node.get("value").expect("checked above"), windows))
+}
+
+/// Parses one `options: [...].values` entry against the effect it addresses. The per-option-value
+/// `windows:` scope (spec §6.6's third level) is extracted once, uniformly, for every effect kind —
+/// not just Settings — since `Run`/`Claim`/`Unclaimed` carry that same optional scope (model.rs).
 fn option_value_for(kind: &Effect, node: &YamlValue) -> Result<OptValue, String> {
+    let (value_node, windows) = split_scoped_node(node)?;
     match kind {
-        Effect::Setting(setting) => setting_value_for(setting, node).map(|value| {
-            OptValue::Set(ScopedValue {
-                value,
-                windows: None,
-            })
-        }),
-        Effect::Shared(_) => match node.as_str() {
-            Some("claim") => Ok(OptValue::Claim),
-            Some("unclaimed") => Ok(OptValue::Unclaimed),
+        Effect::Setting(setting) => setting_value_for(setting, value_node)
+            .map(|value| OptValue::Set(ScopedValue { value, windows })),
+        Effect::Shared(_) => match value_node.as_str() {
+            Some("claim") => Ok(OptValue::Claim(windows)),
+            Some("unclaimed") => Ok(OptValue::Unclaimed(windows)),
             _ => Err("a shared effect's value must be `claim` or `unclaimed`".to_string()),
         },
-        Effect::Action(_) => match node.as_str() {
-            Some("run") => Ok(OptValue::Run),
+        Effect::Action(_) => match value_node.as_str() {
+            Some("run") => Ok(OptValue::Run(windows)),
             _ => Err("an action effect's value must be `run` (or omit it entirely)".to_string()),
         },
     }
@@ -542,20 +713,62 @@ fn convert_effect(
             })),
         ),
     };
-    match kind {
-        Ok(kind) => Some(EffectDef {
-            id: EffectId(id.to_string()),
-            kind,
-            elevation: None,
-            optional: false,
-            if_missing: None,
-            windows: None,
-        }),
+    let kind = match kind {
+        Ok(kind) => kind,
         Err(e) => {
             errors.push(e);
-            None
+            return None;
         }
-    }
+    };
+
+    let mut ok = true;
+    let windows = match raw.windows() {
+        Some(w) => match convert_windows_scope(w) {
+            Ok(scope) => Some(scope),
+            Err(source) => {
+                errors.push(ValidationError::InvalidWindowsScope {
+                    tweak: tweak_id.to_string(),
+                    context: format!("effect `{id}` windows scope"),
+                    source,
+                });
+                ok = false;
+                None
+            }
+        },
+        None => None,
+    };
+
+    // Safe by construction: `if_missing()` only returns `Some` for the five Setting-kind
+    // variants, and their `kind` conversion above always produces `Effect::Setting(_)`.
+    let if_missing = match raw.if_missing() {
+        Some(node) => {
+            let Effect::Setting(setting) = &kind else {
+                unreachable!("if_missing is only wired on Setting-kind EffectRaw variants")
+            };
+            match setting_value_for(setting, node) {
+                Ok(value) => Some(value),
+                Err(reason) => {
+                    errors.push(ValidationError::InvalidIfMissing {
+                        tweak: tweak_id.to_string(),
+                        effect: EffectId(id.to_string()),
+                        reason,
+                    });
+                    ok = false;
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    ok.then_some(EffectDef {
+        id: EffectId(id.to_string()),
+        kind,
+        elevation: raw.elevation().map(Into::into),
+        optional: raw.optional(),
+        if_missing,
+        windows,
+    })
 }
 
 fn convert_option(
@@ -641,6 +854,22 @@ fn convert_tweak(
         }
     }
 
+    let windows = match &raw.windows {
+        Some(w) => match convert_windows_scope(w) {
+            Ok(scope) => Some(scope),
+            Err(source) => {
+                errors.push(ValidationError::InvalidWindowsScope {
+                    tweak: raw.id.clone(),
+                    context: "windows scope".to_string(),
+                    source,
+                });
+                ok = false;
+                None
+            }
+        },
+        None => None,
+    };
+
     if !ok {
         return None;
     }
@@ -657,7 +886,7 @@ fn convert_tweak(
         reversible: raw.reversible,
         surface,
         options,
-        windows: None,
+        windows,
     })
 }
 
@@ -807,10 +1036,13 @@ mod tests {
     fn good_corpus_loads_with_correct_shape() {
         let corpus = load_corpus(&fixture("good")).expect("the good fixture corpus must load");
 
-        // Two files merged: two distinct categories, each tweak stamped with its own file's id.
+        // Three files merged: three distinct categories, each tweak stamped with its own file's id.
         let mut category_ids: Vec<&str> = corpus.categories.iter().map(|c| c.id.as_str()).collect();
         category_ids.sort_unstable();
-        assert_eq!(category_ids, vec!["category_a", "category_b"]);
+        assert_eq!(
+            category_ids,
+            vec!["category_a", "category_b", "differ_only_by_undo_action_ok"]
+        );
 
         let update_tweak = corpus
             .tweaks
@@ -864,7 +1096,7 @@ mod tests {
             .iter()
             .find(|o| o.label.0 == "Disabled")
             .and_then(|o| o.values.get(&telemetry_effect.id).cloned());
-        assert_eq!(claimed, Some(OptValue::Claim));
+        assert_eq!(claimed, Some(OptValue::Claim(None)));
     }
 
     /// Review fix: proves the RegistryKey and Hosts presence kinds actually load, resolving
@@ -938,6 +1170,89 @@ mod tests {
                 value: Value::Present(true),
                 windows: None,
             }))
+        );
+    }
+
+    /// Task 4 Half A: tweak/effect/option-value `windows:` scoping, per-effect `optional` +
+    /// `if_missing`, and per-effect `elevation` all round-trip from YAML into the compiled model.
+    #[test]
+    fn good_corpus_loads_windows_scoping_and_presence() {
+        let corpus = load_corpus(&fixture("good")).expect("the good fixture corpus must load");
+        let tweak = corpus
+            .tweaks
+            .iter()
+            .find(|t| t.id == "version_scoped_demo")
+            .expect("version_scoped_demo tweak must load");
+
+        assert_eq!(
+            tweak.windows,
+            Some(super::super::model::WindowsScope {
+                products: Some(vec![10, 11]),
+                build: None,
+                revision: None,
+            })
+        );
+
+        let modern_only = tweak
+            .surface
+            .iter()
+            .find(|e| e.id.0 == "modern_only_setting")
+            .expect("modern_only_setting effect must exist");
+        assert_eq!(
+            modern_only.windows,
+            Some(super::super::model::WindowsScope {
+                products: None,
+                build: Some(super::super::model::BuildExpr::Min(22621)),
+                revision: None,
+            })
+        );
+        assert_eq!(modern_only.elevation, Some(Level::Admin));
+        assert!(!modern_only.optional);
+
+        let legacy_service = tweak
+            .surface
+            .iter()
+            .find(|e| e.id.0 == "legacy_service")
+            .expect("legacy_service effect must exist");
+        assert!(legacy_service.optional);
+        assert_eq!(
+            legacy_service.if_missing,
+            Some(Value::Startup(StartupType::Disabled))
+        );
+
+        let on_option = tweak
+            .options
+            .iter()
+            .find(|o| o.label.0 == "On")
+            .expect("On option must exist");
+        let modern_only_value = on_option.values.get(&modern_only.id).cloned();
+        assert_eq!(
+            modern_only_value,
+            Some(OptValue::Set(ScopedValue {
+                value: Value::Reg(super::super::model::TypedRegValue::Dword(1)),
+                windows: Some(super::super::model::WindowsScope {
+                    products: None,
+                    build: Some(super::super::model::BuildExpr::Min(26100)),
+                    revision: None,
+                }),
+            }))
+        );
+
+        // Fix 2 (code review): per-option-value `windows:` scoping is not restricted to Settings —
+        // `notify_action` (an Action) carries the same third-level scope on the `On` option.
+        let notify_action = tweak
+            .surface
+            .iter()
+            .find(|e| e.id.0 == "notify_action")
+            .expect("notify_action effect must exist");
+        let notify_action_value = on_option.values.get(&notify_action.id).cloned();
+        assert_eq!(
+            notify_action_value,
+            Some(OptValue::Run(Some(super::super::model::WindowsScope {
+                products: None,
+                build: Some(super::super::model::BuildExpr::Min(26100)),
+                revision: None,
+            })))
         );
     }
 
