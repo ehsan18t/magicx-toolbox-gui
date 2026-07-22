@@ -483,6 +483,30 @@ mod tests {
         }
     }
 
+    /// A real top-level HKCU key (no "Software\" prefix) -- the only way to reach the
+    /// single-segment leading-backslash hazard `delete_key_guards` exercises. `delete_key` itself
+    /// unconditionally refuses to delete any top-level key by design (that is the very guard
+    /// under test), so cleanup here goes straight through the raw winreg API instead.
+    struct TopLevelGuard {
+        name: String,
+    }
+    impl TopLevelGuard {
+        fn new(label: &str) -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+            TopLevelGuard {
+                name: format!(
+                    "MagicXToolboxTestTopLevel_{label}_{}_{n}",
+                    std::process::id()
+                ),
+            }
+        }
+    }
+    impl Drop for TopLevelGuard {
+        fn drop(&mut self) {
+            let _ = RegKey::predef(HKEY_CURRENT_USER).delete_subkey_all(&self.name);
+        }
+    }
+
     #[test]
     fn delete_key_guards() {
         let guard = DeleteGuard::new("delete_key_guards");
@@ -510,18 +534,50 @@ mod tests {
         // non-empty parent_path that still starts with a backslash) with ERROR_BAD_PATHNAME
         // before this guard would even matter, so it cannot distinguish "guarded" from
         // "incidentally safe" the way the single-segment case can.
-        let top = format!("MagicXToolboxTestTopLevel_{}", std::process::id());
-        create_key(&RegistryHive::Hkcu, &top).unwrap();
-        let leading = format!("\\{top}");
-        let leading_result = delete_key(&RegistryHive::Hkcu, &leading);
-        let top_survived = key_exists(&RegistryHive::Hkcu, &top).unwrap();
-        // Clean up the top-level scratch key unconditionally before asserting, so a failed
-        // assertion never leaks it.
-        let _ = delete_key(&RegistryHive::Hkcu, &top);
-        leading_result.expect_err("leading backslash must be rejected");
+        let top = TopLevelGuard::new("delete_key_guards");
+        create_key(&RegistryHive::Hkcu, &top.name).unwrap();
+        let leading = format!("\\{}", top.name);
+        delete_key(&RegistryHive::Hkcu, &leading).expect_err("leading backslash must be rejected");
         assert!(
-            top_survived,
+            key_exists(&RegistryHive::Hkcu, &top.name).unwrap(),
             "the top-level key must survive a rejected leading-backslash delete"
+        );
+        // `top`'s Drop cleans it up (via the raw winreg API -- see `TopLevelGuard`), even if the
+        // assertion above panics.
+    }
+
+    /// Pins the doubled-backslash / empty-interior-segment behavior (e.g. `A\\B`, an empty
+    /// segment between "A" and "B"). Determined empirically, not inferred: `rsplit_once` finds
+    /// the *last* backslash, so this splits into parent_path `"...\A\"` (a trailing backslash
+    /// baked in) and child_name `"B"` (non-empty -- the empty-child-name guard does not apply
+    /// here). `RegOpenKeyExW` tolerates that trailing backslash and opens "A" anyway, so
+    /// `delete_subkey_all("B")` deletes exactly the named target. Confirmed by construction: a
+    /// sibling of A and A itself both survive, only A's child B is gone, and the call reports
+    /// `Ok(())` -- the benign resolution, not a wider deletion, so no new guard is needed for it.
+    #[test]
+    fn delete_key_tolerates_doubled_backslash_as_exact_target() {
+        let guard = DeleteGuard::new("dbl");
+        let a = format!("{}\\A", guard.path);
+        let b = format!("{a}\\B");
+        let sibling = format!("{}\\Sibling", guard.path);
+        create_key(&RegistryHive::Hkcu, &b).unwrap();
+        create_key(&RegistryHive::Hkcu, &sibling).unwrap();
+
+        let doubled = format!("{a}\\\\B"); // "...\A\\B" -- two backslashes between A and B
+        delete_key(&RegistryHive::Hkcu, &doubled)
+            .expect("a doubled backslash resolves to the exact named subkey, not an error");
+
+        assert!(
+            !key_exists(&RegistryHive::Hkcu, &b).unwrap(),
+            "A\\B must be gone -- that is the named target"
+        );
+        assert!(
+            key_exists(&RegistryHive::Hkcu, &a).unwrap(),
+            "A itself must survive -- only its child was named"
+        );
+        assert!(
+            key_exists(&RegistryHive::Hkcu, &sibling).unwrap(),
+            "a sibling of A must be untouched by a delete scoped to A\\B"
         );
     }
 

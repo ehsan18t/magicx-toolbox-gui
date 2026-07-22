@@ -331,9 +331,7 @@ mod tests {
         let cx = user_cx();
         let addr = scratch.reg_addr("Flag", RegType::Dword);
 
-        let absent = RegistryKind
-            .read(&Setting::Registry(addr.clone()), &cx)
-            .unwrap();
+        let absent = RegistryKind.read(&Setting::Registry(addr), &cx).unwrap();
         assert_eq!(absent, Value::Absent);
 
         registry_service::set_dword(&RegistryHive::Hkcu, &scratch.path, "Flag", 7).unwrap();
