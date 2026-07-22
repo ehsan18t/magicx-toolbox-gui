@@ -4,6 +4,7 @@ mod error;
 mod models;
 mod services;
 mod setup;
+pub mod tweaks;
 mod window_watchdog;
 
 /// Generated tweak data compiled from YAML files at build time.
