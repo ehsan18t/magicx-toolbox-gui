@@ -97,13 +97,53 @@ pub struct HostsAddr {
     pub domain: String,
 }
 
-/// A firewall rule address. Spec §5.1 describes this as "named rule + full rule definition";
-/// the definition fields are deferred to Task 7 (Hosts and Firewall kinds), which pins the
-/// schema against the real `firewall_service` primitive — nothing in §5/§6 or the brief's
-/// interface list specifies them, and no Task 1 test exercises this type's fields.
+/// Firewall rule direction (spec §5.1) — mirrors `netsh`'s inbound/outbound axis. Kept separate
+/// from the legacy `models::tweak::FirewallDirection` schema type the same way `Hive`/`RegType`
+/// are kept separate from their legacy counterparts: this file stays decoupled from
+/// `models::tweak_schema` entirely (see the module doc comment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FwDirection {
+    Inbound,
+    Outbound,
+}
+
+/// Firewall rule action (spec §5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FwAction {
+    Block,
+    Allow,
+}
+
+/// Firewall rule protocol filter (spec §5.1); `Any` leaves the rule unrestricted by protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FwProtocol {
+    Any,
+    Tcp,
+    Udp,
+    Icmpv4,
+    Icmpv6,
+}
+
+/// A firewall rule address: named rule + the full definition needed to (re)create it (spec §5.1).
+/// Settled by Task 7 (Hosts and Firewall kinds): the field set is exactly what
+/// `services::firewall_service::create_firewall_rule` (via its `FirewallChange` parameter) can
+/// act on — no netsh/Windows Firewall capability this app does not already use. `direction` and
+/// `action` are required (not `Option`, unlike the legacy `FirewallChange`) because this address
+/// is never used for a delete-only operation — the create/delete decision is carried entirely by
+/// `Value::Present(bool)`, so whenever driven to `Present(true)` the address must already describe
+/// a complete, creatable rule.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleAddr {
     pub name: String,
+    pub direction: FwDirection,
+    pub action: FwAction,
+    pub protocol: Option<FwProtocol>,
+    pub program: Option<String>,
+    pub service: Option<String>,
+    pub remote_addresses: Option<Vec<String>>,
+    pub remote_ports: Option<String>,
+    pub local_ports: Option<String>,
+    pub description: Option<String>,
 }
 
 /// One address kind on a tweak's managed surface (spec §5).
@@ -378,6 +418,9 @@ mod tests {
         assert_send_sync::<TaskAddr>();
         assert_send_sync::<HostsAddr>();
         assert_send_sync::<RuleAddr>();
+        assert_send_sync::<FwDirection>();
+        assert_send_sync::<FwAction>();
+        assert_send_sync::<FwProtocol>();
         assert_send_sync::<FieldAddr>();
         assert_send_sync::<PackedFormat>();
         assert_send_sync::<Tweak>();

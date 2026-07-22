@@ -31,6 +31,8 @@
 //! - None of the above changes `EffectKind`'s signature — only `ExecCx`'s internals and each
 //!   kind's `System`/`Ti` branch change.
 
+pub mod firewall;
+pub mod hosts;
 pub mod registry;
 pub mod service;
 pub mod task;

@@ -1,0 +1,46 @@
+category:
+  id: dup_address_firewall_rule
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two different tweaks both manage the same firewall rule name."
+
+tweaks:
+  - id: block_rule_tweak
+    name: "Block Rule"
+    description: "Manages the rule directly."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: block_rule
+        firewall:
+          name: "MagicX Duplicate Rule"
+          direction: outbound
+          action: block
+    options:
+      - label: "Blocked"
+        values:
+          block_rule: present
+      - label: "Allowed"
+        values:
+          block_rule: absent
+
+  - id: block_rule_tweak_2
+    name: "Block Rule Again"
+    description: "Manages the exact same firewall rule name (with a different definition) — this is the violation: ownership keys on the rule name, not the rest of the definition."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: another_rule_effect
+        firewall:
+          name: "MagicX Duplicate Rule"
+          direction: inbound
+          action: allow
+    options:
+      - label: "Blocked"
+        values:
+          another_rule_effect: present
+      - label: "Allowed"
+        values:
+          another_rule_effect: absent

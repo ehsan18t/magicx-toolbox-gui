@@ -77,6 +77,29 @@ tweaks:
         values:
           tracker_host: absent
 
+  - id: block_bad_actor_ip
+    name: "Block Known Bad Actor"
+    description: "Demonstrates a Firewall presence Setting (named rule + full rule definition)."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: bad_actor_rule
+        firewall:
+          name: "MagicX Block Bad Actor"
+          direction: outbound
+          action: block
+          protocol: tcp
+          remote_addresses: ["203.0.113.0/24"]
+          description: "Blocks outbound TCP to a known bad actor range."
+    options:
+      - label: "Blocked"
+        values:
+          bad_actor_rule: present
+      - label: "Allowed"
+        values:
+          bad_actor_rule: absent
+
   - id: version_scoped_demo
     name: "Version Scoped Demo"
     description: "Demonstrates tweak/effect/option-value windows scoping (incl. on a non-Setting Action value), optional/if_missing, and per-effect elevation (Task 4)."

@@ -928,6 +928,34 @@ mod tests {
         );
     }
 
+    /// Task 7: confirms the ownership guard treats a firewall rule name as a first-class address
+    /// (already wired via `coarse_key_and_field`'s `Setting::Firewall` arm, ahead of `RuleAddr`
+    /// being settled) — keyed on the rule name alone, so two effects with the *same name* but
+    /// different definitions still collide.
+    #[test]
+    fn dup_address_firewall_rule_is_rejected() {
+        let errors = errors_for("dup_address_firewall_rule.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::DuplicateAddress {
+            address,
+            first,
+            second,
+        } = &errors[0]
+        else {
+            panic!("expected DuplicateAddress, got {:?}", errors[0]);
+        };
+        assert!(address.contains("MagicX Duplicate Rule"), "{address}");
+        let owners = format!("{first} {second}");
+        assert!(
+            owners.contains("block_rule_tweak") && owners.contains("block_rule_tweak_2"),
+            "{owners}"
+        );
+    }
+
     #[test]
     fn dup_shared_decls_is_rejected() {
         let errors = errors_for("dup_shared_decls.yaml");

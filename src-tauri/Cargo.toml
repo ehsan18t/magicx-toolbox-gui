@@ -88,6 +88,12 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
+    # ReplaceFileW (atomic, ACL-preserving hosts-file replace -- see services/hosts_service.rs)
+    "Win32_Storage_FileSystem",
+    # Get/SetNamedSecurityInfoW -- explicit owner+DACL capture/restore around that same replace,
+    # since ReplaceFileW alone does not preserve the owner (empirically confirmed; implies
+    # Win32_Security, already enabled above).
+    "Win32_Security_Authorization",
 ] }
 # High-level COM wrappers (Task Scheduler). Coexists with windows-sys; the elevated broker (TI
 # stage) reuses this crate for Owned<HANDLE> cleanup.

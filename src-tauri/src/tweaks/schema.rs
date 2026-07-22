@@ -2,18 +2,19 @@
 //! binary never links `serde_yaml_bw`. Maps `serde_yaml_bw` nodes onto `parse::LiteralInput` and
 //! calls the Task 2 parsers — path/literal/scope logic is never reimplemented here.
 //!
-//! Scope note: Registry, RegistryKey, Service, Task, Hosts, Shared-reference, and Action(Script)
-//! authoring surfaces are wired up, along with tweak/effect/option-value `windows:` scoping and
-//! per-effect `optional`/`if_missing`/`elevation` (Task 4). `Firewall` is deliberately NOT wired —
-//! `RuleAddr` is still the Task 1 placeholder (`{ name: String }`); its full rule definition is a
-//! Task 7 decision. `ActionDef::DeleteTree` has no YAML mapping yet — deferred to whichever task
-//! first needs to author it.
+//! Scope note: Registry, RegistryKey, Service, Task, Hosts, Firewall, Shared-reference, and
+//! Action(Script) authoring surfaces are wired up, along with tweak/effect/option-value `windows:`
+//! scoping and per-effect `optional`/`if_missing`/`elevation` (Task 4). `Firewall`'s `RuleAddr` was
+//! settled by Task 7 against the real `firewall_service` primitive (see `tweaks/model.rs`); `shared:`
+//! does not offer a Firewall variant — nothing in spec §6.5 asks for one, and adding it is deferred
+//! until an author actually needs it. `ActionDef::DeleteTree` has no YAML mapping yet — deferred to
+//! whichever task first needs to author it.
 
 use super::model::{
-    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr, HostsAddr, KeyAddr,
-    Level, Opt, OptLabel, OptValue, PackedFormat, RegAddr, RegType, RiskLevel, ScopedValue, Script,
-    Setting, SharedDef, SharedId, Shell, StartupType, SvcAddr, TaskAddr, Tweak, Value,
-    WindowsScope,
+    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr, FwAction, FwDirection,
+    FwProtocol, HostsAddr, KeyAddr, Level, Opt, OptLabel, OptValue, PackedFormat, RegAddr, RegType,
+    RiskLevel, RuleAddr, ScopedValue, Script, Setting, SharedDef, SharedId, Shell, StartupType,
+    SvcAddr, TaskAddr, Tweak, Value, WindowsScope,
 };
 use super::parse::{
     expand_product, parse_build_expr, parse_reg_path, parse_value_literal, validate_windows_scope,
@@ -242,6 +243,82 @@ struct HostsRaw {
     domain: String,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FwDirectionRaw {
+    Inbound,
+    Outbound,
+}
+
+impl From<FwDirectionRaw> for FwDirection {
+    fn from(raw: FwDirectionRaw) -> Self {
+        match raw {
+            FwDirectionRaw::Inbound => FwDirection::Inbound,
+            FwDirectionRaw::Outbound => FwDirection::Outbound,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FwActionRaw {
+    Block,
+    Allow,
+}
+
+impl From<FwActionRaw> for FwAction {
+    fn from(raw: FwActionRaw) -> Self {
+        match raw {
+            FwActionRaw::Block => FwAction::Block,
+            FwActionRaw::Allow => FwAction::Allow,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FwProtocolRaw {
+    Any,
+    Tcp,
+    Udp,
+    Icmpv4,
+    Icmpv6,
+}
+
+impl From<FwProtocolRaw> for FwProtocol {
+    fn from(raw: FwProtocolRaw) -> Self {
+        match raw {
+            FwProtocolRaw::Any => FwProtocol::Any,
+            FwProtocolRaw::Tcp => FwProtocol::Tcp,
+            FwProtocolRaw::Udp => FwProtocol::Udp,
+            FwProtocolRaw::Icmpv4 => FwProtocol::Icmpv4,
+            FwProtocolRaw::Icmpv6 => FwProtocol::Icmpv6,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FirewallRaw {
+    name: String,
+    direction: FwDirectionRaw,
+    action: FwActionRaw,
+    #[serde(default)]
+    protocol: Option<FwProtocolRaw>,
+    #[serde(default)]
+    program: Option<String>,
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    remote_addresses: Option<Vec<String>>,
+    #[serde(default)]
+    remote_ports: Option<String>,
+    #[serde(default)]
+    local_ports: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActionRaw {
@@ -266,6 +343,7 @@ enum EffectRaw {
     Service(ServiceEffectRaw),
     Task(TaskEffectRaw),
     Hosts(HostsEffectRaw),
+    Firewall(FirewallEffectRaw),
     Shared(SharedRefEffectRaw),
     Action(ActionEffectRaw),
 }
@@ -278,6 +356,7 @@ impl EffectRaw {
             EffectRaw::Service(r) => r.windows.as_ref(),
             EffectRaw::Task(r) => r.windows.as_ref(),
             EffectRaw::Hosts(r) => r.windows.as_ref(),
+            EffectRaw::Firewall(r) => r.windows.as_ref(),
             EffectRaw::Shared(r) => r.windows.as_ref(),
             EffectRaw::Action(r) => r.windows.as_ref(),
         }
@@ -290,6 +369,7 @@ impl EffectRaw {
             EffectRaw::Service(r) => r.elevation,
             EffectRaw::Task(r) => r.elevation,
             EffectRaw::Hosts(r) => r.elevation,
+            EffectRaw::Firewall(r) => r.elevation,
             EffectRaw::Shared(r) => r.elevation,
             EffectRaw::Action(r) => r.elevation,
         }
@@ -302,11 +382,12 @@ impl EffectRaw {
             EffectRaw::Service(r) => r.optional,
             EffectRaw::Task(r) => r.optional,
             EffectRaw::Hosts(r) => r.optional,
+            EffectRaw::Firewall(r) => r.optional,
             EffectRaw::Shared(_) | EffectRaw::Action(_) => false,
         }
     }
 
-    /// Only the five Setting-kind variants carry `if_missing` (spec §5.4 is a Setting-presence
+    /// Only the six Setting-kind variants carry `if_missing` (spec §5.4 is a Setting-presence
     /// concept) — Action/Shared authoring a stray `if_missing` is rejected as an unknown field.
     fn if_missing(&self) -> Option<&YamlValue> {
         match self {
@@ -315,14 +396,15 @@ impl EffectRaw {
             EffectRaw::Service(r) => r.if_missing.as_ref(),
             EffectRaw::Task(r) => r.if_missing.as_ref(),
             EffectRaw::Hosts(r) => r.if_missing.as_ref(),
+            EffectRaw::Firewall(r) => r.if_missing.as_ref(),
             EffectRaw::Shared(_) | EffectRaw::Action(_) => None,
         }
     }
 }
 
 // `optional`/`if_missing` are only meaningful on a Setting's own domain (spec §5.4 — a resource
-// that can be genuinely Missing), so `if_missing` is wired only on the five Setting-kind variants.
-// `windows`/`elevation` apply to every kind (spec §6.6/§9) and so appear on all seven.
+// that can be genuinely Missing), so `if_missing` is wired only on the six Setting-kind variants.
+// `windows`/`elevation` apply to every kind (spec §6.6/§9) and so appear on all eight.
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -385,6 +467,20 @@ struct TaskEffectRaw {
 struct HostsEffectRaw {
     id: String,
     hosts: HostsRaw,
+    #[serde(default)]
+    optional: bool,
+    #[serde(default)]
+    if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FirewallEffectRaw {
+    id: String,
+    firewall: FirewallRaw,
     #[serde(default)]
     optional: bool,
     #[serde(default)]
@@ -567,12 +663,9 @@ fn setting_value_for(setting: &Setting, node: &YamlValue) -> Result<Value, Strin
         }
         // Presence kinds: the `present`/`absent` keywords, same shape-first classification as a
         // registry literal, targeted at `LiteralTarget::Presence` instead of a `RegType`.
-        Setting::RegistryKey(_) | Setting::Hosts(_) => {
+        Setting::RegistryKey(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
             let input = classify(node)?;
             parse_value_literal(input, LiteralTarget::Presence).map_err(|e| e.to_string())
-        }
-        Setting::Firewall(_) => {
-            unreachable!("schema.rs does not construct Firewall yet — Task 7 decision")
         }
     }
 }
@@ -659,6 +752,21 @@ fn convert_hosts(raw: &HostsRaw) -> HostsAddr {
     }
 }
 
+fn convert_firewall(raw: &FirewallRaw) -> RuleAddr {
+    RuleAddr {
+        name: raw.name.clone(),
+        direction: raw.direction.into(),
+        action: raw.action.into(),
+        protocol: raw.protocol.map(Into::into),
+        program: raw.program.clone(),
+        service: raw.service.clone(),
+        remote_addresses: raw.remote_addresses.clone(),
+        remote_ports: raw.remote_ports.clone(),
+        local_ports: raw.local_ports.clone(),
+        description: raw.description.clone(),
+    }
+}
+
 fn convert_effect(
     raw: &EffectRaw,
     tweak_id: &str,
@@ -700,6 +808,12 @@ fn convert_effect(
         EffectRaw::Hosts(r) => (
             &r.id,
             Ok(Effect::Setting(Setting::Hosts(convert_hosts(&r.hosts)))),
+        ),
+        EffectRaw::Firewall(r) => (
+            &r.id,
+            Ok(Effect::Setting(Setting::Firewall(convert_firewall(
+                &r.firewall,
+            )))),
         ),
         EffectRaw::Shared(r) => (&r.id, Ok(Effect::Shared(SharedId(r.shared.clone())))),
         EffectRaw::Action(r) => (
@@ -824,6 +938,7 @@ fn effect_id_of(raw: &EffectRaw) -> &str {
         EffectRaw::Service(r) => &r.id,
         EffectRaw::Task(r) => &r.id,
         EffectRaw::Hosts(r) => &r.id,
+        EffectRaw::Firewall(r) => &r.id,
         EffectRaw::Shared(r) => &r.id,
         EffectRaw::Action(r) => &r.id,
     }
@@ -1168,6 +1283,65 @@ mod tests {
             blocked_value,
             Some(OptValue::Set(ScopedValue {
                 value: Value::Present(true),
+                windows: None,
+            }))
+        );
+    }
+
+    /// Task 7: the `firewall:` effect authoring surface — full `RuleAddr` definition round-trips
+    /// from YAML, and `present`/`absent` resolve to `Value::Present(bool)` like the other presence
+    /// kinds.
+    #[test]
+    fn good_corpus_loads_firewall_presence_kind() {
+        let corpus = load_corpus(&fixture("good")).expect("the good fixture corpus must load");
+
+        let tweak = corpus
+            .tweaks
+            .iter()
+            .find(|t| t.id == "block_bad_actor_ip")
+            .expect("block_bad_actor_ip tweak must load");
+        let effect = tweak
+            .surface
+            .iter()
+            .find(|e| e.id.0 == "bad_actor_rule")
+            .expect("bad_actor_rule effect must exist");
+        let Effect::Setting(Setting::Firewall(addr)) = &effect.kind else {
+            panic!("expected a Firewall setting");
+        };
+        assert_eq!(addr.name, "MagicX Block Bad Actor");
+        assert_eq!(addr.direction, FwDirection::Outbound);
+        assert_eq!(addr.action, FwAction::Block);
+        assert_eq!(addr.protocol, Some(FwProtocol::Tcp));
+        assert_eq!(
+            addr.remote_addresses,
+            Some(vec!["203.0.113.0/24".to_string()])
+        );
+        assert_eq!(
+            addr.description,
+            Some("Blocks outbound TCP to a known bad actor range.".to_string())
+        );
+
+        let blocked_value = tweak
+            .options
+            .iter()
+            .find(|o| o.label.0 == "Blocked")
+            .and_then(|o| o.values.get(&effect.id).cloned());
+        assert_eq!(
+            blocked_value,
+            Some(OptValue::Set(ScopedValue {
+                value: Value::Present(true),
+                windows: None,
+            }))
+        );
+        let allowed_value = tweak
+            .options
+            .iter()
+            .find(|o| o.label.0 == "Allowed")
+            .and_then(|o| o.values.get(&effect.id).cloned());
+        assert_eq!(
+            allowed_value,
+            Some(OptValue::Set(ScopedValue {
+                value: Value::Present(false),
                 windows: None,
             }))
         );
