@@ -94,6 +94,14 @@ windows-sys = { version = "0.61", features = [
     # since ReplaceFileW alone does not preserve the owner (empirically confirmed; implies
     # Win32_Security, already enabled above).
     "Win32_Security_Authorization",
+    # BCryptGenRandom -- CSPRNG source for the Action kind's Cmd temp-script filename (no direct
+    # rand/getrandom/uuid dependency exists in this tree; see tweaks/kinds/action.rs).
+    "Win32_Security_Cryptography",
+    # CreateJobObjectW/AssignProcessToJobObject/TerminateJobObject -- binds a Cmd/PowerShell
+    # Action's child (and anything it spawns) into a kill-on-close container so a bounded timeout
+    # is a real guarantee on the whole process tree, not just the immediate pid (see
+    # tweaks/kinds/action.rs).
+    "Win32_System_JobObjects",
 ] }
 # High-level COM wrappers (Task Scheduler). Coexists with windows-sys; the elevated broker (TI
 # stage) reuses this crate for Owned<HANDLE> cleanup.

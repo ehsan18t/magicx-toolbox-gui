@@ -31,6 +31,7 @@
 //! - None of the above changes `EffectKind`'s signature — only `ExecCx`'s internals and each
 //!   kind's `System`/`Ti` branch change.
 
+pub mod action;
 pub mod firewall;
 pub mod hosts;
 pub mod registry;
@@ -99,6 +100,19 @@ pub enum Error {
     /// kind-neutral since `map_backend_error` routes all three kinds through this variant).
     #[error("operation failed: {0}")]
     Backend(String),
+
+    /// An Action's script ran to completion but reported failure via its exit code -- the sole,
+    /// locale-independent `apply`/`undo` signal (spec §7). Carries the code rather than collapsing
+    /// it into an opaque string, so a caller can log or display it.
+    #[error("action exited with code {0}")]
+    ActionFailed(i32),
+
+    /// An Action's script process could not be spawned, or was killed after exceeding its bounded
+    /// timeout (spec §14). Distinct from [`Error::ActionFailed`]: this means "we could not learn
+    /// the answer," which must never present as a benign `Ok(false)`/success (invariant 2) --
+    /// exactly the same principle `ActionFailed` vs. this variant draws for `probe`.
+    #[error("{0}")]
+    ActionExecFailed(String),
 }
 
 /// Execution context an [`EffectKind`] runs under. See the module docs for the broker seam a

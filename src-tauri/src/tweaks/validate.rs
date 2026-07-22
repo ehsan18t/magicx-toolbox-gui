@@ -171,6 +171,15 @@ pub enum ValidationError {
     )]
     IfMissingWithoutOptional { tweak: String, effect: EffectId },
 
+    /// `ephemeral: true` takes no `undo`/`probe` (spec §7): a transient side-effect is *exempt*
+    /// from reversibility/detectability, not merely allowed to skip them — carrying either would
+    /// let a later engine call `run_undo`/`run_probe` on an action the tweak's own `reversible`/
+    /// detectability computation never accounted for.
+    #[error(
+        "tweak `{tweak}` effect `{effect}` is ephemeral but declares undo/probe — an ephemeral action takes neither (spec §7)"
+    )]
+    EphemeralWithUndoOrProbe { tweak: String, effect: EffectId },
+
     /// spec §10 Detectability: this option has no non-optional detectable effect on `build` — an
     /// optional effect may read `Missing` on a real machine, so the option would become
     /// indistinguishable from every other state there. `build` is the first milestone this failed
@@ -247,6 +256,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_reversibility(tweak, &mut errors);
         check_ti_self_availability(tweak, &mut errors);
         check_if_missing_requires_optional(tweak, &mut errors);
+        check_ephemeral_has_no_undo_probe(tweak, &mut errors);
     }
     errors
 }
@@ -540,6 +550,28 @@ fn check_if_missing_requires_optional(tweak: &Tweak, errors: &mut Vec<Validation
                 tweak: tweak.id.clone(),
                 effect: effect.id.clone(),
             });
+        }
+    }
+}
+
+/// `ephemeral: true` takes no `undo`/`probe` (spec §7) — schema.rs parses the three fields
+/// independently, so nothing upstream stops an author writing both; this is the one place that
+/// rejects it.
+fn check_ephemeral_has_no_undo_probe(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    for effect in &tweak.surface {
+        if let Effect::Action(ActionDef::Script {
+            ephemeral: true,
+            undo,
+            probe,
+            ..
+        }) = &effect.kind
+        {
+            if undo.is_some() || probe.is_some() {
+                errors.push(ValidationError::EphemeralWithUndoOrProbe {
+                    tweak: tweak.id.clone(),
+                    effect: effect.id.clone(),
+                });
+            }
         }
     }
 }
@@ -1089,6 +1121,38 @@ mod tests {
         };
         assert_eq!(tweak, "disables_ti");
         assert_eq!(effect.0, "ti_service");
+    }
+
+    #[test]
+    fn ephemeral_with_undo_is_rejected() {
+        let errors = errors_for("ephemeral_with_undo.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::EphemeralWithUndoOrProbe { tweak, effect } = &errors[0] else {
+            panic!("expected EphemeralWithUndoOrProbe, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "ephemeral_with_undo_tweak");
+        assert_eq!(effect.0, "flush_dns");
+    }
+
+    /// Fix 4b: `ephemeral_with_undo_is_rejected` above only exercises the `undo` half of the
+    /// guard's `undo.is_some() || probe.is_some()` condition -- this pins the `probe` half too.
+    #[test]
+    fn ephemeral_with_probe_is_rejected() {
+        let errors = errors_for("ephemeral_with_probe.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        let ValidationError::EphemeralWithUndoOrProbe { tweak, effect } = &errors[0] else {
+            panic!("expected EphemeralWithUndoOrProbe, got {:?}", errors[0]);
+        };
+        assert_eq!(tweak, "ephemeral_with_probe_tweak");
+        assert_eq!(effect.0, "flush_dns");
     }
 
     #[test]
