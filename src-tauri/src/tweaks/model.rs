@@ -196,6 +196,24 @@ pub struct SharedId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OptLabel(pub String);
 
+// `Display` (not just `Debug`) on all three id newtypes: build-time `ValidationError` messages
+// (Task 3) print these verbatim in author-facing text, where `EffectId("foo")` would be noise.
+impl std::fmt::Display for EffectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl std::fmt::Display for SharedId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl std::fmt::Display for OptLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// One atomic unit of change (spec §5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Effect {
@@ -285,6 +303,29 @@ pub struct Tweak {
     pub surface: Vec<EffectDef>,
     pub options: Vec<Opt>,
     pub windows: Option<WindowsScope>,
+}
+
+/// A corpus file's `category:` header (spec §6 shows the shape; the id/name/icon/description
+/// fields match today's `src-tauri/tweaks/*.yaml`). Stamped onto every `Tweak` loaded from that
+/// file — authors never repeat it per-tweak (Task 3, schema.rs).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CategoryDef {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub description: String,
+}
+
+/// The fully loaded, corpus-wide result of `schema::load_corpus` (Task 3): every category header,
+/// every tweak (already stamped with its file's category), and every merged `shared:` declaration.
+/// `shared` is corpus-wide (spec §6.5) — a single flat list regardless of which file declared each
+/// entry — which is exactly why duplicate `shared` ids must be checked across the whole `Corpus`,
+/// not per-file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Corpus {
+    pub categories: Vec<CategoryDef>,
+    pub tweaks: Vec<Tweak>,
+    pub shared: Vec<SharedDef>,
 }
 
 #[cfg(test)]

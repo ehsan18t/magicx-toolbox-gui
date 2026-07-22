@@ -28,6 +28,14 @@ serde_json = "1"
 # (unsound, every version affected, no patched release) and its repo is archived.
 serde_yaml_bw = "2.5"
 regex = "1"  # For validating task_name_pattern in YAML
+# tweaks/schema.rs (dev-only today) is written so build.rs can #[path]-include it later; that
+# include will need thiserror's ValidationError derive to compile alongside model.rs/parse.rs.
+thiserror = "2"
+
+[dev-dependencies]
+# Loads tweaks/schema.rs under `cargo test` only (see tweaks/mod.rs) — kept out of
+# [dependencies] so the shipped binary never links a YAML parser.
+serde_yaml_bw = "2.5"
 
 [dependencies]
 tauri = { version = "2", features = [] }

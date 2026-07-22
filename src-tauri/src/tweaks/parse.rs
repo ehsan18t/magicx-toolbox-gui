@@ -30,6 +30,11 @@ pub enum ParseError {
     #[error("presence values are only ever `present` or `absent`")]
     InvalidPresenceLiteral,
 
+    #[error(
+        "`present` is not valid for a registry value — only registry keys, hosts entries, and firewall rules have a present/absent state"
+    )]
+    PresentOnRegistryValue,
+
     #[error("{raw:?} is not a valid windows build expression — use N, >=N, <=N, or A..B")]
     InvalidBuildExpr { raw: String },
 
@@ -56,7 +61,11 @@ pub enum LiteralInput {
     /// A YAML list of strings — the only shape `REG_MULTI_SZ` accepts; `[]` clears it.
     List(Vec<String>),
     /// A bare scalar matching the reserved word `absent` — never string content.
-    Reserved,
+    Absent,
+    /// A bare scalar matching the reserved word `present` — never string content. Only meaningful
+    /// for presence kinds (registry keys, hosts entries, firewall rules); a registry *value* has
+    /// no "present" state, so this is a build error there (spec §5.1, §6.2).
+    Present,
     /// The `{ literal: <text> }` escape: `<text>` is literal, even if it reads like a keyword.
     Escape(String),
     /// A YAML `null`, or a value entry with nothing after it (spec §6.2, ADR-0004).
@@ -75,7 +84,9 @@ pub enum LiteralTarget {
 /// Parses one value literal (spec §6.2). A bare `absent` is *always* the reserved keyword —
 /// for every value type, including `Sz`/`ExpandSz` — because a type class with no deletion
 /// spelling would be a hole, not a safeguard (invariant 13; ADR-0004 amended). An author who
-/// wants the literal four-letter string uses the `{ literal: absent }` escape instead.
+/// wants the literal four-letter string uses the `{ literal: absent }` escape instead. A bare
+/// `present` is the presence-kind mirror of `absent`: legal only for `LiteralTarget::Presence`
+/// (registry keys, hosts entries, firewall rules) — a registry value has no "present" state.
 pub fn parse_value_literal(
     input: LiteralInput,
     target: LiteralTarget,
@@ -83,9 +94,14 @@ pub fn parse_value_literal(
     match input {
         LiteralInput::Null => Err(ParseError::MissingValue),
 
-        LiteralInput::Reserved => match target {
+        LiteralInput::Absent => match target {
             LiteralTarget::Reg(_) => Ok(Value::Absent),
             LiteralTarget::Presence => Ok(Value::Present(false)),
+        },
+
+        LiteralInput::Present => match target {
+            LiteralTarget::Reg(_) => Err(ParseError::PresentOnRegistryValue),
+            LiteralTarget::Presence => Ok(Value::Present(true)),
         },
 
         LiteralInput::List(items) => match target {
@@ -94,9 +110,9 @@ pub fn parse_value_literal(
             LiteralTarget::Presence => Err(ParseError::InvalidPresenceLiteral),
         },
 
-        // Past the Reserved/List/Null gates above, Str and an unwrapped Escape are the same
+        // Past the Absent/Present/List/Null gates above, Str and an unwrapped Escape are the same
         // thing: literal text to render as `ty` dictates. That equivalence is the entire point
-        // of the escape — it exists only to reach this arm instead of the Reserved one.
+        // of the escape — it exists only to reach this arm instead of the Absent/Present ones.
         LiteralInput::Str(text) | LiteralInput::Escape(text) => match target {
             LiteralTarget::Reg(ty) => Ok(Value::Reg(reg_scalar_from_str(&text, ty)?)),
             LiteralTarget::Presence => Err(ParseError::InvalidPresenceLiteral),
@@ -473,7 +489,7 @@ mod tests {
             RegType::Binary,
             RegType::MultiSz,
         ] {
-            let value = parse_value_literal(LiteralInput::Reserved, LiteralTarget::Reg(ty))
+            let value = parse_value_literal(LiteralInput::Absent, LiteralTarget::Reg(ty))
                 .unwrap_or_else(|e| panic!("absent should resolve for {ty:?}: {e}"));
             assert_eq!(
                 value,
@@ -485,9 +501,40 @@ mod tests {
 
     #[test]
     fn reserved_absent_is_present_false_for_presence_target() {
-        let value = parse_value_literal(LiteralInput::Reserved, LiteralTarget::Presence)
+        let value = parse_value_literal(LiteralInput::Absent, LiteralTarget::Presence)
             .expect("absent should resolve for a presence kind");
         assert_eq!(value, Value::Present(false));
+    }
+
+    #[test]
+    fn reserved_present_is_present_true_for_presence_target() {
+        let value = parse_value_literal(LiteralInput::Present, LiteralTarget::Presence)
+            .expect("present should resolve for a presence kind");
+        assert_eq!(value, Value::Present(true));
+    }
+
+    /// A registry *value* has no "present" state (only keys/hosts/firewall do) — `present` there
+    /// is a build error naming what is valid instead of silently coercing to something else.
+    #[test]
+    fn present_is_rejected_for_every_reg_type() {
+        for ty in [
+            RegType::Dword,
+            RegType::Qword,
+            RegType::Sz,
+            RegType::ExpandSz,
+            RegType::Binary,
+            RegType::MultiSz,
+        ] {
+            let err = parse_value_literal(LiteralInput::Present, LiteralTarget::Reg(ty))
+                .expect_err("present must be rejected for a registry value");
+            let message = err.to_string();
+            assert!(
+                message.contains("keys")
+                    && message.contains("hosts")
+                    && message.contains("firewall"),
+                "error for {ty:?} was {message:?}, expected it to name keys/hosts/firewall"
+            );
+        }
     }
 
     #[test]
@@ -508,7 +555,7 @@ mod tests {
     #[test]
     fn bare_reserved_word_on_string_types_is_value_absent() {
         for ty in [RegType::Sz, RegType::ExpandSz] {
-            let value = parse_value_literal(LiteralInput::Reserved, LiteralTarget::Reg(ty))
+            let value = parse_value_literal(LiteralInput::Absent, LiteralTarget::Reg(ty))
                 .unwrap_or_else(|e| panic!("bare absent on {ty:?} should resolve: {e}"));
             assert_eq!(
                 value,

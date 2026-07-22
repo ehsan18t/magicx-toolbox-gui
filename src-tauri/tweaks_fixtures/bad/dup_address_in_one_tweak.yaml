@@ -1,0 +1,27 @@
+category:
+  id: dup_address_in_one_tweak
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "One tweak declares two effects on its own surface at the same registry address."
+
+tweaks:
+  - id: solo_tweak
+    name: "Solo"
+    description: "Two effect ids, one address."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: effect_one
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+      - id: effect_two
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          effect_one: 1
+          effect_two: 1
+      - label: "Off"
+        values:
+          effect_one: 0
+          effect_two: 0

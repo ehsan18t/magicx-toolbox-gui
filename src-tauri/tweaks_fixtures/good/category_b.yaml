@@ -1,0 +1,74 @@
+category:
+  id: category_b
+  name: "Category B"
+  icon: "mdi:eye-off"
+  description: "Second good-fixture category — proves cross-file shared merge + Action loading."
+
+tweaks:
+  - id: disable_telemetry
+    name: "Disable Telemetry"
+    description: "Claims the corpus-wide telemetry-off shared setting declared in category_a.yaml."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: telemetry
+        shared: telemetry_off
+    options:
+      - label: "Disabled"
+        values:
+          telemetry: claim
+      - label: "Enabled"
+        values:
+          telemetry: unclaimed
+
+  - id: flush_dns_cache
+    name: "Flush DNS Cache"
+    description: "Runs ipconfig /flushdns as a one-shot ephemeral action."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: flush
+        action:
+          apply: "ipconfig /flushdns"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "Run Now"
+        values:
+          flush: run
+
+  - id: enable_feature_key
+    name: "Enable Feature Key"
+    description: "Demonstrates a RegistryKey presence Setting (key existence as a switch)."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: feature_key
+        registry_key: { key: 'HKLM\SOFTWARE\ExampleCo\FeatureFlag' }
+    options:
+      - label: "Present"
+        values:
+          feature_key: present
+      - label: "Absent"
+        values:
+          feature_key: absent
+
+  - id: block_known_tracker
+    name: "Block Known Tracker"
+    description: "Demonstrates a Hosts presence Setting."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: tracker_host
+        hosts: { ip: "0.0.0.0", domain: "tracker.example.com" }
+    options:
+      - label: "Blocked"
+        values:
+          tracker_host: present
+      - label: "Allowed"
+        values:
+          tracker_host: absent
