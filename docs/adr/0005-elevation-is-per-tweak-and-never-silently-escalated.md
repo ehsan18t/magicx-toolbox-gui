@@ -62,3 +62,25 @@ failure, not a generic error; the remedy is for the user to elevate or for the a
 declaration — never a silent workaround. Batching a Tweak's operations into one elevated child process (the
 broker wire protocol already supports it) is a process-spawn optimization only; there is at most one
 elevation prompt — the elevation itself — so nothing here trades away UAC prompts.
+
+## Amended 2026-07-22 (tweak-system redesign, spec rev 2)
+
+- **Reads run at whatever level the app currently has** — this supersedes the parenthetical above
+  that "reads never need elevation," and equally the Considered-Options rationale that "detection
+  needs no elevation at all." Most state is world-readable, so unelevated detection works; but
+  TI-protected resources (WaaSMedic-class keys and tasks) legitimately deny reads, and those
+  tweaks report the **Unknown** status with a needs-elevation hint until the user elevates. Detection
+  never guesses, never shows a fake System Default, and reads never trigger elevation.
+- **The TI self-availability build rejection is scoped to *typed* effects.** The sentence above
+  ("a Tweak that disables that service is rejected at build") holds for Service/Registry Settings;
+  script Actions are statically opaque, so a script-based TI-disable cannot be build-rejected —
+  script review guidance carries that residual. The guard's claim is honest, not categorical.
+- **Over-the-shoulder guard.** "In-process as the real user" fails when a *different* admin account's
+  credentials elevated the app (the relaunched process's HKCU is that admin's hive, and every write,
+  read-back verification, and detection would agree on the wrong target). At startup the app compares
+  its process-token SID with the interactive session's user SID; on mismatch, **User-level
+  (HKCU-touching) tweaks are disabled with a clear message**. This closes the blind spot the original
+  text shared with the design.
+- **Grouped execution is committed for v1** (not deferred): consecutive same-level System/TI steps
+  batch into one child via the existing multi-op wire protocol; the multi-op caller is the net-new
+  wiring, order-preserving. User/Admin steps stay in-process and are never grouped.
