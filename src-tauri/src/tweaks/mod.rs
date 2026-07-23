@@ -17,6 +17,7 @@ mod schema;
 pub mod shared_claims;
 pub mod snapshot;
 pub mod validate;
+pub mod winver;
 
 pub use model::*;
 pub use parse::*;

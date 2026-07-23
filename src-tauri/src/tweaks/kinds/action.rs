@@ -70,7 +70,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
-use windows_sys::Win32::Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG};
+use windows_sys::Win32::Security::Cryptography::{
+    BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+};
 use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
@@ -425,10 +427,8 @@ struct TempScriptFile {
 impl TempScriptFile {
     fn write(body: &str) -> Result<Self, Error> {
         let token = random_hex_token()?;
-        let path = std::env::temp_dir().join(format!(
-            "magicx-action-{}-{token}.cmd",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("magicx-action-{}-{token}.cmd", std::process::id()));
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true) // Fix 1b: never follow/truncate a pre-existing/pre-planted path
@@ -688,7 +688,10 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
     fn temp_script_file_is_deleted_once_dropped() {
         let file = TempScriptFile::write("exit 0").expect("must create the temp script");
         let path = file.path.clone();
-        assert!(path.exists(), "temp script must exist while the guard is held");
+        assert!(
+            path.exists(),
+            "temp script must exist while the guard is held"
+        );
         drop(file);
         assert!(
             !path.exists(),
@@ -847,9 +850,9 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
 
         for level in [Level::System, Level::Ti] {
             let cx = ExecCx::new(level);
-            let err = ActionKind
-                .run_apply(&apply_action, &cx)
-                .expect_err("delete-tree apply must reject System/Ti exactly like a raw RegistryKey effect");
+            let err = ActionKind.run_apply(&apply_action, &cx).expect_err(
+                "delete-tree apply must reject System/Ti exactly like a raw RegistryKey effect",
+            );
             assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
 
             let err = ActionKind

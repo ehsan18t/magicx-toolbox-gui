@@ -4,32 +4,27 @@
 //! [`registry`]); this task adds `Setting::Service` and `Setting::Task` (see [`service`] and
 //! [`task`]); Task 7 adds Hosts/Firewall.
 //!
-//! ## `ExecCx` and the broker seam (read this before wiring System/TI in a later task)
+//! ## `ExecCx` and the broker seam (Task 14: System/TI routing is wired; placement decision below)
 //!
 //! `ExecCx` carries the effective elevation [`Level`] for one operation. Per spec invariant 24,
 //! *reads* always run at the current, in-process level — there is no elevated read op in the
 //! broker protocol (`services::elevation::broker::BrokerOp` has no `RegRead*` variant; a read
 //! never needs a fresh child process), so a kind's `read` must never gate on `cx.level()`.
 //! *Drives* (writes) do need to escalate for `Level::System`/`Level::Ti`: "User/Admin in-process,
-//! System/TI in fresh children." This build implements only the in-process half — every kind's
-//! `drive` must reject `System`/`Ti` with a typed [`Error`], never a silent no-op or a fake
-//! success.
+//! System/TI in fresh children."
 //!
-//! `ExecCx`'s field stays private, constructed only through [`ExecCx::new`], specifically so a
-//! later task can grow it without breaking this task's callers or touching the trait below. That
-//! task's shape, concretely:
-//! - Add a field to `ExecCx` (e.g. a broker handle/sender) behind a new constructor (say
-//!   `ExecCx::with_broker(level, handle)`), leaving today's `ExecCx::new` as the no-broker case.
-//! - In each kind's `drive`, replace the `System`/`Ti` error arm with: build the matching
-//!   `BrokerOp` — the registry kind's ops already exist verbatim in the broker protocol
-//!   (`RegSet` / `RegDeleteValue` / `RegDeleteKey` / `RegCreateKey`, spec §5.1) — and hand it to
-//!   the `ExecCx`'s broker handle, which calls `services::elevation::broker::run_elevated_broker`.
-//! - Precondition for that task: `services/elevation/mod.rs` re-exports only `run_broker` and
-//!   `run_scheduler_op` from its private `broker` submodule today. Reaching `BrokerOp` /
-//!   `run_elevated_broker` from `tweaks::kinds` needs new re-exports there (or `pub(crate) mod
-//!   broker`) — out of scope here since it touches a file outside this task's boundary.
-//! - None of the above changes `EffectKind`'s signature — only `ExecCx`'s internals and each
-//!   kind's `System`/`Ti` branch change.
+//! **Placement:** each kind's own `drive` here is unchanged and still rejects `System`/`Ti` with
+//! [`Error::UnsupportedLevel`] when called directly — that stays true and is still worth pinning
+//! (the in-process kind never silently escalates on its own). The routing decision lives one layer
+//! up, in `engine::AllKinds::drive` (`tweaks/engine/mod.rs`): for `Level::User`/`Level::Admin` it
+//! delegates here exactly as before; for `Level::System`/`Level::Ti` it never reaches this file's
+//! `drive` at all — it instead translates the `Setting`/`Value` into `BrokerOp`(s) (`to_broker_op`/
+//! `to_broker_ops` in `registry.rs`/`service.rs`/`task.rs`) and submits them through
+//! `services::elevation::run_ops` in one child. This keeps `EffectKind`'s signature and every
+//! kind's own in-process behavior untouched, and keeps the translation colocated with the address
+//! shape it understands (registry/service/task each know their own `Setting` variant's fields).
+//! Hosts/Firewall have no corresponding `BrokerOp` in this build, so `AllKinds` still falls through
+//! to their in-process `drive` at `System`/`Ti` too, which correctly still rejects it.
 
 pub mod action;
 pub mod firewall;
@@ -78,9 +73,19 @@ pub enum Error {
         source: ParseError,
     },
 
-    /// `cx`'s elevation level has no in-process implementation yet (see the module docs above).
+    /// `cx`'s elevation level has no routing at all for this `Setting` (see the module docs
+    /// above) -- e.g. a field-addressed registry write, or a Hosts/Firewall effect, at
+    /// `System`/`Ti`, neither of which this build's broker translation covers.
     #[error("{0:?} elevation is not yet routed by this build")]
     UnsupportedLevel(Level),
+
+    /// Could not ACQUIRE the declared elevation level at all (spec §9, ADR-0005 as amended;
+    /// invariant 24): the TI service would not start, `SeDebugPrivilege` was denied, winlogon was
+    /// not found, or the elevated child failed to spawn or respond. Environmental, not a
+    /// mis-declared level -- distinct from [`Error::AccessDenied`], which (for a routed System/TI
+    /// drive) means the child WAS acquired and ran, but the operation itself was still denied.
+    #[error("could not acquire {0:?} elevation: {1}")]
+    CouldNotAcquireElevation(Level, String),
 
     /// The addressed service or task does not exist, but the caller asked to drive it to a real
     /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4,
@@ -147,8 +152,9 @@ pub trait EffectKind: Send + Sync {
 // The registry kind (`registry.rs`) predates these and keeps its own private copies so Task 5's
 // already-reviewed file stays untouched; these exist once here because two new kinds need them.
 
-/// `Level::User`/`Level::Admin` run in-process; `System`/`Ti` need the elevation broker, which
-/// this build does not wire up yet (see the module docs above).
+/// `Level::User`/`Level::Admin` run in-process here; `System`/`Ti` are routed through the
+/// elevation broker one layer up, by `engine::AllKinds::drive` -- this kind's own `drive` (called
+/// directly, bypassing that routing) still rejects them itself (see the module docs above).
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
         Level::User | Level::Admin => Ok(()),
@@ -167,5 +173,36 @@ fn map_backend_error(e: BackendError) -> Error {
             Error::AccessDenied("requires administrator privileges".to_string())
         }
         other => Error::Backend(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Spec §9/ADR-0005 (amended), invariant 24: "couldn't acquire the level" and "acquired but
+    /// access-denied" are two DISTINCT typed failures, never collapsed into one generic error.
+    /// `CouldNotAcquireElevation` is the environmental case (TI service unstartable, winlogon
+    /// absent, ...); `AccessDenied` (pre-existing) is reused for "acquired the child, but the
+    /// operation itself was still denied" -- distinguishable by variant, never by string-matching.
+    #[test]
+    fn insufficient_elevation_two_distinct_errors() {
+        let could_not_acquire = Error::CouldNotAcquireElevation(
+            Level::Ti,
+            "TrustedInstaller service would not start".into(),
+        );
+        let acquired_but_denied =
+            Error::AccessDenied("policy denies this key even as SYSTEM".into());
+
+        assert!(matches!(
+            could_not_acquire,
+            Error::CouldNotAcquireElevation(..)
+        ));
+        assert!(matches!(acquired_but_denied, Error::AccessDenied(..)));
+        // Genuinely distinguishable, not just differently-worded instances of one variant.
+        assert_ne!(
+            std::mem::discriminant(&could_not_acquire),
+            std::mem::discriminant(&acquired_but_denied)
+        );
     }
 }

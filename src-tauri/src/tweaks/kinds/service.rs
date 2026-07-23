@@ -13,7 +13,8 @@
 //! [`Error::ResourceMissing`] — never a silent skip (invariant 12).
 
 use crate::error::Error as BackendError;
-use crate::models::{RegistryHive, ServiceStartupType};
+use crate::models::{RegistryHive, RegistryValueType, ServiceStartupType};
+use crate::services::elevation::BrokerOp;
 use crate::services::registry_service;
 use crate::services::service_control::{self, ServiceStatus};
 use crate::tweaks::model::{Setting, StartupType, SvcAddr, Value};
@@ -157,6 +158,40 @@ fn drive_service(addr: &SvcAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
+/// Translates a System/TI-level service drive into the broker's typed op(s) (spec §9): mirrors
+/// `drive_service` mechanically -- `SvcSetStartup` plus the SAME explicit `DelayedAutostart`
+/// companion write `drive_service` always performs (never left stale from an earlier drive).
+/// Driving to `Missing` is the same no-op it always is (spec §5.4) -- an empty op list, so the
+/// caller (`engine::AllKinds::drive`) never spawns a child for it. Unlike `drive_service`, this
+/// does not repeat the resource-existence pre-check: that read runs at the CURRENT level (invariant
+/// 24 -- reads never escalate), so it is not duplicated here; an already-missing service simply
+/// reports its own SCM error through the broker rather than the typed `ResourceMissing` the
+/// in-process path gives, a known, narrower gap documented rather than silently absorbed.
+pub(crate) fn to_broker_ops(s: &Setting, target: &Value) -> Result<Vec<BrokerOp>, Error> {
+    let Setting::Service(addr) = s else {
+        return Err(Error::Invalid("ServiceKind cannot drive this Setting"));
+    };
+    match target {
+        Value::Missing => Ok(Vec::new()),
+        Value::Startup(st) => Ok(vec![
+            BrokerOp::SvcSetStartup {
+                name: addr.name.clone(),
+                startup: old_startup(*st),
+            },
+            BrokerOp::RegSet {
+                hive: RegistryHive::Hklm,
+                key: service_key(&addr.name),
+                value_name: DELAYED_VALUE.to_string(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!(u32::from(*st == StartupType::AutomaticDelayed)),
+            },
+        ]),
+        _ => Err(Error::Invalid(
+            "a service can only be driven to Startup or Missing",
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,6 +267,41 @@ mod tests {
             .drive(&setting, &Value::Startup(StartupType::Manual), &cx)
             .expect_err("driving a real value at a missing service must be a typed error");
         assert!(matches!(err, Error::ResourceMissing(_)), "got {err:?}");
+    }
+
+    /// Pure translation, no real elevation/broker spawn (spec §9) -- mirrors registry.rs's own
+    /// `system_and_ti_registry_drives_now_translate_to_broker_ops`.
+    #[test]
+    fn to_broker_ops_translates_startup_and_missing() {
+        let setting = Setting::Service(SvcAddr {
+            name: NO_SUCH_SERVICE.to_string(),
+        });
+
+        let ops = to_broker_ops(&setting, &Value::Startup(StartupType::AutomaticDelayed))
+            .expect("a Startup target must translate");
+        assert_eq!(
+            ops.len(),
+            2,
+            "SvcSetStartup plus the DelayedAutostart companion write"
+        );
+        assert!(matches!(ops[0], BrokerOp::SvcSetStartup { .. }));
+        match &ops[1] {
+            BrokerOp::RegSet { value, .. } => assert_eq!(*value, serde_json::json!(1)),
+            other => panic!("expected RegSet, got {other:?}"),
+        }
+
+        let non_delayed = to_broker_ops(&setting, &Value::Startup(StartupType::Manual)).unwrap();
+        match &non_delayed[1] {
+            BrokerOp::RegSet { value, .. } => assert_eq!(*value, serde_json::json!(0)),
+            other => panic!("expected RegSet, got {other:?}"),
+        }
+
+        let missing_ops = to_broker_ops(&setting, &Value::Missing)
+            .expect("driving to Missing must translate, never error");
+        assert!(
+            missing_ops.is_empty(),
+            "Missing is a no-op -- no ops to run"
+        );
     }
 
     #[test]

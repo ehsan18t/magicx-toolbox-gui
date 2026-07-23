@@ -352,7 +352,10 @@ fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
 
     if let Err(e) = fs::write(&tmp_path, new_content.as_bytes()) {
         let _ = fs::remove_file(&tmp_path); // best-effort: don't leave our own temp file behind
-        return Err(Error::WindowsApi(format!("Failed to write temp hosts file: {}", e)));
+        return Err(Error::WindowsApi(format!(
+            "Failed to write temp hosts file: {}",
+            e
+        )));
     }
 
     // Apply the captured security to the temp file *before* the swap (see the function doc
@@ -748,7 +751,10 @@ mod tests {
     fn unique_tmp_name_differs_across_calls() {
         let a = unique_tmp_name();
         let b = unique_tmp_name();
-        assert_ne!(a, b, "concurrent callers must not collide on the same temp filename");
+        assert_ne!(
+            a, b,
+            "concurrent callers must not collide on the same temp filename"
+        );
     }
 
     #[test]

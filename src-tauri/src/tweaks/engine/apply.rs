@@ -35,6 +35,19 @@
 //! The brief's `apply` signature omits `corpus`; both `detect` (already reviewed, Task 11) and
 //! resolving a captured `OptionRef`'s current definition (ADR-0007) need it, so it is added here:
 //! `apply(tweak, corpus, target, deps)`.
+//!
+//! ## Per-effect execution-context routing (spec §9, ADR-0005; invariant 24)
+//! DRIVES route through [`context::route`] per effect (`Deps.level` is never used to build a
+//! drive's `ExecCx` directly): `route` computes `effective = max(tweak's floor, the effect's own
+//! declared level)`, EXCEPT a user-hive (HKCU) `Setting` always drives in-process as the
+//! interactive user regardless of the floor. READS (Step 1's capture, and every read-back
+//! verification after a drive) go through [`context::read_route`] instead: reads never escalate to
+//! a tweak's declared floor/step (invariant 24), so they stay at `Deps.level` -- the elevation the
+//! app currently HAS, i.e. the ceiling -- except an HKCU read is still forced to the interactive
+//! user for hive correctness. `Deps.level` therefore means exactly that ceiling (used for reads and
+//! for the command layer's runnability gating, a later task); it is never itself escalated to
+//! System/TI here. `rollback`'s own body, `verify_reversed_probe`, and `do_apply`'s consume-gate are
+//! untouched by this -- only which `ExecCx` a drive/read call receives changed.
 
 use std::collections::BTreeMap;
 
@@ -45,8 +58,10 @@ use crate::tweaks::model::{
 };
 use crate::tweaks::shared_claims::{ClaimsError, ReleaseOutcome};
 use crate::tweaks::snapshot::{Captured, JournalRow, NewEntry, Seq, SnapshotError};
-use crate::tweaks::validate::{applicable_surface, applicable_value, scope_admits, Milestone};
+use crate::tweaks::validate::{applicable_surface, applicable_value, Milestone};
+use crate::tweaks::winver::WinVer;
 
+use super::context;
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnknownReason};
 use super::{lifecycle, Deps};
 
@@ -289,7 +304,12 @@ fn do_apply(
         .find(|o| &o.label == target)
         .ok_or_else(|| EngineError::UnknownOption(target.clone()))?;
 
-    let milestone = deps.running;
+    // `validate.rs`'s helpers below stay Milestone-shaped (build-only, see `winver.rs`'s module
+    // docs) -- `winver` is kept alongside for the runtime scope decisions that must honor
+    // `revision` too (`driving_surface`'s own tweak/effect-level check, and the per-option-value
+    // Action scope check below).
+    let winver = deps.running;
+    let milestone = winver.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
     // Distinct from `surface` in exactly one respect (review fix): ephemeral actions are INCLUDED
     // here. `applicable_surface` is a detection concept (spec §6.4/§8.4) and correctly excludes
@@ -297,7 +317,7 @@ fn do_apply(
     // observe -- but a declared `run` ephemeral action still needs to physically RUN on apply (spec
     // §7). Only the action-plan-building loop and the driving pass below use this; Step 1's Setting
     // capture loop keeps using `surface` (moot either way -- it already ignores non-Setting kinds).
-    let drive_surface = driving_surface(tweak, &milestone);
+    let drive_surface = driving_surface(tweak, &winver);
 
     // Step 0: detect current status (the lock is already held by `apply`).
     let pre_status = detect::detect(tweak, corpus, deps);
@@ -319,13 +339,16 @@ fn do_apply(
     }
 
     // Step 1: capture pre-apply state + decide the action plan -- ALL reads, no mutation yet
-    // (invariant 4). A read/probe failure aborts here, having touched nothing.
-    let cx = ExecCx::new(deps.level);
+    // (invariant 4). A read/probe failure aborts here, having touched nothing. Reads never escalate
+    // (invariant 24): each effect's read runs at `context::read_route` -- `Deps.level` (the
+    // ceiling) for everything, except an HKCU Setting is still read in-process as the interactive
+    // user (see this file's module docs).
     let mut captured_values: BTreeMap<EffectId, Value> = BTreeMap::new();
     for effect in &surface {
         let Effect::Setting(setting) = &effect.kind else {
             continue;
         };
+        let cx = context::read_route(effect, deps.level);
         match deps.kinds.read(setting, &cx) {
             Ok(Value::Missing) if effect.optional => {
                 captured_values.insert(effect.id.clone(), Value::Missing);
@@ -351,9 +374,12 @@ fn do_apply(
         let Effect::Action(action_def) = &effect.kind else {
             continue;
         };
+        // Runtime scope decision (spec §6.6/invariant 22): honors `revision` too, unlike the
+        // Milestone-based (build-only) `surface`/`drive_surface` computed above -- see winver.rs's
+        // module docs.
         let raw = target_opt.values.get(&effect.id);
         let scoped_out =
-            matches!(raw, Some(OptValue::Run(w)) if !scope_admits(w.as_ref(), &milestone));
+            matches!(raw, Some(OptValue::Run(w)) if !w.as_ref().is_none_or(|s| s.applies(&winver)));
         if scoped_out {
             continue; // never read, never journaled, never driven
         }
@@ -369,6 +395,7 @@ fn do_apply(
             ..
         } = action_def
         {
+            let cx = context::read_route(effect, deps.level);
             let present =
                 deps.probes
                     .probe(action_def, &cx)
@@ -474,14 +501,14 @@ fn do_apply(
 /// must still physically execute when its option is applied (spec §7: "runs on apply") -- review
 /// fix: apply and restore's `reapply_option_ref` must agree on what applying an option does, and
 /// restore already ran ephemerals correctly.
-fn driving_surface<'a>(tweak: &'a Tweak, milestone: &Milestone) -> Vec<&'a EffectDef> {
-    if !scope_admits(tweak.windows.as_ref(), milestone) {
+fn driving_surface<'a>(tweak: &'a Tweak, winver: &WinVer) -> Vec<&'a EffectDef> {
+    if !tweak.windows.as_ref().is_none_or(|s| s.applies(winver)) {
         return Vec::new();
     }
     tweak
         .surface
         .iter()
-        .filter(|e| scope_admits(e.windows.as_ref(), milestone))
+        .filter(|e| e.windows.as_ref().is_none_or(|s| s.applies(winver)))
         .collect()
 }
 
@@ -494,7 +521,6 @@ pub(crate) fn drive_forward(
     action_plan: &[(EffectId, ActionPlan)],
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    let cx = ExecCx::new(ctx.deps.level);
     for effect in surface {
         match &effect.kind {
             Effect::Setting(setting) => {
@@ -508,6 +534,10 @@ pub(crate) fn drive_forward(
                         effect.id
                     )));
                 };
+                // Per-effect execution context (spec §9): `route` computes effective =
+                // max(floor, step), EXCEPT an HKCU Setting always drives in-process as the
+                // interactive user regardless of the floor (see this file's module docs).
+                let cx = context::route(effect, ctx.tweak);
                 ctx.deps
                     .kinds
                     .drive(setting, &scoped.value, &cx)
@@ -546,7 +576,10 @@ fn drive_shared(
     shared_id: &SharedId,
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    let cx = ExecCx::new(ctx.deps.level);
+    // Per-effect execution context (spec §9) -- a Shared effect is never HKCU by construction
+    // (see `context::route`'s docs), so this is `effective_level(tweak.elevation, effect.elevation)`
+    // in practice, replacing the flat `Deps.level` ceiling.
+    let cx = context::route(effect, ctx.tweak);
     let Some(opt_value) = applicable_value(ctx.target_opt, &effect.id, &ctx.milestone) else {
         return Ok(());
     };
@@ -634,7 +667,10 @@ fn drive_action(
     action_plan: &[(EffectId, ActionPlan)],
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    let cx = ExecCx::new(ctx.deps.level);
+    // Per-effect execution context (spec §9) -- an Action is never HKCU by construction (see
+    // `context::route`'s docs), so this is `effective_level(tweak.elevation, effect.elevation)` in
+    // practice, replacing the flat `Deps.level` ceiling.
+    let cx = context::route(effect, ctx.tweak);
     let Some((_, plan)) = action_plan.iter().find(|(id, _)| id == &effect.id) else {
         return Ok(()); // not in the plan: scoped out, or genuinely nothing to do
     };
@@ -935,9 +971,10 @@ pub(crate) fn drive_to_captured(
             "tweak '{tweak_id}' no longer exists in the corpus"
         ))]);
     };
-    let milestone = deps.running;
+    // Build-only Milestone shape is sufficient here -- this only reuses `applicable_surface` (no
+    // direct scope_admits call), see winver.rs's module docs.
+    let milestone = deps.running.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
-    let cx = ExecCx::new(deps.level);
     let mut failures = Vec::new();
 
     match captured {
@@ -952,6 +989,8 @@ pub(crate) fn drive_to_captured(
                 let Effect::Setting(setting) = &effect.kind else {
                     continue;
                 };
+                // Per-effect execution context (spec §9): see this file's module docs.
+                let cx = context::route(effect, tweak);
                 drive_and_verify(&cx, deps, setting, effect_id, value, &mut failures);
             }
         }
@@ -973,6 +1012,7 @@ pub(crate) fn drive_to_captured(
                 if scoped.value == Value::Missing {
                     continue;
                 }
+                let cx = context::route(effect, tweak);
                 drive_and_verify(&cx, deps, setting, &effect.id, &scoped.value, &mut failures);
             }
         }
@@ -1014,7 +1054,8 @@ mod tests {
     use crate::tweaks::engine::{ActionRunner, ProbeCache, ProbeSource};
     use crate::tweaks::kinds::EffectKind;
     use crate::tweaks::model::{
-        CategoryDef, Level, RiskLevel, ScopedValue, Script, Shell, SvcAddr, WindowsScope,
+        CategoryDef, Hive, Level, RegAddr, RegType, RiskLevel, ScopedValue, Script, Shell, SvcAddr,
+        TypedRegValue, WindowsScope,
     };
     use crate::tweaks::shared_claims::ClaimsStore;
     use crate::tweaks::snapshot::SnapshotStore;
@@ -1360,7 +1401,10 @@ mod tests {
                 probe_cache: &self.cache,
                 machine_guid: Some("test-guid"),
                 level: Level::User,
-                running: Milestone { build: 19045 },
+                running: WinVer {
+                    build: 19045,
+                    revision: 0,
+                },
             }
         }
 
@@ -2411,6 +2455,145 @@ mod tests {
         assert!(
             h.log().is_empty(),
             "an unavailable tweak must never be touched"
+        );
+    }
+
+    // --- CRITICAL 2 safety test: per-effect execution-context routing is actually wired ----------
+    //
+    // Before this fix, EVERY effect's drive built its `ExecCx` from the flat `Deps.level` ceiling,
+    // so the HKCU-always-in-process-as-User exception (`context::route`) was correct code that no
+    // production drive call ever consulted -- an HKCU effect under a System/TI floor would have
+    // driven at that ceiling, hitting the elevated child's own HKCU instead of the interactive
+    // user's (the exact over-the-shoulder failure ADR-0005 exists to prevent). This test fixture
+    // records the `ExecCx::level()` each `drive` call actually receives; against the OLD code it
+    // would show `Ti` for both effects below (failing this test) -- against the fix, only the
+    // HKLM effect does.
+    //
+    // A recorded `Level::User` is a sufficient proxy for "did not route to the broker": it is
+    // exactly the value `engine::AllKinds::drive` (production, not this mock) branches on --
+    // `Level::User | Level::Admin` never reaches the broker translation at all (see
+    // `tweaks/engine/mod.rs`). A full end-to-end run through the real broker would need actual
+    // elevation, out of place for a pure-mock engine test.
+
+    /// Records the `ExecCx::level()` each `drive` call actually received, keyed by the registry
+    /// value name driven.
+    #[derive(Default)]
+    struct LevelRecordingKind {
+        levels: Mutex<Vec<(String, Level)>>,
+        live: Mutex<HashMap<String, Value>>,
+    }
+
+    impl EffectKind for LevelRecordingKind {
+        fn read(&self, s: &Setting, _cx: &ExecCx) -> Result<Value, KindError> {
+            let Setting::Registry(addr) = s else {
+                panic!("this fixture only exercises Registry settings, got {s:?}");
+            };
+            Ok(self
+                .live
+                .lock()
+                .unwrap()
+                .get(&addr.name)
+                .cloned()
+                .unwrap_or(Value::Absent))
+        }
+
+        fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), KindError> {
+            let Setting::Registry(addr) = s else {
+                panic!("this fixture only exercises Registry settings, got {s:?}");
+            };
+            self.levels
+                .lock()
+                .unwrap()
+                .push((addr.name.clone(), cx.level()));
+            self.live
+                .lock()
+                .unwrap()
+                .insert(addr.name.clone(), target.clone());
+            Ok(())
+        }
+    }
+
+    fn registry_effect(id: &str, hive: Hive) -> EffectDef {
+        EffectDef {
+            id: EffectId(id.to_string()),
+            kind: Effect::Setting(Setting::Registry(RegAddr {
+                hive,
+                path: "Software\\Test".to_string(),
+                name: id.to_string(),
+                ty: RegType::Dword,
+                field: None,
+            })),
+            elevation: None,
+            optional: false,
+            if_missing: None,
+            windows: None,
+        }
+    }
+
+    #[test]
+    fn hkcu_effect_drives_in_process_as_user_even_under_a_ti_floor() {
+        let kind = LevelRecordingKind::default();
+        let probes = MockProbes::new(
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(HashMap::new())),
+        );
+        let actions = MockActions::new(
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(HashMap::new())),
+        );
+        let tmp = tempfile::tempdir().unwrap();
+        let claims = ClaimsStore::open(tmp.path().to_path_buf(), Some("test-guid".into()));
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let cache = ProbeCache::new();
+
+        let hkcu = registry_effect("hkcu_val", Hive::Hkcu);
+        let hklm = registry_effect("hklm_val", Hive::Hklm);
+        let mut t = tweak(
+            "demo",
+            vec![hkcu, hklm],
+            vec![opt(
+                "On",
+                vec![
+                    ("hkcu_val", set(Value::Reg(TypedRegValue::Dword(1)))),
+                    ("hklm_val", set(Value::Reg(TypedRegValue::Dword(1)))),
+                ],
+            )],
+        );
+        t.elevation = Level::Ti; // the floor
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let deps = Deps {
+            kinds: &kind,
+            probes: &probes,
+            actions: &actions,
+            claims: &claims,
+            snapshots: &snapshots,
+            probe_cache: &cache,
+            machine_guid: Some("test-guid"),
+            // "What the app currently has" -- irrelevant to routing a DRIVE (only reads consult
+            // it); left deliberately different from the tweak's Ti floor to prove routing doesn't
+            // accidentally fall back to it.
+            level: Level::Admin,
+            running: WinVer {
+                build: 19045,
+                revision: 0,
+            },
+        };
+
+        run_apply(&t, &c, &OptLabel("On".into()), &deps)
+            .expect("apply must succeed against the mock");
+
+        let levels = kind.levels.lock().unwrap();
+        let level_of = |name: &str| levels.iter().find(|(n, _)| n == name).map(|(_, l)| *l);
+        assert_eq!(
+            level_of("hkcu_val"),
+            Some(Level::User),
+            "an HKCU effect must drive in-process as User even under a Ti floor -- got {levels:?}"
+        );
+        assert_eq!(
+            level_of("hklm_val"),
+            Some(Level::Ti),
+            "a sibling HKLM effect at the Ti floor must still route at Ti -- got {levels:?}"
         );
     }
 }

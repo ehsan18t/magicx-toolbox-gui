@@ -106,6 +106,13 @@ windows-sys = { version = "0.61", features = [
     # is a real guarantee on the whole process tree, not just the immediate pid (see
     # tweaks/kinds/action.rs).
     "Win32_System_JobObjects",
+    # RtlGetVersion -- the real running Windows build (never GetVersionEx, which the compat shim
+    # under-reports on an unmanifested process; see tweaks/winver.rs).
+    "Wdk_System_SystemServices",
+    "Win32_System_SystemInformation",
+    # WTSGetActiveConsoleSessionId/WTSQueryUserToken -- the interactive console session's token,
+    # for the over-the-shoulder SID guard (see tweaks/engine/context.rs).
+    "Win32_System_RemoteDesktop",
 ] }
 # High-level COM wrappers (Task Scheduler). Coexists with windows-sys; the elevated broker (TI
 # stage) reuses this crate for Owned<HANDLE> cleanup.

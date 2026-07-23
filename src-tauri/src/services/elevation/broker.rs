@@ -75,7 +75,8 @@ pub struct BrokerRequest {
     pub ops: Vec<BrokerOp>,
 }
 
-/// The outcome of a single operation. Positional: `results[i]` corresponds to `ops[i]`.
+/// The outcome of a single operation. Positional: `results[i]` corresponds to `ops[i]` for every
+/// `i < results.len()`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum OpOutcome {
     Ok,
@@ -88,6 +89,10 @@ pub struct BrokerResponse {
     /// Echoes the request's [`BrokerRequest::nonce`] so the parent can reject a stale/foreign file.
     #[serde(default)]
     pub nonce: u64,
+    /// May be SHORTER than the request's `ops` (see [`execute_request`]): a batch stops at the
+    /// first failing op, so `results.len() < ops.len()` means every op from `results.len()`
+    /// onward was never attempted at all -- never "ran and silently no-opped". A full-length
+    /// `results` with no `Err` means every op ran and succeeded.
     pub results: Vec<OpOutcome>,
 }
 
@@ -148,16 +153,26 @@ pub fn execute_op(op: &BrokerOp) -> Result<(), Error> {
     }
 }
 
-/// Execute every op, collecting per-op outcomes (never short-circuits: each op reports its own).
+/// Execute ops in declaration order, STOPPING at the first failure (invariant 2/18: a batch is not
+/// a set of independent attempts -- a later op can depend on an earlier one's success having
+/// actually happened, e.g. Service's `SvcSetStartup` plus its `DelayedAutostart` companion write;
+/// running the companion write after the primary write failed would mutate the registry to a
+/// state the in-process `drive_service`, which `?`-aborts on the same failure, never produces).
+/// `results` is positional but may end up SHORTER than `request.ops`: every op past the first
+/// failure is never attempted, never merely a recorded no-op.
 pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
-    let results = request
-        .ops
-        .iter()
-        .map(|op| match execute_op(op) {
+    let mut results = Vec::with_capacity(request.ops.len());
+    for op in &request.ops {
+        let outcome = match execute_op(op) {
             Ok(()) => OpOutcome::Ok,
             Err(e) => OpOutcome::Err(e.to_string()),
-        })
-        .collect();
+        };
+        let is_err = matches!(outcome, OpOutcome::Err(_));
+        results.push(outcome);
+        if is_err {
+            break;
+        }
+    }
     BrokerResponse {
         nonce: request.nonce,
         results,
@@ -321,6 +336,41 @@ pub(super) fn run_one(level: Elevation, op: BrokerOp) -> Result<(), Error> {
         },
     )?
     .into_single()
+}
+
+/// The two distinct ways a multi-op batch can fail (spec §9, ADR-0005 as amended; invariant 24):
+/// the elevated child could never be ACQUIRED at all (environmental -- the TI service would not
+/// start, `SeDebugPrivilege` was denied, winlogon was not found, or the child failed to spawn or
+/// respond) versus the child WAS acquired and ran, but at least one operation inside it failed
+/// (the declaration is genuinely too low for this machine). Both abort + roll back at the call
+/// site; neither is ever silently downgraded to the other or to a benign value.
+#[derive(Debug, thiserror::Error)]
+pub enum BrokerOpError {
+    #[error("could not acquire the elevated child: {0}")]
+    CouldNotAcquire(#[source] Error),
+    #[error("operation failed inside the elevated child: {0}")]
+    OpFailed(#[source] Error),
+}
+
+/// Runs a whole batch of operations in ONE elevated child (spec §9's grouped execution): the wire
+/// protocol already carries `Vec<BrokerOp>` (`BrokerRequest::ops`); this is the net-new multi-op
+/// entry point beside `run_one`, added without changing `run_elevated_broker`'s semantics, the wire
+/// protocol, or `run_one` itself. Every op's outcome is checked -- the first failure is surfaced as
+/// `Err`, distinguishing "couldn't acquire the child at all" from "acquired it, but an op inside
+/// failed" (see [`BrokerOpError`]) -- never a benign `Ok(())` alongside a partial failure buried in
+/// `results`.
+pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError> {
+    let response = run_elevated_broker(level, &BrokerRequest { nonce: 0, ops })
+        .map_err(BrokerOpError::CouldNotAcquire)?;
+
+    for (i, outcome) in response.results.into_iter().enumerate() {
+        if let OpOutcome::Err(msg) = outcome {
+            return Err(BrokerOpError::OpFailed(Error::ServiceControl(format!(
+                "broker op {i} failed: {msg}"
+            ))));
+        }
+    }
+    Ok(())
 }
 
 /// Apply a scheduler change (enable / disable / delete) at `level` via the typed `Scheduler` op.
@@ -660,4 +710,147 @@ mod tests {
     fn next_nonce_values_are_distinct() {
         assert_ne!(next_nonce(), next_nonce());
     }
+
+    #[test]
+    fn run_ops_executes_a_batch_in_one_call_unelevated() {
+        // Elevation::None never spawns a child (run_elevated_broker's own early return), so this
+        // exercises run_ops's batching/checking logic with zero elevation.
+        let scratch = Scratch::new();
+        let ops = vec![
+            BrokerOp::RegCreateKey {
+                hive: RegistryHive::Hkcu,
+                key: scratch.key.clone(),
+            },
+            BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: scratch.key.clone(),
+                value_name: "N".into(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!(11),
+            },
+        ];
+        run_ops(Elevation::None, ops).expect("unelevated run_ops must succeed in-process");
+        assert_eq!(
+            registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "N").unwrap(),
+            Some(11)
+        );
+    }
+
+    #[test]
+    fn run_ops_reports_an_op_failure_as_opfailed_never_a_benign_ok() {
+        let scratch = Scratch::new();
+        let bad = vec![BrokerOp::RegSet {
+            hive: RegistryHive::Hkcu,
+            key: scratch.key.clone(),
+            value_name: "N".into(),
+            value_type: RegistryValueType::Dword,
+            value: serde_json::json!("not-a-number"),
+        }];
+        let err = run_ops(Elevation::None, bad)
+            .expect_err("a malformed DWORD value must fail the op, never silently succeed");
+        assert!(
+            matches!(err, BrokerOpError::OpFailed(_)),
+            "an in-process op failure is OpFailed, never CouldNotAcquire; got {err:?}"
+        );
+    }
+
+    /// CRITICAL fix: a batch must STOP at the first failing op, never run a later one anyway. Two
+    /// `RegSet`s against the same scratch key -- the first with an unparseable value (fails), the
+    /// second with a perfectly good one. Asserted via the EXECUTED STATE (a real read-back of the
+    /// second value name), not just `results`' shape: if the fix regressed, `"Second"` would exist.
+    #[test]
+    fn execute_request_stops_at_the_first_failing_op_never_running_the_rest() {
+        let scratch = Scratch::new();
+        let req = BrokerRequest {
+            nonce: 0,
+            ops: vec![
+                BrokerOp::RegSet {
+                    hive: RegistryHive::Hkcu,
+                    key: scratch.key.clone(),
+                    value_name: "Bad".into(),
+                    value_type: RegistryValueType::Dword,
+                    value: serde_json::json!("not-a-number"), // fails to parse
+                },
+                BrokerOp::RegSet {
+                    hive: RegistryHive::Hkcu,
+                    key: scratch.key.clone(),
+                    value_name: "Second".into(),
+                    value_type: RegistryValueType::Dword,
+                    value: serde_json::json!(99),
+                },
+            ],
+        };
+
+        let resp = execute_request(&req);
+        assert_eq!(
+            resp.results.len(),
+            1,
+            "must stop after the first failing op -- the second is never attempted, got {:?}",
+            resp.results
+        );
+        assert!(matches!(resp.results[0], OpOutcome::Err(_)));
+        assert_second_value_was_never_written(&scratch.key);
+    }
+
+    /// The `run_ops` half of the same fix: the whole batch fails, naming the first op, and (via
+    /// the executed state, mirroring the test above) the second op never ran.
+    #[test]
+    fn run_ops_names_the_first_failing_op_and_never_runs_the_rest() {
+        let scratch = Scratch::new();
+        let ops = vec![
+            BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: scratch.key.clone(),
+                value_name: "Bad".into(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!("not-a-number"),
+            },
+            BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: scratch.key.clone(),
+                value_name: "Second".into(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!(99),
+            },
+        ];
+
+        let err = run_ops(Elevation::None, ops)
+            .expect_err("the first op's failure must fail the whole batch");
+        assert!(matches!(err, BrokerOpError::OpFailed(_)), "got {err:?}");
+        assert!(
+            err.to_string().contains("op 0"),
+            "must name the failing op's index; got {err}"
+        );
+        assert_second_value_was_never_written(&scratch.key);
+    }
+
+    /// "Second" absent (never written) is true whether the SCRATCH KEY itself was never created
+    /// (`RegistryKeyNotFound` -- the first op failed before any write at all) or the key exists but
+    /// the value doesn't (`Ok(None)`) -- both mean "the second op never ran."
+    fn assert_second_value_was_never_written(key: &str) {
+        match registry_service::read_dword(&RegistryHive::Hkcu, key, "Second") {
+            Ok(None) => {}
+            Err(Error::RegistryKeyNotFound(_)) => {}
+            other => panic!(
+                "the second op's effect must never be applied once the first op failed, got {other:?}"
+            ),
+        }
+    }
+
+    // Deliberately NOT a `#[test]`: `run_ops(Elevation::System, ...)` respawns
+    // `std::env::current_exe()` with `--broker <req> <resp>` (see `run_elevated_broker` above),
+    // and only `main.rs` (via `run_broker_if_requested`) understands that flag -- under `cargo
+    // test`, `current_exe()` is the libtest harness binary, which rejects `--broker` as an
+    // unrecognized argument and exits non-zero. That is a structural property of the respawn
+    // design (pre-existing, shared by every `*_as_system`/`*_as_ti` wrapper, not something Task 14
+    // introduced) and cannot be made to pass from inside this test binary.
+    //
+    // The real end-to-end path (Task 14's grouped-execution smoke test) was instead verified
+    // manually against the actually-built `magicx-toolbox.exe`: a `BrokerRequest` with this exact
+    // grouped write-then-delete-then-delete-key shape (`RegSet` -> `RegDeleteValue` ->
+    // `RegDeleteKey`, one child, spec §9) was serialized to a file and fed to
+    // `magicx-toolbox.exe --broker <req> <resp>` directly (elevated Administrator shell); the
+    // response reported `["Ok","Ok","Ok"]`, and an independent PowerShell `Test-Path` against
+    // `HKLM:\SOFTWARE\MagicXToolboxTest\...` confirmed no residue afterward. See the Task 14
+    // report for the full transcript.
 }

@@ -1,41 +1,52 @@
-//! The redesigned tweak engine's lifecycle (spec §4/§8). This task (11) adds detection only —
-//! `detect.rs` — plus the shared plumbing every later engine task (apply/restore) will also need:
-//! the `Setting → EffectKind` dispatcher, an injectable probe source, and the bundle of external
-//! dependencies (`Deps`) that lets every engine entry point run against real stores/kinds in
-//! production and in-memory mocks with zero OS contact in tests.
+//! The redesigned tweak engine's lifecycle (spec §4/§8). Task 11 added detection; Task 14 adds
+//! execution-context routing — the `Setting → EffectKind` dispatcher now also decides, per
+//! `ExecCx::level()`, whether a drive runs in-process or through the elevation broker (see
+//! `AllKinds::drive` below and `kinds/mod.rs`'s module docs for the placement rationale) — and
+//! wires the real running Windows version.
 //!
-//! ## `Deps` stands in for two things later tasks supply for real
+//! ## `Deps` now carries the real elevation level and Windows version
 //! - **Elevation**: reads never escalate (spec invariant 24) — they run at whatever level the
-//!   process currently holds — so `Deps::level` is the plain [`Level`] a later task (the broker
-//!   wiring already noted in `kinds/mod.rs`'s module docs) will derive from the real process state.
-//! - **Running Windows build**: the brief's `Deps` asks for the running `WinVer` (major/build/
-//!   revision), but `WinVer` is Task 14's type (`RtlGetVersion` is out of scope here). This build
-//!   carries the running build as a [`Milestone`] instead — exactly the type `validate.rs`'s
-//!   version-scoping helpers already take — and Task 14 supplies it from the real API.
+//!   process currently holds — so `Deps::level` is the plain [`Level`] the command layer (a later
+//!   task) derives from the real process state.
+//! - **Running Windows build**: `Deps::running` is now [`WinVer`] (build + revision, spec §6.6),
+//!   supplied by `winver::running_winver()` in production. Runtime call sites that only need the
+//!   build-only shape (`validate.rs`'s Milestone-based helpers) go through
+//!   [`WinVer::to_milestone`] — see `winver.rs`'s module docs for the full reconciliation.
 
 pub mod apply;
+pub mod context;
 pub mod detect;
 pub mod lifecycle;
 pub mod revert;
 
+use crate::services::elevation::{self, BrokerOp, BrokerOpError, Elevation};
 use crate::tweaks::kinds::{
-    action::ActionKind, firewall::FirewallKind, hosts::HostsKind, registry::RegistryKind,
-    service::ServiceKind, task::TaskKind, EffectKind, Error as KindError, ExecCx,
+    action::ActionKind,
+    firewall::FirewallKind,
+    hosts::HostsKind,
+    registry::{self, RegistryKind},
+    service::{self, ServiceKind},
+    task::{self, TaskKind},
+    EffectKind, Error as KindError, ExecCx,
 };
 use crate::tweaks::model::{ActionDef, EffectId, Level, Setting, Value};
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::SnapshotStore;
-use crate::tweaks::validate::Milestone;
+use crate::tweaks::winver::WinVer;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Production `Setting → EffectKind` dispatcher (the brief's "kinds registry"): delegates by
-/// `Setting` variant to the already-reviewed per-kind `EffectKind` impls. Carries no state of its
-/// own, so it is trivially `Send + Sync` and cheap to construct per call.
+/// `Setting` variant to the already-reviewed per-kind `EffectKind` impls for `Level::User`/
+/// `Level::Admin`; for `Level::System`/`Level::Ti` it routes through the elevation broker instead
+/// (spec §9) — see [`drive_via_broker`] and `kinds/mod.rs`'s module docs for why the routing
+/// decision lives here rather than in each kind's own `drive`. Carries no state of its own, so it
+/// is trivially `Send + Sync` and cheap to construct per call.
 pub struct AllKinds;
 
 impl EffectKind for AllKinds {
     fn read(&self, s: &Setting, cx: &ExecCx) -> Result<Value, KindError> {
+        // Reads never escalate (invariant 24) -- always in-process, regardless of `cx.level()`.
         match s {
             Setting::Registry(_) | Setting::RegistryKey(_) => RegistryKind.read(s, cx),
             Setting::Service(_) => ServiceKind.read(s, cx),
@@ -46,12 +57,56 @@ impl EffectKind for AllKinds {
     }
 
     fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), KindError> {
-        match s {
-            Setting::Registry(_) | Setting::RegistryKey(_) => RegistryKind.drive(s, target, cx),
-            Setting::Service(_) => ServiceKind.drive(s, target, cx),
-            Setting::Task(_) => TaskKind.drive(s, target, cx),
-            Setting::Hosts(_) => HostsKind.drive(s, target, cx),
-            Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
+        match cx.level() {
+            Level::User | Level::Admin => match s {
+                Setting::Registry(_) | Setting::RegistryKey(_) => RegistryKind.drive(s, target, cx),
+                Setting::Service(_) => ServiceKind.drive(s, target, cx),
+                Setting::Task(_) => TaskKind.drive(s, target, cx),
+                Setting::Hosts(_) => HostsKind.drive(s, target, cx),
+                Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
+            },
+            level @ (Level::System | Level::Ti) => match s {
+                Setting::Registry(_) | Setting::RegistryKey(_) => {
+                    drive_via_broker(level, vec![registry::to_broker_op(s, target, level)?])
+                }
+                Setting::Service(_) => drive_via_broker(level, service::to_broker_ops(s, target)?),
+                Setting::Task(_) => drive_via_broker(level, task::to_broker_ops(s, target)?),
+                // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical
+                // translation list does not cover them) -- fall through to the in-process kind,
+                // which correctly still rejects System/Ti itself.
+                Setting::Hosts(_) => HostsKind.drive(s, target, cx),
+                Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
+            },
+        }
+    }
+}
+
+/// Submits `ops` through the elevation broker in ONE child (spec §9) and maps the result onto
+/// [`KindError`]'s did-it-work-preserving distinction (invariant 24): [`BrokerOpError::CouldNotAcquire`]
+/// (environmental -- the child was never acquired) becomes [`KindError::CouldNotAcquireElevation`];
+/// [`BrokerOpError::OpFailed`] (acquired, but the op itself was denied) becomes the existing
+/// [`KindError::AccessDenied`]. An empty `ops` list (e.g. a Service/Task drive to `Missing`, spec
+/// §5.4) is a verified no-op -- never spawns a child for nothing.
+fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
+    if ops.is_empty() {
+        return Ok(());
+    }
+    elevation::run_ops(to_elevation(level), ops).map_err(|e| match e {
+        BrokerOpError::CouldNotAcquire(err) => {
+            KindError::CouldNotAcquireElevation(level, err.to_string())
+        }
+        BrokerOpError::OpFailed(err) => KindError::AccessDenied(err.to_string()),
+    })
+}
+
+/// Maps a tweak's declared [`Level`] to the broker's own [`Elevation`] — only ever called for
+/// `System`/`Ti`; `User`/`Admin` run in-process and never reach the broker at all.
+fn to_elevation(level: Level) -> Elevation {
+    match level {
+        Level::System => Elevation::System,
+        Level::Ti => Elevation::TrustedInstaller,
+        Level::User | Level::Admin => {
+            unreachable!("drive_via_broker is only ever reached for System/Ti")
         }
     }
 }
@@ -113,7 +168,7 @@ pub struct Deps<'a> {
     pub probe_cache: &'a ProbeCache,
     pub machine_guid: Option<&'a str>,
     pub level: Level,
-    pub running: Milestone,
+    pub running: WinVer,
 }
 
 /// Per-session cache of probeable-Action present/absent readings, keyed `(tweak_id, effect_id)`

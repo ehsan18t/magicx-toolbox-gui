@@ -597,7 +597,9 @@ pub const SUPPORT_MATRIX: &[Milestone] = &[
     Milestone { build: 26100 },
 ];
 
-fn build_expr_contains(expr: BuildExpr, build: u32) -> bool {
+/// `pub(crate)`: `tweaks::winver`'s runtime `WindowsScope::applies` reuses this verbatim for the
+/// `build`/`revision`/product-range axes instead of reimplementing the grammar (spec §6.6).
+pub(crate) fn build_expr_contains(expr: BuildExpr, build: u32) -> bool {
     match expr {
         BuildExpr::Exact(n) => build == n,
         BuildExpr::Min(n) => build >= n,

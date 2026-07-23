@@ -8,6 +8,7 @@ use std::sync::Mutex;
 
 use crate::error::Error as BackendError;
 use crate::models::{RegistryHive, RegistryValueType};
+use crate::services::elevation::BrokerOp;
 use crate::services::registry_service;
 use crate::tweaks::model::{
     FieldAddr, Hive, KeyAddr, Level, RegAddr, RegType, Setting, TypedRegValue, Value,
@@ -49,8 +50,10 @@ impl EffectKind for RegistryKind {
     }
 }
 
-/// `Level::User`/`Level::Admin` run in-process; `System`/`Ti` need the elevation broker, which
-/// this build does not wire up yet (see the `kinds` module docs for the attachment point).
+/// `Level::User`/`Level::Admin` run in-process here; `System`/`Ti` are routed through the
+/// elevation broker one layer up, by `engine::AllKinds::drive` (see `to_broker_op` below and the
+/// `kinds` module docs for the placement) -- this kind's own `drive` (called directly, bypassing
+/// that routing) still rejects them itself.
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
         Level::User | Level::Admin => Ok(()),
@@ -233,6 +236,73 @@ fn delete_ok(result: Result<(), BackendError>) -> Result<(), BackendError> {
     match result {
         Err(BackendError::RegistryKeyNotFound(_)) => Ok(()),
         other => other,
+    }
+}
+
+// --- System/TI routing: Setting + Value -> BrokerOp (spec §9; see kinds/mod.rs's module docs for
+// WHERE this is called from -- `engine::AllKinds::drive`, never this file's own `drive`) ---------
+
+/// Translates a System/TI-level registry drive into the broker's typed op (spec §9): the
+/// mechanical `RegAddr`/`KeyAddr` + `Value` -> `BrokerOp` mapping. A field-addressed write is a
+/// read-modify-write cycle (`drive_field`) this task does not route -- the read half would need to
+/// run at the SAME elevated level to see the true live value, and the broker wire protocol has no
+/// read op at all -- so it stays `Error::UnsupportedLevel`, a strict narrowing of what was
+/// previously every System/Ti registry drive, not a new gap.
+pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<BrokerOp, Error> {
+    match s {
+        Setting::Registry(addr) if addr.field.is_some() => Err(Error::UnsupportedLevel(level)),
+        Setting::Registry(addr) => {
+            let hive = old_hive(addr.hive);
+            match target {
+                Value::Absent => Ok(BrokerOp::RegDeleteValue {
+                    hive,
+                    key: addr.path.clone(),
+                    value_name: addr.name.clone(),
+                }),
+                Value::Reg(v) => Ok(BrokerOp::RegSet {
+                    hive,
+                    key: addr.path.clone(),
+                    value_name: addr.name.clone(),
+                    value_type: old_type(addr.ty),
+                    value: broker_reg_value(v),
+                }),
+                _ => Err(Error::Invalid(
+                    "a registry value can only be driven to a Reg literal or Absent",
+                )),
+            }
+        }
+        Setting::RegistryKey(addr) => {
+            let hive = old_hive(addr.hive);
+            match target {
+                Value::Present(true) => Ok(BrokerOp::RegCreateKey {
+                    hive,
+                    key: addr.path.clone(),
+                }),
+                Value::Present(false) => Ok(BrokerOp::RegDeleteKey {
+                    hive,
+                    key: addr.path.clone(),
+                }),
+                _ => Err(Error::Invalid(
+                    "a registry key can only be driven to Present(bool)",
+                )),
+            }
+        }
+        Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
+            Err(Error::Invalid("RegistryKind cannot drive this Setting"))
+        }
+    }
+}
+
+/// The broker's `RegSet` carries its value as untyped JSON (spec: the wire protocol is kind-
+/// neutral); this is the same per-type encoding `write_typed`'s callee ultimately stores, just
+/// expressed as JSON rather than a direct Win32 call.
+fn broker_reg_value(v: &TypedRegValue) -> serde_json::Value {
+    match v {
+        TypedRegValue::Dword(n) => serde_json::json!(n),
+        TypedRegValue::Qword(n) => serde_json::json!(n),
+        TypedRegValue::Sz(s) | TypedRegValue::ExpandSz(s) => serde_json::json!(s),
+        TypedRegValue::MultiSz(items) => serde_json::json!(items),
+        TypedRegValue::Binary(bytes) => serde_json::json!(bytes),
     }
 }
 
@@ -539,8 +609,13 @@ mod tests {
         assert_eq!(unchanged, "no-separators==;;");
     }
 
+    /// `RegistryKind::drive` itself is unchanged (spec §9 -- see kinds/mod.rs's module docs on
+    /// placement): the routing decision now lives one layer up, in `engine::AllKinds::drive`,
+    /// which never reaches this in-process `drive` for System/Ti at all. Calling it directly here
+    /// (bypassing that routing) still correctly rejects -- this in-process kind never silently
+    /// escalates on its own.
     #[test]
-    fn drive_rejects_system_and_ti_levels_for_now() {
+    fn in_process_drive_still_rejects_system_and_ti_levels() {
         let scratch = Scratch::new("level_gate");
         let setting = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));
 
@@ -548,9 +623,86 @@ mod tests {
             let cx = ExecCx::new(level);
             let err = RegistryKind
                 .drive(&setting, &Value::Reg(TypedRegValue::Dword(1)), &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
+                .expect_err("the in-process kind must still reject System/Ti directly");
             assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
         }
+    }
+
+    /// This FLIPS the old expectation: a System/Ti registry drive is no longer a dead end --
+    /// `to_broker_op` (what `engine::AllKinds::drive` actually calls for System/Ti) translates it
+    /// into the broker's typed op instead. Pure translation, no real elevation/broker spawn.
+    #[test]
+    fn system_and_ti_registry_drives_now_translate_to_broker_ops() {
+        let scratch = Scratch::new("broker_translate");
+        let value_addr = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));
+        let key_addr = Setting::RegistryKey(KeyAddr {
+            hive: Hive::Hkcu,
+            path: format!("{}\\Sub", scratch.path),
+        });
+
+        for level in [Level::System, Level::Ti] {
+            let set_op = to_broker_op(&value_addr, &Value::Reg(TypedRegValue::Dword(7)), level)
+                .expect("a whole-value Reg drive must translate");
+            assert!(
+                matches!(set_op, crate::services::elevation::BrokerOp::RegSet { .. }),
+                "got {set_op:?}"
+            );
+
+            let delete_op = to_broker_op(&value_addr, &Value::Absent, level)
+                .expect("Absent must translate to a delete");
+            assert!(
+                matches!(
+                    delete_op,
+                    crate::services::elevation::BrokerOp::RegDeleteValue { .. }
+                ),
+                "got {delete_op:?}"
+            );
+
+            let create_key_op = to_broker_op(&key_addr, &Value::Present(true), level)
+                .expect("Present(true) on a key must translate to a create");
+            assert!(
+                matches!(
+                    create_key_op,
+                    crate::services::elevation::BrokerOp::RegCreateKey { .. }
+                ),
+                "got {create_key_op:?}"
+            );
+
+            let delete_key_op = to_broker_op(&key_addr, &Value::Present(false), level)
+                .expect("Present(false) on a key must translate to a delete");
+            assert!(
+                matches!(
+                    delete_key_op,
+                    crate::services::elevation::BrokerOp::RegDeleteKey { .. }
+                ),
+                "got {delete_key_op:?}"
+            );
+        }
+    }
+
+    /// The one narrowed gap the translation does not cover (spec §9's brief): a field-addressed
+    /// packed write stays `UnsupportedLevel`, since its read-modify-write cycle needs a read at the
+    /// SAME elevated level the broker protocol has no op for.
+    #[test]
+    fn field_addressed_registry_drive_is_not_routed() {
+        let scratch = Scratch::new("broker_field_gap");
+        let addr = RegAddr {
+            hive: Hive::Hkcu,
+            path: scratch.path.clone(),
+            name: "Packed".to_string(),
+            ty: RegType::Sz,
+            field: Some(FieldAddr {
+                field: "A".to_string(),
+                format: PackedFormat::KvSemicolon,
+            }),
+        };
+        let err = to_broker_op(
+            &Setting::Registry(addr),
+            &Value::Reg(TypedRegValue::Sz("x".to_string())),
+            Level::System,
+        )
+        .expect_err("a field-addressed write must not be routed yet");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]

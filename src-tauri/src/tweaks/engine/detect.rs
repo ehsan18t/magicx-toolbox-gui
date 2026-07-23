@@ -7,6 +7,11 @@
 //! could not read (or a non-optional effect that reads `Missing`) makes the WHOLE tweak `Unknown` —
 //! matching a live surface we could only partially observe would be a guess, so no option-match or
 //! System-Default verdict is ever returned alongside an unreadable effect.
+//!
+//! **Execution context (spec §9, invariant 24):** every read here goes through
+//! `context::read_route` per effect -- `Deps.level` (the ceiling the app currently has) for
+//! everything, since reads never escalate to a tweak's declared floor/step, EXCEPT an HKCU Setting
+//! is still read in-process as the interactive user regardless of `Deps.level`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,9 +21,11 @@ use crate::tweaks::model::{
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::validate::{
-    applicable_surface, applicable_value, option_unavailable, scope_admits, Milestone,
+    applicable_surface, applicable_value, option_unavailable, Milestone,
 };
+use crate::tweaks::winver::WinVer;
 
+use super::context;
 use super::Deps;
 
 /// Why one applicable effect could not be read (spec §8.4, invariant 3). Every variant traces back
@@ -105,7 +112,11 @@ type Readings = HashMap<EffectId, Value>;
 /// through `deps.claims` directly, never the corpus's `shared:` values (spec §8.6: claim state, not
 /// the underlying live value, is what detection compares).
 pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
-    let milestone = deps.running;
+    // `validate.rs`'s helpers below stay Milestone-shaped (build-only, see `winver.rs`'s module
+    // docs) -- `winver` is kept alongside for the one runtime scope decision that must honor
+    // `revision` too (the per-option-value Action scope check in `option_matches`).
+    let winver = deps.running;
+    let milestone = winver.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
 
     if surface.is_empty() {
@@ -121,7 +132,6 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
         };
     }
 
-    let cx = ExecCx::new(deps.level);
     let mut readings: Readings = HashMap::new();
     let mut missing_origin: HashSet<EffectId> = HashSet::new();
     let mut probe_present: HashMap<EffectId, bool> = HashMap::new();
@@ -129,8 +139,11 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
     let mut held_shared = Vec::new();
 
     // Read each applicable, detectable, non-shared effect exactly once (spec §8.4) — shared across
-    // every option's comparison below, never re-read per option.
+    // every option's comparison below, never re-read per option. Reads never escalate (invariant
+    // 24): each read runs at `context::read_route` -- `Deps.level` (the ceiling) for everything,
+    // except an HKCU Setting is still read in-process as the interactive user.
     for effect in &surface {
+        let cx = context::read_route(effect, deps.level);
         match &effect.kind {
             Effect::Setting(setting) => {
                 classify_setting_read(
@@ -211,6 +224,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             opt,
             &surface,
             &milestone,
+            &winver,
             &readings,
             &probe_present,
             deps.claims,
@@ -382,6 +396,7 @@ fn option_matches(
     opt: &Opt,
     surface: &[&EffectDef],
     milestone: &Milestone,
+    winver: &WinVer,
     readings: &Readings,
     probe_present: &HashMap<EffectId, bool>,
     claims: &ClaimsStore,
@@ -424,9 +439,14 @@ fn option_matches(
                 // `opt.values`, spec §6.3) from "scoped out" for an Action -- both read back `None`.
                 // Only a *scoped-out* authored `run` is skipped like an uncovered effect; a genuine
                 // omission still needs the strict/Residue check below (spec §8.4).
+                // Runtime scope decision (spec §6.6/invariant 22): unlike `applicable_value`'s
+                // Milestone-based (build-only) admission above, whether THIS authored value is
+                // scoped out must honor `revision` too -- an Action's own per-option-value
+                // `windows:` can pin an exact build with a revision floor, and this is the one
+                // direct scope check `detect` makes for the running build (see winver.rs's module
+                // docs on the WinVer/Milestone reconciliation).
                 let raw = opt.values.get(&effect.id);
-                let scoped_out =
-                    matches!(raw, Some(OptValue::Run(w)) if !scope_admits(w.as_ref(), milestone));
+                let scoped_out = matches!(raw, Some(OptValue::Run(w)) if !w.as_ref().is_none_or(|s| s.applies(winver)));
                 if scoped_out {
                     continue;
                 }
@@ -694,7 +714,10 @@ mod tests {
                 probe_cache: &self.cache,
                 machine_guid: None,
                 level: Level::User,
-                running: Milestone { build: 19045 },
+                running: WinVer {
+                    build: 19045,
+                    revision: 0,
+                },
             }
         }
     }

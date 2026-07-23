@@ -17,6 +17,8 @@
 //! reaches `scheduler_service` is `#[ignore]`d, matching that file's own convention.
 
 use crate::error::Error as BackendError;
+use crate::models::SchedulerAction;
+use crate::services::elevation::BrokerOp;
 use crate::services::scheduler_service::{self, TaskState};
 use crate::tweaks::model::{Setting, TaskAddr, Value};
 
@@ -116,6 +118,36 @@ fn drive_task(addr: &TaskAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
+/// Translates a System/TI-level task drive into the broker's typed op (spec §9): mirrors
+/// `drive_task` mechanically, minus the existence pre-check `drive_task` performs in-process (that
+/// read runs at the CURRENT level -- invariant 24 -- so it is not repeated here; an already-missing
+/// task simply reports its own COM error through the broker rather than the typed
+/// `ResourceMissing` the in-process path gives). Driving to `Missing` is the same no-op it always
+/// is (spec §5.4).
+pub(crate) fn to_broker_ops(s: &Setting, target: &Value) -> Result<Vec<BrokerOp>, Error> {
+    let Setting::Task(addr) = s else {
+        return Err(Error::Invalid("TaskKind cannot drive this Setting"));
+    };
+    match target {
+        Value::Missing => Ok(Vec::new()),
+        Value::TaskEnabled(enabled) => {
+            let (folder, name) = split_task_path(&addr.path)?;
+            Ok(vec![BrokerOp::Scheduler {
+                task_path: folder,
+                task_name: name.to_string(),
+                action: if *enabled {
+                    SchedulerAction::Enable
+                } else {
+                    SchedulerAction::Disable
+                },
+            }])
+        }
+        _ => Err(Error::Invalid(
+            "a task can only be driven to TaskEnabled or Missing",
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +216,40 @@ mod tests {
         TaskKind
             .drive(&setting, &Value::Missing, &cx)
             .expect("driving a task to Missing must be a no-op success");
+    }
+
+    /// Pure translation, no COM activation at all (spec §9) -- `to_broker_ops` never calls
+    /// `scheduler_service`, unlike `drive_task`.
+    #[test]
+    fn to_broker_ops_translates_enabled_and_missing() {
+        let setting = Setting::Task(TaskAddr {
+            path: "\\Microsoft\\Windows\\DiskCleanup\\SilentCleanup".to_string(),
+        });
+
+        let enable = to_broker_ops(&setting, &Value::TaskEnabled(true)).unwrap();
+        assert_eq!(enable.len(), 1);
+        match &enable[0] {
+            BrokerOp::Scheduler {
+                task_path,
+                task_name,
+                action,
+            } => {
+                assert_eq!(task_path, "\\Microsoft\\Windows\\DiskCleanup");
+                assert_eq!(task_name, "SilentCleanup");
+                assert_eq!(*action, SchedulerAction::Enable);
+            }
+            other => panic!("expected Scheduler, got {other:?}"),
+        }
+
+        let disable = to_broker_ops(&setting, &Value::TaskEnabled(false)).unwrap();
+        match &disable[0] {
+            BrokerOp::Scheduler { action, .. } => assert_eq!(*action, SchedulerAction::Disable),
+            other => panic!("expected Scheduler, got {other:?}"),
+        }
+
+        let missing = to_broker_ops(&setting, &Value::Missing)
+            .expect("driving to Missing must translate, never error");
+        assert!(missing.is_empty(), "Missing is a no-op -- no ops to run");
     }
 
     #[test]

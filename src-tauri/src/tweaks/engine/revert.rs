@@ -64,7 +64,8 @@ use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, Tweak,
 };
 use crate::tweaks::snapshot::{Captured, EntrySummary, EntryValidity, JournalRow, Seq};
-use crate::tweaks::validate::{option_unavailable, scope_admits, Milestone};
+use crate::tweaks::validate::{option_unavailable, Milestone};
+use crate::tweaks::winver::WinVer;
 
 use super::apply::{self, ActionPlan, DriveCtx, DriveState, EngineError};
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnavailableOpt};
@@ -102,7 +103,11 @@ pub async fn restore(
 }
 
 fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutcome, EngineError> {
-    let milestone = deps.running;
+    // `validate.rs`'s Milestone-shaped helpers below stay build-only (see `winver.rs`'s module
+    // docs); `winver` is threaded through to `reapply_option_ref` for its direct runtime scope
+    // check, which must honor `revision` too.
+    let winver = deps.running;
+    let milestone = winver.to_milestone();
     let skipped_invalid = list_invalid(&tweak.id, corpus, deps);
 
     // Step 0: the head entry (already skips invalid/dangling -- ADR-0002).
@@ -143,7 +148,8 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
     let mut residues: Vec<EffectId> = Vec::new();
     let restored_label = match &entry.captured {
         Captured::OptionRef(label) => {
-            let result = reapply_option_ref(current_tweak, corpus, label, milestone, &cx, deps);
+            let result =
+                reapply_option_ref(current_tweak, corpus, label, milestone, &winver, &cx, deps);
             failures.extend(result.failures);
             held_shared = result.held_shared;
             residues = result.residues;
@@ -275,6 +281,7 @@ fn reapply_option_ref(
     corpus: &Corpus,
     label: &str,
     milestone: Milestone,
+    winver: &WinVer,
     cx: &ExecCx,
     deps: &Deps,
 ) -> OptionRefResult {
@@ -307,12 +314,15 @@ fn reapply_option_ref(
 
     // Shared + Action effects only, ephemerals included (unlike `validate::applicable_surface`,
     // which excludes them -- they carry no detectable/reversible signal, but restoring an option
-    // that `run`s one must still run it, spec §7/§8.5). Settings were just handled above.
+    // that `run`s one must still run it, spec §7/§8.5). Settings were just handled above. Runtime
+    // scope decision (spec §6.6/invariant 22): honors `revision` too, unlike the Milestone-based
+    // (build-only) helpers elsewhere in this file -- see winver.rs's module docs.
     let surface: Vec<&EffectDef> = tweak
         .surface
         .iter()
         .filter(|e| {
-            scope_admits(e.windows.as_ref(), &milestone) && !matches!(e.kind, Effect::Setting(_))
+            e.windows.as_ref().is_none_or(|s| s.applies(winver))
+                && !matches!(e.kind, Effect::Setting(_))
         })
         .collect();
 
@@ -326,7 +336,7 @@ fn reapply_option_ref(
         };
         let raw = target_opt.values.get(&effect.id);
         let scoped_out =
-            matches!(raw, Some(OptValue::Run(w)) if !scope_admits(w.as_ref(), &milestone));
+            matches!(raw, Some(OptValue::Run(w)) if !w.as_ref().is_none_or(|s| s.applies(winver)));
         if scoped_out {
             continue;
         }
@@ -751,7 +761,10 @@ mod tests {
                 probe_cache: &self.cache,
                 machine_guid: Some("test-guid"),
                 level: Level::User,
-                running: Milestone { build: 19045 },
+                running: WinVer {
+                    build: 19045,
+                    revision: 0,
+                },
             }
         }
 
