@@ -108,8 +108,15 @@ pub fn run() {
             commands::general::show_main_window,
             commands::system::get_system_info,
             commands::debug::set_debug_mode,
-            // Tweak commands: intentionally empty (spec §12) -- the redesigned engine has no
-            // Tauri command surface yet; Task 16 wires it up.
+            // Tweak commands (spec §12, Task 16): a thin layer over the redesigned engine.
+            commands::tweaks::get_tweaks,
+            commands::tweaks::get_statuses_stream,
+            commands::tweaks::apply_tweak,
+            commands::tweaks::restore_tweak,
+            commands::tweaks::list_snapshot_entries,
+            commands::tweaks::discard_snapshot_entry,
+            commands::tweaks::rescan_after_elevation,
+            commands::tweaks::get_elevation_state,
             // Elevation commands
             commands::elevation::can_use_system_elevation,
             commands::elevation::restart_as_admin,

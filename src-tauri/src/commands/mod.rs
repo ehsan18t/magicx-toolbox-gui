@@ -3,4 +3,5 @@ pub mod debug;
 pub mod elevation;
 pub mod general;
 pub mod system;
+pub mod tweaks;
 pub mod update;

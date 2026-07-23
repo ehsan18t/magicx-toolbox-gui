@@ -38,6 +38,17 @@ pub enum Error {
 
     #[error("Validation failed: {0}")]
     ValidationError(String),
+
+    /// A tweak engine operation (`apply`/`restore`/snapshot I/O) failed. Carries the engine's own
+    /// `Display` text -- the command layer maps `EngineError`/`SnapshotError`/`ClaimsError` here
+    /// rather than exposing those internal types across the IPC boundary.
+    #[error("{0}")]
+    Tweak(String),
+
+    /// `apply_tweak`/`restore_tweak` refused a tweak that is unavailable for the current app
+    /// elevation level or SID state (spec §9) -- a typed refusal, never a silent no-op.
+    #[error("tweak unavailable: {0}")]
+    TweakUnavailable(String),
 }
 
 impl Error {
@@ -57,6 +68,8 @@ impl Error {
             Error::CommandExecution(_) => "COMMAND_EXECUTION_FAILED",
             Error::NotFound(_) => "NOT_FOUND",
             Error::ValidationError(_) => "VALIDATION_FAILED",
+            Error::Tweak(_) => "TWEAK_ENGINE_ERROR",
+            Error::TweakUnavailable(_) => "TWEAK_UNAVAILABLE",
         }
     }
 }
