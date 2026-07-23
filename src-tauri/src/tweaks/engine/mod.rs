@@ -16,6 +16,7 @@
 pub mod apply;
 pub mod detect;
 pub mod lifecycle;
+pub mod revert;
 
 use crate::tweaks::kinds::{
     action::ActionKind, firewall::FirewallKind, hosts::HostsKind, registry::RegistryKind,

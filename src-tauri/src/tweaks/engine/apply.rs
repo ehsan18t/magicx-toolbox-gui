@@ -195,8 +195,12 @@ pub struct ApplyOutcome {
 /// Which direction an Action ran in during Step 3 -- decided once during Step 1 (a pure read-time
 /// decision) and reused unchanged at drive time and, on failure, at rollback time, so all three
 /// phases agree on what actually happened.
+/// `pub(crate)`: Task 13's restore reuses [`drive_forward`] verbatim to run an OptionRef target's
+/// actions/ephemerals in declaration order (which dispatches to `drive_action` internally -- that
+/// helper itself stays private, only reachable through `drive_forward`), so restore must be able to
+/// name this plan's variants too (visibility-only -- see this file's module docs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActionPlan {
+pub(crate) enum ActionPlan {
     /// The target option runs this action's `apply`.
     Apply,
     /// The target omits an undo-carrying probeable action whose probe currently reads present --
@@ -219,21 +223,44 @@ enum ProcessedEffect {
     SharedRelease(Box<SharedDef>),
 }
 
-/// Bundles what every Step-3 helper needs, purely to keep argument lists short (clippy).
-struct DriveCtx<'a> {
-    tweak: &'a Tweak,
-    corpus: &'a Corpus,
-    target_opt: &'a Opt,
-    milestone: Milestone,
-    deps: &'a Deps<'a>,
-    seq: Seq,
+/// Whether a drive pass should durably mark completed actions into an on-disk WAL entry, or skip
+/// that bookkeeping entirely (spec invariant 5 vs. Task 13's restore review fix). Apply's own WAL
+/// discipline is unchanged (`To(seq)`, exactly the seq it just pushed); restore's re-apply of an
+/// OptionRef target needs `None` -- the entry being restored is never consumed until the WHOLE
+/// restore verifies, so a crash mid-re-apply just leaves that entry on disk and the caller retries
+/// the whole restore. Fabricating a throwaway entry purely to satisfy a hardcoded `mark_completed`
+/// call was a reviewed CRITICAL (an unconsumed, un-deduped phantom could outlive/mask the real
+/// return-point on a crash or a failed discard) -- this makes the bookkeeping itself optional
+/// instead of routing around it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Journaling {
+    /// Mark completed actions into the entry at this seq (spec §8.1 step 3, invariant 5).
+    To(Seq),
+    /// Skip completion marking -- no on-disk journal exists for this drive pass.
+    None,
 }
 
+/// Bundles what every Step-3 helper needs, purely to keep argument lists short (clippy).
+///
+/// `pub(crate)`: Task 13's restore constructs one of these to reuse [`drive_forward`] verbatim for
+/// an OptionRef target's re-apply (visibility-only -- see this file's module docs).
+pub(crate) struct DriveCtx<'a> {
+    pub(crate) tweak: &'a Tweak,
+    pub(crate) corpus: &'a Corpus,
+    pub(crate) target_opt: &'a Opt,
+    pub(crate) milestone: Milestone,
+    pub(crate) deps: &'a Deps<'a>,
+    pub(crate) journal: Journaling,
+}
+
+/// `pub(crate)`/`effect_results`/`held_shared` only: Task 13's restore reads these back after
+/// calling [`drive_forward`] to build its own outcome, but never touches `processed` (that field's
+/// type stays module-private -- see this file's module docs).
 #[derive(Default)]
-struct DriveState {
+pub(crate) struct DriveState {
     processed: Vec<ProcessedEffect>,
-    effect_results: Vec<EffectResult>,
-    held_shared: Vec<HeldInfo>,
+    pub(crate) effect_results: Vec<EffectResult>,
+    pub(crate) held_shared: Vec<HeldInfo>,
 }
 
 /// Applies `target` to `tweak` (spec §8.1). Async only to hold the per-tweak lock across the whole
@@ -264,6 +291,13 @@ fn do_apply(
 
     let milestone = deps.running;
     let surface = applicable_surface(tweak, &milestone);
+    // Distinct from `surface` in exactly one respect (review fix): ephemeral actions are INCLUDED
+    // here. `applicable_surface` is a detection concept (spec §6.4/§8.4) and correctly excludes
+    // them there -- an ephemeral leaves no persistent state for detection, capture, or reversal to
+    // observe -- but a declared `run` ephemeral action still needs to physically RUN on apply (spec
+    // §7). Only the action-plan-building loop and the driving pass below use this; Step 1's Setting
+    // capture loop keeps using `surface` (moot either way -- it already ignores non-Setting kinds).
+    let drive_surface = driving_surface(tweak, &milestone);
 
     // Step 0: detect current status (the lock is already held by `apply`).
     let pre_status = detect::detect(tweak, corpus, deps);
@@ -313,7 +347,7 @@ fn do_apply(
 
     let mut action_plan: Vec<(EffectId, ActionPlan)> = Vec::new();
     let mut residues: Vec<EffectId> = Vec::new();
-    for effect in &surface {
+    for effect in &drive_surface {
         let Effect::Action(action_def) = &effect.kind else {
             continue;
         };
@@ -358,9 +392,15 @@ fn do_apply(
     };
 
     // Step 2: persist the WAL entry BEFORE mutating (invariant 5) -- the journal is exactly the
-    // actions Step 1 already decided will run.
+    // actions Step 1 already decided will run, MINUS ephemeral ones (review fix): an ephemeral
+    // changes no persistent state, so a crash after it ran needs no recovery -- journaling it would
+    // make the crash-window scan spuriously flag Needs Attention, and (were it ever undone) rollback/
+    // restore would find it un-undoable. `ephemeral: true` is exempt from ALL reversibility
+    // bookkeeping (spec §7, invariant 10), enforced here at the source rather than by exempting every
+    // downstream consumer.
     let journal: Vec<JournalRow> = action_plan
         .iter()
+        .filter(|(id, _)| !find_action(tweak, id).is_some_and(is_ephemeral))
         .map(|(id, _)| JournalRow {
             action_id: id.clone(),
             intended: true,
@@ -388,10 +428,10 @@ fn do_apply(
         target_opt,
         milestone,
         deps,
-        seq,
+        journal: Journaling::To(seq),
     };
     let mut state = DriveState::default();
-    let drive_result = drive_forward(&ctx, &surface, &action_plan, &mut state);
+    let drive_result = drive_forward(&ctx, &drive_surface, &action_plan, &mut state);
 
     match drive_result {
         Ok(()) => {
@@ -427,7 +467,28 @@ fn do_apply(
     }
 }
 
-fn drive_forward(
+/// The surface actually driven on apply (spec §8.1 step 3) -- identical to
+/// `validate::applicable_surface` except it does NOT exclude ephemeral actions. `applicable_surface`
+/// is right to exclude them for detection/capture/reversibility (spec §6.4/§8.4: an ephemeral
+/// leaves no persistent state for any of those to observe), but a declared `run` ephemeral action
+/// must still physically execute when its option is applied (spec §7: "runs on apply") -- review
+/// fix: apply and restore's `reapply_option_ref` must agree on what applying an option does, and
+/// restore already ran ephemerals correctly.
+fn driving_surface<'a>(tweak: &'a Tweak, milestone: &Milestone) -> Vec<&'a EffectDef> {
+    if !scope_admits(tweak.windows.as_ref(), milestone) {
+        return Vec::new();
+    }
+    tweak
+        .surface
+        .iter()
+        .filter(|e| scope_admits(e.windows.as_ref(), milestone))
+        .collect()
+}
+
+/// `pub(crate)`: Task 13's restore reuses this verbatim (not duplicated) to drive an OptionRef
+/// target's Shared/Action effects in declaration order (visibility-only -- see this file's module
+/// docs; the body below is byte-identical to Task 12's).
+pub(crate) fn drive_forward(
     ctx: &DriveCtx,
     surface: &[&EffectDef],
     action_plan: &[(EffectId, ActionPlan)],
@@ -586,17 +647,25 @@ fn drive_action(
                     effect: effect.id.clone(),
                     source: e,
                 })?;
-            ctx.deps
-                .snapshots
-                .mark_completed(&ctx.tweak.id, ctx.seq, &effect.id)
-                .map_err(|e| EngineError::JournalMark {
-                    effect: effect.id.clone(),
-                    source: e,
-                })?;
-            state.processed.push(ProcessedEffect::Action(
-                effect.id.clone(),
-                ActionPlan::Apply,
-            ));
+            // Ephemeral actions run unconditionally (just above) but participate in NO
+            // reversibility bookkeeping (spec §7, invariant 10): no completion mark (Step 2 never
+            // journaled it in the first place -- nothing to mark), no `state.processed` entry (so
+            // rollback can never encounter it and mistake it for un-undoable).
+            if !is_ephemeral(action_def) {
+                if let Journaling::To(seq) = ctx.journal {
+                    ctx.deps
+                        .snapshots
+                        .mark_completed(&ctx.tweak.id, seq, &effect.id)
+                        .map_err(|e| EngineError::JournalMark {
+                            effect: effect.id.clone(),
+                            source: e,
+                        })?;
+                }
+                state.processed.push(ProcessedEffect::Action(
+                    effect.id.clone(),
+                    ActionPlan::Apply,
+                ));
+            }
             if let ActionDef::Script { probe: Some(_), .. } = action_def {
                 let present = ctx.deps.probes.probe(action_def, &cx).map_err(|e| {
                     EngineError::ActionFailed {
@@ -625,13 +694,15 @@ fn drive_action(
                     effect: effect.id.clone(),
                     source: e,
                 })?;
-            ctx.deps
-                .snapshots
-                .mark_completed(&ctx.tweak.id, ctx.seq, &effect.id)
-                .map_err(|e| EngineError::JournalMark {
-                    effect: effect.id.clone(),
-                    source: e,
-                })?;
+            if let Journaling::To(seq) = ctx.journal {
+                ctx.deps
+                    .snapshots
+                    .mark_completed(&ctx.tweak.id, seq, &effect.id)
+                    .map_err(|e| EngineError::JournalMark {
+                        effect: effect.id.clone(),
+                        source: e,
+                    })?;
+            }
             state.processed.push(ProcessedEffect::Action(
                 effect.id.clone(),
                 ActionPlan::UndoBack,
@@ -682,7 +753,13 @@ fn rollback(
                     )));
                     continue;
                 };
-                if has_undo(action_def) {
+                if is_ephemeral(action_def) {
+                    // Belt-and-suspenders (review fix): Step 2 no longer journals an ephemeral, and
+                    // `drive_action` no longer adds it to `state.processed`, so this arm should be
+                    // unreachable for one in practice -- but an ephemeral is exempt from ALL
+                    // reversibility bookkeeping (spec §7, invariant 10), so a future path that ever
+                    // does surface one here must skip it, never report it un-undoable.
+                } else if has_undo(action_def) {
                     match deps.actions.undo(action_def, &cx) {
                         Ok(()) => {
                             // Did-it-work (invariant 19): probe/read-back must be checked
@@ -781,7 +858,11 @@ fn rollback(
 /// (an `undo` reversing a forward `Apply`, or a re-run `apply` reversing an `UndoBack`) has
 /// actually taken effect. A probe-less action has no state to check here -- nothing to add. A
 /// probe `Err` is itself pushed as a failure, never swallowed and never read as `Ok(false)`.
-fn verify_reversed_probe(
+///
+/// `pub(crate)`: Task 13's restore reuses this verbatim for the same did-it-work discipline when
+/// undoing a completed journal action (visibility-only -- see this file's module docs; the body
+/// below is byte-identical to Task 12's).
+pub(crate) fn verify_reversed_probe(
     action_def: &ActionDef,
     effect_id: &EffectId,
     expected_present: bool,
@@ -821,6 +902,20 @@ fn has_undo(action: &ActionDef) -> bool {
     match action {
         ActionDef::Script { undo, .. } | ActionDef::DeleteTree { undo, .. } => undo.is_some(),
     }
+}
+
+/// Whether `action` is ephemeral (spec §7): exempt from ALL reversibility bookkeeping -- never
+/// journaled (Step 2), never added to `state.processed` (`drive_action`), and (defensively, in case
+/// a future path ever surfaces one anyway) never treated as an un-undoable failure by `rollback` or
+/// Task 13's `revert::undo_journal`.
+fn is_ephemeral(action: &ActionDef) -> bool {
+    matches!(
+        action,
+        ActionDef::Script {
+            ephemeral: true,
+            ..
+        }
+    )
 }
 
 /// Drives every captured Setting back to its pre-apply value (spec §8.1/§8.5, ADR-0007) -- the
@@ -1158,6 +1253,23 @@ mod tests {
                 undo: undo.then(|| Script(format!("{id}_undo"))),
                 probe: probe.then(|| Script(format!("{id}_probe"))),
                 ephemeral: false,
+                shell: Shell::PowerShell,
+            }),
+            elevation: None,
+            optional: false,
+            if_missing: None,
+            windows: None,
+        }
+    }
+
+    fn ephemeral_effect(id: &str) -> EffectDef {
+        EffectDef {
+            id: EffectId(id.to_string()),
+            kind: Effect::Action(ActionDef::Script {
+                apply: Script(format!("{id}_apply")),
+                undo: None,
+                probe: None,
+                ephemeral: true,
                 shell: Shell::PowerShell,
             }),
             elevation: None,
@@ -1639,6 +1751,65 @@ mod tests {
         );
     }
 
+    /// Fix 2 regression (a CRITICAL Fix 2 itself exposed by making ephemerals run): an ephemeral
+    /// action running earlier in declaration order must never make a later, unrelated failure
+    /// spuriously un-rollback-able. Mirrors `verify_mismatch_rolls_back`'s `DrivePlan::NoOp` trick
+    /// (the ORIGINAL failure is a genuine `VerifyMismatch`; the rollback's drive-back to the
+    /// never-actually-changed captured value trivially re-verifies), with a declared-earlier
+    /// ephemeral action added to the surface.
+    #[test]
+    fn apply_with_ephemeral_then_failure_rolls_back_cleanly() {
+        let h = Harness::new();
+        h.kind.seed(
+            "s1",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        h.kind.drive_plan("s1", DrivePlan::NoOp);
+        let t = tweak(
+            "demo",
+            vec![ephemeral_effect("eph"), svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("eph", OptValue::Run(None)),
+                    (
+                        "s1",
+                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                    ),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err =
+            run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s1 verify mismatches");
+        let EngineError::RollbackReport {
+            original,
+            rollback_failures,
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(matches!(*original, EngineError::VerifyMismatch { .. }));
+        assert!(
+            rollback_failures.is_empty(),
+            "the ephemeral that already ran must never be reported un-undoable -- this rollback \
+             fully verifies (s1's captured value was never actually changed): {rollback_failures:?}"
+        );
+        assert!(
+            h.log().contains(&Op::RunApply("eph_apply".into())),
+            "the ephemeral must still have run before the later effect failed"
+        );
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_none(),
+            "a verified rollback must consume the entry -- an ephemeral having run earlier must \
+             never spuriously strand it in Needs Attention"
+        );
+    }
+
     #[test]
     fn rollback_failure_is_needs_attention_snapshot_kept() {
         let h = Harness::new();
@@ -1878,6 +2049,121 @@ mod tests {
         let log = h.log();
         assert!(!log.contains(&Op::RunApply("act_apply".into())));
         assert!(!log.contains(&Op::RunUndo("act_undo".into())));
+    }
+
+    /// Fix 2 regression (review): apply and restore must agree on what applying an option does.
+    /// `validate::applicable_surface` (a detection concept) correctly excludes ephemeral actions,
+    /// but a declared `run` ephemeral action must still physically execute on apply (spec §7) --
+    /// restore's `reapply_option_ref` already did this; `do_apply` did not, until this fix.
+    #[test]
+    fn apply_runs_a_declared_ephemeral_action() {
+        let h = Harness::new();
+        h.kind.seed(
+            "anchor",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        let t = tweak(
+            "demo",
+            vec![svc_effect("anchor", false), ephemeral_effect("eph")],
+            vec![opt(
+                "A",
+                vec![
+                    (
+                        "anchor",
+                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                    ),
+                    ("eph", OptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("apply succeeds");
+        assert!(
+            outcome
+                .effects
+                .iter()
+                .any(|r| r.effect.0 == "eph" && r.kind == EffectResultKind::Ran),
+            "the ephemeral action must run and report Ran: {:?}",
+            outcome.effects
+        );
+
+        let log = h.log();
+        assert!(
+            log.contains(&Op::RunApply("eph_apply".into())),
+            "a declared `run` ephemeral action must actually execute on apply (spec §7): {log:?}"
+        );
+        assert!(
+            !log.iter().any(|op| matches!(op, Op::Probe(_))),
+            "an ephemeral action carries no probe -- it must never be probed/verify-reversed: {log:?}"
+        );
+
+        let entry = h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .expect("a successful apply keeps its entry as history");
+        if let Captured::Values(map) = &entry.captured {
+            assert!(
+                !map.contains_key(&EffectId("eph".into())),
+                "an ephemeral action carries no persistent state -- it must never be captured"
+            );
+        } else {
+            panic!("expected a Values capture (pre-apply state was SystemDefault)");
+        }
+    }
+
+    /// Fix 2 regression: an ephemeral action must never appear in the persisted WAL journal at all
+    /// (spec §7, invariant 10) -- a real undo-carrying/probeable action declared alongside it must
+    /// still be journaled and marked completed normally.
+    #[test]
+    fn ephemeral_action_is_not_journaled() {
+        let h = Harness::new();
+        h.kind.seed(
+            "anchor",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        let t = tweak(
+            "demo",
+            vec![
+                svc_effect("anchor", false),
+                ephemeral_effect("eph"),
+                action_effect("act", true, true),
+            ],
+            vec![opt(
+                "A",
+                vec![
+                    (
+                        "anchor",
+                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                    ),
+                    ("eph", OptValue::Run(None)),
+                    ("act", OptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("apply succeeds");
+
+        let entry = h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .expect("a successful apply keeps its entry as history");
+        assert!(
+            entry.journal.iter().all(|r| r.action_id.0 != "eph"),
+            "an ephemeral action must never appear in the journal: {:?}",
+            entry.journal
+        );
+        assert!(
+            entry
+                .journal
+                .iter()
+                .any(|r| r.action_id.0 == "act" && r.completed),
+            "a real undoable/probeable action must still be journaled and marked completed: {:?}",
+            entry.journal
+        );
     }
 
     #[test]
