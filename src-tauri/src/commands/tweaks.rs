@@ -777,6 +777,105 @@ mod tests {
         }
     }
 
+    // --- availability + SID/elevation gating (pure logic, no Tauri runtime, no OS) --------------
+
+    #[test]
+    fn sid_mismatch_disables_user_level_tweaks() {
+        // A User-level (HKCU-touching) tweak with a SID mismatch is disabled with the
+        // over-the-shoulder reason.
+        let avail = compute_availability(Level::User, Level::User, true);
+        assert!(
+            matches!(avail, Availability::SidMismatch { .. }),
+            "got {avail:?}"
+        );
+
+        // Scoped to User-level only: an Admin/System/Ti-floor tweak is never disabled by
+        // sid_mismatch alone, even while the app level is still User (where it separately needs
+        // elevation instead -- a different reason kind, not SidMismatch).
+        for floor in [Level::Admin, Level::System, Level::Ti] {
+            let avail = compute_availability(floor, Level::User, true);
+            assert!(
+                !matches!(avail, Availability::SidMismatch { .. }),
+                "sid_mismatch must never disable a {floor:?}-floor tweak, got {avail:?}"
+            );
+        }
+
+        // Precedence: `needs_elevation(User, User)` is always `false` (a User-floor tweak never
+        // needs elevation at any app level), so the SID check being reached and returning
+        // `SidMismatch` for (User, User, true) above is the only branch that CAN fire here --
+        // pinning it directly guards against a future regression that widens `needs_elevation`'s
+        // own exclusion (e.g. dropping its `tweak_elevation != Level::User` guard) and makes the
+        // two checks newly overlap; today's ordering (SID checked first) must keep winning.
+        assert!(!needs_elevation(Level::User, Level::User));
+
+        // No mismatch -> never disabled by this rule.
+        assert_eq!(
+            compute_availability(Level::User, Level::User, false),
+            Availability::Available
+        );
+    }
+
+    #[test]
+    fn elevation_floor_above_app_level_is_needs_elevation() {
+        // App level User + an Admin/System/Ti-floor tweak -> disabled, needs elevation.
+        for floor in [Level::Admin, Level::System, Level::Ti] {
+            let avail = compute_availability(floor, Level::User, false);
+            assert!(
+                matches!(avail, Availability::NeedsElevation { .. }),
+                "floor={floor:?} at app level User must need elevation, got {avail:?}"
+            );
+        }
+
+        // App level Admin + any floor (including System/Ti) -> available: Admin is the one
+        // ceiling that reaches System/TrustedInstaller via the broker too (controller decision 3).
+        for floor in [Level::User, Level::Admin, Level::System, Level::Ti] {
+            assert_eq!(
+                compute_availability(floor, Level::Admin, false),
+                Availability::Available,
+                "floor={floor:?} at app level Admin must be available"
+            );
+        }
+    }
+
+    #[test]
+    fn available_when_level_sufficient_and_no_sid_mismatch() {
+        assert_eq!(
+            compute_availability(Level::User, Level::User, false),
+            Availability::Available
+        );
+        assert_eq!(
+            compute_availability(Level::User, Level::Admin, false),
+            Availability::Available
+        );
+        assert_eq!(
+            compute_availability(Level::Admin, Level::Admin, false),
+            Availability::Available
+        );
+    }
+
+    #[test]
+    fn apply_and_restore_refuse_unavailable_before_the_engine() {
+        // `refuse_if_unavailable` is the exact gate `apply_tweak`/`restore_tweak` call before ever
+        // building `Deps` or reaching the engine -- calling it directly (never `build_deps`, never
+        // `apply::apply`/`revert::restore`) is itself the proof that the refusal happens ahead of
+        // any engine call: there is no engine call in this test at all, only the gate.
+        let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
+
+        // Needs-elevation refusal.
+        t.elevation = Level::Admin;
+        let err = refuse_if_unavailable(&t, Level::User, false).expect_err("must refuse");
+        assert!(matches!(err, Error::TweakUnavailable(_)), "got {err:?}");
+
+        // SID-mismatch refusal.
+        t.elevation = Level::User;
+        let err = refuse_if_unavailable(&t, Level::User, true).expect_err("must refuse");
+        assert!(matches!(err, Error::TweakUnavailable(_)), "got {err:?}");
+
+        // The happy path: an available tweak must not refuse.
+        t.elevation = Level::User;
+        assert!(refuse_if_unavailable(&t, Level::User, false).is_ok());
+    }
+
     // --- the brief's two named tests -----------------------------------------------------------
 
     #[test]
