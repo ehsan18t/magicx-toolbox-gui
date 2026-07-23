@@ -634,7 +634,13 @@ pub(crate) fn scope_admits(scope: Option<&WindowsScope>, milestone: &Milestone) 
 /// state for detection to observe, so it cannot carry either requirement). Per-option-value
 /// scoping is resolved separately per option, since it can differ between options sharing one
 /// effect (`applicable_value`).
-fn applicable_surface<'a>(tweak: &'a Tweak, milestone: &Milestone) -> Vec<&'a EffectDef> {
+///
+/// `pub(crate)`: `tweaks::engine::detect` reuses this verbatim (spec §8.4) instead of
+/// reimplementing version-scoping — detection reads exactly this projection, once per effect.
+pub(crate) fn applicable_surface<'a>(
+    tweak: &'a Tweak,
+    milestone: &Milestone,
+) -> Vec<&'a EffectDef> {
     if !scope_admits(tweak.windows.as_ref(), milestone) {
         return Vec::new();
     }
@@ -649,7 +655,13 @@ fn applicable_surface<'a>(tweak: &'a Tweak, milestone: &Milestone) -> Vec<&'a Ef
 /// per-value `windows:` scope (spec §6.6's third scoping level) excludes this milestone, in which
 /// case the option simply has no answer for this effect here, as if it did not cover it. Every
 /// `OptValue` variant carries that same optional scope (model.rs) — not just `Set`.
-fn applicable_value<'a>(
+///
+/// `pub(crate)`: reused verbatim by `tweaks::snapshot::classify` and `tweaks::engine::detect`
+/// (spec §8.3/§8.4) — note that for an *omitted* Action entry (legally absent from `opt.values`,
+/// spec §6.3), this returns `None` indistinguishably from a scoped-out entry; `engine::detect`
+/// disambiguates the two itself where the difference matters (a genuine omission still needs the
+/// strict/Residue check, spec §8.4, while a scoped-out entry is skipped like an uncovered effect).
+pub(crate) fn applicable_value<'a>(
     opt: &'a Opt,
     effect: &EffectId,
     milestone: &Milestone,

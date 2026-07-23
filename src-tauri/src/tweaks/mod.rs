@@ -8,6 +8,7 @@
 //! the same file — that inclusion is a separate compilation unrelated to this crate's own
 //! `#[cfg(test)]` gate, exactly like today's `models/tweak_schema.rs`.
 
+pub mod engine;
 pub mod kinds;
 pub mod model;
 pub mod parse;
