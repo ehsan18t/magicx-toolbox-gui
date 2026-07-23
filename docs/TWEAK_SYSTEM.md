@@ -1,178 +1,197 @@
-# Tweak System - Technical Architecture
+# Tweak System — Technical Architecture
 
-> Internal reference for the unified option-based tweak system.
-> For YAML authoring guide, see [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md).
-
-*Updated: 2026-07-20*
+> Architecture reference for the redesigned tweak engine.
+> For the YAML authoring guide, see [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md).
+> For full design rationale, see the spec at
+> [`docs/superpowers/specs/2026-07-21-tweak-system-redesign-design.md`](./superpowers/specs/2026-07-21-tweak-system-redesign-design.md)
+> and the decision records under [`docs/adr/`](./adr/). This document is the map; the spec is the
+> territory.
 
 ---
 
 ## Overview
 
-Every tweak is an array of **options** (minimum 2). Each option defines the complete set of system changes for that state. The system detects which option matches the current state, captures a snapshot before applying, and applies each change phase *atomically in intent* — a failed phase is rolled back, and a rollback that cannot fully complete is surfaced rather than hidden (ADR-0001), never leaving the user without a way back.
+The engine applies curated Windows tweaks from embedded YAML and keeps per-tweak snapshots so changes
+can be reverted. Its defining property is **one representation per change**: apply, capture, detect, and
+revert all consume the *same* typed value, so they cannot drift (spec §5, invariant 1). Correctness is
+enforced by types and the build-time validator, not by convention.
 
-### Key Design Decisions
+### One-representation model
 
-| Decision              | Choice                                   | Rationale                                                  |
-| --------------------- | ---------------------------------------- | ---------------------------------------------------------- |
-| Migration Strategy    | Big-bang rewrite                         | Types deeply intertwined                                   |
-| Default Detection     | Match against options                    | No `is_default` flag; compare current state to all options |
-| System Default        | Selectable whenever a snapshot exists    | Choosing it is a Revert; a display-only placeholder otherwise (ADR-0003) |
-| Revert Behavior       | Restore all five phases from snapshot    | Snapshot released only on verified success; a partial failure = Needs Attention (ADR-0001/0002) |
-| Option Identification | Array index                              | Stable array order in YAML                                 |
-| Build-time validation | `#[serde(deny_unknown_fields)]`          | Catches YAML typos at compile time                         |
-| Elevation hierarchy   | User → Admin → SYSTEM → TrustedInstaller | `requires_ti` implies system & admin                       |
+The old system split one change into four representations — a YAML change, a captured snapshot, a
+restore op, and a detection comparison — spread across separate services that drifted. The redesign
+collapses them. An `Effect` is one atomic unit of change; a `Value` is the one domain shared by capture,
+apply, detect, and restore (`src-tauri/src/tweaks/model.rs`):
+
+```
+Effect  = Setting(Setting) | Shared(SharedId) | Action(ActionDef)
+Setting = Registry | RegistryKey | Service | Task | Hosts | Firewall
+Value   = Absent | Missing | Reg(TypedRegValue) | Startup | TaskEnabled(bool) | Present(bool)
+```
+
+- **Reversibility and detectability are typed**, not asserted: Settings are always reversible and
+  detectable; Actions are reversible iff they carry `undo`, detectable iff they carry `probe`; ephemeral
+  Actions are exempt from both (spec §6.4/§7).
+- **The did-it-work contract is unavoidable:** every effect op returns `Result`; a failed apply/read/revert
+  is `Err`, never a benign value. An unreadable state is **Unknown**, never a guess (spec §8.4, invariant 3).
 
 ---
 
-## Architecture
-
-### YAML → Binary Pipeline
+## Layer diagram
 
 ```
-tweaks/*.yaml
-    ↓  (build.rs parses + validates at compile time)
-    ↓  Mirror types with #[serde(deny_unknown_fields)]
-OUT_DIR/tweaks.json + categories.json
-    ↓  (include_str! embeds at compile time)
-generated_tweaks.rs → LazyLock<HashMap<String, TweakDefinition>>
+YAML corpus + shared block
+        │  build.rs: schema::load_corpus → validate_structural → validate_semantic (per support milestone)
+        ▼
+Compiled Tweak model  (surface: Vec<EffectDef>, options = flat value-maps)  — embedded as JSON
+        │
+        ▼
+Engine (src-tauri/src/tweaks/engine/)
+   lifecycle: apply · detect · restore · verify · atomic rollback
+   per-tweak lock · WAL action journal · shared-claims record
+        │  dispatches each Effect to →
+        ▼
+EffectKind modules (src-tauri/src/tweaks/kinds/)
+   registry · service · task · hosts · firewall · action
+   (read + apply + revert + detect co-located per kind)
+        │  execute through →
+        ▼
+Elevation broker (src-tauri/src/services/elevation/)
+   user (in-process) · admin (in-process) · system · ti (short-lived children),
+   grouped multi-op execution for same-level System/TI steps
 ```
 
-Build-time validation catches:
-- Unknown fields (typos)
-- Missing required fields
-- Invalid value types vs declared registry types (e.g., string for REG_DWORD)
-- DWORD/QWORD range overflow
-- Invalid regex in `task_name_pattern`
-- Mutual exclusivity (`task_name` XOR `task_name_pattern`)
-- Empty options (no changes at all)
-- Duplicate tweak/category IDs
-- Firewall create without direction/action
-
-### Change Types
-
-Each option can contain any combination of:
-
-| Type                | Applied By                              | Detected By           | Snapshot                     | Restore                  |
-| ------------------- | --------------------------------------- | --------------------- | ---------------------------- | ------------------------ |
-| `registry_changes`  | `registry_service` or SYSTEM elevation  | Read + compare values | Value + existed flag         | Set/delete value         |
-| `service_changes`   | `service_control` or SYSTEM elevation   | Query startup type    | Startup type + running state | Set startup + start/stop |
-| `scheduler_changes` | `scheduler_service` or SYSTEM elevation | Query task state      | Task state per name/pattern  | Enable/disable task      |
-| `hosts_changes`     | `hosts_service` (file I/O)              | Check entry existence | Entry existed flag           | Add/remove entry         |
-| `firewall_changes`  | `firewall_service` (netsh)              | Check rule existence  | Rule existed flag            | Delete rule (create N/A) |
-
-### Execution Order
-
-```
-pre_commands (cmd.exe)
-  → pre_powershell (PowerShell)
-    → registry_changes (atomic with rollback)
-      → service_changes (atomic with rollback)
-        → scheduler_changes (atomic with rollback)
-          → hosts_changes (atomic with rollback)
-            → firewall_changes (atomic with rollback)
-  → post_commands (cmd.exe)
-    → post_powershell (PowerShell)
-```
-
-If a change phase fails, the whole tweak is rolled back from the snapshot. Rollback itself attempts all five phases and collects failures; if it cannot fully complete, the tweak enters **Needs Attention** rather than silently leaving the machine half-changed (ADR-0001). "Atomic" therefore means *attempted atomically, with failure surfaced* — not a guarantee.
-
-### Elevation Hierarchy
-
-```
-requires_ti: true    → TrustedInstaller (parent process spoofing via TI service)
-                       Implies requires_system and requires_admin
-requires_system: true → SYSTEM (winlogon.exe token duplication)
-                       Implies requires_admin
-requires_admin: true  → Administrator (standard elevation)
-```
-
-Build.rs infers the hierarchy: if `requires_ti` is set, `requires_system` and `requires_admin` are automatically set to true.
-
-### State Detection
-
-Parallel (rayon) comparison of current system state against each option:
-
-1. Filter out `skip_validation: true` items
-2. Filter registry changes by `windows_versions`
-3. Check registry, services, scheduler, hosts, firewall in parallel
-4. Handle `*_missing_is_match` flags for Windows edition compatibility
-5. Handle `ignore_not_found` for optional scheduled tasks
-6. Handle `task_name_pattern` regex for bulk scheduler operations
-7. First option where ALL validatable changes match = current state
-
-If no option matches → "System Default" (unmatched state).
-
-### Snapshot System
-
-- **First apply**: capture the pre-change state → save as a snapshot.
-- **Option switch**: capture the current state, then apply the new option; a failed apply is rolled back from that capture.
-- **Revert**: restore the original snapshot across **all five phases** (registry, services, scheduler, hosts, firewall), collecting per-resource failures rather than aborting on the first. The snapshot is deleted **only** on a fully verified restore. A revert that does not fully succeed enters **Needs Attention**: the snapshot is kept, the unrestorable resources are named, and the user can retry or explicitly "keep current state" to release it (ADR-0001 / ADR-0002).
-- **Stale detection**: on startup, validate the registry, service, scheduler, hosts, and firewall snapshots; remove one only when the captured original state is verifiably restored — never on uncertainty.
-
-Snapshots record registry values, service states, scheduler task states, hosts entries, and firewall rules, plus a schema version and the capturing machine's `MachineGuid` (a load-time warning fires on a mismatch) and the Needs-Attention flag + unrestorable list.
-
-Storage: one JSON file per tweak in a `snapshots/` directory next to the executable (portable). Writes are atomic — a temp file is written and then renamed over the target — and the read-modify-write metadata path takes an exclusive `std::fs::File::lock`.
-
-### Profile System
-
-Removed in the current build (the export/import UI is disabled). A rebuild — sharing one machine-identity mechanism with the snapshot install ID — is planned for later; the v1 `.mgx` format is preserved in [spec/profile-v1.md](./spec/profile-v1.md) so existing archives remain recoverable.
+- The **build script** is the gatekeeper: `build.rs` `#[path]`-includes the runtime's own
+  `model`/`parse`/`schema`/`validate` modules, so build-time and runtime validation are the *same code* —
+  drift is a compile error. It loads every `*.yaml` in `tweaks/`, runs the structural and semantic guards
+  (spec §10) over each milestone of the support matrix (`19045`, `22621`, `22631`, `26100`), and embeds
+  the validated corpus as JSON.
+- Each **EffectKind module** owns how one kind reads/applies/reverts a value. The trusted low-level
+  primitives (`registry_service` `RegSetValueExW`, `service_control` SCM, scheduler COM, `hosts_service`,
+  `firewall_service`) are reused and hardened as adopted (e.g. the `delete_key` guards against
+  lone/leading/trailing-backslash parent deletion).
+- The **broker** owns privilege and is reused as-is; its wire protocol already carries `Vec<BrokerOp>`,
+  so consecutive same-level System/TI steps batch into one child (order-preserving) without adding UAC
+  prompts.
 
 ---
 
-## Module Map
+## Lifecycle
 
-### Models (`src-tauri/src/models/`)
+A tweak is in exactly one state at a time; options are mutually exclusive (spec §8).
 
-| File                | Purpose                                                             |
-| ------------------- | ------------------------------------------------------------------- |
-| `tweak.rs`          | Core types: TweakDefinition, TweakOption, all change types, enums   |
-| `tweak_snapshot.rs` | Snapshot types: Registry/Service/Scheduler/Hosts/Firewall snapshots |
-| `inspection.rs`     | Inspection types: Mismatch details for UI display                   |
+**Apply(option)** — acquire the per-tweak lock and detect current status (applying the active option is
+a verified no-op). Capture the pre-apply `Value` of every applicable non-shared Setting; a read that
+cannot read is `Err` and aborts *before touching anything*. Persist the snapshot entry atomically before
+mutating, including the **WAL action journal** (the target's intended action list, unmarked). Drive each
+effect to its desired value in declaration order through its kind module and the broker; verify each by
+read-back (Settings) or `probe`/exit-code (Actions). Each action's completion is fsynced into the journal
+after it runs — a crash between run and mark surfaces as **Needs Attention**, never a silent skip.
 
-### Commands (`src-tauri/src/commands/tweaks/`)
+**Atomic rollback (ADR-0001).** Any failure restores the just-captured entry via the same path as a user
+Restore — undo the journal's completed actions in reverse, then drive the captured state back. The
+returned error carries both the original failure and any rollback failures. A verified full restore
+consumes the entry; a rollback that cannot fully complete keeps it and surfaces **Needs Attention**
+(ADR-0002). "Atomic" means *attempted atomically, with failure surfaced* — not a guaranteed all-or-nothing.
 
-| File         | Purpose                                                                         |
-| ------------ | ------------------------------------------------------------------------------- |
-| `apply.rs`   | `apply_tweak`, `revert_tweak` — orchestrates snapshot + apply + rollback        |
-| `query.rs`   | `get_tweak_status`, `get_all_tweak_statuses` (parallel), `get_tweak_inspection` |
-| `helpers.rs` | `apply_all_changes_atomically`, per-type apply functions                        |
+**Detect** — read each applicable, detectable, non-shared Setting once; `optional` effects map `Missing`
+through `if_missing`; probeable Actions contribute their session-cached present/absent; claimed shared
+settings count as matching while any claim holds. A matching option wins; at most one can match
+(distinctness guard); no match ⇒ **System Default** (a computed status, never authored — ADR-0003). A
+read that fails ⇒ **Unknown**, with a needs-elevation hint when that is the cause. Options needing an
+unsatisfiable value on this machine are flagged **unavailable**. A full scan runs in the background at
+launch; statuses stream in; an Elevate triggers a full re-scan. There is no drift-refresh in v1.
 
-### Backup (`src-tauri/src/services/backup/`)
-
-| File            | Purpose                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `detection.rs`  | `detect_tweak_state`, `option_matches_current_state`, stale snapshot validation          |
-| `capture.rs`    | `capture_snapshot`, `capture_current_state` (parallel)                                   |
-| `restore.rs`    | `restore_from_snapshot` (attempts all five phases, collects failures — ADR-0001)         |
-| `inspection.rs` | `inspect_tweak` — detailed mismatch report for UI                                        |
-| `storage.rs`    | Snapshot file I/O: atomic writes (temp file + rename), `std::fs::File::lock`, Needs-Attention marker |
-| `helpers.rs`    | Parsing utilities, value comparison                                                      |
-
-### Services (`src-tauri/src/services/`)
-
-| File                   | Purpose                                      |
-| ---------------------- | -------------------------------------------- |
-| `registry_service.rs`  | Windows Registry read/write operations       |
-| `registry_value.rs`    | Canonical registry value parsing/writing/comparison |
-| `service_control.rs`   | Windows Service query/start/stop/set-startup |
-| `scheduler_service.rs` | Task Scheduler query/enable/disable/delete   |
-| `hosts_service.rs`     | Hosts file entry management                  |
-| `firewall_service.rs`  | Firewall rule management via netsh           |
-| `elevation/`           | SYSTEM and TrustedInstaller elevation        |
-
-### Build (`src-tauri/build.rs`)
-
-Mirror types of `tweak.rs` with `#[serde(deny_unknown_fields)]` for compile-time YAML validation. Must stay in sync — see comments at top of file.
+**Restore Snapshot** — the only restore action (ADR-0003). Consume the head entry: run its journal's
+undos in reverse, then re-apply the target. An **option reference** is re-applied *as currently defined*
+(its Settings, actions, ephemerals — ADR-0007); a **value dump** is driven back verbatim. Verify;
+success consumes the entry, the next becomes head, and exhausting the history simply reads as System
+Default. Failure keeps the entry; an incomplete restore ⇒ Needs Attention.
 
 ---
 
-## UI Behavior
+## Snapshots & shared claims
 
-Automatically determined by option count:
-- **2 options** → Toggle switch (unless `force_dropdown: true`)
-- **3+ options** → Dropdown/segmented control
+Snapshots live in the portable `snapshots/` directory **next to the executable**
+(`SnapshotStore::open_default` → `current_exe().parent()/snapshots`; spec §11). Storage is per-tweak: one
+subdirectory per tweak-id, one atomically-written file per entry, keyed by a **monotonic per-tweak
+sequence** (wall-clock timestamps are display metadata only). Each entry is stamped with a schema version
+and the machine's `MachineGuid`.
 
-**System Default** is a selectable state whenever a snapshot exists (in both the toggle and the dropdown); choosing it performs a Revert. When no option matches and no snapshot exists, it is a display-only placeholder.
+- **Authored-option captures store a reference** (`OptionRef(label)`), re-derived from the current corpus
+  on restore; **unauthored states** (System Default, drift) store a full value dump. Both carry the WAL
+  journal. Shared-referenced effects appear in **neither** — their return path is the claims record
+  (ADR-0006/0007).
+- **Dedup moves to head:** at most one entry per authored option (re-capture vacates the old position);
+  unauthored captures are all kept (spec §8.2).
+- An entry that is corrupt, wrong-schema, wrong-machine, or **dangling** (its option/tweak no longer
+  exists, or the target is unavailable here) is **invalid**: kept on disk, excluded from the walk, and
+  released only by explicit user consent (`discard_snapshot_entry`) — never guessed at (ADR-0002).
+- **Shared claims** live in one engine-level `shared_claims.json` under the snapshots root:
+  `{ shared_id → { original, claimants } }`. First claim captures the live original once and drives the
+  value; further claims are verified no-ops; the last release restores the captured original,
+  unconditionally and verified (external drift is overwritten by the return). Detection counts a claimed
+  setting as matching for every claimant while any claim holds (spec §8.6).
 
-A **Restore** button appears whenever a snapshot exists. If a revert only partially succeeds, the card shows a **Needs Attention** badge naming the unrestorable resources, the button becomes **Retry**, and a **Keep current state** action releases the snapshot by explicit user consent (ADR-0001 / ADR-0002).
+---
+
+## Elevation & execution context
+
+See ADR-0005. Four author-declared levels (`user`/`admin`/`system`/`ti`), a per-tweak floor with
+per-effect escalate-only refinement (`effective = max(floor, step)`). `user`/`admin` run in-process;
+`system` duplicates winlogon's token in a fresh child; `ti` starts the TrustedInstaller service and
+parent-spoofs off it. A **user-hive (HKCU) effect always runs in-process as the interactive user**,
+ignoring the floor. At startup an **over-the-shoulder guard** compares the process-token SID with the
+interactive session SID; on mismatch (a different admin's credentials elevated the app), User-level
+tweaks are disabled to avoid writing the wrong hive. Reads run at whatever level the app currently has;
+TI-protected resources legitimately deny reads and report **Unknown** until the user elevates. The app
+never silently escalates.
+
+---
+
+## Safety model (the ADRs)
+
+| ADR | Decision |
+|---|---|
+| [0001](./adr/0001-rollback-failure-is-a-first-class-state.md) | Rollback failure is a first-class, retryable **Needs Attention** state; rollback never aborts early. |
+| [0002](./adr/0002-snapshot-deletion-requires-verification-or-consent.md) | A snapshot is deleted only by a verified restore, the verified startup stale-cleanup, or explicit consent — never on a failure path or uncertainty. |
+| [0003](./adr/0003-system-default-is-a-computed-status.md) | System Default is a computed **status**, not a restore target; Restore Snapshot walks the history. |
+| [0004](./adr/0004-value-null-is-not-a-delete-spelling.md) | `absent` is the only absence spelling; a forgotten/`null`/omitted value is a build error, never a silent delete. |
+| [0005](./adr/0005-elevation-is-per-tweak-and-never-silently-escalated.md) | Elevation is declared per tweak (refinable per effect), escalate-only, never inferred or silently escalated. |
+| [0006](./adr/0006-one-address-one-owner-shared-state-is-declared-and-refcounted.md) | One address, one owner corpus-wide; genuine sharing is a declared, refcounted `shared` claim. |
+| [0007](./adr/0007-option-snapshots-are-references-restore-reapplies-the-current-definition.md) | Option snapshots are references; Restore re-applies the current corpus definition (updates heal restores). |
+
+---
+
+## Module map
+
+```
+src-tauri/src/tweaks/
+  model.rs          Effect · Setting · ActionDef · Value · Tweak · Opt  (the one representation)
+  schema.rs         YAML DTOs → compiled model (build-time; deny_unknown_fields)
+  parse.rs          typed literals, registry-path grammar, build-expr grammar, kv_semicolon parser
+  validate.rs       structural + semantic guards (spec §10), quantified per support milestone
+  engine/           apply · detect · revert · lifecycle (per-tweak lock, verify, Needs Attention)
+  kinds/            registry · service · task · hosts · firewall · action  (read+apply+revert+detect)
+  snapshot.rs       atomic per-tweak history, seq ordering, refs vs dumps, invalid-entry handling
+  shared_claims.rs  claims record: capture-once, refcount, last-release restore
+  winver.rs         RtlGetVersion + UBR
+src-tauri/src/commands/tweaks.rs   Tauri command surface (below)
+src-tauri/build.rs                 load + validate + compile the corpus at build time
+```
+
+**Command surface** (`commands/tweaks.rs`): `get_tweaks`, `get_statuses_stream` (background scan,
+streamed), `rescan_after_elevation`, `apply_tweak`, `restore_tweak`, `list_snapshot_entries`,
+`discard_snapshot_entry`, `get_elevation_state`. The `*View` types translate engine results into the
+frontend model — per-tweak state (Active option / System Default / Unknown / Unavailable), per-option
+unavailable reasons, held-by info, and apply/restore outcomes with per-effect results.
+
+---
+
+## Migration status
+
+The redesign was a hard cut: the old effect/apply/backup pipeline and every old YAML file were deleted in
+the same effort (spec §12). The engine ships with an **example corpus** — `src-tauri/tweaks/examples.yaml`,
+one tweak per feature — that proves the build and engine end-to-end. The real tweak corpus is re-authored
+from scratch, per category, on `main`, outside this plan. There is no dual-schema layer and no snapshot
+migration: old on-disk snapshots are invalidated by the schema-version bump.
