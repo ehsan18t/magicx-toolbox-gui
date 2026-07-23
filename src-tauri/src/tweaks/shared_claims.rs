@@ -33,7 +33,7 @@
 //! own claim/release calls for now, exactly as the task brief specifies.
 
 use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
-use crate::tweaks::model::{SharedDef, SharedId, Value};
+use crate::tweaks::model::{Setting, SharedDef, SharedId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -101,7 +101,7 @@ pub enum ClaimsError {
 /// fine at the tiny N a shared address realistically has.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ClaimRecord {
-    setting: crate::tweaks::model::Setting,
+    setting: Setting,
     original: Value,
     claimants: Vec<String>,
 }
@@ -542,6 +542,119 @@ mod tests {
         assert!(
             s.is_claimed(&shared.id),
             "the record must be kept, not deleted, on a failed restore"
+        );
+        assert_eq!(s.holders(&shared.id), vec!["tweak_a".to_string()]);
+    }
+
+    /// A corrupt/unparseable claims file must never fall through to "no claims" -- doing so would
+    /// let `claim` read the already-driven live value and persist it as a fresh "original,"
+    /// permanently losing the real one. Both `claim` and `release` must refuse outright.
+    #[test]
+    fn corrupt_claims_file_is_hard_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(CLAIMS_FILE), b"{ not valid json").unwrap();
+
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+
+        let claim_err = s.claim(&shared, "tweak_a", &mock, &cx()).unwrap_err();
+        assert!(matches!(claim_err, ClaimsError::Corrupt));
+
+        let release_err = s.release(&shared.id, "tweak_a", &mock, &cx()).unwrap_err();
+        assert!(matches!(release_err, ClaimsError::Corrupt));
+
+        assert_eq!(
+            mock.drive_calls.load(Ordering::SeqCst),
+            0,
+            "a corrupt record must never let claim/release re-capture or re-drive the live value"
+        );
+    }
+
+    /// A record stamped for a different machine must be treated as no record at all (mirrors
+    /// `SnapshotStore`'s WrongMachine stance) -- this machine must never drive a foreign record's
+    /// captured "original" onto its own live value.
+    #[test]
+    fn foreign_machine_guid_treated_as_no_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = shared_def();
+
+        // A *valid*, well-formed record -- just stamped for a different machine (e.g. a portable
+        // snapshots/ directory copied from elsewhere).
+        let mut records = BTreeMap::new();
+        records.insert(
+            shared.id.0.clone(),
+            ClaimRecord {
+                setting: shared.setting.clone(),
+                original: Value::Reg(TypedRegValue::Dword(777)), // the foreign "original"
+                claimants: vec!["foreign_tweak".to_string()],
+            },
+        );
+        let foreign = ClaimsFile {
+            schema_version: SCHEMA_VERSION,
+            machine_guid: Some("foreign-machine".into()),
+            records,
+        };
+        std::fs::write(
+            tmp.path().join(CLAIMS_FILE),
+            serde_json::to_vec_pretty(&foreign).unwrap(),
+        )
+        .unwrap();
+
+        let s = ClaimsStore::open(tmp.path().to_path_buf(), Some("here-machine".into()));
+        let mock = MockKind::new(original_value()); // this machine's real live value, never 777
+
+        assert!(
+            s.holders(&shared.id).is_empty(),
+            "a foreign-machine record must not surface its claimant on this machine"
+        );
+        assert!(!s.is_claimed(&shared.id));
+
+        // A release "by" the foreign claimant must find no record here, and above all must never
+        // drive the foreign original (777) onto this machine's live value.
+        let err = s
+            .release(&shared.id, "foreign_tweak", &mock, &cx())
+            .unwrap_err();
+        assert!(matches!(err, ClaimsError::NotHeld { .. }));
+        assert_eq!(
+            mock.drive_calls.load(Ordering::SeqCst),
+            0,
+            "the foreign record's captured original must never be driven onto this machine"
+        );
+        assert_eq!(mock.live(), original_value());
+
+        // A fresh claim on this machine proceeds normally, capturing THIS machine's live value --
+        // not the foreign record's -- exactly as if no record existed.
+        let outcome = s.claim(&shared, "tweak_here", &mock, &cx()).unwrap();
+        assert_eq!(outcome, ClaimOutcome::Captured);
+        assert_eq!(mock.live(), shared.value);
+        assert_eq!(s.holders(&shared.id), vec!["tweak_here".to_string()]);
+    }
+
+    /// `release` must refuse -- never drive, never treat as a benign no-op -- both when the shared
+    /// id has no record at all and when a record exists but this specific claimant never held it.
+    #[test]
+    fn release_by_non_holder_is_not_held() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+
+        let err = s.release(&shared.id, "tweak_a", &mock, &cx()).unwrap_err();
+        assert!(matches!(err, ClaimsError::NotHeld { .. }));
+
+        s.claim(&shared, "tweak_a", &mock, &cx()).unwrap();
+        let err = s.release(&shared.id, "tweak_b", &mock, &cx()).unwrap_err();
+        assert!(matches!(err, ClaimsError::NotHeld { .. }));
+
+        assert_eq!(
+            mock.drive_calls.load(Ordering::SeqCst),
+            1,
+            "neither NotHeld case may drive -- only the earlier legitimate claim's single drive"
+        );
+        assert!(
+            s.is_claimed(&shared.id),
+            "the real holder's claim must be untouched by either failed release attempt"
         );
         assert_eq!(s.holders(&shared.id), vec!["tweak_a".to_string()]);
     }
