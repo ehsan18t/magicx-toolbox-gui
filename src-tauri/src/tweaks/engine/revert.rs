@@ -23,8 +23,9 @@
 //!      Journaling::None, .. }` -- no on-disk WAL entry is pushed for this drive pass (review fix,
 //!      §Fix 1 below): the entry being restored is never consumed until step 4 verifies the WHOLE
 //!      restore, so a crash mid-re-apply just leaves that entry on disk and the caller retries.
-//!    - `Captured::Values` -- `drive_to_captured` only; scripts cannot be re-run from a dump, so the
-//!      outcome carries `reboot_advisory: true`.
+//!    - `Captured::Values` -- `drive_to_captured` for Settings, plus [`release_shared_claims`] for
+//!      any Shared effect this tweak currently holds (review fix, see below); scripts cannot be
+//!      re-run from a dump, so the outcome carries `reboot_advisory: true`.
 //! 3. **Shared claims recompute like an ordinary apply** (spec §8.6) -- a side effect of routing
 //!    Shared effects through `drive_forward` in step 2, never special-cased here.
 //! 4. **Verify + consume/keep** (ADR-0002, invariant 8/20): every undo and re-apply drive verified
@@ -53,6 +54,20 @@
 //! per-action crash journaling (see step 2 above), so it now drives with `Journaling::None` and
 //! pushes nothing at all. `option_ref_reapply_pushes_no_extra_entry` pins this directly.
 //!
+//! ## Fix 2 (Task 15, E2E-discovered): a Values-dump restore now also releases held shared claims
+//! `Captured::Values` only ever arises when the pre-apply state matched no authored option, and
+//! claiming a shared setting only ever happens by standing on a `Claim`-valued option -- so at the
+//! moment this dump was captured, this tweak could not yet have been a claimant of any Shared
+//! effect on its surface. Reverting to that moment must therefore give up whatever claim the
+//! tweak took since (spec §8.5: "restore recomputes shared claims exactly as an ordinary apply of
+//! the target state would," §8.6). Before this fix, the Values branch drove Settings back but left
+//! Shared effects completely untouched (only the `Captured::OptionRef` branch's `drive_forward`
+//! call ever reached them) -- a real, permanently-leaked claim (and a shared value that never
+//! returns to its true original) for the — common — case of a tweak whose very first apply claims
+//! a shared setting straight from a never-touched machine. [`release_shared_claims`] closes this:
+//! it releases every Shared effect this tweak currently holds, mirroring `apply::drive_shared`'s
+//! own `Unclaimed`-release logic minus the option lookup (there is no option to consult here).
+//!
 //! `EngineError` is reused as-is (its variant set is closed to this file -- apply.rs's own body is
 //! untouched): a restore failure is reported via the existing `RollbackReport{original,
 //! rollback_failures}` shape, which structurally matches restore's own failure bundle (undo
@@ -61,10 +76,11 @@
 
 use crate::tweaks::kinds::ExecCx;
 use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, Tweak,
+    ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, SharedId, Tweak,
 };
+use crate::tweaks::shared_claims::ReleaseOutcome;
 use crate::tweaks::snapshot::{Captured, EntrySummary, EntryValidity, JournalRow, Seq};
-use crate::tweaks::validate::{option_unavailable, Milestone};
+use crate::tweaks::validate::{applicable_surface, option_unavailable, Milestone};
 use crate::tweaks::winver::WinVer;
 
 use super::apply::{self, ActionPlan, DriveCtx, DriveState, EngineError};
@@ -162,6 +178,14 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
             {
                 failures.extend(errs);
             }
+            release_shared_claims(
+                current_tweak,
+                &milestone,
+                &cx,
+                deps,
+                &mut held_shared,
+                &mut failures,
+            );
             None
         }
     };
@@ -404,6 +428,46 @@ fn reapply_option_ref(
         held_shared,
         residues,
     }
+}
+
+/// Releases every Shared effect on `tweak`'s applicable surface that `tweak` currently holds a
+/// claim on (Fix 2, see this file's module docs) -- the `Captured::Values` restore path's
+/// equivalent of what `apply::drive_shared`'s `Unclaimed` arm does for an ordinary apply, minus the
+/// option lookup: a Values dump carries no target answer for a Shared effect at all, and the only
+/// sound interpretation of "the state before this apply" for one is "not claiming," since claiming
+/// only ever happens by standing on an authored `Claim` option. A tweak that never held a
+/// particular shared id is left untouched (nothing to release).
+fn release_shared_claims(
+    tweak: &Tweak,
+    milestone: &Milestone,
+    cx: &ExecCx,
+    deps: &Deps,
+    held_shared: &mut Vec<HeldInfo>,
+    failures: &mut Vec<EngineError>,
+) {
+    for effect in applicable_surface(tweak, milestone) {
+        let Effect::Shared(shared_id) = &effect.kind else {
+            continue;
+        };
+        if !currently_holds(deps, shared_id, &tweak.id) {
+            continue;
+        }
+        match deps.claims.release(shared_id, &tweak.id, deps.kinds, cx) {
+            Ok(ReleaseOutcome::StillHeld(holders)) => held_shared.push(HeldInfo {
+                shared: shared_id.clone(),
+                holders,
+            }),
+            Ok(ReleaseOutcome::RestoredOriginal) => {}
+            Err(e) => failures.push(EngineError::Claim {
+                shared: shared_id.clone(),
+                source: e,
+            }),
+        }
+    }
+}
+
+fn currently_holds(deps: &Deps, shared_id: &SharedId, tweak_id: &str) -> bool {
+    deps.claims.holders(shared_id).iter().any(|h| h == tweak_id)
 }
 
 fn find_action<'a>(tweak: &'a Tweak, effect_id: &EffectId) -> Option<&'a ActionDef> {
@@ -1385,6 +1449,98 @@ mod tests {
             Value::Startup(StartupType::Manual),
             "last release restores the captured original unconditionally"
         );
+    }
+
+    /// Fix 2 (Task 15, E2E-discovered): unlike `claims_recomputed_like_apply` above (which pushes
+    /// a `Captured::OptionRef` entry directly), this pins the `Captured::Values` dump path -- the
+    /// shape every tweak's very first-ever apply produces on a never-touched machine. Before the
+    /// fix, restoring a Values dump drove Settings back but left a held Shared claim completely
+    /// untouched (only the OptionRef branch's `drive_forward` call ever reached Shared effects),
+    /// permanently leaking the claim and stranding the shared value away from its true original.
+    #[test]
+    fn values_dump_restore_also_releases_a_held_shared_claim() {
+        let h = Harness::new();
+        h.kind.seed("sh_addr", Value::Startup(StartupType::Manual)); // the true original
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        // "demo" currently holds the claim, as if its own apply drove it there -- but the entry
+        // being restored is a plain Values dump, never an OptionRef.
+        h.claims
+            .claim(&shared, "demo", &h.kind, &ExecCx::new(Level::User))
+            .unwrap();
+
+        let t = tweak(
+            "demo",
+            vec![shared_effect("sh_eff", "sh")],
+            vec![opt("A", vec![("sh_eff", ModelOptValue::Claim(None))])],
+        );
+        let c = corpus(vec![t.clone()], vec![shared]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        assert!(
+            !h.claims.is_claimed(&SharedId("sh".into())),
+            "restoring a Values-dump snapshot must still release a shared claim this tweak holds"
+        );
+        assert_eq!(
+            h.kind.live_value("sh_addr"),
+            Value::Startup(StartupType::Manual),
+            "the last release must drive the shared setting back to its true captured original"
+        );
+    }
+
+    /// A tweak that never held the claim at all must be left completely untouched by a Values-dump
+    /// restore -- `release_shared_claims` must not call `release` (which would error `NotHeld`) for
+    /// a shared id it never claimed.
+    #[test]
+    fn values_dump_restore_leaves_an_unclaimed_shared_setting_alone() {
+        let h = Harness::new();
+        h.kind.seed("sh_addr", Value::Startup(StartupType::Manual));
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        let t = tweak(
+            "demo",
+            vec![shared_effect("sh_eff", "sh")],
+            vec![opt("A", vec![("sh_eff", ModelOptValue::Unclaimed(None))])],
+        );
+        let c = corpus(vec![t.clone()], vec![shared]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+        assert!(!h.claims.is_claimed(&SharedId("sh".into())));
     }
 
     /// The core §11 invariant: `apply(option)` then `restore()` of the just-captured entry returns

@@ -1,4 +1,3 @@
-use crate::services::backup_service;
 use tauri::App;
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -7,22 +6,12 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // DEBUG_APP there. Must happen before anything that might emit.
     crate::debug::set_debug_app(app.handle().clone());
 
-    // Validate all snapshots on startup
-    // This removes stale snapshots where the tweak was externally reverted
-    log::info!("Validating snapshots on startup...");
-    match backup_service::validate_all_snapshots() {
-        Ok(removed) => {
-            if removed > 0 {
-                log::info!("Removed {} stale snapshots", removed);
-            } else {
-                log::debug!("All snapshots are valid");
-            }
-        }
-        Err(e) => {
-            log::warn!("Failed to validate snapshots: {}", e);
-            // Don't fail app startup for this
-        }
-    }
+    // The old pipeline's startup stale-snapshot cleanup was schema/store-specific to
+    // `services::backup` (deleted with the hard cutover, spec §12: old on-disk snapshots are
+    // invalidated by the schema-version bump regardless). The new engine's equivalent
+    // (an SD-snapshot/stale-entry startup sweep over `tweaks::snapshot::SnapshotStore`) is
+    // deferred future work (spec §14), not yet wired to any command surface -- nothing to call
+    // here yet.
 
     Ok(())
 }

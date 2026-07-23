@@ -387,26 +387,6 @@ pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
     }
 }
 
-/// Check if a registry value exists
-pub fn value_exists(hive: &RegistryHive, key_path: &str, value_name: &str) -> Result<bool, Error> {
-    let hive_key = get_hive_key(hive)?;
-    let reg_key = match RegKey::predef(hive_key).open_subkey_with_flags(key_path, KEY_READ) {
-        Ok(k) => k,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(Error::RegistryAccessDenied(e.to_string())),
-    };
-
-    // Try to get any value - if it exists, return true
-    match reg_key.get_raw_value(value_name) {
-        Ok(_) => Ok(true),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to check value {}: {}",
-            value_name, e
-        ))),
-    }
-}
-
 /// Create a registry key without setting any value
 pub fn create_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     log::debug!("Creating key {}\\{}", hive_name(hive), key_path);

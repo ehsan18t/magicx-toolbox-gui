@@ -4,9 +4,7 @@
 //! Requires administrator privileges.
 
 use crate::error::Error;
-use crate::models::tweak::{
-    FirewallChange, FirewallOperation, FirewallProtocol, FirewallRuleAction,
-};
+use crate::models::win_types::{FirewallChange, FirewallProtocol, FirewallRuleAction};
 use std::process::Command;
 
 /// Check if a firewall rule exists by name.
@@ -29,14 +27,6 @@ pub fn rule_exists(name: &str) -> Result<bool, Error> {
         .map_err(|e| Error::CommandExecution(format!("Failed to query firewall rule: {}", e)))?;
 
     Ok(output.status.success())
-}
-
-/// Apply a firewall change
-pub fn apply_firewall_change(change: &FirewallChange) -> Result<(), Error> {
-    match change.operation {
-        FirewallOperation::Create => create_firewall_rule(change),
-        FirewallOperation::Delete => delete_firewall_rule(&change.name),
-    }
 }
 
 /// Create a new firewall rule
@@ -182,7 +172,7 @@ pub fn delete_firewall_rule(name: &str) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::tweak::{FirewallDirection, FirewallOperation};
+    use crate::models::win_types::{FirewallDirection, FirewallOperation};
 
     fn change(name: &str) -> FirewallChange {
         FirewallChange {

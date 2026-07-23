@@ -98,9 +98,10 @@ pub struct HostsAddr {
 }
 
 /// Firewall rule direction (spec §5.1) — mirrors `netsh`'s inbound/outbound axis. Kept separate
-/// from the legacy `models::tweak::FirewallDirection` schema type the same way `Hive`/`RegType`
-/// are kept separate from their legacy counterparts: this file stays decoupled from
-/// `models::tweak_schema` entirely (see the module doc comment).
+/// from the primitive-facing `models::win_types::FirewallDirection` type the same way `Hive`/
+/// `RegType` are kept separate from their primitive-facing counterparts: this file is the compiled
+/// corpus representation, decoupled from what the OS-facing primitives speak (see `win_types.rs`'s
+/// own module doc for the split rationale).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FwDirection {
     Inbound,

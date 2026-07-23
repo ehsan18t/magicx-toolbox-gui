@@ -13,7 +13,7 @@
 //! (§5.1) holds relative to what the author declared, never relative to whatever Windows Firewall
 //! state existed before a prior deletion this system never captured.
 
-use crate::models::tweak::{
+use crate::models::win_types::{
     FirewallChange, FirewallDirection, FirewallOperation, FirewallProtocol, FirewallRuleAction,
 };
 use crate::services::firewall_service;

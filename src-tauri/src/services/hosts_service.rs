@@ -4,7 +4,6 @@
 //! and requires administrator privileges to modify.
 
 use crate::error::Error;
-use crate::models::tweak::{HostsAction, HostsChange};
 use std::fs;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -476,14 +475,6 @@ pub fn entry_exists(ip: &str, domain: &str) -> Result<bool, Error> {
     Ok(entries
         .iter()
         .any(|e| e.ip == ip && e.domain.eq_ignore_ascii_case(domain)))
-}
-
-/// Apply a hosts change
-pub fn apply_hosts_change(change: &HostsChange) -> Result<(), Error> {
-    match change.action {
-        HostsAction::Add => add_hosts_entry(&change.ip, &change.domain, change.comment.as_deref()),
-        HostsAction::Remove => remove_hosts_entry(&change.ip, &change.domain),
-    }
 }
 
 /// Computes the new hosts-file text after appending `(ip, domain)` (with an optional comment),

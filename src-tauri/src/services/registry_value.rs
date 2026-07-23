@@ -12,20 +12,6 @@ pub enum RegistryValue {
     Binary(Vec<u8>),
 }
 
-impl RegistryValue {
-    fn to_json(&self) -> serde_json::Value {
-        match self {
-            RegistryValue::Dword(value) => serde_json::json!(value),
-            RegistryValue::Qword(value) => serde_json::json!(value),
-            RegistryValue::String(value) | RegistryValue::ExpandString(value) => {
-                serde_json::json!(value)
-            }
-            RegistryValue::MultiString(value) => serde_json::json!(value),
-            RegistryValue::Binary(value) => serde_json::json!(value),
-        }
-    }
-}
-
 pub fn parse_registry_value(
     value_type: &RegistryValueType,
     value: &serde_json::Value,
@@ -45,22 +31,6 @@ pub fn parse_registry_value(
         }
         RegistryValueType::MultiString => parse_multi_string(value).map(RegistryValue::MultiString),
         RegistryValueType::Binary => parse_binary(value).map(RegistryValue::Binary),
-    }
-}
-
-pub fn registry_values_match(
-    value_type: &RegistryValueType,
-    current_value: &Option<serde_json::Value>,
-    expected_value: &Option<serde_json::Value>,
-) -> Result<bool, Error> {
-    match (current_value, expected_value) {
-        (None, None) => Ok(true),
-        (Some(current), Some(expected)) => {
-            let normalized_current = parse_registry_value(value_type, current)?.to_json();
-            let normalized_expected = parse_registry_value(value_type, expected)?.to_json();
-            Ok(normalized_current == normalized_expected)
-        }
-        _ => Ok(false),
     }
 }
 
@@ -254,17 +224,5 @@ mod tests {
         let err = parse_registry_value(&RegistryValueType::Binary, &json!("00,GG")).unwrap_err();
 
         assert!(err.to_string().contains("Invalid REG_BINARY byte"));
-    }
-
-    #[test]
-    fn matches_authored_binary_string_to_read_byte_array() {
-        let matches = registry_values_match(
-            &RegistryValueType::Binary,
-            &Some(json!([0, 160, 255])),
-            &Some(json!("00,A0,FF")),
-        )
-        .unwrap();
-
-        assert!(matches);
     }
 }

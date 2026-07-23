@@ -2033,7 +2033,6 @@ dependencies = [
  "chrono",
  "log",
  "rayon",
- "regex",
  "regex-lite",
  "serde",
  "serde_json",
