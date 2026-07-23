@@ -1,0 +1,40 @@
+category:
+  id: dup_address_hosts_entry
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two different tweaks both manage the same hosts-file entry."
+
+tweaks:
+  - id: block_ads_tweak
+    name: "Block Ads"
+    description: "Blocks the ads host directly."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: block_ads_host
+        hosts: { ip: "0.0.0.0", domain: "ads.example.com" }
+    options:
+      - label: "Blocked"
+        values:
+          block_ads_host: present
+      - label: "Allowed"
+        values:
+          block_ads_host: absent
+
+  - id: block_ads_tweak_2
+    name: "Block Ads Again"
+    description: "Manages the exact same hosts entry — this is the violation."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: another_host_effect
+        hosts: { ip: "0.0.0.0", domain: "ads.example.com" }
+    options:
+      - label: "Blocked"
+        values:
+          another_host_effect: present
+      - label: "Allowed"
+        values:
+          another_host_effect: absent

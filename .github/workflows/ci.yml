@@ -90,22 +90,22 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # build.rs compiles tweaks/*.yaml into tweaks.json. That artifact must be a
+      # build.rs compiles tweaks/*.yaml into corpus.json. That artifact must be a
       # pure function of the YAML: it previously used a HashMap, so key order --
       # and therefore the bytes -- changed on every build. Guard the property.
       - name: Same input produces identical output
         shell: bash
         working-directory: src-tauri
         run: |
-          find_artifact() { find target/debug/build -name tweaks.json | head -1; }
-          touch tweaks/privacy.yaml && cargo build --quiet
+          find_artifact() { find target/debug/build -name corpus.json | head -1; }
+          touch tweaks/examples.yaml && cargo build --quiet
           first=$(sha256sum "$(find_artifact)" | cut -d' ' -f1)
-          touch tweaks/privacy.yaml && cargo build --quiet
+          touch tweaks/examples.yaml && cargo build --quiet
           second=$(sha256sum "$(find_artifact)" | cut -d' ' -f1)
           echo "build 1: $first"
           echo "build 2: $second"
           if [ "$first" != "$second" ]; then
-            echo "::error::tweaks.json is not reproducible across builds"
+            echo "::error::corpus.json is not reproducible across builds"
             exit 1
           fi
 

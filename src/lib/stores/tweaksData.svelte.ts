@@ -1,14 +1,27 @@
 /**
  * Tweaks Data Store - Svelte 5 Runes
  *
- * Manages core data: system info, categories, tweaks with their statuses.
- * Supports progressive loading for better perceived performance.
+ * Manages core data for the redesigned engine: system info, the tweak model
+ * (`get_tweaks`), categories (derived from the model), and live per-tweak statuses
+ * filled in INCREMENTALLY from the `tweak-status` event stream (spec §8.4 grill Q1/Q5).
  * System hardware info is cached in localStorage since it rarely changes.
  */
 
 import * as api from "$lib/api/tweaks";
-import type { CachedSystemInfo, CategoryDefinition, SystemInfo, TweakStatus, TweakWithStatus } from "$lib/types";
+import type {
+  CachedSystemInfo,
+  CategoryDefinition,
+  ElevationState,
+  RiskLevel,
+  SystemInfo,
+  TweakDefinition,
+  TweakStatus,
+  TweakStatusView,
+  TweakView,
+  TweakWithStatus,
+} from "$lib/types";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 
 // Storage key for cached hardware info
 const SYSTEM_INFO_CACHE_KEY = "magicx-system-info-cache";
@@ -19,38 +32,107 @@ const systemInfoCache = new PersistentStore<CachedSystemInfo | null>(SYSTEM_INFO
 // === Loading States ===
 let systemInfoLoading = $state(true);
 let systemInfoRefreshing = $state(false);
-let categoriesLoading = $state(true);
 let tweaksLoading = $state(true);
 let initialLoadComplete = $state(false);
 
 // === System Info State ===
 let systemInfo = $state<SystemInfo | null>(null);
 
-// === Categories State ===
-let categories = $state<CategoryDefinition[]>([]);
+// === Elevation State (app ceiling + over-the-shoulder SID guard) ===
+let elevationState = $state<ElevationState | null>(null);
 
 // === Tweaks State ===
 let tweaks = $state<TweakWithStatus[]>([]);
 let tweaksVersion = $state(0);
 
+// === Adapters: engine DTOs -> the presentation model the components consume ===
+
+function mapView(view: TweakView): TweakDefinition {
+  return {
+    id: view.id,
+    name: view.name,
+    description: view.description,
+    category_id: view.category,
+    risk_level: view.risk.toLowerCase() as RiskLevel,
+    reversible: view.reversible,
+    requires_reboot: view.requires_reboot,
+    elevation: view.elevation,
+    availability: view.availability,
+    optionLabels: view.options,
+    info: undefined,
+  };
+}
+
+/** Placeholder status shown until this tweak's first `tweak-status` event arrives. */
+function loadingStatus(tweakId: string): TweakStatus {
+  return {
+    tweak_id: tweakId,
+    loaded: false,
+    state: "loading",
+    activeOption: null,
+    unavailableReason: null,
+    unknownReasons: [],
+    needsElevation: false,
+    unavailableOptions: [],
+    residues: [],
+    heldShared: [],
+    is_applied: false,
+    has_backup: false,
+    needs_attention: false,
+    unrestorable_resources: [],
+  };
+}
+
+function mapStatusView(tweakId: string, view: TweakStatusView): TweakStatus {
+  const s = view.state;
+  const unknownReasons = s.state === "unknown" ? s.reasons : [];
+  return {
+    tweak_id: tweakId,
+    loaded: true,
+    state: s.state,
+    activeOption: s.state === "active" ? s.option : null,
+    unavailableReason: s.state === "unavailable" ? s.reason : null,
+    unknownReasons,
+    needsElevation: unknownReasons.some((r) => r.needs_elevation),
+    unavailableOptions: view.unavailable,
+    residues: view.residues,
+    heldShared: view.held_shared,
+    is_applied: s.state === "active",
+    has_backup: view.has_history,
+    needs_attention: false,
+    unrestorable_resources: [],
+  };
+}
+
 // Derived: tweaks grouped by category
 const tweaksByCategory = $derived.by(() => {
   const byCategory: Record<string, TweakWithStatus[]> = {};
-
-  // Initialize with all categories
   for (const cat of categories) {
     byCategory[cat.id] = [];
   }
-
-  // Populate tweaks
   for (const tweak of tweaks) {
     const categoryId = tweak.definition.category_id;
     if (byCategory[categoryId]) {
       byCategory[categoryId].push(tweak);
     }
   }
-
   return byCategory;
+});
+
+// Derived: categories, discovered from the tweak model in first-appearance order.
+// The redesigned engine has no category-metadata command, so name falls back to the
+// raw category string and icon to a folder (consumers already default these).
+const categories = $derived.by((): CategoryDefinition[] => {
+  const seen: Record<string, true> = {};
+  const list: CategoryDefinition[] = [];
+  for (const tweak of tweaks) {
+    const id = tweak.definition.category_id;
+    if (!seen[id]) {
+      seen[id] = true;
+      list.push({ id, name: id, description: "", icon: "mdi:folder", order: list.length });
+    }
+  }
+  return list;
 });
 
 // Derived: overall stats
@@ -63,7 +145,6 @@ const stats = $derived({
 // Derived: stats per category
 const categoryStats = $derived.by(() => {
   const result: Record<string, { total: number; applied: number }> = {};
-
   for (const cat of categories) {
     const catTweaks = tweaksByCategory[cat.id] || [];
     result[cat.id] = {
@@ -71,7 +152,6 @@ const categoryStats = $derived.by(() => {
       applied: catTweaks.filter((t) => t.status.is_applied).length,
     };
   }
-
   return result;
 });
 
@@ -80,9 +160,7 @@ const cacheTimestamp = $derived(systemInfoCache.value?.cachedAt ?? null);
 
 // === Helper Functions ===
 
-/**
- * Update the cache with hardware info from fresh system info
- */
+/** Update the cache with hardware info from fresh system info */
 function updateCache(info: SystemInfo): void {
   systemInfoCache.value = {
     hardware: info.hardware,
@@ -92,16 +170,12 @@ function updateCache(info: SystemInfo): void {
   };
 }
 
-/**
- * Build a SystemInfo object using cached hardware data and fresh dynamic data
- */
+/** Build a SystemInfo object using cached hardware data and fresh dynamic data */
 function buildSystemInfoFromCache(cache: CachedSystemInfo, freshInfo: SystemInfo): SystemInfo {
   return {
-    // Use fresh dynamic data
     windows: freshInfo.windows,
     username: freshInfo.username,
     is_admin: freshInfo.is_admin,
-    // Use cached static data
     hardware: cache.hardware,
     device: cache.device,
     computer_name: cache.computer_name,
@@ -138,15 +212,11 @@ export const systemStore = {
     systemInfoLoading = true;
     try {
       const cached = systemInfoCache.value;
-
-      // Always fetch fresh info (for dynamic data like uptime, is_admin)
       const freshInfo = await api.getSystemInfo();
 
       if (cached) {
-        // Use cached hardware data, merge with fresh dynamic data
         systemInfo = buildSystemInfoFromCache(cached, freshInfo);
       } else {
-        // No cache - use fresh data and create cache
         systemInfo = freshInfo;
         updateCache(freshInfo);
       }
@@ -154,10 +224,8 @@ export const systemStore = {
       return systemInfo;
     } catch (error) {
       console.error("Failed to load system info:", error);
-      // Try to use cached data as fallback
       const cached = systemInfoCache.value;
       if (cached) {
-        // Build partial info from cache (dynamic fields will be empty/default)
         systemInfo = {
           windows: {
             version_string: "",
@@ -208,13 +276,34 @@ export const systemStore = {
   },
 };
 
+/** App elevation ceiling + SID-mismatch guard (spec §9), for the SID-mismatch notice. */
+export const elevationStore = {
+  get state() {
+    return elevationState;
+  },
+  get level() {
+    return elevationState?.level ?? "User";
+  },
+  get sidMismatch() {
+    return elevationState?.sid_mismatch ?? false;
+  },
+  async load() {
+    try {
+      elevationState = await api.getElevationState();
+    } catch (error) {
+      console.error("Failed to load elevation state:", error);
+    }
+    return elevationState;
+  },
+};
+
 export const categoriesStore = {
   get list() {
     return categories;
   },
 
   get isLoading() {
-    return categoriesLoading;
+    return tweaksLoading;
   },
 
   /** Get category by ID */
@@ -230,23 +319,6 @@ export const categoriesStore = {
   /** Get category icon by ID, returns default folder icon if not found */
   getIcon(categoryId: string): string {
     return categories.find((c) => c.id === categoryId)?.icon ?? "mdi:folder";
-  },
-
-  async load() {
-    categoriesLoading = true;
-    try {
-      const result = await api.getCategories();
-      categories = result;
-      return result;
-    } catch (error) {
-      console.error("Failed to load categories:", error);
-      // CRITICAL: Re-throw instead of returning empty array
-      // Categories are compiled at build time and should ALWAYS load successfully
-      // If this fails, it indicates a serious IPC or runtime error that must surface
-      throw error;
-    } finally {
-      categoriesLoading = false;
-    }
   },
 };
 
@@ -267,27 +339,31 @@ export const tweaksStore = {
     return tweaksLoading;
   },
 
-  async load() {
+  /** Load the compiled tweak model (`get_tweaks`); statuses arrive later via the stream. */
+  async loadModel() {
     tweaksLoading = true;
     try {
-      const result = await api.getAllTweaksWithStatus();
-      tweaks = result;
+      const views = await api.getTweaks();
+      tweaks = views.map((v) => ({ definition: mapView(v), status: loadingStatus(v.id) }));
       tweaksVersion++;
-      return result;
+      return tweaks;
     } catch (error) {
       console.error("Failed to load tweaks:", error);
-      // CRITICAL: Re-throw instead of returning empty array
-      // If loading fails, the app cannot function properly - surface the error
+      // Surface the error — the app cannot function without the tweak model.
       throw error;
     } finally {
       tweaksLoading = false;
     }
   },
 
-  /** Update a single tweak's status */
-  updateStatus(tweakId: string, status: Partial<TweakStatus>) {
-    tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: { ...t.status, ...status } } : t));
-    tweaksVersion++;
+  /** Replace a tweak's status from a freshly detected engine status view. */
+  setStatusView(tweakId: string, view: TweakStatusView) {
+    tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: mapStatusView(tweakId, view) } : t));
+  },
+
+  /** Patch selected status fields (needs-attention / has_backup after restore/discard). */
+  patchStatus(tweakId: string, patch: Partial<TweakStatus>) {
+    tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: { ...t.status, ...patch } } : t));
   },
 
   /** Get a tweak by ID */
@@ -312,7 +388,7 @@ export const loadingStateStore = {
     return systemInfoRefreshing;
   },
   get categoriesLoading() {
-    return categoriesLoading;
+    return tweaksLoading;
   },
   get tweaksLoading() {
     return tweaksLoading;
@@ -322,29 +398,55 @@ export const loadingStateStore = {
   },
 };
 
+// === Status event stream (incremental, spec §8.4 grill Q1/Q5) ===
+
+let statusStreamStarted = false;
+let unlistenStatus: UnlistenFn | null = null;
+
+/**
+ * Register the `tweak-status` listener once, then kick the background scan. Each event
+ * fills in one tweak's status as the backend detects it — never awaiting one bulk result.
+ */
+async function startStatusStream(): Promise<void> {
+  if (statusStreamStarted) {
+    await api.getStatusesStream();
+    return;
+  }
+  statusStreamStarted = true;
+  // Register BEFORE kicking the scan so no early event is missed.
+  unlistenStatus = await api.onTweakStatus((event) => {
+    tweaksStore.setStatusView(event.tweak_id, event.status);
+  });
+  await api.getStatusesStream();
+}
+
+/**
+ * Re-run the full scan after an elevation change so Unknowns become readable
+ * (the listener is already registered by `startStatusStream`).
+ */
+export async function rescanStatuses(): Promise<void> {
+  await elevationStore.load();
+  await api.rescanAfterElevation();
+}
+
 // Promise cache for deduplicating concurrent initialization calls
 let quickInitPromise: Promise<void> | null = null;
 let remainingDataPromise: Promise<void> | null = null;
 
 /**
- * Quick initialize - only load categories for immediate UI display
- * Call loadRemainingData() after to load the rest
- *
- * Uses promise caching to prevent duplicate requests if called concurrently
+ * Quick initialize - load the tweak model so cards + categories render immediately.
+ * Call loadRemainingData() after to load system info and start the status stream.
  */
 export async function initializeQuick(): Promise<void> {
-  // Return existing promise if already loading
   if (quickInitPromise) {
     return quickInitPromise;
   }
-
-  // Skip if categories already loaded
-  if (categories.length > 0) {
+  if (tweaks.length > 0) {
     return;
   }
 
-  quickInitPromise = categoriesStore
-    .load()
+  quickInitPromise = tweaksStore
+    .loadModel()
     .then(() => {
       // Discard result to match Promise<void> signature
     })
@@ -356,23 +458,18 @@ export async function initializeQuick(): Promise<void> {
 }
 
 /**
- * Load remaining data after quick init
- *
- * Uses promise caching to prevent duplicate requests if called concurrently
- * (e.g., if both layout and page call this before the first call completes)
+ * Load remaining data after quick init: system info, elevation state, and the
+ * background-progressive status stream (statuses fill in incrementally).
  */
 export async function loadRemainingData(): Promise<void> {
-  // Return existing promise if already loading
   if (remainingDataPromise) {
     return remainingDataPromise;
   }
-
-  // Skip if already complete
   if (initialLoadComplete) {
     return;
   }
 
-  remainingDataPromise = Promise.all([systemStore.load(), tweaksStore.load()])
+  remainingDataPromise = Promise.all([systemStore.load(), elevationStore.load(), startStatusStream()])
     .then(() => {
       initialLoadComplete = true;
     })
@@ -381,4 +478,11 @@ export async function loadRemainingData(): Promise<void> {
     });
 
   return remainingDataPromise;
+}
+
+/** Stop listening to the status stream (app-lifetime; exposed for completeness). */
+export function stopStatusStream(): void {
+  unlistenStatus?.();
+  unlistenStatus = null;
+  statusStreamStarted = false;
 }

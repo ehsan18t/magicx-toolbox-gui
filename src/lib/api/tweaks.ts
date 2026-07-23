@@ -1,175 +1,75 @@
-// API functions for Tauri commands
+// API for the redesigned tweak engine (Task 16 command + event contract).
+// Every function here maps 1:1 to a command registered in src-tauri/src/lib.rs's
+// generate_handler! — nothing else. Tauri maps camelCase JS args to snake_case Rust
+// params (e.g. `tweakId` -> `tweak_id`) and serializes Rust snake_case fields back.
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-  CategoryDefinition,
+  ApplyOutcome,
+  ElevationState,
+  EntrySummary,
+  RestoreOutcome,
   SystemInfo,
-  TweakDefinition,
-  TweakInspection,
-  TweakResult,
-  TweakStatus,
-  TweakWithStatus,
+  TweakStatusEvent,
+  TweakView,
 } from "../types";
 
-/**
- * Get system information including Windows version
- */
+/** System information including Windows version (from commands/system.rs — survives). */
 export async function getSystemInfo(): Promise<SystemInfo> {
   return await invoke<SystemInfo>("get_system_info");
 }
 
-// ----------------------------------------------------------------------------
-// API FUNCTIONS
-// ----------------------------------------------------------------------------
-
-/** Get inspection details for a tweak (detailed Expected vs Actual) */
-export async function inspectTweak(tweakId: string): Promise<TweakInspection> {
-  try {
-    return await invoke("get_tweak_inspection", { tweakId });
-  } catch (err) {
-    console.error(`Failed to inspect tweak ${tweakId}:`, err);
-    throw err;
-  }
+/** The compiled tweak model: identity/display metadata + this moment's availability. */
+export async function getTweaks(): Promise<TweakView[]> {
+  return await invoke<TweakView[]>("get_tweaks");
 }
 
 /**
- * Get all available categories (auto-discovered from YAML files)
+ * Kick the background-progressive full status scan. Returns immediately; results
+ * stream back one-per-tweak via the `tweak-status` event (subscribe with `onTweakStatus`).
  */
-export async function getCategories(): Promise<CategoryDefinition[]> {
-  return await invoke<CategoryDefinition[]>("get_categories");
+export async function getStatusesStream(): Promise<void> {
+  await invoke("get_statuses_stream");
+}
+
+/** Full re-scan after an elevation change (so Unknowns become readable). */
+export async function rescanAfterElevation(): Promise<void> {
+  await invoke("rescan_after_elevation");
 }
 
 /**
- * Get all available tweaks (already filtered by current Windows version)
+ * Apply a tweak by option LABEL (not index). The outcome carries the fresh post-op
+ * status — callers use it directly rather than re-fetching.
  */
-export async function getAvailableTweaks(): Promise<TweakDefinition[]> {
-  return await invoke<TweakDefinition[]>("get_available_tweaks");
+export async function applyTweak(tweakId: string, optionLabel: string): Promise<ApplyOutcome> {
+  return await invoke<ApplyOutcome>("apply_tweak", { tweakId, optionLabel });
+}
+
+/** Single head-walk restore of a tweak's most recent snapshot entry. */
+export async function restoreTweak(tweakId: string): Promise<RestoreOutcome> {
+  return await invoke<RestoreOutcome>("restore_tweak", { tweakId });
+}
+
+/** List a tweak's snapshot entries (drives the discard affordance). */
+export async function listSnapshotEntries(tweakId: string): Promise<EntrySummary[]> {
+  return await invoke<EntrySummary[]>("list_snapshot_entries", { tweakId });
+}
+
+/** Explicit-consent snapshot release: discard one entry by its sequence number. */
+export async function discardSnapshotEntry(tweakId: string, seq: number): Promise<void> {
+  await invoke("discard_snapshot_entry", { tweakId, seq });
+}
+
+/** The app's current elevation ceiling + over-the-shoulder SID guard reading. */
+export async function getElevationState(): Promise<ElevationState> {
+  return await invoke<ElevationState>("get_elevation_state");
 }
 
 /**
- * Get the status of a specific tweak
+ * Subscribe to the per-tweak `tweak-status` event stream. Returns an unlisten fn.
+ * Register this BEFORE calling `getStatusesStream`/`rescanAfterElevation` so no early
+ * event is missed.
  */
-export async function getTweakStatus(tweakId: string): Promise<TweakStatus> {
-  return await invoke<TweakStatus>("get_tweak_status", { tweakId });
-}
-
-/**
- * Get statuses for all tweaks at once (more efficient than individual calls)
- */
-export async function getAllTweakStatuses(): Promise<TweakStatus[]> {
-  return await invoke<TweakStatus[]>("get_all_tweak_statuses");
-}
-
-/**
- * Get all tweaks with their status (optimized batch version)
- * Uses a single batch IPC call for statuses instead of N parallel calls
- */
-export async function getAllTweaksWithStatus(): Promise<TweakWithStatus[]> {
-  // Fetch tweaks and all statuses in parallel (2 IPC calls instead of N+1)
-  const [tweaks, allStatuses] = await Promise.all([getAvailableTweaks(), getAllTweakStatuses()]);
-
-  // Build status map for O(1) lookup
-  const statusMap = new Map(allStatuses.map((s) => [s.tweak_id, s]));
-
-  const result = tweaks.map((definition) => ({
-    definition,
-    status: statusMap.get(definition.id) || {
-      tweak_id: definition.id,
-      is_applied: false,
-      has_backup: false,
-      current_option_index: null,
-    },
-  }));
-
-  // Sort by name for consistent ordering (backend HashMap iteration is non-deterministic)
-  return result.sort((a, b) => a.definition.id.localeCompare(b.definition.id));
-}
-
-/**
- * Apply a specific tweak option
- * @param tweakId - The tweak ID
- * @param optionIndex - Index of the option to apply (0 for first option, 1 for second, etc.)
- */
-export async function applyTweak(tweakId: string, optionIndex: number): Promise<TweakResult> {
-  return await invoke<TweakResult>("apply_tweak", { tweakId, optionIndex });
-}
-
-/**
- * Revert a specific tweak
- */
-export async function revertTweak(tweakId: string): Promise<TweakResult> {
-  return await invoke<TweakResult>("revert_tweak", { tweakId });
-}
-
-/**
- * Explicitly accept the current state and release the tweak's snapshot (ADR-0002 consent).
- * The way out of "Needs Attention" when the user is fine with the current (partially reverted) state.
- */
-export async function keepCurrentState(tweakId: string): Promise<TweakResult> {
-  return await invoke<TweakResult>("keep_current_state", { tweakId });
-}
-
-/**
- * Apply multiple tweak options at once
- * @param operations - Array of [tweakId, optionIndex] tuples
- */
-export async function batchApplyTweaks(operations: [string, number][]): Promise<TweakResult> {
-  return await invoke<TweakResult>("batch_apply_tweaks", { operations });
-}
-
-/**
- * Revert multiple tweaks at once
- */
-export async function batchRevertTweaks(tweakIds: string[]): Promise<TweakResult> {
-  return await invoke<TweakResult>("batch_revert_tweaks", { tweakIds });
-}
-
-/**
- * Check if running as administrator
- */
-export async function isAdmin(): Promise<boolean> {
-  const systemInfo = await getSystemInfo();
-  return systemInfo.is_admin;
-}
-
-/**
- * Get the current Windows version string ("10" or "11")
- */
-export async function getWindowsVersion(): Promise<string> {
-  const systemInfo = await getSystemInfo();
-  return systemInfo.windows.version_string;
-}
-
-// ============================================================================
-// Backup API
-// ============================================================================
-
-export interface BackupInfo {
-  tweak_id: string;
-  tweak_name: string;
-  applied_at: string;
-  windows_version: number;
-  registry_values_count: number;
-  service_snapshots_count: number;
-  scheduler_snapshots_count: number;
-}
-
-/**
- * Check if a backup exists for a tweak
- */
-export async function hasBackup(tweakId: string): Promise<boolean> {
-  return await invoke<boolean>("has_backup", { tweakId });
-}
-
-/**
- * List all backup tweak IDs
- */
-export async function listBackups(): Promise<string[]> {
-  return await invoke<string[]>("list_backups");
-}
-
-/**
- * Get backup information for a tweak
- */
-export async function getBackupInfo(tweakId: string): Promise<BackupInfo | null> {
-  return await invoke<BackupInfo | null>("get_backup_info", { tweakId });
+export async function onTweakStatus(handler: (event: TweakStatusEvent) => void): Promise<UnlistenFn> {
+  return await listen<TweakStatusEvent>("tweak-status", (event) => handler(event.payload));
 }

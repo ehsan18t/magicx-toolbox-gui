@@ -128,21 +128,32 @@ src/lib/components/
 
 ### Core Features
 
-#### 1. Registry Tweaks
-- **Binary tweaks**: Toggle between ON (`enable_value`) and OFF (`disable_value`) states
-- **Multi-state tweaks**: Dropdown selection from multiple options (e.g., icon cache sizes: 500KB, 4MB, 8MB)
-- **Windows version filtering**: Tweaks can be filtered to apply only on Windows 10, 11, or both
+> The tweak engine was rebuilt around a single typed representation. This section summarizes it;
+> [TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md) is the full architecture reference and
+> [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md) is the authoring guide.
 
-#### 2. Service Control
-- **Tweak-level services**: Apply/revert service configuration when applying/reverting a tweak
-- **Per-option services**: Multi-state tweaks can have different service configurations per option
-- **Service operations**: Set startup type (Disabled, Manual, Automatic), stop/start services
+#### 1. Effect-centric tweaks
+- **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts,
+  firewall, shared, action) once; each **option** is a flat value-map over that surface.
+- **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 option
+  renders as a toggle, ≥2 as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also
+  computed, never authored.
+- **Windows scoping**: `windows: { products, build, revision }` at tweak/effect/option-value level.
 
-#### 3. Snapshot-Based Backup System
-- **Atomic snapshots**: Before applying any tweak, the current registry state is captured
-- **Automatic restoration**: Reverting a tweak restores from snapshot, not from predefined values
-- **Stale snapshot cleanup**: On app startup, snapshots are validated; stale ones are removed
-- **Failure handling**: If apply/revert fails, snapshots are cleaned up to prevent orphaned state
+#### 2. Typed effects (one representation)
+- Apply, capture, detect, and revert all consume the *same* typed `Value`, so they cannot drift.
+- Each `EffectKind` module co-locates read/apply/revert/detect and wraps the reused low-level primitives
+  (registry `RegSetValueExW`, service SCM, scheduler COM, hosts, firewall).
+- Reversibility and detectability are **typed**: Settings always; Actions iff they carry `undo`/`probe`.
+
+#### 3. Snapshot history + WAL
+- **Per-tweak history**: one atomically-written entry per capture, ordered by a monotonic sequence.
+  Authored-option captures are stored as references (re-applied from the current corpus); unauthored
+  states are value dumps.
+- **WAL action journal** makes "an action ran but nothing recorded it" impossible to lose silently — it
+  surfaces as **Needs Attention**.
+- **A snapshot is deleted only** by a verified restore, the verified startup stale-cleanup, or explicit
+  user consent — never on a failure path (ADR-0002).
 
 #### 4. Configuration Profile System
 - **Profile export**: Export applied tweaks as shareable `.mgx` archives
@@ -152,11 +163,15 @@ src/lib/components/
 - **Rollback support**: Automatic rollback on partial apply failure
 - See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
 
-#### 5. Permissions Model
-- **Admin detection**: App detects if running as administrator
-- **Per-tweak admin requirement**: Each tweak specifies `requires_admin: true/false`
-- **HKCU vs HKLM**: HKCU registry keys don't require admin; HKLM keys typically do
-- **Service operations**: Always require administrator privileges
+#### 5. Elevation Model (ADR-0005)
+- **Four declared levels**: `user` / `admin` / `system` / `ti`, author-declared, never inferred. A tweak
+  declares a **floor**; an effect may escalate (`effective = max(floor, step)`), never lower.
+- **User-provided**: the app ships unelevated; Admin comes from launching as admin or the in-app
+  **Elevate** relaunch — never silently acquired. Privileged tweaks are disabled until the user elevates.
+- **HKCU exception**: a user-hive effect always runs in-process as the interactive user, and a
+  token-SID/session-SID mismatch disables User-level tweaks (over-the-shoulder guard).
+- **Reads run at the current level**: TI-protected resources deny reads and report **Unknown** with a
+  needs-elevation hint until the user elevates.
 
 #### 6. Risk Levels
 ```yaml
@@ -171,326 +186,71 @@ risk_levels:
 
 ## Data Model
 
-### Tweak Definition (YAML → Rust → TypeScript)
-
-All tweaks use a **unified option-based model** where each tweak has an `options` array:
+The tweak schema is **effect-centric** and defined by the compiled model in
+`src-tauri/src/tweaks/model.rs`. A tweak declares its managed surface once (`effects:`) and each option
+is a flat value-map over it. The full schema — every effect kind, value literal, presence/shared/version
+semantics, and the build guards — is documented in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**; the
+one-representation model and lifecycle in **[TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md)**.
 
 ```yaml
+# See TWEAK_AUTHORING.md for the full schema; src-tauri/tweaks/examples.yaml is the reference corpus.
+category: { id: ..., name: ..., icon: ..., description: ... }   # one category block per file
 tweaks:
   - id: unique_tweak_id
     name: "Human Readable Name"
     description: "What this tweak does"
     risk_level: low | medium | high | critical
-    requires_admin: true | false
-    requires_system: true | false  # Requires SYSTEM elevation
-    requires_reboot: true | false
-    is_toggle: true | false  # true = switch UI (2 options), false = dropdown
-    info: "Optional detailed explanation"
-
-    options:  # Array of available states (2 for toggle, 2+ for dropdown)
-      - label: "Option Display Name"
-        registry_changes:
-          - hive: HKCU | HKLM
-            key: "Registry\\Path"
-            value_name: "ValueName"
-            value_type: REG_DWORD | REG_SZ | REG_BINARY | REG_QWORD | ...
-            value: <target value>
-            windows_versions: [10, 11]  # Optional filter
-        service_changes:
-          - name: "ServiceName"
-            startup: disabled | manual | automatic | boot | system
-            stop_service: true | false
-            start_service: true | false
-        scheduler_changes:
-          - task_path: "\\Microsoft\\Windows\\..."
-            task_name: "TaskName"
-            action: enable | disable | delete
-        pre_commands: []      # Shell commands before changes
-        pre_powershell: []    # PowerShell before changes
-        post_commands: []     # Shell commands after changes
-        post_powershell: []   # PowerShell after changes
+    elevation: user | admin | system | ti     # per-tweak floor (never requires_admin/_system/_ti)
+    reversible: true | false                   # declared and build-checked against the computed value
+    requires_reboot: false                     # optional
+    effects:                                   # the managed surface, declared once
+      - id: some_flag
+        registry: { key: 'HKCU\Software\...', name: SomeValue, type: REG_DWORD }
+    options:                                   # only the real states; "System Default" is computed
+      - label: "On"
+        values: { some_flag: 1 }
+      - label: "Off"
+        values: { some_flag: absent }          # `absent` is the only absence spelling
 ```
 
-### Execution Order
+### Snapshot entry
 
-When applying an option, changes execute in this order:
-1. `pre_commands` → 2. `pre_powershell` → 3. `registry_changes` → 4. `service_changes` → 5. `scheduler_changes` → 6. `post_commands` → 7. `post_powershell`
-
-### Snapshot Structure
+Per-tweak history entries live under `snapshots/<tweak-id>/` next to the executable
+(`src-tauri/src/tweaks/snapshot.rs`):
 
 ```rust
-struct TweakSnapshot {
+struct SnapshotEntry {
+    schema_version: u32,
+    machine_guid: Option<String>,   // MachineGuid stamp; a wrong-machine entry is invalid
     tweak_id: String,
-    tweak_name: String,
-    applied_option_index: usize,
-    applied_option_label: String,
-    created_at: String,
-    windows_version: u32,
-    requires_system: bool,
-    registry_snapshots: Vec<RegistrySnapshot>,
-    service_snapshots: Vec<ServiceSnapshot>,
-    scheduler_snapshots: Vec<SchedulerSnapshot>,
-}
-
-struct RegistrySnapshot {
-    hive: String,
-    key: String,
-    value_name: String,
-    value_type: Option<String>,
-    value: Option<serde_json::Value>,
-    existed: bool,
-}
-
-struct ServiceSnapshot {
-    name: String,
-    startup_type: String,
-    was_running: bool,
-}
-
-struct SchedulerSnapshot {
-    task_path: String,
-    task_name: String,
-    original_state: String,  // "Ready", "Disabled", "NotFound"
+    seq: u64,                       // monotonic per-tweak sequence (ordering; wall-clock is display only)
+    timestamp: String,              // display metadata
+    captured: Captured,             // OptionRef(label) for authored options, or Values(map) for dumps
+    journal: Vec<(EffectId, ActionMark)>,   // WAL: intended → completed, per action
 }
 ```
+
+Shared-referenced effects appear in no per-tweak entry — their return path is the `shared_claims.json`
+record (ADR-0006).
 
 ## Tweak Format Examples
 
-All tweaks use the **unified option-based model** where each tweak has an `options` array.
-
-### 1. Simple Toggle Tweak
-A standard toggle (`is_toggle: true`) with two options (enabled/disabled).
-
-```yaml
-- id: disable_game_dvr
-  name: "Disable Game DVR"
-  description: "Disables Windows Game Recording and Broadcasting features."
-  risk_level: low
-  requires_admin: false
-  requires_system: false
-  requires_reboot: false
-  is_toggle: true
-  options:
-    - label: "Disabled"
-      registry_changes:
-        - hive: HKCU
-          key: "System\\GameConfigStore"
-          value_name: "GameDVR_Enabled"
-          value_type: REG_DWORD
-          value: 0
-    - label: "Enabled"
-      registry_changes:
-        - hive: HKCU
-          key: "System\\GameConfigStore"
-          value_name: "GameDVR_Enabled"
-          value_type: REG_DWORD
-          value: 1
-```
-
-### 2. Multi-State Tweak (Dropdown)
-A tweak with multiple choices (`is_toggle: false`).
-
-```yaml
-- id: icon_cache_size
-  name: "Icon Cache Size"
-  description: "Increase icon cache size to prevent icon corruption."
-  risk_level: low
-  is_toggle: false
-  options:
-    - label: "Standard (500KB)"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-          value_name: "Max Cached Icons"
-          value_type: REG_SZ
-          value: "500"
-    - label: "Medium (2MB)"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-          value_name: "Max Cached Icons"
-          value_type: REG_SZ
-          value: "2048"
-    - label: "Large (4MB)"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-          value_name: "Max Cached Icons"
-          value_type: REG_SZ
-          value: "4096"
-```
-
-### 3. Service Management Tweak
-A tweak that manages Windows services.
-
-```yaml
-- id: disable_print_spooler
-  name: "Disable Print Spooler"
-  description: "Disables printing services. Useful if you don't use a printer."
-  risk_level: medium
-  requires_admin: true
-  is_toggle: true
-  options:
-    - label: "Disabled"
-      service_changes:
-        - name: "Spooler"
-          startup: disabled
-    - label: "Enabled"
-      service_changes:
-        - name: "Spooler"
-          startup: automatic
-```
-
-### 4. Hybrid Tweak (Registry + Services + Scheduler)
-Combines registry changes with service and scheduler management.
-
-```yaml
-- id: disable_diag_track
-  name: "Disable Telemetry"
-  description: "Disables Windows telemetry and data collection."
-  risk_level: medium
-  requires_admin: true
-  is_toggle: true
-  options:
-    - label: "Disabled"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
-          value_name: "AllowTelemetry"
-          value_type: REG_DWORD
-          value: 0
-      service_changes:
-        - name: "DiagTrack"
-          startup: disabled
-      scheduler_changes:
-        - task_path: "\\Microsoft\\Windows\\Application Experience"
-          task_name: "Microsoft Compatibility Appraiser"
-          action: disable
-    - label: "Enabled"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
-          value_name: "AllowTelemetry"
-          value_type: REG_DWORD
-          value: 3
-      service_changes:
-        - name: "DiagTrack"
-          startup: automatic
-      scheduler_changes:
-        - task_path: "\\Microsoft\\Windows\\Application Experience"
-          task_name: "Microsoft Compatibility Appraiser"
-          action: enable
-```
-
-### 5. Version-Specific Tweak
-Applies different changes based on Windows version.
-
-```yaml
-- id: taskbar_alignment
-  name: "Taskbar Alignment"
-  description: "Align taskbar icons to the left (Windows 11 only)."
-  risk_level: low
-  is_toggle: true
-  options:
-    - label: "Left"
-      registry_changes:
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "TaskbarAl"
-          value_type: REG_DWORD
-          value: 0
-          windows_versions: [11]
-    - label: "Center"
-      registry_changes:
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-          value_name: "TaskbarAl"
-          value_type: REG_DWORD
-          value: 1
-          windows_versions: [11]
-```
-
-### 6. System-Protected Tweak (TrustedInstaller)
-Requires `requires_system: true` to modify protected keys.
-
-```yaml
-- id: disable_defender
-  name: "Disable Windows Defender"
-  description: "Completely disables Windows Defender Antivirus."
-  risk_level: critical
-  requires_admin: true
-  requires_system: true
-  requires_reboot: true
-  is_toggle: true
-  options:
-    - label: "Disabled"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Policies\\Microsoft\\Windows Defender"
-          value_name: "DisableAntiSpyware"
-          value_type: REG_DWORD
-          value: 1
-    - label: "Enabled"
-      registry_changes:
-        - hive: HKLM
-          key: "SOFTWARE\\Policies\\Microsoft\\Windows Defender"
-          value_name: "DisableAntiSpyware"
-          value_type: REG_DWORD
-          value: 0
-```
-
-### 7. Command-Based Tweak with PowerShell
-Runs shell commands and PowerShell scripts before or after applying changes.
-
-```yaml
-- id: remove_onedrive
-  name: "Remove OneDrive"
-  description: "Uninstalls OneDrive and removes integration."
-  risk_level: high
-  is_toggle: true
-  options:
-    - label: "Removed"
-      pre_commands:
-        - "taskkill /f /im OneDrive.exe"
-      pre_powershell:
-        - "Stop-Process -Name 'OneDrive' -Force -ErrorAction SilentlyContinue"
-      registry_changes:
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-          value_name: "OneDrive"
-          value_type: REG_SZ
-          value: ""
-      post_powershell:
-        - "Start-Process '%SystemRoot%\\SysWOW64\\OneDriveSetup.exe' -ArgumentList '/uninstall' -Wait"
-    - label: "Installed"
-      registry_changes:
-        - hive: HKCU
-          key: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-          value_name: "OneDrive"
-          value_type: REG_SZ
-          value: "\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background"
-
-```
-
-### Execution Order
-
-When applying an option, changes are executed in this order:
-1. `pre_commands` (shell commands)
-2. `pre_powershell` (PowerShell scripts)
-3. `registry_changes`
-4. `service_changes`
-5. `scheduler_changes`
-6. `post_commands` (shell commands)
-7. `post_powershell` (PowerShell scripts)
+Worked examples for every effect kind live in the reference corpus
+[`src-tauri/tweaks/examples.yaml`](../src-tauri/tweaks/examples.yaml), and the schema is documented in
+**[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**. In the effect-centric model there is no fixed
+change-list execution order: a tweak declares its `effects:` once, and applying an option **drives each
+effect to its desired value in declaration order** (capture → persist snapshot + WAL → drive → verify
+per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md)).
 
 ---
 
 ## Backend Services
 
-### 1. `tweak_loader` - Tweak Loading
-- Loads tweaks from compiled binary (embedded at build time)
-- Build-time YAML parsing via `build.rs`
-- Runtime access via `get_tweak()`, `get_all_tweaks()`
+### 1. Tweak engine (`tweaks/`) - Loading & execution
+- The compiled, build-time-validated corpus is embedded at build time; runtime access via
+  `tweaks::compiled_corpus()`
+- The engine (`tweaks/engine/`) owns the apply/detect/restore lifecycle; the `tweaks/kinds/` modules
+  are the per-kind effect executors that wrap the reused low-level primitives below
 
 ### 2. `registry_service` - Registry Operations
 - Read/write registry values (DWORD, SZ, BINARY, etc.)
@@ -509,12 +269,13 @@ When applying an option, changes are executed in this order:
 - Query task state (Ready, Disabled, Running, NotFound)
 - Uses Windows `schtasks.exe` CLI
 
-### 5. `backup_service` - Snapshot Management
-- `capture_snapshot()` - Capture current state before changes
-- `save_snapshot()` / `load_snapshot()` - Persist to JSON files
-- `restore_from_snapshot()` - Restore original state
-- `validate_all_snapshots()` - Startup cleanup of stale snapshots
-- Storage: `snapshots/` directory next to executable (portable app design)
+### 5. Snapshot store + shared claims (`tweaks/snapshot.rs`, `tweaks/shared_claims.rs`)
+- `SnapshotStore::open_default()` - per-tweak history in the portable `snapshots/` directory **next to
+  the executable** (one subdirectory per tweak-id, one atomically-written file per entry)
+- Entries are references (authored options) or value dumps (unauthored states), each carrying the WAL
+  action journal; invalid/dangling entries are kept, excluded, and released only by user consent
+- `shared_claims.json` (under the snapshots root) - the refcounted claims record: capture-once,
+  last-release restores the captured original (ADR-0006)
 
 ### 6. `profile` - Configuration Profile Export/Import
 - `export_profile()` - Export applied tweaks to .mgx archive
@@ -539,21 +300,21 @@ When applying an option, changes are executed in this order:
 
 ## Commands (Tauri IPC)
 
-### Tweak Operations
-| Command                         | Description                                               |
-| ------------------------------- | --------------------------------------------------------- |
-| `apply_tweak(id)`               | Apply tweak (toggle ON), or toggle OFF if already applied |
-| `revert_tweak(id)`              | Revert to original state using snapshot or disable_value  |
-| `apply_tweak_option(id, index)` | Apply specific option for multi-state tweak               |
-| `get_tweak_status(id)`          | Check if tweak is currently applied                       |
-| `get_all_tweaks_with_status()`  | Get all tweaks with their current statuses                |
+### Tweak Operations (`commands/tweaks.rs`)
+| Command                    | Description                                                              |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `get_tweaks()`             | List all tweaks from the compiled model                                  |
+| `get_statuses_stream()`    | Start the background scan; per-tweak statuses stream in as events        |
+| `rescan_after_elevation()` | Full re-scan after the user elevates (Unknowns become readable)          |
+| `apply_tweak(id, option)`  | Apply an option: capture snapshot + WAL, drive + verify, rollback on failure |
+| `restore_tweak(id)`        | Restore the head snapshot entry (undo journal, then re-apply the target) |
+| `get_elevation_state()`    | Current elevation level and SID-mismatch status                          |
 
-### Backup Operations
-| Command                 | Description                        |
-| ----------------------- | ---------------------------------- |
-| `has_snapshot(id)`      | Check if snapshot exists for tweak |
-| `cleanup_old_backups()` | Remove orphaned backup files       |
-| `validate_snapshots()`  | Validate and clean stale snapshots |
+### Snapshot Operations
+| Command                         | Description                                                     |
+| ------------------------------- | -------------------------------------------------------------- |
+| `list_snapshot_entries(id)`     | List a tweak's snapshot history (valid and invalid entries)    |
+| `discard_snapshot_entry(...)`   | Release an invalid/dangling entry by explicit user consent (ADR-0002) |
 
 ### Profile Operations
 | Command              | Description                              |
@@ -592,14 +353,17 @@ All operations return `Result<T, Error>` propagated to frontend.
 ## Build System
 
 ### `build.rs` - Compile-Time Processing
-1. Reads YAML files from `tweaks/` directory
-2. Parses category and tweak definitions
-3. Embeds as static Rust code in binary
-4. No runtime file I/O for tweak definitions
+1. Loads every `*.yaml` in the `tweaks/` directory (`schema::load_corpus`)
+2. Runs the structural and semantic guards (spec §10) over each milestone of the support matrix —
+   ownership, coverage, detectability, distinctness, reversibility honesty, path syntax, typed literals
+3. Embeds the validated corpus as JSON (`OUT_DIR/corpus.json`)
+4. A YAML mistake or a failed guard is a **compile error**; no runtime file I/O for tweak definitions
+
+`build.rs` `#[path]`-includes the runtime's own `model`/`parse`/`schema`/`validate` modules, so
+build-time and runtime validation are the same code — schema drift is a compile error.
 
 ### Generated Output
-- Categories and tweaks embedded as static `&[u8]` JSON
-- Loaded once at runtime via `tweak_loader`
+- The validated corpus embedded as JSON, deserialized once via `tweaks::compiled_corpus()`
 
 ---
 
@@ -607,31 +371,34 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 | Path                                      | Purpose                                               |
 | ----------------------------------------- | ----------------------------------------------------- |
-| `src-tauri/tweaks/*.yaml`                 | Tweak definitions (7 categories, 76 tweaks)           |
-| `src-tauri/src/commands/`                 | Tauri command handlers                                |
-| `src-tauri/src/commands/tweaks/`          | Tweak commands (split into query/apply/batch/helpers) |
-| `src-tauri/src/services/`                 | Business logic services                               |
-| `src-tauri/src/models/`                   | Data structures                                       |
-| `%APPDATA%/com.magicx.toolbox/snapshots/` | Snapshot JSON files                                   |
+| `src-tauri/tweaks/*.yaml`               | Tweak definitions (the example corpus; the full corpus is re-authored on `main`) |
+| `src-tauri/src/tweaks/`                 | Tweak engine (model, schema, parse, validate, engine, kinds, snapshot, shared_claims) |
+| `src-tauri/src/commands/tweaks.rs`      | Tauri command surface for tweaks                      |
+| `src-tauri/src/services/`               | Reused low-level primitives + the elevation broker    |
+| `src-tauri/src/models/`                 | Data structures                                       |
+| `snapshots/` (next to the executable)   | Per-tweak snapshot history + `shared_claims.json`     |
 
-### Backend Commands Module Structure
+### Tweak Engine Module Structure
 
 ```
-src-tauri/src/commands/tweaks/
-├── mod.rs      # Module exports
-├── query.rs    # Status and listing commands (get_*, get_tweak_status)
-├── apply.rs    # Single tweak operations (apply_tweak, revert_tweak)
-├── batch.rs    # Batch operations (batch_apply_tweaks, batch_revert_tweaks)
-└── helpers.rs  # Internal utilities (registry/service/scheduler operations)
+src-tauri/src/tweaks/
+├── model.rs          # Effect · Setting · ActionDef · Value · Tweak · Opt (the one representation)
+├── schema.rs         # YAML DTOs → compiled model (build-time)
+├── parse.rs          # typed literals, registry-path + build-expr grammars, kv_semicolon parser
+├── validate.rs       # structural + semantic guards (spec §10), per support milestone
+├── engine/           # apply · detect · revert · lifecycle
+├── kinds/            # registry · service · task · hosts · firewall · action
+├── snapshot.rs       # atomic per-tweak history
+└── shared_claims.rs  # refcounted shared-claims record
 ```
 
 ---
 
 ## Security Considerations
 
-1. **Elevation**: App detects admin status; operations fail gracefully if lacking permissions
-2. **Snapshot validation**: Prevents applying to non-existent backups
-3. **Rollback on failure**: Registry changes are rolled back if service operations fail
+1. **Elevation**: privileged tweaks are disabled until the user elevates; the app never silently escalates (ADR-0005)
+2. **Snapshot integrity**: a snapshot is deleted only by a verified restore or explicit consent; invalid entries are kept and surfaced (ADR-0002)
+3. **Atomic rollback**: any apply failure restores the captured state; an incomplete rollback surfaces as **Needs Attention**, never hidden (ADR-0001)
 4. **No remote code**: All tweaks are compiled into the binary; no external downloads
 
 ---
@@ -646,12 +413,7 @@ src-tauri/src/commands/tweaks/
 
 ## Categories
 
-| ID             | Name           | Tweaks | Description                    |
-| -------------- | -------------- | ------ | ------------------------------ |
-| privacy        | Privacy        | 20     | Disable telemetry and tracking |
-| performance    | Performance    | 13     | Optimize system speed          |
-| ui             | UI/UX          | 14     | Customize appearance           |
-| security       | Security       | 11     | Improve security settings      |
-| services       | Services       | 6      | Manage Windows services        |
-| gaming         | Gaming         | 6      | Gaming optimizations           |
-| windows_update | Windows Update | 5      | Control update behavior        |
+The engine currently ships the **example corpus** only (`src-tauri/tweaks/examples.yaml`, category
+`Examples`) — one tweak per feature, proving the build and engine end-to-end. The real category set is
+re-authored from scratch, per category, on `main`, outside this plan (spec §12). Categories are declared
+per file via the `category:` block (`id` / `name` / `icon` / `description`).

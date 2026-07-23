@@ -9,21 +9,6 @@ use winreg::enums::*;
 use winreg::RegKey;
 use wmi::WMIConnection;
 
-/// Lightweight system context for tweak/profile operations.
-///
-/// This intentionally avoids WMI hardware/device enumeration from `get_system_info`.
-#[derive(Debug, Clone)]
-pub struct RuntimeContext {
-    pub windows: WindowsInfo,
-    pub is_admin: bool,
-}
-
-impl RuntimeContext {
-    pub fn windows_version(&self) -> u32 {
-        self.windows.version_number()
-    }
-}
-
 // WMI query structs
 #[derive(Deserialize, Debug)]
 #[serde(rename = "Win32_Processor")]
@@ -1005,14 +990,6 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
         is_admin,
         hardware,
         device,
-    })
-}
-
-/// Get only the runtime context needed by tweak/profile operations.
-pub fn get_runtime_context() -> Result<RuntimeContext, Error> {
-    Ok(RuntimeContext {
-        windows: get_windows_info()?,
-        is_admin: is_running_as_admin(),
     })
 }
 

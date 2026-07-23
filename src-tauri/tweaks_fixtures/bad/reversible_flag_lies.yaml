@@ -1,0 +1,22 @@
+category:
+  id: reversible_flag_lies
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Declares reversible: true but the surface has a one-way (no-undo, non-ephemeral) Action."
+
+tweaks:
+  - id: lying_tweak
+    name: "Lying"
+    description: "The action has no undo and is not ephemeral, so it is genuinely one-way."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: one_way_action
+        action:
+          apply: "reg.exe delete HKCU\\Software\\ExampleCo\\Widget /f"
+          shell: cmd
+    options:
+      - label: "Run Once"
+        values:
+          one_way_action: run

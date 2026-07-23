@@ -1,0 +1,219 @@
+category:
+  id: examples
+  name: "Examples"
+  icon: "mdi:flask-outline"
+  description: "Feature-demonstration corpus for the redesigned tweak engine (Task 15). Every effect kind, presence, sharing, packed-value, and version-scoping feature, exercised on safe HKCU/scratch targets so the build validator and the engine can both be proven end-to-end on a real machine. Not the real tweak corpus — that is redesigned separately, on main, outside this plan (spec §12)."
+
+shared:
+  - id: example_shared_dword
+    registry: { key: 'HKCU\Software\MagicXToolboxExample\Shared', name: SharedFlag, type: REG_DWORD }
+    value: 1
+
+tweaks:
+  # 1. Registry Setting whose options span a real value and the reserved `absent` keyword
+  #    (spec §5.1/§6.2) — a tri-state value/no-value switch on a safe HKCU scratch target.
+  - id: example_registry_tristate
+    name: "Example: Registry Tri-State"
+    description: "A registry value whose two options are a real DWORD and the reserved absent keyword — demonstrates absent as the drivable does-not-exist state (spec §5.1/§6.2)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: demo_flag
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\Registry', name: DemoFlag, type: REG_DWORD }
+    options:
+      - label: "Enabled"
+        values:
+          demo_flag: 1
+      - label: "Disabled"
+        values:
+          demo_flag: absent
+
+  # 2. Service + Task Settings with optional/if_missing presence (spec §5.4) — targets real,
+  #    always-present, harmless system resources (mirrors the existing kind tests' own choices:
+  #    RemoteRegistry governs only remote registry access; SilentCleanup is a gated maintenance
+  #    task) so an actual apply/restore is genuinely safe. A non-optional HKCU marker effect keeps
+  #    both options detectable even where a machine happens to lack one of the optional resources.
+  - id: example_service_task
+    name: "Example: Service + Scheduled Task"
+    description: "Service/Task Settings declared optional with if_missing (spec §5.4), on real but harmless system resources, plus a safe HKCU marker so every option stays detectable if a resource is absent on a given machine."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: demo_marker
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\ServiceTask', name: Marker, type: REG_DWORD }
+      - id: demo_service
+        service: { name: RemoteRegistry }
+        optional: true
+        if_missing: disabled
+      - id: demo_task
+        task: { path: '\Microsoft\Windows\DiskCleanup\SilentCleanup' }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Enabled"
+        values:
+          demo_marker: 1
+          demo_service: manual
+          demo_task: enabled
+      - label: "Disabled"
+        values:
+          demo_marker: 0
+          demo_service: disabled
+          demo_task: disabled
+
+  # 3. Hosts + Firewall presence Settings (spec §5.1) on reserved/unique scratch targets: an
+  #    RFC 2606 `.invalid` domain (never resolves, never appears in a real hosts file) and a
+  #    uniquely-named test firewall rule.
+  - id: example_hosts_firewall
+    name: "Example: Hosts + Firewall"
+    description: "Hosts and Firewall presence Settings on safe, reserved scratch targets — a .invalid domain and a uniquely-named test firewall rule."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: block_host
+        hosts: { ip: "0.0.0.0", domain: "magicx-toolbox-example-5f3f1d2e.invalid" }
+      - id: block_rule
+        firewall:
+          name: "MagicX Toolbox Example Rule 5F3F1D2E"
+          direction: outbound
+          action: block
+          protocol: tcp
+          remote_addresses: ["203.0.113.0/24"]
+          description: "Example firewall rule for the redesigned tweak engine's example corpus."
+    options:
+      - label: "Blocked"
+        values:
+          block_host: present
+          block_rule: present
+      - label: "Allowed"
+        values:
+          block_host: absent
+          block_rule: absent
+
+  # 4. The Action escape hatch (spec §7): an undo-carrying, probeable action (a scratch HKCU
+  #    marker written/removed via PowerShell) plus a separate ephemeral one-shot. The HKCU marker
+  #    Setting keeps both options build-guard detectable/distinct without relying on the action
+  #    alone (an omitted probeable action is only ever a *sole* distinguisher when undo-carrying —
+  #    spec §10 — but this tweak does not need to lean on that).
+  - id: example_action
+    name: "Example: Action (Probe + Undo, Plus Ephemeral)"
+    description: "An undo-carrying probeable Action (writes/removes a scratch HKCU marker via PowerShell) plus a separate ephemeral one-shot action (spec §7)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: demo_marker
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\Action', name: RunMarker, type: REG_DWORD }
+      - id: marker_action
+        action:
+          apply: |
+            New-Item -Path 'HKCU:\Software\MagicXToolboxExample\Action' -Force | Out-Null
+            New-ItemProperty -Path 'HKCU:\Software\MagicXToolboxExample\Action' -Name ScriptMarker -Value 1 -PropertyType DWord -Force | Out-Null
+          undo: |
+            Remove-ItemProperty -Path 'HKCU:\Software\MagicXToolboxExample\Action' -Name ScriptMarker -Force -ErrorAction SilentlyContinue
+          probe: |
+            if (Get-ItemProperty -Path 'HKCU:\Software\MagicXToolboxExample\Action' -Name ScriptMarker -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }
+          shell: powershell
+      - id: flush_dns
+        action:
+          apply: "ipconfig /flushdns"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "Run"
+        values:
+          demo_marker: 1
+          marker_action: run
+          flush_dns: run
+      - label: "Skip"
+        values:
+          demo_marker: 0
+
+  # 5/6. A shared pair (spec §6.5/§8.6): two independent tweaks claiming the same corpus-level
+  #      shared setting. Each also carries its own non-shared HKCU marker, so a shared claim is
+  #      never the sole distinguisher between that tweak's own options (spec §10) — reverting one
+  #      tweak's claim must leave the other's claim (and its own marker) untouched until the last
+  #      release.
+  - id: example_shared_claim_a
+    name: "Example: Shared Claim A"
+    description: "First of a shared pair: claims the corpus-level example_shared_dword setting alongside example_shared_claim_b (spec §6.5)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: demo_marker
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\SharedA', name: Marker, type: REG_DWORD }
+      - id: shared_ref
+        shared: example_shared_dword
+    options:
+      - label: "On"
+        values:
+          demo_marker: 1
+          shared_ref: claim
+      - label: "Off"
+        values:
+          demo_marker: 0
+          shared_ref: unclaimed
+
+  - id: example_shared_claim_b
+    name: "Example: Shared Claim B"
+    description: "Second of the shared pair: claims the same corpus-level example_shared_dword setting as example_shared_claim_a — reverting one leaves the other's claim intact until the last release (spec §8.6)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: demo_marker
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\SharedB', name: Marker, type: REG_DWORD }
+      - id: shared_ref
+        shared: example_shared_dword
+    options:
+      - label: "On"
+        values:
+          demo_marker: 1
+          shared_ref: claim
+      - label: "Off"
+        values:
+          demo_marker: 0
+          shared_ref: unclaimed
+
+  # 7. Field-addressed packed-value writing (spec §5.2, kv_semicolon format) on a safe HKCU
+  #    scratch value.
+  - id: example_packed_field
+    name: "Example: Packed Registry Field"
+    description: "Field-addressed writes into one packed REG_SZ value (kv_semicolon format), preserving any other fields already present (spec §5.2)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: packed_flag
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\Packed', name: DemoPacked, type: REG_SZ, field: DemoFlag, format: kv_semicolon }
+    options:
+      - label: "Enabled"
+        values:
+          packed_flag: "1"
+      - label: "Disabled"
+        values:
+          packed_flag: "0"
+
+  # 8. Tweak-level windows: scoping (spec §6.6) — inapplicable (not errored) on every
+  #    support-matrix milestone below Windows 11 24H2.
+  - id: example_windows_scoped
+    name: "Example: Windows-Scoped Tweak"
+    description: "Tweak-level windows: build >=26100 — unavailable, with a reason, on every earlier supported Windows build (spec §6.6)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: modern_flag
+        registry: { key: 'HKCU\Software\MagicXToolboxExample\Modern', name: ModernFlag, type: REG_DWORD }
+    options:
+      - label: "Enabled"
+        values:
+          modern_flag: 1
+      - label: "Disabled"
+        values:
+          modern_flag: 0

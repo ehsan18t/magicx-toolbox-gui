@@ -1,0 +1,23 @@
+category:
+  id: ti_disabled_by_typed_effect
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A typed Service effect can drive the TrustedInstaller service to Disabled."
+
+tweaks:
+  - id: disables_ti
+    name: "Disables TI"
+    description: "One of its options sets TrustedInstaller's start type to disabled."
+    risk_level: critical
+    elevation: system
+    reversible: true
+    effects:
+      - id: ti_service
+        service: { name: TrustedInstaller }
+    options:
+      - label: "Enabled"
+        values:
+          ti_service: manual
+      - label: "Disabled"
+        values:
+          ti_service: disabled

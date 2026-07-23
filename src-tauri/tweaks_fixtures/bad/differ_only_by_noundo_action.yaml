@@ -1,0 +1,29 @@
+category:
+  id: differ_only_by_noundo_action
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two options differ only by a probeable but one-way (no-undo) action — its Residue would let the omitting option match too, once it has run."
+
+tweaks:
+  - id: residue_risk_tweak
+    name: "Residue Risk"
+    description: "Enabled runs a one-way probed delete script; Disabled omits it. Once run, its residue satisfies Disabled's expectation too."
+    risk_level: medium
+    elevation: admin
+    reversible: false
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: one_way_probed_action
+        action:
+          apply: "reg.exe delete HKCU\\Software\\ExampleCo\\Widget\\Legacy /f"
+          probe: "reg.exe query HKCU\\Software\\ExampleCo\\Widget\\Legacy >nul 2>&1 && exit 1 || exit 0"
+          shell: cmd
+    options:
+      - label: "Enabled"
+        values:
+          marker: 1
+          one_way_probed_action: run
+      - label: "Disabled"
+        values:
+          marker: 1

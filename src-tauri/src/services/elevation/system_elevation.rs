@@ -4,7 +4,7 @@
 //! Includes registry operations and service control.
 
 use crate::error::Error;
-use crate::models::{RegistryHive, RegistryValueType, ServiceStartupType};
+use crate::models::{RegistryHive, RegistryValueType};
 use std::ptr;
 
 use super::broker::{run_one, BrokerOp};
@@ -113,69 +113,7 @@ pub fn set_registry_value_as_system(
     )
 }
 
-/// Delete a registry value as SYSTEM via the elevated broker (typed `RegDeleteValueW`, no reg.exe).
-/// An absent value is reported as success by the broker.
-pub fn delete_registry_value_as_system(
-    hive: RegistryHive,
-    key: &str,
-    value_name: &str,
-) -> Result<(), Error> {
-    run_one(
-        Elevation::System,
-        BrokerOp::RegDeleteValue {
-            hive,
-            key: key.to_string(),
-            value_name: value_name.to_string(),
-        },
-    )
-}
-
 /// Check if SYSTEM elevation is available (running as admin)
 pub fn can_use_system_elevation() -> bool {
     crate::services::system_info_service::is_running_as_admin()
-}
-
-/// Execute an arbitrary command as SYSTEM (via the elevated broker; `cmd /c` inside it).
-pub fn run_command_as_system(command: &str) -> Result<(), Error> {
-    log::info!("Running command as SYSTEM: {}", command);
-    run_one(
-        Elevation::System,
-        BrokerOp::RawCmd {
-            command: command.to_string(),
-        },
-    )
-}
-
-/// Set a Windows service startup type as SYSTEM (typed `ChangeServiceConfigW`, via the broker).
-pub fn set_service_startup_as_system(
-    service_name: &str,
-    startup: &ServiceStartupType,
-) -> Result<(), Error> {
-    run_one(
-        Elevation::System,
-        BrokerOp::SvcSetStartup {
-            name: service_name.to_string(),
-            startup: *startup,
-        },
-    )
-}
-
-/// Stop a Windows service as SYSTEM (typed `ControlService`, via the broker).
-pub fn stop_service_as_system(service_name: &str) -> Result<(), Error> {
-    run_one(
-        Elevation::System,
-        BrokerOp::SvcStop {
-            name: service_name.to_string(),
-        },
-    )
-}
-
-/// Start a Windows service as SYSTEM (typed `StartServiceW`, via the broker).
-pub fn start_service_as_system(service_name: &str) -> Result<(), Error> {
-    run_one(
-        Elevation::System,
-        BrokerOp::SvcStart {
-            name: service_name.to_string(),
-        },
-    )
 }

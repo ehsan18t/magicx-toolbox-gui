@@ -1,0 +1,28 @@
+category:
+  id: dup_address_direct_vs_shared
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A direct effect and a shared: declaration both own the same registry address."
+
+shared:
+  - id: telemetry_off
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    value: 0
+
+tweaks:
+  - id: rogue_tweak
+    name: "Rogue"
+    description: "Addresses the shared telemetry value directly instead of via `shared:`."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: holds_it_directly
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          holds_it_directly: 1
+      - label: "Off"
+        values:
+          holds_it_directly: 0

@@ -1,7 +1,10 @@
 //! TrustedInstaller Elevation Functions
 //!
 //! Execute commands with TrustedInstaller privileges using parent process spoofing.
-//! Also includes PowerShell execution and scheduled task commands.
+//! `spawn_as_trusted_installer` is the broker's TI launcher (`broker.rs` calls it internally); the
+//! typed per-op TI wrappers this file used to also expose were the old apply pipeline's direct
+//! call surface and are gone with it (spec §12) — the redesigned engine routes every System/TI
+//! drive through the broker's generic `run_ops` (`services::elevation::run_ops`) instead.
 
 use crate::error::Error;
 use std::ptr;
@@ -17,83 +20,6 @@ use super::common::{
     SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS,
     STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
 };
-
-use super::broker::{run_one, BrokerOp};
-use super::Elevation;
-use crate::models::ServiceStartupType;
-
-// ============================================================================
-// POWERSHELL EXECUTION
-// ============================================================================
-
-/// Result of a PowerShell command execution
-#[derive(Debug)]
-pub struct PowerShellResult {
-    /// Exit code from PowerShell
-    pub exit_code: i32,
-    /// Standard output from the command
-    pub stdout: String,
-    /// Standard error from the command
-    pub stderr: String,
-    /// Whether the command was successful (exit code 0)
-    pub success: bool,
-}
-
-/// Execute a PowerShell command as the current user
-/// Uses -NoProfile and -ExecutionPolicy Bypass for reliability
-pub fn run_powershell(script: &str) -> Result<PowerShellResult, Error> {
-    use std::os::windows::process::CommandExt;
-
-    log::info!("Running PowerShell command: {}", script);
-
-    let output = std::process::Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script,
-        ])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to execute PowerShell: {}", e)))?;
-
-    let result = PowerShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        success: output.status.success(),
-    };
-
-    if result.success {
-        log::debug!("PowerShell command succeeded");
-        if !result.stdout.is_empty() {
-            log::trace!("PowerShell stdout: {}", result.stdout.trim());
-        }
-    } else {
-        log::warn!(
-            "PowerShell command failed with exit code {}: {}",
-            result.exit_code,
-            result.stderr.trim()
-        );
-    }
-
-    Ok(result)
-}
-
-/// Execute a PowerShell command as SYSTEM via the elevated broker (`-EncodedCommand`; no shell).
-pub fn run_powershell_as_system(script: &str) -> Result<(), Error> {
-    log::info!("Running PowerShell command as SYSTEM: {}", script);
-    run_one(
-        Elevation::System,
-        BrokerOp::Powershell {
-            script: script.to_string(),
-        },
-    )
-}
 
 // ============================================================================
 // TRUSTEDINSTALLER ELEVATION
@@ -350,60 +276,4 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Erro
 
         wait_and_reap(&process_info, "TrustedInstaller command")
     }
-}
-
-/// Set a Windows service startup type as TrustedInstaller (for protected services like WaaSMedicSvc).
-pub fn set_service_startup_as_ti(
-    service_name: &str,
-    startup: &ServiceStartupType,
-) -> Result<(), Error> {
-    run_one(
-        Elevation::TrustedInstaller,
-        BrokerOp::SvcSetStartup {
-            name: service_name.to_string(),
-            startup: *startup,
-        },
-    )
-}
-
-/// Stop a Windows service as TrustedInstaller.
-pub fn stop_service_as_ti(service_name: &str) -> Result<(), Error> {
-    run_one(
-        Elevation::TrustedInstaller,
-        BrokerOp::SvcStop {
-            name: service_name.to_string(),
-        },
-    )
-}
-
-/// Start a Windows service as TrustedInstaller.
-pub fn start_service_as_ti(service_name: &str) -> Result<(), Error> {
-    run_one(
-        Elevation::TrustedInstaller,
-        BrokerOp::SvcStart {
-            name: service_name.to_string(),
-        },
-    )
-}
-
-/// Run an arbitrary command as TrustedInstaller (via the elevated broker; `cmd /c` inside it).
-pub fn run_command_as_ti(command: &str) -> Result<(), Error> {
-    log::info!("Running command as TrustedInstaller: {}", command);
-    run_one(
-        Elevation::TrustedInstaller,
-        BrokerOp::RawCmd {
-            command: command.to_string(),
-        },
-    )
-}
-
-/// Run a PowerShell command as TrustedInstaller via the elevated broker (`-EncodedCommand`; no shell).
-pub fn run_powershell_as_ti(script: &str) -> Result<(), Error> {
-    log::info!("Running PowerShell command as TrustedInstaller: {}", script);
-    run_one(
-        Elevation::TrustedInstaller,
-        BrokerOp::Powershell {
-            script: script.to_string(),
-        },
-    )
 }

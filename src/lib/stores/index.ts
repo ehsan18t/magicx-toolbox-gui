@@ -53,7 +53,6 @@ export {
   stageChange,
   // Data stores
   systemStore,
-  toggleTweak,
   tweaksStore,
   unstageChange,
 } from "./tweaks.svelte";
