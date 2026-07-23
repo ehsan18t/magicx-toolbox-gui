@@ -36,6 +36,10 @@ thiserror = "2"
 # Loads tweaks/schema.rs under `cargo test` only (see tweaks/mod.rs) — kept out of
 # [dependencies] so the shipped binary never links a YAML parser.
 serde_yaml_bw = "2.5"
+# Test-only runtime features for the engine's per-tweak-lock concurrency test (a multi-thread
+# runtime + `#[tokio::test]`) — kept off the shipped binary's [dependencies] entry above, which
+# only needs the `Mutex` type itself, never a runtime to drive one.
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -46,8 +50,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 
-# Async runtime (for sleep in watchdog) - minimal features only
-tokio = { version = "1", default-features = false, features = ["time"] }
+# Async runtime (for sleep in watchdog, and the engine's per-tweak lock) - minimal features only
+tokio = { version = "1", default-features = false, features = ["time", "sync"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

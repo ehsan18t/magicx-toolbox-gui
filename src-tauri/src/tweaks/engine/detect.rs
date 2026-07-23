@@ -469,7 +469,7 @@ fn has_history(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tweaks::engine::ProbeCache;
+    use crate::tweaks::engine::{ProbeCache, RealActions};
     use crate::tweaks::kinds::EffectKind;
     use crate::tweaks::model::{
         BuildExpr, Effect, EffectDef, Hive, Level, Opt, OptLabel, RegAddr, RegType, RiskLevel,
@@ -685,6 +685,10 @@ mod tests {
             Deps {
                 kinds: &self.kind,
                 probes: &self.probes,
+                // `detect` never runs an Action, only probes it (spec §8.4) -- the real,
+                // stateless dispatcher is safe to wire here since nothing in this module ever
+                // calls it.
+                actions: &RealActions,
                 claims: &self.claims,
                 snapshots: &self.snapshots,
                 probe_cache: &self.cache,

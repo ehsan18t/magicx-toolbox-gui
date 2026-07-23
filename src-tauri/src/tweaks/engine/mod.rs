@@ -13,7 +13,9 @@
 //!   carries the running build as a [`Milestone`] instead — exactly the type `validate.rs`'s
 //!   version-scoping helpers already take — and Task 14 supplies it from the real API.
 
+pub mod apply;
 pub mod detect;
+pub mod lifecycle;
 
 use crate::tweaks::kinds::{
     action::ActionKind, firewall::FirewallKind, hosts::HostsKind, registry::RegistryKind,
@@ -70,13 +72,41 @@ impl ProbeSource for RealProbe {
     }
 }
 
-/// Bundles detect's (and later apply/restore's) external dependencies (controller decision 1): one
+/// Injectable source for an Action's `apply`/`undo` (spec §7) — added alongside [`ProbeSource`]
+/// (kept separate and unchanged, so Task 11's `detect` -- which only ever probes an Action, never
+/// runs one -- needs no behavioral mock, just a trivial implementor to satisfy [`Deps`]'s shape).
+/// Without this seam, `engine::apply` (a later task) would have to call the concrete `ActionKind`
+/// directly, spawning a real process even in unit tests -- exactly what `ProbeSource` already
+/// exists to avoid for probes. Tests substitute an in-memory mock that also records call order, so
+/// apply's capture-before-mutation and completion-after-each-action invariants are provable with
+/// zero OS contact.
+pub trait ActionRunner: Send + Sync {
+    fn apply(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError>;
+    fn undo(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError>;
+}
+
+/// Production action runner: `ActionKind::run_apply`/`run_undo`, unmodified.
+pub struct RealActions;
+
+impl ActionRunner for RealActions {
+    fn apply(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError> {
+        ActionKind.run_apply(action, cx)
+    }
+    fn undo(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError> {
+        ActionKind.run_undo(action, cx)
+    }
+}
+
+/// Bundles detect's (and apply/restore's) external dependencies (controller decision 1): one
 /// injection seam so production wires real stores/kinds and tests wire in-memory mocks with zero OS
 /// contact. See the module docs for why `level`/`running` are plain fields rather than the broker
 /// handle / `WinVer` a later task will supply.
 pub struct Deps<'a> {
     pub kinds: &'a dyn EffectKind,
     pub probes: &'a dyn ProbeSource,
+    /// Task 12: the Action apply/undo seam (see [`ActionRunner`]'s docs). `detect` never reads
+    /// this field.
+    pub actions: &'a dyn ActionRunner,
     pub claims: &'a ClaimsStore,
     pub snapshots: &'a SnapshotStore,
     pub probe_cache: &'a ProbeCache,
