@@ -15,6 +15,11 @@ pure cost.
   worth knowing for that block — not the obvious. "Minimal" is never an excuse to drop a genuinely useful
   comment.
 
+## Docs style
+
+- **Never use em dashes (—) in user-facing docs** (`docs/*.md`, `TWEAK_AUTHORING.md`, READMEs, and any
+  author-facing or end-user text). Use a comma, colon, parentheses, semicolon, or a separate sentence.
+
 ## The gate — run before every commit
 
 - **Full stack:** `pnpm run validate` (prettier, tsc, svelte-check, `cargo fmt --check`, clippy
