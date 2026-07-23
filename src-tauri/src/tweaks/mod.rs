@@ -13,6 +13,7 @@ pub mod model;
 pub mod parse;
 #[cfg(test)]
 mod schema;
+pub mod shared_claims;
 pub mod snapshot;
 pub mod validate;
 
