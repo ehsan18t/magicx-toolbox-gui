@@ -212,9 +212,29 @@ pub struct TweakView {
     pub category: String,
     pub risk: RiskLevel,
     pub reversible: bool,
+    /// Whether applying/restoring this tweak needs a reboot to take full effect (spec §6).
+    pub requires_reboot: bool,
     pub options: Vec<OptLabel>,
     pub elevation: Level,
     pub availability: Availability,
+}
+
+/// Builds one IPC [`TweakView`] from a compiled `Tweak` at the given elevation/SID context.
+/// Factored out of [`get_tweaks`] so a command-layer test can assert field carry-through
+/// (e.g. `requires_reboot`, spec §6) without needing a live Tauri runtime.
+fn tweak_view(t: &Tweak, level: Level, sid_mismatch: bool) -> TweakView {
+    TweakView {
+        id: t.id.clone(),
+        name: t.name.clone(),
+        description: t.description.clone(),
+        category: t.category.clone(),
+        risk: t.risk_level,
+        reversible: t.reversible,
+        requires_reboot: t.requires_reboot,
+        options: t.options.iter().map(|o| o.label.clone()).collect(),
+        elevation: t.elevation,
+        availability: compute_availability(t.elevation, level, sid_mismatch),
+    }
 }
 
 /// `get_elevation_state`'s result: the app's own elevation ceiling plus the over-the-shoulder SID
@@ -478,17 +498,7 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
     Ok(corpus
         .tweaks
         .iter()
-        .map(|t| TweakView {
-            id: t.id.clone(),
-            name: t.name.clone(),
-            description: t.description.clone(),
-            category: t.category.clone(),
-            risk: t.risk_level,
-            reversible: t.reversible,
-            options: t.options.iter().map(|o| o.label.clone()).collect(),
-            elevation: t.elevation,
-            availability: compute_availability(t.elevation, level, mismatch),
-        })
+        .map(|t| tweak_view(t, level, mismatch))
         .collect())
 }
 
@@ -874,6 +884,18 @@ mod tests {
         // The happy path: an available tweak must not refuse.
         t.elevation = Level::User;
         assert!(refuse_if_unavailable(&t, Level::User, false).is_ok());
+    }
+
+    #[test]
+    fn get_tweaks_carries_requires_reboot() {
+        // spec §6: `requires_reboot` must reach the UI. `tweak_view` is exactly the mapping
+        // `get_tweaks` runs over every corpus tweak, so asserting on it proves the field is
+        // carried through without a live Tauri runtime or the embedded corpus.
+        let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
+        t.requires_reboot = true;
+        assert!(tweak_view(&t, Level::User, false).requires_reboot);
+        t.requires_reboot = false;
+        assert!(!tweak_view(&t, Level::User, false).requires_reboot);
     }
 
     // --- the brief's two named tests -----------------------------------------------------------

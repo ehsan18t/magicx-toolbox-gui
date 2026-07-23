@@ -178,7 +178,116 @@ export interface TweakOption {
   scheduler_missing_is_match?: boolean;
 }
 
-/** Category definition loaded from YAML file */
+// ============================================================================
+// REDESIGNED ENGINE — BACKEND COMMAND/EVENT DTOs (Task 16 contract)
+// These mirror the exact serde shapes emitted by src-tauri/src/commands/tweaks.rs.
+// ============================================================================
+
+/** Elevation floor / app ceiling (serde: exact Rust variant names). */
+export type Level = "User" | "Admin" | "System" | "Ti";
+
+/** Risk level as serialized by the engine (PascalCase, unlike the UI's RiskLevel). */
+export type BackendRiskLevel = "Low" | "Medium" | "High" | "Critical";
+
+/** Whether a tweak can be applied/restored right now (spec §9). */
+export type Availability =
+  { state: "available" } | { state: "needs_elevation"; reason: string } | { state: "sid_mismatch"; reason: string };
+
+/** The compiled tweak model for the UI (`get_tweaks`). */
+export interface TweakView {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  risk: BackendRiskLevel;
+  reversible: boolean;
+  /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
+  requires_reboot: boolean;
+  /** Authored option labels (apply targets are addressed by label). */
+  options: string[];
+  elevation: Level;
+  availability: Availability;
+}
+
+/** Why one applicable effect could not be read (spec §8.4). */
+export type UnknownCause = "AccessDenied" | "Malformed" | "MissingRequired" | "Other";
+
+export interface UnknownReason {
+  effect: string;
+  cause: UnknownCause;
+  /** True only when elevating could resolve the read (AccessDenied). */
+  needs_elevation: boolean;
+}
+
+/** An option that cannot be selected on this machine/build right now. */
+export interface UnavailableOpt {
+  label: string;
+  reason: string;
+}
+
+/** A shared setting's current claimants, surfaced as info regardless of match. */
+export interface HeldInfo {
+  shared: string;
+  holders: string[];
+}
+
+/** A tweak's detected state (nested inside TweakStatusView.state). */
+export type TweakStateView =
+  | { state: "active"; option: string }
+  | { state: "system_default" }
+  | { state: "unavailable"; reason: string }
+  | { state: "unknown"; reasons: UnknownReason[] };
+
+/** One tweak's live status, delivered per-tweak via the `tweak-status` event. */
+export interface TweakStatusView {
+  state: TweakStateView;
+  unavailable: UnavailableOpt[];
+  residues: string[];
+  has_history: boolean;
+  held_shared: HeldInfo[];
+}
+
+/** `tweak-status` event payload: one tweak's freshly detected status. */
+export interface TweakStatusEvent {
+  tweak_id: string;
+  status: TweakStatusView;
+}
+
+/** `get_elevation_state` result: app ceiling + over-the-shoulder SID guard. */
+export interface ElevationState {
+  level: Level;
+  sid_mismatch: boolean;
+}
+
+/** `apply_tweak` result — carries the fresh post-op status (use it, don't re-fetch). */
+export interface ApplyOutcome {
+  effects: { effect: string; kind: Record<string, unknown> }[];
+  status: TweakStatusView;
+}
+
+/** Why one snapshot entry cannot be a restore target. */
+export type InvalidReason = "Corrupt" | "WrongSchema" | "WrongMachine" | "DanglingRef" | "TargetUnavailable";
+
+/** Entry validity — "Valid" or an externally-tagged Invalid(reason). */
+export type EntryValidity = "Valid" | { Invalid: InvalidReason };
+
+/** One `list_snapshot_entries` row (drives the discard affordance). */
+export interface EntrySummary {
+  seq: number;
+  validity: EntryValidity;
+  timestamp: string | null;
+  captured: unknown;
+}
+
+/** `restore_tweak` result — fresh status + advisories, computed without a re-scan. */
+export interface RestoreOutcome {
+  status: TweakStatusView;
+  consumed: number | null;
+  reboot_advisory: boolean;
+  skipped_invalid: EntrySummary[];
+}
+
+/** Category definition (derived on the frontend from the tweaks' category strings). */
 export interface CategoryDefinition {
   id: string;
   name: string;
@@ -188,59 +297,66 @@ export interface CategoryDefinition {
   order: number;
 }
 
-/** A complete tweak definition loaded from YAML */
+/**
+ * A tweak's presentation model — the frontend adapter over the engine's `TweakView`.
+ * Field names the many view components already read (id/name/description/category_id/
+ * risk_level) are preserved so those components need no changes.
+ */
 export interface TweakDefinition {
   id: string;
   name: string;
   description: string;
-  /** Category ID from YAML */
+  /** The engine's category string (kept under the old name view components read). */
   category_id: string;
+  /** Lowercased from the engine's PascalCase risk, for the existing UI maps. */
   risk_level: RiskLevel;
+  /** Whether the tweak declares itself reversible. */
+  reversible: boolean;
+  /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
   requires_reboot: boolean;
-  requires_admin: boolean;
-  /** Requires SYSTEM elevation for protected registry keys */
-  requires_system: boolean;
-  /** Requires TrustedInstaller elevation for protected services (e.g., WaaSMedicSvc) */
-  requires_ti: boolean;
-  /** Additional info/documentation */
+  /** Declared elevation floor (drives permission display + User-level SID gating). */
+  elevation: Level;
+  /** Whether the tweak can be applied/restored right now (spec §9). */
+  availability: Availability;
+  /** Authored option labels — apply targets are addressed by label, not index. */
+  optionLabels: string[];
+  /** Legacy free-text info; not exposed by the redesigned engine (always undefined). */
   info?: string;
-  /** Force dropdown UI even with 2 options (default: false). 2 options = toggle, 3+ = dropdown */
-  force_dropdown: boolean;
-  /** Available options for this tweak (minimum 2) */
-  options: TweakOption[];
 }
 
-/** Status of a tweak in the system */
+/**
+ * A tweak's live status — the frontend adapter over the engine's `TweakStatusView`.
+ * `is_applied`/`has_backup` are kept as convenience booleans so count/coloring
+ * consumers stay unchanged; the richer new-state fields drive the card markers.
+ */
 export interface TweakStatus {
   tweak_id: string;
-  /** Whether we have a snapshot (tweak was applied by this app) */
+  /** False until the first `tweak-status` event has arrived for this tweak. */
+  loaded: boolean;
+  /** Detected state tag ("loading" before the first event arrives). */
+  state: "loading" | "active" | "system_default" | "unavailable" | "unknown";
+  /** Active option label when state === "active", else null. */
+  activeOption: string | null;
+  /** Reason the whole tweak is unavailable (state === "unavailable"). */
+  unavailableReason: string | null;
+  /** Effects that could not be read (state === "unknown"). */
+  unknownReasons: UnknownReason[];
+  /** True when any Unknown reason is fixable by elevating. */
+  needsElevation: boolean;
+  /** Options that cannot be selected on this machine/build right now. */
+  unavailableOptions: UnavailableOpt[];
+  /** Effects left in a detectable residual state (informational). */
+  residues: string[];
+  /** Shared settings currently held, with their holders (informational). */
+  heldShared: HeldInfo[];
+  /** Convenience: state === "active" (drives applied counts/coloring). */
   is_applied: boolean;
-  /** When the tweak was last applied (ISO 8601 timestamp) */
-  last_applied?: string;
-  /** Whether a snapshot exists for reverting */
+  /** A snapshot exists to restore from (the engine's has_history). */
   has_backup: boolean;
-  /** Current option index that matches system state, or null if "System Default" */
-  current_option_index: number | null;
-  /**
-   * The original option index from the snapshot, if one exists.
-   * - undefined: No snapshot exists (tweak was never applied)
-   * - null: Snapshot exists but original state was unknown (didn't match any option)
-   * - number: Snapshot exists and original state matched that option index
-   * Used by frontend to show "Default" segment when original state was unknown.
-   */
-  snapshot_original_option_index?: number | null;
-  /**
-   * True if the status was inferred from missing items (via missing_is_match flag)
-   * rather than detected from actual registry/service values.
-   * Used by frontend to show an indicator that the status is based on missing components.
-   */
-  status_inferred?: boolean;
-  /** Error message if state detection failed (tweak still usable but with unknown state) */
-  error?: string;
-  /** True when the last revert did not fully succeed and the snapshot was kept for retry (ADR-0001). */
-  needs_attention?: boolean;
-  /** Resources a partial revert could not restore (present only when needs_attention). */
-  unrestorable_resources?: string[];
+  /** A restore could not fully complete; the snapshot was kept (ADR-0001). */
+  needs_attention: boolean;
+  /** Items a partial restore could not recover (present with needs_attention). */
+  unrestorable_resources: string[];
 }
 
 /** Combined tweak info for UI display */
@@ -455,12 +571,12 @@ export interface BatchApplyResult {
   total_failed: number;
 }
 
-/** Pending change for staged apply pattern */
+/** Pending change for staged apply pattern (apply targets by option label). */
 export interface PendingChange {
   /** Tweak ID */
   tweakId: string;
-  /** Option index to apply */
-  optionIndex: number;
+  /** Option label to apply. */
+  optionLabel: string;
 }
 
 /**
@@ -597,4 +713,22 @@ export function getHighestPermission(tweak: {
   if (tweak.requires_system) return "system";
   if (tweak.requires_admin) return "admin";
   return "none";
+}
+
+/**
+ * Map a declared elevation floor (the redesigned engine's `Level`) to a permission
+ * level for UI display. The app process is only ever User or Admin, but a tweak may
+ * declare a System/TrustedInstaller floor that the broker reaches once elevated.
+ */
+export function permissionFromElevation(level: Level): PermissionLevel {
+  switch (level) {
+    case "Ti":
+      return "ti";
+    case "System":
+      return "system";
+    case "Admin":
+      return "admin";
+    default:
+      return "none";
+  }
 }

@@ -1,19 +1,11 @@
 <script lang="ts">
-  import { getBackupInfo, inspectTweak, type BackupInfo } from "$lib/api/tweaks";
-  import { Icon, MarkdownText } from "$lib/components/shared";
-  import {
-    CommandList,
-    FirewallChangeItem,
-    HostsChangeItem,
-    RegistryChangeItem,
-    SchedulerChangeItem,
-    ServiceChangeItem,
-  } from "$lib/components/tweaks";
+  import { discardSnapshotEntry, listSnapshotEntries } from "$lib/api/tweaks";
+  import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { pendingChangesStore, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import type { TweakOption } from "$lib/types";
-  import { getHighestPermission, PERMISSION_INFO, RISK_INFO, type RiskLevel, type TweakInspection } from "$lib/types";
+  import { pendingChangesStore, revertTweak, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import type { EntrySummary } from "$lib/types";
+  import { PERMISSION_INFO, permissionFromElevation, RISK_INFO } from "$lib/types";
 
   const isOpen = $derived(tweakDetailsModalStore.isOpen);
 
@@ -23,71 +15,8 @@
     return tweaksStore.list.find((t) => t.definition.id === state.tweakId) ?? null;
   });
 
-  // Load snapshot info when modal opens with a tweak that has a backup
-  let snapshotInfo = $state<BackupInfo | null>(null);
-
-  $effect(() => {
-    const t = tweak;
-    let cancelled = false;
-
-    if (isOpen && t?.status.has_backup) {
-      getBackupInfo(t.definition.id)
-        .then((info) => {
-          if (!cancelled) snapshotInfo = info;
-        })
-        .catch(() => {
-          if (!cancelled) snapshotInfo = null;
-        });
-    } else {
-      snapshotInfo = null;
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  });
-
-  // Inspection State
-  let inspection = $state<TweakInspection | null>(null);
-  let isInspecting = $state(false);
-  let inspectionError = $state<string | null>(null);
-  let showInspectionDetails = $state(false);
-
-  $effect(() => {
-    const t = tweak;
-    let cancelled = false;
-
-    // Reset state when tweak changes or modal closes
-    if (!isOpen || !t || inspection?.tweak_id !== t.definition.id) {
-      inspection = null;
-      isInspecting = false;
-      inspectionError = null;
-      showInspectionDetails = false;
-
-      if (isOpen && t) {
-        // load inspection
-        isInspecting = true;
-        inspectTweak(t.definition.id)
-          .then((res) => {
-            if (!cancelled) {
-              inspection = res;
-              isInspecting = false;
-            }
-          })
-          .catch((err) => {
-            if (!cancelled) {
-              console.error("Inspection failed", err);
-              inspectionError = "Failed to analyze system state";
-              isInspecting = false;
-            }
-          });
-      }
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  });
+  const def = $derived(tweak?.definition ?? null);
+  const status = $derived(tweak?.status ?? null);
 
   const pendingChange = $derived.by(() => {
     const t = tweak;
@@ -95,91 +24,125 @@
     return pendingChangesStore.get(t.definition.id);
   });
 
-  const currentWindowsVersion = $derived.by(() => {
-    const system = systemStore.info;
-    if (!system) return null;
-    return system.windows.is_windows_11 ? 11 : 10;
+  const riskInfo = $derived(def ? RISK_INFO[def.risk_level] : null);
+  const permission = $derived(def ? permissionFromElevation(def.elevation) : "none");
+  const permissionInfo = $derived(permission !== "none" ? PERMISSION_INFO[permission] : null);
+
+  const stateLabel = $derived.by(() => {
+    if (!status) return "";
+    switch (status.state) {
+      case "active":
+        return `Active · ${status.activeOption}`;
+      case "system_default":
+        return "System Default";
+      case "unavailable":
+        return "Unavailable";
+      case "unknown":
+        return "Unknown";
+      default:
+        return "Checking…";
+    }
   });
 
-  const riskInfo = $derived.by(() => {
+  // Snapshot entries (the discard affordance) — loaded when the modal opens for a tweak
+  // that has restorable history.
+  let entries = $state<EntrySummary[]>([]);
+  let entriesLoading = $state(false);
+  let busySeq = $state<number | null>(null);
+
+  $effect(() => {
     const t = tweak;
-    if (!t) return null;
-    return RISK_INFO[t.definition.risk_level as RiskLevel];
-  });
+    const open = isOpen;
+    let cancelled = false;
 
-  // Get highest permission level (hierarchy: ti > system > admin > none)
-  const highestPermission = $derived.by(() => {
-    const t = tweak;
-    if (!t) return "none" as const;
-    return getHighestPermission(t.definition);
-  });
-  const permissionInfo = $derived(highestPermission !== "none" ? PERMISSION_INFO[highestPermission] : null);
+    if (open && t?.status.has_backup) {
+      entriesLoading = true;
+      listSnapshotEntries(t.definition.id)
+        .then((e) => {
+          if (!cancelled) {
+            entries = e;
+            entriesLoading = false;
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            entries = [];
+            entriesLoading = false;
+          }
+        });
+    } else {
+      entries = [];
+    }
 
-  // Derive inspection summary stats
-  const inspectionSummary = $derived.by(() => {
-    if (!inspection) return null;
-
-    const matchedOption = inspection.options.find((o) => o.all_match);
-    const totalChecks = inspection.options.reduce(
-      (sum, o) => sum + o.registry_results.length + o.service_results.length + o.scheduler_results.length,
-      0,
-    );
-
-    // Count mismatches for the current/pending option or first option
-    // Count mismatches for the current/pending option or first option
-    const pendingIdx = pendingChange?.optionIndex;
-    const relevantOption =
-      inspection.options.find((o) => o.is_current || (pendingIdx !== undefined && o.option_index === pendingIdx)) ??
-      inspection.options[0];
-    const mismatches = relevantOption
-      ? relevantOption.registry_results.filter((r) => !r.is_match).length +
-        relevantOption.service_results.filter((s) => !s.is_match).length +
-        relevantOption.scheduler_results.filter((s) => !s.is_match).length
-      : 0;
-
-    return {
-      matchedOption,
-      totalChecks,
-      mismatches,
-      hasCustomState: !matchedOption,
+    return () => {
+      cancelled = true;
     };
   });
 
-  function optionLabel(optionIndex: number | null, options: TweakOption[]): string {
-    if (optionIndex === null) return "Custom Configuration";
-    const opt = options[optionIndex];
-    return opt ? opt.label : `Option ${optionIndex}`;
+  function entryValidity(entry: EntrySummary): string {
+    return entry.validity === "Valid" ? "Valid" : `Invalid · ${entry.validity.Invalid}`;
+  }
+
+  async function discardEntry(seq: number) {
+    const t = tweak;
+    if (!t) return;
+    busySeq = seq;
+    try {
+      await discardSnapshotEntry(t.definition.id, seq);
+      const remaining = await listSnapshotEntries(t.definition.id);
+      entries = remaining;
+      if (remaining.length === 0) {
+        tweaksStore.patchStatus(t.definition.id, { has_backup: false });
+      }
+    } catch (e) {
+      console.error("Failed to discard snapshot entry:", e);
+    } finally {
+      busySeq = null;
+    }
+  }
+
+  async function handleRestore() {
+    const t = tweak;
+    if (!t) return;
+    await revertTweak(t.definition.id, { showToast: true, tweakName: t.definition.name });
   }
 </script>
 
 <Modal open={isOpen && !!tweak} onclose={closeTweakDetailsModal} size="lg" labelledBy="tweak-details-title">
-  {#if tweak}
+  {#if tweak && def && status}
     <ModalHeader id="tweak-details-title">
       <div class="min-w-0">
-        <h2 class="m-0 truncate text-lg font-bold text-foreground">
-          {tweak.definition.name}
-        </h2>
-        <p class="m-0 mt-1 text-sm text-foreground-muted">{tweak.definition.description}</p>
+        <h2 class="m-0 truncate text-lg font-bold text-foreground">{def.name}</h2>
+        <p class="m-0 mt-1 text-sm text-foreground-muted">{def.description}</p>
       </div>
       <IconButton icon="mdi:close" onclick={closeTweakDetailsModal} aria-label="Close" />
     </ModalHeader>
 
     <ModalBody scrollable class="max-h-[calc(100dvh-2.5rem-6rem)]">
-      <!-- Status Overview Card -->
+      <!-- Status Overview -->
       <div class="rounded-xl border border-border bg-surface/50 p-4">
-        <!-- Status Row -->
         <div class="flex flex-wrap items-center gap-2">
-          <!-- Applied Status - Primary indicator -->
+          <!-- Detected state -->
           <div
-            class="flex items-center gap-2 rounded-lg px-3 py-1.5 {tweak.status.is_applied
+            class="flex items-center gap-2 rounded-lg px-3 py-1.5 {status.is_applied
               ? 'bg-success/10 text-success'
-              : 'bg-muted text-foreground-muted'}"
+              : status.state === 'unknown' || status.state === 'unavailable'
+                ? 'bg-warning/10 text-warning'
+                : 'bg-muted text-foreground-muted'}"
           >
-            <Icon icon={tweak.status.is_applied ? "mdi:check-circle" : "mdi:circle-outline"} width="16" />
-            <span class="text-sm font-medium">{tweak.status.is_applied ? "Applied" : "Not Applied"}</span>
+            <Icon
+              icon={status.is_applied
+                ? "mdi:check-circle"
+                : status.state === "unknown"
+                  ? "mdi:help-circle-outline"
+                  : status.state === "unavailable"
+                    ? "mdi:cancel"
+                    : "mdi:circle-outline"}
+              width="16"
+            />
+            <span class="text-sm font-medium">{stateLabel}</span>
           </div>
 
-          <!-- Risk Level -->
           {#if riskInfo}
             <div class="bg-muted flex items-center gap-1.5 rounded-lg px-3 py-1.5">
               <Icon icon="mdi:shield-alert-outline" width="14" class="text-foreground-muted" />
@@ -187,7 +150,6 @@
             </div>
           {/if}
 
-          <!-- Permission -->
           {#if permissionInfo}
             <div class="bg-muted flex items-center gap-1.5 rounded-lg px-3 py-1.5">
               <Icon icon={permissionInfo.icon} width="14" class="text-foreground-muted" />
@@ -195,397 +157,202 @@
             </div>
           {/if}
 
-          <!-- Reboot -->
-          {#if tweak.definition.requires_reboot}
+          {#if def.requires_reboot}
             <div class="flex items-center gap-1.5 rounded-lg bg-info/10 px-3 py-1.5 text-info">
               <Icon icon="mdi:restart" width="14" />
               <span class="text-sm">Reboot Required</span>
             </div>
           {/if}
 
-          <!-- Snapshot -->
-          {#if tweak.status.has_backup}
+          {#if status.has_backup}
             <div class="flex items-center gap-1.5 rounded-lg bg-accent/10 px-3 py-1.5 text-accent">
               <Icon icon="mdi:history" width="14" />
               <span class="text-sm">Snapshot Available</span>
             </div>
           {/if}
-        </div>
 
-        <!-- Current Configuration -->
-        <div class="mt-4 flex flex-wrap gap-6 border-t border-border/50 pt-4">
-          <div>
-            <div class="text-[11px] font-medium tracking-wide text-foreground-muted uppercase">Current</div>
-            <div class="mt-0.5 text-sm font-medium text-foreground">
-              {optionLabel(tweak.status.current_option_index ?? null, tweak.definition.options)}
-            </div>
-          </div>
           {#if pendingChange}
-            <div>
-              <div class="text-[11px] font-medium tracking-wide text-warning uppercase">Pending</div>
-              <div class="mt-0.5 text-sm font-medium text-warning">
-                {optionLabel(pendingChange.optionIndex, tweak.definition.options)}
-              </div>
-            </div>
-          {/if}
-          {#if currentWindowsVersion}
-            <div>
-              <div class="text-[11px] font-medium tracking-wide text-foreground-muted uppercase">System</div>
-              <div class="mt-0.5 text-sm text-foreground">Windows {currentWindowsVersion}</div>
+            <div class="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-1.5 text-warning">
+              <Icon icon="mdi:clock-outline" width="14" />
+              <span class="text-sm">Pending · {pendingChange.optionLabel}</span>
             </div>
           {/if}
         </div>
-      </div>
 
-      <!-- System State Analysis -->
-      <div class="mt-4 overflow-hidden rounded-xl border border-border">
-        <button
-          class="flex w-full items-center justify-between bg-surface/50 px-4 py-3 text-left transition-colors hover:bg-surface"
-          onclick={() => (showInspectionDetails = !showInspectionDetails)}
-        >
-          <div class="flex items-center gap-3">
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-              <Icon icon="mdi:clipboard-check-outline" width="18" class="text-accent" />
-            </div>
-            <div>
-              <div class="text-sm font-semibold text-foreground">System State</div>
-              {#if isInspecting}
-                <div class="text-xs text-foreground-muted">Analyzing...</div>
-              {:else if inspectionError}
-                <div class="text-xs text-error">{inspectionError}</div>
-              {:else if inspectionSummary}
-                <div class="text-xs text-foreground-muted">
-                  {#if inspectionSummary.matchedOption}
-                    <span class="text-success">Matches "{inspectionSummary.matchedOption.label}"</span>
-                  {:else}
-                    <span class="text-warning">Custom configuration detected</span>
-                  {/if}
-                </div>
-              {/if}
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            {#if isInspecting}
-              <Icon icon="mdi:loading" width="18" class="animate-spin text-foreground-muted" />
-            {:else if inspectionSummary?.matchedOption}
-              <Badge variant="success" size="sm">
-                <Icon icon="mdi:check" width="12" />
-                Match
-              </Badge>
-            {:else if inspectionSummary?.hasCustomState}
-              <Badge variant="warning" size="sm">
-                <Icon icon="mdi:alert" width="12" />
-                Custom
-              </Badge>
-            {/if}
-            <Icon
-              icon="mdi:chevron-down"
-              width="18"
-              class="text-foreground-muted transition-transform duration-200 {showInspectionDetails
-                ? 'rotate-180'
-                : ''}"
-            />
-          </div>
-        </button>
-
-        {#if showInspectionDetails && inspection}
-          <div class="border-t border-border/50 bg-background">
-            {#each inspection.options as opt, optIndex (`inspection-option-${optIndex}`)}
-              <div class="border-b border-border/30 last:border-b-0">
-                <!-- Option Header -->
-                <div class="bg-muted/30 flex items-center gap-3 px-4 py-2.5">
-                  <div
-                    class="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold {opt.all_match
-                      ? 'bg-success/15 text-success'
-                      : 'bg-muted text-foreground-muted'}"
-                  >
-                    {#if opt.all_match}
-                      <Icon icon="mdi:check" width="14" />
-                    {:else}
-                      {optIndex + 1}
-                    {/if}
-                  </div>
-                  <span class="text-sm font-medium text-foreground">{opt.label}</span>
-                  {#if opt.all_match}
-                    <Badge variant="success" size="sm">Current State</Badge>
-                  {:else if pendingChange?.optionIndex === optIndex}
-                    <Badge variant="warning" size="sm">Pending</Badge>
-                  {/if}
-                </div>
-
-                <!-- Check Results -->
-                <div class="space-y-1 px-4 py-3">
-                  {#each opt.registry_results as reg, regIndex (`registry-result-${regIndex}`)}
-                    <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {reg.is_match ? '' : 'bg-error/5'}">
-                      <Icon
-                        icon={reg.is_match ? "mdi:check-circle" : "mdi:close-circle"}
-                        width="14"
-                        class="mt-0.5 shrink-0 {reg.is_match ? 'text-success' : 'text-error'}"
-                      />
-                      <div class="min-w-0 flex-1 text-xs">
-                        <div class="font-medium text-foreground">{reg.description}</div>
-                        {#if !reg.is_match}
-                          <div class="mt-1 flex gap-4 font-mono text-[11px]">
-                            <span class="text-foreground-muted">
-                              Expected: <span class="text-success">{JSON.stringify(reg.expected_value)}</span>
-                            </span>
-                            <span class="text-foreground-muted">
-                              Actual: <span class="text-error">{JSON.stringify(reg.actual_value ?? "Missing")}</span>
-                            </span>
-                          </div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/each}
-
-                  {#each opt.service_results as svc, svcIndex (`service-result-${svcIndex}`)}
-                    <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {svc.is_match ? '' : 'bg-error/5'}">
-                      <Icon
-                        icon={svc.is_match ? "mdi:check-circle" : "mdi:close-circle"}
-                        width="14"
-                        class="mt-0.5 shrink-0 {svc.is_match ? 'text-success' : 'text-error'}"
-                      />
-                      <div class="min-w-0 flex-1 text-xs">
-                        <div class="font-medium text-foreground">Service: {svc.name}</div>
-                        {#if !svc.is_match}
-                          <div class="mt-1 flex gap-4 font-mono text-[11px]">
-                            <span class="text-foreground-muted">
-                              Expected: <span class="text-success">{svc.expected_startup}</span>
-                            </span>
-                            <span class="text-foreground-muted">
-                              Actual: <span class="text-error">{svc.actual_startup ?? "Unknown"}</span>
-                            </span>
-                          </div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/each}
-
-                  {#each opt.scheduler_results as task, taskIndex (`scheduler-result-${taskIndex}`)}
-                    <div class="flex items-start gap-2 rounded-lg px-2 py-1.5 {task.is_match ? '' : 'bg-error/5'}">
-                      <Icon
-                        icon={task.is_match ? "mdi:check-circle" : "mdi:close-circle"}
-                        width="14"
-                        class="mt-0.5 shrink-0 {task.is_match ? 'text-success' : 'text-error'}"
-                      />
-                      <div class="min-w-0 flex-1 text-xs">
-                        <div class="font-medium text-foreground">Task: {task.task_name}</div>
-                        <div class="truncate text-[10px] text-foreground-muted/70">{task.task_path}</div>
-                        {#if !task.is_match}
-                          <div class="mt-1 flex gap-4 font-mono text-[11px]">
-                            <span class="text-foreground-muted">
-                              Expected: <span class="text-success">{task.expected_state}</span>
-                            </span>
-                            <span class="text-foreground-muted">
-                              Actual: <span class="text-error">{task.actual_state ?? "Not Found"}</span>
-                            </span>
-                          </div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/each}
-
-                  {#if opt.registry_results.length === 0 && opt.service_results.length === 0 && opt.scheduler_results.length === 0}
-                    <div class="px-2 py-1.5 text-xs text-foreground-muted italic">
-                      No detectable changes for this Windows version
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/each}
+        <!-- Restore action -->
+        {#if status.has_backup}
+          <div class="mt-3 border-t border-border/50 pt-3">
+            <button
+              type="button"
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+              onclick={handleRestore}
+              aria-label="Restore to original state"
+            >
+              <Icon icon="mdi:history" width="16" />
+              {status.needs_attention ? "Retry restore" : "Restore to original state"}
+            </button>
           </div>
         {/if}
       </div>
 
-      <!-- Info Box -->
-      {#if tweak.definition.info}
-        <div class="mt-4 flex items-start gap-3 rounded-xl border border-border/50 bg-surface/30 p-4">
-          <Icon icon="mdi:information-outline" width="18" class="mt-0.5 shrink-0 text-accent" />
-          <MarkdownText content={tweak.definition.info} class="m-0" />
+      <!-- Availability notice -->
+      {#if def.availability.state !== "available"}
+        <div class="mt-4 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4">
+          <Icon icon="mdi:shield-lock-outline" width="18" class="mt-0.5 shrink-0 text-warning" />
+          <div class="text-sm">
+            <span class="font-medium text-foreground">
+              {def.availability.state === "sid_mismatch" ? "Over-the-shoulder guard" : "Elevation required"}
+            </span>
+            <span class="text-foreground-muted"> — {def.availability.reason}</span>
+          </div>
         </div>
       {/if}
 
-      <!-- Snapshot Info -->
-      {#if tweak.status.has_backup && snapshotInfo}
-        <div class="mt-4 flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 p-4">
-          <Icon icon="mdi:backup-restore" width="18" class="mt-0.5 shrink-0 text-accent" />
+      <!-- Unknown detail -->
+      {#if status.state === "unknown" && status.unknownReasons.length > 0}
+        <div class="mt-4 rounded-xl border border-border p-4">
+          <h3 class="m-0 mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Icon icon="mdi:help-circle-outline" width="16" class="text-warning" />
+            Could not determine state
+          </h3>
+          <ul class="m-0 list-none space-y-1 p-0">
+            {#each status.unknownReasons as reason, i (`${reason.effect}-${i}`)}
+              <li class="flex items-center gap-2 text-xs text-foreground-muted">
+                <Icon icon="mdi:circle-small" width="14" />
+                <span class="font-mono text-foreground">{reason.effect}</span>
+                <span>— {reason.cause}{reason.needs_elevation ? " (restart as admin to resolve)" : ""}</span>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+
+      <!-- Needs Attention detail -->
+      {#if status.needs_attention}
+        <div class="mt-4 flex items-start gap-3 rounded-xl border border-error/30 bg-error/5 p-4">
+          <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0 text-error" />
           <div class="text-sm">
-            <span class="font-medium text-foreground">Snapshot saved</span>
+            <span class="font-medium text-foreground">Needs attention</span>
             <span class="text-foreground-muted">
-              — {snapshotInfo.registry_values_count} registry
-              {snapshotInfo.registry_values_count === 1 ? "value" : "values"}
-              {#if snapshotInfo.service_snapshots_count > 0}
-                , {snapshotInfo.service_snapshots_count}
-                {snapshotInfo.service_snapshots_count === 1 ? "service" : "services"}
+              — the last restore didn't fully complete; the snapshot is kept.
+              {#if status.unrestorable_resources.length}
+                Unrecoverable: {status.unrestorable_resources.join("; ")}.
               {/if}
-              {#if snapshotInfo.scheduler_snapshots_count > 0}
-                , {snapshotInfo.scheduler_snapshots_count}
-                {snapshotInfo.scheduler_snapshots_count === 1 ? "task" : "tasks"}
-              {/if}
-              captured
             </span>
           </div>
         </div>
       {/if}
 
-      <!-- Options + Changes -->
+      <!-- Residues / shared disclosures -->
+      {#if status.residues.length > 0 || status.heldShared.length > 0}
+        <div class="mt-4 rounded-xl border border-border p-4 text-sm">
+          {#if status.residues.length > 0}
+            <div class="flex items-start gap-2 text-foreground-muted">
+              <Icon icon="mdi:information-outline" width="16" class="mt-0.5 shrink-0 text-info" />
+              <span>Residual settings remain outside the active option: {status.residues.join(", ")}</span>
+            </div>
+          {/if}
+          {#if status.heldShared.length > 0}
+            <div class="mt-2 flex items-start gap-2 text-foreground-muted">
+              <Icon icon="mdi:link-variant" width="16" class="mt-0.5 shrink-0 text-foreground-muted" />
+              <span>
+                Shared settings held: {status.heldShared.map((h) => `${h.shared} (${h.holders.join(", ")})`).join("; ")}
+              </span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Options -->
       <div class="mt-6">
         <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
           <Icon icon="mdi:tune-variant" width="16" class="text-foreground-muted" />
-          Configuration Options
+          Options
         </h3>
-
-        <div class="space-y-3">
-          {#each tweak.definition.options as option, i (option.label)}
-            {@const isCurrent = tweak.status.current_option_index === i}
-            {@const isPending = pendingChange?.optionIndex === i}
-            {@const hasChanges =
-              option.registry_changes.length > 0 ||
-              option.service_changes.length > 0 ||
-              option.scheduler_changes.length > 0 ||
-              option.pre_commands.length > 0 ||
-              option.post_commands.length > 0 ||
-              option.pre_powershell.length > 0 ||
-              option.post_powershell.length > 0}
-
-            <section
-              class="overflow-hidden rounded-xl border transition-colors {isCurrent
+        <div class="space-y-2">
+          {#each def.optionLabels as label, i (label)}
+            {@const isCurrent = status.activeOption === label}
+            {@const isPending = pendingChange?.optionLabel === label}
+            {@const unavailable = status.unavailableOptions.find((u) => u.label === label)}
+            <div
+              class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 {isCurrent
                 ? 'border-accent/40 bg-accent/3'
                 : isPending
                   ? 'border-warning/40 bg-warning/3'
                   : 'border-border bg-background'}"
             >
-              <div class="flex items-center justify-between gap-3 px-4 py-3">
-                <div class="flex items-center gap-3">
-                  <div
-                    class="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold {isCurrent
-                      ? 'bg-accent/15 text-accent'
-                      : isPending
-                        ? 'bg-warning/15 text-warning'
-                        : 'bg-muted text-foreground-muted'}"
-                  >
-                    {i + 1}
-                  </div>
-                  <span class="text-sm font-semibold text-foreground">{option.label}</span>
+              <div class="flex min-w-0 items-center gap-3">
+                <div
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold {isCurrent
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-muted text-foreground-muted'}"
+                >
+                  {i + 1}
                 </div>
-
-                <div class="flex items-center gap-2">
-                  {#if isCurrent}
-                    <Badge variant="accent" size="sm">Current</Badge>
-                  {/if}
-                  {#if isPending}
-                    <Badge variant="warning" size="sm">Pending</Badge>
+                <div class="min-w-0">
+                  <span class="block truncate text-sm font-semibold text-foreground">{label}</span>
+                  {#if unavailable}
+                    <span class="text-xs text-warning">{unavailable.reason}</span>
                   {/if}
                 </div>
               </div>
-
-              {#if hasChanges}
-                <div class="space-y-4 border-t border-border/50 bg-surface/30 px-4 py-4">
-                  <CommandList title="Pre Commands" commands={option.pre_commands} icon="mdi:console" />
-                  <CommandList title="Pre PowerShell" commands={option.pre_powershell} icon="mdi:powershell" />
-
-                  <!-- Registry Changes -->
-                  {#if option.registry_changes.length > 0}
-                    <div>
-                      <h4
-                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
-                      >
-                        <Icon icon="mdi:database-cog-outline" width="14" />
-                        Registry Changes
-                        <Badge size="sm">{option.registry_changes.length}</Badge>
-                      </h4>
-                      <div class="space-y-2">
-                        {#each option.registry_changes as change, idx (idx)}
-                          <RegistryChangeItem {change} {currentWindowsVersion} />
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-
-                  <!-- Service Changes -->
-                  {#if option.service_changes.length > 0}
-                    <div>
-                      <h4
-                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
-                      >
-                        <Icon icon="mdi:cog-outline" width="14" />
-                        Service Changes
-                        <Badge size="sm">{option.service_changes.length}</Badge>
-                      </h4>
-                      <div class="space-y-2">
-                        {#each option.service_changes as change, idx (idx)}
-                          <ServiceChangeItem {change} />
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-
-                  <!-- Scheduler Changes -->
-                  {#if option.scheduler_changes.length > 0}
-                    <div>
-                      <h4
-                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
-                      >
-                        <Icon icon="mdi:calendar-clock" width="14" />
-                        Scheduled Tasks
-                        <Badge size="sm">{option.scheduler_changes.length}</Badge>
-                      </h4>
-                      <div class="space-y-2">
-                        {#each option.scheduler_changes as change, idx (idx)}
-                          <SchedulerChangeItem {change} />
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-
-                  <!-- Hosts Changes -->
-                  {#if option.hosts_changes && option.hosts_changes.length > 0}
-                    <div>
-                      <h4
-                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
-                      >
-                        <Icon icon="mdi:file-document-outline" width="14" />
-                        Hosts File Changes
-                        <Badge size="sm">{option.hosts_changes.length}</Badge>
-                      </h4>
-                      <div class="space-y-2">
-                        {#each option.hosts_changes as change, idx (idx)}
-                          <HostsChangeItem {change} />
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-
-                  <!-- Firewall Changes -->
-                  {#if option.firewall_changes && option.firewall_changes.length > 0}
-                    <div>
-                      <h4
-                        class="m-0 mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase"
-                      >
-                        <Icon icon="mdi:shield-outline" width="14" />
-                        Firewall Rules
-                        <Badge size="sm">{option.firewall_changes.length}</Badge>
-                      </h4>
-                      <div class="space-y-2">
-                        {#each option.firewall_changes as change, idx (idx)}
-                          <FirewallChangeItem {change} />
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-
-                  <CommandList title="Post Commands" commands={option.post_commands} icon="mdi:console" />
-                  <CommandList title="Post PowerShell" commands={option.post_powershell} icon="mdi:powershell" />
-                </div>
-              {:else}
-                <div class="border-t border-border/50 bg-surface/30 px-4 py-3 text-xs text-foreground-muted italic">
-                  No changes configured for this option
-                </div>
-              {/if}
-            </section>
+              <div class="flex shrink-0 items-center gap-2">
+                {#if isCurrent}<Badge variant="accent" size="sm">Current</Badge>{/if}
+                {#if isPending}<Badge variant="warning" size="sm">Pending</Badge>{/if}
+                {#if unavailable}<Badge variant="warning" size="sm">Unavailable</Badge>{/if}
+              </div>
+            </div>
           {/each}
         </div>
       </div>
+
+      <!-- Snapshot entries (discard affordance) -->
+      {#if status.has_backup}
+        <div class="mt-6">
+          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Icon icon="mdi:history" width="16" class="text-foreground-muted" />
+            Snapshot Entries
+          </h3>
+          {#if entriesLoading}
+            <div class="flex items-center gap-2 text-sm text-foreground-muted">
+              <Icon icon="mdi:loading" width="16" class="animate-spin" />
+              Loading…
+            </div>
+          {:else if entries.length === 0}
+            <p class="m-0 text-sm text-foreground-muted italic">No snapshot entries.</p>
+          {:else}
+            <div class="space-y-2">
+              {#each entries as entry (entry.seq)}
+                <div
+                  class="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
+                >
+                  <div class="min-w-0 text-xs">
+                    <span class="font-medium text-foreground">#{entry.seq}</span>
+                    <span class="text-foreground-muted"> · {entryValidity(entry)}</span>
+                    {#if entry.timestamp}
+                      <span class="text-foreground-muted"> · {entry.timestamp}</span>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-colors hover:border-error/40 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                    onclick={() => discardEntry(entry.seq)}
+                    disabled={busySeq === entry.seq}
+                    aria-label="Discard snapshot entry {entry.seq}"
+                  >
+                    <Icon
+                      icon={busySeq === entry.seq ? "mdi:loading" : "mdi:delete-outline"}
+                      width="14"
+                      class={busySeq === entry.seq ? "animate-spin" : ""}
+                    />
+                    Discard
+                  </button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </ModalBody>
   {/if}
 </Modal>

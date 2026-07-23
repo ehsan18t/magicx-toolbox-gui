@@ -39,7 +39,6 @@ export {
   revertTweak,
   stageChange,
   systemStore,
-  toggleTweak,
   tweaksStore,
   unstageChange,
 } from "./stores/tweaks.svelte";
@@ -56,13 +55,15 @@ export { APP_CONFIG, type AppConfig } from "./config/app";
 // Types
 export * from "./types";
 
-// API - explicitly export to avoid conflicts with stores
+// API - explicitly export to avoid conflicts with stores (which export applyTweak)
 export {
-  batchApplyTweaks,
-  getAllTweaksWithStatus,
-  getAvailableTweaks,
+  discardSnapshotEntry,
+  getElevationState,
+  getStatusesStream,
   getSystemInfo,
-  getTweakStatus,
-  getWindowsVersion,
-  isAdmin,
+  getTweaks,
+  listSnapshotEntries,
+  onTweakStatus,
+  rescanAfterElevation,
+  restoreTweak,
 } from "./api";
