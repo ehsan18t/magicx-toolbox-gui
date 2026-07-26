@@ -348,7 +348,7 @@ fn do_apply(
         let Effect::Setting(setting) = &effect.kind else {
             continue;
         };
-        let cx = context::read_route(effect, deps.level);
+        let cx = context::read_route(effect, deps.level, corpus);
         match deps.kinds.read(setting, &cx) {
             Ok(Value::Missing) if effect.optional => {
                 captured_values.insert(effect.id.clone(), Value::Missing);
@@ -395,7 +395,7 @@ fn do_apply(
             ..
         } = action_def
         {
-            let cx = context::read_route(effect, deps.level);
+            let cx = context::read_route(effect, deps.level, corpus);
             let present =
                 deps.probes
                     .probe(action_def, &cx)
@@ -537,7 +537,7 @@ pub(crate) fn drive_forward(
                 // Per-effect execution context (spec §9): `route` computes effective =
                 // max(floor, step), EXCEPT an HKCU Setting always drives in-process as the
                 // interactive user regardless of the floor (see this file's module docs).
-                let cx = context::route(effect, ctx.tweak);
+                let cx = context::route(effect, ctx.tweak, ctx.corpus);
                 ctx.deps
                     .kinds
                     .drive(setting, &scoped.value, &cx)
@@ -576,10 +576,11 @@ fn drive_shared(
     shared_id: &SharedId,
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    // Per-effect execution context (spec §9) -- a Shared effect is never HKCU by construction
-    // (see `context::route`'s docs), so this is `effective_level(tweak.elevation, effect.elevation)`
-    // in practice, replacing the flat `Deps.level` ceiling.
-    let cx = context::route(effect, ctx.tweak);
+    // Per-effect execution context (spec §9). `route` resolves a Shared effect through the corpus
+    // to the block's own Setting, so a shared HKCU block gets the same in-process-as-the-user
+    // treatment as an inlined one; otherwise this is
+    // `effective_level(tweak.elevation, effect.elevation)`, replacing the flat `Deps.level` ceiling.
+    let cx = context::route(effect, ctx.tweak, ctx.corpus);
     let Some(opt_value) = applicable_value(ctx.target_opt, &effect.id, &ctx.milestone) else {
         return Ok(());
     };
@@ -670,7 +671,7 @@ fn drive_action(
     // Per-effect execution context (spec §9) -- an Action is never HKCU by construction (see
     // `context::route`'s docs), so this is `effective_level(tweak.elevation, effect.elevation)` in
     // practice, replacing the flat `Deps.level` ceiling.
-    let cx = context::route(effect, ctx.tweak);
+    let cx = context::route(effect, ctx.tweak, ctx.corpus);
     let Some((_, plan)) = action_plan.iter().find(|(id, _)| id == &effect.id) else {
         return Ok(()); // not in the plan: scoped out, or genuinely nothing to do
     };
@@ -990,7 +991,7 @@ pub(crate) fn drive_to_captured(
                     continue;
                 };
                 // Per-effect execution context (spec §9): see this file's module docs.
-                let cx = context::route(effect, tweak);
+                let cx = context::route(effect, tweak, corpus);
                 drive_and_verify(&cx, deps, setting, effect_id, value, &mut failures);
             }
         }
@@ -1012,7 +1013,7 @@ pub(crate) fn drive_to_captured(
                 if scoped.value == Value::Missing {
                     continue;
                 }
-                let cx = context::route(effect, tweak);
+                let cx = context::route(effect, tweak, corpus);
                 drive_and_verify(&cx, deps, setting, &effect.id, &scoped.value, &mut failures);
             }
         }

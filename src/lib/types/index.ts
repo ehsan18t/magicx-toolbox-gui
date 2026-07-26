@@ -13,7 +13,7 @@ export type RegistryHive = "HKCU" | "HKLM";
 export type RegistryValueType = "REG_DWORD" | "REG_SZ" | "REG_EXPAND_SZ" | "REG_BINARY" | "REG_MULTI_SZ" | "REG_QWORD";
 
 /** Windows service startup type */
-export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
+export type ServiceStartupType = "disabled" | "manual" | "automatic" | "automatic_delayed" | "boot" | "system";
 
 /**
  * Registry value type - maps to the RegistryValueType enum.
@@ -189,22 +189,57 @@ export type Level = "User" | "Admin" | "System" | "Ti";
 /** Risk level as serialized by the engine (PascalCase, unlike the UI's RiskLevel). */
 export type BackendRiskLevel = "Low" | "Medium" | "High" | "Critical";
 
-/** Whether a tweak can be applied/restored right now (spec §9). */
+/**
+ * Whether a tweak can be applied/restored right now (spec §9).
+ *
+ * `sid_mismatch` and `sid_unknown` are separate on purpose: the first means the guard positively
+ * identified a different account, the second means it could not read a SID at all. Both block
+ * HKCU-touching tweaks, but only the first may tell the user another account is involved.
+ */
 export type Availability =
-  { state: "available" } | { state: "needs_elevation"; reason: string } | { state: "sid_mismatch"; reason: string };
+  | { state: "available" }
+  | { state: "needs_elevation"; reason: string }
+  | { state: "sid_mismatch"; reason: string }
+  | { state: "sid_unknown"; reason: string };
 
 /** The compiled tweak model for the UI (`get_tweaks`). */
+/** Corpus category metadata from `get_categories` (id, display name, icon, description). */
+export interface CategoryMeta {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+/**
+ * One option with the concrete per-effect changes it drives, projected by the backend so the
+ * Details modal can show a power user exactly what each state writes. The `*_changes` shapes are
+ * the same ones the detail components already render.
+ */
+export interface TweakEffectOption {
+  label: string;
+  registry_changes: RegistryChange[];
+  service_changes: ServiceChange[];
+  scheduler_changes: SchedulerChange[];
+  hosts_changes: HostsChange[];
+  firewall_changes: FirewallChange[];
+  /** Action scripts this option runs (Appx removal, powercfg, DISM, and the like), shown verbatim. */
+  commands: string[];
+}
+
 export interface TweakView {
   id: string;
   name: string;
   description: string;
+  /** Rich markdown detail for the Details modal (authored `info:`); null if none. */
+  info: string | null;
   category: string;
   risk: BackendRiskLevel;
   reversible: boolean;
   /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
   requires_reboot: boolean;
-  /** Authored option labels (apply targets are addressed by label). */
-  options: string[];
+  /** Each option with the concrete effects it drives (apply targets are addressed by label). */
+  options: TweakEffectOption[];
   elevation: Level;
   availability: Availability;
 }
@@ -253,7 +288,13 @@ export interface TweakStatusEvent {
   status: TweakStatusView;
 }
 
-/** `get_elevation_state` result: app ceiling + over-the-shoulder SID guard. */
+/**
+ * `get_elevation_state` result: app ceiling + over-the-shoulder SID guard.
+ *
+ * `sid_mismatch` is "per-user tweaks are blocked", which covers BOTH a confirmed different account
+ * and an unresolvable one. It does not distinguish them; the per-tweak `Availability` does, via
+ * `sid_mismatch` vs `sid_unknown`. Do not render this field as "another account elevated the app".
+ */
 export interface ElevationState {
   level: Level;
   sid_mismatch: boolean;
@@ -318,9 +359,11 @@ export interface TweakDefinition {
   elevation: Level;
   /** Whether the tweak can be applied/restored right now (spec §9). */
   availability: Availability;
-  /** Authored option labels — apply targets are addressed by label, not index. */
+  /** Authored option labels, in order. Apply targets are addressed by label, not index. */
   optionLabels: string[];
-  /** Legacy free-text info; not exposed by the redesigned engine (always undefined). */
+  /** Each option with the concrete per-effect changes it drives, for the Details modal breakdown. */
+  options: TweakEffectOption[];
+  /** Rich markdown detail block (authored `info:`), shown in the Details modal; undefined if none. */
   info?: string;
 }
 

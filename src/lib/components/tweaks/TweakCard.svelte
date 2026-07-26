@@ -54,8 +54,7 @@
   // Why the control is disabled (availability gate or a detected-unavailable tweak).
   const controlDisabledReason = $derived.by(() => {
     if (isUnavailable) return status.unavailableReason ?? "Not available on this system";
-    if (availability.state === "needs_elevation") return availability.reason;
-    if (availability.state === "sid_mismatch") return availability.reason;
+    if (availability.state !== "available") return availability.reason;
     return null;
   });
   const controlDisabled = $derived(isLoading || controlDisabledReason !== null);
@@ -105,19 +104,21 @@
   const unrestorableResources = $derived(status.unrestorable_resources);
   const restoreLabel = $derived(needsAttention ? "Retry" : "Restore");
 
-  // --- option shape (1 authored option -> toggle; >=2 -> dropdown) ----------
+  // --- option shape (2 authored options -> toggle; 3+ -> dropdown) ----------
   const optionLabels = $derived(tweak.definition.optionLabels);
-  const isToggle = $derived(optionLabels.length === 1);
-  const singleLabel = $derived(optionLabels[0] ?? "On");
+  const isToggle = $derived(optionLabels.length === 2);
+  // In a 2-option toggle the "(Stock Default)" option is OFF; the other is ON (the applied state).
+  const offLabel = $derived(
+    optionLabels.find((l) => /\(stock default\)/i.test(l)) ?? optionLabels[1] ?? optionLabels[0],
+  );
+  const onLabel = $derived(optionLabels.find((l) => l !== offLabel) ?? optionLabels[0]);
 
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
   const hasPending = $derived(pendingChange !== undefined);
   const activeOption = $derived(status.activeOption);
 
-  // Toggle: checked when the single option is active (or pending).
-  const switchChecked = $derived(
-    hasPending ? pendingChange?.optionLabel === singleLabel : activeOption === singleLabel,
-  );
+  // Toggle: checked when the ON option is the active (or staged) one.
+  const switchChecked = $derived(hasPending ? pendingChange?.optionLabel === onLabel : activeOption === onLabel);
 
   // Dropdown: pending label, else the active option, else the System Default position.
   const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? SYSTEM_DEFAULT);
@@ -128,7 +129,7 @@
     opts.push({ value: SYSTEM_DEFAULT, label: "System Default", disabled: !hasSnapshot });
     for (const label of optionLabels) {
       const un = status.unavailableOptions.find((u) => u.label === label);
-      opts.push({ value: label, label: un ? `${label} — unavailable` : label, disabled: !!un });
+      opts.push({ value: label, label: un ? `${label} (unavailable)` : label, disabled: !!un });
     }
     return opts;
   });
@@ -155,11 +156,8 @@
   }
 
   function handleSwitchChange(checked: boolean) {
-    if (checked) {
-      stageApply(singleLabel);
-    } else {
-      goSystemDefault();
-    }
+    // Off drives to the stock-default option (a defined Apply), not a snapshot Restore.
+    stageApply(checked ? onLabel : offLabel);
   }
 
   function handleSelectChange(value: string | number) {
@@ -264,7 +262,11 @@
               use:tooltip={availability.reason}
             >
               <Icon icon="mdi:shield-lock-outline" width="10" />
-              {availability.state === "sid_mismatch" ? "SID mismatch" : "Needs elevation"}
+              {availability.state === "sid_mismatch"
+                ? "Different account"
+                : availability.state === "sid_unknown"
+                  ? "Account unknown"
+                  : "Needs elevation"}
             </span>
           {/if}
 
@@ -292,7 +294,7 @@
             <span
               class="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-error"
               use:tooltip={unrestorableResources.length
-                ? `The last restore didn't fully complete: ${unrestorableResources.join("; ")}. The snapshot is kept — retry, or keep the current state.`
+                ? `The last restore didn't fully complete: ${unrestorableResources.join(", ")}. Your snapshot is safe, so you can retry the restore or keep things as they are.`
                 : "The last restore didn't fully succeed. The snapshot is kept for retry."}
             >
               <Icon icon="mdi:alert-circle" width="10" />
@@ -419,11 +421,13 @@
             type="button"
             class="card-action inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-accent transition-all duration-150 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleRestoreClick}
-            disabled={isLoading}
+            disabled={isLoading || availability.state !== "available"}
             aria-label={needsAttention ? "Retry restore" : "Restore snapshot"}
-            use:tooltip={needsAttention
-              ? "Retry restoring the original state"
-              : "Restore to original state from snapshot"}
+            use:tooltip={availability.state !== "available"
+              ? availability.reason
+              : needsAttention
+                ? "Retry restoring the original state"
+                : "Restore to original state from snapshot"}
           >
             <Icon icon="mdi:history" width="18" class="card-action-icon" />
             <span class="card-action-label">{restoreLabel}</span>

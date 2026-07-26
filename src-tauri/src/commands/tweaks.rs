@@ -10,8 +10,10 @@
 //! (invariant 24), so `get_tweaks`'s status is always attempted read-only. Only `apply_tweak`/
 //! `restore_tweak` refuse (typed [`Error::TweakUnavailable`]) when [`compute_availability`] reports
 //! anything but [`Availability::Available`] -- a tweak whose declared elevation floor exceeds the
-//! app's current ceiling ([`needs_elevation`]), or a User-level (HKCU-touching) tweak while the
-//! over-the-shoulder SID guard reports a mismatch (`engine::context::user_level_disabled_by_sid_mismatch`).
+//! app's current ceiling ([`needs_elevation`]), or a tweak that *touches HKCU* while the
+//! over-the-shoulder SID guard has not confirmed the session owner
+//! (`engine::context::hkcu_disabled_by_sid_mismatch`). Note the second is keyed on the hive the
+//! tweak writes, never on its `elevation:` floor -- see ADR-0005's 2026-07-27 amendment.
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -20,13 +22,17 @@ use crate::error::{Error, Result};
 use crate::services::system_info_service;
 use crate::tweaks::compiled_corpus;
 use crate::tweaks::engine::apply::{ApplyOutcome, EffectResult, EffectResultKind, EngineError};
-use crate::tweaks::engine::context::{self, RealSidProbe};
+use crate::tweaks::engine::context::{self, RealSidProbe, SidCheck};
 use crate::tweaks::engine::detect::{
     self, HeldInfo, TweakState, TweakStatus, UnavailableOpt, UnknownCause, UnknownReason,
 };
 use crate::tweaks::engine::revert::{self, RestoreOutcome};
 use crate::tweaks::engine::{apply, lifecycle, AllKinds, Deps, ProbeCache, RealActions, RealProbe};
-use crate::tweaks::model::{Corpus, EffectId, Level, OptLabel, RiskLevel, SharedId, Tweak, Value};
+use crate::tweaks::model::{
+    ActionDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol, Hive, Level,
+    Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType, Tweak,
+    TypedRegValue, Value,
+};
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{EntrySummary, Seq, SnapshotStore};
 use crate::tweaks::winver::running_winver;
@@ -134,27 +140,48 @@ fn current_app_level() -> Level {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Availability {
     Available,
-    NeedsElevation { reason: String },
-    SidMismatch { reason: String },
+    NeedsElevation {
+        reason: String,
+    },
+    SidMismatch {
+        reason: String,
+    },
+    /// The SID guard could not read one of the two SIDs, so it does not know whose hive an HKCU
+    /// write would land in. Distinct from `SidMismatch` on purpose: telling the user another admin
+    /// elevated the app when we simply could not tell is a fabricated accusation, and it sends them
+    /// chasing a cause that does not exist.
+    SidUnknown {
+        reason: String,
+    },
 }
 
+/// `touches_hkcu` comes from `context::tweak_touches_hkcu`, NOT from the tweak's `elevation:` floor.
+/// The floor says which privilege the tweak needs; the hive says whose state it changes. Those are
+/// independent, and conflating them was the original defect: 31 `admin`-floor tweaks in the corpus
+/// drive HKCU effects and went unguarded, while all 54 `user`-floor tweaks were blocked outright.
 fn compute_availability(
+    touches_hkcu: bool,
     tweak_elevation: Level,
     current_level: Level,
-    sid_mismatch: bool,
+    sid_check: SidCheck,
 ) -> Availability {
-    if context::user_level_disabled_by_sid_mismatch(tweak_elevation, sid_mismatch) {
-        return Availability::SidMismatch {
-            reason: "a different administrator's session elevated this app -- User-level tweaks \
-                      are disabled until the same account restarts it (over-the-shoulder guard)"
-                .to_string(),
+    if context::hkcu_disabled_by_sid_mismatch(touches_hkcu, sid_check) {
+        return match sid_check {
+            SidCheck::DifferentUser => Availability::SidMismatch {
+                reason: "Another account elevated this app, so per-user tweaks stay off until you \
+                         restart it under your own account."
+                    .to_string(),
+            },
+            _ => Availability::SidUnknown {
+                reason: "This app could not confirm which account owns this session, so per-user \
+                         tweaks stay off rather than risk changing the wrong account's settings."
+                    .to_string(),
+            },
         };
     }
     if needs_elevation(tweak_elevation, current_level) {
         return Availability::NeedsElevation {
-            reason: format!(
-                "requires {tweak_elevation:?} privileges; restart the app as administrator to enable it"
-            ),
+            reason: "Restart the app as administrator to enable this tweak.".to_string(),
         };
     }
     Availability::Available
@@ -169,12 +196,18 @@ fn needs_elevation(tweak_elevation: Level, current_level: Level) -> bool {
 }
 
 /// `apply_tweak`/`restore_tweak`'s shared refusal gate: `Ok(())` iff [`Availability::Available`].
-fn refuse_if_unavailable(tweak: &Tweak, level: Level, sid_mismatch: bool) -> Result<()> {
-    match compute_availability(tweak.elevation, level, sid_mismatch) {
+fn refuse_if_unavailable(
+    tweak: &Tweak,
+    corpus: &Corpus,
+    level: Level,
+    sid_check: SidCheck,
+) -> Result<()> {
+    let touches_hkcu = context::tweak_touches_hkcu(tweak, corpus);
+    match compute_availability(touches_hkcu, tweak.elevation, level, sid_check) {
         Availability::Available => Ok(()),
-        Availability::NeedsElevation { reason } | Availability::SidMismatch { reason } => {
-            Err(Error::TweakUnavailable(reason))
-        }
+        Availability::NeedsElevation { reason }
+        | Availability::SidMismatch { reason }
+        | Availability::SidUnknown { reason } => Err(Error::TweakUnavailable(reason)),
     }
 }
 
@@ -209,36 +242,353 @@ pub struct TweakView {
     pub id: String,
     pub name: String,
     pub description: String,
+    /// Rich markdown detail shown in the tweak's Details modal (spec: authored `info:`).
+    pub info: Option<String>,
     pub category: String,
     pub risk: RiskLevel,
     pub reversible: bool,
     /// Whether applying/restoring this tweak needs a reboot to take full effect (spec §6).
     pub requires_reboot: bool,
-    pub options: Vec<OptLabel>,
+    /// Each option with the concrete effects it drives, so the Details modal can show a power
+    /// user exactly what a state writes (registry values, service start-types, tasks, and so on).
+    pub options: Vec<TweakOptionView>,
     pub elevation: Level,
     pub availability: Availability,
+}
+
+/// One option projected as the exact per-address changes it makes. The `*_changes` shapes mirror
+/// the frontend's long-standing detail types (`RegistryChange`/`ServiceChange`/…), so the existing
+/// detail components render them unchanged; the projection just joins the tweak's surface (address
+/// per `EffectId`) with this option's value for that same id.
+#[derive(Debug, Clone, Serialize)]
+pub struct TweakOptionView {
+    pub label: String,
+    pub registry_changes: Vec<RegistryChangeView>,
+    pub service_changes: Vec<ServiceChangeView>,
+    pub scheduler_changes: Vec<SchedulerChangeView>,
+    pub hosts_changes: Vec<HostsChangeView>,
+    pub firewall_changes: Vec<FirewallChangeView>,
+    /// Action scripts this option runs (Appx removal, powercfg, DISM, …), shown verbatim.
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryChangeView {
+    pub hive: String,
+    pub key: String,
+    pub value_name: String,
+    /// `set` | `delete_value` | `delete_key` | `create_key`.
+    pub action: String,
+    pub value_type: Option<String>,
+    /// The concrete value this option writes (number / string / list), or null for a delete.
+    pub value: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub windows_versions: Option<Vec<u8>>,
+    pub skip_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ServiceChangeView {
+    pub name: String,
+    pub startup: String,
+    pub skip_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SchedulerChangeView {
+    pub task_path: String,
+    /// `enable` | `disable`.
+    pub action: String,
+    pub skip_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HostsChangeView {
+    pub ip: String,
+    pub domain: String,
+    /// `add` | `remove`.
+    pub action: String,
+    pub skip_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FirewallChangeView {
+    pub name: String,
+    /// `create` | `delete`.
+    pub operation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub program: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_addresses: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_ports: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_ports: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub skip_validation: bool,
+}
+
+fn hive_str(h: Hive) -> &'static str {
+    match h {
+        Hive::Hklm => "HKLM",
+        Hive::Hkcu => "HKCU",
+    }
+}
+
+fn reg_type_str(t: RegType) -> &'static str {
+    match t {
+        RegType::Dword => "REG_DWORD",
+        RegType::Qword => "REG_QWORD",
+        RegType::Sz => "REG_SZ",
+        RegType::ExpandSz => "REG_EXPAND_SZ",
+        RegType::MultiSz => "REG_MULTI_SZ",
+        RegType::Binary => "REG_BINARY",
+    }
+}
+
+fn startup_str(s: StartupType) -> &'static str {
+    match s {
+        StartupType::Boot => "boot",
+        StartupType::System => "system",
+        StartupType::Automatic => "automatic",
+        StartupType::AutomaticDelayed => "automatic_delayed",
+        StartupType::Manual => "manual",
+        StartupType::Disabled => "disabled",
+    }
+}
+
+fn reg_value_json(v: &TypedRegValue) -> serde_json::Value {
+    use serde_json::json;
+    match v {
+        TypedRegValue::Dword(n) => json!(n),
+        TypedRegValue::Qword(n) => json!(n),
+        TypedRegValue::Sz(s) | TypedRegValue::ExpandSz(s) => json!(s),
+        TypedRegValue::MultiSz(items) => json!(items),
+        TypedRegValue::Binary(bytes) => json!(bytes),
+    }
+}
+
+/// Appends the display change(s) for one `Setting` driven to `value` by this option.
+fn push_setting_change(
+    setting: &Setting,
+    value: &Value,
+    effect: &EffectDef,
+    o: &mut TweakOptionView,
+) {
+    let skip = effect.optional;
+    let win = effect.windows.as_ref().and_then(|w| w.products.clone());
+    match setting {
+        Setting::Registry(a) => {
+            let (action, value_type, val) = match value {
+                Value::Absent => ("delete_value", None, None),
+                Value::Reg(tv) => (
+                    "set",
+                    Some(reg_type_str(a.ty).to_string()),
+                    Some(reg_value_json(tv)),
+                ),
+                _ => ("set", Some(reg_type_str(a.ty).to_string()), None),
+            };
+            // Packed fields address a sub-field inside one value; show both so it isn't mistaken
+            // for the whole value.
+            let value_name = match &a.field {
+                Some(f) => format!("{} [{}]", a.name, f.field),
+                None => a.name.clone(),
+            };
+            o.registry_changes.push(RegistryChangeView {
+                hive: hive_str(a.hive).to_string(),
+                key: a.path.clone(),
+                value_name,
+                action: action.to_string(),
+                value_type,
+                value: val,
+                windows_versions: win,
+                skip_validation: skip,
+            });
+        }
+        Setting::RegistryKey(k) => {
+            let action = if matches!(value, Value::Present(true)) {
+                "create_key"
+            } else {
+                "delete_key"
+            };
+            o.registry_changes.push(RegistryChangeView {
+                hive: hive_str(k.hive).to_string(),
+                key: k.path.clone(),
+                value_name: String::new(),
+                action: action.to_string(),
+                value_type: None,
+                value: None,
+                windows_versions: win,
+                skip_validation: skip,
+            });
+        }
+        Setting::Service(s) => {
+            if let Value::Startup(st) = value {
+                o.service_changes.push(ServiceChangeView {
+                    name: s.name.clone(),
+                    startup: startup_str(*st).to_string(),
+                    skip_validation: skip,
+                });
+            }
+        }
+        Setting::Task(t) => {
+            if let Value::TaskEnabled(enabled) = value {
+                o.scheduler_changes.push(SchedulerChangeView {
+                    task_path: t.path.clone(),
+                    action: if *enabled { "enable" } else { "disable" }.to_string(),
+                    skip_validation: skip,
+                });
+            }
+        }
+        Setting::Hosts(h) => {
+            if let Value::Present(present) = value {
+                o.hosts_changes.push(HostsChangeView {
+                    ip: h.ip.clone(),
+                    domain: h.domain.clone(),
+                    action: if *present { "add" } else { "remove" }.to_string(),
+                    skip_validation: skip,
+                });
+            }
+        }
+        Setting::Firewall(r) => {
+            if let Value::Present(present) = value {
+                o.firewall_changes.push(FirewallChangeView {
+                    name: r.name.clone(),
+                    operation: if *present { "create" } else { "delete" }.to_string(),
+                    direction: Some(
+                        match r.direction {
+                            FwDirection::Inbound => "inbound",
+                            FwDirection::Outbound => "outbound",
+                        }
+                        .to_string(),
+                    ),
+                    action: Some(
+                        match r.action {
+                            FwAction::Block => "block",
+                            FwAction::Allow => "allow",
+                        }
+                        .to_string(),
+                    ),
+                    protocol: r.protocol.map(|p| {
+                        match p {
+                            FwProtocol::Any => "any",
+                            FwProtocol::Tcp => "tcp",
+                            FwProtocol::Udp => "udp",
+                            FwProtocol::Icmpv4 => "icmpv4",
+                            FwProtocol::Icmpv6 => "icmpv6",
+                        }
+                        .to_string()
+                    }),
+                    program: r.program.clone(),
+                    service: r.service.clone(),
+                    remote_addresses: r.remote_addresses.clone(),
+                    remote_ports: r.remote_ports.clone(),
+                    local_ports: r.local_ports.clone(),
+                    description: r.description.clone(),
+                    skip_validation: skip,
+                });
+            }
+        }
+    }
+}
+
+/// Projects one option into the concrete changes it drives across the tweak's surface (joining each
+/// surface `EffectDef`'s address with this option's value for the same `EffectId`).
+fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
+    let mut o = TweakOptionView {
+        label: opt.label.0.clone(),
+        registry_changes: Vec::new(),
+        service_changes: Vec::new(),
+        scheduler_changes: Vec::new(),
+        hosts_changes: Vec::new(),
+        firewall_changes: Vec::new(),
+        commands: Vec::new(),
+    };
+    for effect in &tweak.surface {
+        let value_for_effect = opt.values.get(&effect.id);
+        match &effect.kind {
+            Effect::Setting(setting) => {
+                if let Some(OptValue::Set(sv)) = value_for_effect {
+                    push_setting_change(setting, &sv.value, effect, &mut o);
+                }
+            }
+            // A claimed shared setting resolves to its declared target value (spec §6.5); an
+            // unclaimed/absent option makes no change to that address.
+            Effect::Shared(shared_id) => {
+                if matches!(value_for_effect, Some(OptValue::Claim(_))) {
+                    if let Some(sd) = corpus.shared.iter().find(|s| &s.id == shared_id) {
+                        push_setting_change(&sd.setting, &sd.value, effect, &mut o);
+                    }
+                }
+            }
+            Effect::Action(action) => {
+                if matches!(value_for_effect, Some(OptValue::Run(_))) {
+                    match action {
+                        ActionDef::Script { apply, .. } => o.commands.push(apply.0.clone()),
+                        // A DeleteTree is a registry key removal; show it as one.
+                        ActionDef::DeleteTree { key, .. } => {
+                            o.registry_changes.push(RegistryChangeView {
+                                hive: hive_str(key.hive).to_string(),
+                                key: key.path.clone(),
+                                value_name: String::new(),
+                                action: "delete_key".to_string(),
+                                value_type: None,
+                                value: None,
+                                windows_versions: None,
+                                skip_validation: effect.optional,
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+    o
 }
 
 /// Builds one IPC [`TweakView`] from a compiled `Tweak` at the given elevation/SID context.
 /// Factored out of [`get_tweaks`] so a command-layer test can assert field carry-through
 /// (e.g. `requires_reboot`, spec §6) without needing a live Tauri runtime.
-fn tweak_view(t: &Tweak, level: Level, sid_mismatch: bool) -> TweakView {
+fn tweak_view(t: &Tweak, corpus: &Corpus, level: Level, sid_check: SidCheck) -> TweakView {
     TweakView {
         id: t.id.clone(),
         name: t.name.clone(),
         description: t.description.clone(),
+        info: t.info.clone(),
         category: t.category.clone(),
         risk: t.risk_level,
         reversible: t.reversible,
         requires_reboot: t.requires_reboot,
-        options: t.options.iter().map(|o| o.label.clone()).collect(),
+        options: t
+            .options
+            .iter()
+            .map(|o| option_view(t, o, corpus))
+            .collect(),
         elevation: t.elevation,
-        availability: compute_availability(t.elevation, level, sid_mismatch),
+        availability: compute_availability(
+            context::tweak_touches_hkcu(t, corpus),
+            t.elevation,
+            level,
+            sid_check,
+        ),
     }
 }
 
 /// `get_elevation_state`'s result: the app's own elevation ceiling plus the over-the-shoulder SID
 /// guard's current reading (spec §9, ADR-0005).
+///
+/// `sid_mismatch` stays a `bool` for the UI's benefit -- it only ever asks "are per-user tweaks
+/// blocked" -- but it is now `SidCheck::blocks_hkcu()`, which is true for `Undetermined` as well as
+/// `DifferentUser`. The per-tweak `Availability` carries the distinction where it matters.
 #[derive(Debug, Clone, Serialize)]
 pub struct ElevationState {
     pub level: Level,
@@ -494,11 +844,36 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
     log::info!("get_tweaks: building the compiled tweak view for the UI");
     let corpus = compiled_corpus();
     let level = current_app_level();
-    let mismatch = context::sid_mismatch(&RealSidProbe);
+    let sid_check = context::sid_check(&RealSidProbe);
     Ok(corpus
         .tweaks
         .iter()
-        .map(|t| tweak_view(t, level, mismatch))
+        .map(|t| tweak_view(t, corpus, level, sid_check))
+        .collect())
+}
+
+/// Corpus category metadata (id + display name + icon + description) for the sidebar. The compiled
+/// corpus is the single source of truth; the frontend must not re-derive names from category ids.
+#[derive(Debug, Clone, Serialize)]
+pub struct CategoryView {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub description: String,
+}
+
+#[tauri::command]
+pub async fn get_categories() -> Result<Vec<CategoryView>> {
+    log::info!("get_categories: corpus category metadata for the UI");
+    Ok(compiled_corpus()
+        .categories
+        .iter()
+        .map(|c| CategoryView {
+            id: c.id.clone(),
+            name: c.name.clone(),
+            icon: c.icon.clone(),
+            description: c.description.clone(),
+        })
         .collect())
 }
 
@@ -531,8 +906,8 @@ pub async fn apply_tweak(
     let tweak = find_tweak(corpus, &tweak_id)?;
 
     let level = current_app_level();
-    let mismatch = context::sid_mismatch(&RealSidProbe);
-    refuse_if_unavailable(tweak, level, mismatch)?;
+    let sid_check = context::sid_check(&RealSidProbe);
+    refuse_if_unavailable(tweak, corpus, level, sid_check)?;
 
     let deps = build_deps(state.inner());
     let target = OptLabel(option_label);
@@ -551,8 +926,8 @@ pub async fn restore_tweak(
     let tweak = find_tweak(corpus, &tweak_id)?;
 
     let level = current_app_level();
-    let mismatch = context::sid_mismatch(&RealSidProbe);
-    refuse_if_unavailable(tweak, level, mismatch)?;
+    let sid_check = context::sid_check(&RealSidProbe);
+    refuse_if_unavailable(tweak, corpus, level, sid_check)?;
 
     let deps = build_deps(state.inner());
     revert::restore(tweak, corpus, &deps)
@@ -599,7 +974,7 @@ pub async fn get_elevation_state() -> Result<ElevationState> {
     log::info!("get_elevation_state");
     Ok(ElevationState {
         level: current_app_level(),
-        sid_mismatch: context::sid_mismatch(&RealSidProbe),
+        sid_mismatch: context::sid_check(&RealSidProbe).blocks_hkcu(),
     })
 }
 
@@ -790,46 +1165,79 @@ mod tests {
     // --- availability + SID/elevation gating (pure logic, no Tauri runtime, no OS) --------------
 
     #[test]
-    fn sid_mismatch_disables_user_level_tweaks() {
-        // A User-level (HKCU-touching) tweak with a SID mismatch is disabled with the
-        // over-the-shoulder reason.
-        let avail = compute_availability(Level::User, Level::User, true);
+    fn sid_guard_blocks_every_hkcu_touching_tweak_whatever_its_floor() {
+        // The guard's input is the HIVE, not the floor. Every floor is checked, including Admin,
+        // System and Ti: 31 admin-floor tweaks in the shipped corpus drive HKCU effects, and the
+        // old floor-keyed guard let all of them through while blocking the 54 user-floor ones.
+        for floor in [Level::User, Level::Admin, Level::System, Level::Ti] {
+            let avail = compute_availability(true, floor, Level::Admin, SidCheck::DifferentUser);
+            assert!(
+                matches!(avail, Availability::SidMismatch { .. }),
+                "an HKCU-touching {floor:?}-floor tweak must be blocked, got {avail:?}"
+            );
+        }
+
+        // A tweak that touches no HKCU state is unaffected: whose session this is cannot change
+        // where an HKLM write lands.
+        assert_eq!(
+            compute_availability(false, Level::Admin, Level::Admin, SidCheck::DifferentUser),
+            Availability::Available
+        );
+
+        // Precedence: the SID arm is checked before `needs_elevation`, so an HKCU-touching
+        // admin-floor tweak on an unelevated app reports the SID reason, not the elevation one.
+        let avail = compute_availability(true, Level::Admin, Level::User, SidCheck::DifferentUser);
         assert!(
             matches!(avail, Availability::SidMismatch { .. }),
             "got {avail:?}"
         );
+    }
 
-        // Scoped to User-level only: an Admin/System/Ti-floor tweak is never disabled by
-        // sid_mismatch alone, even while the app level is still User (where it separately needs
-        // elevation instead -- a different reason kind, not SidMismatch).
-        for floor in [Level::Admin, Level::System, Level::Ti] {
-            let avail = compute_availability(floor, Level::User, true);
-            assert!(
-                !matches!(avail, Availability::SidMismatch { .. }),
-                "sid_mismatch must never disable a {floor:?}-floor tweak, got {avail:?}"
+    #[test]
+    fn undetermined_sid_blocks_but_does_not_accuse() {
+        // Two distinct states on purpose. Telling the user another admin elevated the app when the
+        // guard simply could not read a SID sends them chasing a cause that does not exist.
+        let unknown = compute_availability(true, Level::User, Level::User, SidCheck::Undetermined);
+        assert!(
+            matches!(unknown, Availability::SidUnknown { .. }),
+            "got {unknown:?}"
+        );
+        let Availability::SidUnknown { reason } = &unknown else {
+            unreachable!()
+        };
+        assert!(
+            !reason.contains("Another account"),
+            "an undetermined SID must not be reported as a different account: {reason}"
+        );
+
+        let mismatch =
+            compute_availability(true, Level::User, Level::User, SidCheck::DifferentUser);
+        assert!(
+            matches!(mismatch, Availability::SidMismatch { .. }),
+            "got {mismatch:?}"
+        );
+    }
+
+    #[test]
+    fn confirmed_same_user_never_blocks_hkcu() {
+        // The regression this whole change exists to prevent: with the SID guard answering
+        // SameUser, a user-floor HKCU tweak must be applyable at BOTH app levels. It was blocked at
+        // both, because the old probe used WTSQueryUserToken (SE_TCB_NAME, LocalSystem only) and
+        // the guard read its guaranteed failure as a mismatch.
+        for level in [Level::User, Level::Admin] {
+            assert_eq!(
+                compute_availability(true, Level::User, level, SidCheck::SameUser),
+                Availability::Available,
+                "a per-user tweak must be applyable at app level {level:?}"
             );
         }
-
-        // Precedence: `needs_elevation(User, User)` is always `false` (a User-floor tweak never
-        // needs elevation at any app level), so the SID check being reached and returning
-        // `SidMismatch` for (User, User, true) above is the only branch that CAN fire here --
-        // pinning it directly guards against a future regression that widens `needs_elevation`'s
-        // own exclusion (e.g. dropping its `tweak_elevation != Level::User` guard) and makes the
-        // two checks newly overlap; today's ordering (SID checked first) must keep winning.
-        assert!(!needs_elevation(Level::User, Level::User));
-
-        // No mismatch -> never disabled by this rule.
-        assert_eq!(
-            compute_availability(Level::User, Level::User, false),
-            Availability::Available
-        );
     }
 
     #[test]
     fn elevation_floor_above_app_level_is_needs_elevation() {
         // App level User + an Admin/System/Ti-floor tweak -> disabled, needs elevation.
         for floor in [Level::Admin, Level::System, Level::Ti] {
-            let avail = compute_availability(floor, Level::User, false);
+            let avail = compute_availability(false, floor, Level::User, SidCheck::SameUser);
             assert!(
                 matches!(avail, Availability::NeedsElevation { .. }),
                 "floor={floor:?} at app level User must need elevation, got {avail:?}"
@@ -840,7 +1248,7 @@ mod tests {
         // ceiling that reaches System/TrustedInstaller via the broker too (controller decision 3).
         for floor in [Level::User, Level::Admin, Level::System, Level::Ti] {
             assert_eq!(
-                compute_availability(floor, Level::Admin, false),
+                compute_availability(false, floor, Level::Admin, SidCheck::SameUser),
                 Availability::Available,
                 "floor={floor:?} at app level Admin must be available"
             );
@@ -849,18 +1257,17 @@ mod tests {
 
     #[test]
     fn available_when_level_sufficient_and_no_sid_mismatch() {
-        assert_eq!(
-            compute_availability(Level::User, Level::User, false),
-            Availability::Available
-        );
-        assert_eq!(
-            compute_availability(Level::User, Level::Admin, false),
-            Availability::Available
-        );
-        assert_eq!(
-            compute_availability(Level::Admin, Level::Admin, false),
-            Availability::Available
-        );
+        for (touches_hkcu, floor, level) in [
+            (true, Level::User, Level::User),
+            (true, Level::User, Level::Admin),
+            (false, Level::Admin, Level::Admin),
+        ] {
+            assert_eq!(
+                compute_availability(touches_hkcu, floor, level, SidCheck::SameUser),
+                Availability::Available,
+                "hkcu={touches_hkcu} floor={floor:?} level={level:?}"
+            );
+        }
     }
 
     #[test]
@@ -870,20 +1277,21 @@ mod tests {
         // `apply::apply`/`revert::restore`) is itself the proof that the refusal happens ahead of
         // any engine call: there is no engine call in this test at all, only the gate.
         let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
+        let c = corpus(vec![]);
 
         // Needs-elevation refusal.
         t.elevation = Level::Admin;
-        let err = refuse_if_unavailable(&t, Level::User, false).expect_err("must refuse");
-        assert!(matches!(err, Error::TweakUnavailable(_)), "got {err:?}");
-
-        // SID-mismatch refusal.
-        t.elevation = Level::User;
-        let err = refuse_if_unavailable(&t, Level::User, true).expect_err("must refuse");
+        let err = refuse_if_unavailable(&t, &c, Level::User, SidCheck::SameUser)
+            .expect_err("must refuse");
         assert!(matches!(err, Error::TweakUnavailable(_)), "got {err:?}");
 
         // The happy path: an available tweak must not refuse.
         t.elevation = Level::User;
-        assert!(refuse_if_unavailable(&t, Level::User, false).is_ok());
+        assert!(refuse_if_unavailable(&t, &c, Level::User, SidCheck::SameUser).is_ok());
+
+        // This fixture's surface is a Service effect, so it touches no HKCU state and the SID guard
+        // must not gate it even under a genuine mismatch. That is the point of keying on the hive.
+        assert!(refuse_if_unavailable(&t, &c, Level::User, SidCheck::DifferentUser).is_ok());
     }
 
     #[test]
@@ -892,10 +1300,56 @@ mod tests {
         // `get_tweaks` runs over every corpus tweak, so asserting on it proves the field is
         // carried through without a live Tauri runtime or the embedded corpus.
         let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
+        let c = corpus(vec![]);
         t.requires_reboot = true;
-        assert!(tweak_view(&t, Level::User, false).requires_reboot);
+        assert!(tweak_view(&t, &c, Level::User, SidCheck::SameUser).requires_reboot);
         t.requires_reboot = false;
-        assert!(!tweak_view(&t, Level::User, false).requires_reboot);
+        assert!(!tweak_view(&t, &c, Level::User, SidCheck::SameUser).requires_reboot);
+
+        // The option projection joins the surface address with the option's value: this fixture's
+        // one Service effect driven to Manual must surface as exactly one service change.
+        let view = tweak_view(&t, &c, Level::User, SidCheck::SameUser);
+        assert_eq!(view.options.len(), 1);
+        assert_eq!(view.options[0].service_changes.len(), 1);
+        assert_eq!(view.options[0].service_changes[0].startup, "manual");
+        assert!(view.options[0].registry_changes.is_empty());
+    }
+
+    #[test]
+    fn option_view_projects_real_registry_values() {
+        // End-to-end against the embedded corpus: the registry values a power user sees in the
+        // Details modal must be the tweak's actual authored values, not a placeholder. `dark mode`
+        // drives two HKCU REG_DWORDs to 0 for its "Dark" option.
+        let corpus = compiled_corpus();
+        let dark = corpus
+            .tweaks
+            .iter()
+            .find(|t| t.id == "enable_dark_mode")
+            .expect("enable_dark_mode is in the corpus");
+        let dark_opt = dark
+            .options
+            .iter()
+            .find(|o| o.label.0 == "Dark")
+            .expect("the Dark option exists");
+
+        let view = option_view(dark, dark_opt, corpus);
+        assert_eq!(
+            view.registry_changes.len(),
+            2,
+            "both theme values are surfaced"
+        );
+        for change in &view.registry_changes {
+            assert_eq!(change.hive, "HKCU");
+            assert_eq!(change.action, "set");
+            assert_eq!(change.value_type.as_deref(), Some("REG_DWORD"));
+            assert_eq!(
+                change.value,
+                Some(serde_json::json!(0)),
+                "Dark sets each flag to 0"
+            );
+        }
+        assert!(view.service_changes.is_empty());
+        assert!(view.commands.is_empty());
     }
 
     // --- the brief's two named tests -----------------------------------------------------------

@@ -143,7 +143,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
     // 24): each read runs at `context::read_route` -- `Deps.level` (the ceiling) for everything,
     // except an HKCU Setting is still read in-process as the interactive user.
     for effect in &surface {
-        let cx = context::read_route(effect, deps.level);
+        let cx = context::read_route(effect, deps.level, corpus);
         match &effect.kind {
             Effect::Setting(setting) => {
                 classify_setting_read(

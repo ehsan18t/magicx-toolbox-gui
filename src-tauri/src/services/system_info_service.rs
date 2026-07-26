@@ -993,14 +993,48 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
     })
 }
 
-/// Check if running as administrator
-/// Uses a simple heuristic: try to open a protected registry key
+/// Whether this process holds an elevated token, asked directly of the token.
+///
+/// This used to probe `HKLM\SYSTEM\CurrentControlSet\Control` with `KEY_WRITE` and call `.is_ok()`,
+/// which collapsed every error kind into "not admin": a transient `ERROR_NOT_ENOUGH_MEMORY` or a
+/// missing key was indistinguishable from `ERROR_ACCESS_DENIED`. A false negative there tells the
+/// user to "restart as administrator" while the app already is administrator, for every admin-floor
+/// tweak at once, and independently makes `registry_service::require_write_access` refuse every
+/// HKLM write. `TokenElevation` answers the actual question and cannot be confounded by the state
+/// of any one key.
 pub fn is_running_as_admin() -> bool {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    // Try to open SYSTEM key with write access - only admins can do this
-    let is_admin = hklm
-        .open_subkey_with_flags("SYSTEM\\CurrentControlSet\\Control", KEY_WRITE)
-        .is_ok();
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle that never needs closing; the token
+    // handle is closed on every path; `elevation` is a live local sized to what the callee writes.
+    let is_admin = unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == FALSE {
+            log::warn!("admin check: OpenProcessToken failed; assuming not elevated");
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut returned: u32 = 0;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            std::ptr::addr_of_mut!(elevation).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        ) != FALSE;
+        CloseHandle(token);
+        if !ok {
+            log::warn!(
+                "admin check: GetTokenInformation(TokenElevation) failed; assuming not elevated"
+            );
+            return false;
+        }
+        elevation.TokenIsElevated != 0
+    };
     log::trace!("Admin check: {}", is_admin);
     is_admin
 }

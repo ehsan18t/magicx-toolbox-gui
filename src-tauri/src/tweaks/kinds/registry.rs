@@ -248,7 +248,22 @@ fn delete_ok(result: Result<(), BackendError>) -> Result<(), BackendError> {
 /// run at the SAME elevated level to see the true live value, and the broker wire protocol has no
 /// read op at all -- so it stays `Error::UnsupportedLevel`, a strict narrowing of what was
 /// previously every System/Ti registry drive, not a new gap.
+///
+/// An HKCU address is rejected outright. `context::route` already pins every HKCU setting to
+/// `Level::User`, so the engine cannot reach here with one, but that is a routing convention and
+/// conventions do not survive refactors. Inside the broker child `HKEY_CURRENT_USER` resolves to
+/// SYSTEM's or TrustedInstaller's own profile, so a translated HKCU op would write a hive no user
+/// ever sees, and the read-back would confirm it. Better a typed error than a silent wrong-green.
 pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<BrokerOp, Error> {
+    if let Setting::Registry(RegAddr {
+        hive: Hive::Hkcu, ..
+    })
+    | Setting::RegistryKey(KeyAddr {
+        hive: Hive::Hkcu, ..
+    }) = s
+    {
+        return Err(Error::UnsupportedLevel(level));
+    }
     match s {
         Setting::Registry(addr) if addr.field.is_some() => Err(Error::UnsupportedLevel(level)),
         Setting::Registry(addr) => {
@@ -633,10 +648,19 @@ mod tests {
     /// into the broker's typed op instead. Pure translation, no real elevation/broker spawn.
     #[test]
     fn system_and_ti_registry_drives_now_translate_to_broker_ops() {
+        // HKLM, not `Scratch::reg_addr`'s HKCU: an HKCU address is now rejected outright (see
+        // `hkcu_never_translates_to_a_broker_op`), and System/Ti translation is an HKLM concern
+        // anyway. Nothing is written here -- translation is pure -- so no scratch key is needed.
         let scratch = Scratch::new("broker_translate");
-        let value_addr = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));
+        let value_addr = Setting::Registry(RegAddr {
+            hive: Hive::Hklm,
+            path: scratch.path.clone(),
+            name: "Flag".to_string(),
+            ty: RegType::Dword,
+            field: None,
+        });
         let key_addr = Setting::RegistryKey(KeyAddr {
-            hive: Hive::Hkcu,
+            hive: Hive::Hklm,
             path: format!("{}\\Sub", scratch.path),
         });
 
@@ -677,6 +701,41 @@ mod tests {
                 ),
                 "got {delete_key_op:?}"
             );
+        }
+    }
+
+    /// An HKCU address must never become a broker op, at any level and for either Setting variant.
+    /// `context::route` already pins HKCU to `Level::User` so the engine cannot get here, but that
+    /// is a convention; this makes it a typed guarantee. Inside the broker child
+    /// `HKEY_CURRENT_USER` is SYSTEM's or TrustedInstaller's own profile, so the write would land
+    /// in a hive no user ever sees and the read-back would happily confirm it.
+    #[test]
+    fn hkcu_never_translates_to_a_broker_op() {
+        let scratch = Scratch::new("broker_hkcu_reject");
+        let value_addr = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));
+        let key_addr = Setting::RegistryKey(KeyAddr {
+            hive: Hive::Hkcu,
+            path: format!("{}\\Sub", scratch.path),
+        });
+
+        for level in [Level::System, Level::Ti] {
+            for (label, setting, target) in [
+                (
+                    "value set",
+                    &value_addr,
+                    Value::Reg(TypedRegValue::Dword(7)),
+                ),
+                ("value delete", &value_addr, Value::Absent),
+                ("key create", &key_addr, Value::Present(true)),
+                ("key delete", &key_addr, Value::Present(false)),
+            ] {
+                let err = to_broker_op(setting, &target, level)
+                    .expect_err("an HKCU {label} must not translate at {level:?}");
+                assert!(
+                    matches!(err, Error::UnsupportedLevel(l) if l == level),
+                    "{label} at {level:?}: got {err:?}"
+                );
+            }
         }
     }
 

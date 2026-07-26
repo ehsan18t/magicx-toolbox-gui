@@ -1536,9 +1536,39 @@ and detection would target the _wrong_ account's hive (SYSTEM's, or an elevated 
 against a hive the user never sees (ADR-0005). The exception keeps per-user state landing in the real
 user's hive.
 
-Relatedly, the **over-the-shoulder guard**: if a _different_ admin's credentials elevated the app (its
-HKCU is that admin's hive), User-level (HKCU-touching) tweaks are **disabled** with a clear message,
-rather than silently writing to the wrong hive.
+"Is this effect HKCU" is decided **structurally, per effect**, by looking at the address's own hive.
+Three shapes carry one and all three count: a plain `registry`/`registry_key` effect, a `shared:`
+effect (resolved through the corpus to the block's own setting), and a `DeleteTree` action (its
+`key:` carries a hive like any other address). A `script` action carries no address, so it is never
+HKCU by this rule; if your script touches per-user state, say so in review, because nothing can infer
+it. Nothing here depends on your `elevation:` floor.
+
+Relatedly, the **over-the-shoulder guard**. Ordinary UAC elevation by the same user keeps the same
+account, so HKCU is already the right hive and nothing is blocked. The guard exists for the case where
+a _different_ account's credentials elevated the app, which would make the app's HKCU that account's
+hive. On startup and on every scan the app compares its process token's user against the user who owns
+its own session (not the console session: under RDP those legitimately differ), and:
+
+| guard result                | what happens to tweaks that touch HKCU                |
+| --------------------------- | ----------------------------------------------------- |
+| the two accounts match       | nothing; they apply normally                          |
+| the accounts differ          | disabled, "Different account"                         |
+| neither SID nor name resolved | disabled, "Account unknown"                          |
+
+Resolving the session owner's SID goes through a name lookup, which on a domain-joined machine with
+an unreachable DC (or an Entra-joined machine) can fail. When it does, the guard compares account
+names instead, which need no directory. Only when *both* comparisons are impossible does it fall to
+"Account unknown".
+
+Two points that matter when you author:
+
+- **The guard keys on the hive, not on `elevation:`.** An `elevation: admin` tweak that happens to
+  write one HKCU value is guarded exactly like an `elevation: user` one. You do not declare this and
+  cannot opt out of it; it follows from the addresses you wrote.
+- **An unreadable SID blocks too, and that is deliberate.** Refusing changes nothing on disk and tells
+  the user what to do. Proceeding could write another account's hive, and that is not recoverable: the
+  snapshot store is keyed to the machine, not to the user, so the revert would be offered to, and
+  applied into, whichever account happens to run it.
 
 ### 13.4 Choosing a level
 
@@ -1561,6 +1591,9 @@ it).
   needs-elevation hint until the user elevates.
 - Tweaks whose floor exceeds the current level are **disabled** in the UI (status still shown), enabled
   only after the user chooses to elevate. Elevation triggers an automatic full re-scan.
+- `elevation: user` tweaks need no elevation at either level, and elevating does not take them away.
+  If you ever see per-user tweaks disabled purely because the app is running as administrator, that is
+  a bug in the guard above, not the intended design.
 
 ### 13.6 The one elevation build guard
 

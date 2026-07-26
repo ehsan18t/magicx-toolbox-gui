@@ -11,6 +11,7 @@ import * as api from "$lib/api/tweaks";
 import type {
   CachedSystemInfo,
   CategoryDefinition,
+  CategoryMeta,
   ElevationState,
   RiskLevel,
   SystemInfo,
@@ -44,6 +45,8 @@ let elevationState = $state<ElevationState | null>(null);
 // === Tweaks State ===
 let tweaks = $state<TweakWithStatus[]>([]);
 let tweaksVersion = $state(0);
+// Corpus category metadata from `get_categories` (real names/icons, not derived from ids).
+let categoryMeta = $state<CategoryMeta[]>([]);
 
 // === Adapters: engine DTOs -> the presentation model the components consume ===
 
@@ -58,8 +61,9 @@ function mapView(view: TweakView): TweakDefinition {
     requires_reboot: view.requires_reboot,
     elevation: view.elevation,
     availability: view.availability,
-    optionLabels: view.options,
-    info: undefined,
+    optionLabels: view.options.map((o) => o.label),
+    options: view.options,
+    info: view.info ?? undefined,
   };
 }
 
@@ -119,10 +123,18 @@ const tweaksByCategory = $derived.by(() => {
   return byCategory;
 });
 
-// Derived: categories, discovered from the tweak model in first-appearance order.
-// The redesigned engine has no category-metadata command, so name falls back to the
-// raw category string and icon to a folder (consumers already default these).
+// Derived: categories. Prefer real corpus metadata from `get_categories` (name/icon/description
+// in corpus order); fall back to ids discovered from the tweak model until that load resolves.
 const categories = $derived.by((): CategoryDefinition[] => {
+  if (categoryMeta.length > 0) {
+    return categoryMeta.map((c, i) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      icon: c.icon || "mdi:folder",
+      order: i,
+    }));
+  }
   const seen: Record<string, true> = {};
   const list: CategoryDefinition[] = [];
   for (const tweak of tweaks) {
@@ -276,7 +288,11 @@ export const systemStore = {
   },
 };
 
-/** App elevation ceiling + SID-mismatch guard (spec §9), for the SID-mismatch notice. */
+/**
+ * App elevation ceiling + SID guard (spec §9). `level` drives the elevate affordance; `sidMismatch`
+ * means "per-user tweaks are blocked" without saying why (see `ElevationState`) and currently has no
+ * consumer, since the per-tweak `availability` carries the reason the UI actually shows.
+ */
 export const elevationStore = {
   get state() {
     return elevationState;
@@ -343,7 +359,8 @@ export const tweaksStore = {
   async loadModel() {
     tweaksLoading = true;
     try {
-      const views = await api.getTweaks();
+      const [views, cats] = await Promise.all([api.getTweaks(), api.getCategories()]);
+      categoryMeta = cats;
       tweaks = views.map((v) => ({ definition: mapView(v), status: loadingStatus(v.id) }));
       tweaksVersion++;
       return tweaks;

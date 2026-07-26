@@ -109,9 +109,13 @@ windows-sys = { version = "0.61", features = [
     # under-reports on an unmanifested process; see tweaks/winver.rs).
     "Wdk_System_SystemServices",
     "Win32_System_SystemInformation",
-    # WTSGetActiveConsoleSessionId/WTSQueryUserToken -- the interactive console session's token,
-    # for the over-the-shoulder SID guard (see tweaks/engine/context.rs).
+    # ProcessIdToSessionId/WTSQuerySessionInformationW -- the owner of this process's own session,
+    # for the over-the-shoulder SID guard (see tweaks/engine/context.rs). Deliberately NOT
+    # WTSQueryUserToken: that needs SE_TCB_NAME, which only LocalSystem holds.
     "Win32_System_RemoteDesktop",
+    # GetUserNameExW(NameSamCompatible) -- the same guard's directory-free fallback when
+    # LookupAccountNameW cannot resolve a SID (domain-joined with an unreachable DC, Entra-joined).
+    "Win32_Security_Authentication_Identity",
 ] }
 # High-level COM wrappers (Task Scheduler). Coexists with windows-sys; the elevated broker (TI
 # stage) reuses this crate for Owned<HANDLE> cleanup.

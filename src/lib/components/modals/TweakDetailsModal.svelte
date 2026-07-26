@@ -1,9 +1,16 @@
 <script lang="ts">
   import { discardSnapshotEntry, listSnapshotEntries } from "$lib/api/tweaks";
-  import { Icon } from "$lib/components/shared";
+  import { Icon, MarkdownText } from "$lib/components/shared";
+  import {
+    FirewallChangeItem,
+    HostsChangeItem,
+    RegistryChangeItem,
+    SchedulerChangeItem,
+    ServiceChangeItem,
+  } from "$lib/components/tweaks/details";
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { pendingChangesStore, revertTweak, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { pendingChangesStore, revertTweak, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { EntrySummary } from "$lib/types";
   import { PERMISSION_INFO, permissionFromElevation, RISK_INFO } from "$lib/types";
 
@@ -27,6 +34,9 @@
   const riskInfo = $derived(def ? RISK_INFO[def.risk_level] : null);
   const permission = $derived(def ? permissionFromElevation(def.elevation) : "none");
   const permissionInfo = $derived(permission !== "none" ? PERMISSION_INFO[permission] : null);
+
+  // Drives the "not active on this Windows" dimming inside RegistryChangeItem for version-scoped effects.
+  const currentWindowsVersion = $derived(systemStore.info ? (systemStore.info.windows.is_windows_11 ? 11 : 10) : null);
 
   const stateLabel = $derived.by(() => {
     if (!status) return "";
@@ -184,8 +194,9 @@
           <div class="mt-3 border-t border-border/50 pt-3">
             <button
               type="button"
-              class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
               onclick={handleRestore}
+              disabled={def.availability.state !== "available"}
               aria-label="Restore to original state"
             >
               <Icon icon="mdi:history" width="16" />
@@ -201,9 +212,13 @@
           <Icon icon="mdi:shield-lock-outline" width="18" class="mt-0.5 shrink-0 text-warning" />
           <div class="text-sm">
             <span class="font-medium text-foreground">
-              {def.availability.state === "sid_mismatch" ? "Over-the-shoulder guard" : "Elevation required"}
+              {def.availability.state === "sid_mismatch"
+                ? "Over-the-shoulder guard"
+                : def.availability.state === "sid_unknown"
+                  ? "Session owner unconfirmed"
+                  : "Elevation required"}.
             </span>
-            <span class="text-foreground-muted"> — {def.availability.reason}</span>
+            <span class="text-foreground-muted">{def.availability.reason}</span>
           </div>
         </div>
       {/if}
@@ -220,7 +235,7 @@
               <li class="flex items-center gap-2 text-xs text-foreground-muted">
                 <Icon icon="mdi:circle-small" width="14" />
                 <span class="font-mono text-foreground">{reason.effect}</span>
-                <span>— {reason.cause}{reason.needs_elevation ? " (restart as admin to resolve)" : ""}</span>
+                <span>({reason.cause}{reason.needs_elevation ? ", restart as admin to resolve" : ""})</span>
               </li>
             {/each}
           </ul>
@@ -232,9 +247,9 @@
         <div class="mt-4 flex items-start gap-3 rounded-xl border border-error/30 bg-error/5 p-4">
           <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0 text-error" />
           <div class="text-sm">
-            <span class="font-medium text-foreground">Needs attention</span>
+            <span class="font-medium text-foreground">Needs attention.</span>
             <span class="text-foreground-muted">
-              — the last restore didn't fully complete; the snapshot is kept.
+              The last restore didn't fully complete, so the snapshot was kept.
               {#if status.unrestorable_resources.length}
                 Unrecoverable: {status.unrestorable_resources.join("; ")}.
               {/if}
@@ -263,44 +278,140 @@
         </div>
       {/if}
 
-      <!-- Options -->
+      <!-- Details (authored markdown info block) -->
+      {#if def.info}
+        <div class="mt-6">
+          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Icon icon="mdi:information-outline" width="16" />
+            Details
+          </h3>
+          <MarkdownText content={def.info} />
+        </div>
+      {/if}
+
+      <!-- Configuration Options: the exact changes each state writes, for power users -->
       <div class="mt-6">
+        {#snippet sectionLabel(icon: string, title: string, count: number)}
+          <h4 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-foreground-muted uppercase">
+            <Icon {icon} width="13" />
+            {title}
+            <span class="font-normal opacity-60">{count}</span>
+          </h4>
+        {/snippet}
         <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
           <Icon icon="mdi:tune-variant" width="16" class="text-foreground-muted" />
-          Options
+          Configuration Options
         </h3>
-        <div class="space-y-2">
-          {#each def.optionLabels as label, i (label)}
-            {@const isCurrent = status.activeOption === label}
-            {@const isPending = pendingChange?.optionLabel === label}
-            {@const unavailable = status.unavailableOptions.find((u) => u.label === label)}
+        <div class="space-y-3">
+          {#each def.options as option, i (option.label)}
+            {@const isCurrent = status.activeOption === option.label}
+            {@const isPending = pendingChange?.optionLabel === option.label}
+            {@const unavailable = status.unavailableOptions.find((u) => u.label === option.label)}
+            {@const changeCount =
+              option.registry_changes.length +
+              option.service_changes.length +
+              option.scheduler_changes.length +
+              option.hosts_changes.length +
+              option.firewall_changes.length +
+              option.commands.length}
             <div
-              class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 {isCurrent
-                ? 'border-accent/40 bg-accent/3'
+              class="overflow-hidden rounded-xl border {isCurrent
+                ? 'border-accent/40'
                 : isPending
-                  ? 'border-warning/40 bg-warning/3'
-                  : 'border-border bg-background'}"
+                  ? 'border-warning/40'
+                  : 'border-border'}"
             >
-              <div class="flex min-w-0 items-center gap-3">
-                <div
-                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold {isCurrent
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-muted text-foreground-muted'}"
-                >
-                  {i + 1}
+              <!-- Option header -->
+              <div
+                class="flex items-center justify-between gap-3 px-4 py-3 {isCurrent
+                  ? 'bg-accent/5'
+                  : isPending
+                    ? 'bg-warning/5'
+                    : 'bg-surface/40'}"
+              >
+                <div class="flex min-w-0 items-center gap-3">
+                  <div
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold {isCurrent
+                      ? 'bg-accent/15 text-accent'
+                      : 'bg-muted text-foreground-muted'}"
+                  >
+                    {i + 1}
+                  </div>
+                  <div class="min-w-0">
+                    <span class="block truncate text-sm font-semibold text-foreground">{option.label}</span>
+                    {#if unavailable}
+                      <span class="text-xs text-warning">{unavailable.reason}</span>
+                    {/if}
+                  </div>
                 </div>
-                <div class="min-w-0">
-                  <span class="block truncate text-sm font-semibold text-foreground">{label}</span>
-                  {#if unavailable}
-                    <span class="text-xs text-warning">{unavailable.reason}</span>
+                <div class="flex shrink-0 items-center gap-2">
+                  {#if isCurrent}<Badge variant="accent" size="sm">Current</Badge>{/if}
+                  {#if isPending}<Badge variant="warning" size="sm">Pending</Badge>{/if}
+                  {#if unavailable}<Badge variant="warning" size="sm">Unavailable</Badge>{/if}
+                </div>
+              </div>
+
+              <!-- The concrete changes this option makes -->
+              {#if changeCount > 0}
+                <div class="space-y-3 border-t border-border/50 px-4 py-3">
+                  {#if option.registry_changes.length > 0}
+                    <div class="space-y-1.5">
+                      {@render sectionLabel("mdi:database", "Registry", option.registry_changes.length)}
+                      {#each option.registry_changes as change, idx (idx)}
+                        <RegistryChangeItem {change} {currentWindowsVersion} />
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if option.service_changes.length > 0}
+                    <div class="space-y-1.5">
+                      {@render sectionLabel("mdi:server", "Services", option.service_changes.length)}
+                      {#each option.service_changes as change, idx (idx)}
+                        <ServiceChangeItem {change} />
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if option.scheduler_changes.length > 0}
+                    <div class="space-y-1.5">
+                      {@render sectionLabel("mdi:calendar", "Scheduled Tasks", option.scheduler_changes.length)}
+                      {#each option.scheduler_changes as change, idx (idx)}
+                        <SchedulerChangeItem {change} />
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if option.hosts_changes.length > 0}
+                    <div class="space-y-1.5">
+                      {@render sectionLabel("mdi:file-document-outline", "Hosts File", option.hosts_changes.length)}
+                      {#each option.hosts_changes as change, idx (idx)}
+                        <HostsChangeItem {change} />
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if option.firewall_changes.length > 0}
+                    <div class="space-y-1.5">
+                      {@render sectionLabel("mdi:shield-outline", "Firewall", option.firewall_changes.length)}
+                      {#each option.firewall_changes as change, idx (idx)}
+                        <FirewallChangeItem {change} />
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if option.commands.length > 0}
+                    <div class="space-y-1.5">
+                      {@render sectionLabel("mdi:console", "Commands", option.commands.length)}
+                      {#each option.commands as cmd, idx (idx)}
+                        <div class="overflow-hidden rounded-lg border border-border/60 bg-background px-3 py-2">
+                          <code class="block font-mono text-[10px] break-all whitespace-pre-wrap text-foreground/80"
+                            >{cmd}</code
+                          >
+                        </div>
+                      {/each}
+                    </div>
                   {/if}
                 </div>
-              </div>
-              <div class="flex shrink-0 items-center gap-2">
-                {#if isCurrent}<Badge variant="accent" size="sm">Current</Badge>{/if}
-                {#if isPending}<Badge variant="warning" size="sm">Pending</Badge>{/if}
-                {#if unavailable}<Badge variant="warning" size="sm">Unavailable</Badge>{/if}
-              </div>
+              {:else}
+                <div class="border-t border-border/50 px-4 py-2.5 text-xs text-foreground-muted italic">
+                  No system changes. This is the stock Windows default.
+                </div>
+              {/if}
             </div>
           {/each}
         </div>

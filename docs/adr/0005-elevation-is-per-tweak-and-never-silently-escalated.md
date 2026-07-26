@@ -84,3 +84,53 @@ elevation prompt — the elevation itself — so nothing here trades away UAC pr
 - **Grouped execution is committed for v1** (not deferred): consecutive same-level System/TI steps
   batch into one child via the existing multi-op wire protocol; the multi-op caller is the net-new
   wiring, order-preserving. User/Admin steps stay in-process and are never grouped.
+
+## Amended 2026-07-27 (over-the-shoulder guard: corrected, not removed)
+
+The guard as first implemented disabled every per-user tweak on every machine, at every privilege
+level. Three separate faults, all now fixed. The guard itself stands; its inputs were wrong.
+
+- **The probe could never succeed.** It read the console session's user via `WTSQueryUserToken`, which
+  requires `SE_TCB_NAME`. Only LocalSystem holds that privilege, so the call returned
+  `ERROR_PRIVILEGE_NOT_HELD` (1314) for every real run, elevated or not. Measured at both levels on a
+  developer machine. The guard's fail-closed arm then read that guaranteed failure as a mismatch and
+  refused all 54 `elevation: user` tweaks. **Now:** `ProcessIdToSessionId` ->
+  `WTSQuerySessionInformationW(WTSUserName/WTSDomainName)` -> `LookupAccountNameW`, which needs no
+  privilege and was verified working at both levels.
+- **It compared against the wrong session.** The console session's owner is not necessarily the user
+  this process serves: under RDP the app can run in session 2 while another user holds the console,
+  which is a legitimate configuration and not an over-the-shoulder elevation. **Now:** the comparison
+  is against the owner of the process's own session.
+- **It keyed on the declared floor, not on the hive.** `elevation:` states which privilege a tweak
+  needs; the hive states whose state it changes. Those are independent, and 31 `admin`-floor tweaks in
+  the shipped corpus drive HKCU effects, every one of which the guard let through unexamined while it
+  blocked the `user`-floor ones wholesale. **Now:** the guard consumes
+  `context::tweak_touches_hkcu`, built on the same `effect_is_hkcu` that routing uses, so the two
+  cannot answer the question differently. A corpus-wide test asserts that agreement for every tweak.
+
+- **The hive check covers every shape that names one.** Besides settings and shared blocks, a
+  `DeleteTree` action carries a `KeyAddr` and therefore a hive. Missing it would have left an HKCU
+  *subtree deletion*, the most destructive effect kind, routed by the floor and running against an
+  elevated child's own hive.
+- **A directory-free fallback keeps the guard from re-creating the bug it fixes.** Resolving the
+  session owner's SID uses `LookupAccountNameW`, a name lookup that fails on a domain-joined machine
+  with an unreachable DC or an Entra-joined machine. Falling straight to "blocked" there would repeat
+  the original failure on a different population of machines. When SID resolution fails the guard
+  compares SAM account names instead (`GetUserNameExW(NameSamCompatible)` against the WTS session
+  owner), both of which come from local token/session state. The comparison is symmetric by
+  construction: names are only ever compared with names, so a half-resolved state degrades to
+  "unknown" and can never masquerade as a difference between accounts.
+
+**Fail-closed is reaffirmed, and the reasoning is recorded here because it is not obvious.** An
+unreadable SID still blocks, and it now reports a distinct state (`SidUnknown`) rather than accusing
+another account. Failing *open* was considered and rejected: it buys no availability once the probe
+works, and it is unrecoverable when it is wrong. The snapshot store is keyed to the machine
+(`Entry` carries `machine_guid` and no user identity) while HKCU is keyed to the account, and apply
+verifies a write by reading back the same hive it just wrote, so a wrong-account write is
+self-confirming green with no return point. Refusing mutates nothing. See
+`docs/plans/fix-hkcu-user-level-gate.md`.
+
+**Related, deliberately unfixed:** the same machine-keyed-store/account-keyed-hive mismatch is
+reachable without any elevation at all, on a multi-user machine sharing one portable install. Recorded
+in `PRE_MERGE_TASKS.md` item 4 and consciously deferred; it predates this amendment and is not caused
+by it.
