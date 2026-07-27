@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { Select, StatusBadge, Switch } from "$lib/components/ui";
+  import { SegmentedSwitch, Select, StatusBadge } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
@@ -104,29 +104,53 @@
   const unrestorableResources = $derived(status.unrestorable_resources);
   const restoreLabel = $derived(needsAttention ? "Retry" : "Restore");
 
-  // --- option shape (2 authored options -> toggle; 3+ -> dropdown) ----------
-  const optionLabels = $derived(tweak.definition.optionLabels);
-  const isToggle = $derived(optionLabels.length === 2);
-  // In a 2-option toggle the "(Stock Default)" option is OFF; the other is ON (the applied state).
-  const offLabel = $derived(
-    optionLabels.find((l) => /\(stock default\)/i.test(l)) ?? optionLabels[1] ?? optionLabels[0],
-  );
-  const onLabel = $derived(optionLabels.find((l) => l !== offLabel) ?? optionLabels[0]);
-
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
   const hasPending = $derived(pendingChange !== undefined);
   const activeOption = $derived(status.activeOption);
 
-  // Toggle: checked when the ON option is the active (or staged) one.
-  const switchChecked = $derived(hasPending ? pendingChange?.optionLabel === onLabel : activeOption === onLabel);
+  // --- option shape (1 or 2 authored options -> segmented; 3+ -> dropdown) --
+  const optionLabels = $derived(tweak.definition.optionLabels);
+  const isSegmented = $derived(optionLabels.length <= 2);
 
-  // Dropdown: pending label, else the active option, else the System Default position.
+  // ADR-0003: System Default is a computed *status*, not a state anyone picks. It means the live
+  // surface matched none of the authored options, so it only exists while that is true. Once an
+  // option matches there is nothing for it to describe and it is not offered; the way back out of
+  // an applied option is Restore, which is its own button.
+  const atSystemDefault = $derived(activeOption === null || activeOption === undefined);
+
+  // Authored options in order, with the System Default position spliced in only while it is the
+  // live state: [option 1] [System Default] [option 2], or just the options once one matches.
+  const segments = $derived.by(() => {
+    const [first, second] = optionLabels;
+    const ordered = second === undefined ? [first] : [first, second];
+    if (atSystemDefault) ordered.splice(second === undefined ? 0 : 1, 0, SYSTEM_DEFAULT);
+    return ordered.map((label, i) => {
+      const isDefault = label === SYSTEM_DEFAULT;
+      const unavailable = isDefault ? undefined : status.unavailableOptions.find((u) => u.label === label);
+      return {
+        value: i,
+        label: isDefault ? "System Default" : unavailable ? `${label} (unavailable)` : label,
+        // Icon follows the option's rank, not the segment index, so the acting option the corpus
+        // authors first is always the tick even when System Default sits to its left.
+        icon: isDefault ? "mdi:monitor" : label === first ? "mdi:check" : "mdi:close-circle-outline",
+        disabled: !!unavailable,
+        target: label,
+      };
+    });
+  });
+
+  // Pending label, else the active option, else the System Default position. Shared by both shapes.
   const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? SYSTEM_DEFAULT);
+  const segmentValue = $derived(
+    Math.max(
+      0,
+      segments.findIndex((s) => s.target === selectValue),
+    ),
+  );
   const selectOptions = $derived.by(() => {
     const opts: { value: string; label: string; disabled?: boolean }[] = [];
-    // ADR-0003: "System Default" selectable (-> Revert) only when a snapshot exists;
-    // otherwise a display-only placeholder for a state that is already System Default.
-    opts.push({ value: SYSTEM_DEFAULT, label: "System Default", disabled: !hasSnapshot });
+    // Same rule as the segments: offered only while it is the live state.
+    if (atSystemDefault) opts.push({ value: SYSTEM_DEFAULT, label: "System Default" });
     for (const label of optionLabels) {
       const un = status.unavailableOptions.find((u) => u.label === label);
       opts.push({ value: label, label: un ? `${label} (unavailable)` : label, disabled: !!un });
@@ -155,9 +179,12 @@
     if (hasSnapshot) handleRestoreClick();
   }
 
-  function handleSwitchChange(checked: boolean) {
-    // Off drives to the stock-default option (a defined Apply), not a snapshot Restore.
-    stageApply(checked ? onLabel : offLabel);
+  function handleSegmentChange(index: number) {
+    const target = segments[index]?.target;
+    if (target === undefined) return;
+    // The System Default segment is a Restore from the snapshot (ADR-0003), never an Apply.
+    if (target === SYSTEM_DEFAULT) goSystemDefault();
+    else stageApply(target);
   }
 
   function handleSelectChange(value: string | number) {
@@ -323,14 +350,15 @@
 
       <!-- Control -->
       <div class="shrink-0 pt-0.5" use:tooltip={controlDisabledReason}>
-        {#if isToggle}
-          <Switch
-            checked={switchChecked}
+        {#if isSegmented}
+          <SegmentedSwitch
+            value={segmentValue}
+            options={segments}
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}
-            ariaLabel="Toggle {tweak.definition.name}"
-            onchange={handleSwitchChange}
+            iconOnly
+            onchange={handleSegmentChange}
           />
         {:else}
           <Select
