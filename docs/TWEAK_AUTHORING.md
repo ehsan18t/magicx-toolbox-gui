@@ -579,15 +579,16 @@ contract in §12.
 | ----------- | -------- | --------------------------------------------------------------------------- |
 | `apply`     | **yes**  | the script body to run on apply                                             |
 | `undo`      | no       | the script body to reverse it (absent ⇒ one-way)                            |
-| `probe`     | no       | the script body that reports present/absent (absent ⇒ not detectable)       |
+| `probe`     | no       | reports present/absent: a script body, or a native form (§12.5); absent ⇒ not detectable |
 | `ephemeral` | no       | `true` = a transient side-effect; takes no `undo`/`probe` (default `false`) |
 | `shell`     | **yes**  | `cmd` \| `powershell`                                                       |
 
 **Value domain:** `run`, or **omit the entry entirely** (omitted = "this option does not run it").
 
-> ⚠️ **Scripts are inline strings only in v1.** `apply`, `undo`, and `probe` are plain string bodies
-> (usually a YAML block scalar with `|`). There is **no `apply: { file: … }` filed-script form** in the
-> shipped schema: writing one is a build error. See §12.6.
+> ⚠️ **`apply` and `undo` are inline strings only in v1** (usually a YAML block scalar with `|`).
+> There is **no `apply: { file: … }` filed-script form** in the shipped schema: writing one is a build
+> error. See §12.6. `probe` also accepts the native forms in §12.5, which avoid a process entirely and
+> are what you should reach for first.
 
 ---
 
@@ -1361,7 +1362,7 @@ Setting (spec §7). Reach for a Setting first; an Action is a last resort.
 | ----------- | -------- | ------------------------------------------------------------------------------------------------- |
 | `apply`     | **yes**  | the script that performs the change                                                               |
 | `undo`      | no       | the script that reverses it; **absent ⇒ this action is one-way**                                  |
-| `probe`     | no       | the script that reports present/absent; **absent ⇒ this action does not contribute to detection** |
+| `probe`     | no       | reports present/absent, as a script or a native form (§12.5); **absent ⇒ this action does not contribute to detection** |
 | `ephemeral` | no       | `true` = a transient side-effect (§12.3); default `false`                                         |
 | `shell`     | **yes**  | `cmd` or `powershell`                                                                             |
 
@@ -1415,12 +1416,62 @@ present/absent contribution. Probe results are **cached per session** and refres
 apply/restore of that tweak (detection never re-spawns a shell per status poll). An action **without**
 `probe` does not contribute to detection at all.
 
+#### Pick the cheapest form that answers the question
+
+A script probe costs a **process spawn**: roughly 180ms before your script does anything, and every
+probeable action pays it on every status scan. Two forms avoid it. Reach for a script only when
+neither fits.
+
+**`appx_absent`**: present when **none** of the listed packages are installed, per-user or
+provisioned. Phrased as absence because that is what a removal action produces.
+
+```yaml
+probe:
+  appx_absent: [Microsoft.GetHelp]
+# several packages: present only when every one of them is gone
+probe:
+  appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
+```
+
+Names match the way `Get-AppxPackage -Name` and a provisioned package's `DisplayName` spell them, and
+are compared case-insensitively. The whole scan shares **one** package enumeration, so ten tweaks
+asking about ten packages cost one query, not ten. Do not hand-write this as a script: asking about a
+single package costs the same as listing every package (measured: 424ms against 416ms), so a per-tweak
+script pays the full price for an answer the shared enumeration already holds.
+
+**`registry`**: present when a DWORD holds exactly `equals`. A direct read, no process at all.
+
+```yaml
+probe:
+  registry:
+    key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power'
+    name: HibernateEnabled
+    equals: 0
+```
+
+Use it when the action writes through some tool (`powercfg`, `bcdedit`) but the result lands in a
+registry value you can read back. A missing value, a missing key, and a value stored as something
+other than a DWORD all read as **not present**, which is the honest answer for a present/absent
+question. Only an unreadable key (access denied) surfaces as "cannot tell".
+
+**Script**: everything else, and still the right answer for genuinely imperative checks: `powercfg`
+query parsing, DISM feature state, `auditpol`, CIM/WMI, process presence.
+
+```yaml
+probe: |
+  $s = (Get-WindowsOptionalFeature -Online -FeatureName Recall -EA SilentlyContinue).State
+  if ($s -eq 'Disabled') { exit 0 } else { exit 1 }
+```
+
+If you are writing a script whose whole body is one `Get-ItemProperty` comparison, use the `registry`
+form instead. If it is one `Get-AppxPackage` check, use `appx_absent`.
+
 ### 12.6 Inline scripts only (no filed form in v1)
 
-`apply`, `undo`, and `probe` are **plain string bodies**: typically a YAML block scalar (`|`) for
-multi-line scripts, or a quoted one-liner. There is **no `apply: { file: scripts/x.ps1 }` filed-script
-form in the shipped schema**: writing a map there is a build error (`data did not match … EffectRaw`).
-Put the script body inline.
+`apply` and `undo` are **plain string bodies**: typically a YAML block scalar (`|`) for multi-line
+scripts, or a quoted one-liner. There is **no `apply: { file: scripts/x.ps1 }` filed-script form in
+the shipped schema**: writing a map there is a build error (`data did not match … EffectRaw`). Put the
+script body inline. (`probe` is the one field that also takes a map, for the native forms in §12.5.)
 
 > 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by
 > `build.rs`). The **shipped `ActionRaw` schema accepts only a string**, so filed scripts are not
