@@ -1,31 +1,31 @@
-//! TrustedInstaller Elevation Functions
-//!
-//! Execute commands with TrustedInstaller privileges using parent process spoofing.
-//! `spawn_as_trusted_installer` is the broker's TI launcher (`broker.rs` calls it internally); the
-//! typed per-op TI wrappers this file used to also expose were the old apply pipeline's direct
-//! call surface and are gone with it (spec §12) — the redesigned engine routes every System/TI
-//! drive through the broker's generic `run_ops` (`services::elevation::run_ops`) instead.
+//! TrustedInstaller elevation: start the TI service, then spawn the broker child with
+//! TrustedInstaller.exe spoofed as its parent so it inherits the TI token.
 
 use crate::error::Error;
 use std::ptr;
 
-use super::common::{
-    enable_debug_privilege, to_wide_string, wait_and_reap, CloseHandle, CloseServiceHandle,
-    CreateProcessW, DeleteProcThreadAttributeList, GetLastError, InitializeProcThreadAttributeList,
-    OpenProcess, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE};
+use windows_sys::Win32::System::Services::{
+    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
+    SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_START,
+    SERVICE_STATUS_PROCESS,
+};
+use windows_sys::Win32::System::Threading::{
+    CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, OpenProcess,
     UpdateProcThreadAttribute, CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT,
-    ERROR_SERVICE_ALREADY_RUNNING, EXTENDED_STARTUPINFO_PRESENT, FALSE, HANDLE,
-    LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_CREATE_PROCESS, PROCESS_INFORMATION,
-    PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
-    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START, SERVICE_STATUS_PROCESS,
-    STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW, SW_HIDE,
+    EXTENDED_STARTUPINFO_PRESENT, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_CREATE_PROCESS,
+    PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTUPINFOEXW,
 };
 
-// ============================================================================
-// TRUSTEDINSTALLER ELEVATION
-// ============================================================================
+use super::common::{
+    empty_process_info, enable_debug_privilege, hidden_startup_info, to_wide_string, wait_and_reap,
+};
 
-/// Start the TrustedInstaller service and wait for it to be running
+/// dwCurrentState value for a running service.
+const SERVICE_RUNNING: u32 = 4;
+const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
+
+/// Start the TrustedInstaller service and wait for it to be running, returning its pid.
 fn start_trusted_installer_service() -> Result<u32, Error> {
     // SAFETY: Windows Service Control Manager API calls. All handles (SCM and service)
     // are closed on both success and error paths. Service status query uses properly
@@ -137,13 +137,13 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
     }
 }
 
-/// Get a handle to the TrustedInstaller process with PROCESS_CREATE_PROCESS access
+/// Open the TrustedInstaller process with `PROCESS_CREATE_PROCESS`, the access the parent spoof
+/// needs. The returned handle is owned by the caller.
 fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
     let pid = start_trusted_installer_service()?;
 
-    // SAFETY: OpenProcess is called with a valid PID obtained from the service.
-    // The returned handle is owned by the caller and must be closed.
+    // SAFETY: `pid` came from the SCM's own status for a running service.
     unsafe {
         let handle = OpenProcess(PROCESS_CREATE_PROCESS, FALSE, pid);
         if handle.is_null() {
@@ -156,124 +156,93 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     }
 }
 
-/// Spawn a raw command line as TrustedInstaller via parent-process spoofing (no `cmd.exe` wrapper).
-/// This creates a process with TrustedInstaller.exe as its parent, inheriting the TI token.
-/// `execute_command_as_trusted_installer` wraps a shell command in `cmd.exe /c` and delegates here.
+/// Spawn `command_line` with TrustedInstaller.exe as its parent, so it inherits the TI token, and
+/// wait for it. The broker's TI launcher; the command line is built by
+/// `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Error> {
     log::info!("Spawning as TrustedInstaller: {}", command_line);
 
     let ti_handle = get_trusted_installer_handle()?;
-
     let mut command_wide = to_wide_string(command_line);
 
-    // SAFETY: Windows API calls for parent process spoofing. This creates a process
-    // with TrustedInstaller.exe as parent, inheriting its privileges. All handles
-    // and attribute lists are properly cleaned up.
+    // SAFETY: `ti_handle` is closed on every path. The attribute list buffer is usize-aligned and
+    // sized by the API's own first (sizing) call, and is deleted before its backing Vec drops.
+    // `command_wide` is NUL-terminated and outlives the call, which CreateProcessW may mutate in
+    // place. `process_info`'s handles are reaped by wait_and_reap.
     unsafe {
-        // Initialize the attribute list for parent process spoofing
-        let mut attr_list_size: usize = 0;
+        let mut spawn = || -> Result<i32, Error> {
+            let mut attr_list_size: usize = 0;
+            // First call sizes the buffer; it is documented to fail, so only the size is meaningful.
+            InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut attr_list_size);
+            if attr_list_size == 0 {
+                return Err(Error::ServiceControl(
+                    "Failed to get attribute list size".to_string(),
+                ));
+            }
 
-        // First call to get the required size
-        InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut attr_list_size);
+            let usize_count = attr_list_size.div_ceil(std::mem::size_of::<usize>());
+            let mut attr_list_buffer: Vec<usize> = vec![0; usize_count];
+            let attr_list = attr_list_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
 
-        if attr_list_size == 0 {
-            CloseHandle(ti_handle);
-            return Err(Error::ServiceControl(
-                "Failed to get attribute list size".to_string(),
-            ));
-        }
+            if InitializeProcThreadAttributeList(attr_list, 1, 0, &mut attr_list_size) == FALSE {
+                return Err(Error::ServiceControl(format!(
+                    "Failed to initialize attribute list: {}",
+                    GetLastError()
+                )));
+            }
 
-        // Allocate memory for attribute list.
-        // Use an aligned element type (usize) to ensure proper alignment.
-        let usize_count = attr_list_size.div_ceil(std::mem::size_of::<usize>());
-        let mut attr_list_buffer: Vec<usize> = vec![0; usize_count];
-        let attr_list = attr_list_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+            let mut ti_handle_copy = ti_handle;
+            let updated = UpdateProcThreadAttribute(
+                attr_list,
+                0,
+                PROC_THREAD_ATTRIBUTE_PARENT_PROCESS as usize,
+                &mut ti_handle_copy as *mut _ as *mut _,
+                std::mem::size_of::<HANDLE>(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            if updated == FALSE {
+                let err = GetLastError();
+                DeleteProcThreadAttributeList(attr_list);
+                return Err(Error::ServiceControl(format!(
+                    "Failed to set parent process attribute: {err}"
+                )));
+            }
 
-        // Initialize the attribute list
-        if InitializeProcThreadAttributeList(attr_list, 1, 0, &mut attr_list_size) == FALSE {
-            CloseHandle(ti_handle);
-            return Err(Error::ServiceControl(format!(
-                "Failed to initialize attribute list: {}",
-                GetLastError()
-            )));
-        }
+            let mut startup_info = STARTUPINFOEXW {
+                StartupInfo: hidden_startup_info(),
+                lpAttributeList: attr_list,
+            };
+            // With EXTENDED_STARTUPINFO_PRESENT, `cb` must span the EX struct, not just the inner
+            // STARTUPINFOW, or CreateProcessW will not see the attribute list.
+            startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+            let mut process_info = empty_process_info();
 
-        // Set parent process attribute
-        let mut ti_handle_copy = ti_handle;
-        if UpdateProcThreadAttribute(
-            attr_list,
-            0,
-            PROC_THREAD_ATTRIBUTE_PARENT_PROCESS as usize,
-            &mut ti_handle_copy as *mut _ as *mut _,
-            std::mem::size_of::<HANDLE>(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-        ) == FALSE
-        {
+            let created = CreateProcessW(
+                ptr::null(),
+                command_wide.as_mut_ptr(),
+                ptr::null(),
+                ptr::null(),
+                FALSE,
+                EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+                ptr::null(),
+                ptr::null(),
+                &startup_info.StartupInfo,
+                &mut process_info,
+            );
+            let err = (created == FALSE).then(|| GetLastError());
             DeleteProcThreadAttributeList(attr_list);
-            CloseHandle(ti_handle);
-            return Err(Error::ServiceControl(format!(
-                "Failed to set parent process attribute: {}",
-                GetLastError()
-            )));
-        }
 
-        // Set up STARTUPINFOEXW with hidden window
-        let startup_info = STARTUPINFOEXW {
-            StartupInfo: STARTUPINFOW {
-                cb: std::mem::size_of::<STARTUPINFOEXW>() as u32,
-                lpReserved: ptr::null_mut(),
-                lpDesktop: ptr::null_mut(),
-                lpTitle: ptr::null_mut(),
-                dwX: 0,
-                dwY: 0,
-                dwXSize: 0,
-                dwYSize: 0,
-                dwXCountChars: 0,
-                dwYCountChars: 0,
-                dwFillAttribute: 0,
-                dwFlags: STARTF_USESHOWWINDOW,
-                wShowWindow: SW_HIDE as u16,
-                cbReserved2: 0,
-                lpReserved2: ptr::null_mut(),
-                hStdInput: ptr::null_mut(),
-                hStdOutput: ptr::null_mut(),
-                hStdError: ptr::null_mut(),
-            },
-            lpAttributeList: attr_list,
+            match err {
+                Some(code) => Err(Error::ServiceControl(format!(
+                    "Failed to create process as TrustedInstaller: {code}"
+                ))),
+                None => wait_and_reap(&process_info, "TrustedInstaller command"),
+            }
         };
 
-        let mut process_info = PROCESS_INFORMATION {
-            hProcess: ptr::null_mut(),
-            hThread: ptr::null_mut(),
-            dwProcessId: 0,
-            dwThreadId: 0,
-        };
-
-        // Create process with TrustedInstaller as parent
-        let result = CreateProcessW(
-            ptr::null(),
-            command_wide.as_mut_ptr(),
-            ptr::null(),
-            ptr::null(),
-            FALSE,
-            EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-            ptr::null(),
-            ptr::null(),
-            &startup_info.StartupInfo,
-            &mut process_info,
-        );
-
-        DeleteProcThreadAttributeList(attr_list);
+        let result = spawn();
         CloseHandle(ti_handle);
-
-        if result == FALSE {
-            return Err(Error::ServiceControl(format!(
-                "Failed to create process as TrustedInstaller: {}",
-                GetLastError()
-            )));
-        }
-
-        wait_and_reap(&process_info, "TrustedInstaller command")
+        result
     }
 }

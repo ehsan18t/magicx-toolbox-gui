@@ -1,18 +1,18 @@
-//! SYSTEM Elevation Functions
-//!
-//! Execute commands with SYSTEM privileges by impersonating winlogon.exe.
-//! Includes registry operations and service control.
+//! SYSTEM elevation: duplicate winlogon.exe's token and spawn the broker child with it.
 
 use crate::error::Error;
 use std::ptr;
 
-use super::common::{
-    enable_debug_privilege, find_process_by_name, get_process_token, to_wide_string, wait_and_reap,
-    CloseHandle, CreateProcessWithTokenW, GetLastError, CREATE_NO_WINDOW, FALSE, HANDLE,
-    LOGON_WITH_PROFILE, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW, SW_HIDE,
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE};
+use windows_sys::Win32::System::Threading::{
+    CreateProcessWithTokenW, CREATE_NO_WINDOW, LOGON_WITH_PROFILE,
 };
 
-/// Get SYSTEM token from winlogon.exe
+use super::common::{
+    empty_process_info, enable_debug_privilege, find_process_by_name, get_process_token,
+    hidden_startup_info, to_wide_string, wait_and_reap,
+};
+
 fn get_system_token() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
     let pid = find_process_by_name("winlogon.exe")?;
@@ -20,49 +20,22 @@ fn get_system_token() -> Result<HANDLE, Error> {
     get_process_token(pid)
 }
 
-/// Spawn a raw command line as SYSTEM (no `cmd.exe` wrapper) and wait for it to complete.
-/// Returns the exit code. This is the broker launcher; `execute_command_as_system` wraps a shell
-/// command in `cmd.exe /c` and delegates here.
+/// Spawn `command_line` as SYSTEM and wait for it, returning its exit code. The broker's SYSTEM
+/// launcher; the command line is built by `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_system(command_line: &str) -> Result<i32, Error> {
     let token = get_system_token()?;
     log::debug!("Got SYSTEM token, spawning: {}", command_line);
 
     let mut command_wide = to_wide_string(command_line);
 
-    // SAFETY: Windows API calls for creating a process with impersonation token.
-    // Process and thread handles are closed after waiting for completion.
-    // Token handle is closed after use. The command_wide buffer remains valid
-    // throughout the CreateProcessAsUserW call.
+    // SAFETY: `token` is a primary token from get_process_token and is closed on every path.
+    // `command_wide` is NUL-terminated and outlives the call, which CreateProcessW* may mutate
+    // in place. `process_info`'s handles are reaped by wait_and_reap.
     unsafe {
-        let startup_info = STARTUPINFOW {
-            cb: std::mem::size_of::<STARTUPINFOW>() as u32,
-            lpReserved: ptr::null_mut(),
-            lpDesktop: ptr::null_mut(),
-            lpTitle: ptr::null_mut(),
-            dwX: 0,
-            dwY: 0,
-            dwXSize: 0,
-            dwYSize: 0,
-            dwXCountChars: 0,
-            dwYCountChars: 0,
-            dwFillAttribute: 0,
-            dwFlags: STARTF_USESHOWWINDOW,
-            wShowWindow: SW_HIDE as u16,
-            cbReserved2: 0,
-            lpReserved2: ptr::null_mut(),
-            hStdInput: ptr::null_mut(),
-            hStdOutput: ptr::null_mut(),
-            hStdError: ptr::null_mut(),
-        };
+        let startup_info = hidden_startup_info();
+        let mut process_info = empty_process_info();
 
-        let mut process_info = PROCESS_INFORMATION {
-            hProcess: ptr::null_mut(),
-            hThread: ptr::null_mut(),
-            dwProcessId: 0,
-            dwThreadId: 0,
-        };
-
-        let result = CreateProcessWithTokenW(
+        let created = CreateProcessWithTokenW(
             token,
             LOGON_WITH_PROFILE,
             ptr::null(),
@@ -73,17 +46,16 @@ pub(super) fn spawn_as_system(command_line: &str) -> Result<i32, Error> {
             &startup_info,
             &mut process_info,
         );
-
+        // Read the error before CloseHandle, which overwrites the thread's last-error.
+        let err = (created == FALSE).then(|| GetLastError());
         CloseHandle(token);
 
-        if result == FALSE {
-            return Err(Error::ServiceControl(format!(
-                "Failed to create process as SYSTEM: {}",
-                GetLastError()
-            )));
+        match err {
+            Some(code) => Err(Error::ServiceControl(format!(
+                "Failed to create process as SYSTEM: {code}"
+            ))),
+            None => wait_and_reap(&process_info, "SYSTEM command"),
         }
-
-        wait_and_reap(&process_info, "SYSTEM command")
     }
 }
 

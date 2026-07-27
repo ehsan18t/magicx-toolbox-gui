@@ -1,72 +1,67 @@
-//! Common Utilities and Constants
+//! Win32 helpers shared by the SYSTEM and TrustedInstaller spawn paths.
 //!
-//! Shared utilities for elevation services:
-//! - String conversion functions
-//! - Security helpers (escaping, validation)
-//! - Windows API constants
+//! Every failure path here captures `GetLastError` BEFORE closing any handle: `CloseHandle`
+//! overwrites the thread's last-error, so reading it afterwards reports the close, not the call
+//! that actually failed.
 
 use crate::error::Error;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
-pub use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE, LUID};
-pub use windows_sys::Win32::Security::{
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE, LUID};
+use windows_sys::Win32::Security::{
     AdjustTokenPrivileges, DuplicateTokenEx, LookupPrivilegeValueW, SecurityImpersonation,
     TokenPrimary, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES,
     TOKEN_ALL_ACCESS, TOKEN_DUPLICATE, TOKEN_PRIVILEGES, TOKEN_QUERY,
 };
-pub use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
-pub use windows_sys::Win32::System::Services::{
-    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW,
-    SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_START,
-    SERVICE_STATUS_PROCESS,
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_INFORMATION,
+    PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
 };
-pub use windows_sys::Win32::System::Threading::{
-    CreateProcessW, CreateProcessWithTokenW, DeleteProcThreadAttributeList, GetCurrentProcess,
-    InitializeProcThreadAttributeList, OpenProcess, OpenProcessToken, UpdateProcThreadAttribute,
-    CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, LOGON_WITH_PROFILE,
-    LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_CREATE_PROCESS, PROCESS_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTUPINFOEXW,
-    STARTUPINFOW,
-};
-pub use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
+use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-pub const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
-pub const STARTF_USESHOWWINDOW: u32 = 0x00000001;
-/// Timeout for waiting on elevated processes (30 seconds)
-pub const ELEVATED_PROCESS_TIMEOUT_MS: u32 = 30_000;
+const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
+const STARTF_USESHOWWINDOW: u32 = 0x00000001;
+/// `AdjustTokenPrivileges` reports a privilege it could not grant through this, not a FALSE return.
+const ERROR_NOT_ALL_ASSIGNED: u32 = 1300;
 
-/// Service is running (dwCurrentState value)
-pub const SERVICE_RUNNING: u32 = 4;
+/// How long to wait on a spawned elevated child before treating it as hung.
+pub(super) const ELEVATED_PROCESS_TIMEOUT_MS: u32 = 30_000;
 
-// Windows error codes
-/// The service is already running
-pub const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
-
-/// Convert a Rust string to a null-terminated wide string
-pub fn to_wide_string(s: &str) -> Vec<u16> {
+/// Convert a Rust string to a null-terminated wide string.
+pub(super) fn to_wide_string(s: &str) -> Vec<u16> {
     OsStr::new(s)
         .encode_wide()
         .chain(std::iter::once(0))
         .collect()
 }
 
-/// Convert u16 to lowercase for case-insensitive comparison
-pub fn char_to_lower(c: u16) -> u16 {
-    if c >= b'A' as u16 && c <= b'Z' as u16 {
-        c + 32
-    } else {
-        c
-    }
+/// A hidden-window `STARTUPINFOW`, the shape both spawn paths want.
+pub(super) fn hidden_startup_info() -> STARTUPINFOW {
+    // SAFETY: STARTUPINFOW is a plain C struct of integers, pointers, and a handle triple; an
+    // all-zero value is the documented "no overrides" state.
+    let mut si: STARTUPINFOW = unsafe { std::mem::zeroed() };
+    si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE as u16;
+    si
 }
 
-/// Enable SeDebugPrivilege for the current process
-pub fn enable_debug_privilege() -> Result<(), Error> {
-    // SAFETY: Windows API calls for privilege management. All handles are properly
-    // closed using CloseHandle in deferred manner.
+/// A zeroed `PROCESS_INFORMATION` for `CreateProcess*` to fill in.
+pub(super) fn empty_process_info() -> PROCESS_INFORMATION {
+    // SAFETY: pure out-param; every field is written by a successful CreateProcess*.
+    unsafe { std::mem::zeroed() }
+}
+
+/// Enable `SeDebugPrivilege` for the current process. Required to open winlogon (for its SYSTEM
+/// token) and the TrustedInstaller service process (to spoof it as a parent).
+pub(super) fn enable_debug_privilege() -> Result<(), Error> {
+    // SAFETY: standard OpenProcessToken/LookupPrivilegeValueW/AdjustTokenPrivileges sequence; the
+    // token handle is closed on every path and `tp` is fully initialized before use.
     unsafe {
         let mut token: HANDLE = ptr::null_mut();
         if OpenProcessToken(
@@ -75,24 +70,15 @@ pub fn enable_debug_privilege() -> Result<(), Error> {
             &mut token,
         ) == FALSE
         {
-            return Err(Error::WindowsApi(format!(
-                "OpenProcessToken failed: {}",
-                GetLastError()
-            )));
+            return Err(win_err("OpenProcessToken"));
         }
 
-        // Look up the LUID for SeDebugPrivilege
         let privilege_name = to_wide_string("SeDebugPrivilege");
         let mut luid: LUID = std::mem::zeroed();
         if LookupPrivilegeValueW(ptr::null(), privilege_name.as_ptr(), &mut luid) == FALSE {
-            CloseHandle(token);
-            return Err(Error::WindowsApi(format!(
-                "LookupPrivilegeValue failed: {}",
-                GetLastError()
-            )));
+            return Err(close_then(token, win_err("LookupPrivilegeValue")));
         }
 
-        // Build the token privileges structure
         let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
         tp.PrivilegeCount = 1;
         tp.Privileges[0] = LUID_AND_ATTRIBUTES {
@@ -100,80 +86,53 @@ pub fn enable_debug_privilege() -> Result<(), Error> {
             Attributes: SE_PRIVILEGE_ENABLED,
         };
 
-        // Enable the privilege
         if AdjustTokenPrivileges(token, FALSE, &tp, 0, ptr::null_mut(), ptr::null_mut()) == FALSE {
-            CloseHandle(token);
-            return Err(Error::WindowsApi(format!(
-                "AdjustTokenPrivileges failed: {}",
-                GetLastError()
-            )));
+            return Err(close_then(token, win_err("AdjustTokenPrivileges")));
         }
 
-        // Check if we actually got the privilege
-        let error = GetLastError();
+        // AdjustTokenPrivileges succeeds even when it granted nothing; only the last-error says so.
+        let partial = GetLastError() == ERROR_NOT_ALL_ASSIGNED;
         CloseHandle(token);
-
-        // ERROR_NOT_ALL_ASSIGNED = 1300
-        if error == 1300 {
+        if partial {
             return Err(Error::WindowsApi(
-                "SeDebugPrivilege not available - admin rights required".to_string(),
+                "SeDebugPrivilege not available, admin rights required".to_string(),
             ));
         }
 
-        log::trace!("Successfully enabled SeDebugPrivilege");
+        log::trace!("Enabled SeDebugPrivilege");
         Ok(())
     }
 }
 
-/// Find a process ID by name
-pub fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
-    let target_wide = to_wide_string(target_name);
-
-    // SAFETY: Windows ToolHelp32 API calls for process enumeration.
-    // Snapshot handle is properly closed using CloseHandle after enumeration.
+/// Find a process ID by executable name (case-insensitive).
+pub(super) fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
+    // SAFETY: the snapshot handle is closed on every path, and PROCESSENTRY32W is only read after
+    // a successful Process32FirstW/NextW filled it in.
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot == INVALID_HANDLE_VALUE {
-            return Err(Error::WindowsApi(format!(
-                "CreateToolhelp32Snapshot failed: {}",
-                GetLastError()
-            )));
+            return Err(win_err("CreateToolhelp32Snapshot"));
         }
 
         let mut entry: PROCESSENTRY32W = std::mem::zeroed();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
         if Process32FirstW(snapshot, &mut entry) == FALSE {
-            CloseHandle(snapshot);
-            return Err(Error::WindowsApi(format!(
-                "Process32FirstW failed: {}",
-                GetLastError()
-            )));
+            return Err(close_then(snapshot, win_err("Process32FirstW")));
         }
 
         loop {
-            // Case-insensitive comparison without trailing nulls
-            let entry_len = entry
+            let len = entry
                 .szExeFile
                 .iter()
                 .position(|&c| c == 0)
                 .unwrap_or(entry.szExeFile.len());
-            let target_len = target_wide.len() - 1; // Exclude null terminator
-
-            if entry_len == target_len {
-                let matches = entry.szExeFile[..entry_len]
-                    .iter()
-                    .zip(&target_wide[..target_len])
-                    .all(|(&a, &b)| char_to_lower(a) == char_to_lower(b));
-
-                if matches {
-                    let pid = entry.th32ProcessID;
-                    CloseHandle(snapshot);
-                    log::trace!("Found {} with PID {}", target_name, pid);
-                    return Ok(pid);
-                }
+            if String::from_utf16_lossy(&entry.szExeFile[..len]).eq_ignore_ascii_case(target_name) {
+                let pid = entry.th32ProcessID;
+                CloseHandle(snapshot);
+                log::trace!("Found {} with PID {}", target_name, pid);
+                return Ok(pid);
             }
-
             if Process32NextW(snapshot, &mut entry) == FALSE {
                 break;
             }
@@ -187,65 +146,66 @@ pub fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
     }
 }
 
-/// Get a duplicated token from a process
-pub fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
-    // SAFETY: Windows API calls for token duplication. Process handle is closed
-    // after token duplication, duplicated token is returned for caller to manage.
+/// Duplicate a process's token as a primary token the caller owns and must close.
+pub(super) fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
+    // SAFETY: the process and source-token handles are closed on every path; `dup_token` is
+    // written by a successful DuplicateTokenEx and handed to the caller.
     unsafe {
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
         if process.is_null() {
-            return Err(Error::WindowsApi(format!(
-                "OpenProcess failed for PID {}: {}",
-                pid,
-                GetLastError()
-            )));
+            return Err(win_err(&format!("OpenProcess for PID {pid}")));
         }
 
         let mut token: HANDLE = ptr::null_mut();
         if OpenProcessToken(process, TOKEN_DUPLICATE | TOKEN_QUERY, &mut token) == FALSE {
-            CloseHandle(process);
-            return Err(Error::WindowsApi(format!(
-                "OpenProcessToken failed: {}",
-                GetLastError()
-            )));
+            return Err(close_then(process, win_err("OpenProcessToken")));
         }
 
-        // Duplicate the token for primary use
         let mut dup_token: HANDLE = ptr::null_mut();
-        if DuplicateTokenEx(
+        let ok = DuplicateTokenEx(
             token,
             TOKEN_ALL_ACCESS,
             ptr::null(),
             SecurityImpersonation,
             TokenPrimary,
             &mut dup_token,
-        ) == FALSE
-        {
-            CloseHandle(token);
-            CloseHandle(process);
-            return Err(Error::WindowsApi(format!(
-                "DuplicateTokenEx failed: {}",
-                GetLastError()
-            )));
-        }
-
+        );
+        let err = (ok == FALSE).then(|| win_err("DuplicateTokenEx"));
         CloseHandle(token);
         CloseHandle(process);
 
-        log::trace!("Got duplicated token from PID {}", pid);
-        Ok(dup_token)
+        match err {
+            Some(e) => Err(e),
+            None => {
+                log::trace!("Got duplicated token from PID {}", pid);
+                Ok(dup_token)
+            }
+        }
     }
+}
+
+/// Wrap the current thread's last Win32 error. Call this BEFORE any `CloseHandle`.
+fn win_err(what: &str) -> Error {
+    // SAFETY: GetLastError only reads thread-local state.
+    Error::WindowsApi(format!("{what} failed: {}", unsafe { GetLastError() }))
+}
+
+/// Close `handle` and return `err` unchanged, so the caller cannot accidentally re-read the
+/// last-error after the close has already overwritten it.
+///
+/// # Safety
+/// `handle` must be a valid, owned handle that is not used again.
+unsafe fn close_then(handle: HANDLE, err: Error) -> Error {
+    CloseHandle(handle);
+    err
 }
 
 /// Wait for a spawned elevated process to finish, reap it, and return its real exit code.
 ///
-/// Replaces two byte-identical inline copies and — crucially — distinguishes the three wait
-/// outcomes those copies collapsed, so a wait failure can never masquerade as a completed process
-/// with exit code 0 (which the broker would then read as success):
-/// - `WAIT_OBJECT_0` → the process exited; return its exit code (the `GetExitCodeProcess` BOOL is
-///   checked, not assumed).
-/// - `WAIT_TIMEOUT`  → terminate the hung process and return a timeout error.
-/// - anything else (`WAIT_FAILED`, …) → return an error carrying `GetLastError`, never `Ok(0)`.
+/// The three wait outcomes stay distinct, so a wait failure can never masquerade as a completed
+/// process with exit code 0, which the broker would then read as success: the process exited (its
+/// exit code, with the `GetExitCodeProcess` BOOL checked rather than assumed), it hung (terminate
+/// and report a timeout), or the wait itself failed (report it, never `Ok(0)`).
 ///
 /// # Safety
 /// `pi` must hold valid process and thread handles from a successful `CreateProcess*`. Both handles
@@ -259,44 +219,33 @@ pub(super) unsafe fn wait_and_reap(pi: &PROCESS_INFORMATION, label: &str) -> Res
 
     let wait_result = WaitForSingleObject(pi.hProcess, ELEVATED_PROCESS_TIMEOUT_MS);
 
-    if wait_result == WAIT_TIMEOUT {
-        log::warn!(
-            "{} timed out after {}ms",
-            label,
-            ELEVATED_PROCESS_TIMEOUT_MS
-        );
+    // Every branch reads its error before reaping, then reaps exactly once.
+    let outcome = if wait_result == WAIT_TIMEOUT {
+        log::warn!("{label} timed out after {ELEVATED_PROCESS_TIMEOUT_MS}ms");
         TerminateProcess(pi.hProcess, 1);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        return Err(Error::ServiceControl(format!(
-            "{} timed out after {}ms",
-            label, ELEVATED_PROCESS_TIMEOUT_MS
-        )));
-    }
-
-    if wait_result != WAIT_OBJECT_0 {
+        Err(Error::ServiceControl(format!(
+            "{label} timed out after {ELEVATED_PROCESS_TIMEOUT_MS}ms"
+        )))
+    } else if wait_result != WAIT_OBJECT_0 {
         // WAIT_FAILED (0xFFFF_FFFF) or any unexpected value: do NOT fall through to a bogus Ok(0).
-        let err = GetLastError();
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        return Err(Error::ServiceControl(format!(
-            "{} wait failed (result {:#x}): {}",
-            label, wait_result, err
-        )));
-    }
+        Err(Error::ServiceControl(format!(
+            "{label} wait failed (result {wait_result:#x}): {}",
+            GetLastError()
+        )))
+    } else {
+        let mut exit_code: u32 = 0;
+        if GetExitCodeProcess(pi.hProcess, &mut exit_code) == FALSE {
+            Err(Error::ServiceControl(format!(
+                "{label} exit-code query failed: {}",
+                GetLastError()
+            )))
+        } else {
+            log::debug!("{label} completed with exit code: {exit_code}");
+            Ok(exit_code as i32)
+        }
+    };
 
-    let mut exit_code: u32 = 0;
-    let got = GetExitCodeProcess(pi.hProcess, &mut exit_code);
-    let query_err = if got == FALSE { GetLastError() } else { 0 };
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    if got == FALSE {
-        return Err(Error::ServiceControl(format!(
-            "{} exit-code query failed: {}",
-            label, query_err
-        )));
-    }
-
-    log::debug!("{} completed with exit code: {}", label, exit_code);
-    Ok(exit_code as i32)
+    outcome
 }
