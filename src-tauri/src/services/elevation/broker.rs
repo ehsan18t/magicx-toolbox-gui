@@ -69,12 +69,11 @@ pub struct BrokerRequest {
     pub ops: Vec<BrokerOp>,
 }
 
-/// The outcome of a single operation. Positional: `results[i]` corresponds to `ops[i]` for every
-/// `i < results.len()`.
+/// The op a batch died on, by position in the request's `ops`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum OpOutcome {
-    Ok,
-    Err(String),
+pub struct OpFailure {
+    pub index: usize,
+    pub message: String,
 }
 
 /// The broker's typed response.
@@ -83,11 +82,12 @@ pub struct BrokerResponse {
     /// Echoes the request's [`BrokerRequest::nonce`] so the parent can reject a stale/foreign file.
     #[serde(default)]
     pub nonce: u64,
-    /// May be SHORTER than the request's `ops` (see [`execute_request`]): a batch stops at the
-    /// first failing op, so `results.len() < ops.len()` means every op from `results.len()`
-    /// onward was never attempted at all -- never "ran and silently no-opped". A full-length
-    /// `results` with no `Err` means every op ran and succeeded.
-    pub results: Vec<OpOutcome>,
+    /// How many ops the child attempted. A batch stops at its first failure, so this is below the
+    /// request's length exactly when `failure` is set. [`check_response`] requires the two to agree,
+    /// which is what stops a truncated or forged response from reading as a completed batch.
+    pub attempted: usize,
+    /// The first op that failed. `None` alongside a full `attempted` count is the only success.
+    pub failure: Option<OpFailure>,
 }
 
 /// Map registry "not found" into success for delete operations (deleting an absent thing is done).
@@ -98,8 +98,8 @@ fn delete_ok(result: Result<(), Error>) -> Result<(), Error> {
     }
 }
 
-/// Execute one operation using the effect services. Called inside the elevated broker process, so
-/// `use_system = false`: the broker's own token already provides the privilege.
+/// Execute one operation using the effect services, at whatever privilege this process holds. In
+/// the broker child that is the elevated token; under `Elevation::None` it is the app's own.
 pub fn execute_op(op: &BrokerOp) -> Result<(), Error> {
     match op {
         BrokerOp::RegSet {
@@ -127,29 +127,28 @@ pub fn execute_op(op: &BrokerOp) -> Result<(), Error> {
     }
 }
 
-/// Execute ops in declaration order, STOPPING at the first failure (invariant 2/18: a batch is not
-/// a set of independent attempts -- a later op can depend on an earlier one's success having
-/// actually happened, e.g. Service's `SvcSetStartup` plus its `DelayedAutostart` companion write;
-/// running the companion write after the primary write failed would mutate the registry to a
-/// state the in-process `drive_service`, which `?`-aborts on the same failure, never produces).
-/// `results` is positional but may end up SHORTER than `request.ops`: every op past the first
-/// failure is never attempted, never merely a recorded no-op.
+/// Execute ops in declaration order, stopping at the first failure. A batch is not a set of
+/// independent attempts: a later op can depend on an earlier one having actually happened (Service's
+/// `SvcSetStartup` plus its `DelayedAutostart` companion write), and running the companion after the
+/// primary failed would leave the registry in a state the in-process `drive_service`, which
+/// `?`-aborts on the same failure, never produces.
 pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
-    let mut results = Vec::with_capacity(request.ops.len());
-    for op in &request.ops {
-        let outcome = match execute_op(op) {
-            Ok(()) => OpOutcome::Ok,
-            Err(e) => OpOutcome::Err(e.to_string()),
-        };
-        let is_err = matches!(outcome, OpOutcome::Err(_));
-        results.push(outcome);
-        if is_err {
+    let mut attempted = 0;
+    let mut failure = None;
+    for (index, op) in request.ops.iter().enumerate() {
+        attempted += 1;
+        if let Err(e) = execute_op(op) {
+            failure = Some(OpFailure {
+                index,
+                message: e.to_string(),
+            });
             break;
         }
     }
     BrokerResponse {
         nonce: request.nonce,
-        results,
+        attempted,
+        failure,
     }
 }
 
@@ -313,23 +312,31 @@ pub enum BrokerOpError {
     OpFailed(#[source] Error),
 }
 
-/// Runs a whole batch of operations in ONE elevated child (spec §9's grouped execution): the wire
-/// protocol already carries `Vec<BrokerOp>` (`BrokerRequest::ops`); this is the net-new multi-op
-/// entry point beside `run_one`, added without changing `run_elevated_broker`'s semantics, the wire
-/// protocol, or `run_one` itself. Every op's outcome is checked -- the first failure is surfaced as
-/// `Err`, distinguishing "couldn't acquire the child at all" from "acquired it, but an op inside
-/// failed" (see [`BrokerOpError`]) -- never a benign `Ok(())` alongside a partial failure buried in
-/// `results`.
+/// Runs a whole batch of operations in ONE elevated child (spec §9's grouped execution). The only
+/// entry point into the broker.
 pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError> {
+    let sent = ops.len();
     let response = run_elevated_broker(level, &BrokerRequest { nonce: 0, ops })
         .map_err(BrokerOpError::CouldNotAcquire)?;
+    check_response(sent, &response)
+}
 
-    for (i, outcome) in response.results.into_iter().enumerate() {
-        if let OpOutcome::Err(msg) = outcome {
-            return Err(BrokerOpError::OpFailed(Error::ServiceControl(format!(
-                "broker op {i} failed: {msg}"
-            ))));
-        }
+/// The did-it-work decision, isolated from the spawn so it is testable against a response the
+/// executor would never produce. Success requires BOTH no reported failure AND a full attempt
+/// count: a response that ran fewer ops than were sent, yet names no failure, is a truncated or
+/// forged one, and reporting it as `Ok(())` would leave a half-applied batch looking complete.
+fn check_response(sent: usize, response: &BrokerResponse) -> Result<(), BrokerOpError> {
+    if let Some(failure) = &response.failure {
+        return Err(BrokerOpError::OpFailed(Error::ServiceControl(format!(
+            "broker op {} failed: {}",
+            failure.index, failure.message
+        ))));
+    }
+    if response.attempted != sent {
+        return Err(BrokerOpError::OpFailed(Error::ServiceControl(format!(
+            "broker attempted {} of {sent} ops but reported no failure",
+            response.attempted
+        ))));
     }
     Ok(())
 }
@@ -431,6 +438,42 @@ mod tests {
         assert!(execute_op(&del).is_ok());
     }
 
+    /// A response is only a success when it names no failure AND accounts for every op sent.
+    /// A short-but-clean response (what a truncated or forged file looks like) must not pass.
+    #[test]
+    fn check_response_requires_a_full_attempt_count_not_just_an_absent_failure() {
+        let clean = |attempted| BrokerResponse {
+            nonce: 1,
+            attempted,
+            failure: None,
+        };
+        check_response(3, &clean(3)).expect("all three attempted, none failed");
+
+        let err = check_response(3, &clean(2))
+            .expect_err("two of three attempted with no failure is not a completed batch");
+        assert!(matches!(err, BrokerOpError::OpFailed(_)), "got {err:?}");
+        assert!(err.to_string().contains("2 of 3"), "got {err}");
+
+        let err = check_response(3, &clean(0))
+            .expect_err("a response claiming nothing ran must never be Ok");
+        assert!(matches!(err, BrokerOpError::OpFailed(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn check_response_surfaces_the_failing_op_index() {
+        let response = BrokerResponse {
+            nonce: 1,
+            attempted: 2,
+            failure: Some(OpFailure {
+                index: 1,
+                message: "denied".into(),
+            }),
+        };
+        let err = check_response(3, &response).expect_err("a named failure must fail the batch");
+        assert!(err.to_string().contains("op 1"), "got {err}");
+        assert!(err.to_string().contains("denied"), "got {err}");
+    }
+
     #[test]
     fn execute_request_reports_per_op_outcomes() {
         let scratch = Scratch::new();
@@ -451,7 +494,7 @@ mod tests {
             ],
         };
         let resp = execute_request(&req);
-        assert_eq!(resp.results, vec![OpOutcome::Ok, OpOutcome::Ok]);
+        assert_eq!((resp.attempted, resp.failure), (2, None));
     }
 
     #[test]
@@ -494,7 +537,7 @@ mod tests {
 
         let resp: BrokerResponse =
             serde_json::from_slice(&std::fs::read(&resp_path).unwrap()).unwrap();
-        assert_eq!(resp.results, vec![OpOutcome::Ok, OpOutcome::Ok]);
+        assert_eq!((resp.attempted, resp.failure), (2, None));
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "Flag").unwrap(),
             Some(9)
@@ -519,7 +562,7 @@ mod tests {
             }],
         };
         let resp = run_elevated_broker(Elevation::None, &req).unwrap();
-        assert_eq!(resp.results, vec![OpOutcome::Ok]);
+        assert_eq!((resp.attempted, resp.failure), (1, None));
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "N").unwrap(),
             Some(5)
@@ -533,31 +576,31 @@ mod tests {
             ops: vec![],
         });
         assert_eq!(resp.nonce, 0xABCD_1234);
-        assert!(resp.results.is_empty());
+        assert_eq!((resp.attempted, resp.failure), (0, None));
     }
 
     #[test]
     fn a_response_with_a_mismatched_nonce_is_rejected() {
-        // A stale/foreign response file carries a different nonce than the one we sent — the guard
+        // A stale/foreign response file carries a different nonce than the one we sent: the guard
         // that stops a leftover file from being read as this invocation's success.
-        let stale = serde_json::to_vec(&BrokerResponse {
-            nonce: 111,
-            results: vec![OpOutcome::Ok],
-        })
-        .unwrap();
+        let stale = serde_json::to_vec(&clean_response(111, 1)).unwrap();
         let err = validate_response(&stale, 222).expect_err("mismatched nonce must be rejected");
         assert!(matches!(err, Error::ServiceControl(_)), "got {err:?}");
     }
 
     #[test]
     fn a_response_with_the_expected_nonce_is_accepted() {
-        let good = serde_json::to_vec(&BrokerResponse {
-            nonce: 222,
-            results: vec![OpOutcome::Ok],
-        })
-        .unwrap();
+        let good = serde_json::to_vec(&clean_response(222, 1)).unwrap();
         let resp = validate_response(&good, 222).expect("matching nonce must validate");
-        assert_eq!(resp.results, vec![OpOutcome::Ok]);
+        assert_eq!((resp.attempted, resp.failure), (1, None));
+    }
+
+    fn clean_response(nonce: u64, attempted: usize) -> BrokerResponse {
+        BrokerResponse {
+            nonce,
+            attempted,
+            failure: None,
+        }
     }
 
     #[test]
@@ -609,9 +652,9 @@ mod tests {
     }
 
     /// CRITICAL fix: a batch must STOP at the first failing op, never run a later one anyway. Two
-    /// `RegSet`s against the same scratch key -- the first with an unparseable value (fails), the
+    /// `RegSet`s against the same scratch key: the first with an unparseable value (fails), the
     /// second with a perfectly good one. Asserted via the EXECUTED STATE (a real read-back of the
-    /// second value name), not just `results`' shape: if the fix regressed, `"Second"` would exist.
+    /// second value name), not just the response shape: if this regressed, `"Second"` would exist.
     #[test]
     fn execute_request_stops_at_the_first_failing_op_never_running_the_rest() {
         let scratch = Scratch::new();
@@ -637,12 +680,10 @@ mod tests {
 
         let resp = execute_request(&req);
         assert_eq!(
-            resp.results.len(),
-            1,
-            "must stop after the first failing op -- the second is never attempted, got {:?}",
-            resp.results
+            resp.attempted, 1,
+            "must stop after the first failing op; the second is never attempted"
         );
-        assert!(matches!(resp.results[0], OpOutcome::Err(_)));
+        assert_eq!(resp.failure.map(|f| f.index), Some(0));
         assert_second_value_was_never_written(&scratch.key);
     }
 
