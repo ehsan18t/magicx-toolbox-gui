@@ -11,7 +11,7 @@
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, revertTweak, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import type { EntrySummary } from "$lib/types";
+  import type { EntrySummary, TweakEffectOption } from "$lib/types";
   import { PERMISSION_INFO, permissionFromElevation, RISK_INFO } from "$lib/types";
 
   const isOpen = $derived(tweakDetailsModalStore.isOpen);
@@ -298,22 +298,124 @@
             <span class="font-normal opacity-60">{count}</span>
           </h4>
         {/snippet}
+        {#snippet changeList(o: TweakEffectOption)}
+          {@const changeCount =
+            o.registry_changes.length +
+            o.service_changes.length +
+            o.scheduler_changes.length +
+            o.hosts_changes.length +
+            o.firewall_changes.length +
+            o.commands.length}
+          <!-- The concrete changes this option makes -->
+          {#if changeCount > 0}
+            <div class="space-y-3 border-t border-border/50 px-4 py-3">
+              {#if o.registry_changes.length > 0}
+                <div class="space-y-1.5">
+                  {@render sectionLabel("mdi:database", "Registry", o.registry_changes.length)}
+                  {#each o.registry_changes as change, idx (idx)}
+                    <RegistryChangeItem {change} {currentWindowsVersion} />
+                  {/each}
+                </div>
+              {/if}
+              {#if o.service_changes.length > 0}
+                <div class="space-y-1.5">
+                  {@render sectionLabel("mdi:server", "Services", o.service_changes.length)}
+                  {#each o.service_changes as change, idx (idx)}
+                    <ServiceChangeItem {change} />
+                  {/each}
+                </div>
+              {/if}
+              {#if o.scheduler_changes.length > 0}
+                <div class="space-y-1.5">
+                  {@render sectionLabel("mdi:calendar", "Scheduled Tasks", o.scheduler_changes.length)}
+                  {#each o.scheduler_changes as change, idx (idx)}
+                    <SchedulerChangeItem {change} />
+                  {/each}
+                </div>
+              {/if}
+              {#if o.hosts_changes.length > 0}
+                <div class="space-y-1.5">
+                  {@render sectionLabel("mdi:file-document-outline", "Hosts File", o.hosts_changes.length)}
+                  {#each o.hosts_changes as change, idx (idx)}
+                    <HostsChangeItem {change} />
+                  {/each}
+                </div>
+              {/if}
+              {#if o.firewall_changes.length > 0}
+                <div class="space-y-1.5">
+                  {@render sectionLabel("mdi:shield-outline", "Firewall", o.firewall_changes.length)}
+                  {#each o.firewall_changes as change, idx (idx)}
+                    <FirewallChangeItem {change} />
+                  {/each}
+                </div>
+              {/if}
+              {#if o.commands.length > 0}
+                <div class="space-y-1.5">
+                  {@render sectionLabel("mdi:console", "Commands", o.commands.length)}
+                  {#each o.commands as cmd, idx (idx)}
+                    <div class="overflow-hidden rounded-lg border border-border/60 bg-background px-3 py-2">
+                      <code class="block font-mono text-[10px] break-all whitespace-pre-wrap text-foreground/80"
+                        >{cmd}</code
+                      >
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <div class="border-t border-border/50 px-4 py-2.5 text-xs text-foreground-muted italic">
+              No system changes. This is the stock Windows default.
+            </div>
+          {/if}
+        {/snippet}
         <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
           <Icon icon="mdi:tune-variant" width="16" class="text-foreground-muted" />
           Configuration Options
         </h3>
         <div class="space-y-3">
+          <!--
+            The machine's own state, as a peer of the options and rendered by the same snippet, so it
+            can be read against them directly. Present only at System Default: when an option matches,
+            that option is already marked Current and says everything this would.
+          -->
+          {#if status.observed}
+            {@const obs = status.observed}
+            <div class="overflow-hidden rounded-xl border border-warning/40">
+              <div class="flex items-center justify-between gap-3 bg-warning/5 px-4 py-3">
+                <div class="flex min-w-0 items-center gap-3">
+                  <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
+                    <Icon icon="mdi:desktop-tower-monitor" width="16" />
+                  </div>
+                  <div class="min-w-0">
+                    <span class="block truncate text-sm font-semibold text-foreground">{obs.changes.label}</span>
+                    <span class="text-xs text-foreground-muted">Matches none of the options below</span>
+                  </div>
+                </div>
+                <Badge variant="warning" size="sm">Current</Badge>
+              </div>
+              {@render changeList(obs.changes)}
+              <!-- Where the machine straddles: which option each individual setting agrees with. -->
+              <div class="border-t border-border/50 bg-surface/30 px-4 py-3">
+                <ul class="m-0 list-none space-y-1 p-0">
+                  {#each obs.agreement as a (a.effect)}
+                    <li class="flex flex-wrap items-baseline gap-x-2 text-xs">
+                      <Icon icon="mdi:circle-small" width="14" class="shrink-0 text-foreground-muted" />
+                      <span class="font-mono text-foreground">{a.effect}</span>
+                      {#if a.wanted_by.length > 0}
+                        <span class="text-foreground-muted">agrees with {a.wanted_by.join(" and ")}</span>
+                      {:else}
+                        <span class="text-warning">agrees with no option</span>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            </div>
+          {/if}
           {#each def.options as option, i (option.label)}
             {@const isCurrent = status.activeOption === option.label}
             {@const isPending = pendingChange?.optionLabel === option.label}
             {@const unavailable = status.unavailableOptions.find((u) => u.label === option.label)}
-            {@const changeCount =
-              option.registry_changes.length +
-              option.service_changes.length +
-              option.scheduler_changes.length +
-              option.hosts_changes.length +
-              option.firewall_changes.length +
-              option.commands.length}
             <div
               class="overflow-hidden rounded-xl border {isCurrent
                 ? 'border-accent/40'
@@ -350,68 +452,7 @@
                   {#if unavailable}<Badge variant="warning" size="sm">Unavailable</Badge>{/if}
                 </div>
               </div>
-
-              <!-- The concrete changes this option makes -->
-              {#if changeCount > 0}
-                <div class="space-y-3 border-t border-border/50 px-4 py-3">
-                  {#if option.registry_changes.length > 0}
-                    <div class="space-y-1.5">
-                      {@render sectionLabel("mdi:database", "Registry", option.registry_changes.length)}
-                      {#each option.registry_changes as change, idx (idx)}
-                        <RegistryChangeItem {change} {currentWindowsVersion} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if option.service_changes.length > 0}
-                    <div class="space-y-1.5">
-                      {@render sectionLabel("mdi:server", "Services", option.service_changes.length)}
-                      {#each option.service_changes as change, idx (idx)}
-                        <ServiceChangeItem {change} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if option.scheduler_changes.length > 0}
-                    <div class="space-y-1.5">
-                      {@render sectionLabel("mdi:calendar", "Scheduled Tasks", option.scheduler_changes.length)}
-                      {#each option.scheduler_changes as change, idx (idx)}
-                        <SchedulerChangeItem {change} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if option.hosts_changes.length > 0}
-                    <div class="space-y-1.5">
-                      {@render sectionLabel("mdi:file-document-outline", "Hosts File", option.hosts_changes.length)}
-                      {#each option.hosts_changes as change, idx (idx)}
-                        <HostsChangeItem {change} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if option.firewall_changes.length > 0}
-                    <div class="space-y-1.5">
-                      {@render sectionLabel("mdi:shield-outline", "Firewall", option.firewall_changes.length)}
-                      {#each option.firewall_changes as change, idx (idx)}
-                        <FirewallChangeItem {change} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if option.commands.length > 0}
-                    <div class="space-y-1.5">
-                      {@render sectionLabel("mdi:console", "Commands", option.commands.length)}
-                      {#each option.commands as cmd, idx (idx)}
-                        <div class="overflow-hidden rounded-lg border border-border/60 bg-background px-3 py-2">
-                          <code class="block font-mono text-[10px] break-all whitespace-pre-wrap text-foreground/80"
-                            >{cmd}</code
-                          >
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {:else}
-                <div class="border-t border-border/50 px-4 py-2.5 text-xs text-foreground-muted italic">
-                  No system changes. This is the stock Windows default.
-                </div>
-              {/if}
+              {@render changeList(option)}
             </div>
           {/each}
         </div>

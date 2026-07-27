@@ -260,6 +260,21 @@ export interface UnavailableOpt {
   reason: string;
 }
 
+/** Which authored options wanted the value one effect actually holds. Empty = none do. */
+export interface EffectAgreement {
+  effect: string;
+  wanted_by: string[];
+}
+
+/**
+ * What the machine reads when it matches no authored option. `changes` is shaped exactly like a
+ * TweakOption so the UI renders it with the same components, letting the user compare like with like.
+ */
+export interface ObservedState {
+  changes: TweakEffectOption;
+  agreement: EffectAgreement[];
+}
+
 /** A shared setting's current claimants, surfaced as info regardless of match. */
 export interface HeldInfo {
   shared: string;
@@ -280,6 +295,8 @@ export interface TweakStatusView {
   residues: string[];
   has_history: boolean;
   held_shared: HeldInfo[];
+  /** Non-empty only at System Default: what the surface reads and which options wanted it. */
+  observed: ObservedState | null;
 }
 
 /** `tweak-status` event payload: one tweak's freshly detected status. */
@@ -392,6 +409,11 @@ export interface TweakStatus {
   residues: string[];
   /** Shared settings currently held, with their holders (informational). */
   heldShared: HeldInfo[];
+  /**
+   * What the managed surface actually reads, shaped like an option so it renders beside them.
+   * Present only at System Default, the one state that says what the machine is NOT.
+   */
+  observed: ObservedState | null;
   /** Convenience: state === "active" (drives applied counts/coloring). */
   is_applied: boolean;
   /** A snapshot exists to restore from (the engine's has_history). */

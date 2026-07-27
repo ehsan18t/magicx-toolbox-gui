@@ -99,6 +99,61 @@ pub struct TweakStatus {
     pub residues: Vec<EffectId>,
     pub has_history: bool,
     pub held_shared: Vec<HeldInfo>,
+    /// What the surface actually reads, populated **only** for [`TweakState::SystemDefault`].
+    ///
+    /// Every other state already answers "what is going on": an Active tweak names the option the
+    /// user can go read, and Unknown carries its own per-effect reasons. SystemDefault is the one
+    /// verdict that says only what the machine is *not*, so it is the one that has to show the
+    /// reading it was derived from. Empty in every other state, which also keeps it out of the
+    /// per-tweak status event for the whole corpus.
+    pub observed: Vec<ObservedEffect>,
+}
+
+/// One effect's live reading, plus which authored options wanted that particular value.
+///
+/// `wanted_by` is what turns a value dump into an explanation: at SystemDefault the usual cause is
+/// that the surface is split across options, so naming the option each effect currently agrees with
+/// shows the user exactly where the machine straddles. Empty means no option wants this value here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObservedEffect {
+    pub effect: EffectId,
+    /// The live reading, kept as a `Value` rather than a rendered string so the command layer can
+    /// push it through the same change-view builder the authored options use. The system state then
+    /// renders in the identical shape as the options it failed to match, which is the whole point:
+    /// the user compares them side by side.
+    pub value: Value,
+    pub wanted_by: Vec<OptLabel>,
+}
+
+/// Builds the [`ObservedEffect`] list for a SystemDefault verdict: every Setting we read, in surface
+/// order, tagged with the options that wanted the value we found. Actions and shared refs are
+/// skipped because neither has a value the user could compare against an option.
+fn observe(
+    tweak: &Tweak,
+    surface: &[&EffectDef],
+    milestone: &Milestone,
+    readings: &Readings,
+) -> Vec<ObservedEffect> {
+    surface
+        .iter()
+        .filter_map(|effect| {
+            let live = readings.get(&effect.id)?;
+            let wanted_by = tweak
+                .options
+                .iter()
+                .filter(|opt| match applicable_value(opt, &effect.id, milestone) {
+                    Some(OptValue::Set(scoped)) => &scoped.value == live,
+                    _ => false,
+                })
+                .map(|opt| opt.label.clone())
+                .collect();
+            Some(ObservedEffect {
+                effect: effect.id.clone(),
+                value: live.clone(),
+                wanted_by,
+            })
+        })
+        .collect()
 }
 
 /// One applicable Setting's live reading — already `if_missing`-mapped when it originated from an
@@ -129,6 +184,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             residues: Vec::new(),
             has_history: has_history(tweak, corpus, deps),
             held_shared: Vec::new(),
+            observed: Vec::new(),
         };
     }
 
@@ -195,6 +251,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             residues: Vec::new(),
             has_history: has_history(tweak, corpus, deps),
             held_shared,
+            observed: Vec::new(),
         };
     }
 
@@ -241,6 +298,8 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             residues: Vec::new(),
             has_history,
             held_shared,
+            // The one verdict that says only what the machine is not, so it carries its reading.
+            observed: observe(tweak, &surface, &milestone, &readings),
         },
         1 => {
             let (opt, residues) = matched.into_iter().next().expect("checked len == 1");
@@ -250,6 +309,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
                 residues,
                 has_history,
                 held_shared,
+                observed: Vec::new(),
             }
         }
         n => {
@@ -270,6 +330,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
                 residues: Vec::new(),
                 has_history,
                 held_shared,
+                observed: Vec::new(),
             }
         }
     }

@@ -24,7 +24,8 @@ use crate::tweaks::compiled_corpus;
 use crate::tweaks::engine::apply::{ApplyOutcome, EffectResult, EffectResultKind, EngineError};
 use crate::tweaks::engine::context::{self, RealSidProbe, SidCheck};
 use crate::tweaks::engine::detect::{
-    self, HeldInfo, TweakState, TweakStatus, UnavailableOpt, UnknownCause, UnknownReason,
+    self, HeldInfo, ObservedEffect, TweakState, TweakStatus, UnavailableOpt, UnknownCause,
+    UnknownReason,
 };
 use crate::tweaks::engine::revert::{self, RestoreOutcome};
 use crate::tweaks::engine::{apply, lifecycle, AllKinds, Deps, ProbeCache, RealActions, RealProbe};
@@ -260,7 +261,7 @@ pub struct TweakView {
 /// the frontend's long-standing detail types (`RegistryChange`/`ServiceChange`/…), so the existing
 /// detail components render them unchanged; the projection just joins the tweak's surface (address
 /// per `EffectId`) with this option's value for that same id.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TweakOptionView {
     pub label: String,
     pub registry_changes: Vec<RegistryChangeView>,
@@ -272,7 +273,7 @@ pub struct TweakOptionView {
     pub commands: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RegistryChangeView {
     pub hive: String,
     pub key: String,
@@ -287,14 +288,14 @@ pub struct RegistryChangeView {
     pub skip_validation: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ServiceChangeView {
     pub name: String,
     pub startup: String,
     pub skip_validation: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SchedulerChangeView {
     pub task_path: String,
     /// `enable` | `disable`.
@@ -302,7 +303,7 @@ pub struct SchedulerChangeView {
     pub skip_validation: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HostsChangeView {
     pub ip: String,
     pub domain: String,
@@ -311,7 +312,7 @@ pub struct HostsChangeView {
     pub skip_validation: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FirewallChangeView {
     pub name: String,
     /// `create` | `delete`.
@@ -603,13 +604,16 @@ pub struct TweakStatusEvent {
     pub status: TweakStatusView,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TweakStatusView {
     pub state: TweakStateView,
     pub unavailable: Vec<UnavailableOptView>,
     pub residues: Vec<EffectId>,
     pub has_history: bool,
     pub held_shared: Vec<HeldInfoView>,
+    /// Present only at System Default. Requires the tweak to build, so [`From`] leaves it `None`
+    /// and [`scan_and_emit`] fills it in where the tweak is in scope.
+    pub observed: Option<ObservedStateView>,
 }
 
 impl From<TweakStatus> for TweakStatusView {
@@ -620,8 +624,61 @@ impl From<TweakStatus> for TweakStatusView {
             residues: s.residues,
             has_history: s.has_history,
             held_shared: s.held_shared.into_iter().map(Into::into).collect(),
+            observed: None,
         }
     }
+}
+
+/// What the machine actually reads when it matches no authored option (spec §8.4, ADR-0003).
+///
+/// `changes` is deliberately a [`TweakOptionView`]: the frontend renders it with the same
+/// components as the options it failed to match, so the user compares like with like instead of
+/// reading a value dump and doing the translation in their head.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ObservedStateView {
+    pub changes: TweakOptionView,
+    pub agreement: Vec<EffectAgreementView>,
+}
+
+/// Which authored options wanted the value one effect actually holds. Empty `wanted_by` means no
+/// option does; a surface split across several options is the usual reason nothing matched.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EffectAgreementView {
+    pub effect: EffectId,
+    pub wanted_by: Vec<String>,
+}
+
+/// Builds the System Default explanation by pushing each live reading through the very same
+/// change-view builder the authored options use.
+fn observed_view(tweak: &Tweak, observed: &[ObservedEffect]) -> Option<ObservedStateView> {
+    if observed.is_empty() {
+        return None;
+    }
+    let mut changes = TweakOptionView {
+        label: "Your system right now".to_string(),
+        registry_changes: Vec::new(),
+        service_changes: Vec::new(),
+        scheduler_changes: Vec::new(),
+        hosts_changes: Vec::new(),
+        firewall_changes: Vec::new(),
+        commands: Vec::new(),
+    };
+    let mut agreement = Vec::new();
+    for o in observed {
+        let Some(effect) = tweak.surface.iter().find(|e| e.id == o.effect) else {
+            continue;
+        };
+        // `detect::observe` only ever reports Settings: shared refs carry claim state rather than a
+        // value, and probe-backed Actions have no address to show beside an option's.
+        if let Effect::Setting(setting) = &effect.kind {
+            push_setting_change(setting, &o.value, effect, &mut changes);
+        }
+        agreement.push(EffectAgreementView {
+            effect: o.effect.clone(),
+            wanted_by: o.wanted_by.iter().map(|l| l.0.clone()).collect(),
+        });
+    }
+    Some(ObservedStateView { changes, agreement })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -712,7 +769,7 @@ impl From<HeldInfo> for HeldInfoView {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ApplyOutcomeView {
     pub effects: Vec<EffectResultView>,
     pub status: TweakStatusView,
@@ -768,7 +825,7 @@ impl From<EffectResultKind> for EffectResultKindView {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RestoreOutcomeView {
     pub status: TweakStatusView,
     pub consumed: Option<Seq>,
@@ -796,9 +853,12 @@ impl From<RestoreOutcome> for RestoreOutcomeView {
 fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakStatusEvent)) {
     for tweak in &corpus.tweaks {
         let status = detect::detect(tweak, corpus, deps);
+        let observed = observed_view(tweak, &status.observed);
+        let mut view: TweakStatusView = status.into();
+        view.observed = observed;
         emit(TweakStatusEvent {
             tweak_id: tweak.id.clone(),
-            status: status.into(),
+            status: view,
         });
     }
 }

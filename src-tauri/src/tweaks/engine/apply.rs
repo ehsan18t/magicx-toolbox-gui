@@ -471,6 +471,7 @@ fn do_apply(
                     residues,
                     has_history: true,
                     held_shared: state.held_shared,
+                    observed: Vec::new(),
                 },
             })
         }

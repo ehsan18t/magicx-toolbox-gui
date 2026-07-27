@@ -230,6 +230,9 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
         residues,
         has_history,
         held_shared,
+        // Left empty deliberately: the restore path has no readings pass, and the frontend only
+        // renders the panel when this is non-empty, so the next detect fills it in.
+        observed: Vec::new(),
     };
     Ok(RestoreOutcome {
         status,
