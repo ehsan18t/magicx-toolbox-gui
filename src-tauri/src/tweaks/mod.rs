@@ -16,6 +16,8 @@ pub mod kinds;
 pub mod model;
 pub mod parse;
 #[cfg(test)]
+mod scan_bench;
+#[cfg(test)]
 mod schema;
 pub mod shared_claims;
 pub mod snapshot;
