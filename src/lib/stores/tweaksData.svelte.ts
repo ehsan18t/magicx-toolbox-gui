@@ -110,6 +110,12 @@ function mapStatusView(tweakId: string, view: TweakStatusView): TweakStatus {
   };
 }
 
+/**
+ * Status views that arrived before their tweak existed in `tweaks`. The scan thread can outrun
+ * `loadModel`, and without this the event would be dropped and the card would spin forever.
+ */
+let pendingStatusViews: Record<string, TweakStatusView> = {};
+
 // Derived: tweaks grouped by category
 const tweaksByCategory = $derived.by(() => {
   const byCategory: Record<string, TweakWithStatus[]> = {};
@@ -363,7 +369,14 @@ export const tweaksStore = {
     try {
       const [views, cats] = await Promise.all([api.getTweaks(), api.getCategories()]);
       categoryMeta = cats;
-      tweaks = views.map((v) => ({ definition: mapView(v), status: loadingStatus(v.id) }));
+      tweaks = views.map((v) => {
+        const early = pendingStatusViews[v.id];
+        return {
+          definition: mapView(v),
+          status: early ? mapStatusView(v.id, early) : loadingStatus(v.id),
+        };
+      });
+      pendingStatusViews = {};
       tweaksVersion++;
       return tweaks;
     } catch (error) {
@@ -377,6 +390,10 @@ export const tweaksStore = {
 
   /** Replace a tweak's status from a freshly detected engine status view. */
   setStatusView(tweakId: string, view: TweakStatusView) {
+    if (!tweaks.some((t) => t.definition.id === tweakId)) {
+      pendingStatusViews[tweakId] = view;
+      return;
+    }
     tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: mapStatusView(tweakId, view) } : t));
   },
 
@@ -479,6 +496,10 @@ export async function initializeQuick(): Promise<void> {
 /**
  * Load remaining data after quick init: system info, elevation state, and the
  * background-progressive status stream (statuses fill in incrementally).
+ *
+ * The model load is awaited first, not assumed: Svelte mounts `+page` before `+layout`, so this
+ * runs before the layout's `initializeQuick()` and would otherwise kick the scan against an empty
+ * `tweaks` array (the call is promise-cached, so it joins the layout's load rather than repeating it).
  */
 export async function loadRemainingData(): Promise<void> {
   if (remainingDataPromise) {
@@ -488,7 +509,8 @@ export async function loadRemainingData(): Promise<void> {
     return;
   }
 
-  remainingDataPromise = Promise.all([systemStore.load(), elevationStore.load(), startStatusStream()])
+  remainingDataPromise = initializeQuick()
+    .then(() => Promise.all([systemStore.load(), elevationStore.load(), startStatusStream()]))
     .then(() => {
       initialLoadComplete = true;
     })
