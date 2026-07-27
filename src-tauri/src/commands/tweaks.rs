@@ -15,6 +15,7 @@
 //! (`engine::context::hkcu_disabled_by_sid_mismatch`). Note the second is keyed on the hive the
 //! tweak writes, never on its `elevation:` floor -- see ADR-0005's 2026-07-27 amendment.
 
+use rayon::prelude::*;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -878,21 +879,46 @@ impl From<RestoreOutcome> for RestoreOutcomeView {
 
 // --- scan/emit + apply, factored into plain functions for testing (brief's own testing note) -----
 
-/// Runs `detect` for every tweak in `corpus`, invoking `emit` once per tweak in corpus order (spec
-/// §8.4 grill Q1/Q5: incremental arrival, never one final blob) -- factored out of
+/// Detects one tweak and projects it into the event the frontend consumes.
+fn scan_one(tweak: &Tweak, corpus: &Corpus, deps: &Deps<'_>) -> TweakStatusEvent {
+    let status = detect::detect(tweak, corpus, deps);
+    let observed = observed_view(tweak, &status.observed);
+    let mut view: TweakStatusView = status.into();
+    view.observed = observed;
+    TweakStatusEvent {
+        tweak_id: tweak.id.clone(),
+        status: view,
+    }
+}
+
+/// Runs `detect` for every tweak in `corpus`, invoking `emit` once per tweak (spec §8.4 grill
+/// Q1/Q5: incremental arrival, never one final blob) -- factored out of
 /// `get_statuses_stream`/`rescan_after_elevation` so `statuses_emit_incrementally` can prove the
 /// one-event-per-tweak property with an injectable emitter and zero Tauri runtime.
+///
+/// Detection is a pure read, so tweaks are independent and run on a rayon pool. That is worth real
+/// wall-clock: a handful of Action probes each spawn a process, and serially those dominate the
+/// whole sweep. Results are streamed back over a channel and emitted on the calling thread, which
+/// keeps `emit` free of any `Send` bound and preserves the progressive arrival the UI is built
+/// around. **Emission order is therefore completion order, not corpus order** -- every event names
+/// its `tweak_id` and the frontend keys on it, so order carries no meaning.
+///
+/// Shared state the workers touch is already prepared for this: `ProbeCache` is behind a mutex, the
+/// two stores are immutable path holders that re-read per call, and `scheduler_service` serializes
+/// its own COM activation behind a lock with a once-per-thread MTA init.
 fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakStatusEvent)) {
-    for tweak in &corpus.tweaks {
-        let status = detect::detect(tweak, corpus, deps);
-        let observed = observed_view(tweak, &status.observed);
-        let mut view: TweakStatusView = status.into();
-        view.observed = observed;
-        emit(TweakStatusEvent {
-            tweak_id: tweak.id.clone(),
-            status: view,
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|s| {
+        s.spawn(move || {
+            corpus.tweaks.par_iter().for_each_with(tx, |tx, tweak| {
+                // A closed receiver only happens if the drain below panicked; nothing to do.
+                let _ = tx.send(scan_one(tweak, corpus, deps));
+            });
         });
-    }
+        for event in rx {
+            emit(event);
+        }
+    });
 }
 
 /// Spawns the corpus-wide detect sweep on a plain OS thread (never the UI thread, controller
@@ -1446,14 +1472,20 @@ mod tests {
 
     // --- the brief's two named tests -----------------------------------------------------------
 
+    /// One event per tweak, never one final blob (grill Q1/Q5), and every tweak covered exactly
+    /// once. Deliberately asserts the SET of ids rather than their positions: the sweep runs in
+    /// parallel, so events arrive in completion order and position carries no meaning. Comparing
+    /// sets is also the stronger check, since it catches a duplicate or a dropped tweak, which
+    /// indexing into the first three events would not.
     #[test]
     fn statuses_emit_incrementally() {
         let h = Harness::new(Value::Startup(StartupType::Manual));
-        let c = corpus(vec![
-            tweak("t1", vec![opt("On", StartupType::Manual)]),
-            tweak("t2", vec![opt("On", StartupType::Manual)]),
-            tweak("t3", vec![opt("On", StartupType::Manual)]),
-        ]);
+        let ids = ["t1", "t2", "t3"];
+        let c = corpus(
+            ids.iter()
+                .map(|id| tweak(id, vec![opt("On", StartupType::Manual)]))
+                .collect(),
+        );
         let deps = h.deps();
 
         let mut events: Vec<TweakStatusEvent> = Vec::new();
@@ -1461,12 +1493,12 @@ mod tests {
 
         assert_eq!(
             events.len(),
-            3,
+            ids.len(),
             "one event per tweak, never one final blob (grill Q1/Q5)"
         );
-        assert_eq!(events[0].tweak_id, "t1");
-        assert_eq!(events[1].tweak_id, "t2");
-        assert_eq!(events[2].tweak_id, "t3");
+        let mut got: Vec<&str> = events.iter().map(|e| e.tweak_id.as_str()).collect();
+        got.sort_unstable();
+        assert_eq!(got, ids, "every tweak reported exactly once");
     }
 
     #[test]

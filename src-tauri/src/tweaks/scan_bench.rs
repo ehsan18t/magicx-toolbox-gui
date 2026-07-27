@@ -6,6 +6,7 @@
 //!
 //! Run with: `cargo test --release scan_sweep_timing -- --ignored --nocapture`
 
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -130,6 +131,7 @@ fn scan_sweep_timing() {
     let corpus = compiled_corpus();
     let mut per_tweak: Vec<(String, Duration)> = Vec::with_capacity(corpus.tweaks.len());
 
+    // Serial first, so per-category attribution is not distorted by workers overlapping.
     let sweep = Instant::now();
     for tweak in &corpus.tweaks {
         let t = Instant::now();
@@ -138,10 +140,31 @@ fn scan_sweep_timing() {
     }
     let total = sweep.elapsed();
 
+    // Snapshot the per-category attribution BEFORE the parallel pass: the two passes share one
+    // `Stats`, and letting the second one accumulate into it would double every count and make the
+    // totals exceed the serial wall-clock they are meant to explain.
+    let categories = stats.rows();
+
+    // Then the shape production actually runs. A warm ProbeCache would make this meaningless, so
+    // it gets a cold one; everything else is shared with the serial pass above.
+    let cold_cache = ProbeCache::new();
+    let par_deps = Deps {
+        probe_cache: &cold_cache,
+        ..deps
+    };
+    let par = Instant::now();
+    corpus.tweaks.par_iter().for_each(|tweak| {
+        let _ = detect::detect(tweak, corpus, &par_deps);
+    });
+    let par_total = par.elapsed();
+
     println!(
-        "\n===== SWEEP: {} tweaks in {:?} =====\n",
+        "\n===== SWEEP: {} tweaks =====\n  serial:   {:.2?}\n  parallel: {:.2?}  ({:.1}x on {} threads)\n",
         corpus.tweaks.len(),
-        total
+        total,
+        par_total,
+        total.as_secs_f64() / par_total.as_secs_f64(),
+        rayon::current_num_threads(),
     );
 
     println!("--- by work category (what the time is actually spent on) ---");
@@ -149,7 +172,7 @@ fn scan_sweep_timing() {
         "{:<34} {:>7} {:>11} {:>10} {:>10}",
         "category", "calls", "total", "mean", "max"
     );
-    for (label, s) in stats.rows() {
+    for (label, s) in &categories {
         println!(
             "{:<34} {:>7} {:>11.2?} {:>10.2?} {:>10.2?}",
             label,
@@ -159,7 +182,7 @@ fn scan_sweep_timing() {
             s.max
         );
     }
-    let measured: Duration = stats.rows().iter().map(|(_, s)| s.total).sum();
+    let measured: Duration = categories.iter().map(|(_, s)| s.total).sum();
     println!(
         "\nmeasured in the seams: {:.2?} of {:.2?} ({:.0}%); the rest is pure engine logic",
         measured,
