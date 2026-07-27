@@ -284,11 +284,15 @@ per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_
 - `validate_profile()` - Validate profile against current system
 - See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
 
-### 7. `trusted_installer` - SYSTEM Elevation & PowerShell
-- Execute commands as SYSTEM via winlogon.exe token
-- Registry writes as SYSTEM for protected keys
-- PowerShell execution: `run_powershell()`, `run_powershell_as_system()`
-- Schtasks execution: `run_schtasks_as_system()`
+### 7. `elevation` - SYSTEM and TrustedInstaller privilege
+- `run_ops(level, ops)` is the only entry point: a batch of typed `BrokerOp`s run in one elevated
+  child, which is this same binary re-spawned with `--broker`
+- SYSTEM comes from duplicating winlogon.exe's token; TrustedInstaller from spoofing the TI service
+  process as the child's parent
+- Every op is a typed effect (registry value or key, service startup type, scheduled task). There is
+  no "run this string" op, so nothing the child can be asked to do is an interpreter
+- The request crosses as a file, created through `exclusive_temp` so no other process running as the
+  same user can rewrite it before the elevated child reads it
 
 ### 8. `system_info_service` - System Detection
 - Windows version detection (10 vs 11)
