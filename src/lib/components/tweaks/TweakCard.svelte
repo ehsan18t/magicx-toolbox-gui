@@ -161,43 +161,41 @@
   // Track a pending high-risk apply for confirmation.
   let pendingHighRiskLabel: string | null = $state(null);
 
-  function stageApply(label: string) {
-    // Clicking the option that is already live cancels a staged change. This cannot fire at System
-    // Default, where `activeOption` is null by design (ADR-0003: no option is active), so any new
-    // control must route that position through `goSystemDefault` rather than here, or the user
-    // stages a change with no way back to zero pending.
-    if (label === activeOption) {
+  /**
+   * The one place a clicked target becomes an action, so every control gets the same answer and no
+   * caller can stage a target that should never be staged.
+   *
+   * Ordering matters. System Default is handled first because it is a Restore, never an Apply
+   * (ADR-0003), and because the cancel branch below cannot cover it: `activeOption` is null while
+   * System Default is the live state, so no label ever equals it. Routing that position here rather
+   * than at each call site is what keeps "clicking what is already live clears the staged change"
+   * true for every state, instead of true only where a caller remembered to special-case it.
+   */
+  function selectTarget(target: string) {
+    if (target === SYSTEM_DEFAULT) {
+      unstageChange(tweak.definition.id);
+      if (hasSnapshot) handleRestoreClick();
+      return;
+    }
+    if (target === activeOption) {
       unstageChange(tweak.definition.id);
       return;
     }
     if (isHighRisk) {
-      pendingHighRiskLabel = label;
+      pendingHighRiskLabel = target;
       showConfirmDialog = true;
       return;
     }
-    stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionLabel: label });
-  }
-
-  function goSystemDefault() {
-    unstageChange(tweak.definition.id);
-    if (hasSnapshot) handleRestoreClick();
+    stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionLabel: target });
   }
 
   function handleSegmentChange(index: number) {
     const target = segments[index]?.target;
-    if (target === undefined) return;
-    // The System Default segment is a Restore from the snapshot (ADR-0003), never an Apply.
-    if (target === SYSTEM_DEFAULT) goSystemDefault();
-    else stageApply(target);
+    if (target !== undefined) selectTarget(target);
   }
 
   function handleSelectChange(value: string | number) {
-    const v = String(value);
-    if (v === SYSTEM_DEFAULT) {
-      goSystemDefault();
-      return;
-    }
-    stageApply(v);
+    selectTarget(String(value));
   }
 
   function handleConfirmHighRisk() {
