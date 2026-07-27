@@ -158,15 +158,14 @@ fn drive_service(addr: &SvcAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
-/// Translates a System/TI-level service drive into the broker's typed op(s) (spec §9): mirrors
-/// `drive_service` mechanically -- `SvcSetStartup` plus the SAME explicit `DelayedAutostart`
-/// companion write `drive_service` always performs (never left stale from an earlier drive).
-/// Driving to `Missing` is the same no-op it always is (spec §5.4) -- an empty op list, so the
-/// caller (`engine::AllKinds::drive`) never spawns a child for it. Unlike `drive_service`, this
-/// does not repeat the resource-existence pre-check: that read runs at the CURRENT level (invariant
-/// 24 -- reads never escalate), so it is not duplicated here; an already-missing service simply
-/// reports its own SCM error through the broker rather than the typed `ResourceMissing` the
-/// in-process path gives, a known, narrower gap documented rather than silently absorbed.
+/// Translates a System/TI-level service drive into the broker's typed ops (spec §9), mirroring
+/// `drive_service`: `SvcSetStartup` plus the same unconditional `DelayedAutostart` companion
+/// write. Driving to `Missing` yields an empty op list, so the caller never spawns a child for it.
+///
+/// One deliberate difference from `drive_service`: no resource-existence pre-check. That read runs
+/// at the current level (reads never escalate), so an already-missing service reports the SCM's own
+/// error through the broker instead of the typed `ResourceMissing` the in-process path gives. A
+/// known gap, named here rather than silently absorbed.
 pub(crate) fn to_broker_ops(s: &Setting, target: &Value) -> Result<Vec<BrokerOp>, Error> {
     let Setting::Service(addr) = s else {
         return Err(Error::Invalid("ServiceKind cannot drive this Setting"));
@@ -304,8 +303,11 @@ mod tests {
         );
     }
 
+    /// System/Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
+    /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
+    /// the kind never escalates on its own.
     #[test]
-    fn drive_rejects_system_and_ti_levels_for_now() {
+    fn in_process_drive_still_rejects_system_and_ti_levels() {
         let setting = Setting::Service(SvcAddr {
             name: NO_SUCH_SERVICE.to_string(),
         });
@@ -313,7 +315,7 @@ mod tests {
             let cx = ExecCx::new(level);
             let err = ServiceKind
                 .drive(&setting, &Value::Startup(StartupType::Manual), &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
+                .expect_err("the in-process kind must still reject System/Ti directly");
             assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
         }
     }

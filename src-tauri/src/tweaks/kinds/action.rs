@@ -1,32 +1,25 @@
-//! `ActionKind` — apply/undo/probe for imperative `Action` effects (spec §5.5/§7): free-form
-//! `cmd`/`powershell` scripts, plus the one surviving structural op, `DeleteTree`. Not an
-//! `EffectKind` impl — Actions are not `Setting`s (see `kinds/mod.rs`'s module docs on the
-//! `Effect`/`Setting`/`Action` split) — this is its own public surface, per
-//! `docs/superpowers/specs/2026-07-21-tweak-system-redesign-design.md` §7.
+//! `ActionKind`: apply/undo/probe for imperative `Action` effects (spec §5.5/§7), meaning free-form
+//! `cmd`/`powershell` scripts plus the one structural op, `DeleteTree`. Not an `EffectKind` impl,
+//! because Actions are not `Setting`s (see `kinds/mod.rs` on the `Effect`/`Setting`/`Action` split).
 //!
-//! ## Level gating mirrors the registry kind's read/drive split exactly
-//! `run_apply`/`run_undo` are drives (they mutate state), so they call [`guard_level`] and reject
-//! `System`/`Ti` the same way every other kind's `drive` does (broker routing for scripts lands in
-//! a later task). `run_probe` is a read (it only observes state — spec §7: "state-based, never
-//! history-based"), so it never gates on `cx.level()`, exactly like `RegistryKind::read`: it always
-//! runs in-process at whatever level the app currently has (spec §9's "reads run at whatever level
-//! the app currently has").
+//! ## Level gating mirrors every other kind's read/drive split
+//! `run_apply`/`run_undo` mutate state, so they [`guard_level`] and reject `System`/`Ti`: no
+//! `BrokerOp` carries a script, so there is nothing to route them to. `run_probe` only observes
+//! state (spec §7: "state-based, never history-based"), so like every `read` it never gates on
+//! `cx.level()` and always runs in-process.
 //!
 //! ## No-undo / no-probe contract
-//! `run_undo` on an action with no `undo`, and `run_probe` on an action with no `probe` (every
-//! `DeleteTree` included — it has no `probe` field at all), return `Error::Invalid`, never
-//! `Ok(())`/`Ok(false)`. Spec §7 makes `undo`/`probe` optional and independent; the engine (a later
-//! task) is expected to check presence before calling these at all — but if it does not, the call
-//! must never silently lie (controller decision 2). This mirrors `Error::Invalid`'s existing
-//! contract for a kind dispatch bug: typed, not a panic, not a guess.
+//! `run_undo` without an `undo`, and `run_probe` without a `probe` (which includes every
+//! `DeleteTree`, since it has no `probe` field), return `Error::Invalid`, never `Ok(())`/
+//! `Ok(false)`. The engine is expected to check presence before calling; if it does not, the call
+//! must still never lie about having done something.
 //!
 //! ## `DeleteTree` reuses the hardened registry delete, verbatim
 //! `run_apply` on `DeleteTree` drives `Setting::RegistryKey(key)` to `Value::Present(false)`
-//! through [`RegistryKind`]'s own `EffectKind::drive` — the exact hardened delete path Task 5 built
-//! (empty-child-name/leading-backslash guards included), never reimplemented. Its `undo` (spec:
-//! "one-way unless the author supplies undo, e.g. a `.reg` restore") has no `shell` field on the
-//! model, unlike `Script` — this build always runs it as PowerShell (capable of `reg import` and
-//! anything `cmd` can do via `cmd /c`), a fixed choice documented here rather than a silent guess.
+//! through [`RegistryKind`]'s own `drive`, guards included, rather than reimplementing a delete.
+//! Its `undo` has no `shell` field on the model, unlike `Script`, so it always runs as PowerShell,
+//! which can do `reg import` and anything `cmd` can via `cmd /c`. A fixed choice, stated here
+//! rather than left as a silent guess.
 //!
 //! ## Timeout, and the process tree it actually bounds
 //! Rust's std has no built-in process timeout, so [`wait_with_timeout`] hand-rolls one: poll

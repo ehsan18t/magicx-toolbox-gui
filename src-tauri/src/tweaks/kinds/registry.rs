@@ -50,10 +50,8 @@ impl EffectKind for RegistryKind {
     }
 }
 
-/// `Level::User`/`Level::Admin` run in-process here; `System`/`Ti` are routed through the
-/// elevation broker one layer up, by `engine::AllKinds::drive` (see `to_broker_op` below and the
-/// `kinds` module docs for the placement) -- this kind's own `drive` (called directly, bypassing
-/// that routing) still rejects them itself.
+/// `User`/`Admin` run in-process; `System`/`Ti` are routed to the broker one layer up, so reaching
+/// this kind's own `drive` at those levels means the routing was bypassed (see [`to_broker_op`]).
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
         Level::User | Level::Admin => Ok(()),
@@ -239,21 +237,22 @@ fn delete_ok(result: Result<(), BackendError>) -> Result<(), BackendError> {
     }
 }
 
-// --- System/TI routing: Setting + Value -> BrokerOp (spec §9; see kinds/mod.rs's module docs for
-// WHERE this is called from -- `engine::AllKinds::drive`, never this file's own `drive`) ---------
+// --- System/TI routing: Setting + Value -> BrokerOp (called by `engine::AllKinds::drive`, never
+// by this file's own `drive`) ---------------------------------------------------------------------
 
-/// Translates a System/TI-level registry drive into the broker's typed op (spec §9): the
-/// mechanical `RegAddr`/`KeyAddr` + `Value` -> `BrokerOp` mapping. A field-addressed write is a
-/// read-modify-write cycle (`drive_field`) this task does not route -- the read half would need to
-/// run at the SAME elevated level to see the true live value, and the broker wire protocol has no
-/// read op at all -- so it stays `Error::UnsupportedLevel`, a strict narrowing of what was
-/// previously every System/Ti registry drive, not a new gap.
+/// Translates a System/TI-level registry drive into the broker's typed op (spec §9).
 ///
-/// An HKCU address is rejected outright. `context::route` already pins every HKCU setting to
-/// `Level::User`, so the engine cannot reach here with one, but that is a routing convention and
-/// conventions do not survive refactors. Inside the broker child `HKEY_CURRENT_USER` resolves to
-/// SYSTEM's or TrustedInstaller's own profile, so a translated HKCU op would write a hive no user
-/// ever sees, and the read-back would confirm it. Better a typed error than a silent wrong-green.
+/// Two things do not translate, both deliberately:
+///
+/// A **field-addressed write** is a read-modify-write cycle, and its read half would have to run
+/// at the same elevated level to see the true live value. The wire protocol has no read op, so it
+/// stays `UnsupportedLevel` rather than silently reading at the wrong level.
+///
+/// An **HKCU address** is rejected outright. `context::route` already pins every HKCU setting to
+/// `Level::User`, so the engine cannot reach here with one, but that is a convention and
+/// conventions do not survive refactors. Inside the broker child `HKEY_CURRENT_USER` is SYSTEM's
+/// or TrustedInstaller's own profile: the write would land in a hive no user ever sees, and the
+/// read-back would happily confirm it. A typed error beats a silent wrong-green.
 pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<BrokerOp, Error> {
     if let Setting::Registry(RegAddr {
         hive: Hive::Hkcu, ..
@@ -308,9 +307,8 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
     }
 }
 
-/// The broker's `RegSet` carries its value as untyped JSON (spec: the wire protocol is kind-
-/// neutral); this is the same per-type encoding `write_typed`'s callee ultimately stores, just
-/// expressed as JSON rather than a direct Win32 call.
+/// The broker's `RegSet` carries its value as untyped JSON, since the wire protocol is
+/// kind-neutral. Same per-type encoding `write_typed` ultimately stores, just as JSON.
 fn broker_reg_value(v: &TypedRegValue) -> serde_json::Value {
     match v {
         TypedRegValue::Dword(n) => serde_json::json!(n),
@@ -624,11 +622,9 @@ mod tests {
         assert_eq!(unchanged, "no-separators==;;");
     }
 
-    /// `RegistryKind::drive` itself is unchanged (spec §9 -- see kinds/mod.rs's module docs on
-    /// placement): the routing decision now lives one layer up, in `engine::AllKinds::drive`,
-    /// which never reaches this in-process `drive` for System/Ti at all. Calling it directly here
-    /// (bypassing that routing) still correctly rejects -- this in-process kind never silently
-    /// escalates on its own.
+    /// System/Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
+    /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
+    /// the kind never escalates on its own.
     #[test]
     fn in_process_drive_still_rejects_system_and_ti_levels() {
         let scratch = Scratch::new("level_gate");
@@ -643,14 +639,13 @@ mod tests {
         }
     }
 
-    /// This FLIPS the old expectation: a System/Ti registry drive is no longer a dead end --
-    /// `to_broker_op` (what `engine::AllKinds::drive` actually calls for System/Ti) translates it
-    /// into the broker's typed op instead. Pure translation, no real elevation/broker spawn.
+    /// `to_broker_op` is what `engine::AllKinds::drive` calls for System/Ti. Pure translation, so
+    /// no real elevation or broker spawn is involved.
     #[test]
-    fn system_and_ti_registry_drives_now_translate_to_broker_ops() {
-        // HKLM, not `Scratch::reg_addr`'s HKCU: an HKCU address is now rejected outright (see
+    fn system_and_ti_registry_drives_translate_to_broker_ops() {
+        // HKLM, not `Scratch::reg_addr`'s HKCU: an HKCU address is rejected outright (see
         // `hkcu_never_translates_to_a_broker_op`), and System/Ti translation is an HKLM concern
-        // anyway. Nothing is written here -- translation is pure -- so no scratch key is needed.
+        // anyway. Translation writes nothing, so no scratch key is needed.
         let scratch = Scratch::new("broker_translate");
         let value_addr = Setting::Registry(RegAddr {
             hive: Hive::Hklm,

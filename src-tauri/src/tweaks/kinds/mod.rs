@@ -1,30 +1,21 @@
-//! The `EffectKind` contract (spec §5): one trait every address kind implements, so the engine
-//! (a later task) can treat Registry/RegistryKey/Service/Task/Hosts/Firewall uniformly and mock
-//! any of them in tests. Task 5 implemented `Setting::Registry` and `Setting::RegistryKey` (see
-//! [`registry`]); this task adds `Setting::Service` and `Setting::Task` (see [`service`] and
-//! [`task`]); Task 7 adds Hosts/Firewall.
+//! The `EffectKind` contract (spec §5): one trait every address kind implements, so the engine can
+//! treat Registry/RegistryKey/Service/Task/Hosts/Firewall uniformly and mock any of them in tests.
 //!
-//! ## `ExecCx` and the broker seam (Task 14: System/TI routing is wired; placement decision below)
+//! ## Where the elevation decision lives
 //!
-//! `ExecCx` carries the effective elevation [`Level`] for one operation. Per spec invariant 24,
-//! *reads* always run at the current, in-process level — there is no elevated read op in the
-//! broker protocol (`services::elevation::broker::BrokerOp` has no `RegRead*` variant; a read
-//! never needs a fresh child process), so a kind's `read` must never gate on `cx.level()`.
-//! *Drives* (writes) do need to escalate for `Level::System`/`Level::Ti`: "User/Admin in-process,
-//! System/TI in fresh children."
+//! `ExecCx` carries the effective [`Level`] for one operation, and only *drives* consult it.
+//! Reads always run in-process at whatever level the app holds (spec invariant 24): the broker
+//! protocol has no read op, because a read never needs a fresh child. So a kind's `read` must
+//! never gate on `cx.level()`.
 //!
-//! **Placement:** each kind's own `drive` here is unchanged and still rejects `System`/`Ti` with
-//! [`Error::UnsupportedLevel`] when called directly — that stays true and is still worth pinning
-//! (the in-process kind never silently escalates on its own). The routing decision lives one layer
-//! up, in `engine::AllKinds::drive` (`tweaks/engine/mod.rs`): for `Level::User`/`Level::Admin` it
-//! delegates here exactly as before; for `Level::System`/`Level::Ti` it never reaches this file's
-//! `drive` at all — it instead translates the `Setting`/`Value` into `BrokerOp`(s) (`to_broker_op`/
-//! `to_broker_ops` in `registry.rs`/`service.rs`/`task.rs`) and submits them through
-//! `services::elevation::run_ops` in one child. This keeps `EffectKind`'s signature and every
-//! kind's own in-process behavior untouched, and keeps the translation colocated with the address
-//! shape it understands (registry/service/task each know their own `Setting` variant's fields).
-//! Hosts/Firewall have no corresponding `BrokerOp` in this build, so `AllKinds` still falls through
-//! to their in-process `drive` at `System`/`Ti` too, which correctly still rejects it.
+//! The System/Ti routing itself is NOT here. `engine::AllKinds::drive` owns it: at `User`/`Admin`
+//! it delegates to the kind's own `drive` below, and at `System`/`Ti` it never calls that `drive`
+//! at all, translating the `Setting`/`Value` into `BrokerOp`s (`to_broker_op`/`to_broker_ops` in
+//! `registry.rs`/`service.rs`/`task.rs`) and submitting them through `elevation::run_ops` in one
+//! child. Translation sits beside the address shape it understands; dispatch sits above every
+//! kind. Each `drive` here still rejects `System`/`Ti` itself, so a kind called directly can never
+//! silently escalate. Hosts/Firewall have no `BrokerOp`, so they reach that rejection at those
+//! levels.
 
 pub mod action;
 pub mod firewall;
@@ -49,8 +40,9 @@ pub enum Error {
     #[error("registry key not found: {0}")]
     KeyNotFound(String),
 
-    /// The operation was denied — insufficient rights, including "this build cannot yet reach
-    /// the privilege it needs".
+    /// The operation was denied for want of rights. For a routed System/TI drive this also covers
+    /// "the child ran, but the op inside it failed", which is why it reads as the broad denial
+    /// rather than a registry-specific one.
     #[error("registry access denied: {0}")]
     AccessDenied(String),
 
@@ -73,36 +65,33 @@ pub enum Error {
         source: ParseError,
     },
 
-    /// `cx`'s elevation level has no routing at all for this `Setting` (see the module docs
-    /// above) -- e.g. a field-addressed registry write, or a Hosts/Firewall effect, at
-    /// `System`/`Ti`, neither of which this build's broker translation covers.
+    /// `cx`'s level has no routing for this `Setting`: a field-addressed registry write, or a
+    /// Hosts/Firewall effect, at `System`/`Ti`, neither of which the broker translation covers.
     #[error("{0:?} elevation is not yet routed by this build")]
     UnsupportedLevel(Level),
 
-    /// Could not ACQUIRE the declared elevation level at all (spec §9, ADR-0005 as amended;
-    /// invariant 24): the TI service would not start, `SeDebugPrivilege` was denied, winlogon was
-    /// not found, or the elevated child failed to spawn or respond. Environmental, not a
-    /// mis-declared level -- distinct from [`Error::AccessDenied`], which (for a routed System/TI
-    /// drive) means the child WAS acquired and ran, but the operation itself was still denied.
+    /// Could not ACQUIRE the declared level at all: the TI service would not start,
+    /// `SeDebugPrivilege` was denied, winlogon was not found, or the child failed to spawn or
+    /// respond. Environmental, not a mis-declared level, and deliberately distinct from
+    /// [`Error::AccessDenied`], which means the child ran but the operation was still refused.
     #[error("could not acquire {0:?} elevation: {1}")]
     CouldNotAcquireElevation(Level, String),
 
     /// The addressed service or task does not exist, but the caller asked to drive it to a real
-    /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4,
-    /// invariant 12), so this is a typed refusal, never a silent no-op — distinct from driving
-    /// *to* `Missing`, which is a defined no-op (`Ok(())`) regardless of whether the resource
-    /// exists.
+    /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4),
+    /// so this is a typed refusal, never a silent no-op. Driving *to* `Missing` is the defined
+    /// no-op instead, whether or not the resource exists.
     #[error("{0}")]
     ResourceMissing(String),
 
-    /// A caller routed a `Setting`/`Value` this kind does not own to it — an engine dispatch bug,
-    /// not a runtime condition. Kept typed rather than a panic: this trait also runs inside the
+    /// A caller routed a `Setting`/`Value` this kind does not own to it: an engine dispatch bug,
+    /// not a runtime condition. Typed rather than a panic because this trait also runs inside the
     /// elevated broker process, where a panic would abort an entire batch.
     #[error("{0}")]
     Invalid(&'static str),
 
-    /// Anything else the backing primitive reported (registry, service, or task -- kept
-    /// kind-neutral since `map_backend_error` routes all three kinds through this variant).
+    /// Anything else the backing primitive reported, kept kind-neutral since `map_backend_error`
+    /// routes registry, service, and task through this one variant.
     #[error("operation failed: {0}")]
     Backend(String),
 
@@ -120,8 +109,8 @@ pub enum Error {
     ActionExecFailed(String),
 }
 
-/// Execution context an [`EffectKind`] runs under. See the module docs for the broker seam a
-/// later task attaches without changing [`EffectKind`] itself.
+/// Execution context an [`EffectKind`] runs under. See the module docs for where the elevation
+/// decision is made (not here).
 pub struct ExecCx {
     level: Level,
 }
@@ -136,8 +125,8 @@ impl ExecCx {
     }
 }
 
-/// One address kind's read/drive behavior (spec §5). The contract every kind implements; the
-/// engine (a later task) dispatches on `Setting`'s variant and mocks this trait in its own tests.
+/// One address kind's read/drive behavior (spec §5). The engine dispatches on `Setting`'s variant
+/// and mocks this trait in its own tests.
 pub trait EffectKind: Send + Sync {
     /// The current value at `s`'s address. Never guesses: an unreadable or unparseable state is
     /// a typed `Err`, not a fabricated `Value` (invariant 3).
@@ -148,13 +137,9 @@ pub trait EffectKind: Send + Sync {
 }
 
 // --- helpers shared by the service and task kinds ------------------------------------------------
-//
-// The registry kind (`registry.rs`) predates these and keeps its own private copies so Task 5's
-// already-reviewed file stays untouched; these exist once here because two new kinds need them.
 
-/// `Level::User`/`Level::Admin` run in-process here; `System`/`Ti` are routed through the
-/// elevation broker one layer up, by `engine::AllKinds::drive` -- this kind's own `drive` (called
-/// directly, bypassing that routing) still rejects them itself (see the module docs above).
+/// `User`/`Admin` run in-process; `System`/`Ti` are routed to the broker one layer up, so reaching
+/// this kind's own `drive` at those levels means the routing was bypassed (see the module docs).
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
         Level::User | Level::Admin => Ok(()),
@@ -180,11 +165,8 @@ fn map_backend_error(e: BackendError) -> Error {
 mod tests {
     use super::*;
 
-    /// Spec §9/ADR-0005 (amended), invariant 24: "couldn't acquire the level" and "acquired but
-    /// access-denied" are two DISTINCT typed failures, never collapsed into one generic error.
-    /// `CouldNotAcquireElevation` is the environmental case (TI service unstartable, winlogon
-    /// absent, ...); `AccessDenied` (pre-existing) is reused for "acquired the child, but the
-    /// operation itself was still denied" -- distinguishable by variant, never by string-matching.
+    /// "Could not acquire the level" and "acquired it, but access denied" stay two distinct typed
+    /// failures, distinguishable by variant rather than by string-matching a message.
     #[test]
     fn insufficient_elevation_two_distinct_errors() {
         let could_not_acquire = Error::CouldNotAcquireElevation(

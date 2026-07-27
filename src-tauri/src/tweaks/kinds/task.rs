@@ -118,12 +118,12 @@ fn drive_task(addr: &TaskAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
-/// Translates a System/TI-level task drive into the broker's typed op (spec §9): mirrors
-/// `drive_task` mechanically, minus the existence pre-check `drive_task` performs in-process (that
-/// read runs at the CURRENT level -- invariant 24 -- so it is not repeated here; an already-missing
-/// task simply reports its own COM error through the broker rather than the typed
-/// `ResourceMissing` the in-process path gives). Driving to `Missing` is the same no-op it always
-/// is (spec §5.4).
+/// Translates a System/TI-level task drive into the broker's typed op (spec §9), mirroring
+/// `drive_task`. Driving to `Missing` yields an empty op list, the same no-op it always is.
+///
+/// As in `service.rs`, the existence pre-check is not repeated: that read runs at the current level,
+/// so an already-missing task reports its own COM error through the broker rather than the typed
+/// `ResourceMissing` the in-process path gives.
 pub(crate) fn to_broker_ops(s: &Setting, target: &Value) -> Result<Vec<BrokerOp>, Error> {
     let Setting::Task(addr) = s else {
         return Err(Error::Invalid("TaskKind cannot drive this Setting"));
@@ -252,9 +252,12 @@ mod tests {
         assert!(missing.is_empty(), "Missing is a no-op -- no ops to run");
     }
 
+    /// System/Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
+    /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
+    /// the kind never escalates on its own.
     #[test]
-    fn drive_rejects_system_and_ti_levels_for_now() {
-        // guard_level fires before any COM call -- safe to run by default.
+    fn in_process_drive_still_rejects_system_and_ti_levels() {
+        // guard_level fires before any COM call, so this is safe to run by default.
         let setting = Setting::Task(TaskAddr {
             path: "\\Irrelevant".to_string(),
         });
@@ -262,7 +265,7 @@ mod tests {
             let cx = ExecCx::new(level);
             let err = TaskKind
                 .drive(&setting, &Value::TaskEnabled(true), &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
+                .expect_err("the in-process kind must still reject System/Ti directly");
             assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
         }
     }

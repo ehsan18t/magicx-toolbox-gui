@@ -95,10 +95,7 @@ impl Drop for ExclusiveTempFile {
 /// than reads) cannot be opened exclusively here, but still benefits from being unguessable.
 pub fn unique_temp_path(prefix: &str, ext: &str) -> io::Result<PathBuf> {
     let token = random_hex_token()?;
-    Ok(std::env::temp_dir().join(format!(
-        "{prefix}-{}-{token}.{ext}",
-        std::process::id()
-    )))
+    Ok(std::env::temp_dir().join(format!("{prefix}-{}-{token}.{ext}", std::process::id())))
 }
 
 #[cfg(test)]

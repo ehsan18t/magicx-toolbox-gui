@@ -740,20 +740,12 @@ mod tests {
         }
     }
 
-    // Deliberately NOT a `#[test]`: `run_ops(Elevation::System, ...)` respawns
-    // `std::env::current_exe()` with `--broker <req> <resp>` (see `run_elevated_broker` above),
-    // and only `main.rs` (via `run_broker_if_requested`) understands that flag -- under `cargo
-    // test`, `current_exe()` is the libtest harness binary, which rejects `--broker` as an
-    // unrecognized argument and exits non-zero. That is a structural property of the respawn
-    // design (pre-existing, shared by every `*_as_system`/`*_as_ti` wrapper, not something Task 14
-    // introduced) and cannot be made to pass from inside this test binary.
+    // There is deliberately no elevated end-to-end test here, and there cannot be one:
+    // `run_ops(Elevation::System, ..)` respawns `current_exe()` with `--broker`, but under `cargo
+    // test` that is the libtest harness binary, which rejects the flag and exits non-zero. The
+    // respawn design makes this structural, not a gap in these tests.
     //
-    // The real end-to-end path (Task 14's grouped-execution smoke test) was instead verified
-    // manually against the actually-built `magicx-toolbox.exe`: a `BrokerRequest` with this exact
-    // grouped write-then-delete-then-delete-key shape (`RegSet` -> `RegDeleteValue` ->
-    // `RegDeleteKey`, one child, spec §9) was serialized to a file and fed to
-    // `magicx-toolbox.exe --broker <req> <resp>` directly (elevated Administrator shell); the
-    // response reported `["Ok","Ok","Ok"]`, and an independent PowerShell `Test-Path` against
-    // `HKLM:\SOFTWARE\MagicXToolboxTest\...` confirmed no residue afterward. See the Task 14
-    // report for the full transcript.
+    // Verify the real path against the built `magicx-toolbox.exe` instead: serialize a
+    // `BrokerRequest` to a file, run `magicx-toolbox.exe --broker <req> <resp>` from an elevated
+    // shell, and check both the response and the machine state it claims to have produced.
 }
