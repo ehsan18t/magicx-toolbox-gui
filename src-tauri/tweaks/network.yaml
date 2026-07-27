@@ -1,0 +1,1733 @@
+category:
+  id: network
+  name: "Network, Update & Power"
+  icon: "mdi:lan"
+  description: "Network hardening, Windows Update delivery and deferral, and power/sleep behavior. Machine-wide (HKLM) policies and powercfg actions, reversible from snapshots."
+
+tweaks:
+  - id: dns_over_https
+    name: "Enable DNS over HTTPS auto-upgrade"
+    description: "Auto-upgrade DNS lookups to encrypted HTTPS, but only where the configured resolver is already DoH-capable."
+    info: |
+      **Upgrades your DNS lookups to encrypted HTTPS, but only if you already use a resolver Windows recognises as DoH-capable.**
+
+      ## What it does
+      Sets `EnableAutoDoh = 2` under `Dnscache\Parameters`, which tells the Windows 11 DNS client to
+      promote plaintext lookups to DNS over HTTPS whenever the configured resolver is on Windows'
+      known-DoH list (Cloudflare, Google, Quad9). It does not choose a resolver for you, and it does
+      not force encryption.
+
+      ## Benefits
+      - **Hides your lookups**: your ISP and anyone on the path stop seeing which names you resolve
+      - **Blocks on-path tampering**: encrypted answers cannot be silently rewritten in transit
+      - **No configuration UI needed**: one value, applied machine-wide across every adapter
+
+      ## Drawbacks
+      - **Does nothing by itself**: on an ordinary ISP resolver nothing is encrypted, because auto-upgrade only fires for known-DoH servers
+      - **Unsupported by Microsoft**: the blog that published this value said registry DoH configuration would not be supported in release builds
+      - **No feedback**: nothing in Settings reflects the change, so you cannot tell whether it took effect
+      - **Breaks captive portals and internal DNS**: hotel and airport sign-in pages, and split-horizon corporate names, can stop resolving
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer. The built-in DoH client does not exist on Windows 10, including 22H2 and LTSC 2021, so this does nothing there.
+      - **Takes effect**: after reboot
+      - **Reverting**: deletes the value, restoring the Windows default of no auto-upgrade
+      - **Set a DoH resolver first**: point the adapter at 1.1.1.1, 8.8.8.8 or 9.9.9.9, or this write is inert
+      - **The supported route** is the "Require DoH" policy tweak, the Settings UI, or `Add-DnsClientDohServerAddress`
+
+      ## Recommendation
+      Use it only if you have already set a DoH-capable resolver such as Cloudflare or Quad9; on an
+      ISP-assigned resolver it changes nothing. If you want encryption guaranteed rather than
+      opportunistic, use the policy-based "Require DoH" control instead.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Windows Insiders can now test DNS over HTTPS](https://techcommunity.microsoft.com/blog/networkingblog/windows-insiders-can-now-test-dns-over-https/1381282)
+      - [Secure DNS Client over HTTPS (DoH)](https://learn.microsoft.com/en-us/windows-server/networking/dns/doh-client-support)
+      - [Add-DnsClientDohServerAddress](https://learn.microsoft.com/en-us/powershell/module/dnsclient/add-dnsclientdohserveraddress)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { products: [11] }
+    effects:
+      - id: auto_doh
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters', name: EnableAutoDoh, type: REG_DWORD }
+    options:
+      - label: "Auto-upgrade to DoH"
+        values: { auto_doh: 2 }
+      - label: "No auto-upgrade"
+        values: { auto_doh: absent }
+
+  - id: require_doh
+    name: "Require encrypted DNS"
+    description: "Enforce DNS over HTTPS by policy so lookups fail rather than silently falling back to plaintext."
+    info: |
+      **Forces encrypted DNS: if the resolver will not do DNS over HTTPS, name resolution fails rather than falling back to plaintext.**
+
+      ## What it does
+      Sets `DoHPolicy = 3` ("Require encryption") under the DNS Client policy key, the first-party
+      Group Policy "Configure DNS over HTTPS (DoH) name resolution". Unlike opportunistic
+      auto-upgrade, this never falls back to unencrypted queries.
+
+      ## Benefits
+      - **A real guarantee**: no silent plaintext fallback, which is the whole weakness of auto-upgrade
+      - **Microsoft-documented**: an ADMX-backed policy, not an undocumented registry value
+      - **Machine-wide**: applies across every interface, not per-server
+
+      ## Drawbacks
+      - **Total name-resolution failure if misconfigured**: if your DNS servers do not speak DoH, nothing resolves and the machine looks like it has no internet
+      - **Breaks captive portals**: hotel and airport sign-in pages depend on plaintext DNS interception
+      - **Wrong for domain-joined machines**: Microsoft warns against requiring DoH where Windows Server DNS answers internal names, because it does not serve DoH
+      - **Needs a DoH-capable resolver set first**: this policy enforces encryption, it does not provide a server
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer. The policy itself declares Windows 10 20H2 and later, but no shipping Windows 10 release has the DoH client, so it has no practical effect there.
+      - **Takes effect**: after reboot, or after restarting the DNS Client (`Dnscache`) service
+      - **Reverting**: deletes the value, restoring Windows' default encryption behaviour
+      - **Set a DoH resolver first** (Cloudflare, Google or Quad9, or one added with `Add-DnsClientDohServerAddress`), then apply this
+      - The same policy also carries separate DoH and DNS over TLS sub-settings, which this does not write
+
+      ## Recommendation
+      The right choice for a privacy-motivated user on a standalone machine who has already configured
+      a DoH-capable resolver and wants encryption guaranteed rather than opportunistic. Do not apply it
+      on a domain-joined machine, or on a laptop that regularly connects through captive portals,
+      without an easy way to revert.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Secure DNS Client over HTTPS (DoH)](https://learn.microsoft.com/en-us/windows-server/networking/dns/doh-client-support)
+      - [Policy CSP - ADMX_DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [Add-DnsClientDohServerAddress](https://learn.microsoft.com/en-us/powershell/module/dnsclient/add-dnsclientdohserveraddress)
+    warning: "If your DNS servers do not support DNS over HTTPS, name resolution stops entirely and the machine will look like it has no internet. Configure a DoH-capable resolver first, and do not apply this on a domain-joined machine."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { products: [11] }
+    effects:
+      - id: doh_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient', name: DoHPolicy, type: REG_DWORD }
+    options:
+      - label: "Require encryption"
+        values: { doh_policy: 3 }
+      - label: "Encryption optional"
+        values: { doh_policy: absent }
+
+  - id: disable_llmnr
+    name: "Disable LLMNR"
+    description: "Turn off multicast LLMNR name resolution to block a common credential-theft and spoofing vector."
+    info: |
+      **Turns off the legacy LLMNR name-resolution fallback, closing a favourite target for local-network credential theft.**
+
+      ## What it does
+      Sets the `EnableMulticast` policy value to 0, the registry form of the Group Policy "Turn off
+      multicast name resolution". LLMNR is the fallback Windows uses to find machines by name when
+      DNS does not answer, and it broadcasts those queries to the whole local network.
+
+      ## Benefits
+      - **Closes LLMNR poisoning**: the highest-yield, lowest-effort attack on a flat Windows network
+      - **Stops credential capture**: tools like Responder answer the broadcast and harvest NTLM hashes
+      - **Benchmark-backed**: CIS control 18.5.4.1 recommends exactly this
+      - **Survives updates**: it is a policy value, not a preference
+
+      ## Drawbacks
+      - **Short names may fail**: on a network with no DNS server, single-label lookups fall back to NetBIOS or stop working
+      - **Pairs with NetBIOS**: if you also disable NetBIOS, short-name discovery on a DNS-less network stops entirely
+      - **Not the whole picture**: mDNS is a third broadcast protocol and needs its own control
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021
+      - **Takes effect**: after reboot, when the DNS Client service next reads the policy
+      - **Reverting**: deletes the value, which is the Windows default state (LLMNR enabled)
+      - **Editions**: documented for Pro, Education, Enterprise and IoT Enterprise; the DNS client reads the value on Home too, but Microsoft does not document that
+
+      ## Recommendation
+      Apply it. On any network with a working DNS server, which includes essentially every home
+      router, the cost is zero and the security gain is real. Skip it only if you depend on short-name
+      discovery on a network with no DNS at all.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - ADMX_DnsClient, Turn_Off_Multicast](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [CIS 18.5.4.1, Turn off multicast name resolution](https://www.tenable.com/audits/items/CIS_DC_SERVER_2012_Level_1_v2.2.0.audit:f9584c0c934378405ec052736485f437)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: enable_multicast
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient', name: EnableMulticast, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { enable_multicast: 0 }
+      - label: "Enabled"
+        values: { enable_multicast: absent }
+
+  - id: disable_netbios_tcpip
+    name: "Disable NetBIOS over TCP/IP"
+    description: "Disable the legacy NetBIOS name service (NBT-NS) on every adapter to close a spoofing and poisoning attack surface."
+    info: |
+      **Shuts off the ancient NetBIOS name service on every adapter, removing a second broadcast attack surface that credential-theft tools abuse.**
+
+      ## What it does
+      Writes `NetbiosOptions = 2` to every `Tcpip_*` interface under `NetBT\Parameters\Interfaces`,
+      the registry equivalent of selecting "Disable NetBIOS over TCP/IP" on the WINS tab. Like LLMNR,
+      NBT-NS answers name requests by broadcast, which attackers hijack.
+
+      ## Benefits
+      - **Closes NBT-NS poisoning**: the twin of LLMNR poisoning, targeted by the same tooling
+      - **Completes the pair**: with LLMNR off, the two classic broadcast name-resolution holes are both shut
+      - **Machine-wide**: applied to every adapter present, not just the active one
+
+      ## Drawbacks
+      - **Breaks legacy discovery**: NetBIOS-only NAS boxes, old network printers and some line-of-business apps stop resolving
+      - **Not applied to new adapters**: a USB NIC, VPN adapter or Hyper-V switch added later keeps NetBIOS until you re-apply
+      - **WINS networks**: any network still using WINS depends on this
+      - **`net view` browsing** stops working where it relied on NetBIOS names
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions
+      - **Takes effect**: after reboot (or `ipconfig /renew` on a DHCP interface)
+      - **Reverting**: restores the previous per-interface value from the snapshot
+      - Modern file sharing over SMB on port 445 with DNS names is unaffected
+
+      ## Recommendation
+      Apply it on any modern network, ideally together with disabling LLMNR. Skip it if you still run
+      genuinely old NetBIOS-only hardware, or test first and re-enable NetBIOS on the one adapter that
+      needs it.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [NetbiosOptions (Core Services)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776524(v=ws.10))
+      - [TCP/IP and NBT configuration parameters](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/tcpip-and-nbt-configuration-parameters)
+      - [Unattend NetbiosOptions setting](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-netbt-interfaces-interface-netbiosoptions)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: NetbiosTcpip, type: REG_DWORD }
+      - id: netbios_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $root = 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NetbiosTcpip'
+            New-Item -Path $snap -Force | Out-Null
+            Get-ChildItem $root | Where-Object { $_.PSChildName -like 'Tcpip_*' } | ForEach-Object {
+              $prior = (Get-ItemProperty -Path $_.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue).NetbiosOptions
+              # -1 records "the value was absent" so the undo deletes it instead of inventing a default.
+              Set-ItemProperty -Path $snap -Name $_.PSChildName -Value $(if ($null -eq $prior) { -1 } else { [int]$prior }) -Type DWord
+              Set-ItemProperty -Path $_.PSPath -Name NetbiosOptions -Value 2 -Type DWord
+            }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $root = 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NetbiosTcpip'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            Get-ChildItem $root | Where-Object { $_.PSChildName -like 'Tcpip_*' } | ForEach-Object {
+              $p = if ($s) { $s.PSObject.Properties[$_.PSChildName] } else { $null }
+              if ($null -eq $p -or [int]$p.Value -lt 0) {
+                Remove-ItemProperty -Path $_.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue
+              } else {
+                Set-ItemProperty -Path $_.PSPath -Name NetbiosOptions -Value ([int]$p.Value) -Type DWord
+              }
+            }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $ifaces = Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces' |
+              Where-Object { $_.PSChildName -like 'Tcpip_*' }
+            if (-not $ifaces) { exit 1 }
+            foreach ($i in $ifaces) {
+              if ((Get-ItemProperty $i.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue).NetbiosOptions -ne 2) { exit 1 }
+            }
+            exit 0
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, netbios_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_mdns
+    name: "Disable mDNS"
+    description: "Turn off multicast DNS, the third broadcast name-resolution protocol, at both the policy and service keys."
+    info: |
+      **Turns off mDNS, the third broadcast name-resolution protocol, closing the last leg of the LLMNR and NetBIOS spoofing triad.**
+
+      ## What it does
+      Sets `EnableMDNS = 0` both under the DNS Client policy key and under the `Dnscache\Parameters`
+      service key, which is the "locally configured setting" the policy's own help text defers to.
+      The DNS client then stops answering and issuing multicast DNS queries.
+
+      ## Benefits
+      - **Closes mDNS poisoning**: the same Responder-class attack that motivates disabling LLMNR works over mDNS
+      - **Completes the set**: with LLMNR and NetBIOS already off, this is the remaining broadcast name-resolution protocol
+      - **First-party control**: Windows ships a Group Policy for it, "Configure multicast DNS (mDNS) protocol"
+      - **Fully reversible**: deleting both values restores the default
+
+      ## Drawbacks
+      - **`.local` names stop resolving**: anything you reach by a `.local` hostname becomes unreachable by name
+      - **Network printers vanish**: AirPrint and IPP Everywhere printers are discovered over mDNS
+      - **Casting and smart-home discovery break**: Chromecast, Google Cast, Apple device discovery and some smart-home apps rely on it
+      - **Highest cost of the three**: this is the name-resolution tweak users are most likely to notice
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer. The policy declares "At least Windows 10", so Windows 10 including LTSC 2021 should honour it, but that was verified on 26100 only.
+      - **Takes effect**: after reboot, or after restarting the DNS Client (`Dnscache`) service
+      - **Reverting**: deletes both values, restoring mDNS
+      - Apply this after LLMNR and NetBIOS, not before; it is the one most likely to be noticed
+
+      ## Recommendation
+      Worth applying on a hardened workstation with no `.local` dependencies and no mDNS-discovered
+      printers or cast devices. If you print to a network printer found by name, or cast to a TV,
+      expect that to stop and skip this one.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - ADMX_DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [DNS Client Group Policy settings](https://learn.microsoft.com/en-us/windows-server/networking/dns/dns-top)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: mdns_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient', name: EnableMDNS, type: REG_DWORD }
+      - id: mdns_service
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters', name: EnableMDNS, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { mdns_policy: 0, mdns_service: 0 }
+      - label: "Enabled"
+        values: { mdns_policy: absent, mdns_service: absent }
+
+  - id: disable_wpad
+    name: "Disable WPAD auto-proxy discovery"
+    description: "Disable Web Proxy Auto-Discovery machine-wide so attackers cannot hijack traffic via rogue WPAD responses."
+    info: |
+      **Blocks Windows from auto-hunting the network for proxy settings, killing a classic man-in-the-middle trick that reroutes your web traffic.**
+
+      ## What it does
+      Sets `DisableWpad = 1` under `Internet Settings\WinHttp`, the method Microsoft documents for
+      switching Web Proxy Auto-Discovery off since Windows 10 1809. Every proxy-detection call made
+      through the WinHTTP API stops looking for a WPAD configuration file.
+
+      ## Benefits
+      - **Kills a live MITM vector**: a rogue device can no longer answer WPAD and route your traffic through its proxy
+      - **Documented switch**: Microsoft's own supported way to turn WPAD off
+      - **Free if unused**: costs nothing on any network that does not hand out proxy config by WPAD
+      - **Works on Home**: a product key, not a policy key, so no edition gate
+
+      ## Drawbacks
+      - **Breaks WPAD networks**: where proxy settings are distributed this way, web access stops until you set a proxy by hand
+      - **Not complete coverage**: applications can still resolve the name "WPAD" through plain DNS, so DNS-level WPAD queries continue
+      - **Settings UI still matters**: third-party apps and browsers may read the Windows Settings proxy auto-discovery toggle, which this does not change
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1809 and later including LTSC 2021, all editions
+      - **Takes effect**: after reboot, because WinHTTP caches proxy configuration per process
+      - **Reverting**: deletes the value, restoring automatic proxy discovery
+      - This deliberately does not disable the `WinHttpAutoProxySvc` service, because many Windows components depend on it
+
+      ## Recommendation
+      Apply it on any home or small-office machine that does not use automatic proxy configuration,
+      and also turn off auto-discovery in Settings for full coverage. On a corporate network that
+      distributes proxy settings by WPAD, leave it alone or configure the proxy manually first.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [How to disable HTTP proxy features](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/disable-http-proxy-auth-features)
+      - [WinHTTP AutoProxy functions](https://learn.microsoft.com/en-us/windows/win32/winhttp/winhttp-autoproxy-api)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: disable_wpad_value
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\WinHttp', name: DisableWpad, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { disable_wpad_value: 1 }
+      - label: "Enabled"
+        values: { disable_wpad_value: absent }
+
+  - id: disable_ipv6_transition
+    name: "Disable IPv6 transition technologies"
+    description: "Drop the legacy IPv6 tunnel interfaces (6to4 and the generic tunnel) without touching native IPv6."
+    info: |
+      **Drops the legacy IPv6 tunnel interfaces so 6to4 cannot quietly build a tunnel and register its addresses in DNS, while native IPv6 keeps working.**
+
+      ## What it does
+      Sets `DisabledComponents = 0x01` on the IPv6 stack, the low bit of Microsoft's documented
+      bitmask, which disables the tunnel interfaces (6to4, Teredo, ISATAP). Native IPv6 lives in a
+      different bit and is untouched.
+
+      ## Benefits
+      - **Stops 6to4 auto-tunnels**: 6to4 enables itself whenever an interface holds a public IPv4 address, and Microsoft itself recommends disabling it when that is unwanted
+      - **Fewer address leaks**: no tunnel addresses registered in DNS and no unexpected connectivity path
+      - **Native IPv6 intact**: this is bit 0, not the 0x10 bit that disables native IPv6
+
+      ## Drawbacks
+      - **Breaks Routing and Remote Access**: Microsoft states any value other than 0 or 32 causes RRAS to fail, and `0x01` is such a value
+      - **Smaller change than it sounds**: ISATAP and Teredo are already disabled by default in Windows, so on a stock machine only 6to4 and the generic tunnel interface actually go away
+      - **Teredo-dependent apps**: some older peer-to-peer software and legacy console networking need Teredo
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions
+      - **Takes effect**: after reboot, which Microsoft requires for this value
+      - **Reverting**: deletes the value, restoring the Windows default of 0x00
+      - **Do not confuse `0x01` with `0xFF`**: 0xFF disables IPv6 entirely, which Microsoft does not support and which breaks Windows features that assume IPv6 is present
+
+      ## Recommendation
+      Worth applying on an ordinary client that does not need tunnelled IPv6, which is most machines.
+      Do not apply it on anything running Routing and Remote Access, or on a machine that depends on
+      Teredo or on an ISATAP intranet deployment.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidance for configuring IPv6 in Windows for advanced users](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/configure-ipv6-in-windows)
+      - [IPv6 transition technologies overview](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/bb726951(v=technet.10))
+    warning: "Microsoft states that any DisabledComponents value other than 0 or 32 causes the Routing and Remote Access service to fail. Do not apply this on a machine running RRAS."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: disabled_components
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters', name: DisabledComponents, type: REG_DWORD }
+    options:
+      - label: "Tunnels disabled"
+        values: { disabled_components: 0x01 }
+      - label: "Enabled"
+        values: { disabled_components: absent }
+
+  - id: disable_internet_connection_sharing
+    name: "Disable Internet Connection Sharing"
+    description: "Disable the ICS service and hide its UI so the PC cannot be turned into an unmanaged router and NAT."
+    info: |
+      **Turns off Internet Connection Sharing, so the PC cannot be turned into an unmanaged router and NAT.**
+
+      ## What it does
+      Disables the `SharedAccess` service (Internet Connection Sharing) and enables the "Prohibit use
+      of Internet Connection Sharing" policy, which writes `NC_ShowSharedAccessUI = 0` and removes the
+      sharing option from network connection properties.
+
+      ## Benefits
+      - **No accidental routing**: the machine cannot start NATting another network onto your connection
+      - **Removes the UI**: the sharing tab option disappears, so it cannot be enabled by mistake
+      - **Benchmark-backed**: DISA's Windows 11 STIG has a dedicated rule requiring ICS be disabled
+
+      ## Drawbacks
+      - **Breaks WSL2 and the Hyper-V Default Switch**: `SharedAccess` is the NAT engine behind them, so WSL2 and Windows Sandbox lose internet access
+      - **Mobile Hotspot may stop working**: the Hotspot service does not formally depend on this one, but it uses the same NAT engine
+      - **No sharing a connection**: if you ever tether one adapter's connection to another, that stops
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The policy is declared for Windows XP and later, so every target platform qualifies.
+      - **Takes effect**: immediately, the service is stopped on apply
+      - **Reverting**: restores the previous service start type from the snapshot and deletes the policy value
+      - **Do not apply this on a machine that runs WSL2, Docker Desktop or Windows Sandbox.** It is the most common cause of "WSL2 suddenly has no internet".
+
+      ## Recommendation
+      Apply it on an ordinary desktop or work machine that will never share a connection. Do not apply
+      it on a development machine using WSL2, Docker Desktop or Windows Sandbox, and do not apply it if
+      you use Mobile Hotspot.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Prohibit use of Internet Connection Sharing, Policy CSP ADMX_NetworkConnections](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-networkconnections)
+      - [Internet Connection Sharing overview](https://learn.microsoft.com/en-us/windows/win32/ics/internet-connection-sharing)
+    warning: "SharedAccess is the NAT engine behind the Hyper-V Default Switch, so disabling it is a well-known cause of WSL2, Docker Desktop and Windows Sandbox losing internet access. Do not apply it on a development machine."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: ics_service
+        service: { name: SharedAccess }
+      - id: show_shared_access_ui
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Network Connections', name: NC_ShowSharedAccessUI, type: REG_DWORD }
+    options:
+      # Only the hardened state is authored: the stock start type of SharedAccess is unconfirmed, so
+      # the return path is the snapshot rather than a guessed literal.
+      - label: "Disabled"
+        values: { ics_service: disabled, show_shared_access_ui: 0 }
+
+  - id: firewall_logging_and_merge
+    name: "Firewall logging and local policy merge"
+    description: "Log dropped packets on all three firewall profiles, and optionally stop applications adding their own allow rules."
+    info: |
+      **Turns on firewall drop logging across all three profiles, and optionally stops applications adding their own allow rules.**
+
+      ## What it does
+      Writes `LogDroppedPackets = 1` with a log path and a 16 MB size limit into the Domain, Private
+      and Public firewall profile policy keys, so blocked inbound packets are recorded. The stricter
+      option also sets `AllowLocalPolicyMerge = 0`, which makes Windows ignore locally created
+      firewall rules.
+
+      ## Benefits
+      - **You can see what is blocked**: dropped packets land in a per-profile log instead of vanishing silently
+      - **Bigger log**: 16 MB instead of the 4 MB default, so the log covers more than a few minutes of noise
+      - **Stops silent rule creation**: with local policy merge off, an application cannot quietly add an allow rule for itself
+      - **Benchmark-backed**: CIS recommends firewall logging and merge control on all three profiles
+
+      ## Drawbacks
+      - **Local policy merge off breaks inbound, silently**: on a standalone machine there is no pushed rule set to fall back to, so the "Windows Defender Firewall has blocked some features of this app" prompt never appears and games or servers just fail to accept connections
+      - **Log noise**: a Public-profile log fills quickly on a busy network
+      - **Small disk cost**: up to 16 MB per profile
+      - **Does nothing on Home for the merge half**: `AllowLocalPolicyMerge` is documented for Pro and above
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC
+      - **Takes effect**: immediately
+      - **Reverting**: deletes all four values per profile, restoring the default log settings and re-enabling local rule merge
+      - Logs land at `%SystemRoot%\System32\logfiles\firewall\<profile>fw.log`
+      - `AllowLocalPolicyMerge` is documented by Microsoft's Firewall CSP but is not in the shipped ADMX; it is written directly
+
+      ## Recommendation
+      Turn on logging on any machine where you want to diagnose blocked connections; it is cheap and
+      reversible. Only turn off local policy merge on a machine whose firewall rules are managed
+      centrally, because on a standalone PC it breaks inbound connections with no prompt and no
+      obvious cause.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Firewall CSP, MdmStore AllowLocalPolicyMerge](https://learn.microsoft.com/en-us/windows/client-management/mdm/firewall-csp)
+      - [Configure the Windows Firewall log](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure-logging)
+    warning: "The second option turns off local policy merge. On a standalone PC that silently stops inbound connections working: the usual firewall prompt never appears and games or servers simply fail to accept connections. Choose logging alone unless this machine's firewall rules are managed centrally."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: domain_log_dropped
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+      - id: domain_log_path
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging', name: LogFilePath, type: REG_SZ }
+      - id: domain_log_size
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging', name: LogFileSize, type: REG_DWORD }
+      - id: domain_merge
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+      - id: private_log_dropped
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+      - id: private_log_path
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogFilePath, type: REG_SZ }
+      - id: private_log_size
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogFileSize, type: REG_DWORD }
+      - id: private_merge
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+      - id: public_log_dropped
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+      - id: public_log_path
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogFilePath, type: REG_SZ }
+      - id: public_log_size
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogFileSize, type: REG_DWORD }
+      - id: public_merge
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+    options:
+      - label: "Log dropped packets"
+        values:
+          domain_log_dropped: 1
+          domain_log_path: '%SystemRoot%\System32\logfiles\firewall\domainfw.log'
+          domain_log_size: 16384
+          domain_merge: absent
+          private_log_dropped: 1
+          private_log_path: '%SystemRoot%\System32\logfiles\firewall\privatefw.log'
+          private_log_size: 16384
+          private_merge: absent
+          public_log_dropped: 1
+          public_log_path: '%SystemRoot%\System32\logfiles\firewall\publicfw.log'
+          public_log_size: 16384
+          public_merge: absent
+      - label: "Log dropped packets and ignore local rules"
+        values:
+          domain_log_dropped: 1
+          domain_log_path: '%SystemRoot%\System32\logfiles\firewall\domainfw.log'
+          domain_log_size: 16384
+          domain_merge: 0
+          private_log_dropped: 1
+          private_log_path: '%SystemRoot%\System32\logfiles\firewall\privatefw.log'
+          private_log_size: 16384
+          private_merge: 0
+          public_log_dropped: 1
+          public_log_path: '%SystemRoot%\System32\logfiles\firewall\publicfw.log'
+          public_log_size: 16384
+          public_merge: 0
+      - label: "No dropped-packet logging"
+        values:
+          domain_log_dropped: absent
+          domain_log_path: absent
+          domain_log_size: absent
+          domain_merge: absent
+          private_log_dropped: absent
+          private_log_path: absent
+          private_log_size: absent
+          private_merge: absent
+          public_log_dropped: absent
+          public_log_path: absent
+          public_log_size: absent
+          public_merge: absent
+
+  - id: disable_nic_power_management
+    name: "Disable NIC power management"
+    description: "Stop Windows powering down physical network adapters to prevent Wi-Fi drops and idle latency spikes."
+    info: |
+      **Stops Windows parking your network adapter to save power, curing Wi-Fi that drops when the PC sits idle.**
+
+      ## What it does
+      Writes `PnPCapabilities = 24` into the network adapter driver keys, which is Microsoft's
+      documented deployment value for clearing "Allow the computer to turn off this device to save
+      power". Windows then leaves the adapter powered instead of parking it when idle.
+
+      ## Benefits
+      - **Stops idle disconnects**: the standard fix for Wi-Fi that drops after the machine sits unused
+      - **No post-idle latency**: traffic resumes on a link Windows never parked
+      - **Microsoft-documented value**: 24 (0x18) is the value Microsoft names for deployment, not a community guess
+      - **Endorsed by Microsoft tooling**: the Exchange Health Checker "Sleepy NIC Check" flags NIC power saving as a cause of packet loss
+
+      ## Drawbacks
+      - **Higher idle power**: measurable battery cost on laptops
+      - **Written to every adapter**: the current action also writes to virtual adapters, WAN Miniports and the Bluetooth PAN device, none of which have a power management tab
+      - **Revert is imperfect today**: the undo deletes the value rather than restoring whatever your adapter vendor had set
+      - **Stock state varies**: some adapters ship with a vendor value already present and some with none, so there is no single correct "off"
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on physical adapters whose driver exposes the Power Management tab
+      - **Takes effect**: after reboot, when the device next starts
+      - **Reverting**: restores the previous per-adapter value from the snapshot
+      - Microsoft's supported per-adapter alternative is `Set-NetAdapterPowerManagement -AllowComputerToTurnOffDevice Disabled`
+
+      ## Recommendation
+      Worth it on a desktop, or on any machine that actually suffers idle network drops. On a laptop
+      with no connectivity symptoms, leave power management enabled and keep the battery life.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Power management setting on a network adapter (KB 2740020)](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/power-management-on-network-adapter)
+      - [Set-NetAdapterPowerManagement](https://learn.microsoft.com/en-us/powershell/module/netadapter/set-netadapterpowermanagement)
+      - [How NDIS sets the power policy for a network adapter](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/how-ndis-sets-the-power-policy-for-a-network-adapter)
+    warning: "PnPCapabilities = 24 is Microsoft's documented deployment value (KB 2740020). This tweak writes it only to the driver keys of adapters Windows reports as physical, and records each key's prior value (including absent) so the revert restores it. A driver reinstall or upgrade can reset the value without this app noticing."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: NicPowerManagement, type: REG_DWORD }
+      - id: nic_power_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement'
+            # Only adapters Windows reports as physical expose a Power Management tab; virtual
+            # adapters, WAN Miniports and the Bluetooth PAN device are deliberately skipped.
+            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceDescription })
+            if ($phys.Count -eq 0) { exit 1 }
+            New-Item -Path $snap -Force | Out-Null
+            $hit = 0
+            foreach ($k in @(Get-ChildItem $class -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' })) {
+              $desc = (Get-ItemProperty -Path $k.PSPath -Name DriverDesc -ErrorAction SilentlyContinue).DriverDesc
+              if ($desc -and $phys -contains $desc) {
+                $prior = (Get-ItemProperty -Path $k.PSPath -Name PnPCapabilities -ErrorAction SilentlyContinue).PnPCapabilities
+                Set-ItemProperty -Path $snap -Name $k.PSChildName -Value $(if ($null -eq $prior) { -1 } else { [int]$prior }) -Type DWord
+                Set-ItemProperty -Path $k.PSPath -Name PnPCapabilities -Value 24 -Type DWord
+                $hit++
+              }
+            }
+            if ($hit -eq 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            if ($s) {
+              foreach ($p in @($s.PSObject.Properties | Where-Object { $_.Name -match '^\d{4}$' })) {
+                $k = Join-Path $class $p.Name
+                if (Test-Path $k) {
+                  if ([int]$p.Value -lt 0) {
+                    Remove-ItemProperty -Path $k -Name PnPCapabilities -ErrorAction SilentlyContinue
+                  } else {
+                    Set-ItemProperty -Path $k -Name PnPCapabilities -Value ([int]$p.Value) -Type DWord
+                  }
+                }
+              }
+              Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            exit 0
+          probe: |
+            $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
+            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceDescription })
+            if ($phys.Count -eq 0) { exit 1 }
+            $seen = 0
+            foreach ($k in @(Get-ChildItem $class -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' })) {
+              $desc = (Get-ItemProperty -Path $k.PSPath -Name DriverDesc -ErrorAction SilentlyContinue).DriverDesc
+              if ($desc -and $phys -contains $desc) {
+                $seen++
+                if ((Get-ItemProperty -Path $k.PSPath -Name PnPCapabilities -ErrorAction SilentlyContinue).PnPCapabilities -ne 24) { exit 1 }
+              }
+            }
+            if ($seen -eq 0) { exit 1 }
+            exit 0
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, nic_power_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_delivery_optimization_p2p
+    name: "Disable Delivery Optimization P2P"
+    description: "Pin Delivery Optimization to HTTP only, so update chunks are not shared with other machines on your network."
+    info: |
+      **Pins Windows Update to downloading straight from Microsoft, with no peer-to-peer sharing on your network.**
+
+      ## What it does
+      Sets `DODownloadMode = 0` under the Delivery Optimization policy key, which Microsoft defines as
+      "HTTP Only": no peer-to-peer caching, downloads coming from the original source or a Microsoft
+      Connected Cache. Windows Update and Store downloads keep working.
+
+      ## Benefits
+      - **No LAN peering**: your PC stops sharing update chunks with other machines behind the same router
+      - **Locks the mode**: with the policy set, nothing can turn peering on later, from Settings or from an image change
+      - **Predictable traffic**: updates come from one place, which is easier to reason about on a capped link
+      - **Service stays intact**: this changes the mode only and does not disable `DoSvc`, which the Store depends on
+
+      ## Drawbacks
+      - **More total WAN traffic**: with several Windows PCs on one network, each downloads its own copy
+      - **Smaller change than it sounds**: your PC was never seeding to strangers on the internet, because that is download mode 3 and is not the default
+      - **Default is ambiguous**: Microsoft's reference page says the unconfigured default is LAN peering while its Policy CSP page says it is no peering, so on some machines this may change nothing visible
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1511 and later including LTSC 2021. The Delivery Optimization client reads this policy on all editions, including Home.
+      - **Takes effect**: immediately, the Delivery Optimization service picks the policy up without a reboot
+      - **Reverting**: deletes the value, returning the machine to Windows' unconfigured behaviour
+      - **Avoid mode 100**: Microsoft deprecated Bypass mode in Windows 11 and says it "can cause some content to fail to download"
+
+      ## Recommendation
+      A sensible default for a single-PC household, especially on a connection with limited upload.
+      Leave peering on if you run several Windows PCs on the same network and want them to share
+      downloads locally.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Delivery Optimization reference, Download Mode](https://learn.microsoft.com/en-us/windows/deployment/update/waas-delivery-optimization-reference)
+      - [Policy CSP - DeliveryOptimization, DODownloadMode](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-deliveryoptimization)
+      - [Manage connections from Windows to Microsoft services, section 28.3](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: download_mode
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization', name: DODownloadMode, type: REG_DWORD }
+    options:
+      - label: "HTTP only, no peering"
+        values: { download_mode: 0 }
+      - label: "Peering allowed"
+        values: { download_mode: absent }
+
+  - id: defer_quality_updates
+    name: "Defer quality updates"
+    description: "Hold back monthly quality (security) updates for a set number of days on Pro, Education, and Enterprise editions."
+    info: |
+      **Holds back the monthly security rollup for a week or two, so a bad patch gets reported before it reaches you.**
+
+      ## What it does
+      Sets `DeferQualityUpdates = 1` and `DeferQualityUpdatesPeriodInDays` to 7 or 14 under the
+      Windows Update policy key, the registry form of "Select when Quality Updates are received".
+      The updates still install, just later.
+
+      ## Benefits
+      - **Buffer against bad patches**: by the time a deferred update reaches you, problems others hit have usually surfaced
+      - **Still fully patched**: a deferral is not a block, so nothing is skipped
+      - **Middle ground**: control over cadence without turning automatic updates off
+
+      ## Drawbacks
+      - **Unpatched window**: you run without the newest security fixes for the deferral period
+      - **Longer than Microsoft advises**: Microsoft recommends keeping quality deferral under 3 days, so both 7 and 14 exceed that
+      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies at all
+      - **Not a pause**: you cannot skip a month, only delay it
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes both values, restoring Windows' normal cadence
+      - Deferring quality updates is independent of pinning a feature version; the two work together
+
+      ## Recommendation
+      Use it on Pro if you want to dodge bad patches, and keep the deferral short. Do not use it on
+      Home, where it does nothing, and do not treat it as a substitute for patching.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
+      - [Policy CSP - Update, DeferQualityUpdatesPeriodInDays](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: defer_quality
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: DeferQualityUpdates, type: REG_DWORD }
+      - id: defer_quality_days
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: DeferQualityUpdatesPeriodInDays, type: REG_DWORD }
+    options:
+      - label: "Defer 7 days"
+        values: { defer_quality: 1, defer_quality_days: 7 }
+      - label: "Defer 14 days"
+        values: { defer_quality: 1, defer_quality_days: 14 }
+      - label: "No deferral"
+        values: { defer_quality: absent, defer_quality_days: absent }
+
+  - id: defer_feature_updates
+    name: "Defer feature updates"
+    description: "Slide every annual Windows feature update back by a chosen number of days, without pinning a version."
+    info: |
+      **Slides every annual Windows feature update back by a number of days you choose, so other people find the bugs first.**
+
+      ## What it does
+      Sets `DeferFeatureUpdates = 1` and `DeferFeatureUpdatesPeriodInDays` to 30, 180 or 365 under the
+      Windows Update policy key. Feature updates still arrive, just later. Monthly security updates
+      are unaffected.
+
+      ## Benefits
+      - **Security patches keep flowing**: only feature updates are delayed, never quality updates
+      - **Up to a full year**: the documented maximum deferral is 365 days
+      - **Slides rather than pins**: unlike pinning a version, you never have to remember to move it forward before servicing ends
+
+      ## Drawbacks
+      - **Inert if you pin a version**: Microsoft states feature update deferrals are not in effect while a target release version is set, so do not use both
+      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
+      - **New features arrive late**: anything shipped in the annual feature update waits out the deferral
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes both values, restoring Windows' normal feature update cadence
+      - **Do not combine with pinning a feature version.** Pick one: a deferral slides, a pin holds.
+      - This does not touch the separate "pause updates" state the Settings UI writes
+
+      ## Recommendation
+      A better default than pinning for most people who want caution without risk: it delays feature
+      updates without the trap of a pinned version silently ageing out of support. Use 180 days unless
+      you have a reason for more or less, and do not set it on a machine that already has a version
+      pin.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - Update, DeferFeatureUpdatesPeriodInDays](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Walkthrough: use Group Policy to configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wufb-group-policy)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    warning: "Microsoft states that feature update deferrals are not in effect while a target release version is pinned. Do not use this together with the Pin Windows feature version tweak, or the deferral will silently do nothing."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: defer_feature
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: DeferFeatureUpdates, type: REG_DWORD }
+      - id: defer_feature_days
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: DeferFeatureUpdatesPeriodInDays, type: REG_DWORD }
+    options:
+      - label: "Defer 30 days"
+        values: { defer_feature: 1, defer_feature_days: 30 }
+      - label: "Defer 180 days"
+        values: { defer_feature: 1, defer_feature_days: 180 }
+      - label: "Defer 365 days"
+        values: { defer_feature: 1, defer_feature_days: 365 }
+      - label: "No deferral"
+        values: { defer_feature: absent, defer_feature_days: absent }
+
+  - id: target_release_version
+    name: "Pin Windows feature version"
+    description: "Lock the PC to a specific feature version so it will not jump to a newer release."
+    info: |
+      **Locks the PC to one Windows feature version, so it keeps getting monthly security patches but never jumps to a new release on its own.**
+
+      ## What it does
+      Sets `TargetReleaseVersion = 1` plus the version string (`TargetReleaseVersionInfo`) and the
+      product string (`ProductVersion`) under the Windows Update policy key. Microsoft requires the
+      product value alongside the version value for the pin to work.
+
+      ## Benefits
+      - **No surprise upgrades**: the annual feature update does not land until you move the pin
+      - **Security patches continue**: monthly quality updates keep arriving for the pinned version
+      - **The supported route**: this replaced the deprecated "defer feature updates by N days" control for version pinning
+
+      ## Drawbacks
+      - **Silent end of updates**: once the pinned release reaches end of servicing, the device stops receiving security updates entirely
+      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
+      - **Cancels feature deferrals**: Microsoft states feature update deferrals are not in effect while a target version is pinned, so do not set both
+      - **Licensing intent**: Microsoft attaches a licensing attestation to using this policy to move a device to a new product
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 2004 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes all three values, restoring the normal upgrade path
+      - **Check the servicing date**: Windows 11 24H2 Home and Pro end updates on 2026-10-13; 25H2 ends 2027-10-12 and 26H1 ends 2028-03-14
+
+      ## Recommendation
+      Good on Pro if you want to decide when to take a feature upgrade, provided you pin to a release
+      with plenty of servicing left and set yourself a reminder. Do not pin a version that is within
+      months of end of servicing, and do not use it if nobody will move the pin forward.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - Update, TargetReleaseVersion and ProductVersion](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Windows 11 release information](https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    warning: "A pinned release stops receiving security updates the day its servicing ends. 25H2 ends 2027-10-12 and 26H1 ends 2028-03-14; move the pin forward before then. Windows 11 24H2 is deliberately not offered here because its servicing ends 2026-10-13."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: target_enabled
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: TargetReleaseVersion, type: REG_DWORD }
+      - id: target_version
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: TargetReleaseVersionInfo, type: REG_SZ }
+      - id: target_product
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: ProductVersion, type: REG_SZ }
+    options:
+      - label: "Pinned to 25H2"
+        values: { target_enabled: 1, target_version: "25H2", target_product: "Windows 11" }
+      - label: "Pinned to 26H1"
+        values: { target_enabled: 1, target_version: "26H1", target_product: "Windows 11" }
+      - label: "Not pinned"
+        values: { target_enabled: absent, target_version: absent, target_product: absent }
+
+  - id: update_feature_control
+    name: "Control mid-cycle features and optional content"
+    description: "Decide whether features shipped inside monthly quality updates, and optional content, are turned on."
+    info: |
+      **Stops new features and optional content arriving inside monthly updates, so the installed Windows stops changing shape between feature updates.**
+
+      ## What it does
+      Writes `AllowTemporaryEnterpriseFeatureControl = 0` so features shipped inside a monthly quality
+      update stay off until the feature update that includes them, and `SetAllowOptionalContent = 0`
+      so optional non-security preview updates and optional driver updates are not offered.
+
+      ## Benefits
+      - **A stable install**: the machine does not gain new UI or behaviour mid-cycle
+      - **No optional previews**: optional non-security preview updates stop being offered
+      - **Nothing breaks**: features simply arrive later, with the annual feature update
+      - **Genuine second state**: users who want features early can pick the permissive option instead
+
+      ## Drawbacks
+      - **May do nothing on an unmanaged PC**: Microsoft applies temporary enterprise feature control only to devices whose updates are policy-managed, so on a machine with no other Windows Update policy this half may be inert
+      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
+      - **You wait for fixes delivered as features**: improvements shipped through servicing arrive with the next feature update instead
+      - **Split applicability**: the temporary-feature-control half needs Windows 11 22H2 or newer, so it does not exist on Windows 10 LTSC 2021
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores these policies.** The optional-content half also applies to Windows 10 21H2 and later, including a patched LTSC 2021; the temporary-feature-control half does not.
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes all three values, restoring Windows' normal behaviour
+      - Setting a quality-update deferral or a target release version makes the device update-managed, which is what activates the temporary feature control half
+
+      ## Recommendation
+      Worth applying on a Pro machine you want to stop changing shape month to month, particularly
+      alongside a quality-update deferral, which is what makes the device update-managed. Skip it if
+      you like getting new features as soon as they ship, and skip it entirely on Home.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - Update, AllowOptionalContent](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      # Two applicability gates, not one: temporary enterprise feature control is Windows 11 22H2 and
+      # later, while the optional-content pair reaches back to Windows 10 21H2.
+      - id: temporary_feature_control
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: AllowTemporaryEnterpriseFeatureControl, type: REG_DWORD }
+        windows: { build: ">=22621" }
+      - id: set_allow_optional_content
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: SetAllowOptionalContent, type: REG_DWORD }
+      - id: allow_optional_content
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: AllowOptionalContent, type: REG_DWORD }
+    options:
+      - label: "No mid-cycle features or optional content"
+        values: { temporary_feature_control: 0, set_allow_optional_content: 0, allow_optional_content: absent }
+      - label: "Receive optional content and gradual feature rollouts"
+        values: { temporary_feature_control: 1, set_allow_optional_content: 1, allow_optional_content: 1 }
+      - label: "Windows decides"
+        values: { temporary_feature_control: absent, set_allow_optional_content: absent, allow_optional_content: absent }
+
+  - id: block_insider_builds_policy
+    name: "Block Insider preview builds by policy"
+    description: "Block enrolment in the Windows Insider Program with the policy value the Settings UI cannot override."
+    info: |
+      **Blocks enrolment in the Windows Insider Program by policy, which the Settings UI cannot override.**
+
+      ## What it does
+      Sets `ManagePreviewBuildsPolicyValue = 1` under the Windows Update policy key, which is what the
+      "Manage preview builds" Group Policy writes in its Disabled state. Windows then refuses Insider
+      preview builds regardless of what the Settings UI offers.
+
+      ## Benefits
+      - **Cannot be undone from Settings**: unlike disabling the Insider service, a policy is not something a user can restart around
+      - **Stops accidental enrolment**: no route from the Windows Update settings page into preview builds
+      - **Complements the service tweak**: the Insider service tweak and this policy close different routes, so both are worth having
+
+      ## Drawbacks
+      - **No Insider builds at all**: if you actually want to test upcoming releases on this machine, this blocks it
+      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
+      - **Only preview builds**: it does not change anything about ordinary feature or quality updates
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately
+      - **Reverting**: deletes the value, returning the Insider choice to the user
+      - The same policy can also select a preview channel; this tweak deliberately writes only the blocking value and does not touch the channel
+
+      ## Recommendation
+      Worth applying on any Pro machine that should never run preview builds, especially a shared or
+      work machine. Do not apply it on a box you use for testing upcoming Windows releases.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - Update, ManagePreviewBuilds](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: manage_preview_builds
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: ManagePreviewBuildsPolicyValue, type: REG_DWORD }
+    options:
+      # 1 is the ADMX policy's Disabled state, which is the blocking one; 2 is Enabled.
+      - label: "Preview builds blocked"
+        values: { manage_preview_builds: 1 }
+      - label: "Preview builds allowed"
+        values: { manage_preview_builds: absent }
+
+  - id: set_active_hours
+    name: "Set active hours"
+    description: "Tell Windows when you use the PC so automatic update restarts happen outside those hours."
+    info: |
+      **Tells Windows the hours you actually use the PC, so update restarts happen while you are away.**
+
+      ## What it does
+      Writes `ActiveHoursStart` and `ActiveHoursEnd` to the Windows Update settings store, and sets
+      `SmartActiveHoursState = 2` so Windows stops auto-adjusting the window from your usage
+      patterns. Automatic restarts are then scheduled outside the hours you chose.
+
+      ## Benefits
+      - **No mid-task reboots**: restarts move to times you are not at the machine
+      - **Your window sticks**: turning Smart Active Hours off stops Windows revising the hours behind you
+      - **Works on every edition**: this is the same store the consumer Settings UI writes, not a policy key
+
+      ## Drawbacks
+      - **Not a "never restart" switch**: Windows can still restart after an update deadline passes
+      - **Capped at 18 hours**: you cannot cover a full day
+      - **Overrides your existing hours**: applying replaces whatever start and end you had set
+      - **`SmartActiveHoursState` is undocumented**: 2 meaning off comes from community sources, not from Microsoft
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, all editions
+      - **Takes effect**: immediately
+      - **Reverting**: restores your previous active hours from the snapshot and removes the Smart Active Hours value
+      - **Interaction**: active hours has no effect if "No auto-restart with logged-on users" or "Always automatically restart at scheduled time" is enabled, so this and the auto-restart block partly cancel each other
+      - On a managed machine the Windows Update policy key overrides this settings store
+
+      ## Recommendation
+      Worth setting for anyone annoyed by mistimed restarts. Set your genuine working window, and
+      expect it to reduce badly timed reboots rather than eliminate them.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Manage device restarts after updates, Configure active hours](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
+      - [Policy CSP - Update, ActiveHoursStart / ActiveHoursEnd / ActiveHoursMaxRange](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Automatically adjust active hours](https://winaero.com/automatically-adjust-active-hours-windows-10/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: smart_active_hours
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings', name: SmartActiveHoursState, type: REG_DWORD }
+      - id: active_hours_start
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings', name: ActiveHoursStart, type: REG_DWORD }
+      - id: active_hours_end
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings', name: ActiveHoursEnd, type: REG_DWORD }
+    options:
+      # One option only: the machine's real active hours are whatever the user or Windows already set,
+      # so a second option would have to invent a window and drive the machine to it. The honest
+      # return path is the snapshot.
+      - label: "Manual 8:00 to 23:00"
+        values: { smart_active_hours: 2, active_hours_start: 8, active_hours_end: 23 }
+
+  - id: disable_auto_restart_logged_on
+    name: "Block auto-restart while signed in"
+    description: "Prevent Windows Update from automatically rebooting the PC while a user is logged on."
+    info: |
+      **Stops Windows Update rebooting the PC on its own while you are signed in, protecting open work.**
+
+      ## What it does
+      Sets `NoAutoRebootWithLoggedOnUsers = 1` under the Windows Update AU policy key, so scheduled
+      update installs do not restart the machine while a user is signed in. Microsoft applies this
+      only when automatic updates are configured to "auto download and schedule the install", so it
+      must be paired with that setting to do anything.
+
+      ## Benefits
+      - **No reboot mid-task**: unsaved documents and long-running sessions survive update night
+      - **You choose the moment**: Windows still notifies, it just does not act
+      - **Policy-backed**: written to the policy branch, so a later Settings change cannot override it
+
+      ## Drawbacks
+      - **Inert on its own**: Microsoft applies it only when Configure Automatic Updates is set to option 4, so without that companion setting it does nothing
+      - **Patches can stall indefinitely**: Microsoft warns it "can result in no quality update reboots period, given many users never log off"
+      - **Does nothing on Home**: Windows Home does not honour the Windows Update AU policies
+      - **Cancels active hours**: Microsoft states active hours has no effect while this policy is enabled
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, on Pro, Education, Enterprise and IoT Enterprise. **Windows Home does not honour it.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes the value, restoring Windows' normal restart behaviour
+      - **Over RDP** only active sessions count as signed-in users, so a machine with only disconnected sessions still restarts
+      - Microsoft recommends compliance deadlines instead of relying on this alone
+
+      ## Recommendation
+      Use it on Pro alongside scheduled automatic installs if you keep long work sessions open, and
+      restart soon after updates so the fixes actually apply. Do not use it on Home, and do not use it
+      on a machine that will simply never be restarted.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Manage device restarts after updates](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
+      - [Manage additional Windows Update settings](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wu-settings)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    warning: "Microsoft applies this policy only when Configure Automatic Updates is set to option 4 (auto download and schedule the install). On a machine that has not separately configured automatic updates, the value is written but has no effect."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: no_auto_reboot_logged_on
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name: NoAutoRebootWithLoggedOnUsers, type: REG_DWORD }
+    options:
+      - label: "Blocked"
+        values: { no_auto_reboot_logged_on: 1 }
+      - label: "Allowed"
+        values: { no_auto_reboot_logged_on: absent }
+
+  - id: exclude_wu_driver_updates
+    name: "Exclude driver updates from Windows Update"
+    description: "Stop Windows Update from delivering hardware drivers so you control driver versions yourself."
+    info: |
+      **Stops Windows Update pushing hardware drivers, so you decide which driver versions your PC runs.**
+
+      ## What it does
+      Sets `ExcludeWUDriversInQualityUpdate = 1` under the Windows Update policy key, the registry
+      form of "Do not include drivers with Windows Updates". Quality and security updates still
+      install normally; only the driver payload is left out.
+
+      ## Benefits
+      - **No surprise driver swaps**: Windows Update stops replacing a working GPU, chipset or audio driver
+      - **Vendor drivers win**: if you install NVIDIA, AMD, Intel or board-vendor packages, this ends the tug of war
+      - **Narrow blast radius**: it changes driver delivery only, not patching
+
+      ## Drawbacks
+      - **You own driver updates now**: driver security and stability fixes shipped through Windows Update no longer arrive
+      - **Does nothing on Home**: this is a Windows Update client policy and Windows Home does not honour it
+      - **Not a total block**: Microsoft excludes drivers bundled inside a security or critical update, and drivers installed dynamically during a feature update
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes the value, restoring driver delivery through Windows Update
+      - A same-named value under `WindowsUpdate\UX\Settings` is the Settings mirror, not the policy; the policy key governs
+
+      ## Recommendation
+      Good for anyone who manages drivers from vendor sites and has been bitten by an automatic driver
+      swap. Leave it off if you would rather not think about drivers, and do not bother on Home where
+      it has no effect.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - Update, ExcludeWUDriversInQualityUpdate](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Configure Windows Update client policies, exclude drivers](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: exclude_wu_drivers
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: ExcludeWUDriversInQualityUpdate, type: REG_DWORD }
+    options:
+      - label: "Excluded"
+        values: { exclude_wu_drivers: 1 }
+      - label: "Included"
+        values: { exclude_wu_drivers: absent }
+
+  - id: disable_auto_driver_install
+    name: "Disable automatic driver installation"
+    description: "Block Windows from auto-searching for device drivers and fetching device metadata, using the documented policy keys."
+    info: |
+      **Stops Windows installing drivers by itself and fetching device details over the network when you plug in new hardware.**
+
+      ## What it does
+      Sets `SearchOrderConfig = 0` to stop the automatic driver search and
+      `PreventDeviceMetadataFromNetwork = 1` to stop device metadata downloads (icons, names,
+      details). New devices then wait for you to install their driver deliberately.
+
+      ## Benefits
+      - **You curate every driver**: nothing installs itself when hardware is attached
+      - **Fewer outbound requests**: device metadata retrieval stops, a small privacy gain
+      - **Pairs with driver exclusion**: together with excluding drivers from Windows Update it gives end-to-end control
+
+      ## Drawbacks
+      - **New hardware may not work**: peripherals sit undriven until you install software by hand
+      - **Written to the Settings store, not the policy store**: opening Device Installation Settings in Control Panel can undo it without this app noticing, and a Group Policy on the machine silently overrides it
+      - **`SearchOrderConfig = 0` is undocumented on this path**: Microsoft defines the value for the policy key only, and community sources disagree about what 0 means outside it
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The Settings-store form is not edition-gated; the policy form is Pro and above.
+      - **Takes effect**: after reboot
+      - **Reverting**: restores `SearchOrderConfig` to 1 and removes the metadata value, matching the stock state of the Settings store
+      - Keep vendor driver packages handy before adding new devices
+
+      ## Recommendation
+      For power users who want to approve every driver, ideally alongside excluding drivers from
+      Windows Update. Skip it if you plug in new peripherals often and expect them to work
+      immediately.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Community-corroborated
+      - [Policy CSP - DeviceInstallation, PreventDeviceMetadataFromNetwork](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-deviceinstallation)
+      - [Manage connections from Windows to Microsoft services, device metadata retrieval](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Specify search order for device driver source locations](https://www.windows-security.org/4e9792f8fcb59047c7a25891728d5f0c/specify-search-order-for-device-driver-source-locations)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      # Both values are written to the documented policy keys, which override the Control Panel
+      # "Device Installation Settings" store the older mechanism wrote.
+      - id: search_order
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DriverSearching', name: SearchOrderConfig, type: REG_DWORD }
+      - id: prevent_metadata
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Device Metadata', name: PreventDeviceMetadataFromNetwork, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { search_order: 0, prevent_metadata: 1 }
+      - label: "Enabled"
+        values: { search_order: absent, prevent_metadata: absent }
+
+  - id: disable_store_auto_updates
+    name: "Disable Microsoft Store auto-updates"
+    description: "Stop the Microsoft Store from automatically downloading and installing app updates."
+    info: |
+      **Stops the Microsoft Store updating your apps in the background, so app versions change only when you say so.**
+
+      ## What it does
+      Sets `AutoDownload = 2` under the Store policy key, the registry form of "Turn off Automatic
+      Download and Install of updates". Store apps stay at their current versions until you update
+      them from the Store's Library page.
+
+      ## Benefits
+      - **No background downloads**: useful on a metered or slow connection
+      - **Version stability**: an app you rely on does not change shape overnight
+      - **Survives the UI**: recent Store builds reduced the in-app toggle to a pause, but the policy value still applies
+
+      ## Drawbacks
+      - **Apps go stale**: including Store apps that ship security fixes
+      - **Manual upkeep**: you have to remember to check the Library
+      - **Home not documented**: Policy CSP lists Pro and above, so Home behaviour is likely but unconfirmed
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1507 and later including LTSC 2021. Policy CSP lists Pro, Enterprise, Education and IoT Enterprise; Microsoft's privacy guide gives the registry form with no edition caveat.
+      - **Takes effect**: immediately
+      - **Reverting**: deletes the value, restoring automatic Store updates
+      - Setting the value to 4 rather than deleting it explicitly forces auto-updates on
+
+      ## Recommendation
+      Reasonable on a metered connection or where you want app versions pinned, provided you check the
+      Store Library now and then. If you would forget, leave auto-updates on so security fixes keep
+      arriving.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Manage connections from Windows to Microsoft services, section 26 Microsoft Store](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - ApplicationManagement, AllowAppStoreAutoUpdate](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-applicationmanagement)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: store_auto_download
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsStore', name: AutoDownload, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { store_auto_download: 2 }
+      - label: "Enabled"
+        values: { store_auto_download: absent }
+
+  - id: block_update_over_metered
+    name: "Block auto-download over metered"
+    description: "Lock the existing no-auto-download-over-metered default into the Windows Update policy branch."
+    info: |
+      **Locks "no automatic downloads over metered connections" into policy, so nothing can turn it back on.**
+
+      ## What it does
+      Sets `AllowAutoWindowsUpdateDownloadOverMeteredNetwork = 0` under the Windows Update policy key.
+      Microsoft documents 0 as the shipped default, so this does not change today's behaviour: it
+      moves the decision into the policy branch, where it overrides the Settings toggle.
+
+      ## Benefits
+      - **Cannot be opted in later**: the Settings toggle for metered downloads no longer takes effect
+      - **Auditable posture**: the machine's intent is recorded in policy rather than left implicit
+      - **Zero cost**: nothing is given up, because the machine already behaves this way
+
+      ## Drawbacks
+      - **No visible change today**: Windows already does not auto-download over metered links, so you will not observe a difference
+      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
+      - **Not a full block**: high-priority and critical updates can still download over a metered connection
+      - **Needs a metered connection**: it does nothing until you actually mark a connection as metered in Settings
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes the value, returning the decision to the Settings toggle
+      - Mark your hotspot or capped connection as metered in Settings for this to have anything to govern
+
+      ## Recommendation
+      Worth setting on a Pro machine that regularly runs on a hotspot or capped plan, as a lock rather
+      than a change. Skip it on Home, where it is not honoured.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - Update, AllowAutoWindowsUpdateDownloadOverMeteredNetwork](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: metered_download
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate', name: AllowAutoWindowsUpdateDownloadOverMeteredNetwork, type: REG_DWORD }
+    options:
+      - label: "Blocked"
+        values: { metered_download: 0 }
+      - label: "Allowed"
+        values: { metered_download: absent }
+
+  - id: disable_auto_update_download
+    name: "Notify before downloading updates"
+    description: "Switch Windows Update to notify-only so updates do not download or install without your approval."
+    info: |
+      **Puts Windows Update in notify-only mode, so nothing downloads or installs until you approve it.**
+
+      ## What it does
+      Sets `NoAutoUpdate = 0` with `AUOptions = 2` under the Windows Update AU policy key, which
+      Microsoft's registry table describes as "Notify of download and installation". Automatic
+      updates remain enabled as a subsystem; they just wait for your approval.
+
+      ## Benefits
+      - **Nothing lands unannounced**: no download and no install without an explicit decision
+      - **Tight scheduling**: useful where updates must be applied in a controlled window
+      - **Standard mechanism**: exactly what the "Configure Automatic Updates" Group Policy writes
+
+      ## Drawbacks
+      - **You will be unpatched between checks**: this is a real security exposure if you forget, which is why the risk is high
+      - **Does nothing on Home**: Windows Home ignores the Windows Update AU policy entirely
+      - **Cancels the reboot block**: `NoAutoRebootWithLoggedOnUsers` only applies at `AUOptions = 4`, so applying this makes that tweak inert
+      - **Microsoft's own wording varies**: three Microsoft pages describe `AUOptions = 2` slightly differently
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, on Pro, Education, Enterprise and IoT Enterprise. **Windows Home ignores this policy.**
+      - **Takes effect**: immediately, at the next Windows Update scan
+      - **Reverting**: deletes both values, restoring automatic updates
+      - Setting `NoAutoUpdate = 1` instead would disable automatic updates entirely and make `AUOptions` irrelevant; this tweak deliberately does not do that
+
+      ## Recommendation
+      Only for disciplined Pro, Education or Enterprise users who will actually check for and apply
+      updates promptly. If there is any chance patches will pile up, do not use it; the security cost
+      outweighs the control.
+
+      ## Evidence
+      - **Risk**: high
+      - **Confidence**: Microsoft-documented
+      - [Manage additional Windows Update settings](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wu-settings)
+      - [Manage device restarts after updates, AU registry table](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
+      - [Policy CSP - Update, AllowAutoUpdate](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+    warning: "Windows Home ignores the Windows Update AU policy entirely, so this does nothing there. On Pro, Education and Enterprise it stops updates downloading until you approve them: if you do not check regularly, the machine runs unpatched."
+    risk_level: high
+    elevation: admin
+    reversible: true
+    effects:
+      - id: no_auto_update
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name: NoAutoUpdate, type: REG_DWORD }
+      - id: au_options
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name: AUOptions, type: REG_DWORD }
+    options:
+      - label: "Notify before download and install"
+        values: { no_auto_update: 0, au_options: 2 }
+      - label: "Download and install automatically"
+        values: { no_auto_update: absent, au_options: absent }
+
+  - id: disable_hibernation
+    name: "Disable hibernation"
+    description: "Remove hibernation and delete hiberfil.sys to reclaim disk space (also disables Fast Startup)."
+    info: |
+      **Turns off hibernation and deletes hiberfil.sys, reclaiming gigabytes of disk space.**
+
+      ## What it does
+      Runs `powercfg /hibernate off`, which clears hibernation support and removes the hidden
+      `hiberfil.sys` file Windows reserves for it. Because Fast Startup is a partial hibernation,
+      turning hibernation off also disables Fast Startup.
+
+      ## Benefits
+      - **Reclaims disk space**: `hiberfil.sys` is sized as a fraction of installed RAM, often several gigabytes
+      - **Immediate**: the file is deleted on apply, no reboot needed
+      - **No loss on a desktop that never hibernates**: dead space recovered for nothing given up
+
+      ## Drawbacks
+      - **No hibernate, no hybrid sleep, no Fast Startup**: all three depend on the same file
+      - **Laptops lose the low-battery safety net**: hibernation is what saves your session to disk when the battery runs critically low
+      - **Modern Standby machines drain flat**: hibernate-after-sleep is what stops an idle Modern Standby laptop discharging completely
+      - **Reverting is currently blunt**: it enables hibernation unconditionally at full size, even on a machine that never had it
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
+      - **Takes effect**: immediately
+      - **Reverting**: re-enables hibernation from the snapshot; a machine that already had hibernation off before applying should stay that way
+      - A prior `powercfg /hibernate /size` or `/type reduced` configuration is not preserved by a plain re-enable
+
+      ## Recommendation
+      Good on a desktop or a space-constrained SSD where you never hibernate. On a laptop, think
+      twice: you give up the low-battery hibernate safety net, which is the one thing standing between
+      a flat battery and a lost session.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+      - [Sleep settings overview](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: Hibernation, type: REG_DWORD }
+      - id: hibernate_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $pw = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation'
+            New-Item -Path $snap -Force | Out-Null
+            $p = Get-ItemProperty -Path $pw -ErrorAction SilentlyContinue
+            $en = if ($p -and $null -ne $p.HibernateEnabled) { [int]$p.HibernateEnabled } else { -1 }
+            $pct = if ($p -and $null -ne $p.HiberFileSizePercent) { [int]$p.HiberFileSizePercent } else { -1 }
+            Set-ItemProperty -Path $snap -Name Enabled -Value $en -Type DWord
+            Set-ItemProperty -Path $snap -Name SizePercent -Value $pct -Type DWord
+            powercfg /hibernate off
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            # A machine that already had hibernation off before apply must stay off: re-enabling would
+            # recreate a multi-gigabyte hiberfil.sys and Fast Startup the user never had.
+            if ($s -and $s.Enabled -eq 0) {
+              Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+              exit 0
+            }
+            powercfg /hibernate on
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            if ($s -and [int]$s.SizePercent -gt 0) { powercfg /hibernate /size ([int]$s.SizePercent) }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $v = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HibernateEnabled -ErrorAction SilentlyContinue).HibernateEnabled
+            if ($v -eq 0) { exit 0 } else { exit 1 }
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, hibernate_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_usb_selective_suspend
+    name: "Disable USB selective suspend"
+    description: "Stop Windows suspending idle USB ports to fix device dropouts, audio glitches, and slow wakeups."
+    info: |
+      **Stops Windows parking idle USB ports, fixing device dropouts, audio glitches and slow wakeups.**
+
+      ## What it does
+      Sets the "USB selective suspend setting" power-plan value to Disabled for both AC and battery on
+      the current power scheme, then reactivates the scheme so the change applies. Ports stay powered
+      instead of being suspended when idle.
+
+      ## Benefits
+      - **Fixes USB audio dropouts**: the standard cure for USB DACs and interfaces that glitch after idle
+      - **Stops dongle disconnects**: wireless receivers stay awake and responsive
+      - **No slow-to-wake hubs**: devices behind a hub respond immediately instead of after a stall
+
+      ## Drawbacks
+      - **Higher idle power**: a small but real battery cost on laptops
+      - **Only the active power plan**: switching to another plan silently loses the change
+      - **No benefit without symptoms**: if your USB devices behave, this only costs power
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
+      - **Takes effect**: immediately, the power scheme is reactivated on apply
+      - **Reverting**: restores the previous AC and battery indices from the snapshot
+      - Stock Balanced has selective suspend enabled on both AC and battery
+
+      ## Recommendation
+      Apply it if you actually experience USB dropouts, audio glitches or slow wakeups. If your USB
+      devices behave fine, especially on a laptop, leave selective suspend on and keep the power
+      saving.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [USB selective suspend](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/usb-selective-suspend)
+      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: UsbSelectiveSuspend, type: REG_DWORD }
+      - id: usb_suspend_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
+            $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
+            # Pin the scheme GUID so the undo cannot write to a different plan the user switched to.
+            $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
+            if (-not $scheme) { exit 1 }
+            $q = (powercfg /QUERY $scheme $sub $set) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            New-Item -Path $snap -Force | Out-Null
+            Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
+            Set-ItemProperty -Path $snap -Name Ac -Value $(if ($ac) { [Convert]::ToInt32($ac, 16) } else { 1 }) -Type DWord
+            Set-ItemProperty -Path $snap -Name Dc -Value $(if ($dc) { [Convert]::ToInt32($dc, 16) } else { 1 }) -Type DWord
+            powercfg /SETACVALUEINDEX $scheme $sub $set 0
+            powercfg /SETDCVALUEINDEX $scheme $sub $set 0
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
+            $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            $scheme = if ($s -and $s.Scheme) { $s.Scheme } else { 'SCHEME_CURRENT' }
+            $ac = if ($s -and $null -ne $s.Ac) { [int]$s.Ac } else { 1 }
+            $dc = if ($s -and $null -ne $s.Dc) { [int]$s.Dc } else { 1 }
+            powercfg /SETACVALUEINDEX $scheme $sub $set $ac
+            powercfg /SETDCVALUEINDEX $scheme $sub $set $dc
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $q = (powercfg /QUERY SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            if (-not $ac -or -not $dc) { exit 1 }
+            if ([Convert]::ToInt32($ac, 16) -eq 0 -and [Convert]::ToInt32($dc, 16) -eq 0) { exit 0 }
+            exit 1
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, usb_suspend_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_wake_timers
+    name: "Disable wake timers"
+    description: "Block scheduled tasks from waking the PC from sleep (stops overnight update and maintenance wakes)."
+    info: |
+      **Stops scheduled tasks waking your PC out of sleep, ending mystery overnight wakeups.**
+
+      ## What it does
+      Sets the "Automatically wake for tasks" power-plan value to Disable for both AC and battery on
+      the current scheme. Windows stops using the system-wide wake-on-timer capability, so scheduled
+      jobs can no longer rouse a sleeping machine.
+
+      ## Benefits
+      - **The PC stays asleep**: no 3 a.m. wake for maintenance, and no fans spinning up overnight
+      - **No battery drain from wakes**: an unattended laptop is not woken to do work
+      - **Tightens the mains behaviour**: on AC, Windows normally allows "important" wake timers, and this removes those too
+
+      ## Drawbacks
+      - **Legitimate scheduled wakes stop**: overnight backups, media indexing and alarms no longer wake the machine
+      - **Update maintenance shifts**: Windows Update work may only run while you are actively using the PC
+      - **Less change than it sounds on battery**: Windows 11 already disables wake timers on battery by default, so only the mains behaviour actually changes
+      - **Only the active power plan**: switching to another plan silently loses the change
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on hardware with RTC wake. Requires administrator.
+      - **Takes effect**: immediately, the power scheme is reactivated on apply
+      - **Reverting**: restores the previous AC and battery indices from the snapshot. Stock Windows 11 Balanced is "Important Wake Timers Only" on AC and "Disable" on battery, not "Enable" on both.
+      - The setting has three states, not two: Disable, Enable, and Important Wake Timers Only
+
+      ## Recommendation
+      Worth applying if a PC that wakes itself overnight bothers you. Skip it if you rely on scheduled
+      overnight work such as automated backups, because those wakes stop too.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Automatically wake for tasks](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings-automatically-wake-for-tasks)
+      - [Sleep settings overview](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
+      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: WakeTimers, type: REG_DWORD }
+      - id: wake_timers_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
+            $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
+            if (-not $scheme) { exit 1 }
+            $q = (powercfg /QUERY $scheme SUB_SLEEP RTCWAKE) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            New-Item -Path $snap -Force | Out-Null
+            Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
+            # Fall back to the Windows 11 stock Balanced indices (AC 2, DC 0), never to "Enable" on both.
+            Set-ItemProperty -Path $snap -Name Ac -Value $(if ($ac) { [Convert]::ToInt32($ac, 16) } else { 2 }) -Type DWord
+            Set-ItemProperty -Path $snap -Name Dc -Value $(if ($dc) { [Convert]::ToInt32($dc, 16) } else { 0 }) -Type DWord
+            powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            $scheme = if ($s -and $s.Scheme) { $s.Scheme } else { 'SCHEME_CURRENT' }
+            $ac = if ($s -and $null -ne $s.Ac) { [int]$s.Ac } else { 2 }
+            $dc = if ($s -and $null -ne $s.Dc) { [int]$s.Dc } else { 0 }
+            powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE $ac
+            powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE $dc
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $q = (powercfg /QUERY SCHEME_CURRENT SUB_SLEEP RTCWAKE) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            if (-not $ac -or -not $dc) { exit 1 }
+            if ([Convert]::ToInt32($ac, 16) -eq 0 -and [Convert]::ToInt32($dc, 16) -eq 0) { exit 0 }
+            exit 1
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, wake_timers_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_modern_standby
+    name: "Disable Modern Standby (force S3)"
+    description: "Force legacy S3 sleep instead of Modern Standby (S0) to stop in-bag battery drain and overheating."
+    info: |
+      **Forces old-style S3 deep sleep instead of Modern Standby, stopping in-bag battery drain, on hardware that still supports S3.**
+
+      ## What it does
+      Sets `PlatformAoAcOverride = 0` under the kernel power key, which tells Windows not to use the
+      always-on always-connected power model. On a platform whose firmware still exposes S3, Windows
+      then selects S3 instead of S0 Low Power Idle.
+
+      ## Benefits
+      - **Real deep sleep**: no background work while "asleep", so no warm laptop and no drained battery in a bag
+      - **Verifiable**: `powercfg /a` shows the change afterwards
+      - **Fully reversible**: deleting the value restores Modern Standby on the next boot
+
+      ## Drawbacks
+      - **Catastrophic on hardware without S3**: if `powercfg /a` does not list "Standby (S3)" as available, you can end up with no working sleep state at all
+      - **No instant-on or background connectivity**: S3 gives up the things Modern Standby exists to provide
+      - **Undocumented and unsupported**: Microsoft does not document this value and states that switching the power model "is not supported in Windows without a complete OS re-install"
+      - **Not always better**: Microsoft's own guidance is to measure idle power first, because it can be worse rather than better
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. The real gate is firmware, not Windows version.
+      - **Takes effect**: after reboot
+      - **Reverting**: deletes the value, restoring Modern Standby
+      - **Run `powercfg /a` first.** If "Standby (S3)" is not listed as available, do not apply this.
+      - The value is confirmed present in the Windows 11 24H2 kernel and corroborated by several independent references, but Microsoft has never documented it
+
+      ## Recommendation
+      Only for users who have confirmed with `powercfg /a` that Standby (S3) is available and who are
+      actually fighting Modern Standby drain. If S3 is not listed, do not touch this; you risk a
+      machine that cannot sleep or wake properly.
+
+      ## Evidence
+      - **Risk**: high
+      - **Confidence**: Community-corroborated
+      - [What is Modern Standby](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby)
+      - [Modern Standby vs S3](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby-vs-s3)
+      - [How to disable Modern Standby on Windows](https://pureinfotech.com/disable-modern-standby-windows/)
+      - [Disable Modern Standby in Windows 10 and Windows 11](https://www.elevenforum.com/t/disable-modern-standby-in-windows-10-and-windows-11.3929/)
+    warning: "Applying this is refused unless powercfg /a reports an available S3 standby state. PlatformAoAcOverride is not documented by Microsoft, and Microsoft states that switching the power model is not supported without a complete OS re-install."
+    risk_level: high
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: platform_aoac_override
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power', name: PlatformAoAcOverride, type: REG_DWORD }
+      - id: require_s3
+        action:
+          # An enforceable precondition, not advisory text: on a platform with no S3 path this fails
+          # the apply (and the engine rolls the tweak back) rather than leaving no working sleep state.
+          apply: |
+            $lines = @(powercfg /a)
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '\(S3\)') {
+                $next = if ($i + 1 -lt $lines.Count) { $lines[$i + 1] } else { '' }
+                # An unavailable state carries a more-indented reason line beneath it; an available one does not.
+                $indent = ($lines[$i] -replace '\S[\s\S]*$', '').Length
+                $nindent = ($next -replace '\S[\s\S]*$', '').Length
+                if ($next.Trim() -eq '' -or $nindent -le $indent) { exit 0 }
+                exit 1
+              }
+            }
+            exit 1
+          ephemeral: true
+          shell: powershell
+    options:
+      - label: "Force S3"
+        values: { platform_aoac_override: 0, require_s3: run }
+      - label: "Modern Standby"
+        values: { platform_aoac_override: absent }

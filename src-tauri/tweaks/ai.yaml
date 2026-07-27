@@ -1,0 +1,595 @@
+category:
+  id: ai
+  name: "AI & Copilot"
+  icon: "mdi:robot-outline"
+  description: "Windows AI controls in one place: Recall snapshots, Click to Do, the Copilot app and taskbar button, AI features in Notepad, Paint and Edge, and the AI service broker. Mostly policy values, reversible from snapshots."
+
+tweaks:
+  # Microsoft's applicability floor for the WindowsAI policies is 26100.3915 (KB5055627). The `windows`
+  # grammar can only pin a revision against a single exact build, which would exclude 25H2, so the gate
+  # is the build line and the revision floor lives in the copy.
+  - id: disable_recall_snapshots
+    name: "Disable Windows Recall snapshots"
+    description: "Stop Windows Recall from saving screen snapshots, and delete the snapshots already stored."
+    info: |
+      **Locks Recall's screen-snapshot capture off for every user on the PC, and deletes the snapshots already saved.**
+
+      ## What it does
+      Sets the `DisableAIDataAnalysis` policy under `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI`
+      to 1, the group policy "Turn off saving snapshots for use with Recall". Windows stops saving
+      Recall snapshots and, per Microsoft, deletes any snapshots already stored on the device.
+
+      ## Benefits
+      - **No new snapshots**: Recall stops writing periodic screen captures to local storage
+      - **Existing data cleared**: snapshots already saved on the device are deleted
+      - **Machine-wide**: applies to every account, not just the one that applied it
+
+      ## Drawbacks
+      - **Recall stops working**: the timeline and its search go away for all users on the PC
+      - **Deletion is permanent**: reverting the policy restores the setting, never the deleted snapshots
+      - **Inert on most PCs**: Recall needs a Copilot+ machine, so on other hardware nothing changes
+      - **Not read on Home**: the policy's supported editions are Pro, Enterprise, Education and IoT Enterprise
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 build 26100.3915 (KB5055627) and newer; earlier 26100 builds ignore the value
+      - **Takes effect**: after reboot, which also lets the snapshot deletion settle
+      - **Reverting**: restores the previous value from the snapshot; the deleted Recall data does not come back
+      - Recall additionally requires a Copilot+ PC (40 TOPS NPU, 16 GB RAM, 8 logical processors, 256 GB storage, device encryption, and Windows Hello Enhanced Sign-in Security)
+
+      ## Recommendation
+      Apply it on any Copilot+ PC where you want certainty that screen capture stays off, and accept
+      that the existing snapshots go with it. If you actively use Recall's timeline, leave it alone;
+      this removes the choice rather than presenting it.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+      - [Manage Recall for Windows clients](https://learn.microsoft.com/en-us/windows/client-management/manage-recall)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: recall
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI', name: DisableAIDataAnalysis, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { recall: 1 }
+      - label: "Enabled"
+        values: { recall: absent }
+
+  - id: remove_recall_component
+    name: "Recall feature component"
+    description: "Remove the Recall component from the device instead of only switching it off."
+    info: |
+      **Strips the Recall component off the device instead of just switching it off.**
+
+      ## What it does
+      Sets the `AllowRecallEnablement` policy under `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI`.
+      Set to 0, Microsoft removes the Recall bits from the device and deletes saved snapshots. Left
+      unconfigured, the component stays on disk in a disabled state. Set to 1, Recall becomes
+      available again, subject to the separate snapshot policy.
+
+      ## Benefits
+      - **Payload removed**: the feature is gone from disk, not merely gated behind a toggle
+      - **Nothing to re-enable**: no leftover component a setting or update can switch back on
+      - **Snapshots deleted**: saved Recall data is removed along with the component
+
+      ## Drawbacks
+      - **Restoring is work**: putting Recall back needs the Available option and may need `Enable-WindowsOptionalFeature -Online -FeatureName "Recall"`
+      - **Data loss is permanent**: deleted snapshots do not return on any option
+      - **Not configured is not available**: the stock state leaves Recall present but disabled, so reverting does not hand Recall back
+      - **Inert on most PCs**: Recall needs a Copilot+ machine, and the policy is not read on Home
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 build 26100.3915 (KB5055627) and newer, Pro / Enterprise / Education / IoT Enterprise editions
+      - **Takes effect**: after reboot, which Microsoft requires for the component removal
+      - **Reverting**: restores the previous value from the snapshot, which returns the machine to the not-configured state where Recall is present but disabled
+      - Machine scope only; there is no per-user version of this policy
+
+      ## Recommendation
+      Pick this over the snapshot-only tweak if you want Recall gone rather than held off and you are
+      confident you will not want it back. If there is any chance you will try Recall later, use the
+      snapshot policy instead, which is a clean on-off.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+      - [Manage Recall for Windows clients](https://learn.microsoft.com/en-us/windows/client-management/manage-recall)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: allow_recall
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI', name: AllowRecallEnablement, type: REG_DWORD }
+    options:
+      - label: "Removed"
+        values: { allow_recall: 0 }
+      - label: "Disabled"
+        values: { allow_recall: absent }
+      - label: "Available"
+        values: { allow_recall: 1 }
+
+  - id: disable_click_to_do
+    name: "Disable the Click to Do overlay"
+    description: "Turn off the Click to Do overlay that captures and analyzes the screen on demand."
+    info: |
+      **Removes the Click to Do overlay, so nothing screenshots and analyzes your screen on demand.**
+
+      ## What it does
+      Sets the `DisableClickToDo` policy under `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI` to 1.
+      Microsoft's documented behaviour is that the Click to Do component and its entry points stop
+      being available to users, so the on-demand full-screen capture and its on-device analysis path
+      go away.
+
+      ## Benefits
+      - **No capture surface**: the on-demand full-screen grab and its entry points are removed
+      - **Machine-wide**: covers every account, unlike the per-user Settings toggle
+      - **Removes, not hides**: the entry points go, rather than a switch being greyed out
+
+      ## Drawbacks
+      - **Loses the actions**: Summarize, Rewrite and the other Click to Do actions become unavailable
+      - **Not the whole story**: Microsoft states this does not disable Click to Do inside Recall
+      - **Inert on most PCs**: Click to Do needs a Copilot+ machine or an eligible Cloud PC
+      - **Not a cloud block**: the analysis already ran on-device, so this removes capture, not upload
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer on a Copilot+ PC (40 TOPS NPU, 16 GB RAM, 8 logical processors, 256 GB storage) or an eligible Cloud PC; Pro / Enterprise / Education / IoT Enterprise editions
+      - **Takes effect**: immediately; sign out and back in if an entry point is still visible
+      - **Reverting**: restores the previous value from the snapshot
+      - Microsoft's policy page still lists this under Windows Insider Preview, so behaviour on a given retail build is not guaranteed by Microsoft's own table
+
+      ## Recommendation
+      Apply it on a Copilot+ PC if you have no interest in the overlay, and pair it with the Recall
+      tweaks, since this one does not cover Click to Do inside Recall. On non-Copilot+ hardware it is
+      harmless but changes nothing you can see.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+      - [Manage Click to Do for Windows clients](https://learn.microsoft.com/en-us/windows/client-management/manage-click-to-do)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    windows: { build: ">=26100" }
+    effects:
+      - id: click_to_do
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI', name: DisableClickToDo, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { click_to_do: 1 }
+      - label: "Enabled"
+        values: { click_to_do: absent }
+
+  - id: remove_copilot_app
+    name: "Remove the Copilot app"
+    description: "Uninstall the Microsoft Copilot app and its provisioned copy so it stops coming back."
+    info: |
+      **Uninstalls the Copilot app so it stops appearing in Start, on the taskbar, and in your program list.**
+
+      ## What it does
+      Removes the `Microsoft.Copilot` Store package for all users and removes the provisioned copy
+      that Windows stages for new accounts, so the app is off disk rather than hidden. It does not
+      touch `Microsoft.Windows.Ai.Copilot.Provider`, the separate component behind Click to Do and
+      right-click AI actions.
+
+      ## Benefits
+      - **Off disk**: the app is uninstalled, not just hidden from the taskbar
+      - **Survives new profiles**: removing the provisioned package stops it reappearing for new accounts
+      - **No background app**: nothing left to launch or update
+
+      ## Drawbacks
+      - **Copilot is gone**: no assistant from Start, taskbar, or the app list
+      - **Updates can restore it**: a feature update can re-provision the app, so it may need re-applying
+      - **Not the only Copilot**: a second, non-Appx Store listing for Copilot now exists and this tweak does not cover it
+      - **Moving target**: Copilot's packaging has changed repeatedly, so the removal may need revisiting each release
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer (the app also exists on 23H2)
+      - **Takes effect**: immediately, no reboot needed
+      - **Reverting**: reinstalls the app from the Microsoft Store via winget, which needs an internet connection
+      - On Enterprise, Education and IoT Enterprise the managed alternative is Microsoft's `RemoveMicrosoftCopilotApp` policy
+
+      ## Recommendation
+      Apply it if you do not use Copilot; it is the cleanest way to get rid of it and there is no
+      cost beyond losing the assistant. Leave it if you use Copilot at all, since reinstalling
+      depends on the Store being reachable.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - WindowsAI, RemoveMicrosoftCopilotApp](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+      - [Manage Windows Copilot](https://learn.microsoft.com/en-us/windows/client-management/manage-windows-copilot)
+      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: Copilot, type: REG_DWORD }
+      - id: app
+        action:
+          apply: |
+            Get-AppxPackage -AllUsers 'Microsoft.Copilot' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like 'Microsoft.Copilot*' } | Remove-AppxProvisionedPackage -Online
+          undo: "winget install --id 9NHT9RB2F4HD -e --accept-source-agreements --accept-package-agreements"
+          probe: |
+            if ((Get-AppxPackage -AllUsers 'Microsoft.Copilot') -or (Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like 'Microsoft.Copilot*' })) { exit 1 } else { exit 0 }
+          shell: powershell
+    options:
+      - label: "Removed"
+        values: { state: 1, app: run }
+      - label: "Installed"
+        values: { state: 0 }
+
+  - id: remove_recall_feature
+    name: "Disable the Recall optional feature"
+    description: "Disable the Recall optional Windows feature at the component level."
+    info: |
+      **Turns off the Recall optional Windows feature at the component level, below the Settings toggle.**
+
+      ## What it does
+      Runs `DISM /Online /Disable-Feature /FeatureName:Recall`, which disables the `Recall` optional
+      feature that Windows 11 24H2 enumerates on every x64 install. This sits below the Settings
+      toggle, so it survives the paths that only flip the user-facing setting.
+
+      ## Benefits
+      - **Below the toggle**: disables the feature itself, not the setting on top of it
+      - **Survives re-enable paths**: a Settings flip alone cannot bring Recall back
+      - **Works alongside policy**: complements the Recall snapshot and component policies
+
+      ## Drawbacks
+      - **Payload stays**: without `/Remove` the feature files remain on disk, just inactive
+      - **Nothing to see on most PCs**: the feature entry exists everywhere, but the Recall experience needs Copilot+ hardware, so on other machines applying changes nothing visible
+      - **Revert is conditional**: on a machine that shipped with Recall already disabled, reverting correctly does nothing rather than installing it
+      - **Reboot required**: the change does not complete until the machine restarts
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, x64; the `Recall` feature entry is present even on SKUs where Recall itself is never offered
+      - **Takes effect**: after reboot; DISM reports a pending restart on success
+      - **Reverting**: restores the feature state captured in the snapshot, so a machine that never had Recall enabled does not gain it
+      - If the payload was removed rather than just disabled, re-enabling later needs a DISM `/Source`
+
+      ## Recommendation
+      Use it on a Copilot+ PC where Recall is present and you want it off at the component level. On
+      any other machine prefer the Recall snapshot policy, which is documented, reversible, and does
+      not depend on optional-feature state.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Disable-WindowsOptionalFeature](https://learn.microsoft.com/en-us/powershell/module/dism/disable-windowsoptionalfeature)
+      - [DISM operating system package servicing command-line options](https://learn.microsoft.com/en-us/windows/deployment/usmt/dism-operating-system-package-servicing-command-line-options)
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: RecallFeature, type: REG_DWORD }
+      # DISM returns 3010 (reboot required) on a successful /NoRestart disable, so both 0 and 3010 map
+      # to exit 0. Apply records the pre-apply feature state so undo can refuse to install Recall on a
+      # machine that never had it enabled.
+      - id: feature
+        action:
+          apply: |
+            $pre = (Get-WindowsOptionalFeature -Online -FeatureName Recall -ErrorAction SilentlyContinue).State
+            if (-not $pre) { $pre = 'Unknown' }
+            New-Item -Path 'HKLM:\SOFTWARE\MagicXToolbox\RecallFeature' -Force | Out-Null
+            New-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\RecallFeature' -Name PreApplyState -Value "$pre" -PropertyType String -Force | Out-Null
+            DISM.exe /Online /Disable-Feature /FeatureName:Recall /NoRestart
+            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { exit 0 } else { exit $LASTEXITCODE }
+          undo: |
+            $pre = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\RecallFeature' -Name PreApplyState -ErrorAction SilentlyContinue).PreApplyState
+            if ($pre -ne 'Enabled') { exit 0 }
+            DISM.exe /Online /Enable-Feature /FeatureName:Recall /NoRestart
+            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { exit 0 } else { exit $LASTEXITCODE }
+          probe: |
+            $s = (Get-WindowsOptionalFeature -Online -FeatureName Recall -ErrorAction SilentlyContinue).State
+            if ($s -eq 'Disabled' -or $s -eq 'DisabledWithPayloadRemoved') { exit 0 } else { exit 1 }
+          shell: powershell
+    options:
+      # "Removed" would overstate it: the apply runs /Disable-Feature without /Remove, so the payload
+      # stays on disk. `remove_recall_component` next door does distinguish Removed from Disabled,
+      # so reusing the word here would collide with a state this tweak never reaches.
+      - label: "Disabled"
+        values: { state: 1, feature: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_copilot_taskbar
+    name: "Hide the Copilot taskbar button"
+    description: "Hide the Copilot button from the taskbar; the app itself stays installed."
+    info: |
+      **Removes the Copilot button from your taskbar without touching anything else.**
+
+      ## What it does
+      Sets the `TurnOffWindowsCopilot` policy under
+      `HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot` to 1, the user-scope group policy
+      "Turn off Windows Copilot". Microsoft's documented effect is that the Copilot icon does not
+      appear on the taskbar. On 24H2 and newer Copilot is an ordinary Store app, so this hides the
+      entry point and leaves the app installed.
+
+      ## Benefits
+      - **Cleaner taskbar**: the Copilot button is gone
+      - **No admin needed**: a per-user policy value, applied without elevation
+      - **Fully reversible**: removing the value restores the button exactly
+
+      ## Drawbacks
+      - **App still there**: Copilot can still be opened from Search, Start, or Edge
+      - **Deprecated by Microsoft**: flagged for near-term deprecation, so plan for it to stop working
+      - **Nothing on Home**: the shipped policy template excludes Home, where the write is inert
+      - **Not the Copilot key**: Win+C and the Copilot hardware key now open the Microsoft 365 Copilot prompt box, which this policy does not govern
+
+      ## Good to know
+      - **Applies to**: Windows 11 22H2 and newer, and Windows 10 21H2 build 19044.3758 and newer; Pro / Enterprise / Education / IoT Enterprise editions
+      - **Takes effect**: after signing out and back in
+      - **Reverting**: restores the previous value from the snapshot
+      - Microsoft's supported replacements are an AppLocker publisher rule for `MICROSOFT.COPILOT` or removing the `Microsoft.Copilot` app
+
+      ## Recommendation
+      Worth applying if you just want the button out of the way; it costs nothing and is instantly
+      undone. If you want Copilot actually gone on 24H2 or newer, use the Copilot app removal tweak
+      instead, since this only hides the shell entry point.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - WindowsAI, TurnOffWindowsCopilot](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+      - [Manage Windows Copilot](https://learn.microsoft.com/en-us/windows/client-management/manage-windows-copilot)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: copilot_off
+        registry: { key: 'HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot', name: TurnOffWindowsCopilot, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { copilot_off: 1 }
+      - label: "Shown"
+        values: { copilot_off: absent }
+
+  - id: disable_notepad_ai
+    name: "Disable Notepad AI features"
+    description: "Turn off Copilot, Rewrite and Summarize inside Notepad."
+    info: |
+      **Turns off Copilot, Rewrite and Summarize inside Notepad, leaving a plain text editor.**
+
+      ## What it does
+      Sets `DisableAIFeatures` to 1 under `HKLM\SOFTWARE\Policies\WindowsNotepad`, the registry value
+      Microsoft documents for this. One value covers every AI surface in the app; there is no
+      per-feature switch.
+
+      ## Benefits
+      - **Plain editor back**: Copilot, Rewrite and Summarize disappear from the menus and toolbar
+      - **Machine-wide**: applies to every account on the PC
+      - **No sign-in prompts**: removes the entry points that ask you to sign in to use AI
+
+      ## Drawbacks
+      - **Loses the features**: Rewrite, Summarize and Copilot in Notepad are gone, all or nothing
+      - **Needs a current Notepad**: app versions before 11.2503.16.0 ignore the value entirely
+      - **Notepad only**: other apps' AI features are unaffected
+
+      ## Good to know
+      - **Applies to**: Windows 11 22H2 and newer, with Notepad app version 11.2503.16.0 or later; Notepad updates through the Store independently of Windows, so a fully patched PC can still have an older Notepad
+      - **Takes effect**: after restarting Notepad
+      - **Reverting**: restores the previous value from the snapshot
+      - The Group Policy setting is named `DisableAIFeaturesInNotepad`, but the registry value is `DisableAIFeatures`; only the latter is read
+
+      ## Recommendation
+      Apply it if you want Notepad to stay the fast, plain text editor it has always been. Skip it if
+      you actually use Rewrite or Summarize, since the switch is all or nothing.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Manage Notepad](https://learn.microsoft.com/en-us/windows/client-management/manage-notepad)
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    windows: { products: [11] }
+    effects:
+      # No `Microsoft` path component: the shipped Notepad binary reads this exact key.
+      - id: notepad_ai
+        registry: { key: 'HKLM\SOFTWARE\Policies\WindowsNotepad', name: DisableAIFeatures, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { notepad_ai: 1 }
+      - label: "Enabled"
+        values: { notepad_ai: absent }
+
+  - id: disable_paint_ai
+    name: "Disable Paint AI features"
+    description: "Turn off Cocreator, Generative fill and Image Creator in Paint."
+    info: |
+      **Removes Cocreator, Generative fill and Image Creator from Paint, leaving the classic drawing tools.**
+
+      ## What it does
+      Sets `DisableCocreator`, `DisableGenerativeFill` and `DisableImageCreator` to 1 under
+      `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint`, the three policies Microsoft
+      ships in `WindowsCopilot.admx`. Paint's AI tools stop being accessible.
+
+      ## Benefits
+      - **Classic Paint back**: the AI buttons leave the toolbar
+      - **Machine-wide**: covers every account, and Microsoft documents this as a device-scope policy
+      - **No credit prompts**: removes the surfaces that ask you to sign in or spend AI credits
+
+      ## Drawbacks
+      - **Loses three tools**: Cocreator, Generative fill and Image Creator all go together
+      - **Paint only**: image generation elsewhere in Windows is unaffected
+      - **Nothing on Windows 10**: the policies are declared for Windows 11 22H2 and newer only
+
+      ## Good to know
+      - **Applies to**: Windows 11 22H2 and newer; Pro / Enterprise / Education / IoT Enterprise editions
+      - **Takes effect**: after restarting Paint
+      - **Reverting**: restores the previous values from the snapshot
+      - Two other values that circulate online, `DisableGenerativeErase` and `DisableRemoveBackground`, are not real policies and are deliberately not written here
+
+      ## Recommendation
+      Apply it if you use Paint as a quick drawing and cropping tool and have no interest in its
+      image generation. Skip it if you use Cocreator or Generative fill, since all three tools are
+      controlled together.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+      - [Manage Paint](https://learn.microsoft.com/en-us/windows/client-management/manage-paint)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    windows: { build: ">=22621" }
+    effects:
+      - id: paint_cocreator
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name: DisableCocreator, type: REG_DWORD }
+      - id: paint_generative_fill
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name: DisableGenerativeFill, type: REG_DWORD }
+      - id: paint_image_creator
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint', name: DisableImageCreator, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { paint_cocreator: 1, paint_generative_fill: 1, paint_image_creator: 1 }
+      - label: "Enabled"
+        values: { paint_cocreator: absent, paint_generative_fill: absent, paint_image_creator: absent }
+
+  - id: disable_edge_ai_features
+    name: "Turn off Edge AI features"
+    description: "Turn off Copilot and Bing Chat entry points in Microsoft Edge."
+    info: |
+      **Strips Copilot and Bing Chat entry points out of Microsoft Edge and stops AI reading your pages and history.**
+
+      ## What it does
+      Writes five Edge policies under `HKLM\SOFTWARE\Policies\Microsoft\Edge`:
+      `EdgeHistoryAISearchEnabled` and `NewTabPageBingChatEnabled` turn off AI history search and the
+      new tab page chat entry points, and `CopilotPageContext`, `EdgeEntraCopilotPageContext` and
+      `ComposeInlineEnabled` stop Copilot reading page content or history and remove inline Rewrite.
+
+      ## Benefits
+      - **No chat on new tab**: the Bing Chat entry points leave the new tab page
+      - **History stays local**: browsing history search returns to plain exact matching
+      - **No page reading**: on work accounts, Copilot loses access to page content and history
+
+      ## Drawbacks
+      - **Three are work-account only**: `CopilotPageContext`, `EdgeEntraCopilotPageContext` and `ComposeInlineEnabled` apply only to Microsoft Entra ID profiles and do nothing on a personal Microsoft account, so on a consumer PC only the first two change anything
+      - **Managed banner**: Edge will show "managed by your organization" on its settings page
+      - **Version floors**: older Edge builds ignore some values, `EdgeHistoryAISearchEnabled` needs Edge 138 or newer
+      - **Loses the features**: AI history search and inline Rewrite go with them
+
+      ## Good to know
+      - **Applies to**: any Windows version with Microsoft Edge installed, machine-wide; per-value Edge minimums are 115 for `ComposeInlineEnabled`, 117 for `NewTabPageBingChatEnabled`, 124 for `CopilotPageContext`, 130 for `EdgeEntraCopilotPageContext` and 138 for `EdgeHistoryAISearchEnabled`
+      - **Takes effect**: after restarting Edge
+      - **Reverting**: restores the previous values from the snapshot, and the managed banner clears once no Edge policies remain
+      - Copilot's own button in Edge is not removed by these; Microsoft's `EdgeCopilotEnabled` policy is not supported on Windows
+
+      ## Recommendation
+      Apply it if you want Edge to stop offering AI in the browsing surface, and expect a visible
+      change on a personal account only from the history search and new tab page values. On a
+      work-joined PC all five take effect and this is the strongest in-browser AI control available.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Microsoft Edge Browser Policy Documentation](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies)
+      - [EdgeHistoryAISearchEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies#edgehistoryaisearchenabled)
+      - [CopilotPageContext](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies#copilotpagecontext)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    effects:
+      - id: edge_history_ai_search
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: EdgeHistoryAISearchEnabled, type: REG_DWORD }
+      - id: edge_ntp_bing_chat
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: NewTabPageBingChatEnabled, type: REG_DWORD }
+      - id: edge_copilot_page_context
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: CopilotPageContext, type: REG_DWORD }
+      - id: edge_entra_copilot_page_context
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: EdgeEntraCopilotPageContext, type: REG_DWORD }
+      - id: edge_compose_inline
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: ComposeInlineEnabled, type: REG_DWORD }
+    options:
+      - label: "Off (three values are work-account only)"
+        values:
+          edge_history_ai_search: 0
+          edge_ntp_bing_chat: 0
+          edge_copilot_page_context: 0
+          edge_entra_copilot_page_context: 0
+          edge_compose_inline: 0
+      - label: "On"
+        values:
+          edge_history_ai_search: absent
+          edge_ntp_bing_chat: absent
+          edge_copilot_page_context: absent
+          edge_entra_copilot_page_context: absent
+          edge_compose_inline: absent
+
+  - id: disable_ai_fabric_service
+    name: "Set the AI Fabric service to Manual start"
+    description: "Set the WSAIFabricSvc AI broker service to Manual so it stops starting at boot."
+    info: |
+      **Stops the Windows AI broker service from starting with the machine, leaving it available on demand.**
+
+      ## What it does
+      Sets the `WSAIFabricSvc` service from Automatic to Manual. Microsoft describes it as providing
+      "support to communicate with AIFabric in Local service context over COM"; it is the broker AI
+      workloads talk to. On Manual it no longer starts at boot, and anything that genuinely needs it
+      can still start it.
+
+      ## Benefits
+      - **One less at boot**: a service that runs from startup no longer does
+      - **Large win on NPU PCs**: on Copilot+ and NPU machines the associated AI workload hosts have been measured holding several gigabytes, which this prevents
+      - **Reversible cleanly**: Manual keeps the service startable, unlike Disabled
+
+      ## Drawbacks
+      - **No visible gain on ordinary PCs**: without an NPU there is no measurable memory or CPU saving, this simply stops an idle broker auto-starting
+      - **AI features may start it**: using a Windows AI feature can start the service on demand anyway
+      - **Not on every build**: 24H2 machines below roughly build 26100.3624 do not have this service at all, and the tweak skips them
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 build 26100.3624 and newer, including 25H2; the service does not exist on Windows 10
+      - **Takes effect**: after reboot, since the change is to the start type rather than the running service
+      - **Reverting**: restores the previous start type from the snapshot, which is Automatic on a stock machine
+      - Set to Manual rather than Disabled deliberately, so nothing that needs the broker is blocked outright
+
+      ## Recommendation
+      Worth applying on a Copilot+ or NPU-equipped PC where the AI workload hosts are consuming real
+      memory. On an ordinary machine with no NPU it is a reasonable way to keep an unused AI broker
+      out of your startup, but do not expect to see a difference in Task Manager.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Set-Service](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/set-service)
+      - [Service start types](https://learn.microsoft.com/en-us/windows/win32/services/service-installation-and-configuration)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { build: ">=26100" }
+    effects:
+      # The service only arrived in 24H2 servicing around 26100.3624, so it is optional: on an older
+      # 26100 it reads Missing and the tweak is unavailable rather than failing. The marker keeps both
+      # options detectable where it does exist.
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: AiFabricService, type: REG_DWORD }
+      - id: ai_fabric
+        service: { name: WSAIFabricSvc }
+        optional: true
+    options:
+      - label: "Manual"
+        values: { state: 1, ai_fabric: manual }
+      - label: "Automatic"
+        values: { state: 0, ai_fabric: automatic }

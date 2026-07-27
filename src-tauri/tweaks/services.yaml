@@ -1,0 +1,1573 @@
+category:
+  id: services
+  name: "Services & Scheduled Tasks"
+  icon: "mdi:cog-outline"
+  description: "Disable optional Windows services and telemetry scheduled tasks to cut background activity and shrink attack surface. Reversible from snapshots."
+
+tweaks:
+  - id: disable_diagtrack
+    name: "Disable User Experiences and Telemetry (DiagTrack)"
+    description: "Disable the primary telemetry service to stop background diagnostic uploads to Microsoft."
+    info: |
+      **Stops the service that collects Windows diagnostic and usage data and uploads it to Microsoft.**
+
+      ## What it does
+      Sets the Connected User Experiences and Telemetry service (`DiagTrack`) to Disabled. This is
+      the component Microsoft documents as managing diagnostic data events and diagnostic logs sent
+      back to Microsoft, so disabling it stops the collection and upload pipeline itself rather than
+      lowering the amount of data it is allowed to send.
+
+      ## Benefits
+      - **Stops the transmitter**: the pipeline does not run, rather than running at a lower level
+      - **Works on every edition**: the "Diagnostic data off" policy level is Enterprise, Education, IoT and Server only
+      - **Quieter machine**: removes the background network and disk activity the uploader generates
+
+      ## Drawbacks
+      - **Feedback Hub breaks**: diagnostic submission through Feedback Hub stops working
+      - **Enterprise signals stop**: Defender for Endpoint, Windows Update for Business reports and Update Compliance all read this pipeline
+      - **Updates can undo it**: feature updates re-provision service configuration and are widely reported to restore it to Automatic
+      - **No speed gain**: the honest benefit is privacy, not performance
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Automatic
+      - **Pairs with**: the diagnostic data policy tweak in Privacy, which caps the level but cannot stop the transmitter on Home or Pro
+
+      ## Recommendation
+      Apply it on a personal machine where privacy matters more than Feedback Hub. Do not apply it on
+      a machine managed by an IT department or enrolled in Defender for Endpoint, where the
+      diagnostic pipeline is load-bearing.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
+      - [Manage connections from Windows components to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks Feedback Hub diagnostics and enterprise telemetry-driven features; feature updates may re-enable it. The 'Diagnostic data off (Security)' level is available only on Enterprise, Education, IoT and Server editions, so on Home and Pro the lowest effective level is Required and disabling the service is the only lever that stops the transmitter."
+    effects:
+      - id: diagtrack
+        service: { name: DiagTrack }
+    options:
+      - label: "Disabled"
+        values: { diagtrack: disabled }
+      - label: "Automatic"
+        values: { diagtrack: automatic }
+
+  - id: disable_print_spooler
+    name: "Disable Print Spooler (Spooler)"
+    description: "Disable the Print Spooler to remove all printing and close a recurring RCE attack surface (PrintNightmare-class)."
+    info: |
+      **Removes all printing and shuts down the component repeatedly hit by remote-code-execution bugs.**
+
+      ## What it does
+      Sets the Print Spooler service (`Spooler`) to Disabled. The spooler queues every print job and
+      mediates all interaction with printer drivers and print devices, so with it disabled Windows
+      cannot talk to any printer, physical or virtual.
+
+      ## Benefits
+      - **Removes an attack surface**: the spooler has produced a sustained run of RCE and privilege-escalation flaws, PrintNightmare among them
+      - **Kills the whole class**: disabling the service removes the surface outright rather than mitigating one bug
+      - **One less service**: an Automatic-start service stops loading at boot
+
+      ## Drawbacks
+      - **All printing breaks**: including Microsoft Print to PDF and Print to XPS, not just physical printers
+      - **Printers vanish from apps**: printer lists disappear from every application print dialog
+      - **Export flows break**: label and receipt software, some PDF export paths, and some scanner suites route through the spooler
+      - **Not a patch substitute**: disabling is a documented mitigation, not a replacement for installing the updates
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Automatic
+      - Unsupported by Microsoft on a domain controller or a print server
+
+      ## Recommendation
+      Apply it on a machine that genuinely never prints, such as a kiosk, a server, or a hardened
+      workstation. Do not apply it if you ever print or export to PDF through the print dialog, since
+      there is no partial mode.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [KB5005010: restricting installation of new printer drivers](https://support.microsoft.com/en-us/topic/kb5005010-restricting-installation-of-new-printer-drivers-after-applying-the-july-6-2021-updates-31b91c02-05bc-4ada-a7ea-183b129578a7)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks ALL printing including Microsoft Print to PDF and Print to XPS, printer enumeration in apps, and some label/receipt software. Only for machines that never print."
+    effects:
+      - id: spooler
+        service: { name: Spooler }
+    options:
+      - label: "Disabled"
+        values: { spooler: disabled }
+      - label: "Automatic"
+        values: { spooler: automatic }
+
+  - id: disable_fax
+    name: "Disable Fax Service (Fax)"
+    description: "Disable the legacy fax service on a machine with no fax hardware."
+    info: |
+      **Turns off the legacy fax service on a machine that has no fax hardware.**
+
+      ## What it does
+      Sets the Fax service (`Fax`) to Disabled. The service sends and receives faxes through a fax
+      modem or a network fax device and is what Windows Fax and Scan talks to. Document scanning
+      through other applications does not go through it.
+
+      ## Benefits
+      - **Removes a legacy service**: nothing on a modern PC uses fax
+      - **Smaller service list**: one less entry to audit on a hardened machine
+      - **No side effects**: scanning, printing and imaging are unaffected
+
+      ## Drawbacks
+      - **Faxing stops**: sending and receiving through Windows Fax and Scan no longer works
+      - **Not present on Windows 11**: the service is absent from Windows 11 22H2 and newer, so this control does nothing there
+      - **Depends on an optional feature**: if Windows Fax and Scan was never installed, there is no service to change
+
+      ## Good to know
+      - **Applies to**: Windows 10 IoT Enterprise LTSC 2021 only; the service does not exist on Windows 11 24H2 or newer
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - On an image where the service is not installed, the tweak reads as already Disabled rather than reporting Unknown
+
+      ## Recommendation
+      Apply it on a Windows 10 LTSC machine with no fax hardware, where it is free. Skip it entirely
+      on Windows 11, where there is nothing to disable.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Windows 10 default services configuration, clean install](https://www.winhelponline.com/blog/windows-10-default-services-configuration/)
+      - [Windows 11 default services configuration, clean install, Fax absent](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Fax service, Windows 11 per-release table](https://batcmd.com/windows/11/services/fax/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { products: [10] }
+    warning: "The Fax service is absent from Windows 11 22H2 onward, so this control only exists on Windows 10. Even there it is carried by the Windows Fax and Scan optional feature rather than by the base OS."
+    effects:
+      # Gated to Windows 10 because the service does not exist on the primary platform; optional even
+      # there because it rides an optional feature. The marker keeps both options detectable on the
+      # builds where the tweak is in scope.
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: FaxService, type: REG_DWORD }
+      - id: fax
+        service: { name: Fax }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Disabled"
+        values: { state: 1, fax: disabled }
+      - label: "Manual"
+        values: { state: 0, fax: manual }
+
+  - id: disable_program_compat_assistant
+    name: "Program Compatibility Assistant Service (PcaSvc)"
+    description: "Disable the Program Compatibility Assistant service to stop compat monitoring and its pop-ups."
+    info: |
+      **Stops the compatibility pop-ups and the background monitoring of every program launch.**
+
+      ## What it does
+      Sets the Program Compatibility Assistant service (`PcaSvc`) to Disabled. PCA watches programs
+      as they install and run, detects known compatibility problems, applies automatic compatibility
+      shims, and raises prompts such as "This app may not have installed correctly".
+
+      ## Benefits
+      - **No compatibility prompts**: the "may not have installed correctly" dialog stops appearing
+      - **No launch monitoring**: PCA stops inspecting each program start
+      - **Microsoft rates it optional**: the Server guidance marks this service "OK to disable"
+
+      ## Drawbacks
+      - **Shims stop applying**: legacy programs that quietly relied on automatic fixes may misbehave
+      - **Hard to attribute**: the failure is invisible until an old program breaks, and the cause is not obvious
+      - **App compat surface on 24H2**: the `PcaPatchDbTask` scheduled task maintains the compatibility database PCA consumes, so the newest builds lean on this path more
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, where the stock start type is Automatic (Delayed Start); on Windows 10 the stock start type is Manual
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot, including the delayed-start flag
+      - The service is trigger-started as well as delayed, so it does start itself on demand
+
+      ## Recommendation
+      Apply it if the prompts annoy you and you do not run finicky legacy software. Leave it enabled
+      if you depend on old applications, since automatic shims are exactly what keeps some of them
+      working.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, PcaSvc as Auto (Delayed, Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Program Compatibility Assistant Service per-release table](https://batcmd.com/windows/11/services/pcasvc/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "PCA 'this app may not have installed correctly' prompts and automatic compatibility shims stop. The stock start type differs by release: Automatic (Delayed Start) on Windows 11, Manual on Windows 10, so pick the restore option that matches your build."
+    effects:
+      - id: pcasvc
+        service: { name: PcaSvc }
+    # Two stock options because the shipped start type is release-dependent and the engine writes
+    # DelayedAutostart explicitly: a plain `automatic` revert would strip the delayed flag on 24H2.
+    options:
+      - label: "Disabled"
+        values: { pcasvc: disabled }
+      - label: "Automatic (Delayed)"
+        values: { pcasvc: automatic_delayed }
+      - label: "Manual"
+        values: { pcasvc: manual }
+
+  - id: disable_distributed_link_tracking
+    name: "Disable Distributed Link Tracking Client (TrkWks)"
+    description: "Disable the service that maintains links between NTFS files as they move across volumes."
+    info: |
+      **Turns off the service that repairs shortcuts and document links when files move between NTFS drives.**
+
+      ## What it does
+      Sets the Distributed Link Tracking Client service (`TrkWks`) to Disabled. The service tracks the
+      NTFS object identifier on a file so shortcuts and embedded OLE links can be repaired when the
+      target is moved or renamed within or across NTFS volumes on the same machine.
+
+      ## Benefits
+      - **One less boot service**: it is Automatic, so it loads on every start
+      - **Rarely exercised**: the repair scenario needs files moved across NTFS volumes, which most people never do
+      - **No dependency**: nothing else in Windows requires this service
+
+      ## Drawbacks
+      - **Links stop self-repairing**: a shortcut whose target moved will no longer find it
+      - **Confusing failure**: the broken shortcut is easy to fix by hand but hard to connect to this change
+      - **OLE links affected**: embedded links in documents lose the same automatic repair
+      - **No Microsoft endorsement**: the Server guidance gives "No guidance" for this service, so this rests on absence of dependency
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Automatic
+      - The service is not trigger-started, so on a stock machine it really is running
+
+      ## Recommendation
+      Apply it on a single-drive machine or any system where shortcuts point at fixed locations. Leave
+      it enabled if you shuffle files between NTFS volumes and rely on shortcuts or linked documents
+      following them.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, clean install](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Distributed Link Tracking Client per-release table](https://batcmd.com/windows/11/services/trkwks/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: trkwks
+        service: { name: TrkWks }
+    options:
+      - label: "Disabled"
+        values: { trkwks: disabled }
+      - label: "Automatic"
+        values: { trkwks: automatic }
+
+  - id: disable_retail_demo
+    name: "Disable Retail Demo Service (RetailDemo)"
+    description: "Disable Retail Demo mode used only on in-store display units."
+    info: |
+      **Turns off the in-store demonstration mode that only ever runs on shop display units.**
+
+      ## What it does
+      Sets the Retail Demo service (`RetailDemo`) to Disabled. The service supports Retail Demo
+      Experience, the scripted demonstration mode a retailer puts on a display machine. On a PC you
+      own and have never placed into demo mode, it has nothing to do.
+
+      ## Benefits
+      - **No purpose on your PC**: the feature only applies to shop display units
+      - **Shorter service list**: one fewer entry when auditing what can start
+      - **Fully reversible**: nothing else depends on it
+
+      ## Drawbacks
+      - **Retail demo stops**: a genuine display unit would lose its demonstration mode
+      - **No measurable gain**: a Manual service that is never triggered is not consuming resources, so expect no speed change
+      - **Nothing visible changes**: there is no user-facing difference to look for after applying
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - This is a tidy-up, not a performance change
+
+      ## Recommendation
+      Apply it on any personally owned machine; there is no scenario where a home or work PC needs
+      Retail Demo. Skip it only on an actual in-store display unit.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Windows 11 default services configuration, clean install](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Retail Demo Service per-release table](https://batcmd.com/windows/11/services/retaildemo/)
+      - [Retail Demo Service defaults](https://revertservice.com/11/retaildemo/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: retaildemo
+        service: { name: RetailDemo }
+    options:
+      - label: "Disabled"
+        values: { retaildemo: disabled }
+      - label: "Manual"
+        values: { retaildemo: manual }
+
+  - id: disable_wallet_service
+    name: "Disable Wallet Service (WalletService)"
+    description: "Disable the service backing Microsoft Wallet and tap-to-pay."
+    info: |
+      **Turns off the service behind Microsoft Wallet and tap-to-pay from Windows.**
+
+      ## What it does
+      Sets the Wallet service (`WalletService`) to Disabled. It backs the Windows wallet and
+      tap-to-pay payment features on hardware that supports them. It has nothing to do with card
+      details saved in a web browser, which keep working normally.
+
+      ## Benefits
+      - **Microsoft rates it safe**: the Server guidance marks this service "OK to disable"
+      - **No hardware to serve**: a desktop with no payment hardware gets nothing from it
+      - **Rarely used feature**: paying from a Windows PC is uncommon
+
+      ## Drawbacks
+      - **Wallet payments stop**: Microsoft Wallet and tap-to-pay from this device no longer work
+      - **Half the stack**: the NFC secure element is a separate service, so disabling only this one leaves the other half running
+      - **Nothing visible changes**: on a machine with no payment hardware there is no observable difference
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - **Pairs with**: the Payments and NFC secure element tweak, which covers the other half
+
+      ## Recommendation
+      Apply it on any machine where you do not pay from Windows, which is nearly every desktop. Leave
+      it enabled if you use Microsoft Wallet or tap-to-pay on a laptop or tablet with NFC.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, clean install](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [WalletService per-release table](https://batcmd.com/windows/11/services/walletservice/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: walletservice
+        service: { name: WalletService }
+    options:
+      - label: "Disabled"
+        values: { walletservice: disabled }
+      - label: "Manual"
+        values: { walletservice: manual }
+
+  - id: disable_touch_keyboard
+    name: "Disable Touch Keyboard Service (TabletInputService)"
+    description: "Disable the Windows 10 touch keyboard, pen input and emoji panel service."
+    info: |
+      **Turns off the touch keyboard, pen input and emoji panel on a desktop that only uses a physical keyboard.**
+
+      ## What it does
+      Sets the Touch Keyboard and Handwriting Panel service (`TabletInputService`) to Disabled. On
+      Windows 10 this service provides the on-screen keyboard, pen and handwriting input, and the
+      emoji and symbol panel opened with Win and period.
+
+      ## Benefits
+      - **Unused on a desktop**: a keyboard-and-mouse machine never invokes these surfaces
+      - **One less service**: removes an input-stack service from the start path
+
+      ## Drawbacks
+      - **Emoji picker breaks**: Win and period stops opening the emoji and symbol panel
+      - **Touch keyboard breaks**: the on-screen keyboard and the handwriting and ink panel stop working
+      - **Microsoft says do not**: the Server guidance rates this service "Do not disable"
+      - **Costs nothing when idle**: the service is trigger-started, so on a machine with no touch or pen it is not running anyway
+
+      ## Good to know
+      - **Applies to**: Windows 10 IoT Enterprise LTSC 2021 only; the service does not exist on Windows 11 22H2 or newer, where these features come from the Windows Input Experience host instead
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - On an image where the service is not installed, the tweak reads as already Disabled rather than reporting Unknown
+
+      ## Recommendation
+      Skip this one. Microsoft rates the service "Do not disable", a trigger-started service costs
+      nothing when idle, and the emoji picker is a real loss for a small gain. If you want it anyway,
+      apply it only on a Windows 10 desktop with no touch or pen and no use of Win and period.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, TabletInputService rated Do not disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, TabletInputService absent](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Touch Keyboard and Handwriting Panel Service per-release table](https://batcmd.com/windows/11/services/tabletinputservice/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { products: [10] }
+    warning: "On Windows 10 this breaks the on-screen touch keyboard, handwriting and ink, and the emoji and symbol panel opened with Win and period. Microsoft's own Windows Server guidance rates this service 'Do not disable'. The service is absent from Windows 11 22H2 onward, where those surfaces are served by the Windows Input Experience host instead, so none of that applies there."
+    effects:
+      # Gated to Windows 10 because the service does not exist on the primary platform. The marker
+      # keeps both options detectable on the builds where the tweak is in scope.
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: TouchKeyboardService, type: REG_DWORD }
+      - id: tabletinputservice
+        service: { name: TabletInputService }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Disabled"
+        values: { state: 1, tabletinputservice: disabled }
+      - label: "Manual"
+        values: { state: 0, tabletinputservice: manual }
+
+  - id: disable_bluetooth
+    name: "Disable Bluetooth Support Services (bthserv)"
+    description: "Disable Bluetooth stack services on desktops with no Bluetooth hardware or need."
+    info: |
+      **Shuts down the whole Windows Bluetooth stack on a machine that has no Bluetooth hardware.**
+
+      ## What it does
+      Sets all three Bluetooth services to Disabled: `bthserv` (device discovery and pairing),
+      `BTAGService` (the hands-free audio gateway) and `BthAvctpSvc` (the audio and remote-control
+      transport). Together they are the Bluetooth stack, so disabling them prevents it from starting
+      at all.
+
+      ## Benefits
+      - **Removes a radio surface**: nothing can bring the Bluetooth stack up, which is a hardening guarantee rather than a speed gain
+      - **Microsoft rates it safe**: the Server guidance marks `bthserv` "OK to disable"
+      - **Correctly grouped**: all three go together, so you do not end up with a half-working stack
+
+      ## Drawbacks
+      - **All Bluetooth breaks**: mice, keyboards, headphones, game controllers and file transfer all stop working
+      - **Input lockout risk**: on a machine whose only mouse or keyboard is Bluetooth, you can be left unable to interact with it after the reboot
+      - **Not dormant today**: these are trigger-started, so on a machine with a Bluetooth radio they do start themselves and you are removing live behaviour
+      - **No performance gain**: on a machine with no radio they never start, so nothing is being saved
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start types from the snapshot; the stock value is Manual for all three
+      - Disabled overrides trigger registration, so the stack genuinely cannot start
+
+      ## Recommendation
+      Apply it on a wired desktop with no Bluetooth radio and no wireless peripherals. Never apply it
+      on a laptop, or on any machine with a Bluetooth mouse, keyboard, headset or controller, and
+      confirm you have a wired input device before you reboot.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, bthserv rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, all three Manual (Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Bluetooth Support Service per-release table](https://batcmd.com/windows/11/services/bthserv/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks ALL Bluetooth: mice, keyboards, headphones, controllers, and file transfer. These services are trigger-started, so on a machine with a Bluetooth radio you are removing live behaviour. Confirm you have a wired keyboard and mouse before rebooting."
+    effects:
+      - id: bthserv
+        service: { name: bthserv }
+      - id: btagservice
+        service: { name: BTAGService }
+      - id: bthavctpsvc
+        service: { name: BthAvctpSvc }
+    options:
+      - label: "Disabled"
+        values: { bthserv: disabled, btagservice: disabled, bthavctpsvc: disabled }
+      - label: "Manual"
+        values: { bthserv: manual, btagservice: manual, bthavctpsvc: manual }
+
+  - id: disable_alljoyn_router
+    name: "Disable AllJoyn Router Service (AJRouter)"
+    description: "Disable the router for AllJoyn, an IoT protocol Microsoft retired in October 2024."
+    info: |
+      **Turns off the router for AllJoyn, an IoT device protocol Microsoft has since retired.**
+
+      ## What it does
+      Sets the AllJoyn Router service (`AJRouter`) to Disabled. AllJoyn was an open discovery and
+      messaging protocol for Internet-of-Things devices, and this service routed its messages for
+      local clients. Microsoft retired its AllJoyn implementation on 1 October 2024.
+
+      ## Benefits
+      - **Retired technology**: Microsoft has removed AllJoyn from Windows, so nothing new will use it
+      - **Trigger-started service**: closes a listener path that would otherwise start itself on demand
+      - **No dependency**: nothing in normal networking or internet use touches AllJoyn
+
+      ## Drawbacks
+      - **AllJoyn devices stop**: interop with AllJoyn-based smart devices ends, which is rare but real on older setups
+      - **Not present on Windows 11**: the service is absent from Windows 11 24H2 and newer, so this control does nothing there
+      - **Nothing visible changes**: on a machine with no AllJoyn devices there is no observable difference
+
+      ## Good to know
+      - **Applies to**: Windows 10 IoT Enterprise LTSC 2021 only; the service does not exist on Windows 11 24H2 or newer
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - On an image where the service is not installed, the tweak reads as already Disabled rather than reporting Unknown
+
+      ## Recommendation
+      Apply it on a Windows 10 LTSC machine with no AllJoyn smart devices, which is almost all of
+      them. Skip it on Windows 11, where the service was removed with the protocol.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Features removed in Windows client, AllJoyn including the AllJoyn Router Service retired 1 October 2024](https://learn.microsoft.com/en-us/windows/whats-new/removed-features)
+      - [Deprecated features in the Windows client, AllJoyn deprecated 1 September 2023](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+      - [AllJoyn Router Service per-release table](https://batcmd.com/windows/11/services/ajrouter/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { products: [10] }
+    warning: "Microsoft deprecated AllJoyn on 1 September 2023 and retired it on 1 October 2024, so the service is absent from Windows 11 24H2 and newer. This control only exists on Windows 10."
+    effects:
+      # Gated to Windows 10 because the service was removed with the protocol in 24H2. The marker
+      # keeps both options detectable on the builds where the tweak is in scope.
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: AllJoynRouter, type: REG_DWORD }
+      - id: ajrouter
+        service: { name: AJRouter }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Disabled"
+        values: { state: 1, ajrouter: disabled }
+      - label: "Manual"
+        values: { state: 0, ajrouter: manual }
+
+  - id: disable_phone_service
+    name: "Disable Phone Service (PhoneSvc)"
+    description: "Disable the service that manages device telephony state."
+    info: |
+      **Turns off the cellular telephony service on a machine that has no mobile modem.**
+
+      ## What it does
+      Sets the Phone service (`PhoneSvc`) to Disabled. It manages device telephony state, meaning the
+      cellular and phone-call capability of hardware that has a mobile modem. It is not the Phone
+      Link app that mirrors your Android or iPhone, which is unaffected.
+
+      ## Benefits
+      - **Microsoft rates it safe**: the Server guidance marks this service "OK to disable"
+      - **No hardware to manage**: a desktop or a Wi-Fi-only laptop has no cellular radio
+      - **Removes a trigger**: the service currently starts itself when a telephony event fires
+
+      ## Drawbacks
+      - **Cellular telephony stops**: on a device with a built-in modem, phone and call state handling breaks
+      - **Not dormant today**: it is trigger-started with three registrations, so you are removing behaviour rather than declining to start something
+      - **Nothing visible changes**: on a machine with no modem there is no observable difference
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - This does not affect Phone Link, which uses a different service
+
+      ## Recommendation
+      Apply it on a desktop or any laptop without a cellular modem. Leave it enabled on a tablet,
+      always-connected laptop or any device with built-in mobile broadband.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, PhoneSvc rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, clean install](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Phone Service per-release table](https://batcmd.com/windows/11/services/phonesvc/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: phonesvc
+        service: { name: PhoneSvc }
+    options:
+      - label: "Disabled"
+        values: { phonesvc: disabled }
+      - label: "Manual"
+        values: { phonesvc: manual }
+
+  # SSDP/UPnP and Windows Media Player network sharing are one subsystem: DLNA discovery IS
+  # SSDP/UPnP. Merged so the optional WMPNetworkSvc effect (absent on LTSC images, which have no
+  # Windows Media Player Legacy feature) is paired with two always-present marker effects.
+  - id: disable_ssdp_upnp
+    name: "Disable Network Device Discovery (SSDPSRV/upnphost)"
+    description: "Disable SSDP and UPnP device discovery to shrink the local-network surface."
+    info: |
+      **Stops Windows discovering and advertising devices over SSDP and UPnP.**
+
+      ## What it does
+      Sets the SSDP Discovery service (`SSDPSRV`) and the UPnP Device Host (`upnphost`) to Disabled.
+      The first discovers and announces devices using the SSDP protocol; the second hosts UPnP
+      devices on this machine. Together they are how Windows finds and advertises itself to smart
+      TVs, media renderers and UPnP-capable routers.
+
+      ## Benefits
+      - **Smaller local footprint**: your PC stops announcing itself to everything on the LAN
+      - **Microsoft rates both safe**: the Server guidance marks both discovery services "OK to disable"
+      - **Known-risky protocol**: UPnP has a long history of local-network exposure issues
+
+      ## Drawbacks
+      - **Cast to Device breaks**: streaming media from Windows to a TV stops working
+      - **DLNA discovery breaks**: UPnP and DLNA devices no longer appear in either direction
+      - **Router auto-config breaks**: applications that open ports through UPnP, including some games and torrent clients, must be configured by hand
+      - **Smart-home discovery**: some smart-home apps that find devices over SSDP stop seeing them
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start types from the snapshot; the stock value is Manual for both
+      - **Serving your own media** is a separate control: the Windows Media Player Network Sharing service rides on this same transport but has its own tweak, so you can stop serving a library without giving up device discovery
+      - Neither service is trigger-started, so on a machine that casts they are genuinely running
+
+      ## Recommendation
+      Apply it on a security-focused machine that does not cast, stream or rely on UPnP port
+      forwarding. Leave it alone if you use Cast to Device, DLNA, or a game or client that opens
+      ports through the router automatically.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, both rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, both Manual](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [SSDP Discovery per-release table](https://batcmd.com/windows/11/services/ssdpsrv/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks UPnP/DLNA device discovery, 'Cast to Device' media casting, and some smart-home or router auto-configuration. Leave it on if you cast to TVs or stream media."
+    effects:
+      - id: ssdpsrv
+        service: { name: SSDPSRV }
+      - id: upnphost
+        service: { name: upnphost }
+    options:
+      - label: "Disabled"
+        values: { ssdpsrv: disabled, upnphost: disabled }
+      - label: "Manual"
+        values: { ssdpsrv: manual, upnphost: manual }
+
+  - id: disable_windows_insider
+    name: "Disable Windows Insider Service (wisvc)"
+    description: "Disable the Insider service on machines not enrolled in the Windows Insider Program."
+    info: |
+      **Turns off the service that enrols this PC in Windows Insider preview builds.**
+
+      ## What it does
+      Sets the Windows Insider service (`wisvc`) to Disabled. It handles enrolment in the Windows
+      Insider Program, channel selection, and delivery of preview builds. Normal stable-channel
+      Windows Update servicing does not go through it.
+
+      ## Benefits
+      - **Microsoft rates it safe**: the Server guidance marks this service "OK to disable"
+      - **No function on stable**: it does nothing on a machine kept on the retail channel
+      - **Blocks accidental enrolment**: nobody can put this machine on a preview build without reverting first
+
+      ## Drawbacks
+      - **Insider enrolment breaks**: you cannot join the program or receive preview builds
+      - **Silent failure in Settings**: the Insider Program page will fail to enrol without explaining why
+      - **Nothing visible changes**: on a stable-channel machine there is no observable difference
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - Revert this first if you later decide to join the Insider Program
+
+      ## Recommendation
+      Apply it on any machine you keep on stable Windows, which is nearly all of them. Leave it
+      enabled if you are an Insider or plan to become one.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, wisvc rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, clean install](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Windows Insider Service per-release table](https://batcmd.com/windows/11/services/wisvc/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: wisvc
+        service: { name: wisvc }
+    options:
+      - label: "Disabled"
+        values: { wisvc: disabled }
+      - label: "Manual"
+        values: { wisvc: manual }
+
+  - id: disable_maps_broker
+    name: "Disable Downloaded Maps Manager (MapsBroker)"
+    description: "Disable the offline Maps broker if you never use offline maps."
+    info: |
+      **Turns off the offline-maps download service on a PC that never uses offline maps.**
+
+      ## What it does
+      Sets the Downloaded Maps Manager service (`MapsBroker`) to Disabled. It downloads offline maps
+      and serves them to any application that uses the Windows Maps platform. Microsoft's own
+      description warns that disabling it prevents apps from accessing maps.
+
+      ## Benefits
+      - **Removes a delayed-autostart service**: it loads shortly after every boot, so this genuinely cuts post-boot work
+      - **Microsoft rates it safe**: the Server guidance marks this service "OK to disable"
+      - **Feature is winding down**: Microsoft deprecated the Maps app and the Windows Maps platform APIs in 2025
+
+      ## Drawbacks
+      - **Offline maps stop**: downloading and updating offline map data no longer works
+      - **Map-using apps fail**: applications built on the Windows Maps platform may error rather than degrade gracefully
+      - **Not a big saving**: the service is idle once loaded, so expect a small change, not a noticeable one
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021; Maps is no longer preinstalled from 24H2
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Automatic (Delayed Start)
+      - **Pairs with**: the offline Maps scheduled task tweak, which covers the background download side
+
+      ## Recommendation
+      Apply it if you do not use offline maps or the Maps app, which on 24H2 is most people, since
+      Maps is no longer preinstalled. Leave it enabled if you keep downloaded map regions for offline
+      navigation.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, MapsBroker rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Deprecated features in the Windows client, Maps app and Maps platform APIs](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+      - [Windows 11 default services configuration, MapsBroker as Auto (Delayed)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: mapsbroker
+        service: { name: MapsBroker }
+    options:
+      - label: "Disabled"
+        values: { mapsbroker: disabled }
+      - label: "Automatic (Delayed)"
+        values: { mapsbroker: automatic_delayed }
+
+  - id: disable_geolocation
+    name: "Disable Geolocation Service (lfsvc)"
+    description: "Disable the system geolocation service to stop OS-wide location resolution."
+    info: |
+      **Removes system-wide location resolution, so nothing on the PC can work out where you are.**
+
+      ## What it does
+      Sets the Geolocation service (`lfsvc`) to Disabled. It monitors the device's location and
+      manages geofences, and it is the provider every application and Windows feature queries for
+      location. Disabling it removes the provider rather than denying access to it, which is stronger
+      than the Location privacy toggle.
+
+      ## Benefits
+      - **Stronger than the toggle**: the provider is gone, so there is nothing for an app to be granted
+      - **Microsoft rates it safe**: the Server guidance marks this service "OK to disable"
+      - **Removes a live trigger**: with four trigger registrations, this service currently starts itself on demand
+
+      ## Drawbacks
+      - **All app location breaks**: every application that asks Windows where you are gets nothing
+      - **Find My Device breaks**: Microsoft documents that feature as depending on device location, so a lost machine cannot be located
+      - **Automatic time zone breaks**: if you travel, the clock stops following you; the Auto Time Zone Updater depends on this service
+      - **Weather and maps degrade**: location-based weather and any map that centres on you stop working
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - The service is trigger-started, so on a machine that uses location it is genuinely running today
+
+      ## Recommendation
+      Apply it on a stationary desktop where privacy matters and nothing needs to know where the
+      machine is. Leave it enabled on a laptop you travel with, where automatic time zone and Find My
+      Device are worth more than the privacy gain.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, lfsvc rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Manage connections from Windows components to Microsoft services, Find My Device](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Windows 11 default services configuration, lfsvc as Manual (Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks location for all apps, Find My Device, automatic time-zone, and location-based weather; equivalent to hard-off for the Location privacy toggle. The service is trigger-started, so on a machine that uses location it is running today."
+    effects:
+      - id: lfsvc
+        service: { name: lfsvc }
+    options:
+      - label: "Disabled"
+        values: { lfsvc: disabled }
+      - label: "Manual"
+        values: { lfsvc: manual }
+
+  - id: disable_xbox_services
+    name: "Xbox Live Services (XblAuthManager et al.)"
+    description: "Disable Xbox Live services on PCs that do not game through Xbox or PC Game Pass, with the accessory service selectable separately."
+    info: |
+      **Turns off Xbox sign-in, cloud saves and networking on a PC that never uses Xbox or Game Pass.**
+
+      ## What it does
+      Sets four services to Disabled: `XblAuthManager` (Xbox Live sign-in), `XblGameSave` (cloud save
+      sync), `XboxNetApiSvc` (Xbox Live networking) and `XboxGipSvc` (Xbox Accessory Management, which
+      handles connected Xbox controllers and accessories).
+
+      ## Benefits
+      - **Microsoft recommends two of them**: the Server guidance rates `XblAuthManager` and `XblGameSave` "Should be disabled"
+      - **CIS recommends a third**: the Windows 11 Enterprise Benchmark sets `XboxGipSvc` to Disabled at Level 1
+      - **Dead weight without Xbox**: on a PC that never touches the Xbox app or Game Pass, none of the four does anything useful
+
+      ## Drawbacks
+      - **Xbox controllers can break system-wide**: `XboxGipSvc` handles Xbox accessories, and disabling it can stop controllers working in any launcher, Steam and Epic included
+      - **Xbox app and Game Pass break**: sign-in, the store front end and PC Game Pass all stop working
+      - **Cloud saves stop**: Xbox Live save synchronisation no longer runs, so progress stays local
+      - **Game Bar loses features**: sign-in and capture features that depend on Xbox Live stop working
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start types from the snapshot; the stock value is Manual for all four
+      - If you use an Xbox controller, choose the option that keeps the accessory service at Manual
+
+      ## Recommendation
+      Apply the full disable on a PC that never uses Xbox, Game Pass or an Xbox controller. If you
+      game with an Xbox controller in any launcher, choose the option that leaves the accessory
+      service at Manual rather than the full disable.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, XblAuthManager and XblGameSave rated Should be disabled](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [CIS Windows 11 Enterprise Benchmark 5.42, Xbox Accessory Management Service](https://www.tenable.com/audits/items/CIS_MS_Windows_11_Enterprise_Level_1_v1.0.0.audit:00bba2f087d462b5662f1987510165b6)
+      - [Xbox Accessory Management Service per-release table](https://batcmd.com/windows/11/services/xboxgipsvc/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks the Xbox app, PC Game Pass, cloud game saves, and Game Bar sign-in/captures. XboxGipSvc (Xbox Accessory Management) also drives Xbox controller behaviour in ANY launcher (Steam and Epic included), so use the middle option to keep it at Manual if you game with a controller."
+    effects:
+      - id: xblauthmanager
+        service: { name: XblAuthManager }
+      - id: xblgamesave
+        service: { name: XblGameSave }
+      - id: xboxnetapisvc
+        service: { name: XboxNetApiSvc }
+      - id: xboxgipsvc
+        service: { name: XboxGipSvc }
+    options:
+      - label: "Disabled"
+        values: { xblauthmanager: disabled, xblgamesave: disabled, xboxnetapisvc: disabled, xboxgipsvc: disabled }
+      - label: "Xbox Live disabled, accessories kept"
+        values: { xblauthmanager: disabled, xblgamesave: disabled, xboxnetapisvc: disabled, xboxgipsvc: manual }
+      - label: "Manual"
+        values: { xblauthmanager: manual, xblgamesave: manual, xboxnetapisvc: manual, xboxgipsvc: manual }
+
+  - id: disable_cdpsvc
+    name: "Disable Connected Devices Platform Service (CDPSvc)"
+    description: "Disable the cross-device platform service to stop background sync and device-linking chatter."
+    info: |
+      **Stops the background sync that keeps this PC in step with your other Microsoft-linked devices.**
+
+      ## What it does
+      Sets the Connected Devices Platform service (`CDPSvc`) to Disabled. It is the cross-device
+      fabric behind Nearby Sharing, Phone Link, the shared clipboard and the "resume on other
+      devices" handoff, and it maintains background connections to keep those in sync.
+
+      ## Benefits
+      - **Cuts background connections**: this is a genuinely network-active service, not an idle one
+      - **Removes a delayed-autostart load**: it starts shortly after every boot
+      - **No value alone**: a single-device user gets nothing from cross-device sync
+
+      ## Drawbacks
+      - **Phone Link breaks**: your phone no longer connects to this PC
+      - **Nearby Sharing breaks**: sending files to a nearby Windows device stops working
+      - **Shared clipboard breaks**: copy on one device and paste on another no longer works, and handoff between devices stops
+      - **Per-user half stays up**: the companion `CDPUserSvc` service keeps running and simply fails to reach its backend
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Automatic (Delayed Start)
+      - Microsoft gives no guidance either way for this service, so the case rests on absence of dependency
+
+      ## Recommendation
+      Apply it on a single-device machine that does not use Phone Link, Nearby Sharing or the shared
+      clipboard. Leave it enabled if you move between a phone and this PC, since those features have
+      no fallback.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, CDPSvc as Auto (Delayed, Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Connected Devices Platform Service defaults](https://revertservice.com/11/cdpsvc/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks Nearby Sharing, Phone Link, shared clipboard, and 'resume on other devices'. The per-user CDPUserSvc keeps running and simply fails to reach its backend."
+    effects:
+      - id: cdpsvc
+        service: { name: CDPSvc }
+    options:
+      - label: "Disabled"
+        values: { cdpsvc: disabled }
+      - label: "Automatic (Delayed)"
+        values: { cdpsvc: automatic_delayed }
+
+  - id: disable_biometrics
+    name: "Disable Windows Biometric Service (WbioSrvc)"
+    description: "Disable the biometric service on machines that do not use Windows Hello fingerprint or face."
+    info: |
+      **Turns off Windows Hello fingerprint and face sign-in on a PC that logs in with a PIN or password.**
+
+      ## What it does
+      Sets the Windows Biometric service (`WbioSrvc`) to Disabled. It manages fingerprint readers and
+      infrared cameras and brokers biometric samples to applications, and it is the service Windows
+      Hello fingerprint and face sign-in run on top of.
+
+      ## Benefits
+      - **Hardware you may not have**: on a desktop with no reader or IR camera it manages nothing
+      - **Removes a credential path**: one fewer way to authenticate to the machine, which is a hardening choice
+      - **Fully reversible**: Windows falls back to PIN or password rather than locking you out
+
+      ## Drawbacks
+      - **Fingerprint sign-in breaks**: the reader stops being an option at the sign-in screen
+      - **Face sign-in breaks**: Windows Hello facial recognition stops working
+      - **Hello for Business paths**: a biometric-gated credential provider stops working, so verify a PIN or password works before applying
+      - **Not dormant today**: the service is trigger-started, so on a machine with biometric hardware it starts itself
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - Microsoft gives no guidance either way for this service
+
+      ## Recommendation
+      Apply it if you sign in only with a password or PIN and have no fingerprint reader or IR camera.
+      Leave it enabled if you use any biometric unlock, since the convenience loss is immediate and
+      the gain is negligible.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, WbioSrvc as Manual (Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Windows Biometric Service per-release table](https://batcmd.com/windows/11/services/wbiosrvc/)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks Windows Hello fingerprint and facial sign-in; leave enabled if you use any biometric login. The service is trigger-started, so on a machine with biometric hardware it is running today."
+    effects:
+      - id: wbiosrvc
+        service: { name: WbioSrvc }
+    options:
+      - label: "Disabled"
+        values: { wbiosrvc: disabled }
+      - label: "Manual"
+        values: { wbiosrvc: manual }
+
+  - id: disable_smartcard
+    name: "Disable Smart Card Services (SCardSvr)"
+    description: "Disable smart-card services on consumer PCs with no smart-card reader."
+    info: |
+      **Turns off smart card support on a consumer PC that has no card reader and no card-based sign-in.**
+
+      ## What it does
+      Sets three services to Disabled: `SCardSvr` (the resource manager every other smart card
+      component depends on), `ScDeviceEnum` (which enumerates readers into a session) and
+      `SCPolicySvc` (which enforces the lock-on-card-removal policy). Together they are smart card
+      support.
+
+      ## Benefits
+      - **Hardware you do not have**: on a home PC with no reader, three services manage nothing
+      - **Removes a credential path**: no card-based authentication surface remains
+      - **Removes live triggers**: `SCardSvr` and `ScDeviceEnum` are trigger-started, so they do start themselves today
+
+      ## Drawbacks
+      - **Can lock you out**: on a machine that signs in with a smart card, this removes the only sign-in path and cannot be reverted from inside Windows
+      - **CAC, PIV and YubiKey PIV break**: card-based logon of every kind stops working
+      - **Enterprise VPN and certificate auth break**: any VPN or certificate authentication that reads a card stops
+      - **Removal policy stops**: with `SCPolicySvc` disabled the desktop no longer locks when a card is withdrawn, which is a security regression on a card-using machine
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service; a card can keep working until then
+      - **Reverting**: restores the previous start types from the snapshot; the stock value is Manual for all three
+      - Confirm a working password or PIN sign-in before applying, and never apply it remotely
+
+      ## Recommendation
+      Apply it only on a personal PC with no card reader and no card-based sign-in. Never apply it on
+      a work, managed or enterprise machine, or anywhere smart card, CAC, PIV or YubiKey PIV sign-in
+      is in use, because the lockout is not recoverable from inside Windows.
+
+      ## Evidence
+      - **Risk**: high
+      - **Confidence**: Microsoft-documented
+      - [Smart Cards for Windows Service, with the shipped service manifest](https://learn.microsoft.com/en-us/windows/security/identity-protection/smart-cards/smart-card-smart-cards-for-windows-service)
+      - [Guidelines for disabling system services in Windows Server](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, clean install](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+    risk_level: high
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks smart-card / CAC / PIV / YubiKey-PIV logon and some enterprise VPN auth. On any machine that uses smart-card sign-in this removes the only sign-in path and can lock the user out, with no way back from inside Windows. The change lands at the next reboot, so a card can keep working until then. Do not disable in managed or enterprise environments and never apply it remotely."
+    effects:
+      - id: scardsvr
+        service: { name: SCardSvr }
+      - id: scdeviceenum
+        service: { name: ScDeviceEnum }
+      - id: scpolicysvc
+        service: { name: SCPolicySvc }
+    options:
+      - label: "Disabled"
+        values: { scardsvr: disabled, scdeviceenum: disabled, scpolicysvc: disabled }
+      - label: "Manual"
+        values: { scardsvr: manual, scdeviceenum: manual, scpolicysvc: manual }
+
+  - id: disable_sensor_services
+    name: "Disable Sensor Services (SensorService)"
+    description: "Disable sensor services on desktops with no ambient-light or orientation sensors."
+    info: |
+      **Turns off the sensor stack on a desktop that has no ambient-light or orientation sensors.**
+
+      ## What it does
+      Sets three services to Disabled: `SensorService` (which manages sensors and exposes them to
+      apps), `SensrSvc` (which monitors sensors and adapts system state, for example screen
+      brightness) and `SensorDataService` (which delivers the sensor data itself).
+
+      ## Benefits
+      - **Microsoft rates all three safe**: the Server guidance marks every one of them "OK to disable"
+      - **Hardware you may not have**: a tower desktop typically has no light, orientation or motion sensors
+      - **Removes many triggers**: `SensorService` alone carries eight trigger registrations, so it does start itself today
+
+      ## Drawbacks
+      - **Auto-brightness breaks**: adaptive screen brightness stops responding to ambient light
+      - **Screen rotation breaks**: automatic rotation on a tablet or convertible stops working
+      - **Sensor-aware apps break**: anything reading orientation, light or motion gets nothing
+      - **Hard to be sure**: an attached monitor or a laptop lid sensor is easy to overlook, so check Device Manager under Sensors before applying
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start types from the snapshot; the stock value is Manual for all three
+      - On a genuinely sensorless machine these never start, so expect a guarantee rather than a speed gain
+
+      ## Recommendation
+      Apply it on a desktop you have confirmed has no sensors listed in Device Manager. Leave it
+      enabled on any laptop, tablet or convertible, where auto-brightness and rotation are worth more
+      than removing three idle services.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Guidelines for disabling system services in Windows Server, all three rated OK to disable](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+      - [Windows 11 default services configuration, all three Manual (Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Sensor Monitoring Service per-release table](https://batcmd.com/windows/11/services/sensrsvc/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks auto-brightness, adaptive screen rotation, and sensor-aware apps on laptops and tablets; safe on sensorless desktops. Check Device Manager under Sensors before applying."
+    effects:
+      - id: sensorservice
+        service: { name: SensorService }
+      - id: sensrsvc
+        service: { name: SensrSvc }
+      - id: sensordataservice
+        service: { name: SensorDataService }
+    options:
+      - label: "Disabled"
+        values: { sensorservice: disabled, sensrsvc: disabled, sensordataservice: disabled }
+      - label: "Manual"
+        values: { sensorservice: manual, sensrsvc: manual, sensordataservice: manual }
+
+  - id: disable_parental_controls
+    name: "Disable Family Safety Monitor (WpcMonSvc)"
+    description: "Disable the Family Safety monitor service if you do not use Microsoft Family features."
+    info: |
+      **Turns off the Family Safety monitor on an account that is not supervised by Microsoft Family.**
+
+      ## What it does
+      Sets the Family Safety Monitor service (`WpcMonSvc`, shown as Parental Controls) to Disabled. It
+      is what enforces Microsoft Family Safety restrictions on this device: screen time limits, app
+      and content filtering, and activity reporting.
+
+      ## Benefits
+      - **No account to supervise**: on an adult or standalone account it enforces nothing
+      - **Not trigger-started**: unlike most services here it is plain Manual, so this is a clean removal
+      - **Fully reversible**: nothing else depends on it
+
+      ## Drawbacks
+      - **Supervision stops silently**: on a device with a supervised child account this defeats parental controls, and the parent gets no notification that enforcement stopped
+      - **Screen time limits break**: time restrictions are no longer applied on this device
+      - **Content filtering breaks**: app and web content limits stop being enforced
+      - **Activity reporting breaks**: the parent's activity report for this device goes quiet
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - The consequence of misuse here falls on someone other than the person applying it
+
+      ## Recommendation
+      Apply it on an adult or standalone account that has never used Microsoft Family Safety. Never
+      apply it on a device with a supervised child account, where it is a supervision bypass rather
+      than a tidy-up.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Windows 11 default services configuration, WpcMonSvc as Manual](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Windows 10 default services configuration, WpcMonSvc as Manual](https://www.winhelponline.com/blog/windows-10-default-services-configuration/)
+      - [Parental Controls per-release table](https://batcmd.com/windows/11/services/wpcmonsvc/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "On a device with a supervised child account this is a supervision bypass: screen-time limits, content filtering and activity reporting all stop, and the parent gets no notification. Only apply it on an adult or standalone account."
+    effects:
+      - id: wpcmonsvc
+        service: { name: WpcMonSvc }
+    options:
+      - label: "Disabled"
+        values: { wpcmonsvc: disabled }
+      - label: "Manual"
+        values: { wpcmonsvc: manual }
+
+  - id: disable_payments_nfc
+    name: "Disable Payments and NFC/SE Manager (SEMgrSvc)"
+    description: "Disable the NFC secure-element manager on devices without NFC payments."
+    info: |
+      **Turns off the NFC secure-element manager on a device with no tap-to-pay hardware.**
+
+      ## What it does
+      Sets the Payments and NFC/SE Manager service (`SEMgrSvc`) to Disabled. It manages the hardware
+      secure element that NFC tap-to-pay and secure wallet operations run through. It is the hardware
+      half of the Windows payment stack; the Wallet service is the front end.
+
+      ## Benefits
+      - **Hardware you may not have**: a desktop has no NFC radio and no secure element
+      - **Removes a payment surface**: nothing can reach the secure element after this
+      - **Removes a live trigger**: the service is trigger-started, so it does start itself on demand today
+
+      ## Drawbacks
+      - **Tap-to-pay breaks**: NFC payments from this device stop working
+      - **Secure wallet breaks**: wallet features that use the secure element stop working
+      - **Half the stack**: the Wallet service is separate, so disabling only this one leaves the front end running
+      - **Nothing visible changes**: on a machine without NFC there is no observable difference
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual
+      - **Pairs with**: the Wallet service tweak, which covers the other half
+
+      ## Recommendation
+      Apply it on any desktop, and on any laptop without NFC. Leave it enabled if you tap to pay from
+      this device or use a secure-element wallet.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Windows 11 default services configuration, SEMgrSvc as Manual (Triggered)](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Windows 10 default services configuration, SEMgrSvc as Manual (Triggered)](https://www.winhelponline.com/blog/windows-10-default-services-configuration/)
+      - [Payments and NFC/SE Manager per-release table](https://batcmd.com/windows/11/services/semgrsvc/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: semgrsvc
+        service: { name: SEMgrSvc }
+    options:
+      - label: "Disabled"
+        values: { semgrsvc: disabled }
+      - label: "Manual"
+        values: { semgrsvc: manual }
+
+  - id: disable_wmp_network_sharing
+    name: "Disable Media Player Network Sharing (WMPNetworkSvc)"
+    description: "Stop Windows Media Player serving your media library to other devices over DLNA."
+    info: |
+      **Stops Windows Media Player serving your media library to other devices on the network.**
+
+      ## What it does
+      Sets the Windows Media Player Network Sharing service (`WMPNetworkSvc`) to Disabled. The service
+      publishes your Windows Media Player library over DLNA and UPnP so smart TVs and other renderers
+      can play from it. Local playback in the player is unaffected.
+
+      ## Benefits
+      - **Closes a network listener**: the service opens a listener that serves media to the LAN
+      - **Nothing else depends on it**: no other Windows feature needs library sharing
+      - **Legacy component**: Microsoft deprecated the legacy DRM services this player relies on in December 2024
+
+      ## Drawbacks
+      - **DLNA serving stops**: streaming your library to a TV or other renderer no longer works
+      - **Discovery is separate**: DLNA also needs the SSDP and UPnP services, so this tweak alone leaves the discovery transport up
+      - **May not be installed**: the service ships with the removable Windows Media Player Legacy feature, so it is absent on Enterprise LTSC and IoT Enterprise LTSC images and on any machine where that feature was removed
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021, but only where Windows Media Player Legacy is installed
+      - **Takes effect**: after reboot, because changing a start type never stops an already running service
+      - **Reverting**: restores the previous start type from the snapshot; the stock value is Manual where the service exists
+      - **Pairs with**: the SSDP and UPnP tweak, which removes the transport DLNA rides on
+
+      ## Recommendation
+      Apply it if you do not stream your media library from this PC to other devices. Leave it enabled
+      if you use DLNA sharing from Windows Media Player to a TV or a network player.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Deprecated features in the Windows client, legacy DRM services used by Windows Media Player](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+      - [Windows 11 default services configuration, WMPNetworkSvc as Manual](https://www.winhelponline.com/blog/windows-11-default-services-configuration/)
+      - [Windows Media Player Network Sharing Service per-release table](https://batcmd.com/windows/11/services/wmpnetworksvc/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    warning: "Breaks DLNA and UPnP serving of your Windows Media Player library to TVs and network players; local playback is unaffected. The service is delivered by the removable Windows Media Player Legacy feature rather than by the base OS, so on images without that feature (Enterprise LTSC and IoT Enterprise LTSC included) there is nothing to change."
+    effects:
+      # The service rides the removable Media.WindowsMediaPlayer feature and is absent on a stock
+      # 24H2 IoT Enterprise LTSC image, so it is optional and an absent service reads as disabled.
+      # The marker keeps both options detectable on every supported build.
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: WmpNetworkSharing, type: REG_DWORD }
+      - id: wmpnetworksvc
+        service: { name: WMPNetworkSvc }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Disabled"
+        values: { state: 1, wmpnetworksvc: disabled }
+      - label: "Manual"
+        values: { state: 0, wmpnetworksvc: manual }
+
+  - id: task_autochk_proxy
+    name: "Disable Autochk Proxy task"
+    description: "Disable the task that uploads disk-check SQM/CEIP data."
+    info: |
+      **Stops the scheduled upload of disk-check telemetry to Microsoft, without touching disk checking itself.**
+
+      ## What it does
+      Disables the Autochk Proxy scheduled task (`\Microsoft\Windows\Autochk\Proxy`). Microsoft's own
+      description for it reads "This task collects and uploads autochk SQM data if opted-in to the
+      Microsoft Customer Experience Improvement Program". It runs
+      `rundll32.exe acproxy.dll,PerformAutochkOperations` from a boot trigger.
+
+      ## Benefits
+      - **One less upload**: removes a boot-time diagnostic transmission to Microsoft
+      - **Disk checking unaffected**: `autochk` and `chkdsk` are a different mechanism and keep working
+      - **No functional cost**: nothing on the machine reads the data this task sends
+
+      ## Drawbacks
+      - **Nothing changes without CEIP**: Microsoft's description gates the upload on CEIP opt-in, so on a machine that never opted in you will see no difference
+      - **Updates can re-enable it**: tasks under `\Microsoft\Windows\` can be re-created or re-enabled by feature updates
+      - **Partial coverage**: this is one of several CEIP and census tasks, so disabling it alone does not stop the rest
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: immediately, since a scheduled task changes state as soon as it is disabled
+      - **Reverting**: restores the previous enabled state from the snapshot
+      - **Pairs with**: the Customer Experience Improvement Program tweak in Privacy, which sets the CEIP policy this task honours
+
+      ## Recommendation
+      Apply it if you want fewer diagnostic uploads leaving the machine; there is no functional
+      downside. Skip it if you deliberately participate in CEIP for enterprise reporting.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [CEIPEnable, the Customer Experience Improvement Program control](https://learn.microsoft.com/en-us/windows/win32/devnotes/ceipenable)
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: proxy
+        task: { path: '\Microsoft\Windows\Autochk\Proxy' }
+    options:
+      - label: "Disabled"
+        values: { proxy: disabled }
+      - label: "Enabled"
+        values: { proxy: enabled }
+
+  - id: task_feedback_dmclient
+    name: "Disable Feedback (SIUF) DmClient tasks"
+    description: "Disable the Windows Feedback tasks that transmit feedback and diagnostic data."
+    info: |
+      **Stops the Windows Feedback tasks that send feedback and diagnostic data to Microsoft.**
+
+      ## What it does
+      Disables the two Windows Feedback (SIUF) scheduled tasks, `DmClient` and
+      `DmClientOnScenarioDownload`. They drive `dmclient.exe`, the Microsoft Feedback SIUF Deployment
+      Manager Client. The second refreshes the feedback scenario configuration from an event trigger;
+      the first has no trigger on current builds and runs only when something invokes it.
+
+      ## Benefits
+      - **Removes a feedback channel**: nothing on the machine depends on these uploads
+      - **Blocks the scenario refresh**: `DmClientOnScenarioDownload` is the one with a live trigger, and it stops
+      - **No functional cost**: neither task provides a user-facing feature
+
+      ## Drawbacks
+      - **Feedback Hub degrades**: submissions and the scenario-driven feedback prompts may stop working properly
+      - **Less than it sounds**: `DmClient` carries no trigger on Windows 11 24H2, so disabling it stops nothing that was scheduled
+      - **Updates can re-enable it**: tasks under `\Microsoft\Windows\` can be re-created or re-enabled by feature updates
+      - **Overlaps with the telemetry service**: with `DiagTrack` disabled these tasks have no working upload path anyway
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: immediately, since a scheduled task changes state as soon as it is disabled
+      - **Reverting**: restores the previous enabled state from the snapshot
+      - **Pairs with**: the DiagTrack telemetry service tweak, which removes the transport these tasks would use
+
+      ## Recommendation
+      Apply it if you do not use Feedback Hub, since there is nothing to lose. Leave it alone if you
+      actively submit feedback to Microsoft and want the attached diagnostics to arrive.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
+      - [dmclient.exe identified as the Microsoft Feedback SIUF Deployment Manager Client](https://strontic.github.io/xcyclopedia/library/dmclient.exe-7E90BC5211DC802DEDFA345E234B0F95.html)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: dmclient
+        task: { path: '\Microsoft\Windows\Feedback\Siuf\DmClient' }
+      - id: dmclient_scenario
+        task: { path: '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload' }
+    options:
+      - label: "Disabled"
+        values: { dmclient: disabled, dmclient_scenario: disabled }
+      - label: "Enabled"
+        values: { dmclient: enabled, dmclient_scenario: enabled }
+
+  - id: task_wer_queuereporting
+    name: "Disable Windows Error Reporting QueueReporting task"
+    description: "Disable the task that uploads queued crash reports to Microsoft."
+    info: |
+      **Stops queued crash reports being uploaded to Microsoft, while local crash logs stay on your PC.**
+
+      ## What it does
+      Disables the Windows Error Reporting QueueReporting scheduled task
+      (`\Microsoft\Windows\Windows Error Reporting\QueueReporting`). Windows Error Reporting queues
+      crash reports that could not be sent at the time of the crash, and this task drains that queue
+      by uploading them.
+
+      ## Benefits
+      - **Crash data stays local**: reports can contain application and system state, and none of it leaves the machine
+      - **Local logging intact**: `.wer` reports and Reliability Monitor keep working
+      - **Separate from telemetry**: this is a distinct channel from the diagnostic data pipeline, so it is a real additional gain
+
+      ## Drawbacks
+      - **Microsoft stops hearing about your crashes**: that removes one input into the bug you are actually hitting getting fixed
+      - **Support cases suffer**: a support case that expects Windows Error Reporting submissions has nothing to reference
+      - **Updates can re-enable it**: tasks under `\Microsoft\Windows\` can be re-created or re-enabled by feature updates
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: immediately, since a scheduled task changes state as soon as it is disabled
+      - **Reverting**: restores the previous enabled state from the snapshot
+      - **Pairs with**: the Windows Error Reporting service tweak in Privacy, which stops reports being generated in the first place
+
+      ## Recommendation
+      Apply it if you would rather crash contents stayed on your machine, since local diagnostics are
+      unaffected. Leave it enabled if you are chasing a recurring crash and want Microsoft or an OEM
+      to receive the reports.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Configure Windows diagnostic data in your organization, crash reporting as a distinct channel](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
+      - [Windows Error Reporting overview](https://learn.microsoft.com/en-us/windows/win32/wer/windows-error-reporting)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: queuereporting
+        task: { path: '\Microsoft\Windows\Windows Error Reporting\QueueReporting' }
+    options:
+      - label: "Disabled"
+        values: { queuereporting: disabled }
+      - label: "Enabled"
+        values: { queuereporting: enabled }
+
+  - id: task_maps_update
+    name: "Disable Offline Maps update tasks"
+    description: "Disable the background tasks that download and toast offline map updates."
+    info: |
+      **Stops the background download of offline map updates and the notification about them.**
+
+      ## What it does
+      Disables the two offline Maps scheduled tasks, `MapsUpdateTask` (which downloads offline map
+      updates in the background) and `MapsToastTask` (which raises the notification). The toast task
+      has no schedule of its own; it fires only when the Downloaded Maps Manager service invokes it.
+
+      ## Benefits
+      - **No background downloads**: map data is large, so this saves real bandwidth on a metered link
+      - **No update notifications**: the toast about new map data stops appearing
+      - **Pairs with the service**: it is the task half of the same subsystem as Downloaded Maps Manager
+
+      ## Drawbacks
+      - **Offline maps stop updating**: downloaded regions go stale until you refresh them by hand
+      - **Manual updates still need the service**: you can only trigger an update while the Downloaded Maps Manager service is enabled
+      - **Little to stop on 24H2**: Maps is no longer preinstalled from Windows 11 24H2, so on a clean install there may be no app behind these tasks
+      - **Updates can re-enable it**: tasks under `\Microsoft\Windows\` can be re-created or re-enabled by feature updates
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: immediately, since a scheduled task changes state as soon as it is disabled
+      - **Reverting**: restores the previous enabled state from the snapshot
+      - **Pairs with**: the Downloaded Maps Manager service tweak, which covers the service half
+
+      ## Recommendation
+      Apply it if you do not use offline maps, which on 24H2 covers most people since Maps is no
+      longer preinstalled. Leave it enabled if you keep downloaded map regions current for offline
+      navigation.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Resources for deprecated features, Maps no longer preinstalled from Windows 11 24H2](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features-resources)
+      - [Deprecated features in the Windows client, Maps app and Maps platform APIs](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: maps_update
+        task: { path: '\Microsoft\Windows\Maps\MapsUpdateTask' }
+      - id: maps_toast
+        task: { path: '\Microsoft\Windows\Maps\MapsToastTask' }
+    # One option only: the shipped enabled-state of MapsUpdateTask is unestablished, so a second
+    # option would have to invent a literal and drive the machine to it. Restore Snapshot is the
+    # honest way back until a clean 24H2 image settles it.
+    options:
+      - label: "Disabled"
+        values: { maps_update: disabled, maps_toast: disabled }
+
+  - id: task_disk_diagnostic_datacollector
+    name: "Disable DiskDiagnosticDataCollector task"
+    description: "Disable the task that sends SMART disk data to Microsoft under CEIP."
+    info: |
+      **Stops the hidden task that reports drive SMART data to Microsoft, without touching failing-disk warnings.**
+
+      ## What it does
+      Disables the DiskDiagnosticDataCollector scheduled task
+      (`\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector`). Its own
+      description says it "reports general disk and system information to Microsoft for users
+      participating in the Customer Experience Program", and it runs
+      `rundll32.exe dfdts.dll,DfdGetDefaultPolicyAndSMART`.
+
+      ## Benefits
+      - **Drive data stays local**: SMART attributes and disk information are not sent to Microsoft
+      - **Failing-disk warnings intact**: the separate DiskDiagnosticResolver task is what warns you, and this tweak does not touch it
+      - **Hidden task made explicit**: the task is marked hidden in Task Scheduler, so this surfaces a control you would otherwise not see
+
+      ## Drawbacks
+      - **Nothing was scheduled**: on Windows 11 24H2 this task carries no trigger at all, only maintenance settings, so disabling it stops no recurring run
+      - **CEIP-gated anyway**: the description ties the reporting to Customer Experience Program participation
+      - **Updates can re-enable it**: tasks under `\Microsoft\Windows\` can be re-created or re-enabled by feature updates
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021
+      - **Takes effect**: immediately, since a scheduled task changes state as soon as it is disabled
+      - **Reverting**: restores the previous enabled state from the snapshot
+      - Do not disable the separate DiskDiagnosticResolver task, which is what warns you about a failing drive
+
+      ## Recommendation
+      Apply it if you want the control to be explicit, but expect no observable change, because the
+      task has no trigger on current builds. Skip it if you are looking for a difference you can
+      measure.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [CEIPEnable, the Customer Experience Improvement Program control](https://learn.microsoft.com/en-us/windows/win32/devnotes/ceipenable)
+      - [Microsoft-Windows-DiskDiagnosticDataCollector task reference](https://windows.fyicenter.com/4257_Microsoft-Windows-DiskDiagnosticDataCollector_Scheduled_Task_on_Windows_7.html)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: disk_datacollector
+        task: { path: '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector' }
+    # One option only: the shipped enabled-state of this task is unestablished, so a second option
+    # would have to invent a literal and drive the machine to it on the exact path a cautious user
+    # takes. Restore Snapshot is the honest way back.
+    options:
+      - label: "Disabled"
+        values: { disk_datacollector: disabled }
+
+  - id: task_device_census
+    name: "Disable Device Census tasks"
+    description: "Disable the tasks that inventory the device for Microsoft telemetry and update targeting."
+    info: |
+      **Stops the daily inventory that reports your hardware and configuration to Microsoft.**
+
+      ## What it does
+      Disables the device census scheduled tasks under `\Microsoft\Windows\Device Information\`:
+      `Device`, which runs `devicecensus.exe SystemCxt` daily, and `Device User`, which runs
+      `devicecensus.exe UserCxt` at logon. They inventory the machine and report hardware and
+      configuration data used for update eligibility and targeting.
+
+      ## Benefits
+      - **Stops a daily upload**: this is one of the few telemetry tasks with a real recurring schedule
+      - **Covers both contexts**: the system and the user census both stop, so nothing runs at logon either
+      - **No user-facing feature**: nothing you interact with depends on the census
+
+      ## Drawbacks
+      - **Update targeting degrades**: eligibility signals go stale, so feature update offers may be less well matched to this machine
+      - **Enterprise reporting breaks**: Windows Update for Business reports and Update Compliance read census data, so those go quiet
+      - **Updates can re-enable it**: tasks under `\Microsoft\Windows\` can be re-created or re-enabled by feature updates
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021; the `Device User` task is not present on every build
+      - **Takes effect**: immediately, since a scheduled task changes state as soon as it is disabled
+      - **Reverting**: restores the previous enabled state from the snapshot
+      - This does not block Windows Update; it only removes an input to how updates are targeted
+
+      ## Recommendation
+      Apply it if you want less hardware and configuration data leaving the machine and accept
+      slightly less precise update targeting. Leave it enabled on a machine that reports into Windows
+      Update for Business reports or Update Compliance.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [What is devicecensus.exe on Windows, walking the Device Information task folder](https://www.ghacks.net/2019/09/23/what-is-devicecensus-exe-on-windows-10-and-why-does-it-need-internet-connectivity/)
+      - [What is Device Census or devicecensus.exe in Windows](https://www.majorgeeks.com/content/page/what_is_devicecensus_exe.html)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: device_census
+        task: { path: '\Microsoft\Windows\Device Information\Device' }
+      - id: device_census_user
+        task: { path: '\Microsoft\Windows\Device Information\Device User' }
+        optional: true
+        if_missing: disabled
+    options:
+      - label: "Disabled"
+        values: { device_census: disabled, device_census_user: disabled }
+      - label: "Enabled"
+        values: { device_census: enabled, device_census_user: enabled }
