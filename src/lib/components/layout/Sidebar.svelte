@@ -154,7 +154,7 @@
           {/if}
         </div>
         <span
-          class="flex-1 text-left text-sm font-medium whitespace-nowrap transition-all duration-200 {isActive
+          class="min-w-0 flex-1 truncate text-left text-xs font-medium transition-all duration-200 {isActive
             ? 'text-accent'
             : 'text-foreground'} {sidebarStore.isOpen ? 'translate-x-0 opacity-100' : '-translate-x-2.5 opacity-0'}"
         >
@@ -162,7 +162,7 @@
         </span>
         {#if tabStats}
           <span
-            class="rounded-full px-2 py-0.5 text-xs font-semibold transition-all duration-200 {sidebarStore.isOpen
+            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold transition-all duration-200 {sidebarStore.isOpen
               ? 'translate-x-0 opacity-100'
               : '-translate-x-2.5 opacity-0'} {tabStats.applied === tabStats.total && tabStats.total > 0
               ? 'bg-success/15 text-success'

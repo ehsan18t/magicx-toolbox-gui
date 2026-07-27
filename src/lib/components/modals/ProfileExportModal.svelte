@@ -275,8 +275,8 @@
           <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
           <p class="m-0 text-xs leading-relaxed text-foreground-muted">
             Profiles are saved as <code class="bg-muted rounded px-1">.mgx</code> files that can be imported on other machines
-            or after reinstalling Windows. They only contain tweak IDs and settings—actual system changes come from the app's
-            tweak definitions.
+            or after reinstalling Windows. They only store which tweaks you picked and the settings you chose. The actual
+            changes to your system come from the app's built-in tweak definitions.
           </p>
         </div>
       </div>

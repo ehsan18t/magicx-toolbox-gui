@@ -13,6 +13,7 @@
   import MdiArrowRightCircle from "~icons/mdi/arrow-right-circle";
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
   import MdiBackupRestore from "~icons/mdi/backup-restore";
+  import MdiBroom from "~icons/mdi/broom";
   import MdiBug from "~icons/mdi/bug";
   import MdiCalendar from "~icons/mdi/calendar";
   import MdiCalendarClock from "~icons/mdi/calendar-clock";
@@ -67,11 +68,13 @@
   import MdiLaptop from "~icons/mdi/laptop";
   import MdiLicense from "~icons/mdi/license";
   import MdiLightbulbOutline from "~icons/mdi/lightbulb-outline";
+  import MdiLan from "~icons/mdi/lan";
   import MdiLightningBolt from "~icons/mdi/lightning-bolt";
   import MdiLoading from "~icons/mdi/loading";
   import MdiMagicStaff from "~icons/mdi/magic-staff";
   import MdiMagnify from "~icons/mdi/magnify";
   import MdiMemory from "~icons/mdi/memory";
+  import MdiMonitor from "~icons/mdi/monitor";
   import MdiMicrosoftWindows from "~icons/mdi/microsoft-windows";
   import MdiOpenInNew from "~icons/mdi/open-in-new";
   import MdiPackageVariant from "~icons/mdi/package-variant";
@@ -85,6 +88,7 @@
   import MdiRestart from "~icons/mdi/restart";
   import MdiRestartAlert from "~icons/mdi/restart-alert";
   import MdiRestore from "~icons/mdi/restore";
+  import MdiRobotOutline from "~icons/mdi/robot-outline";
   import MdiSecurity from "~icons/mdi/security";
   import MdiServer from "~icons/mdi/server";
   import MdiSettingsOutline from "~icons/mdi/settings-outline";
@@ -111,6 +115,13 @@
   import MdiWeb from "~icons/mdi/web";
   import MdiWidgets from "~icons/mdi/widgets";
   import MdiWifi from "~icons/mdi/wifi";
+  // Effect-detail icons (per-option change breakdown in the tweak details modal)
+  import MdiArrowDownBold from "~icons/mdi/arrow-down-bold";
+  import MdiArrowUpBold from "~icons/mdi/arrow-up-bold";
+  import MdiFileDocumentOutline from "~icons/mdi/file-document-outline";
+  import MdiMinusCircle from "~icons/mdi/minus-circle";
+  import MdiPlusCircle from "~icons/mdi/plus-circle";
+  import MdiShieldOutline from "~icons/mdi/shield-outline";
   import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
@@ -150,6 +161,9 @@
     "mdi:check": MdiCheck,
     "mdi:close": MdiClose,
     "mdi:cog-outline": MdiCogOutline,
+    "mdi:broom": MdiBroom,
+    "mdi:lan": MdiLan,
+    "mdi:monitor": MdiMonitor,
     "mdi:console": MdiConsole,
     "mdi:database": MdiDatabase,
     "mdi:shield-account-outline": MdiShieldAccountOutline,
@@ -158,6 +172,7 @@
     "mdi:powershell": MdiPowershell,
     "mdi:restart": MdiRestart,
     "mdi:restart-alert": MdiRestartAlert,
+    "mdi:robot-outline": MdiRobotOutline,
     "mdi:information-outline": MdiInformationOutline,
     "mdi:database-cog-outline": MdiDatabaseCogOutline,
     "mdi:settings-outline": MdiSettingsOutline,
@@ -207,6 +222,12 @@
     "mdi:arrow-up-circle": MdiArrowUpCircle,
     "mdi:arrow-right": MdiArrowRight,
     "mdi:arrow-left": MdiArrowLeft,
+    "mdi:arrow-down-bold": MdiArrowDownBold,
+    "mdi:arrow-up-bold": MdiArrowUpBold,
+    "mdi:file-document-outline": MdiFileDocumentOutline,
+    "mdi:minus-circle": MdiMinusCircle,
+    "mdi:plus-circle": MdiPlusCircle,
+    "mdi:shield-outline": MdiShieldOutline,
     "mdi:calendar": MdiCalendar,
     "mdi:calendar-clock": MdiCalendarClock,
     "mdi:bug": MdiBug,

@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ApplyOutcome,
+  CategoryMeta,
   ElevationState,
   EntrySummary,
   RestoreOutcome,
@@ -22,6 +23,11 @@ export async function getSystemInfo(): Promise<SystemInfo> {
 /** The compiled tweak model: identity/display metadata + this moment's availability. */
 export async function getTweaks(): Promise<TweakView[]> {
   return await invoke<TweakView[]>("get_tweaks");
+}
+
+/** Corpus category metadata (id, display name, icon, description) for the sidebar. */
+export async function getCategories(): Promise<CategoryMeta[]> {
+  return await invoke<CategoryMeta[]>("get_categories");
 }
 
 /**
