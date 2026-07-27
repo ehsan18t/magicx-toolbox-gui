@@ -1056,8 +1056,8 @@ mod tests {
     use crate::tweaks::engine::{ActionRunner, ProbeCache, ProbeSource};
     use crate::tweaks::kinds::EffectKind;
     use crate::tweaks::model::{
-        CategoryDef, Hive, Level, RegAddr, RegType, RiskLevel, ScopedValue, Script, Shell, SvcAddr,
-        TypedRegValue, WindowsScope,
+        CategoryDef, Hive, Level, Probe, RegAddr, RegType, RiskLevel, ScopedValue, Script, Shell,
+        SvcAddr, TypedRegValue, WindowsScope,
     };
     use crate::tweaks::shared_claims::ClaimsStore;
     use crate::tweaks::snapshot::SnapshotStore;
@@ -1294,7 +1294,7 @@ mod tests {
             kind: Effect::Action(ActionDef::Script {
                 apply: Script(format!("{id}_apply")),
                 undo: undo.then(|| Script(format!("{id}_undo"))),
-                probe: probe.then(|| Script(format!("{id}_probe"))),
+                probe: probe.then(|| Probe::Script(Script(format!("{id}_probe")))),
                 ephemeral: false,
                 shell: Shell::PowerShell,
             }),

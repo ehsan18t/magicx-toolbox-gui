@@ -15,9 +15,12 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::models::RegistryHive;
+use crate::services::registry_service;
 use crate::tweaks::kinds::{Error as KindError, ExecCx};
 use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, Opt, OptLabel, OptValue, SharedId, Tweak, Value,
+    ActionDef, Corpus, Effect, EffectDef, EffectId, Hive, Opt, OptLabel, OptValue, Probe, SharedId,
+    Tweak, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::validate::{
@@ -404,6 +407,11 @@ fn has_undo(action: &ActionDef) -> bool {
 
 /// Runs (or reads the cached) probe for `effect_id` on `tweak_id` — populates the cache on miss,
 /// reads it on hit (spec §7: session-cached, never re-spawned per status poll).
+///
+/// The native probe forms are answered HERE rather than through `deps.probes`, because only this
+/// layer holds the shared state they need: `Probe::Registry` is a direct read, and
+/// `Probe::AppxAbsent` consults the one package enumeration the whole sweep shares. `deps.probes`
+/// keeps its original job, running the Action's script, and is what a test mocks.
 fn probe_cached(
     deps: &Deps,
     tweak_id: &str,
@@ -414,9 +422,44 @@ fn probe_cached(
     if let Some(cached) = deps.probe_cache.get(tweak_id, effect_id) {
         return Ok(cached);
     }
-    let present = deps.probes.probe(action, cx)?;
+    let present = match action {
+        ActionDef::Script {
+            probe:
+                Some(Probe::Registry {
+                    hive,
+                    path,
+                    name,
+                    equals,
+                }),
+            ..
+        } => registry_probe(*hive, path, name, *equals),
+        ActionDef::Script {
+            probe: Some(Probe::AppxAbsent { packages }),
+            ..
+        } => !deps
+            .probe_cache
+            .appx()
+            .any_installed(packages)
+            .map_err(|e| KindError::Backend(e.to_string()))?,
+        _ => deps.probes.probe(action, cx)?,
+    };
     deps.probe_cache.insert(tweak_id, effect_id, present);
     Ok(present)
+}
+
+/// A registry probe reads present/absent, so an absent value, an absent key, and a value stored as
+/// something other than a DWORD all mean "not present" rather than an error. That is the whole
+/// question a probe answers; there is no third state to report. An unreadable key (access denied)
+/// does propagate, since that genuinely means "cannot tell" (invariant 2).
+fn registry_probe(hive: Hive, path: &str, name: &str, equals: u32) -> bool {
+    let hive = match hive {
+        Hive::Hklm => RegistryHive::Hklm,
+        Hive::Hkcu => RegistryHive::Hkcu,
+    };
+    matches!(
+        registry_service::read_dword(&hive, path, name),
+        Ok(Some(v)) if v == equals
+    )
 }
 
 /// `Some(effect_id)` when `opt` authors a real value for an effect whose live resource actually
@@ -553,9 +596,9 @@ mod tests {
     use crate::tweaks::engine::{ProbeCache, RealActions};
     use crate::tweaks::kinds::EffectKind;
     use crate::tweaks::model::{
-        BuildExpr, Effect, EffectDef, Hive, Level, Opt, OptLabel, RegAddr, RegType, RiskLevel,
-        ScopedValue, Script, Setting, SharedDef, Shell, StartupType, SvcAddr, Tweak, TypedRegValue,
-        Value, WindowsScope,
+        BuildExpr, Effect, EffectDef, Hive, Level, Opt, OptLabel, Probe, RegAddr, RegType,
+        RiskLevel, ScopedValue, Script, Setting, SharedDef, Shell, StartupType, SvcAddr, Tweak,
+        TypedRegValue, Value, WindowsScope,
     };
     use crate::tweaks::snapshot::SnapshotStore;
     use std::collections::BTreeMap;
@@ -674,7 +717,7 @@ mod tests {
             kind: Effect::Action(ActionDef::Script {
                 apply: Script("exit 0".into()),
                 undo: undo.then(|| Script("exit 0".into())),
-                probe: Some(Script("exit 0".into())),
+                probe: Some(Probe::Script(Script("exit 0".into()))),
                 ephemeral: false,
                 shell: Shell::PowerShell,
             }),

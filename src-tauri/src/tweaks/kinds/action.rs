@@ -60,7 +60,7 @@ use windows_sys::Win32::System::JobObjects::{
 };
 
 use crate::services::exclusive_temp::ExclusiveTempFile;
-use crate::tweaks::model::{ActionDef, Setting, Shell, Value};
+use crate::tweaks::model::{ActionDef, Probe, Setting, Shell, Value};
 
 use super::registry::RegistryKind;
 use super::{guard_level, EffectKind, Error, ExecCx};
@@ -135,10 +135,15 @@ impl ActionKind {
     pub fn run_probe(&self, action: &ActionDef, _cx: &ExecCx) -> Result<bool, Error> {
         match action {
             ActionDef::Script {
-                probe: Some(probe),
+                probe: Some(Probe::Script(body)),
                 shell,
                 ..
-            } => Ok(run_script(*shell, &probe.0, ACTION_TIMEOUT)? == 0),
+            } => Ok(run_script(*shell, &body.0, ACTION_TIMEOUT)? == 0),
+            // The native probe forms never reach here: `engine::detect` answers them itself, since
+            // only it holds the shared state they read. Reaching this arm is an engine routing bug.
+            ActionDef::Script { probe: Some(_), .. } => Err(Error::Invalid(
+                "a native probe must be answered by the engine, not run as a script",
+            )),
             ActionDef::Script { probe: None, .. } => Err(Error::Invalid(
                 "this action has no probe -- it never contributes to detection (spec §7)",
             )),
@@ -391,7 +396,7 @@ mod tests {
     use super::*;
     use crate::models::RegistryHive;
     use crate::services::registry_service;
-    use crate::tweaks::model::{Hive, KeyAddr, Level, Script};
+    use crate::tweaks::model::{Hive, KeyAddr, Level, Probe, Script};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static SCRATCH_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -410,7 +415,7 @@ mod tests {
         ActionDef::Script {
             apply: Script(apply.to_string()),
             undo: undo.map(|s| Script(s.to_string())),
-            probe: probe.map(|s| Script(s.to_string())),
+            probe: probe.map(|s| Probe::Script(Script(s.to_string()))),
             ephemeral,
             shell,
         }

@@ -544,8 +544,8 @@ mod tests {
     use crate::tweaks::engine::{ActionRunner, ProbeCache, ProbeSource};
     use crate::tweaks::kinds::{EffectKind, Error as KindError};
     use crate::tweaks::model::{
-        Level, OptValue as ModelOptValue, RiskLevel, ScopedValue, Script, Setting, SharedDef,
-        SharedId, Shell, StartupType, SvcAddr, Value,
+        Level, OptValue as ModelOptValue, Probe, RiskLevel, ScopedValue, Script, Setting,
+        SharedDef, SharedId, Shell, StartupType, SvcAddr, Value,
     };
     use crate::tweaks::shared_claims::ClaimsStore;
     use crate::tweaks::snapshot::{InvalidReason, NewEntry, SnapshotStore};
@@ -719,7 +719,7 @@ mod tests {
             kind: Effect::Action(ActionDef::Script {
                 apply: Script(format!("{id}_apply")),
                 undo: undo.then(|| Script(format!("{id}_undo"))),
-                probe: probe.then(|| Script(format!("{id}_probe"))),
+                probe: probe.then(|| Probe::Script(Script(format!("{id}_probe")))),
                 ephemeral: false,
                 shell: Shell::PowerShell,
             }),

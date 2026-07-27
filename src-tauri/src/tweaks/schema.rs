@@ -12,9 +12,9 @@
 
 use super::model::{
     ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr, FwAction, FwDirection,
-    FwProtocol, HostsAddr, KeyAddr, Level, Opt, OptLabel, OptValue, PackedFormat, RegAddr, RegType,
-    RiskLevel, RuleAddr, ScopedValue, Script, Setting, SharedDef, SharedId, Shell, StartupType,
-    SvcAddr, TaskAddr, Tweak, Value, WindowsScope,
+    FwProtocol, HostsAddr, KeyAddr, Level, Opt, OptLabel, OptValue, PackedFormat, Probe, RegAddr,
+    RegType, RiskLevel, RuleAddr, ScopedValue, Script, Setting, SharedDef, SharedId, Shell,
+    StartupType, SvcAddr, TaskAddr, Tweak, Value, WindowsScope,
 };
 use super::parse::{
     expand_product, parse_build_expr, parse_reg_path, parse_value_literal, validate_windows_scope,
@@ -326,10 +326,29 @@ struct ActionRaw {
     #[serde(default)]
     undo: Option<String>,
     #[serde(default)]
-    probe: Option<String>,
+    probe: Option<ProbeRaw>,
     #[serde(default)]
     ephemeral: bool,
     shell: ShellRaw,
+}
+
+/// `probe:` is either a script block (the long-standing form) or one of the native forms. Untagged
+/// discriminates on shape alone: a YAML scalar is the script, a mapping names which native form.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum ProbeRaw {
+    Script(String),
+    Registry { registry: RegistryProbeRaw },
+    AppxAbsent { appx_absent: Vec<String> },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegistryProbeRaw {
+    /// `HIVE\Key\...`, the same spelling every other registry address in the corpus uses.
+    key: String,
+    name: String,
+    equals: u32,
 }
 
 /// One `effects:` entry: `id` plus exactly one kind field. An untagged enum makes "zero or two
@@ -745,6 +764,28 @@ fn convert_registry_key(raw: &RegistryKeyRaw) -> Result<KeyAddr, ParseError> {
     Ok(KeyAddr { hive, path })
 }
 
+/// A script probe passes through verbatim; the native forms are parsed into their typed shape so a
+/// bad address is a build-time error rather than a runtime surprise on someone's machine.
+fn convert_probe(raw: Option<&ProbeRaw>) -> Result<Option<Probe>, ParseError> {
+    let Some(raw) = raw else { return Ok(None) };
+    let probe = match raw {
+        ProbeRaw::Script(body) => Probe::Script(Script(body.clone())),
+        ProbeRaw::Registry { registry } => {
+            let (hive, path) = parse_reg_path(&registry.key)?;
+            Probe::Registry {
+                hive,
+                path,
+                name: registry.name.clone(),
+                equals: registry.equals,
+            }
+        }
+        ProbeRaw::AppxAbsent { appx_absent } => Probe::AppxAbsent {
+            packages: appx_absent.clone(),
+        },
+    };
+    Ok(Some(probe))
+}
+
 fn convert_hosts(raw: &HostsRaw) -> HostsAddr {
     HostsAddr {
         ip: raw.ip.clone(),
@@ -818,13 +859,21 @@ fn convert_effect(
         EffectRaw::Shared(r) => (&r.id, Ok(Effect::Shared(SharedId(r.shared.clone())))),
         EffectRaw::Action(r) => (
             &r.id,
-            Ok(Effect::Action(ActionDef::Script {
-                apply: Script(r.action.apply.clone()),
-                undo: r.action.undo.clone().map(Script),
-                probe: r.action.probe.clone().map(Script),
-                ephemeral: r.action.ephemeral,
-                shell: r.action.shell.into(),
-            })),
+            convert_probe(r.action.probe.as_ref())
+                .map(|probe| {
+                    Effect::Action(ActionDef::Script {
+                        apply: Script(r.action.apply.clone()),
+                        undo: r.action.undo.clone().map(Script),
+                        probe,
+                        ephemeral: r.action.ephemeral,
+                        shell: r.action.shell.into(),
+                    })
+                })
+                .map_err(|source| ValidationError::InvalidAddress {
+                    tweak: tweak_id.to_string(),
+                    effect: EffectId(r.id.clone()),
+                    source,
+                }),
         ),
     };
     let kind = match kind {

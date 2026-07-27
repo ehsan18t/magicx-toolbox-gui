@@ -14,6 +14,7 @@ pub mod detect;
 pub mod lifecycle;
 pub mod revert;
 
+use crate::services::appx_index::AppxIndex;
 use crate::services::elevation::{self, BrokerOp, BrokerOpError, Elevation};
 use crate::tweaks::kinds::{
     action::ActionKind,
@@ -158,14 +159,25 @@ pub struct Deps<'a> {
 /// Per-session cache of probeable-Action present/absent readings, keyed `(tweak_id, effect_id)`
 /// (spec §7: "cached per session ... detection must not re-spawn PowerShell per status poll").
 /// Interior-mutable so `detect` can populate it on a miss through a shared `&ProbeCache` in `Deps`.
+///
+/// Also owns the shared package enumeration [`AppxIndex`], which is the same idea one level up: a
+/// reading of the machine that many probes want and none should pay for separately. It lives here
+/// so it is invalidated by the same call that invalidates the per-effect readings, since removing
+/// an app is exactly what makes both stale.
 #[derive(Default)]
 pub struct ProbeCache {
     entries: Mutex<HashMap<(String, EffectId), bool>>,
+    appx: AppxIndex,
 }
 
 impl ProbeCache {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The sweep-wide package enumeration. Built on first ask, then shared.
+    pub(crate) fn appx(&self) -> &AppxIndex {
+        &self.appx
     }
 
     /// Private (module-private, so `engine::detect` -- a descendant -- can still call it):
@@ -187,10 +199,15 @@ impl ProbeCache {
 
     /// Drops every cached probe for `tweak_id` (spec §7), so the next detect re-observes live
     /// state. Called by apply/restore after they mutate that tweak's surface, never by `detect`.
+    ///
+    /// The package enumeration goes with it, unconditionally rather than per-tweak: it is one
+    /// machine-wide reading with no tweak to key on, and the applies that invalidate a probe are
+    /// the same ones that install or remove packages.
     pub fn invalidate(&self, tweak_id: &str) {
         self.entries
             .lock()
             .expect("ProbeCache mutex poisoned")
             .retain(|(t, _), _| t != tweak_id);
+        self.appx.invalidate();
     }
 }

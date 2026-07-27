@@ -1463,9 +1463,11 @@ tweaks:
             if ($s -and [int]$s.SizePercent -gt 0) { powercfg /hibernate /size ([int]$s.SizePercent) }
             Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
             exit 0
-          probe: |
-            $v = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HibernateEnabled -ErrorAction SilentlyContinue).HibernateEnabled
-            if ($v -eq 0) { exit 0 } else { exit 1 }
+          probe:
+            registry:
+              key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power'
+              name: HibernateEnabled
+              equals: 0
           shell: powershell
     options:
       - label: "Disabled"

@@ -875,13 +875,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'MSTeams' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MSTeams' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'MSTeams'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MSTeams' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [MSTeams]
           shell: powershell
     options:
       - label: "Removed"
@@ -940,13 +935,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Clipchamp.Clipchamp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Clipchamp.Clipchamp' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Clipchamp.Clipchamp]
           shell: powershell
     options:
       - label: "Removed"
@@ -1006,13 +996,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MicrosoftCorporationII.QuickAssist' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MicrosoftCorporationII.QuickAssist' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [MicrosoftCorporationII.QuickAssist]
           shell: powershell
     options:
       - label: "Removed"
@@ -1077,16 +1062,8 @@ tweaks:
               Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $name } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
             }
           undo: "winget install --id 9WZDNCRFHVFW -e --accept-source-agreements --accept-package-agreements && winget install --id 9WZDNCRFJ3Q2 -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $found = @()
-              foreach ($name in @('Microsoft.BingNews', 'Microsoft.BingWeather')) {
-                $found += Get-AppxPackage -AllUsers -Name $name
-                $found += Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $name }
-              }
-            } catch { exit 1 }
-            if ($found.Count -gt 0) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
           shell: powershell
     options:
       - label: "Removed"
@@ -1147,13 +1124,8 @@ tweaks:
           # winget cannot resolve 9WZDNCRFHWD2 in any source, so the undo opens the Store product
           # page instead of pretending a command-line install succeeded.
           undo: "Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRFHWD2'"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.MicrosoftSolitaireCollection' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.MicrosoftSolitaireCollection]
           shell: powershell
     options:
       - label: "Removed"
@@ -1215,13 +1187,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.GetHelp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.GetHelp' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.GetHelp]
           shell: powershell
     options:
       - label: "Removed"
@@ -1282,13 +1249,8 @@ tweaks:
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.Getstarted' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           # winget cannot resolve 9WZDNCRDTBJJ in any source, so the undo opens the Store product page.
           undo: "Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRDTBJJ'"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.Getstarted' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.Getstarted]
           shell: powershell
     options:
       - label: "Removed"
@@ -1347,13 +1309,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.WindowsFeedbackHub' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.WindowsFeedbackHub' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.WindowsFeedbackHub]
           shell: powershell
     options:
       - label: "Removed"
@@ -1413,13 +1370,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.YourPhone' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.YourPhone' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.YourPhone]
           shell: powershell
     options:
       - label: "Removed"
@@ -1480,13 +1432,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.OutlookforWindows' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.OutlookforWindows' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.OutlookforWindows]
           shell: powershell
     options:
       - label: "Removed"
@@ -1549,13 +1496,8 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.XboxGamingOverlay' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
           undo: "winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              $pkg = Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay'
-              $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.XboxGamingOverlay' }
-            } catch { exit 1 }
-            if ($pkg -or $prov) { exit 1 } else { exit 0 }
+          probe:
+            appx_absent: [Microsoft.XboxGamingOverlay]
           shell: powershell
     options:
       - label: "Removed"

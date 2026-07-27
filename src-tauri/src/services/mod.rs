@@ -1,3 +1,4 @@
+pub mod appx_index;
 pub mod elevation;
 pub mod exclusive_temp;
 pub mod firewall_service;

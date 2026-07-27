@@ -206,6 +206,32 @@ pub enum Shell {
     PowerShell,
 }
 
+/// How an Action's produced state is detected (spec §7: state-based, never history-based).
+///
+/// A script probe costs a process spawn, which measured at 180ms of floor before the script does
+/// any work, and detection runs one per probeable Action on every sweep. The native forms exist so
+/// a check that does not actually need an interpreter does not pay for one: [`Probe::Registry`] is
+/// a direct read, and [`Probe::AppxAbsent`] is answered from a single package enumeration shared by
+/// the whole sweep instead of one spawn per package. [`Probe::Script`] remains the escape hatch for
+/// everything else (powercfg, DISM, auditpol, CIM).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Probe {
+    /// Run the Action's script under its own `shell`; exit 0 means the state is present.
+    Script(Script),
+    /// Present when the registry value at this address holds exactly `equals`. Absent value,
+    /// absent key, and a non-DWORD type all read as not-present, never as an error: a probe
+    /// answers present/absent, and "the value isn't there" is a legitimate absent.
+    Registry {
+        hive: Hive,
+        path: String,
+        name: String,
+        equals: u32,
+    },
+    /// Present when NONE of these packages are installed, either per-user or provisioned. Phrased
+    /// as absence because that is what the removal Actions using it produce.
+    AppxAbsent { packages: Vec<String> },
+}
+
 /// An imperative Action (spec §7). `DeleteTree` is the one surviving structural op (spec §5.1);
 /// it drives the registry primitive directly rather than running a script, so — unlike `Script`
 /// — it carries no `shell`/`probe`/`ephemeral`.
@@ -214,7 +240,7 @@ pub enum ActionDef {
     Script {
         apply: Script,
         undo: Option<Script>,
-        probe: Option<Script>,
+        probe: Option<Probe>,
         ephemeral: bool,
         shell: Shell,
     },
