@@ -4,11 +4,7 @@
 //! Includes registry operations and service control.
 
 use crate::error::Error;
-use crate::models::{RegistryHive, RegistryValueType};
 use std::ptr;
-
-use super::broker::{run_one, BrokerOp};
-use super::Elevation;
 
 use super::common::{
     enable_debug_privilege, find_process_by_name, get_process_token, to_wide_string, wait_and_reap,
@@ -89,28 +85,6 @@ pub(super) fn spawn_as_system(command_line: &str) -> Result<i32, Error> {
 
         wait_and_reap(&process_info, "SYSTEM command")
     }
-}
-
-/// Set a registry value as SYSTEM via the elevated broker (typed `RegSetValueExW`, no reg.exe).
-/// The typed value crosses to the broker as data, dissolving the injection and REG_SZ-corruption
-/// classes the old `reg add` + `escape_shell_arg` path carried.
-pub fn set_registry_value_as_system(
-    hive: RegistryHive,
-    key: &str,
-    value_name: &str,
-    value_type: RegistryValueType,
-    value: serde_json::Value,
-) -> Result<(), Error> {
-    run_one(
-        Elevation::System,
-        BrokerOp::RegSet {
-            hive,
-            key: key.to_string(),
-            value_name: value_name.to_string(),
-            value_type,
-            value,
-        },
-    )
 }
 
 /// Check if SYSTEM elevation is available (running as admin)

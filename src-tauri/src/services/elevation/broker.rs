@@ -8,9 +8,9 @@
 //! holds the elevated token.
 //!
 //! Transport is a request file + a response file (paths passed as argv to `--broker`), so no shell
-//! ever parses anything and every result crosses back as typed data. The only interpreter cases —
-//! PowerShell and author `pre/post_commands` — are spawned directly as argv (`-EncodedCommand` and
-//! `cmd /c` respectively), never by composing a command around untrusted values.
+//! ever parses anything and every result crosses back as typed data. There is no interpreter op:
+//! every variant of [`BrokerOp`] names a typed effect, so nothing the elevated child can be asked
+//! to do is "run this string".
 
 use crate::error::Error;
 use crate::models::{RegistryHive, RegistryValueType, SchedulerAction, ServiceStartupType};
@@ -20,9 +20,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::Elevation;
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
 /// One typed operation for the broker to perform in the elevated process.
+///
+/// Every variant must have a producer in `tweaks::kinds` (`to_broker_op`/`to_broker_ops`). A
+/// variant with no producer is still reachable by anything that can hand the child a request file,
+/// so it is pure attack surface — add one only together with the translation that emits it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BrokerOp {
     /// Set a typed registry value.
@@ -48,20 +50,12 @@ pub enum BrokerOp {
         name: String,
         startup: ServiceStartupType,
     },
-    /// Start a service.
-    SvcStart { name: String },
-    /// Stop a service.
-    SvcStop { name: String },
     /// Enable / disable / delete a scheduled task.
     Scheduler {
         task_path: String,
         task_name: String,
         action: SchedulerAction,
     },
-    /// Run a PowerShell script (spawned as `-EncodedCommand`, no shell parsing).
-    Powershell { script: String },
-    /// Run an author-supplied `cmd.exe` command (single argv to `cmd /c`).
-    RawCmd { command: String },
 }
 
 /// A batch of operations for one broker invocation.
@@ -96,20 +90,6 @@ pub struct BrokerResponse {
     pub results: Vec<OpOutcome>,
 }
 
-impl BrokerResponse {
-    /// Collapse a single-op response into a `Result`. Used by the elevated wrappers, which submit
-    /// exactly one op.
-    pub fn into_single(mut self) -> Result<(), Error> {
-        match self.results.pop() {
-            Some(OpOutcome::Ok) => Ok(()),
-            Some(OpOutcome::Err(msg)) => Err(Error::ServiceControl(msg)),
-            None => Err(Error::ServiceControl(
-                "broker returned no result for a single-op request".to_string(),
-            )),
-        }
-    }
-}
-
 /// Map registry "not found" into success for delete operations (deleting an absent thing is done).
 fn delete_ok(result: Result<(), Error>) -> Result<(), Error> {
     match result {
@@ -128,9 +108,7 @@ pub fn execute_op(op: &BrokerOp) -> Result<(), Error> {
             value_name,
             value_type,
             value,
-        } => registry_value::write_registry_json_value(
-            hive, key, value_name, value_type, value, false,
-        ),
+        } => registry_value::write_registry_json_value(hive, key, value_name, value_type, value),
         BrokerOp::RegDeleteValue {
             hive,
             key,
@@ -141,15 +119,11 @@ pub fn execute_op(op: &BrokerOp) -> Result<(), Error> {
         BrokerOp::SvcSetStartup { name, startup } => {
             service_control::set_service_startup(name, startup)
         }
-        BrokerOp::SvcStart { name } => service_control::start_service(name),
-        BrokerOp::SvcStop { name } => service_control::stop_service(name),
         BrokerOp::Scheduler {
             task_path,
             task_name,
             action,
         } => scheduler_service::apply_scheduler_change(task_path, task_name, *action),
-        BrokerOp::Powershell { script } => run_powershell_encoded(script),
-        BrokerOp::RawCmd { command } => run_raw_cmd(command),
     }
 }
 
@@ -325,19 +299,6 @@ pub fn run_elevated_broker(
     validate_response(&read?, nonce)
 }
 
-/// Run a single operation at the given elevation, returning `Ok(())` on success. The elevated
-/// wrappers (`*_as_ti` / `*_as_system`) submit exactly one op through this.
-pub(super) fn run_one(level: Elevation, op: BrokerOp) -> Result<(), Error> {
-    run_elevated_broker(
-        level,
-        &BrokerRequest {
-            nonce: 0,
-            ops: vec![op],
-        },
-    )?
-    .into_single()
-}
-
 /// The two distinct ways a multi-op batch can fail (spec §9, ADR-0005 as amended; invariant 24):
 /// the elevated child could never be ACQUIRED at all (environmental -- the TI service would not
 /// start, `SeDebugPrivilege` was denied, winlogon was not found, or the child failed to spawn or
@@ -373,84 +334,6 @@ pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError
     Ok(())
 }
 
-/// Run a PowerShell script via `-EncodedCommand` (base64 of UTF-16LE). No shell parses the script.
-fn run_powershell_encoded(script: &str) -> Result<(), Error> {
-    use std::os::windows::process::CommandExt;
-
-    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    let encoded = base64_encode(&utf16);
-
-    let output = std::process::Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-EncodedCommand",
-            &encoded,
-        ])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to run PowerShell: {}", e)))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(Error::CommandExecution(format!(
-            "PowerShell failed with exit code {}: {}",
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )))
-    }
-}
-
-/// Run an author-supplied `cmd.exe` command as a single raw argument (no escaping of a value into a
-/// larger command — the string IS the author's command).
-fn run_raw_cmd(command: &str) -> Result<(), Error> {
-    use std::os::windows::process::CommandExt;
-
-    let output = std::process::Command::new("cmd")
-        .raw_arg(format!("/c {}", command))
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to run command: {}", e)))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(Error::CommandExecution(format!(
-            "Command failed with exit code {}: {}",
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )))
-    }
-}
-
-/// Standard base64 (RFC 4648) encoder — small enough not to justify a dependency.
-fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(ALPHABET[((n >> 18) & 63) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            ALPHABET[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            ALPHABET[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,15 +363,6 @@ mod tests {
     }
 
     #[test]
-    fn base64_matches_known_vectors() {
-        assert_eq!(base64_encode(b"Man"), "TWFu");
-        assert_eq!(base64_encode(b"Ma"), "TWE=");
-        assert_eq!(base64_encode(b"M"), "TQ==");
-        assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
-    }
-
-    #[test]
     fn request_round_trips_through_json() {
         let req = BrokerRequest {
             nonce: 0xDEAD_BEEF,
@@ -500,8 +374,9 @@ mod tests {
                     value_type: RegistryValueType::Dword,
                     value: serde_json::json!(1),
                 },
-                BrokerOp::SvcStop {
+                BrokerOp::SvcSetStartup {
                     name: "Spooler".into(),
+                    startup: ServiceStartupType::Manual,
                 },
             ],
         };

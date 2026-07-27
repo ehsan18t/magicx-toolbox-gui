@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::models::{RegistryHive, RegistryValueType};
-use crate::services::{registry_service, trusted_installer};
+use crate::services::registry_service;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegistryValue {
@@ -34,30 +34,16 @@ pub fn parse_registry_value(
     }
 }
 
+/// Parses `value` against `value_type` and writes it. Runs at the caller's current privilege: an
+/// elevated write reaches here inside the broker child, which already holds the token.
 pub fn write_registry_json_value(
     hive: &RegistryHive,
     key: &str,
     value_name: &str,
     value_type: &RegistryValueType,
     value: &serde_json::Value,
-    use_system: bool,
 ) -> Result<(), Error> {
-    let parsed = parse_registry_value(value_type, value)?;
-
-    // HKCU is the user's own hive — always writable directly, so no elevation is needed even for a
-    // requires_system tweak (running as SYSTEM would target SYSTEM's own HKCU, not the user's).
-    // Only HKLM under use_system needs the elevated broker (typed RegSetValueExW as SYSTEM).
-    if use_system && matches!(hive, RegistryHive::Hklm) {
-        return trusted_installer::set_registry_value_as_system(
-            *hive,
-            key,
-            value_name,
-            *value_type,
-            value.clone(),
-        );
-    }
-
-    match parsed {
+    match parse_registry_value(value_type, value)? {
         RegistryValue::Dword(value) => registry_service::set_dword(hive, key, value_name, value),
         RegistryValue::Qword(value) => registry_service::set_qword(hive, key, value_name, value),
         RegistryValue::String(value) => registry_service::set_string(hive, key, value_name, &value),
