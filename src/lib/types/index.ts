@@ -263,6 +263,8 @@ export interface UnavailableOpt {
 /** Which authored options wanted the value one effect actually holds. Empty = none do. */
 export interface EffectAgreement {
   effect: string;
+  /** The registry value / service / task the effect addresses, not the author's effect id. */
+  name: string;
   wanted_by: string[];
 }
 

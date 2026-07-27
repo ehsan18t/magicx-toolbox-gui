@@ -400,7 +400,7 @@
                   {#each obs.agreement as a (a.effect)}
                     <li class="flex flex-wrap items-baseline gap-x-2 text-xs">
                       <Icon icon="mdi:circle-small" width="14" class="shrink-0 text-foreground-muted" />
-                      <span class="font-mono text-foreground">{a.effect}</span>
+                      <span class="font-mono text-foreground">{a.name}</span>
                       {#if a.wanted_by.length > 0}
                         <span class="text-foreground-muted">agrees with {a.wanted_by.join(" and ")}</span>
                       {:else}

@@ -645,7 +645,38 @@ pub struct ObservedStateView {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EffectAgreementView {
     pub effect: EffectId,
+    /// What the effect actually addresses on the machine (registry value, service, task, ...). The
+    /// `effect` id is an author's slug and means nothing to a user reading the change list above.
+    pub name: String,
     pub wanted_by: Vec<String>,
+}
+
+/// The concrete thing an effect addresses, named the way the change list above already names it.
+/// Paths are dropped: the row directly above carries the full address, so the short name is what
+/// tells the two rows apart. Falls back to the effect id for the kinds that have no address.
+fn effect_display_name(effect: &EffectDef) -> String {
+    let Effect::Setting(setting) = &effect.kind else {
+        return effect.id.0.clone();
+    };
+    match setting {
+        Setting::Registry(a) => match &a.field {
+            Some(f) => format!("{} [{}]", a.name, f.field),
+            None => a.name.clone(),
+        },
+        Setting::RegistryKey(k) => leaf_of(&k.path, '\\'),
+        Setting::Service(s) => s.name.clone(),
+        Setting::Task(t) => leaf_of(&t.path, '\\'),
+        Setting::Hosts(h) => h.domain.clone(),
+        Setting::Firewall(r) => r.name.clone(),
+    }
+}
+
+/// Last segment of a backslash-delimited address, or the whole thing when it has no separator.
+fn leaf_of(path: &str, sep: char) -> String {
+    path.rsplit(sep)
+        .find(|s| !s.is_empty())
+        .unwrap_or(path)
+        .to_string()
 }
 
 /// Builds the System Default explanation by pushing each live reading through the very same
@@ -675,6 +706,7 @@ fn observed_view(tweak: &Tweak, observed: &[ObservedEffect]) -> Option<ObservedS
         }
         agreement.push(EffectAgreementView {
             effect: o.effect.clone(),
+            name: effect_display_name(effect),
             wanted_by: o.wanted_by.iter().map(|l| l.0.clone()).collect(),
         });
     }
