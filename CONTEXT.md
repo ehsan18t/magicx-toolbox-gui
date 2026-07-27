@@ -17,7 +17,11 @@ bare "Default" without qualifying which one you mean.
 
 **Stock Default**:
 The value Windows itself ships with, before anyone touched the machine. A property of Windows,
-identical on every clean install. Appears in option labels like "500 KB (Stock Default)".
+identical on every clean install. Used in research and in `info` prose to explain what Windows does.
+**Never in an option label.** What Microsoft ships today is a fact about this month's Windows, not
+about the control, and pinning it into a label means the corpus needs an edit every time Microsoft
+changes its mind. Label an Option by the state it produces ("Not configured", "Manual", "10 logons"),
+never by whose default it happens to match.
 _Avoid_: Default, Windows Default, factory setting
 
 **System Default**:
@@ -34,8 +38,10 @@ or more mutually exclusive authored Options.
 _Avoid_: setting, hack, mod
 
 **Option**:
-One complete authored target state — a value for every Setting on the Tweak's Surface. A Tweak has
-one or more; System Default is never one of them.
+One complete authored target state, a value for every Setting on the Tweak's Surface. A Tweak has
+one or more; System Default is never one of them. An Option is a state we drive the machine to, so
+every literal in one must be sourced: if a state cannot be established, author fewer Options rather
+than inventing one.
 _Avoid_: value, choice, mode, state
 
 **Active Option**:

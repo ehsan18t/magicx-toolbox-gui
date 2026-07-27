@@ -191,7 +191,7 @@ unavailable reasons, held-by info, and apply/restore outcomes with per-effect re
 ## Migration status
 
 The redesign was a hard cut: the old effect/apply/backup pipeline and every old YAML file were deleted in
-the same effort (spec §12). The engine ships with an **example corpus** — `src-tauri/tweaks/examples.yaml`,
-one tweak per feature — that proves the build and engine end-to-end. The real tweak corpus is re-authored
-from scratch, per category, on `main`, outside this plan. There is no dual-schema layer and no snapshot
-migration: old on-disk snapshots are invalidated by the schema-version bump.
+the same effort (spec §12). A demonstration corpus (`examples.yaml`, one tweak per feature) carried the
+engine end-to-end until the real categories were re-authored from scratch; it has since been removed. The
+shipping corpus is the eight category files in `src-tauri/tweaks/`. There is no dual-schema layer and no
+snapshot migration: old on-disk snapshots are invalidated by the schema-version bump.

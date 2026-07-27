@@ -25,9 +25,10 @@ to open the spec to author a tweak) but it cites `spec §N` / `ADR-000N` through
 - The validator, the parsers, and the compiled model are the **same Rust code the runtime uses**
   (`src-tauri/src/tweaks/{model,parse,schema,validate}.rs`), included into `build.rs` verbatim. What
   builds is exactly what runs; build and runtime can never disagree.
-- The shipped reference corpus is
-  [`src-tauri/tweaks/examples.yaml`](../src-tauri/tweaks/examples.yaml): eight tweaks exercising every
-  feature. Every fragment in this guide is drawn from it or checked against the shipped validator.
+- The shipping corpus is the eight category files in
+  [`src-tauri/tweaks/`](../src-tauri/tweaks/). Every fragment in this guide is a self-contained
+  illustration checked against the shipped validator; the `HKCU\Software\MagicXToolboxExample\...`
+  addresses in them are deliberate placeholders, not live tweaks.
 
 ### Table of contents
 
@@ -1046,7 +1047,7 @@ pair shared with a real Setting.
 ### 9.5 Full two-tweak shared example
 
 Two independent tweaks claiming one corpus-level shared setting, each with its own non-shared marker
-(from `examples.yaml`):
+:
 
 ```yaml
 shared:
@@ -1304,7 +1305,7 @@ options:
     values: { packed_flag: absent } # remove just this field
 ```
 
-### 11.5 Full packed example (from `examples.yaml`)
+### 11.5 Full packed example
 
 ```yaml
 - id: example_packed_field
@@ -1456,7 +1457,7 @@ It **has no YAML mapping in v1**: you cannot author it. Reach for value-driven d
 the engine created (§4.2, §6). There is **no `create_key` and no `delete_value` action**: both are
 subsumed by Settings (§18).
 
-### 12.9 Full action example with a Setting for detectability (from `examples.yaml`)
+### 12.9 Full action example with a Setting for detectability
 
 ```yaml
 - id: example_action
@@ -2078,7 +2079,7 @@ permanent Residue is tolerated by the omitting option, so both would match after
 
 ## 17. Complete worked examples
 
-These walk the shipped `examples.yaml` tweaks end-to-end, plus a couple of harder composed cases. Each is
+These walk a complete tweak end-to-end for each shape, plus a couple of harder composed cases. Each is
 schema-valid against the shipped validator.
 
 ### 17.1 Registry tri-state (a value and its absence)
@@ -2173,7 +2174,7 @@ both actions.
 
 ### 17.5 A Windows-scoped tweak walked through the matrix
 
-Tweak-level scope makes a whole tweak apply only on 24H2+ (from `examples.yaml`):
+Tweak-level scope makes a whole tweak apply only on 24H2+:
 
 ```yaml
 - id: example_windows_scoped
