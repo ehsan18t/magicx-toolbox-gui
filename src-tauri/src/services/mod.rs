@@ -1,4 +1,5 @@
 pub mod elevation;
+pub mod exclusive_temp;
 pub mod firewall_service;
 pub mod hosts_service;
 pub mod registry_service;

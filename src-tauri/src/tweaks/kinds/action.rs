@@ -42,44 +42,31 @@
 //! everything the action started, not just what we can see the pid of.
 //!
 //! ## Hardening the Cmd temp-script path against local tampering
-//! [`TempScriptFile`] is written to disk (`cmd.exe` has no `-EncodedCommand` equivalent to hand it
-//! the script directly), which is a real local attack surface under this task's elevated Admin
-//! path: `%TEMP%` is writable and enumerable by any other Medium-integrity process the same user
-//! runs. Three independent guards close it: an unpredictable CSPRNG-derived filename (nothing to
-//! pre-plant a guess at), an exclusive `create_new` open (a pre-existing/pre-planted path at that
-//! name fails loudly instead of being followed or truncated), and a write handle held open for the
-//! script's entire execution with only `FILE_SHARE_READ` granted (so `cmd.exe` can still read it,
-//! but no other process can open it for write/delete/rename while it is in use — the file is
-//! deleted only after the child has fully exited). See [`random_hex_token`]/[`TempScriptFile`].
+//! A Cmd script must reach disk (`cmd.exe` has no `-EncodedCommand` equivalent), and `%TEMP%` is
+//! writable by every process running as this user. [`ExclusiveTempFile`] is what makes that safe;
+//! see its module docs for the three guards. The value is kept alive until the child has exited,
+//! so the lock covers the whole execution.
 //!
 //! ## Encoding
-//! `services::elevation::broker` already has this exact `-EncodedCommand` (base64 of UTF-16LE)
-//! pattern, but its encoder and PowerShell runner are private, and the broker is explicitly out of
-//! scope for this task (it is the privileged path and must stay stable). [`base64_encode`] here is
-//! a small local duplicate — the same accepted-duplication shape as `delete_ok` between
-//! `registry_service` and `registry.rs` (Task 5); consolidating both is a carry-forward for
-//! whichever later task wires the broker seam into `kinds` (see `kinds/mod.rs`'s module docs).
+//! [`base64_encode`] is local to this file. The broker had an identical copy until its only caller,
+//! a PowerShell op with no producer, was removed; this is now the single one.
 
-use std::io::{Read, Write};
-use std::os::windows::fs::OpenOptionsExt;
+use std::io::Read;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
-use windows_sys::Win32::Security::Cryptography::{
-    BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-};
-use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
     SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 
+use crate::services::exclusive_temp::ExclusiveTempFile;
 use crate::tweaks::model::{ActionDef, Setting, Shell, Value};
 
 use super::registry::RegistryKind;
@@ -182,10 +169,11 @@ fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<i32, Error>
     match shell {
         Shell::PowerShell => wait_with_timeout(spawn_powershell(body)?, timeout),
         Shell::Cmd => {
-            let file = TempScriptFile::write(body)?;
-            wait_with_timeout(spawn_cmd(&file.path)?, timeout)
-            // `file` drops here, after the child has fully exited -- deleting the temp `.cmd` only
-            // once cmd.exe is done reading it.
+            let file = ExclusiveTempFile::create("magicx-action", "cmd", body.as_bytes())
+                .map_err(|e| Error::ActionExecFailed(format!("temp script: {e}")))?;
+            wait_with_timeout(spawn_cmd(file.path())?, timeout)
+            // `file` drops here, after the child has fully exited: the share-mode lock holds for
+            // the whole execution and the temp `.cmd` is deleted only once cmd.exe is done.
         }
     }
 }
@@ -380,82 +368,7 @@ fn drain_to_log(
     })
 }
 
-/// 128 bits of CSPRNG output, hex-encoded — used for [`TempScriptFile`]'s filename so it can be
-/// neither predicted nor pre-planted (Fix 1a). Sourced from `BCryptGenRandom` with
-/// `BCRYPT_USE_SYSTEM_PREFERRED_RNG` (no algorithm-provider handle needed, so `hAlgorithm` is
-/// documented as ignored/null in this mode): `windows-sys` is already a direct dependency, and this
-/// tree has no direct `rand`/`getrandom`/`uuid` dependency to reuse instead -- all three exist only
-/// transitively in `Cargo.lock` (pulled in by other crates), which does not make them callable from
-/// this crate without adding a brand-new direct `Cargo.toml` dependency line.
-fn random_hex_token() -> Result<String, Error> {
-    let mut buf = [0u8; 16];
-    // SAFETY: `buf` is a valid, correctly-sized stack buffer; `BCRYPT_USE_SYSTEM_PREFERRED_RNG`
-    // ignores the algorithm-handle argument (passed null per its documented contract).
-    let status = unsafe {
-        BCryptGenRandom(
-            std::ptr::null_mut(),
-            buf.as_mut_ptr(),
-            buf.len() as u32,
-            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-        )
-    };
-    if status != 0 {
-        return Err(Error::ActionExecFailed(format!(
-            "BCryptGenRandom failed with NTSTATUS {status:#x}"
-        )));
-    }
-    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
-}
-
-/// A temp `.cmd` file holding one Cmd script's body — hardened against a local, co-located
-/// Medium-integrity process tampering with it while this Admin-elevated path executes it (Fix 1):
-/// an unpredictable CSPRNG-derived name ([`random_hex_token`], closing the pre-plant-by-guessed-
-/// name route), an exclusive `create_new` open (refuses to follow or truncate a pre-existing path
-/// at all, rather than assuming the name is unique), and a write handle held open for the file's
-/// entire lifetime with only `FILE_SHARE_READ` granted -- `cmd.exe` can still open it for read, but
-/// no other process can open it for write/delete/rename while it is in use, closing the window an
-/// attacker would otherwise have to swap the file's content out from under `cmd.exe`. The handle is
-/// closed and the file removed only once the child reading it has fully exited (see
-/// `run_script`/`wait_with_timeout`, which keep this value alive for exactly that long).
-struct TempScriptFile {
-    path: PathBuf,
-    // `Option` so `Drop` can close the handle explicitly, before deleting the file: Windows
-    // refuses to delete a file while a share_mode(FILE_SHARE_READ)-only handle to it -- even our
-    // own -- is still open.
-    handle: Option<std::fs::File>,
-}
-impl TempScriptFile {
-    fn write(body: &str) -> Result<Self, Error> {
-        let token = random_hex_token()?;
-        let path =
-            std::env::temp_dir().join(format!("magicx-action-{}-{token}.cmd", std::process::id()));
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true) // Fix 1b: never follow/truncate a pre-existing/pre-planted path
-            .share_mode(FILE_SHARE_READ) // Fix 1c: no other process may open this for write/delete
-            .open(&path)
-            .map_err(|e| {
-                Error::ActionExecFailed(format!("failed to exclusively create temp script: {e}"))
-            })?;
-        file.write_all(body.as_bytes())
-            .map_err(|e| Error::ActionExecFailed(format!("failed to write temp script: {e}")))?;
-        file.flush()
-            .map_err(|e| Error::ActionExecFailed(format!("failed to flush temp script: {e}")))?;
-        Ok(Self {
-            path,
-            handle: Some(file),
-        })
-    }
-}
-impl Drop for TempScriptFile {
-    fn drop(&mut self) {
-        drop(self.handle.take()); // release the share-mode lock before attempting delete
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-/// Standard base64 (RFC 4648) -- see the module docs for why this duplicates
-/// `broker::base64_encode` rather than reusing it.
+/// Standard base64 (RFC 4648), small enough not to justify a dependency.
 fn base64_encode(data: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
@@ -543,7 +456,7 @@ mod tests {
             std::process::id(),
             SCRATCH_COUNTER.fetch_add(1, Ordering::SeqCst)
         ));
-        struct Cleanup(PathBuf);
+        struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {
             fn drop(&mut self) {
                 let _ = std::fs::remove_file(&self.0);
@@ -654,50 +567,8 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
         assert_eq!(run_script(Shell::Cmd, "exit 3", ACTION_TIMEOUT).unwrap(), 3);
     }
 
-    /// Fix 1b: proves the exclusive-create guard `TempScriptFile::write` relies on. The filename
-    /// is CSPRNG-derived, so we cannot force a real collision against `TempScriptFile` itself --
-    /// this pins the underlying OS guarantee (`create_new` refuses an already-existing path,
-    /// rather than following or truncating it) that guard depends on.
-    #[test]
-    fn create_new_rejects_an_already_existing_path() {
-        let path = std::env::temp_dir().join(format!(
-            "magicx-action-preexisting-test-{}-{}",
-            std::process::id(),
-            SCRATCH_COUNTER.fetch_add(1, Ordering::SeqCst)
-        ));
-        std::fs::write(&path, b"pre-planted content").unwrap();
-        struct Cleanup(PathBuf);
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_file(&self.0);
-            }
-        }
-        let _cleanup = Cleanup(path.clone());
-
-        let err = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .expect_err("create_new must refuse an already-existing/pre-planted path");
-        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
-    }
-
-    /// Fix 1: the held-open write handle is closed and the file removed once the guard drops --
-    /// proven directly against `TempScriptFile` rather than only inferred from a `run_script` call.
-    #[test]
-    fn temp_script_file_is_deleted_once_dropped() {
-        let file = TempScriptFile::write("exit 0").expect("must create the temp script");
-        let path = file.path.clone();
-        assert!(
-            path.exists(),
-            "temp script must exist while the guard is held"
-        );
-        drop(file);
-        assert!(
-            !path.exists(),
-            "temp script must be deleted once the guard drops"
-        );
-    }
+    // The temp-script guards themselves (exclusive create, the held share-mode lock, delete on
+    // drop) are pinned in `services::exclusive_temp`, which now owns them.
 
     #[test]
     fn drive_rejects_system_and_ti_for_script_actions() {

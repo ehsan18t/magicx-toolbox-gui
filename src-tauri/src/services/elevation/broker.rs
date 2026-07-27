@@ -14,6 +14,7 @@
 
 use crate::error::Error;
 use crate::models::{RegistryHive, RegistryValueType, SchedulerAction, ServiceStartupType};
+use crate::services::exclusive_temp::{self, ExclusiveTempFile};
 use crate::services::{registry_service, registry_value, scheduler_service, service_control};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -152,38 +153,40 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
     }
 }
 
+// Transport-failure exit codes. The exit code is the child's ONLY channel: it runs before the
+// logger is initialized and is spawned with no console and no inherited stderr, so anything it
+// wrote would be discarded. `describe_broker_exit` turns each one back into a phrase in the
+// parent, where the error can actually reach the user.
+const EXIT_UNREADABLE_REQUEST: i32 = 2;
+const EXIT_UNPARSEABLE_REQUEST: i32 = 3;
+const EXIT_UNSERIALIZABLE_RESPONSE: i32 = 4;
+const EXIT_UNWRITABLE_RESPONSE: i32 = 5;
+
+fn describe_broker_exit(code: i32) -> &'static str {
+    match code {
+        EXIT_UNREADABLE_REQUEST => "could not read the request file",
+        EXIT_UNPARSEABLE_REQUEST => "request file was not valid JSON",
+        EXIT_UNSERIALIZABLE_RESPONSE => "could not serialize the response",
+        EXIT_UNWRITABLE_RESPONSE => "could not write the response file",
+        _ => "crashed or was terminated before writing a response",
+    }
+}
+
 /// Broker entrypoint: read a request file, execute it, write a response file. Returns a process
-/// exit code (0 = the batch was executed and a response was written; non-zero = the broker could
-/// not read the request or write the response — a transport failure, distinct from op failures,
-/// which are reported inside the response).
+/// exit code. 0 means the batch was executed and a response was written; non-zero is a transport
+/// failure, distinct from op failures, which are reported inside the response.
 pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
-    let bytes = match std::fs::read(req_path) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("broker: failed to read request {}: {}", req_path, e);
-            return 2;
-        }
+    let Ok(bytes) = std::fs::read(req_path) else {
+        return EXIT_UNREADABLE_REQUEST;
     };
-    let request: BrokerRequest = match serde_json::from_slice(&bytes) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("broker: failed to parse request: {}", e);
-            return 3;
-        }
+    let Ok(request) = serde_json::from_slice::<BrokerRequest>(&bytes) else {
+        return EXIT_UNPARSEABLE_REQUEST;
     };
-
-    let response = execute_request(&request);
-
-    let out = match serde_json::to_vec(&response) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("broker: failed to serialize response: {}", e);
-            return 4;
-        }
+    let Ok(out) = serde_json::to_vec(&execute_request(&request)) else {
+        return EXIT_UNSERIALIZABLE_RESPONSE;
     };
-    if let Err(e) = std::fs::write(resp_path, out) {
-        eprintln!("broker: failed to write response {}: {}", resp_path, e);
-        return 5;
+    if std::fs::write(resp_path, out).is_err() {
+        return EXIT_UNWRITABLE_RESPONSE;
     }
     0
 }
@@ -223,17 +226,27 @@ fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerRes
 
 /// Run a batch of typed operations at the given elevation.
 ///
-/// `Elevation::None` runs them in-process (the effect services already hold the needed rights).
-/// `System` / `TrustedInstaller` serialize the request to a temp file and spawn
-/// `<this exe> --broker <req> <resp>` under the corresponding token (reusing the winlogon token-dup
-/// / TI parent-spoof primitives), then read the typed response back. No shell parses the
-/// operations, and the request *data* never appears on a command line — only our controlled
-/// temp-file paths do.
+/// `Elevation::None` runs them in-process. `System`/`TrustedInstaller` write the request to a temp
+/// file, spawn `<this exe> --broker <req> <resp>` under the corresponding token, and read the typed
+/// response back. No shell parses anything, and the request *data* never reaches a command line;
+/// only our own generated paths do.
 ///
-/// Trust in the response is gated three ways: the response path is pre-cleared, the child's exit
-/// code must be 0 (run_broker returns 0 only *after* writing the response), and the response's
-/// nonce must match the one sent — so a leftover file from a prior run can never be read as this
-/// run's result.
+/// ## The request file is the thing an attacker would want
+///
+/// The child reads it as SYSTEM or TrustedInstaller, so whoever controls its bytes controls what
+/// runs at that level. `%TEMP%` is writable by every process running as this user, and the spawn
+/// window is long (acquiring the TI token alone can take seconds), so "write it and hope" is not a
+/// defence. It goes through [`ExclusiveTempFile`], which keeps a `FILE_SHARE_READ`-only write
+/// handle open across the whole spawn: the child can read it, nothing else can rewrite it.
+///
+/// ## The response file is guarded, but not equally
+///
+/// The child creates it, so the parent cannot hold it open the same way. Three checks stand
+/// between it and a trusted result: an unpredictable path, the child's exit code (`run_broker`
+/// returns 0 only after the response is written), and a nonce that must match the one sent. A
+/// same-user process that both wins the post-exit race and guesses the batch length could still
+/// forge a success. Closing that fully means handing the child an inherited pipe instead of a
+/// path, which is the next step here, not something these guards already achieve.
 pub fn run_elevated_broker(
     level: Elevation,
     request: &BrokerRequest,
@@ -250,26 +263,20 @@ pub fn run_elevated_broker(
         nonce,
         ops: request.ops.clone(),
     };
-
-    let dir = std::env::temp_dir();
-    let pid = std::process::id();
-    let req_path = dir.join(format!("magicx-broker-{}-{:016x}-req.json", pid, nonce));
-    let resp_path = dir.join(format!("magicx-broker-{}-{:016x}-resp.json", pid, nonce));
-
-    // Never trust a leftover file at the response path.
-    let _ = std::fs::remove_file(&resp_path);
-
     let req_json = serde_json::to_vec(&wire)
         .map_err(|e| Error::ServiceControl(format!("serialize broker request: {}", e)))?;
-    std::fs::write(&req_path, &req_json)
+
+    let req_file = ExclusiveTempFile::create("magicx-broker", "req.json", &req_json)
         .map_err(|e| Error::ServiceControl(format!("write broker request: {}", e)))?;
+    let resp_path = exclusive_temp::unique_temp_path("magicx-broker", "resp.json")
+        .map_err(|e| Error::ServiceControl(format!("reserve broker response path: {}", e)))?;
 
     // Spawn "<exe>" --broker "<req>" "<resp>" directly (no cmd.exe wrapper). Paths are quoted; the
     // values are our own generated temp names, never untrusted data.
     let cmdline = format!(
         "\"{}\" --broker \"{}\" \"{}\"",
         exe.display(),
-        req_path.display(),
+        req_file.path().display(),
         resp_path.display()
     );
 
@@ -284,15 +291,16 @@ pub fn run_elevated_broker(
     let read = spawn.and_then(|exit| {
         if exit != 0 {
             return Err(Error::ServiceControl(format!(
-                "broker process exited with code {} without completing (transport failure)",
-                exit
+                "broker process exited with code {} ({}) without completing",
+                exit,
+                describe_broker_exit(exit)
             )));
         }
         std::fs::read(&resp_path)
             .map_err(|e| Error::ServiceControl(format!("broker wrote no response: {}", e)))
     });
 
-    let _ = std::fs::remove_file(&req_path);
+    drop(req_file); // releases the share-mode lock and deletes the request
     let _ = std::fs::remove_file(&resp_path);
 
     validate_response(&read?, nonce)
