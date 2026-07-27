@@ -162,6 +162,10 @@
   let pendingHighRiskLabel: string | null = $state(null);
 
   function stageApply(label: string) {
+    // Clicking the option that is already live cancels a staged change. This cannot fire at System
+    // Default, where `activeOption` is null by design (ADR-0003: no option is active), so any new
+    // control must route that position through `goSystemDefault` rather than here, or the user
+    // stages a change with no way back to zero pending.
     if (label === activeOption) {
       unstageChange(tweak.definition.id);
       return;
