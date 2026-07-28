@@ -539,10 +539,27 @@ pub(crate) fn drive_forward(
                 // max(floor, step), EXCEPT an HKCU Setting always drives in-process as the
                 // interactive user regardless of the floor (see this file's module docs).
                 let cx = context::route(effect, ctx.tweak, ctx.corpus);
-                ctx.deps
-                    .kinds
-                    .drive(setting, &scoped.value, &cx)
-                    .map_err(|e| map_drive_err(&effect.id, e))?;
+                // An `optional` effect whose resource is absent already reads as its `if_missing`
+                // value (spec §5.4) -- that is exactly what `detect::classify_setting_read` does,
+                // which is why detect offers such an option as available and satisfied. Apply has
+                // to agree: when the option asks for precisely that value there is nothing to drive
+                // and nothing to verify, so this is a verified no-op. Without it, detect advertises
+                // an option that apply always aborts and rolls back on (a task absent on this
+                // Windows build, say), and `optional` would protect capture and detect but not the
+                // drive that actually needs it.
+                if let Err(e) = ctx.deps.kinds.drive(setting, &scoped.value, &cx) {
+                    if !(matches!(e, KindError::ResourceMissing(_))
+                        && effect.optional
+                        && effect.if_missing.as_ref() == Some(&scoped.value))
+                    {
+                        return Err(map_drive_err(&effect.id, e));
+                    }
+                    state.effect_results.push(EffectResult {
+                        effect: effect.id.clone(),
+                        kind: EffectResultKind::NoOp,
+                    });
+                    continue;
+                }
                 let actual = ctx
                     .deps
                     .kinds
@@ -2305,6 +2322,72 @@ mod tests {
 
         let err =
             run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("resource vanished");
+        let EngineError::RollbackReport { original, .. } = err else {
+            panic!("expected RollbackReport");
+        };
+        assert!(matches!(*original, EngineError::ResourceMissing(_)));
+    }
+
+    /// An `optional` effect whose resource is absent already reads as its `if_missing` value (spec
+    /// §5.4) -- that is what `detect::classify_setting_read` reports, so detect offers the option as
+    /// available and satisfied. Apply has to agree: asking for that same value is a verified no-op,
+    /// not a failure. Without this, every `optional` task effect in the corpus is a latent hard
+    /// failure on any build where the task is absent.
+    #[test]
+    fn absent_optional_effect_matching_if_missing_is_a_verified_no_op() {
+        let h = Harness::new();
+        let disabled = Value::Startup(crate::tweaks::model::StartupType::Disabled);
+        h.kind.seed(
+            "svc",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        h.kind.drive_plan("svc", DrivePlan::ResourceMissing);
+        let mut e = svc_effect("svc", true);
+        e.if_missing = Some(disabled.clone());
+        let t = tweak(
+            "demo",
+            vec![e],
+            vec![opt("A", vec![("svc", set(disabled))])],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect("an absent optional effect already at its if_missing value must not fail");
+        assert_eq!(
+            outcome.effects[0].kind,
+            EffectResultKind::NoOp,
+            "an absent optional effect must be recorded as a no-op, never as Driven"
+        );
+    }
+
+    /// The no-op above is deliberately narrow: an absent `optional` effect whose option wants
+    /// something OTHER than its `if_missing` value is genuinely unsatisfiable here and must still
+    /// fail loudly, rather than `ResourceMissing` being swallowed wholesale.
+    #[test]
+    fn absent_optional_effect_wanting_a_different_value_still_fails() {
+        let h = Harness::new();
+        h.kind.seed(
+            "svc",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        h.kind.drive_plan("svc", DrivePlan::ResourceMissing);
+        let mut e = svc_effect("svc", true);
+        e.if_missing = Some(Value::Startup(crate::tweaks::model::StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![e],
+            vec![opt(
+                "A",
+                vec![(
+                    "svc",
+                    set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                )],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect_err("a missing resource that cannot satisfy the option must still fail");
         let EngineError::RollbackReport { original, .. } = err else {
             panic!("expected RollbackReport");
         };
