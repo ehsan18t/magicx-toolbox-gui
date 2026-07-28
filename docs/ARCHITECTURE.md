@@ -237,7 +237,7 @@ record (ADR-0006).
 
 Worked examples for every effect kind live in
 **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)** (§17), which also documents the full schema. The
-shipping corpus is the eight category files in [`src-tauri/tweaks/`](../src-tauri/tweaks/). In the effect-centric model there is no fixed
+shipping corpus is the nine category files in [`src-tauri/tweaks/`](../src-tauri/tweaks/). In the effect-centric model there is no fixed
 change-list execution order: a tweak declares its `effects:` once, and applying an option **drives each
 effect to its desired value in declaration order** (capture → persist snapshot + WAL → drive → verify
 per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md)).
@@ -417,8 +417,8 @@ src-tauri/src/tweaks/
 
 ## Categories
 
-The engine ships eight category files in `src-tauri/tweaks/`: `ai`, `debloat`, `interface`, `network`,
-`performance`, `privacy`, `security`, `services`. Each declares its category once via the `category:`
+The engine ships nine category files in `src-tauri/tweaks/`: `ai`, `debloat`, `interface`, `network`,
+`performance`, `privacy`, `security`, `services`, `windows_update`. Each declares its category once via the `category:`
 block (`id` / `name` / `icon` / `description`), and every tweak in the file inherits it. The
 demonstration corpus that carried the engine through the redesign (`examples.yaml`) was removed once
 the real categories landed.

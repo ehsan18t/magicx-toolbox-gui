@@ -193,5 +193,5 @@ unavailable reasons, held-by info, and apply/restore outcomes with per-effect re
 The redesign was a hard cut: the old effect/apply/backup pipeline and every old YAML file were deleted in
 the same effort (spec §12). A demonstration corpus (`examples.yaml`, one tweak per feature) carried the
 engine end-to-end until the real categories were re-authored from scratch; it has since been removed. The
-shipping corpus is the eight category files in `src-tauri/tweaks/`. There is no dual-schema layer and no
+shipping corpus is the nine category files in `src-tauri/tweaks/`. There is no dual-schema layer and no
 snapshot migration: old on-disk snapshots are invalidated by the schema-version bump.

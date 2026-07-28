@@ -56,7 +56,8 @@ explicitly with `cargo test -- --ignored`.
 - **Privileged operations run through the typed elevation broker** (`services/elevation/`), never by
   composing shell strings: the app re-spawns itself under a SYSTEM / TrustedInstaller token and runs
   typed `BrokerOp`s through the same effect services. Registry via `RegSetValueExW`, services via
-  `windows-sys` SCM, scheduler via `windows` COM, PowerShell via `-EncodedCommand`.
+  `windows-sys` SCM, scheduler via `windows` COM. `BrokerOp` carries no script variant: PowerShell
+  runs only through the `action` effect kind (`tweaks/kinds/action.rs`), never through the broker.
 - **The "did-it-work" contract:** a failed privileged or effect operation must surface as `Err`, never
   a benign-looking value. Registry reads must distinguish *not-found* from *access-denied*. Never
   `let _ =` a privileged call.
@@ -89,8 +90,11 @@ explicitly with `cargo test -- --ignored`.
 ## Tweak system / YAML
 
 - Tweaks are YAML in `src-tauri/tweaks/`, compiled at build time by `build.rs` (the schema types are
-  shared with the runtime via `models/tweak_schema.rs`, so drift is a compile error). 2 options →
-  toggle, 3+ → dropdown. `skip_validation: true` excludes an item from status checks.
+  shared with the runtime via `src/tweaks/{model,parse,schema,validate}.rs`, so drift is a compile
+  error). Category is **per file**, not per tweak: one `category:` header per YAML file. 1 authored
+  option → toggle, 2+ → dropdown; you never author "System Default", it is the computed state when
+  the live surface matches no option. `optional: true` (with an optional `if_missing:`) tolerates a
+  *missing* resource at capture and detect; it does not weaken the post-apply verify.
 - **When tweak runtime behavior changes, update `docs/TWEAK_AUTHORING.md`** — it is the authoritative
   author guide. `docs/TWEAK_SYSTEM.md` is the architecture reference and `docs/ROADMAP.md` is the
   stage tracker.

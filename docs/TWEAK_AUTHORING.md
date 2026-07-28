@@ -25,7 +25,7 @@ to open the spec to author a tweak) but it cites `spec §N` / `ADR-000N` through
 - The validator, the parsers, and the compiled model are the **same Rust code the runtime uses**
   (`src-tauri/src/tweaks/{model,parse,schema,validate}.rs`), included into `build.rs` verbatim. What
   builds is exactly what runs; build and runtime can never disagree.
-- The shipping corpus is the eight category files in
+- The shipping corpus is the nine category files in
   [`src-tauri/tweaks/`](../src-tauri/tweaks/). Every fragment in this guide is a self-contained
   illustration checked against the shipped validator; the `HKCU\Software\MagicXToolboxExample\...`
   addresses in them are deliberate placeholders, not live tweaks.
@@ -916,8 +916,18 @@ effect as reading `<value>`**":
 
 If an option's desired value for a `Missing` resource **differs** from that effect's `if_missing`
 meaning (e.g. an option that _enables_ a service that is not installed), that option is shown
-**unavailable on this machine** at detect time, and apply is never offered for it. (If a resource
-vanishes between detect and apply, the apply fails typed and rolls back: never a silent skip.)
+**unavailable on this machine** at detect time, and apply is never offered for it. If the resource
+vanishes between detect and apply, the apply fails typed and rolls back: never a silent skip.
+
+When the desired value **equals** that effect's `if_missing` meaning, the effect is already in the
+requested state by definition, so applying it is a **verified no-op** (`EffectResultKind::NoOp`) and
+the option applies normally. This is what keeps apply consistent with detect: detect maps a `Missing`
+read on an `optional` effect to its `if_missing` value and therefore reports the option as available
+and satisfied, so apply must not turn around and abort on the same effect. A tweak that disables a
+list of scheduled tasks, some of which do not exist on every Windows build, is the motivating case.
+
+> ⚠️ `optional` still does **not** weaken verification. It governs presence only: a resource that
+> _does_ exist is driven and read back exactly as a non-optional one, and a mismatch still rolls back.
 
 ### 8.5 Keep every option detectable _without_ optional effects
 
