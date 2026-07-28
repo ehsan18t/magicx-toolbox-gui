@@ -1546,4 +1546,55 @@ mod tests {
         );
         assert!(second.effects.is_empty(), "a verified no-op drives nothing");
     }
+
+    /// The details UI renders one section per change kind straight off `TweakOptionView`. If
+    /// `push_setting_change` ever stops projecting a kind, that section silently renders empty and
+    /// the tweak looks like it only touches the registry -- a wrong answer that no other test would
+    /// catch, since apply/detect keep working perfectly. So: across the whole shipped corpus, every
+    /// Setting effect an option actually values must land in exactly one of the six change lists.
+    #[test]
+    fn every_valued_setting_effect_reaches_the_option_view() {
+        let corpus = compiled_corpus();
+        let mut kinds_seen = (0usize, 0usize, 0usize); // registry, service, scheduler
+        for t in &corpus.tweaks {
+            for opt in &t.options {
+                // A claimed `shared` effect resolves to its declared setting and projects a change
+                // too (option_view's Shared arm), so it counts alongside plain Settings.
+                let valued_settings = t
+                    .surface
+                    .iter()
+                    .filter(|e| match &e.kind {
+                        Effect::Setting(_) => {
+                            matches!(opt.values.get(&e.id), Some(OptValue::Set(_)))
+                        }
+                        Effect::Shared(_) => {
+                            matches!(opt.values.get(&e.id), Some(OptValue::Claim(_)))
+                        }
+                        Effect::Action(_) => false,
+                    })
+                    .count();
+                let v = option_view(t, opt, corpus);
+                let projected = v.registry_changes.len()
+                    + v.service_changes.len()
+                    + v.scheduler_changes.len()
+                    + v.hosts_changes.len()
+                    + v.firewall_changes.len();
+                assert_eq!(
+                    projected, valued_settings,
+                    "tweak `{}` option `{}`: {valued_settings} valued Setting effects but only \
+                     {projected} reached the details view -- a change kind is being dropped",
+                    t.id, opt.label.0
+                );
+                kinds_seen.0 += v.registry_changes.len();
+                kinds_seen.1 += v.service_changes.len();
+                kinds_seen.2 += v.scheduler_changes.len();
+            }
+        }
+        // Guards the guard: if the corpus ever stopped shipping services or tasks the loop above
+        // would pass vacuously for those kinds.
+        assert!(
+            kinds_seen.0 > 0 && kinds_seen.1 > 0 && kinds_seen.2 > 0,
+            "expected the corpus to exercise registry, service and scheduled-task projection; got {kinds_seen:?}"
+        );
+    }
 }
