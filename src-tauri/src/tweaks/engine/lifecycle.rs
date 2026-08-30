@@ -43,6 +43,19 @@ pub(crate) async fn lock_tweak(tweak_id: &str) -> OwnedMutexGuard<()> {
     arc.lock_owned().await
 }
 
+/// Whether `tweak_id`'s apply/restore lock is currently held by someone.
+///
+/// Synchronous and non-blocking, because its caller is the corpus-wide detect sweep, which runs on
+/// a rayon pool and cannot await. A held lock means that tweak is mid-apply or mid-restore, so its
+/// surface is half-driven and any reading taken now would be torn -- the sweep skips it rather than
+/// publishing a status that was never true. Racy by nature: a lock can be taken the instant after
+/// this returns false, which is why this is a best-effort filter for a read-only sweep and never a
+/// substitute for the lock itself.
+pub(crate) fn is_locked(tweak_id: &str) -> bool {
+    let map = locks().lock().expect("tweak-locks mutex poisoned");
+    map.get(tweak_id).is_some_and(|arc| arc.try_lock().is_err())
+}
+
 /// One tweak's snapshot entry left in a state that cannot be silently trusted (ADR-0001/0002):
 /// named, exact unrecoverable items — never a guess, never a silent retry.
 #[derive(Debug, Clone, PartialEq, Eq)]

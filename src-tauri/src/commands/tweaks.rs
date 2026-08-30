@@ -911,6 +911,15 @@ fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakSta
     std::thread::scope(|s| {
         s.spawn(move || {
             corpus.tweaks.par_iter().for_each_with(tx, |tx, tweak| {
+                // A tweak that is mid-apply or mid-restore has a half-driven surface: detect would
+                // read some effects already driven and some not, and publish a status that was
+                // never true of the machine. The sweep takes no lock of its own (it is a pure
+                // read), so the only correct move is to leave that card showing what it had until
+                // the apply finishes and emits its own status.
+                if lifecycle::is_locked(&tweak.id) {
+                    log::debug!("skipping {} in the sweep: apply in flight", tweak.id);
+                    return;
+                }
                 // A closed receiver only happens if the drain below panicked; nothing to do.
                 let _ = tx.send(scan_one(tweak, corpus, deps));
             });
