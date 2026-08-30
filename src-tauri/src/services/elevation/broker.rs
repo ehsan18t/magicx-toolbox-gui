@@ -18,6 +18,7 @@ use crate::services::exclusive_temp::{self, ExclusiveTempFile};
 use crate::services::{registry_service, registry_value, scheduler_service, service_control};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
+use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ};
 
 use super::Elevation;
 
@@ -161,6 +162,10 @@ const EXIT_UNREADABLE_REQUEST: i32 = 2;
 const EXIT_UNPARSEABLE_REQUEST: i32 = 3;
 const EXIT_UNSERIALIZABLE_RESPONSE: i32 = 4;
 const EXIT_UNWRITABLE_RESPONSE: i32 = 5;
+/// A panic inside the child. Distinct from the catch-all so a bug in our own executor is never
+/// reported as an external kill: under `panic = "abort"` the two are otherwise indistinguishable,
+/// and "crashed or was terminated" sends a support engineer looking at antivirus instead of at us.
+const EXIT_PANICKED: i32 = 6;
 
 fn describe_broker_exit(code: i32) -> &'static str {
     match code {
@@ -168,6 +173,7 @@ fn describe_broker_exit(code: i32) -> &'static str {
         EXIT_UNPARSEABLE_REQUEST => "request file was not valid JSON",
         EXIT_UNSERIALIZABLE_RESPONSE => "could not serialize the response",
         EXIT_UNWRITABLE_RESPONSE => "could not write the response file",
+        EXIT_PANICKED => "panicked while executing the batch",
         _ => "crashed or was terminated before writing a response",
     }
 }
@@ -176,6 +182,8 @@ fn describe_broker_exit(code: i32) -> &'static str {
 /// exit code. 0 means the batch was executed and a response was written; non-zero is a transport
 /// failure, distinct from op failures, which are reported inside the response.
 pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
+    install_panic_exit_hook();
+
     let Ok(bytes) = std::fs::read(req_path) else {
         return EXIT_UNREADABLE_REQUEST;
     };
@@ -185,10 +193,47 @@ pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
     let Ok(out) = serde_json::to_vec(&execute_request(&request)) else {
         return EXIT_UNSERIALIZABLE_RESPONSE;
     };
-    if std::fs::write(resp_path, out).is_err() {
+    if write_response(resp_path, &out).is_err() {
         return EXIT_UNWRITABLE_RESPONSE;
     }
     0
+}
+
+/// Give a panicking child a distinct exit code.
+///
+/// The child runs before the logger is initialised, with no console and no inherited stderr, so the
+/// exit code is its only channel. Release builds are `panic = "abort"`, under which a panic in
+/// `execute_op` produces an abort the parent can only report as its catch-all, "crashed or was
+/// terminated before writing a response" -- indistinguishable from an antivirus kill. The hook runs
+/// before the abort, so exiting from it claims a code of our own. The message goes to stderr for
+/// the documented manual-verification run from an elevated shell, where a console does exist.
+fn install_panic_exit_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("broker panicked: {info}");
+        std::process::exit(EXIT_PANICKED);
+    }));
+}
+
+/// Write the response, refusing to follow anything already at that path.
+///
+/// The parent only *reserves* the response name; the child creates it. `std::fs::write` is
+/// `CREATE_ALWAYS`, which happily follows a symlink or junction planted at that name, so the write
+/// would land wherever the reparse point pointed -- as TrustedInstaller. The 128 random bits in the
+/// name are what make that hard to aim today, which is a reason not to rely on them alone.
+/// `CREATE_NEW` makes anything already there a hard failure, and `FILE_FLAG_OPEN_REPARSE_POINT`
+/// makes that true for a dangling symlink `CREATE_NEW` would otherwise follow.
+fn write_response(resp_path: &str, out: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .share_mode(FILE_SHARE_READ)
+        .open(resp_path)?;
+    file.write_all(out)?;
+    file.flush()
 }
 
 /// Monotonic counter mixed into the per-invocation transport nonce.
@@ -241,12 +286,26 @@ fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerRes
 ///
 /// ## The response file is guarded, but not equally
 ///
-/// The child creates it, so the parent cannot hold it open the same way. Three checks stand
-/// between it and a trusted result: an unpredictable path, the child's exit code (`run_broker`
-/// returns 0 only after the response is written), and a nonce that must match the one sent. A
-/// same-user process that both wins the post-exit race and guesses the batch length could still
-/// forge a success. Closing that fully means handing the child an inherited pipe instead of a
-/// path, which is the next step here, not something these guards already achieve.
+/// The child creates it, so the parent cannot hold it open across the spawn the way it holds the
+/// request. What does guard it: the parent only ever reserves an unguessable name, the child
+/// creates it with `CREATE_NEW` plus `FILE_FLAG_OPEN_REPARSE_POINT` (so a pre-planted file,
+/// junction or symlink is a hard failure rather than an arbitrary write as TrustedInstaller), the
+/// child's exit code gates reading it at all, and the nonce must match the one sent.
+///
+/// What remains open, stated precisely: a same-user process that learns the path can overwrite the
+/// response in the window between the child's exit and the parent's read, and forge a success. The
+/// nonce does not stop that and was never meant to; it is a staleness guard. It is not even a
+/// secret from such an attacker, since the request file is deliberately `FILE_SHARE_READ` so the
+/// child can read it, and it carries both the nonce and the op count.
+///
+/// That is bounded, not unbounded. Every driven effect is verified by an in-process read-back the
+/// forger cannot touch (`engine::apply`), so a forged success degrades into a verify mismatch and a
+/// rollback, never silently-wrong machine state. The cost is a false failure, not a false success.
+///
+/// An inherited pipe would close it, and cannot be built here: the TrustedInstaller spawn sets
+/// `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`, under which handle inheritance is sourced from the
+/// attribute parent rather than from us. A named pipe with a random name and a restrictive DACL is
+/// the shape that would work, and it is a larger change than this comment once implied.
 pub fn run_elevated_broker(
     level: Elevation,
     request: &BrokerRequest,
@@ -747,4 +806,34 @@ mod tests {
     // Verify the real path against the built `magicx-toolbox.exe` instead: serialize a
     // `BrokerRequest` to a file, run `magicx-toolbox.exe --broker <req> <resp>` from an elevated
     // shell, and check both the response and the machine state it claims to have produced.
+
+    /// The child creates the response at a path the parent only reserved. `std::fs::write` was
+    /// `CREATE_ALWAYS`, which follows a reparse point planted at that name and would land the write
+    /// wherever it pointed, as TrustedInstaller. `CREATE_NEW` has to refuse anything already there.
+    #[test]
+    fn the_response_write_refuses_a_pre_planted_path() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "magicx-broker-test-preplant-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        std::fs::write(&path, b"planted by someone else").expect("plant a file");
+        let planted = write_response(path.to_str().unwrap(), b"{}");
+        assert!(
+            planted.is_err(),
+            "an existing file at the response path must be a hard failure"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"planted by someone else",
+            "the planted file must be left untouched, never truncated"
+        );
+
+        std::fs::remove_file(&path).expect("clear the path");
+        write_response(path.to_str().unwrap(), b"{}").expect("a clean path must still work");
+        assert_eq!(std::fs::read(&path).unwrap(), b"{}");
+        let _ = std::fs::remove_file(&path);
+    }
 }
