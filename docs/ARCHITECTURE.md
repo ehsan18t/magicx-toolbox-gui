@@ -47,7 +47,6 @@ src/lib/stores/
 ├── debug.svelte.ts       # Debug panel and logging state
 ├── navigation.svelte.ts  # Tab navigation state
 ├── update.svelte.ts      # Update checking state
-├── systemElevation.svelte.ts # SYSTEM elevation mode
 ├── tweakDetailsModal.svelte.ts # Tweak details modal state
 └── tweaks.svelte.ts      # Barrel export for tweaks system
     ├── tweaksData.svelte.ts    # System info, categories, tweaks list
@@ -65,7 +64,6 @@ src/lib/stores/
 - `debugState` - Debug panel and logging state
 - `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
 - `updateStore` - Update info and checking state
-- `systemElevationStore` - SYSTEM elevation mode
 - `tweakDetailsModalStore` - Tweak details modal state
 
 **Tweaks system stores:**
@@ -164,7 +162,7 @@ src/lib/components/
 - See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
 
 #### 5. Elevation Model (ADR-0005)
-- **Four declared levels**: `user` / `admin` / `system` / `ti`, author-declared, never inferred. A tweak
+- **Three declared levels**: `user` / `admin` / `ti`, author-declared, never inferred. A tweak
   declares a **floor**; an effect may escalate (`effective = max(floor, step)`), never lower.
 - **User-provided**: the app ships unelevated; Admin comes from launching as admin or the in-app
   **Elevate** relaunch — never silently acquired. Privileged tweaks are disabled until the user elevates.
@@ -284,11 +282,12 @@ per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_
 - `validate_profile()` - Validate profile against current system
 - See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
 
-### 7. `elevation` - SYSTEM and TrustedInstaller privilege
+### 7. `elevation` - TrustedInstaller privilege
 - `run_ops(level, ops)` is the only entry point: a batch of typed `BrokerOp`s run in one elevated
   child, which is this same binary re-spawned with `--broker`
-- SYSTEM comes from duplicating winlogon.exe's token; TrustedInstaller from spoofing the TI service
-  process as the child's parent
+- TrustedInstaller comes from starting its service and spoofing that process as the child's parent,
+  after verifying the opened process really is TrustedInstaller (the service stops when idle, so its
+  pid can be recycled between the SCM's answer and the handle we use)
 - Every op is a typed effect (registry value or key, service startup type, scheduled task). There is
   no "run this string" op, so nothing the child can be asked to do is an interpreter
 - The request crosses as a file, created through `exclusive_temp` so no other process running as the

@@ -269,7 +269,7 @@ accepts, whether it is required, its default, its legal values, and its gotchas.
 | `info`            | no       | string                                    | _(none)_          | optional longer explanation                                     |
 | `warning`         | no       | string                                    | _(none)_          | optional caution banner shown in the UI                         |
 | `risk_level`      | **yes**  | `low` \| `medium` \| `high` \| `critical` | –                 | advisory only; never changes behavior                           |
-| `elevation`       | **yes**  | `user` \| `admin` \| `system` \| `ti`     | –                 | the privilege **floor** for the whole tweak (§13)               |
+| `elevation`       | **yes**  | `user` \| `admin` \| `ti`                 | –                 | the privilege **floor** for the whole tweak (§13)               |
 | `reversible`      | **yes**  | `true` \| `false`                         | –                 | declared **and** build-checked against the computed value (§14) |
 | `requires_reboot` | no       | `true` \| `false`                         | `false`           | advisory: a reboot/logoff is needed for full effect             |
 | `windows`         | no       | a `windows:` block (§10)                  | _(unconstrained)_ | scopes the whole tweak by Windows build                         |
@@ -292,7 +292,7 @@ accepts, whether it is required, its default, its legal values, and its gotchas.
 These come straight from the compiled model; these are the _only_ accepted spellings:
 
 - **`risk_level`** (advisory impact): `low`, `medium`, `high`, `critical`.
-- **`elevation`** (privilege floor, §13): `user`, `admin`, `system`, `ti`.
+- **`elevation`** (privilege floor, §13): `user`, `admin`, `ti`.
 
 Any other spelling is a build error (`unknown variant`). Case matters; these are lowercase.
 
@@ -928,6 +928,13 @@ list of scheduled tasks, some of which do not exist on every Windows build, is t
 
 > ⚠️ `optional` still does **not** weaken verification. It governs presence only: a resource that
 > _does_ exist is driven and read back exactly as a non-optional one, and a mismatch still rolls back.
+
+This holds at **every** level, including `ti`. It did not always: a routed drive handed an absent
+resource to the elevated child, which failed on it and returned an opaque denial, and the no-op guard
+above matches only a typed "resource missing". So an `optional` effect at `ti` used to abort its whole
+tweak and roll it back instead of no-opping, which is exactly the case §8.4 exists to prevent. The
+existence check now runs before anything is spawned, so an absent optional resource never reaches a
+child at all.
 
 ### 8.5 Keep every option detectable _without_ optional effects
 
@@ -1573,7 +1580,6 @@ infers or escalates it.
 | -------- | ---------------------------------------------------------------------------------------- |
 | `user`   | in-process, as the interactive user (per-user / HKCU state must land in the user's hive) |
 | `admin`  | in-process, in the elevated app (a persistent property of the process once granted)      |
-| `system` | a fresh, short-lived child from winlogon's duplicated token                              |
 | `ti`     | a fresh, short-lived child via starting the TrustedInstaller service + parent spoofing   |
 
 ### 13.2 The floor + per-effect escalation
@@ -1593,7 +1599,7 @@ effects:
 ### 13.3 The HKCU exception (and why)
 
 **A user-hive (HKCU) effect always runs in-process as the interactive user, regardless of the floor**,
-even inside a `system`/`ti` tweak. **Why:** if it ran in a System/TI child, every HKCU write, read-back,
+even inside a `ti` tweak. **Why:** if it ran in a TrustedInstaller child, every HKCU write, read-back,
 and detection would target the _wrong_ account's hive (SYSTEM's, or an elevated admin's), reporting green
 against a hive the user never sees (ADR-0005). The exception keeps per-user state landing in the real
 user's hive.
@@ -1636,7 +1642,6 @@ Two points that matter when you author:
 
 - Per-user settings (HKCU) → `user`.
 - Machine settings requiring admin (most HKLM policy values, service start types) → `admin`.
-- Resources readable/writable only as SYSTEM → `system`.
 - TrustedInstaller-protected resources (WaaSMedic-class keys/tasks) → `ti`.
 
 Pick the **lowest** level that actually works, but the level is **trusted, not build-validated** (the
@@ -1663,23 +1668,40 @@ There is exactly one elevation-related build guard: **you cannot disable the `Tr
 via a typed Service effect (`TrustedInstallerDisabled`, §16): it would strand the app's own TI path.
 (Script contents are statically opaque, so this guard is honestly scoped to _typed_ effects.)
 
-### 13.7 Current limitation: which kinds actually route through `system`/`ti` today
+### 13.7 Current limitation: which kinds actually route through `ti` today
 
-> ⚠️ **Current limitation:** declaring `elevation: system` or `elevation: ti` (as the tweak's floor, or
+> ⚠️ **Current limitation:** declaring `elevation: ti` (as the tweak's floor, or
 > as a per-effect escalation, §13.2) only actually reaches the elevation broker for four kinds today.
-> Every other kind **builds clean** at `system`/`ti` but fails every real apply with an
+> Every other kind **builds clean** at `ti` but fails every real apply with an
 > unsupported-elevation-level error, because `engine::AllKinds::drive` has no broker translation for
 > them yet:
 >
-> - **Routed through the broker at `system`/`ti`:** whole-value `registry` effects (no `field`),
+> - **Routed through the broker at `ti`:** whole-value `registry` effects (no `field`),
 >   `registry_key`, `service`, `task`.
-> - **Not routed yet; fails every apply at `system`/`ti`:** `hosts`, `firewall`, `action` (including
+> - **Not routed yet; fails every apply at `ti`:** `hosts`, `firewall`, `action` (including
 >   `DeleteTree`), and a `field`-addressed `registry` effect (§11).
 >
 > Since per-effect elevation only ever escalates (§13.2, never lowers below the tweak's floor), a
-> `hosts`/`firewall`/`action`/field-addressed effect anywhere inside a `system`/`ti`-floor tweak
+> `hosts`/`firewall`/`action`/field-addressed effect anywhere inside a `ti`-floor tweak
 > inherits that unsupported level too. For now, keep those kinds (and any field-addressed `registry`
 > effect) inside tweaks whose effective level never rises above `admin`.
+
+### 13.8 Declaration order decides how many elevated children you pay for
+
+A run of **consecutive** `ti` effects shares ONE elevated child. Acquiring TrustedInstaller is
+entirely a per-spawn cost (starting and polling the service, opening and verifying its process,
+cold-starting this binary again), so the difference between one run of twenty and twenty runs of one
+is the difference between paying that once and paying it twenty times.
+
+Anything that is not a same-level brokerable Setting splits the run: an `admin` or `user` effect, a
+`shared` block, an `action`, and an HKCU effect (which §13.3 forces in-process as the interactive user
+regardless of the floor). So interleaving one `admin` effect between two `ti` effects costs two
+children rather than one.
+
+This never reorders anything. Declaration order remains load-bearing and is preserved exactly; only
+*adjacent* equals group. If your effects have an ordering requirement, keep declaring them in that
+order and grouping will follow it. If they do not, grouping the elevated ones together is free
+performance.
 
 ---
 

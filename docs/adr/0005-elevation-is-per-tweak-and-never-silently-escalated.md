@@ -134,3 +134,33 @@ self-confirming green with no return point. Refusing mutates nothing. See
 reachable without any elevation at all, on a multi-user machine sharing one portable install. Recorded
 in `PRE_MERGE_TASKS.md` item 4 and consciously deferred; it predates this amendment and is not caused
 by it.
+
+---
+
+## Amendment: three levels, grouped execution, and a third failure mode
+
+Three changes to this decision, each forced by what the code and the corpus actually turned out to be.
+
+### The SYSTEM level is gone
+
+This ADR described four declared levels and two elevation mechanisms. The shipped corpus declares 191 `admin`, 65 `user`, 21 `ti` and **zero** `system`, and `Level::User`/`Level::Admin` never reach the broker at all. So the SYSTEM mechanism, duplicating winlogon.exe's token and spawning through `CreateProcessWithTokenW`, had no production caller and never had one.
+
+Keeping it was not free. It was unsafe Win32 that no test exercised, and duplicating a SYSTEM token off winlogon is the most antivirus-legible thing this application could do. It is deleted, and `elevation: system` is now a build-time parse error rather than a silently unreachable declaration.
+
+Three levels remain: `user`, `admin`, `ti`. The floor-and-escalate rule, the HKCU exception, and the over-the-shoulder guard are unchanged.
+
+### System and TI no longer run "a fresh child per operation"
+
+The original text said System and TI run in a fresh short-lived child **per operation**, justified by determinism: a tweak's outcome should not depend on what ran before it.
+
+That justification survives; the per-operation reading does not. Acquiring TrustedInstaller is entirely a per-spawn cost (connect to the SCM, start and poll the service, open and verify its process, build an attribute list, cold-start this binary again, round-trip JSON through the filesystem), and the one tweak that reaches the broker has 21 elevated effects. It paid that cost 21 times to apply and up to 19 more to roll back.
+
+A run of **consecutive same-level** effects now shares one child. Determinism is preserved by what the grouping refuses to do: it never reorders, it only groups adjacent equals, and anything that is not a same-level brokerable Setting (an in-process effect, a Shared block, an Action, an HKCU effect the routing forces in-process) splits the run. A batch still stops at its first failure, and the failing operation is still named.
+
+### A third failure mode: the child ran, and we cannot say how far
+
+This ADR named two failures and required that neither ever be silently downgraded to the other. The code honoured that for the two it named, and had nowhere to put a third case that genuinely occurs: a child terminated mid-batch on a timeout, a child that panicked, a child that completed the batch but could not return its response, or a response that failed validation. Every one of those was reported as "could not acquire", which says the machine is unchanged.
+
+That was load-bearing in the wrong direction. On a drive failure the engine rolls back and, if every restore verifies, consumes the snapshot entry, because ADR-0002 says a verified full restore leaves nothing for the entry to describe. That reasoning holds only when the set of driven effects is known. A child terminated mid-batch may have driven effects the parent never recorded and therefore never rolled back, and the entry describing them was deleted precisely then.
+
+**Indeterminate** is now a first-class outcome, deliberately neither of its neighbours. Reported as "could not acquire" it claims nothing happened; reported as an operation failure it blames an operation that may have succeeded. The tweak still rolls back. What changes is that the snapshot survives, which is what surfaces the tweak as Needs Attention rather than as silently finished. This is the same principle as ADR-0001: a state that cannot be verified is surfaced, never hidden.

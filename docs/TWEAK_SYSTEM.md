@@ -137,10 +137,10 @@ and the machine's `MachineGuid`.
 
 ## Elevation & execution context
 
-See ADR-0005. Four author-declared levels (`user`/`admin`/`system`/`ti`), a per-tweak floor with
-per-effect escalate-only refinement (`effective = max(floor, step)`). `user`/`admin` run in-process;
-`system` duplicates winlogon's token in a fresh child; `ti` starts the TrustedInstaller service and
-parent-spoofs off it. A **user-hive (HKCU) effect always runs in-process as the interactive user**,
+See ADR-0005. Three author-declared levels (`user`/`admin`/`ti`), a per-tweak floor with per-effect
+escalate-only refinement (`effective = max(floor, step)`). `user`/`admin` run in-process; `ti` starts
+the TrustedInstaller service and parent-spoofs off it. A run of consecutive same-level `ti` effects
+shares ONE elevated child rather than one per effect. A **user-hive (HKCU) effect always runs in-process as the interactive user**,
 ignoring the floor. At startup an **over-the-shoulder guard** compares the process-token SID with the
 interactive session SID; on mismatch (a different admin's credentials elevated the app), User-level
 tweaks are disabled to avoid writing the wrong hive. Reads run at whatever level the app currently has;
