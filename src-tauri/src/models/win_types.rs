@@ -119,8 +119,6 @@ pub enum SchedulerAction {
     Enable,
     /// Disable a scheduled task
     Disable,
-    /// Delete/unregister a scheduled task
-    Delete,
 }
 
 impl SchedulerAction {
@@ -128,7 +126,6 @@ impl SchedulerAction {
         match self {
             SchedulerAction::Enable => "enable",
             SchedulerAction::Disable => "disable",
-            SchedulerAction::Delete => "delete",
         }
     }
 }

@@ -157,23 +157,6 @@ pub fn disable_task(task_path: &str, task_name: &str) -> Result<(), Error> {
     set_task_enabled(task_path, task_name, false)
 }
 
-/// Delete a scheduled task. A task (or folder) that is already gone is treated as success.
-pub fn delete_task(task_path: &str, task_name: &str) -> Result<(), Error> {
-    log::info!("Deleting scheduled task: {}\\{}", task_path, task_name);
-    with_task_service(|service| unsafe {
-        let folder = match service.GetFolder(&BSTR::from(task_path)) {
-            Ok(f) => f,
-            Err(e) if is_not_found(&e) => return Ok(()),
-            Err(e) => return Err(com_err(e)),
-        };
-        match folder.DeleteTask(&BSTR::from(task_name), 0) {
-            Ok(()) => Ok(()),
-            Err(e) if is_not_found(&e) => Ok(()),
-            Err(e) => Err(com_err(e)),
-        }
-    })
-}
-
 /// Apply a scheduler change based on the action type.
 pub fn apply_scheduler_change(
     task_path: &str,
@@ -183,7 +166,6 @@ pub fn apply_scheduler_change(
     match action {
         SchedulerAction::Enable => enable_task(task_path, task_name),
         SchedulerAction::Disable => disable_task(task_path, task_name),
-        SchedulerAction::Delete => delete_task(task_path, task_name),
     }
 }
 
