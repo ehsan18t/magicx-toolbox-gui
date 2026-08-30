@@ -5,9 +5,7 @@
 //! everything else here runs with zero OS contact by default.
 
 use crate::tweaks::kinds::ExecCx;
-use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, Hive, Level, Setting, Tweak,
-};
+use crate::tweaks::model::{ActionDef, Corpus, Effect, EffectDef, Hive, Level, Setting, Tweak};
 
 /// Escalate-only ranking for `effective_level` (spec §9): `User < Admin < Ti`.
 fn rank(level: Level) -> u8 {
@@ -104,54 +102,6 @@ pub fn read_route(effect: &EffectDef, current_level: Level, corpus: &Corpus) -> 
         return ExecCx::new(Level::User);
     }
     ExecCx::new(current_level)
-}
-
-/// One step in a tweak's drive plan, already routed to its effective level (spec §9). `id` is
-/// carried through opaquely -- grouping itself only ever looks at `level`; a caller maps a group
-/// back to the effects it drives via this id.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlannedStep {
-    pub id: EffectId,
-    pub level: Level,
-}
-
-/// The output of [`group_steps`] (spec §9's grouped execution, invariant 18): either one User/Admin
-/// step running in-process -- never grouped with a neighbor, even an adjacent same-level one -- or
-/// a run of consecutive same-level System/TI steps sharing ONE elevated child.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExecGroup {
-    InProcess(PlannedStep),
-    Batch {
-        level: Level,
-        steps: Vec<PlannedStep>,
-    },
-}
-
-/// Groups a routed step sequence for execution (spec §9, invariant 18): consecutive `System`/`Ti`
-/// steps at the SAME level share one child; a level change (including `System` -> `Ti`) starts a
-/// new group; `User`/`Admin` steps are always their own [`ExecGroup::InProcess`] group, breaking
-/// any run around them. Order is preserved throughout -- this only ever batches adjacent equals,
-/// never reorders.
-pub fn group_steps(steps: &[PlannedStep]) -> Vec<ExecGroup> {
-    let mut groups: Vec<ExecGroup> = Vec::new();
-    for step in steps {
-        match step.level {
-            Level::User | Level::Admin => groups.push(ExecGroup::InProcess(step.clone())),
-            level => match groups.last_mut() {
-                Some(ExecGroup::Batch {
-                    level: batch_level,
-                    steps: batch_steps,
-                }) if *batch_level == level => {
-                    batch_steps.push(step.clone());
-                }
-                _ => groups.push(ExecGroup::Batch {
-                    level,
-                    steps: vec![step.clone()],
-                }),
-            },
-        }
-    }
-    groups
 }
 
 /// The over-the-shoulder guard's data source (spec §9, ADR-0005 amended): the process token's user
@@ -497,7 +447,8 @@ mod windows_impl {
 mod tests {
     use super::*;
     use crate::tweaks::model::{
-        KeyAddr, RegAddr, RegType, RiskLevel, SharedDef, SharedId, SvcAddr, TypedRegValue, Value,
+        EffectId, KeyAddr, RegAddr, RegType, RiskLevel, SharedDef, SharedId, SvcAddr,
+        TypedRegValue, Value,
     };
 
     // --- effective_level ------------------------------------------------------------------------
@@ -718,82 +669,6 @@ mod tests {
             Level::Ti,
             "a non-HKCU read follows current_level exactly"
         );
-    }
-
-    // --- grouping --------------------------------------------------------------------------------
-
-    fn step(id: &str, level: Level) -> PlannedStep {
-        PlannedStep {
-            id: EffectId(id.to_string()),
-            level,
-        }
-    }
-
-    #[test]
-    fn grouping_preserves_order_and_boundaries() {
-        // U, T, T, A, T, T -> [U] [T,T] [A] [T,T]. Admin is what breaks the run: it is always its
-        // own in-process group, so a batch can never span it even though both neighbours are Ti.
-        let steps = vec![
-            step("1", Level::User),
-            step("2", Level::Ti),
-            step("3", Level::Ti),
-            step("4", Level::Admin),
-            step("5", Level::Ti),
-            step("6", Level::Ti),
-        ];
-        let groups = group_steps(&steps);
-        assert_eq!(groups.len(), 4, "got {groups:?}");
-
-        assert!(matches!(&groups[0], ExecGroup::InProcess(s) if s.id == EffectId("1".into())));
-
-        match &groups[1] {
-            ExecGroup::Batch { level, steps } => {
-                assert_eq!(*level, Level::Ti);
-                assert_eq!(
-                    steps.iter().map(|s| &s.id.0).collect::<Vec<_>>(),
-                    ["2", "3"]
-                );
-            }
-            other => panic!("expected Batch, got {other:?}"),
-        }
-        assert!(matches!(&groups[2], ExecGroup::InProcess(s) if s.id == EffectId("4".into())));
-        match &groups[3] {
-            ExecGroup::Batch { level, steps } => {
-                assert_eq!(*level, Level::Ti);
-                assert_eq!(
-                    steps.iter().map(|s| &s.id.0).collect::<Vec<_>>(),
-                    ["5", "6"]
-                );
-            }
-            other => panic!("expected Batch, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn admin_never_grouped_into_child() {
-        let steps = vec![
-            step("a", Level::Admin),
-            step("b", Level::Admin),
-            step("c", Level::Admin),
-        ];
-        let groups = group_steps(&steps);
-        assert_eq!(
-            groups.len(),
-            3,
-            "Admin steps must never share a child, even when adjacent and same-level"
-        );
-        assert!(
-            groups.iter().all(|g| matches!(g, ExecGroup::InProcess(_))),
-            "got {groups:?}"
-        );
-    }
-
-    #[test]
-    fn user_admin_never_grouped_together_either() {
-        let steps = vec![step("a", Level::User), step("b", Level::Admin)];
-        let groups = group_steps(&steps);
-        assert_eq!(groups.len(), 2);
-        assert!(groups.iter().all(|g| matches!(g, ExecGroup::InProcess(_))));
     }
 
     // --- SID guard ---------------------------------------------------------------------------------
