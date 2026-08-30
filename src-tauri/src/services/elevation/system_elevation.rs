@@ -58,8 +58,3 @@ pub(super) fn spawn_as_system(command_line: &str) -> Result<i32, Error> {
         }
     }
 }
-
-/// Check if SYSTEM elevation is available (running as admin)
-pub fn can_use_system_elevation() -> bool {
-    crate::services::system_info_service::is_running_as_admin()
-}

@@ -44,7 +44,6 @@ export {
 } from "./stores/tweaks.svelte";
 
 // System elevation store (runes-based)
-export { systemElevationStore } from "./stores/systemElevation.svelte";
 
 // Update store (runes-based)
 export { updateStore } from "./stores/update.svelte";

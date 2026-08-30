@@ -119,7 +119,6 @@ pub fn run() {
             commands::tweaks::rescan_after_elevation,
             commands::tweaks::get_elevation_state,
             // Elevation commands
-            commands::elevation::can_use_system_elevation,
             commands::elevation::restart_as_admin,
             // Update commands
             commands::update::check_for_update,

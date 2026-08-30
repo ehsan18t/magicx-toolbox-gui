@@ -1,16 +1,8 @@
 //! Elevation Commands
 //!
-//! Commands for SYSTEM elevation to modify protected registry keys
-//! and restarting the app with admin privileges.
+//! Restarting the app with administrator privileges.
 
 use crate::error::Result;
-use crate::services::elevation;
-
-/// Check if SYSTEM elevation is available (i.e., running as admin)
-#[tauri::command]
-pub async fn can_use_system_elevation() -> Result<bool> {
-    Ok(elevation::can_use_system_elevation())
-}
 
 /// Restart the application with administrator privileges
 /// Uses ShellExecuteW with "runas" verb to trigger UAC prompt

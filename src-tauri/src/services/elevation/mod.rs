@@ -20,4 +20,3 @@ mod ti_elevation;
 
 pub use broker::{run_broker, run_ops, BrokerOp, BrokerOpError};
 pub use level::Elevation;
-pub use system_elevation::can_use_system_elevation;
