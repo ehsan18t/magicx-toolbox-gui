@@ -16,6 +16,16 @@ pub async fn restart_as_admin(app: tauri::AppHandle) -> Result<()> {
 
     log::info!("Restart as admin requested");
 
+    // Relaunching exits this process. A snapshot entry is written before the first drive, so
+    // going away mid-apply leaves a tweak partly applied with nothing to roll it back, and crash
+    // recovery scans per-Action journal rows that a Settings-only tweak never writes.
+    if crate::tweaks::engine::lifecycle::any_apply_in_flight() {
+        return Err(crate::error::Error::ServiceControl(
+            "A tweak is still being applied. Wait for it to finish before restarting as administrator."
+                .to_string(),
+        ));
+    }
+
     // Get current executable path
     let exe_path = std::env::current_exe().map_err(|e| {
         crate::error::Error::WindowsApi(format!("Failed to get executable path: {}", e))

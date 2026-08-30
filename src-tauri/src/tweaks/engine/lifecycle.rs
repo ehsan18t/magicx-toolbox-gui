@@ -56,6 +56,18 @@ pub(crate) fn is_locked(tweak_id: &str) -> bool {
     map.get(tweak_id).is_some_and(|arc| arc.try_lock().is_err())
 }
 
+/// Whether ANY tweak is currently mid-apply or mid-restore.
+///
+/// The guard for anything that would take the process away underneath one: closing the window,
+/// relaunching elevated, or running an installer over this executable. A snapshot entry is written
+/// before the first drive, so a process that disappears mid-drive leaves an entry describing a
+/// tweak that was only partly applied, with nothing to roll it back. Crash recovery does not cover
+/// that case either: it scans per-Action journal rows, and a Settings-only tweak writes none.
+pub fn any_apply_in_flight() -> bool {
+    let map = locks().lock().expect("tweak-locks mutex poisoned");
+    map.values().any(|arc| arc.try_lock().is_err())
+}
+
 /// One tweak's snapshot entry left in a state that cannot be silently trusted (ADR-0001/0002):
 /// named, exact unrecoverable items — never a guess, never a silent retry.
 #[derive(Debug, Clone, PartialEq, Eq)]
