@@ -47,6 +47,15 @@ pub fn run() {
                     Target::new(TargetKind::Stdout),
                     // Log to webview console for frontend debugging
                     Target::new(TargetKind::Webview),
+                    // A persisted log, because neither of the above survives the session. Until
+                    // this existed, a user reporting "applying it did nothing" left nothing to
+                    // read: the elevated broker child in particular has no console and no
+                    // inherited stderr, so its side of a failure was only ever an exit code the
+                    // parent turned into one line. Nothing here logs the broker command line,
+                    // which carries the request and response temp paths.
+                    Target::new(TargetKind::LogDir {
+                        file_name: Some("magicx-toolbox".into()),
+                    }),
                 ])
                 // In debug mode: show debug level and above
                 // In release mode: show warn level and above

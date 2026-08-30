@@ -268,7 +268,11 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
 /// wait for it. The broker's TI launcher; the command line is built by
 /// `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Error> {
-    log::info!("Spawning as TrustedInstaller: {}", command_line);
+    // Deliberately not the command line. It carries the request and response temp paths, and a
+    // persisted log is readable by anyone who can read the log directory; the response path in
+    // particular is only guarded by being unguessable. The op count is what a support engineer
+    // actually needs from this line.
+    log::info!("Spawning the broker as TrustedInstaller");
 
     let ti_handle = get_trusted_installer_handle()?;
     let mut command_wide = to_wide_string(command_line);
