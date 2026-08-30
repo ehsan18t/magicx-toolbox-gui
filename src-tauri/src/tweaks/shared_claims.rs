@@ -26,11 +26,12 @@
 //! content; there is nothing on this machine's actual system state that record could ever have
 //! restored.
 //!
-//! **Lock assumption (caller-held, not this module's job)**: every public method here does its own
-//! read-modify-write of the whole file with no cached in-memory state between calls, which is the
-//! shape a later task's claims-record lock can wrap soundly (spec §8.7: "claim ops serialized behind
-//! the claims-record lock"). This build does not add that lock itself — callers must serialize their
-//! own claim/release calls for now, exactly as the task brief specifies.
+//! **Lock (spec §8.7: "claim ops serialized behind the claims-record lock")**: every public method
+//! does its own read-modify-write of the whole file with no cached in-memory state between calls,
+//! and [`CLAIMS_LOCK`] serializes those operations process-wide. The lock lives here rather than in
+//! the callers because there is no caller that can hold it correctly: `lifecycle` serializes per
+//! tweak id and deliberately lets two different tweaks apply concurrently, which is exactly the
+//! case where two claimants of one address interleave.
 
 use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
 use crate::tweaks::model::{Setting, SharedDef, SharedId, Value};
@@ -39,9 +40,32 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 
 const SCHEMA_VERSION: u32 = 1;
 const CLAIMS_FILE: &str = "shared_claims.json";
+
+/// Serializes every claim-record operation in this process.
+///
+/// `shared_claims.json` is one machine-wide file and each operation is a full read-modify-write of
+/// it. The engine's only other serialization is `lifecycle::lock_tweak`, which is keyed by tweak id
+/// and whose own test asserts that different tweaks run concurrently. Two tweaks sharing an address
+/// would therefore interleave, and the loser's update is dropped: at best a leaked refcount that
+/// never restores, at worst a lost captured original, which this module's header explains is
+/// unrecoverable because exactly one copy of it exists.
+static CLAIMS_LOCK: Mutex<()> = Mutex::new(());
+
+/// Takes [`CLAIMS_LOCK`], recovering from poisoning.
+///
+/// A poisoned lock means an earlier claim operation panicked. The file is written atomically
+/// (temp + rename), so the record on disk is still a whole, valid document either way, and the next
+/// operation re-reads it from scratch. Refusing to proceed would strand every later claim for the
+/// life of the process without protecting anything.
+fn lock_claims() -> MutexGuard<'static, ()> {
+    CLAIMS_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Distinguishes a genuinely new capture from a verified no-op (controller decision: the engine
 /// needs to tell these apart, e.g. to decide whether to log "now enforced" vs "already enforced").
@@ -212,6 +236,7 @@ impl ClaimsStore {
         kinds: &dyn EffectKind,
         cx: &ExecCx,
     ) -> Result<ClaimOutcome, ClaimsError> {
+        let _guard = lock_claims();
         let mut records = self.load()?;
         let key = shared.id.0.clone();
 
@@ -276,6 +301,7 @@ impl ClaimsStore {
         kinds: &dyn EffectKind,
         cx: &ExecCx,
     ) -> Result<ReleaseOutcome, ClaimsError> {
+        let _guard = lock_claims();
         let mut records = self.load()?;
         let key = shared_id.0.clone();
 
@@ -327,6 +353,7 @@ impl ClaimsStore {
     /// than propagating an error this method's signature has no room for — the safety-critical
     /// paths are `claim`/`release`, which do return `Result`.
     pub fn holders(&self, shared_id: &SharedId) -> Vec<String> {
+        let _guard = lock_claims();
         match self.load() {
             Ok(records) => records
                 .get(&shared_id.0)
@@ -339,7 +366,8 @@ impl ClaimsStore {
         }
     }
 
-    /// Whether any claimant currently holds `shared_id`.
+    /// Whether any claimant currently holds `shared_id`. Delegates to [`Self::holders`], which is
+    /// what takes [`CLAIMS_LOCK`]: taking it here too would deadlock on the non-reentrant mutex.
     pub fn is_claimed(&self, shared_id: &SharedId) -> bool {
         !self.holders(shared_id).is_empty()
     }
@@ -783,5 +811,78 @@ mod tests {
                 "every captured window must be restored exactly once, for {seq:?}"
             );
         }
+    }
+
+    /// Two tweaks may apply at once (`lifecycle` locks per tweak id, and its own test asserts
+    /// different ids overlap), so two claimants of one address race the read-modify-write of the
+    /// single claims file. Without [`CLAIMS_LOCK`] the losing writer's claimant is silently dropped,
+    /// which leaks a refcount and, on the first claim, can lose the captured original outright.
+    #[test]
+    fn concurrent_claims_never_lose_a_holder() {
+        const CLAIMANTS: usize = 8;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+
+        std::thread::scope(|scope| {
+            for i in 0..CLAIMANTS {
+                let (s, shared, mock) = (&s, &shared, &mock);
+                scope.spawn(move || {
+                    s.claim(shared, &format!("tweak_{i}"), mock, &cx())
+                        .expect("a concurrent claim must not fail");
+                });
+            }
+        });
+
+        let holders = s.holders(&shared.id);
+        assert_eq!(
+            holders.len(),
+            CLAIMANTS,
+            "every concurrent claimant must survive the read-modify-write: {holders:?}"
+        );
+        assert_eq!(
+            mock.drive_calls.load(Ordering::SeqCst),
+            1,
+            "only the first claimant drives; the rest are verified no-ops"
+        );
+    }
+
+    /// The mirror of the claim race: every claimant releasing concurrently must still reach a
+    /// single, verified last release that restores the captured original exactly once.
+    #[test]
+    fn concurrent_releases_restore_the_original_exactly_once() {
+        const CLAIMANTS: usize = 8;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+
+        for i in 0..CLAIMANTS {
+            s.claim(&shared, &format!("tweak_{i}"), &mock, &cx())
+                .expect("claim");
+        }
+
+        std::thread::scope(|scope| {
+            for i in 0..CLAIMANTS {
+                let (s, shared, mock) = (&s, &shared, &mock);
+                scope.spawn(move || {
+                    s.release(&shared.id, &format!("tweak_{i}"), mock, &cx())
+                        .expect("a concurrent release must not fail");
+                });
+            }
+        });
+
+        assert!(
+            !s.is_claimed(&shared.id),
+            "the last release must remove the record"
+        );
+        assert_eq!(
+            mock.live(),
+            original_value(),
+            "the captured original must be restored"
+        );
     }
 }
