@@ -159,13 +159,12 @@ mod tests {
     fn drive_rejects_system_and_ti_levels_for_now() {
         // guard_level fires before any netsh call -- safe to run by default.
         let setting = Setting::Firewall(rule_addr(NO_SUCH_RULE));
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = FirewallKind
-                .drive(&setting, &Value::Present(true), &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = FirewallKind
+            .drive(&setting, &Value::Present(true), &cx)
+            .expect_err("this build cannot yet route System/Ti through the broker");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     /// Documents the restore-fidelity limit (module doc comment / `drive_firewall`): proves the

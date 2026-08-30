@@ -281,7 +281,6 @@ pub fn run_elevated_broker(
     );
 
     let spawn = match level {
-        Elevation::System => super::system_elevation::spawn_as_system(&cmdline),
         Elevation::TrustedInstaller => super::ti_elevation::spawn_as_trusted_installer(&cmdline),
         Elevation::None => unreachable!("handled above"),
     };

@@ -15,7 +15,6 @@ use std::collections::BTreeMap;
 pub enum Level {
     User,
     Admin,
-    System,
     Ti,
 }
 

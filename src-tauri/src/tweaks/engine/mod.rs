@@ -58,7 +58,7 @@ impl EffectKind for AllKinds {
                 Setting::Hosts(_) => HostsKind.drive(s, target, cx),
                 Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
             },
-            level @ (Level::System | Level::Ti) => {
+            level @ Level::Ti => {
                 // Mirror the existence pre-check `drive_service`/`drive_task` do in-process
                 // (invariant 12). The broker translations are deliberately pure, and without this
                 // an absent service/task reaches the child, fails there, and comes back as an
@@ -121,7 +121,6 @@ fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
 /// `System`/`Ti`; `User`/`Admin` run in-process and never reach the broker.
 fn to_elevation(level: Level) -> Elevation {
     match level {
-        Level::System => Elevation::System,
         Level::Ti => Elevation::TrustedInstaller,
         Level::User | Level::Admin => {
             unreachable!("drive_via_broker is only ever reached for System/Ti")
@@ -257,31 +256,30 @@ mod tests {
     /// The pre-check runs before any spawn, which is exactly why this test needs no elevation.
     #[test]
     fn an_absent_resource_refuses_as_resource_missing_at_system_and_ti() {
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
 
-            let svc = Setting::Service(SvcAddr {
-                name: NO_SUCH_SERVICE.to_string(),
-            });
-            let err = AllKinds
-                .drive(&svc, &Value::Startup(StartupType::Manual), &cx)
-                .expect_err("an absent service must refuse, not reach the broker");
-            assert!(
-                matches!(err, KindError::ResourceMissing(_)),
-                "{level:?}: got {err:?}"
-            );
+        let svc = Setting::Service(SvcAddr {
+            name: NO_SUCH_SERVICE.to_string(),
+        });
+        let err = AllKinds
+            .drive(&svc, &Value::Startup(StartupType::Manual), &cx)
+            .expect_err("an absent service must refuse, not reach the broker");
+        assert!(
+            matches!(err, KindError::ResourceMissing(_)),
+            "{level:?}: got {err:?}"
+        );
 
-            let task = Setting::Task(TaskAddr {
-                path: NO_SUCH_TASK.to_string(),
-            });
-            let err = AllKinds
-                .drive(&task, &Value::TaskEnabled(false), &cx)
-                .expect_err("an absent task must refuse, not reach the broker");
-            assert!(
-                matches!(err, KindError::ResourceMissing(_)),
-                "{level:?}: got {err:?}"
-            );
-        }
+        let task = Setting::Task(TaskAddr {
+            path: NO_SUCH_TASK.to_string(),
+        });
+        let err = AllKinds
+            .drive(&task, &Value::TaskEnabled(false), &cx)
+            .expect_err("an absent task must refuse, not reach the broker");
+        assert!(
+            matches!(err, KindError::ResourceMissing(_)),
+            "{level:?}: got {err:?}"
+        );
     }
 
     /// Driving *to* `Missing` stays the defined no-op whether or not the resource exists (spec

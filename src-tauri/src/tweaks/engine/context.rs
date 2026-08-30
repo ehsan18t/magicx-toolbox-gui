@@ -9,13 +9,12 @@ use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, Hive, Level, Setting, Tweak,
 };
 
-/// Escalate-only ranking for `effective_level` (spec §9): `User < Admin < System < Ti`.
+/// Escalate-only ranking for `effective_level` (spec §9): `User < Admin < Ti`.
 fn rank(level: Level) -> u8 {
     match level {
         Level::User => 0,
         Level::Admin => 1,
-        Level::System => 2,
-        Level::Ti => 3,
+        Level::Ti => 2,
     }
 }
 
@@ -505,7 +504,7 @@ mod tests {
 
     #[test]
     fn effective_level_is_max_escalate_only() {
-        let levels = [Level::User, Level::Admin, Level::System, Level::Ti];
+        let levels = [Level::User, Level::Admin, Level::Ti];
         for &floor in &levels {
             assert_eq!(
                 effective_level(floor, None),
@@ -618,13 +617,13 @@ mod tests {
 
     #[test]
     fn hkcu_ignores_floor() {
-        let tweak = tweak_with_floor(Level::System);
+        let tweak = tweak_with_floor(Level::Ti);
 
         let hkcu = registry_effect(Hive::Hkcu);
         assert_eq!(
             route(&hkcu, &tweak, &empty_corpus()).level(),
             Level::User,
-            "an HKCU registry effect must run as the interactive user regardless of a System floor"
+            "an HKCU registry effect must run as the interactive user regardless of a Ti floor"
         );
 
         let hkcu_key = key_effect(Hive::Hkcu);
@@ -637,7 +636,7 @@ mod tests {
         let hklm = registry_effect(Hive::Hklm);
         assert_eq!(
             route(&hklm, &tweak, &empty_corpus()).level(),
-            Level::System,
+            Level::Ti,
             "an HKLM effect must still get the tweak's declared floor"
         );
     }
@@ -685,7 +684,7 @@ mod tests {
             if_missing: None,
             windows: None,
         };
-        for &current in &[Level::User, Level::Admin, Level::System, Level::Ti] {
+        for &current in &[Level::User, Level::Admin, Level::Ti] {
             assert_eq!(
                 read_route(&svc_effect, current, &empty_corpus()).level(),
                 current,
@@ -705,7 +704,7 @@ mod tests {
         // whatever account `current_level` nominally denotes -- the same correctness reason
         // `route` forces HKCU drives to User regardless of the floor.
         let hkcu = registry_effect(Hive::Hkcu);
-        for &current in &[Level::User, Level::Admin, Level::System, Level::Ti] {
+        for &current in &[Level::User, Level::Admin, Level::Ti] {
             assert_eq!(
                 read_route(&hkcu, current, &empty_corpus()).level(),
                 Level::User,
@@ -715,8 +714,8 @@ mod tests {
 
         let hklm = registry_effect(Hive::Hklm);
         assert_eq!(
-            read_route(&hklm, Level::System, &empty_corpus()).level(),
-            Level::System,
+            read_route(&hklm, Level::Ti, &empty_corpus()).level(),
+            Level::Ti,
             "a non-HKCU read follows current_level exactly"
         );
     }
@@ -732,14 +731,15 @@ mod tests {
 
     #[test]
     fn grouping_preserves_order_and_boundaries() {
-        // U, S, S, T, T, S -> [U] [S,S] [T,T] [S]
+        // U, T, T, A, T, T -> [U] [T,T] [A] [T,T]. Admin is what breaks the run: it is always its
+        // own in-process group, so a batch can never span it even though both neighbours are Ti.
         let steps = vec![
             step("1", Level::User),
-            step("2", Level::System),
-            step("3", Level::System),
-            step("4", Level::Ti),
+            step("2", Level::Ti),
+            step("3", Level::Ti),
+            step("4", Level::Admin),
             step("5", Level::Ti),
-            step("6", Level::System),
+            step("6", Level::Ti),
         ];
         let groups = group_steps(&steps);
         assert_eq!(groups.len(), 4, "got {groups:?}");
@@ -748,7 +748,7 @@ mod tests {
 
         match &groups[1] {
             ExecGroup::Batch { level, steps } => {
-                assert_eq!(*level, Level::System);
+                assert_eq!(*level, Level::Ti);
                 assert_eq!(
                     steps.iter().map(|s| &s.id.0).collect::<Vec<_>>(),
                     ["2", "3"]
@@ -756,20 +756,14 @@ mod tests {
             }
             other => panic!("expected Batch, got {other:?}"),
         }
-        match &groups[2] {
+        assert!(matches!(&groups[2], ExecGroup::InProcess(s) if s.id == EffectId("4".into())));
+        match &groups[3] {
             ExecGroup::Batch { level, steps } => {
                 assert_eq!(*level, Level::Ti);
                 assert_eq!(
                     steps.iter().map(|s| &s.id.0).collect::<Vec<_>>(),
-                    ["4", "5"]
+                    ["5", "6"]
                 );
-            }
-            other => panic!("expected Batch, got {other:?}"),
-        }
-        match &groups[3] {
-            ExecGroup::Batch { level, steps } => {
-                assert_eq!(*level, Level::System);
-                assert_eq!(steps.iter().map(|s| &s.id.0).collect::<Vec<_>>(), ["6"]);
             }
             other => panic!("expected Batch, got {other:?}"),
         }

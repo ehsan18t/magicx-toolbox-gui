@@ -1287,7 +1287,7 @@ mod tests {
         // The guard's input is the HIVE, not the floor. Every floor is checked, including Admin,
         // System and Ti: 31 admin-floor tweaks in the shipped corpus drive HKCU effects, and the
         // old floor-keyed guard let all of them through while blocking the 54 user-floor ones.
-        for floor in [Level::User, Level::Admin, Level::System, Level::Ti] {
+        for floor in [Level::User, Level::Admin, Level::Ti] {
             let avail = compute_availability(true, floor, Level::Admin, SidCheck::DifferentUser);
             assert!(
                 matches!(avail, Availability::SidMismatch { .. }),
@@ -1354,7 +1354,7 @@ mod tests {
     #[test]
     fn elevation_floor_above_app_level_is_needs_elevation() {
         // App level User + an Admin/System/Ti-floor tweak -> disabled, needs elevation.
-        for floor in [Level::Admin, Level::System, Level::Ti] {
+        for floor in [Level::Admin, Level::Ti] {
             let avail = compute_availability(false, floor, Level::User, SidCheck::SameUser);
             assert!(
                 matches!(avail, Availability::NeedsElevation { .. }),
@@ -1364,7 +1364,7 @@ mod tests {
 
         // App level Admin + any floor (including System/Ti) -> available: Admin is the one
         // ceiling that reaches System/TrustedInstaller via the broker too (controller decision 3).
-        for floor in [Level::User, Level::Admin, Level::System, Level::Ti] {
+        for floor in [Level::User, Level::Admin, Level::Ti] {
             assert_eq!(
                 compute_availability(false, floor, Level::Admin, SidCheck::SameUser),
                 Availability::Available,

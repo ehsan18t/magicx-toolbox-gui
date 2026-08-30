@@ -311,13 +311,12 @@ mod tests {
         let setting = Setting::Service(SvcAddr {
             name: NO_SUCH_SERVICE.to_string(),
         });
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = ServiceKind
-                .drive(&setting, &Value::Startup(StartupType::Manual), &cx)
-                .expect_err("the in-process kind must still reject System/Ti directly");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = ServiceKind
+            .drive(&setting, &Value::Startup(StartupType::Manual), &cx)
+            .expect_err("the in-process kind must still reject System/Ti directly");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]

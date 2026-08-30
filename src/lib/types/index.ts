@@ -4,7 +4,7 @@
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 /** Permission level for tweaks (hierarchical: ti > system > admin > none) */
-export type PermissionLevel = "none" | "admin" | "system" | "ti";
+export type PermissionLevel = "none" | "admin" | "ti";
 
 /** Registry hive types */
 export type RegistryHive = "HKCU" | "HKLM";
@@ -184,7 +184,7 @@ export interface TweakOption {
 // ============================================================================
 
 /** Elevation floor / app ceiling (serde: exact Rust variant names). */
-export type Level = "User" | "Admin" | "System" | "Ti";
+export type Level = "User" | "Admin" | "Ti";
 
 /** Risk level as serialized by the engine (PascalCase, unlike the UI's RiskLevel). */
 export type BackendRiskLevel = "Low" | "Medium" | "High" | "Critical";
@@ -750,12 +750,6 @@ export const PERMISSION_INFO: Record<Exclude<PermissionLevel, "none">, Permissio
     icon: "mdi:shield-account-outline",
     colorClass: "text-foreground-muted",
   },
-  system: {
-    name: "System",
-    description: "Requires SYSTEM elevation for protected registry keys and services",
-    icon: "mdi:shield-lock",
-    colorClass: "text-accent",
-  },
   ti: {
     name: "TrustedInstaller",
     description: "Requires TrustedInstaller elevation for highly protected resources",
@@ -765,34 +759,14 @@ export const PERMISSION_INFO: Record<Exclude<PermissionLevel, "none">, Permissio
 };
 
 /**
- * Get the highest permission level from a tweak definition.
- * Permission hierarchy: ti > system > admin > none
- *
- * @param tweak - Object with requires_admin, requires_system, requires_ti flags
- * @returns The highest permission level required
- */
-export function getHighestPermission(tweak: {
-  requires_admin: boolean;
-  requires_system: boolean;
-  requires_ti: boolean;
-}): PermissionLevel {
-  if (tweak.requires_ti) return "ti";
-  if (tweak.requires_system) return "system";
-  if (tweak.requires_admin) return "admin";
-  return "none";
-}
-
-/**
  * Map a declared elevation floor (the redesigned engine's `Level`) to a permission
  * level for UI display. The app process is only ever User or Admin, but a tweak may
- * declare a System/TrustedInstaller floor that the broker reaches once elevated.
+ * declare a TrustedInstaller floor that the broker reaches once elevated.
  */
 export function permissionFromElevation(level: Level): PermissionLevel {
   switch (level) {
     case "Ti":
       return "ti";
-    case "System":
-      return "system";
     case "Admin":
       return "admin";
     default:

@@ -630,13 +630,12 @@ mod tests {
         let scratch = Scratch::new("level_gate");
         let setting = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));
 
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = RegistryKind
-                .drive(&setting, &Value::Reg(TypedRegValue::Dword(1)), &cx)
-                .expect_err("the in-process kind must still reject System/Ti directly");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = RegistryKind
+            .drive(&setting, &Value::Reg(TypedRegValue::Dword(1)), &cx)
+            .expect_err("the in-process kind must still reject System/Ti directly");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     /// `to_broker_op` is what `engine::AllKinds::drive` calls for System/Ti. Pure translation, so
@@ -659,44 +658,43 @@ mod tests {
             path: format!("{}\\Sub", scratch.path),
         });
 
-        for level in [Level::System, Level::Ti] {
-            let set_op = to_broker_op(&value_addr, &Value::Reg(TypedRegValue::Dword(7)), level)
-                .expect("a whole-value Reg drive must translate");
-            assert!(
-                matches!(set_op, crate::services::elevation::BrokerOp::RegSet { .. }),
-                "got {set_op:?}"
-            );
+        let level = Level::Ti;
+        let set_op = to_broker_op(&value_addr, &Value::Reg(TypedRegValue::Dword(7)), level)
+            .expect("a whole-value Reg drive must translate");
+        assert!(
+            matches!(set_op, crate::services::elevation::BrokerOp::RegSet { .. }),
+            "got {set_op:?}"
+        );
 
-            let delete_op = to_broker_op(&value_addr, &Value::Absent, level)
-                .expect("Absent must translate to a delete");
-            assert!(
-                matches!(
-                    delete_op,
-                    crate::services::elevation::BrokerOp::RegDeleteValue { .. }
-                ),
-                "got {delete_op:?}"
-            );
+        let delete_op = to_broker_op(&value_addr, &Value::Absent, level)
+            .expect("Absent must translate to a delete");
+        assert!(
+            matches!(
+                delete_op,
+                crate::services::elevation::BrokerOp::RegDeleteValue { .. }
+            ),
+            "got {delete_op:?}"
+        );
 
-            let create_key_op = to_broker_op(&key_addr, &Value::Present(true), level)
-                .expect("Present(true) on a key must translate to a create");
-            assert!(
-                matches!(
-                    create_key_op,
-                    crate::services::elevation::BrokerOp::RegCreateKey { .. }
-                ),
-                "got {create_key_op:?}"
-            );
+        let create_key_op = to_broker_op(&key_addr, &Value::Present(true), level)
+            .expect("Present(true) on a key must translate to a create");
+        assert!(
+            matches!(
+                create_key_op,
+                crate::services::elevation::BrokerOp::RegCreateKey { .. }
+            ),
+            "got {create_key_op:?}"
+        );
 
-            let delete_key_op = to_broker_op(&key_addr, &Value::Present(false), level)
-                .expect("Present(false) on a key must translate to a delete");
-            assert!(
-                matches!(
-                    delete_key_op,
-                    crate::services::elevation::BrokerOp::RegDeleteKey { .. }
-                ),
-                "got {delete_key_op:?}"
-            );
-        }
+        let delete_key_op = to_broker_op(&key_addr, &Value::Present(false), level)
+            .expect("Present(false) on a key must translate to a delete");
+        assert!(
+            matches!(
+                delete_key_op,
+                crate::services::elevation::BrokerOp::RegDeleteKey { .. }
+            ),
+            "got {delete_key_op:?}"
+        );
     }
 
     /// An HKCU address must never become a broker op, at any level and for either Setting variant.
@@ -713,24 +711,23 @@ mod tests {
             path: format!("{}\\Sub", scratch.path),
         });
 
-        for level in [Level::System, Level::Ti] {
-            for (label, setting, target) in [
-                (
-                    "value set",
-                    &value_addr,
-                    Value::Reg(TypedRegValue::Dword(7)),
-                ),
-                ("value delete", &value_addr, Value::Absent),
-                ("key create", &key_addr, Value::Present(true)),
-                ("key delete", &key_addr, Value::Present(false)),
-            ] {
-                let err = to_broker_op(setting, &target, level)
-                    .expect_err("an HKCU {label} must not translate at {level:?}");
-                assert!(
-                    matches!(err, Error::UnsupportedLevel(l) if l == level),
-                    "{label} at {level:?}: got {err:?}"
-                );
-            }
+        let level = Level::Ti;
+        for (label, setting, target) in [
+            (
+                "value set",
+                &value_addr,
+                Value::Reg(TypedRegValue::Dword(7)),
+            ),
+            ("value delete", &value_addr, Value::Absent),
+            ("key create", &key_addr, Value::Present(true)),
+            ("key delete", &key_addr, Value::Present(false)),
+        ] {
+            let err = to_broker_op(setting, &target, level)
+                .expect_err("an HKCU {label} must not translate at {level:?}");
+            assert!(
+                matches!(err, Error::UnsupportedLevel(l) if l == level),
+                "{label} at {level:?}: got {err:?}"
+            );
         }
     }
 
@@ -753,7 +750,7 @@ mod tests {
         let err = to_broker_op(
             &Setting::Registry(addr),
             &Value::Reg(TypedRegValue::Sz("x".to_string())),
-            Level::System,
+            Level::Ti,
         )
         .expect_err("a field-addressed write must not be routed yet");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
@@ -767,7 +764,7 @@ mod tests {
         registry_service::set_dword(&RegistryHive::Hkcu, &scratch.path, "Flag", 5).unwrap();
         let setting = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));
 
-        for level in [Level::User, Level::Admin, Level::System, Level::Ti] {
+        for level in [Level::User, Level::Admin, Level::Ti] {
             let cx = ExecCx::new(level);
             assert_eq!(
                 RegistryKind.read(&setting, &cx).unwrap(),

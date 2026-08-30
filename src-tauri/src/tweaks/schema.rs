@@ -130,7 +130,6 @@ impl From<RiskLevelRaw> for RiskLevel {
 enum LevelRaw {
     User,
     Admin,
-    System,
     Ti,
 }
 
@@ -139,7 +138,6 @@ impl From<LevelRaw> for Level {
         match raw {
             LevelRaw::User => Level::User,
             LevelRaw::Admin => Level::Admin,
-            LevelRaw::System => Level::System,
             LevelRaw::Ti => Level::Ti,
         }
     }

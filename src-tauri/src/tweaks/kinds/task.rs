@@ -261,13 +261,12 @@ mod tests {
         let setting = Setting::Task(TaskAddr {
             path: "\\Irrelevant".to_string(),
         });
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = TaskKind
-                .drive(&setting, &Value::TaskEnabled(true), &cx)
-                .expect_err("the in-process kind must still reject System/Ti directly");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = TaskKind
+            .drive(&setting, &Value::TaskEnabled(true), &cx)
+            .expect_err("the in-process kind must still reject System/Ti directly");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]

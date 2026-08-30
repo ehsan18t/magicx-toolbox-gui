@@ -9,7 +9,7 @@ tweaks:
     name: "Disables TI"
     description: "One of its options sets TrustedInstaller's start type to disabled."
     risk_level: critical
-    elevation: system
+    elevation: ti
     reversible: true
     effects:
       - id: ti_service

@@ -96,13 +96,12 @@ mod tests {
     fn drive_rejects_system_and_ti_levels_for_now() {
         // guard_level fires before any hosts_service call -- safe to run by default.
         let setting = Setting::Hosts(addr(NO_SUCH_DOMAIN));
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = HostsKind
-                .drive(&setting, &Value::Present(true), &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = HostsKind
+            .drive(&setting, &Value::Present(true), &cx)
+            .expect_err("this build cannot yet route System/Ti through the broker");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]

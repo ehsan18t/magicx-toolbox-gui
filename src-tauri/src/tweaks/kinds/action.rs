@@ -571,17 +571,16 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
     #[test]
     fn drive_rejects_system_and_ti_for_script_actions() {
         let action = script_action("exit 0", Some("exit 0"), None, false, Shell::PowerShell);
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = ActionKind
-                .run_apply(&action, &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-            let err = ActionKind
-                .run_undo(&action, &cx)
-                .expect_err("this build cannot yet route System/Ti through the broker");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = ActionKind
+            .run_apply(&action, &cx)
+            .expect_err("this build cannot yet route System/Ti through the broker");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
+        let err = ActionKind
+            .run_undo(&action, &cx)
+            .expect_err("this build cannot yet route System/Ti through the broker");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]
@@ -589,7 +588,7 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
         // Mirrors registry.rs's `read_runs_in_process_regardless_of_declared_level`: probe is a
         // read, so (unlike apply/undo) it must not reject System/Ti.
         let action = script_action("exit 0", None, Some("exit 0"), false, Shell::PowerShell);
-        for level in [Level::User, Level::Admin, Level::System, Level::Ti] {
+        for level in [Level::User, Level::Admin, Level::Ti] {
             let cx = ExecCx::new(level);
             assert!(
                 ActionKind.run_probe(&action, &cx).unwrap(),
@@ -717,18 +716,17 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
             undo: Some(Script("exit 0".to_string())),
         };
 
-        for level in [Level::System, Level::Ti] {
-            let cx = ExecCx::new(level);
-            let err = ActionKind.run_apply(&apply_action, &cx).expect_err(
-                "delete-tree apply must reject System/Ti exactly like a raw RegistryKey effect",
-            );
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
+        let level = Level::Ti;
+        let cx = ExecCx::new(level);
+        let err = ActionKind.run_apply(&apply_action, &cx).expect_err(
+            "delete-tree apply must reject System/Ti exactly like a raw RegistryKey effect",
+        );
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
 
-            let err = ActionKind
-                .run_undo(&undo_action, &cx)
-                .expect_err("delete-tree undo must reject System/Ti");
-            assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
-        }
+        let err = ActionKind
+            .run_undo(&undo_action, &cx)
+            .expect_err("delete-tree undo must reject System/Ti");
+        assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]

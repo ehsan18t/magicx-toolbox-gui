@@ -1,4 +1,4 @@
-//! Win32 helpers shared by the SYSTEM and TrustedInstaller spawn paths.
+//! Win32 helpers for the TrustedInstaller spawn path.
 //!
 //! Every failure path here captures `GetLastError` BEFORE closing any handle: `CloseHandle`
 //! overwrites the thread's last-error, so reading it afterwards reports the close, not the call
@@ -11,21 +11,16 @@ use std::ptr;
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE, LUID};
 use windows_sys::Win32::Security::{
-    AdjustTokenPrivileges, DuplicateTokenEx, LookupPrivilegeValueW, SecurityImpersonation,
-    TokenPrimary, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES,
-    TOKEN_ALL_ACCESS, TOKEN_DUPLICATE, TOKEN_PRIVILEGES, TOKEN_QUERY,
-};
-use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
+    TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
 };
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken, TerminateProcess,
-    WaitForSingleObject, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+    GetCurrentProcess, GetExitCodeProcess, OpenProcessToken, TerminateProcess, WaitForSingleObject,
+    PROCESS_INFORMATION, STARTUPINFOW,
 };
 use windows_sys::Win32::System::WindowsProgramming::QueryUnbiasedInterruptTime;
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
 const STARTF_USESHOWWINDOW: u32 = 0x00000001;
 /// `AdjustTokenPrivileges` reports a privilege it could not grant through this, not a FALSE return.
 const ERROR_NOT_ALL_ASSIGNED: u32 = 1300;
@@ -113,86 +108,6 @@ pub(super) fn enable_debug_privilege() -> Result<(), Error> {
 
         log::trace!("Enabled SeDebugPrivilege");
         Ok(())
-    }
-}
-
-/// Find a process ID by executable name (case-insensitive).
-pub(super) fn find_process_by_name(target_name: &str) -> Result<u32, Error> {
-    // SAFETY: the snapshot handle is closed on every path, and PROCESSENTRY32W is only read after
-    // a successful Process32FirstW/NextW filled it in.
-    unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot == INVALID_HANDLE_VALUE {
-            return Err(win_err("CreateToolhelp32Snapshot"));
-        }
-
-        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-        if Process32FirstW(snapshot, &mut entry) == FALSE {
-            return Err(close_then(snapshot, win_err("Process32FirstW")));
-        }
-
-        loop {
-            let len = entry
-                .szExeFile
-                .iter()
-                .position(|&c| c == 0)
-                .unwrap_or(entry.szExeFile.len());
-            if String::from_utf16_lossy(&entry.szExeFile[..len]).eq_ignore_ascii_case(target_name) {
-                let pid = entry.th32ProcessID;
-                CloseHandle(snapshot);
-                log::trace!("Found {} with PID {}", target_name, pid);
-                return Ok(pid);
-            }
-            if Process32NextW(snapshot, &mut entry) == FALSE {
-                break;
-            }
-        }
-
-        CloseHandle(snapshot);
-        Err(Error::WindowsApi(format!(
-            "Process not found: {}",
-            target_name
-        )))
-    }
-}
-
-/// Duplicate a process's token as a primary token the caller owns and must close.
-pub(super) fn get_process_token(pid: u32) -> Result<HANDLE, Error> {
-    // SAFETY: the process and source-token handles are closed on every path; `dup_token` is
-    // written by a successful DuplicateTokenEx and handed to the caller.
-    unsafe {
-        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if process.is_null() {
-            return Err(win_err(&format!("OpenProcess for PID {pid}")));
-        }
-
-        let mut token: HANDLE = ptr::null_mut();
-        if OpenProcessToken(process, TOKEN_DUPLICATE | TOKEN_QUERY, &mut token) == FALSE {
-            return Err(close_then(process, win_err("OpenProcessToken")));
-        }
-
-        let mut dup_token: HANDLE = ptr::null_mut();
-        let ok = DuplicateTokenEx(
-            token,
-            TOKEN_ALL_ACCESS,
-            ptr::null(),
-            SecurityImpersonation,
-            TokenPrimary,
-            &mut dup_token,
-        );
-        let err = (ok == FALSE).then(|| win_err("DuplicateTokenEx"));
-        CloseHandle(token);
-        CloseHandle(process);
-
-        match err {
-            Some(e) => Err(e),
-            None => {
-                log::trace!("Got duplicated token from PID {}", pid);
-                Ok(dup_token)
-            }
-        }
     }
 }
 
