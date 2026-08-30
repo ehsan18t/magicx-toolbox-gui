@@ -51,10 +51,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::tweaks::kinds::{Error as KindError, ExecCx};
+use crate::tweaks::kinds::{BatchFailure, Error as KindError, ExecCx};
 use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, Opt, OptLabel, OptValue, Setting, SharedDef,
-    SharedId, Tweak, Value,
+    ActionDef, Corpus, Effect, EffectDef, EffectId, Level, Opt, OptLabel, OptValue, ScopedValue,
+    Setting, SharedDef, SharedId, Tweak, Value,
 };
 use crate::tweaks::shared_claims::{ClaimsError, ReleaseOutcome};
 use crate::tweaks::snapshot::{Captured, JournalRow, NewEntry, Seq, SnapshotError};
@@ -522,18 +522,24 @@ pub(crate) fn drive_forward(
     action_plan: &[(EffectId, ActionPlan)],
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    for effect in surface {
+    let mut index = 0;
+    while index < surface.len() {
+        // A run of consecutive same-level elevated Settings shares ONE child (spec §9's grouped
+        // execution, invariant 18). Acquiring TrustedInstaller is entirely a per-spawn cost, so a
+        // tweak with twenty such effects used to pay it twenty times.
+        let run = brokerable_run(ctx, surface, index);
+        if run >= 2 {
+            drive_setting_run(ctx, &surface[index..index + run], state)?;
+            index += run;
+            continue;
+        }
+        let effect = surface[index];
+        index += 1;
+
         match &effect.kind {
             Effect::Setting(setting) => {
-                let Some(opt_value) = applicable_value(ctx.target_opt, &effect.id, &ctx.milestone)
-                else {
+                let Some(scoped) = setting_target(ctx, effect)? else {
                     continue; // this option-value is scoped out here (spec §6.6)
-                };
-                let OptValue::Set(scoped) = opt_value else {
-                    return Err(EngineError::Invalid(format!(
-                        "effect '{}' is a Setting but its option value is not Set",
-                        effect.id
-                    )));
                 };
                 // Per-effect execution context (spec §9): `route` computes effective =
                 // max(floor, step), EXCEPT an HKCU Setting always drives in-process as the
@@ -1065,6 +1071,135 @@ fn drive_and_verify(
         }),
         Err(e) => failures.push(map_drive_err(effect_id, e)),
     }
+}
+
+/// The scoped target for `effect` under the drive's option, if it applies here.
+///
+/// `None` means the option-value is scoped out on this build (spec §6.6) and there is nothing to
+/// drive; `Err` means the option named a non-Set value for a Setting, which is a corpus bug.
+fn setting_target<'a>(
+    ctx: &'a DriveCtx,
+    effect: &EffectDef,
+) -> Result<Option<&'a ScopedValue>, EngineError> {
+    match applicable_value(ctx.target_opt, &effect.id, &ctx.milestone) {
+        None => Ok(None),
+        Some(OptValue::Set(scoped)) => Ok(Some(scoped)),
+        Some(_) => Err(EngineError::Invalid(format!(
+            "effect '{}' is a Setting but its option value is not Set",
+            effect.id
+        ))),
+    }
+}
+
+/// How many effects starting at `from` can share one elevated child.
+///
+/// A run is consecutive Setting effects that all route to `Ti` and all have a brokerable address.
+/// Anything else -- an in-process Setting, a Shared, an Action, a scoped-out value, or a Hosts /
+/// Firewall address the broker has no op for -- ends the run, because it has to be driven by the
+/// existing per-effect path. Order is never changed; only adjacent equals are grouped
+/// (invariant 18).
+fn brokerable_run(ctx: &DriveCtx, surface: &[&EffectDef], from: usize) -> usize {
+    surface[from..]
+        .iter()
+        .take_while(|effect| {
+            let Effect::Setting(setting) = &effect.kind else {
+                return false;
+            };
+            if matches!(setting, Setting::Hosts(_) | Setting::Firewall(_)) {
+                return false;
+            }
+            if !matches!(setting_target(ctx, effect), Ok(Some(_))) {
+                return false;
+            }
+            context::route(effect, ctx.tweak, ctx.corpus).level() == Level::Ti
+        })
+        .count()
+}
+
+/// Drive a run of same-level Setting effects through ONE elevated child, then verify each.
+///
+/// Semantics match the per-effect path exactly, with one deliberate difference: every drive in the
+/// run happens before any of the verifies, because they all cross into the child together. For the
+/// one tweak that reaches this path that is an improvement rather than a compromise -- its first
+/// effects disable the WaaSMedic tasks that would otherwise contend with the later ones, so a
+/// shorter window between the first drive and the last is strictly better.
+fn drive_setting_run(
+    ctx: &DriveCtx,
+    run: &[&EffectDef],
+    state: &mut DriveState,
+) -> Result<(), EngineError> {
+    // Resolve absent optionals first. In the per-effect path an absent `optional` resource is a
+    // verified no-op and the loop moves on; inside a batch the same effect would abort the whole
+    // run, so it must never enter one. Reads never escalate, so this is the same in-process read
+    // the translation would have done anyway.
+    let mut batched: Vec<(&EffectDef, &ScopedValue)> = Vec::with_capacity(run.len());
+    for effect in run {
+        let Some(scoped) = setting_target(ctx, effect)? else {
+            continue;
+        };
+        let Effect::Setting(setting) = &effect.kind else {
+            continue;
+        };
+        let cx = context::route(effect, ctx.tweak, ctx.corpus);
+        let absent_optional = effect.optional
+            && effect.if_missing.as_ref() == Some(&scoped.value)
+            && matches!(ctx.deps.kinds.read(setting, &cx), Ok(Value::Missing));
+        if absent_optional {
+            state.effect_results.push(EffectResult {
+                effect: effect.id.clone(),
+                kind: EffectResultKind::NoOp,
+            });
+            continue;
+        }
+        batched.push((effect, scoped));
+    }
+
+    let Some((first, _)) = batched.first() else {
+        return Ok(());
+    };
+    let cx = context::route(first, ctx.tweak, ctx.corpus);
+
+    let items: Vec<(&Setting, &Value)> = batched
+        .iter()
+        .map(|(effect, scoped)| match &effect.kind {
+            Effect::Setting(setting) => (setting, &scoped.value),
+            _ => unreachable!("brokerable_run admits only Setting effects"),
+        })
+        .map(|(setting, value): (&Setting, &Value)| (setting, value))
+        .collect();
+
+    if let Err(BatchFailure { index, error }) = ctx.deps.kinds.drive_batch(&items, &cx) {
+        let effect = batched
+            .get(index)
+            .map_or(&batched[batched.len() - 1].0.id, |(e, _)| &e.id);
+        return Err(map_drive_err(effect, error));
+    }
+
+    for (effect, scoped) in &batched {
+        let Effect::Setting(setting) = &effect.kind else {
+            continue;
+        };
+        let cx = context::route(effect, ctx.tweak, ctx.corpus);
+        let actual = ctx
+            .deps
+            .kinds
+            .read(setting, &cx)
+            .map_err(|e| map_drive_err(&effect.id, e))?;
+        if actual != scoped.value {
+            return Err(EngineError::VerifyMismatch {
+                effect: effect.id.clone(),
+                expected: scoped.value.clone(),
+                actual,
+            });
+        }
+        state.effect_results.push(EffectResult {
+            effect: effect.id.clone(),
+            kind: EffectResultKind::Driven {
+                desired: scoped.value.clone(),
+            },
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2566,6 +2701,8 @@ mod tests {
     struct LevelRecordingKind {
         levels: Mutex<Vec<(String, Level)>>,
         live: Mutex<HashMap<String, Value>>,
+        /// The size of each `drive_batch` call, so a test can prove a run crossed once.
+        batches: Mutex<Vec<usize>>,
     }
 
     impl EffectKind for LevelRecordingKind {
@@ -2594,6 +2731,21 @@ mod tests {
                 .lock()
                 .unwrap()
                 .insert(addr.name.clone(), target.clone());
+            Ok(())
+        }
+
+        /// Records the run size, then behaves exactly like the trait default so the rest of the
+        /// fixture is unchanged.
+        fn drive_batch(
+            &self,
+            items: &[(&Setting, &Value)],
+            cx: &ExecCx,
+        ) -> Result<(), BatchFailure> {
+            self.batches.lock().unwrap().push(items.len());
+            for (index, (setting, target)) in items.iter().enumerate() {
+                self.drive(setting, target, cx)
+                    .map_err(|error| BatchFailure { index, error })?;
+            }
             Ok(())
         }
     }
@@ -2679,6 +2831,84 @@ mod tests {
             level_of("hklm_val"),
             Some(Level::Ti),
             "a sibling HKLM effect at the Ti floor must still route at Ti -- got {levels:?}"
+        );
+    }
+
+    /// The whole point of grouped execution: a run of same-level elevated Settings crosses into
+    /// ONE child, not one per effect. Acquiring TrustedInstaller is entirely a per-spawn cost, so
+    /// this is the difference between paying it once and paying it once per effect.
+    ///
+    /// The HKCU effect in the middle is load-bearing. `route` forces it in-process as the
+    /// interactive user regardless of the floor, so it must split the run rather than being
+    /// swept into an elevated batch.
+    #[test]
+    fn a_run_of_elevated_effects_shares_one_child_and_an_hkcu_effect_splits_it() {
+        let kind = LevelRecordingKind::default();
+        let probes = MockProbes::new(
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(HashMap::new())),
+        );
+        let actions = MockActions::new(
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(HashMap::new())),
+        );
+        let tmp = tempfile::tempdir().unwrap();
+        let claims = ClaimsStore::open(tmp.path().to_path_buf(), Some("test-guid".into()));
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let cache = ProbeCache::new();
+
+        // Two elevated, one in-process, then two more elevated.
+        let ids = ["a", "b", "user_c", "d", "e"];
+        let effects = vec![
+            registry_effect("a", Hive::Hklm),
+            registry_effect("b", Hive::Hklm),
+            registry_effect("user_c", Hive::Hkcu),
+            registry_effect("d", Hive::Hklm),
+            registry_effect("e", Hive::Hklm),
+        ];
+        let values: Vec<_> = ids
+            .iter()
+            .map(|id| (*id, set(Value::Reg(TypedRegValue::Dword(1)))))
+            .collect();
+        let mut t = tweak("demo", effects, vec![opt("On", values)]);
+        t.elevation = Level::Ti;
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let deps = Deps {
+            kinds: &kind,
+            probes: &probes,
+            actions: &actions,
+            claims: &claims,
+            snapshots: &snapshots,
+            probe_cache: &cache,
+            machine_guid: Some("test-guid"),
+            level: Level::Admin,
+            running: WinVer {
+                build: 19045,
+                revision: 0,
+            },
+        };
+
+        run_apply(&t, &c, &OptLabel("On".into()), &deps)
+            .expect("apply must succeed against the mock");
+
+        assert_eq!(
+            *kind.batches.lock().unwrap(),
+            vec![2, 2],
+            "the two elevated runs must each cross once; the HKCU effect between them splits them"
+        );
+
+        // Order is never reordered by grouping (invariant 18).
+        let levels = kind.levels.lock().unwrap();
+        assert_eq!(
+            levels.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+            ids,
+            "grouping must preserve declaration order -- got {levels:?}"
+        );
+        assert_eq!(
+            levels.iter().find(|(n, _)| n == "user_c").map(|(_, l)| *l),
+            Some(Level::User),
+            "the HKCU effect must still drive in-process as the user"
         );
     }
 }

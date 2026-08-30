@@ -23,7 +23,7 @@ use crate::tweaks::kinds::{
     registry::{self, RegistryKind},
     service::{self, ServiceKind},
     task::{self, TaskKind},
-    EffectKind, Error as KindError, ExecCx,
+    BatchFailure, EffectKind, Error as KindError, ExecCx,
 };
 use crate::tweaks::model::{ActionDef, EffectId, Level, Setting, Value};
 use crate::tweaks::shared_claims::ClaimsStore;
@@ -36,6 +36,52 @@ use std::sync::Mutex;
 /// and routes through the elevation broker at `System`/`Ti` (spec §9, see [`drive_via_broker`]).
 /// Stateless, so it is trivially `Send + Sync` and cheap to construct per call.
 pub struct AllKinds;
+
+impl AllKinds {
+    /// The typed ops one elevated Setting drive becomes, including the existence pre-check.
+    ///
+    /// Split out of `drive` so `drive_batch` can translate a whole run before spawning anything,
+    /// and so both paths perform the pre-check identically.
+    ///
+    /// The pre-check mirrors what `drive_service`/`drive_task` do in-process (invariant 12). The
+    /// broker translations are deliberately pure, and without this an absent service or task
+    /// reaches the child, fails there, and returns as an opaque `OpFailed` -> `AccessDenied`. That
+    /// is the wrong shape twice over: apply's `optional`/`if_missing` no-op guard matches only
+    /// `ResourceMissing`, so an `optional` effect whose resource is absent on this build would
+    /// abort the tweak and roll it back instead of reading as the verified no-op detect already
+    /// advertises. Reads never escalate, so this costs the same in-process read detect just
+    /// performed, and it means an absent resource never spawns a child at all.
+    fn broker_ops_for(
+        &self,
+        s: &Setting,
+        target: &Value,
+        cx: &ExecCx,
+    ) -> Result<Vec<BrokerOp>, KindError> {
+        let level = cx.level();
+        if !matches!(target, Value::Missing)
+            && matches!(s, Setting::Service(_) | Setting::Task(_))
+            && self.read(s, cx)? == Value::Missing
+        {
+            return Err(KindError::ResourceMissing(match s {
+                Setting::Service(addr) => format!("service '{}' does not exist", addr.name),
+                Setting::Task(addr) => format!("scheduled task '{}' does not exist", addr.path),
+                _ => unreachable!("guarded by the matches! above"),
+            }));
+        }
+
+        match s {
+            Setting::Registry(_) | Setting::RegistryKey(_) => {
+                Ok(vec![registry::to_broker_op(s, target, level)?])
+            }
+            Setting::Service(_) => service::to_broker_ops(s, target),
+            Setting::Task(_) => task::to_broker_ops(s, target),
+            // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical translation
+            // list does not cover them). The in-process kinds refuse System/Ti themselves, so this
+            // is the same refusal, raised one layer earlier.
+            Setting::Hosts(_) | Setting::Firewall(_) => Err(KindError::UnsupportedLevel(level)),
+        }
+    }
+}
 
 impl EffectKind for AllKinds {
     fn read(&self, s: &Setting, cx: &ExecCx) -> Result<Value, KindError> {
@@ -58,47 +104,74 @@ impl EffectKind for AllKinds {
                 Setting::Hosts(_) => HostsKind.drive(s, target, cx),
                 Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
             },
-            level @ Level::Ti => {
-                // Mirror the existence pre-check `drive_service`/`drive_task` do in-process
-                // (invariant 12). The broker translations are deliberately pure, and without this
-                // an absent service/task reaches the child, fails there, and comes back as an
-                // opaque `OpFailed` -> `AccessDenied`. That is the wrong shape twice over: apply's
-                // `optional`/`if_missing` no-op guard matches only `ResourceMissing`, so an
-                // `optional` effect whose resource is absent on this build would abort the tweak
-                // and roll it back instead of reading as the verified no-op detect already
-                // advertises. Reads never escalate, so this costs the same in-process read detect
-                // already performed, and it means an absent resource never spawns a child at all.
-                if !matches!(target, Value::Missing)
-                    && matches!(s, Setting::Service(_) | Setting::Task(_))
-                    && self.read(s, cx)? == Value::Missing
-                {
-                    return Err(KindError::ResourceMissing(match s {
-                        Setting::Service(addr) => {
-                            format!("service '{}' does not exist", addr.name)
-                        }
-                        Setting::Task(addr) => {
-                            format!("scheduled task '{}' does not exist", addr.path)
-                        }
-                        _ => unreachable!("guarded by the matches! above"),
-                    }));
-                }
-                match s {
-                    Setting::Registry(_) | Setting::RegistryKey(_) => {
-                        drive_via_broker(level, vec![registry::to_broker_op(s, target, level)?])
-                    }
-                    Setting::Service(_) => {
-                        drive_via_broker(level, service::to_broker_ops(s, target)?)
-                    }
-                    Setting::Task(_) => drive_via_broker(level, task::to_broker_ops(s, target)?),
-                    // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical
-                    // translation list does not cover them) -- fall through to the in-process kind,
-                    // which correctly still rejects System/Ti itself.
-                    Setting::Hosts(_) => HostsKind.drive(s, target, cx),
-                    Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
-                }
-            }
+            level @ Level::Ti => drive_via_broker(level, self.broker_ops_for(s, target, cx)?),
         }
     }
+
+    /// One elevated child for a whole run of TrustedInstaller steps instead of one per effect.
+    ///
+    /// Acquiring TrustedInstaller is the expensive part and it is entirely per-spawn: connect to
+    /// the SCM, query and possibly start the service, poll for it, open and verify its process,
+    /// build the attribute list, cold-start this executable again, and round-trip JSON through the
+    /// filesystem. None of that gets cheaper for being done twenty times. Each spawn is also a
+    /// separate behavioural event for whatever security product is watching, which is its own
+    /// reason not to repeat it.
+    ///
+    /// Below `Ti`, and for a run of one, this defers to the trait default: the per-effect loop.
+    fn drive_batch(&self, items: &[(&Setting, &Value)], cx: &ExecCx) -> Result<(), BatchFailure> {
+        if cx.level() != Level::Ti || items.len() < 2 {
+            for (index, (setting, target)) in items.iter().enumerate() {
+                self.drive(setting, target, cx)
+                    .map_err(|error| BatchFailure { index, error })?;
+            }
+            return Ok(());
+        }
+
+        // Translate first, keeping each effect's op span, so a failure the child reports by op
+        // index can be attributed back to the effect that produced it. Translation performs the
+        // same existence pre-check `drive` does, so an absent resource still refuses before
+        // anything is spawned.
+        let mut ops: Vec<BrokerOp> = Vec::new();
+        let mut spans: Vec<std::ops::Range<usize>> = Vec::with_capacity(items.len());
+        for (index, (setting, target)) in items.iter().enumerate() {
+            let start = ops.len();
+            match self.broker_ops_for(setting, target, cx) {
+                Ok(mut translated) => ops.append(&mut translated),
+                Err(error) => return Err(BatchFailure { index, error }),
+            }
+            spans.push(start..ops.len());
+        }
+
+        if ops.is_empty() {
+            return Ok(());
+        }
+        let sent = ops.len();
+        elevation::run_ops(Elevation::TrustedInstaller, ops).map_err(|e| match e {
+            // Acquisition failed, so no op ran. Attributing it to the first item is the truthful
+            // choice: it is where the batch stopped, and the error type still says plainly that
+            // nothing was attempted.
+            BrokerOpError::CouldNotAcquire(err) => BatchFailure {
+                index: 0,
+                error: KindError::CouldNotAcquireElevation(Level::Ti, err.to_string()),
+            },
+            ref failed @ BrokerOpError::OpFailed { ref source, .. } => BatchFailure {
+                index: failing_item(&spans, failed.failed_op_index(), sent),
+                error: KindError::AccessDenied(source.to_string()),
+            },
+        })
+    }
+}
+
+/// Map a broker op failure back to the batch item whose translation produced that op.
+///
+/// Falls back to the last item when the index cannot be placed, so a response we did not expect
+/// still leaves the caller rolling back from a real position rather than panicking.
+fn failing_item(spans: &[std::ops::Range<usize>], failed_op: Option<usize>, sent: usize) -> usize {
+    let op_index = failed_op.unwrap_or(sent.saturating_sub(1));
+    spans
+        .iter()
+        .position(|span| span.contains(&op_index))
+        .unwrap_or(spans.len().saturating_sub(1))
 }
 
 /// Submits `ops` through the elevation broker in ONE child (spec §9), keeping the two failure
@@ -113,7 +186,7 @@ fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
         BrokerOpError::CouldNotAcquire(err) => {
             KindError::CouldNotAcquireElevation(level, err.to_string())
         }
-        BrokerOpError::OpFailed(err) => KindError::AccessDenied(err.to_string()),
+        BrokerOpError::OpFailed { source, .. } => KindError::AccessDenied(source.to_string()),
     })
 }
 

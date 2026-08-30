@@ -374,8 +374,28 @@ pub fn run_elevated_broker(
 pub enum BrokerOpError {
     #[error("could not acquire the elevated child: {0}")]
     CouldNotAcquire(#[source] Error),
-    #[error("operation failed inside the elevated child: {0}")]
-    OpFailed(#[source] Error),
+    /// The child ran and an operation inside it failed.
+    ///
+    /// `index` is the failing op's position in the slice handed to [`run_ops`], carried
+    /// structurally rather than only in the message so a caller that submitted a batch on behalf
+    /// of several effects can name which one failed. It is `None` for a truncated response, where
+    /// the child reported no failure but did not attempt every op, so no single op is to blame.
+    #[error("operation failed inside the elevated child: {source}")]
+    OpFailed {
+        index: Option<usize>,
+        #[source]
+        source: Error,
+    },
+}
+
+impl BrokerOpError {
+    /// The failing op's position, when the child named one.
+    pub fn failed_op_index(&self) -> Option<usize> {
+        match self {
+            BrokerOpError::OpFailed { index, .. } => *index,
+            BrokerOpError::CouldNotAcquire(_) => None,
+        }
+    }
 }
 
 /// Runs a whole batch of operations in ONE elevated child (spec §9's grouped execution). The only
@@ -393,16 +413,22 @@ pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError
 /// forged one, and reporting it as `Ok(())` would leave a half-applied batch looking complete.
 fn check_response(sent: usize, response: &BrokerResponse) -> Result<(), BrokerOpError> {
     if let Some(failure) = &response.failure {
-        return Err(BrokerOpError::OpFailed(Error::ServiceControl(format!(
-            "broker op {} failed: {}",
-            failure.index, failure.message
-        ))));
+        return Err(BrokerOpError::OpFailed {
+            index: Some(failure.index),
+            source: Error::ServiceControl(format!(
+                "broker op {} failed: {}",
+                failure.index, failure.message
+            )),
+        });
     }
     if response.attempted != sent {
-        return Err(BrokerOpError::OpFailed(Error::ServiceControl(format!(
-            "broker attempted {} of {sent} ops but reported no failure",
-            response.attempted
-        ))));
+        return Err(BrokerOpError::OpFailed {
+            index: None,
+            source: Error::ServiceControl(format!(
+                "broker attempted {} of {sent} ops but reported no failure",
+                response.attempted
+            )),
+        });
     }
     Ok(())
 }
@@ -517,12 +543,12 @@ mod tests {
 
         let err = check_response(3, &clean(2))
             .expect_err("two of three attempted with no failure is not a completed batch");
-        assert!(matches!(err, BrokerOpError::OpFailed(_)), "got {err:?}");
+        assert!(matches!(err, BrokerOpError::OpFailed { .. }), "got {err:?}");
         assert!(err.to_string().contains("2 of 3"), "got {err}");
 
         let err = check_response(3, &clean(0))
             .expect_err("a response claiming nothing ran must never be Ok");
-        assert!(matches!(err, BrokerOpError::OpFailed(_)), "got {err:?}");
+        assert!(matches!(err, BrokerOpError::OpFailed { .. }), "got {err:?}");
     }
 
     #[test]
@@ -712,7 +738,7 @@ mod tests {
         let err = run_ops(Elevation::None, bad)
             .expect_err("a malformed DWORD value must fail the op, never silently succeed");
         assert!(
-            matches!(err, BrokerOpError::OpFailed(_)),
+            matches!(err, BrokerOpError::OpFailed { .. }),
             "an in-process op failure is OpFailed, never CouldNotAcquire; got {err:?}"
         );
     }
@@ -777,7 +803,7 @@ mod tests {
 
         let err = run_ops(Elevation::None, ops)
             .expect_err("the first op's failure must fail the whole batch");
-        assert!(matches!(err, BrokerOpError::OpFailed(_)), "got {err:?}");
+        assert!(matches!(err, BrokerOpError::OpFailed { .. }), "got {err:?}");
         assert!(
             err.to_string().contains("op 0"),
             "must name the failing op's index; got {err}"

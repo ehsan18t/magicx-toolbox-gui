@@ -134,6 +134,32 @@ pub trait EffectKind: Send + Sync {
 
     /// Drives `s`'s address to `target`.
     fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), Error>;
+
+    /// Drives a run of Settings that all routed to the same level, in declaration order, stopping
+    /// at the first failure exactly as a sequence of [`Self::drive`] calls would.
+    ///
+    /// The default body IS that sequence, so any implementation that does not override this keeps
+    /// the previous behaviour byte for byte -- which is what lets every mock stay a `drive` mock.
+    /// [`crate::tweaks::engine::AllKinds`] overrides it to put a whole run of TrustedInstaller
+    /// steps through ONE elevated child instead of one child per effect.
+    fn drive_batch(&self, items: &[(&Setting, &Value)], cx: &ExecCx) -> Result<(), BatchFailure> {
+        for (index, (setting, target)) in items.iter().enumerate() {
+            self.drive(setting, target, cx)
+                .map_err(|error| BatchFailure { index, error })?;
+        }
+        Ok(())
+    }
+}
+
+/// Which item of a [`EffectKind::drive_batch`] slice failed, and why.
+///
+/// The index is structural rather than a message: the caller holds the effect ids that produced the
+/// slice, and needs to name the failing one to roll back correctly. A batch stops at its first
+/// failure, so exactly one of these is ever produced.
+#[derive(Debug)]
+pub struct BatchFailure {
+    pub index: usize,
+    pub error: Error,
 }
 
 // --- helpers shared by the service and task kinds ------------------------------------------------
