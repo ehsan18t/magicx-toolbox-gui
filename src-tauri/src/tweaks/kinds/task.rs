@@ -121,9 +121,9 @@ fn drive_task(addr: &TaskAddr, target: &Value) -> Result<(), Error> {
 /// Translates a System/TI-level task drive into the broker's typed op (spec §9), mirroring
 /// `drive_task`. Driving to `Missing` yields an empty op list, the same no-op it always is.
 ///
-/// As in `service.rs`, the existence pre-check is not repeated: that read runs at the current level,
-/// so an already-missing task reports its own COM error through the broker rather than the typed
-/// `ResourceMissing` the in-process path gives.
+/// As in `service.rs`, this stays a pure translation and does not repeat the existence pre-check.
+/// `engine::AllKinds::drive` performs it once for both kinds before it routes here, so an absent
+/// task still refuses with the typed `ResourceMissing` and never reaches a child.
 pub(crate) fn to_broker_ops(s: &Setting, target: &Value) -> Result<Vec<BrokerOp>, Error> {
     let Setting::Task(addr) = s else {
         return Err(Error::Invalid("TaskKind cannot drive this Setting"));

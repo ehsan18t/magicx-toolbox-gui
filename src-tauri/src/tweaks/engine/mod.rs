@@ -58,18 +58,45 @@ impl EffectKind for AllKinds {
                 Setting::Hosts(_) => HostsKind.drive(s, target, cx),
                 Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
             },
-            level @ (Level::System | Level::Ti) => match s {
-                Setting::Registry(_) | Setting::RegistryKey(_) => {
-                    drive_via_broker(level, vec![registry::to_broker_op(s, target, level)?])
+            level @ (Level::System | Level::Ti) => {
+                // Mirror the existence pre-check `drive_service`/`drive_task` do in-process
+                // (invariant 12). The broker translations are deliberately pure, and without this
+                // an absent service/task reaches the child, fails there, and comes back as an
+                // opaque `OpFailed` -> `AccessDenied`. That is the wrong shape twice over: apply's
+                // `optional`/`if_missing` no-op guard matches only `ResourceMissing`, so an
+                // `optional` effect whose resource is absent on this build would abort the tweak
+                // and roll it back instead of reading as the verified no-op detect already
+                // advertises. Reads never escalate, so this costs the same in-process read detect
+                // already performed, and it means an absent resource never spawns a child at all.
+                if !matches!(target, Value::Missing)
+                    && matches!(s, Setting::Service(_) | Setting::Task(_))
+                    && self.read(s, cx)? == Value::Missing
+                {
+                    return Err(KindError::ResourceMissing(match s {
+                        Setting::Service(addr) => {
+                            format!("service '{}' does not exist", addr.name)
+                        }
+                        Setting::Task(addr) => {
+                            format!("scheduled task '{}' does not exist", addr.path)
+                        }
+                        _ => unreachable!("guarded by the matches! above"),
+                    }));
                 }
-                Setting::Service(_) => drive_via_broker(level, service::to_broker_ops(s, target)?),
-                Setting::Task(_) => drive_via_broker(level, task::to_broker_ops(s, target)?),
-                // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical
-                // translation list does not cover them) -- fall through to the in-process kind,
-                // which correctly still rejects System/Ti itself.
-                Setting::Hosts(_) => HostsKind.drive(s, target, cx),
-                Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
-            },
+                match s {
+                    Setting::Registry(_) | Setting::RegistryKey(_) => {
+                        drive_via_broker(level, vec![registry::to_broker_op(s, target, level)?])
+                    }
+                    Setting::Service(_) => {
+                        drive_via_broker(level, service::to_broker_ops(s, target)?)
+                    }
+                    Setting::Task(_) => drive_via_broker(level, task::to_broker_ops(s, target)?),
+                    // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical
+                    // translation list does not cover them) -- fall through to the in-process kind,
+                    // which correctly still rejects System/Ti itself.
+                    Setting::Hosts(_) => HostsKind.drive(s, target, cx),
+                    Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
+                }
+            }
         }
     }
 }
@@ -209,5 +236,73 @@ impl ProbeCache {
             .expect("ProbeCache mutex poisoned")
             .retain(|(t, _), _| t != tweak_id);
         self.appx.invalidate();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tweaks::model::{StartupType, SvcAddr, TaskAddr};
+
+    /// Names that certainly do not exist, so these need no elevation and no real resource.
+    const NO_SUCH_SERVICE: &str = "MagicXNoSuchService_5F3F1D2E-6A4B-4C9E-9B0A-6B6E6C7D8E9F";
+    const NO_SUCH_TASK: &str = r"\MagicXNoSuchFolder_5F3F1D2E\NoSuchTask";
+
+    /// An `optional` effect whose resource is absent has to reach apply as `ResourceMissing`: that
+    /// is the only error its `if_missing` no-op guard matches on (`apply::drive_forward`). The
+    /// routed System/Ti path used to hand the drive to the elevated child, where absence came back
+    /// as an opaque `OpFailed` -> `AccessDenied`, so `optional` silently did nothing above User/
+    /// Admin and a tweak with a task absent on this Windows build aborted and rolled back.
+    ///
+    /// The pre-check runs before any spawn, which is exactly why this test needs no elevation.
+    #[test]
+    fn an_absent_resource_refuses_as_resource_missing_at_system_and_ti() {
+        for level in [Level::System, Level::Ti] {
+            let cx = ExecCx::new(level);
+
+            let svc = Setting::Service(SvcAddr {
+                name: NO_SUCH_SERVICE.to_string(),
+            });
+            let err = AllKinds
+                .drive(&svc, &Value::Startup(StartupType::Manual), &cx)
+                .expect_err("an absent service must refuse, not reach the broker");
+            assert!(
+                matches!(err, KindError::ResourceMissing(_)),
+                "{level:?}: got {err:?}"
+            );
+
+            let task = Setting::Task(TaskAddr {
+                path: NO_SUCH_TASK.to_string(),
+            });
+            let err = AllKinds
+                .drive(&task, &Value::TaskEnabled(false), &cx)
+                .expect_err("an absent task must refuse, not reach the broker");
+            assert!(
+                matches!(err, KindError::ResourceMissing(_)),
+                "{level:?}: got {err:?}"
+            );
+        }
+    }
+
+    /// Driving *to* `Missing` stays the defined no-op whether or not the resource exists (spec
+    /// §5.4, invariant 12). The pre-check must not turn that into a refusal, and it must still
+    /// spawn nothing.
+    #[test]
+    fn driving_an_absent_resource_to_missing_is_still_a_no_op() {
+        let cx = ExecCx::new(Level::Ti);
+
+        let svc = Setting::Service(SvcAddr {
+            name: NO_SUCH_SERVICE.to_string(),
+        });
+        AllKinds
+            .drive(&svc, &Value::Missing, &cx)
+            .expect("driving an absent service to Missing is a no-op");
+
+        let task = Setting::Task(TaskAddr {
+            path: NO_SUCH_TASK.to_string(),
+        });
+        AllKinds
+            .drive(&task, &Value::Missing, &cx)
+            .expect("driving an absent task to Missing is a no-op");
     }
 }

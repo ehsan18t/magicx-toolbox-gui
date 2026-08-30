@@ -162,10 +162,10 @@ fn drive_service(addr: &SvcAddr, target: &Value) -> Result<(), Error> {
 /// `drive_service`: `SvcSetStartup` plus the same unconditional `DelayedAutostart` companion
 /// write. Driving to `Missing` yields an empty op list, so the caller never spawns a child for it.
 ///
-/// One deliberate difference from `drive_service`: no resource-existence pre-check. That read runs
-/// at the current level (reads never escalate), so an already-missing service reports the SCM's own
-/// error through the broker instead of the typed `ResourceMissing` the in-process path gives. A
-/// known gap, named here rather than silently absorbed.
+/// One deliberate difference from `drive_service`: no resource-existence pre-check here, so this
+/// stays a pure translation. `engine::AllKinds::drive` performs that check once for both Service
+/// and Task before it routes here, so an already-missing service still refuses with the typed
+/// `ResourceMissing` the in-process path gives, and never reaches a child.
 pub(crate) fn to_broker_ops(s: &Setting, target: &Value) -> Result<Vec<BrokerOp>, Error> {
     let Setting::Service(addr) = s else {
         return Err(Error::Invalid("ServiceKind cannot drive this Setting"));
