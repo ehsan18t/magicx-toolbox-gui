@@ -21,8 +21,19 @@ env:
 
 jobs:
   validate:
-    name: Validate
-    runs-on: windows-latest
+    # A matrix over the Windows images GitHub actually hosts. Both are Server SKUs
+    # (2022 is build 20348, 2025 is build 26100), which is the whole story about what
+    # this matrix can and cannot prove: it catches a genuine build-number difference in
+    # anything reading RtlGetVersion or a service set, and it does NOT cover a client
+    # SKU. The corpus targets client Windows Update tasks whose set differs by build,
+    # and windows_update.yaml says so on the line above wu_sih. Covering client 19045
+    # and client 26100 needs self-hosted runners; see docs/TEST_MATRIX.md.
+    name: Validate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
     steps:
       - uses: actions/checkout@v7
 
@@ -52,6 +63,36 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test --all-targets
+
+  elevated-tests:
+    # The ignored tests never ran anywhere. `cargo test` skips them and no job passed
+    # --ignored, so the suite reported green while the tests that touch the live Task
+    # Scheduler, firewall, hosts file and service control were all skipped. That is the
+    # opposite of what an ignore is for here: they are ignored because they need real
+    # system state, not because they are expected to fail.
+    #
+    # --test-threads=1 is not caution. Two of these activate Task Scheduler COM, and
+    # CLAUDE.md records that they race libtest's per-test thread churn into a
+    # STATUS_ACCESS_VIOLATION. Running them serially removes the churn rather than the
+    # coverage.
+    name: Ignored tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Rust tests (ignored)
+        working-directory: src-tauri
+        run: cargo test --all-targets -- --ignored --test-threads=1
 
   line-endings:
     name: Line endings
