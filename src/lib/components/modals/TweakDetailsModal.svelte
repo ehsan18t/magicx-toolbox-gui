@@ -216,7 +216,9 @@
                 ? "Over-the-shoulder guard"
                 : def.availability.state === "sid_unknown"
                   ? "Session owner unconfirmed"
-                  : "Elevation required"}.
+                  : def.availability.state === "elevation_path_unavailable"
+                    ? "Not available on this PC"
+                    : "Elevation required"}.
             </span>
             <span class="text-foreground-muted">{def.availability.reason}</span>
           </div>

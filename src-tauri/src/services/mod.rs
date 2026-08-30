@@ -8,3 +8,4 @@ pub mod registry_value;
 pub mod scheduler_service;
 pub mod service_control;
 pub mod system_info_service;
+pub mod ti_probe;

@@ -195,12 +195,17 @@ export type BackendRiskLevel = "Low" | "Medium" | "High" | "Critical";
  * `sid_mismatch` and `sid_unknown` are separate on purpose: the first means the guard positively
  * identified a different account, the second means it could not read a SID at all. Both block
  * HKCU-touching tweaks, but only the first may tell the user another account is involved.
+ *
+ * `elevation_path_unavailable` is separate from `needs_elevation` for the same kind of reason: the
+ * first is a machine the user cannot fix by restarting the app (the TrustedInstaller service is
+ * disabled or absent), and telling them to restart as administrator would send them in a circle.
  */
 export type Availability =
   | { state: "available" }
   | { state: "needs_elevation"; reason: string }
   | { state: "sid_mismatch"; reason: string }
-  | { state: "sid_unknown"; reason: string };
+  | { state: "sid_unknown"; reason: string }
+  | { state: "elevation_path_unavailable"; reason: string };
 
 /** The compiled tweak model for the UI (`get_tweaks`). */
 /** Corpus category metadata from `get_categories` (id, display name, icon, description). */

@@ -21,6 +21,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::error::{Error, Result};
 use crate::services::system_info_service;
+use crate::services::ti_probe;
 use crate::tweaks::compiled_corpus;
 use crate::tweaks::engine::apply::{ApplyOutcome, EffectResult, EffectResultKind, EngineError};
 use crate::tweaks::engine::context::{self, RealSidProbe, SidCheck};
@@ -155,6 +156,13 @@ pub enum Availability {
     SidUnknown {
         reason: String,
     },
+    /// The declared elevation level cannot be reached on this machine at all, whatever the app is
+    /// running as. Distinct from `NeedsElevation`, which the user can fix by restarting as
+    /// administrator: this one they cannot, and telling them to restart would send them in a
+    /// circle.
+    ElevationPathUnavailable {
+        reason: String,
+    },
 }
 
 /// `touches_hkcu` comes from `context::tweak_touches_hkcu`, NOT from the tweak's `elevation:` floor.
@@ -166,6 +174,7 @@ fn compute_availability(
     tweak_elevation: Level,
     current_level: Level,
     sid_check: SidCheck,
+    ti_blocked: Option<&str>,
 ) -> Availability {
     if context::hkcu_disabled_by_sid_mismatch(touches_hkcu, sid_check) {
         return match sid_check {
@@ -186,6 +195,15 @@ fn compute_availability(
             reason: "Restart the app as administrator to enable this tweak.".to_string(),
         };
     }
+    // Being elevated enough is not the same as the path existing. A hardening baseline or group
+    // policy can disable the TrustedInstaller service, and then no amount of admin helps.
+    if tweak_elevation == Level::Ti {
+        if let Some(reason) = ti_blocked {
+            return Availability::ElevationPathUnavailable {
+                reason: reason.to_string(),
+            };
+        }
+    }
     Availability::Available
 }
 
@@ -205,11 +223,18 @@ fn refuse_if_unavailable(
     sid_check: SidCheck,
 ) -> Result<()> {
     let touches_hkcu = context::tweak_touches_hkcu(tweak, corpus);
-    match compute_availability(touches_hkcu, tweak.elevation, level, sid_check) {
+    match compute_availability(
+        touches_hkcu,
+        tweak.elevation,
+        level,
+        sid_check,
+        ti_probe::trusted_installer_blocked().as_deref(),
+    ) {
         Availability::Available => Ok(()),
         Availability::NeedsElevation { reason }
         | Availability::SidMismatch { reason }
-        | Availability::SidUnknown { reason } => Err(Error::TweakUnavailable(reason)),
+        | Availability::SidUnknown { reason }
+        | Availability::ElevationPathUnavailable { reason } => Err(Error::TweakUnavailable(reason)),
     }
 }
 
@@ -581,6 +606,7 @@ fn tweak_view(t: &Tweak, corpus: &Corpus, level: Level, sid_check: SidCheck) -> 
             t.elevation,
             level,
             sid_check,
+            ti_probe::trusted_installer_blocked().as_deref(),
         ),
     }
 }
@@ -1297,7 +1323,8 @@ mod tests {
         // System and Ti: 31 admin-floor tweaks in the shipped corpus drive HKCU effects, and the
         // old floor-keyed guard let all of them through while blocking the 54 user-floor ones.
         for floor in [Level::User, Level::Admin, Level::Ti] {
-            let avail = compute_availability(true, floor, Level::Admin, SidCheck::DifferentUser);
+            let avail =
+                compute_availability(true, floor, Level::Admin, SidCheck::DifferentUser, None);
             assert!(
                 matches!(avail, Availability::SidMismatch { .. }),
                 "an HKCU-touching {floor:?}-floor tweak must be blocked, got {avail:?}"
@@ -1307,13 +1334,25 @@ mod tests {
         // A tweak that touches no HKCU state is unaffected: whose session this is cannot change
         // where an HKLM write lands.
         assert_eq!(
-            compute_availability(false, Level::Admin, Level::Admin, SidCheck::DifferentUser),
+            compute_availability(
+                false,
+                Level::Admin,
+                Level::Admin,
+                SidCheck::DifferentUser,
+                None
+            ),
             Availability::Available
         );
 
         // Precedence: the SID arm is checked before `needs_elevation`, so an HKCU-touching
         // admin-floor tweak on an unelevated app reports the SID reason, not the elevation one.
-        let avail = compute_availability(true, Level::Admin, Level::User, SidCheck::DifferentUser);
+        let avail = compute_availability(
+            true,
+            Level::Admin,
+            Level::User,
+            SidCheck::DifferentUser,
+            None,
+        );
         assert!(
             matches!(avail, Availability::SidMismatch { .. }),
             "got {avail:?}"
@@ -1324,7 +1363,8 @@ mod tests {
     fn undetermined_sid_blocks_but_does_not_accuse() {
         // Two distinct states on purpose. Telling the user another admin elevated the app when the
         // guard simply could not read a SID sends them chasing a cause that does not exist.
-        let unknown = compute_availability(true, Level::User, Level::User, SidCheck::Undetermined);
+        let unknown =
+            compute_availability(true, Level::User, Level::User, SidCheck::Undetermined, None);
         assert!(
             matches!(unknown, Availability::SidUnknown { .. }),
             "got {unknown:?}"
@@ -1337,8 +1377,13 @@ mod tests {
             "an undetermined SID must not be reported as a different account: {reason}"
         );
 
-        let mismatch =
-            compute_availability(true, Level::User, Level::User, SidCheck::DifferentUser);
+        let mismatch = compute_availability(
+            true,
+            Level::User,
+            Level::User,
+            SidCheck::DifferentUser,
+            None,
+        );
         assert!(
             matches!(mismatch, Availability::SidMismatch { .. }),
             "got {mismatch:?}"
@@ -1353,7 +1398,7 @@ mod tests {
         // the guard read its guaranteed failure as a mismatch.
         for level in [Level::User, Level::Admin] {
             assert_eq!(
-                compute_availability(true, Level::User, level, SidCheck::SameUser),
+                compute_availability(true, Level::User, level, SidCheck::SameUser, None),
                 Availability::Available,
                 "a per-user tweak must be applyable at app level {level:?}"
             );
@@ -1364,7 +1409,7 @@ mod tests {
     fn elevation_floor_above_app_level_is_needs_elevation() {
         // App level User + an Admin/System/Ti-floor tweak -> disabled, needs elevation.
         for floor in [Level::Admin, Level::Ti] {
-            let avail = compute_availability(false, floor, Level::User, SidCheck::SameUser);
+            let avail = compute_availability(false, floor, Level::User, SidCheck::SameUser, None);
             assert!(
                 matches!(avail, Availability::NeedsElevation { .. }),
                 "floor={floor:?} at app level User must need elevation, got {avail:?}"
@@ -1375,7 +1420,7 @@ mod tests {
         // ceiling that reaches System/TrustedInstaller via the broker too (controller decision 3).
         for floor in [Level::User, Level::Admin, Level::Ti] {
             assert_eq!(
-                compute_availability(false, floor, Level::Admin, SidCheck::SameUser),
+                compute_availability(false, floor, Level::Admin, SidCheck::SameUser, None),
                 Availability::Available,
                 "floor={floor:?} at app level Admin must be available"
             );
@@ -1390,7 +1435,7 @@ mod tests {
             (false, Level::Admin, Level::Admin),
         ] {
             assert_eq!(
-                compute_availability(touches_hkcu, floor, level, SidCheck::SameUser),
+                compute_availability(touches_hkcu, floor, level, SidCheck::SameUser, None),
                 Availability::Available,
                 "hkcu={touches_hkcu} floor={floor:?} level={level:?}"
             );
@@ -1604,6 +1649,43 @@ mod tests {
         assert!(
             kinds_seen.0 > 0 && kinds_seen.1 > 0 && kinds_seen.2 > 0,
             "expected the corpus to exercise registry, service and scheduled-task projection; got {kinds_seen:?}"
+        );
+    }
+
+    /// A hardening baseline or group policy can disable the TrustedInstaller service. Detect never
+    /// escalates, so every read still succeeds and the card looked perfectly healthy; the user
+    /// only found out by clicking and waiting out the ten-second service poll for a rollback.
+    ///
+    /// This has to stay distinct from NeedsElevation, which the user fixes by restarting as
+    /// administrator. Telling them to restart here would send them in a circle.
+    #[test]
+    fn a_blocked_trusted_installer_path_is_not_a_needs_elevation() {
+        let blocked = Some("TrustedInstaller is disabled on this PC");
+
+        let avail =
+            compute_availability(false, Level::Ti, Level::Admin, SidCheck::SameUser, blocked);
+        assert!(
+            matches!(avail, Availability::ElevationPathUnavailable { .. }),
+            "an admin app still cannot reach a disabled TrustedInstaller: got {avail:?}"
+        );
+
+        // Nothing below Ti depends on that service, so nothing below Ti may be blocked by it.
+        for floor in [Level::User, Level::Admin] {
+            assert_eq!(
+                compute_availability(false, floor, Level::Admin, SidCheck::SameUser, blocked),
+                Availability::Available,
+                "{floor:?} does not need TrustedInstaller"
+            );
+        }
+
+        // Not elevated yet is still the more actionable message: restarting as admin is the step
+        // the user takes first, and the probe result does not change that.
+        assert!(
+            matches!(
+                compute_availability(false, Level::Ti, Level::User, SidCheck::SameUser, blocked),
+                Availability::NeedsElevation { .. }
+            ),
+            "an unelevated app must still be told to restart as administrator first"
         );
     }
 }
