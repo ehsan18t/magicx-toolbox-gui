@@ -158,6 +158,12 @@ impl EffectKind for AllKinds {
                 index: failing_item(&spans, failed.failed_op_index(), sent),
                 error: KindError::AccessDenied(source.to_string()),
             },
+            // No op index to attribute this to: the point is that we do not know which ran. The
+            // first item is where the batch is treated as having stopped.
+            BrokerOpError::Indeterminate(err) => BatchFailure {
+                index: 0,
+                error: KindError::ElevatedOutcomeUnknown(Level::Ti, err.to_string()),
+            },
         })
     }
 }
@@ -187,6 +193,9 @@ fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
             KindError::CouldNotAcquireElevation(level, err.to_string())
         }
         BrokerOpError::OpFailed { source, .. } => KindError::AccessDenied(source.to_string()),
+        BrokerOpError::Indeterminate(err) => {
+            KindError::ElevatedOutcomeUnknown(level, err.to_string())
+        }
     })
 }
 

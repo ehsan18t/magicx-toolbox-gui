@@ -164,6 +164,27 @@ pub enum EngineError {
     },
 }
 
+/// Whether a drive failure leaves the machine in a state we cannot describe.
+///
+/// The consume rule (ADR-0002) says a verified full restore means the snapshot entry no longer
+/// describes anything, so it may be deleted. That reasoning depends on knowing what was driven. An
+/// elevated child that was terminated on a timeout, panicked, or completed but could not return a
+/// trustworthy response may have driven operations the parent never recorded, and never rolled
+/// back, because it does not know they happened.
+///
+/// In that case "the restore verified clean" is a statement about the effects we know of, not about
+/// the machine. Keeping the entry is the only safe reading, and the entry staying on disk is what
+/// surfaces the tweak as Needs Attention rather than silently finished.
+fn outcome_is_unknown(error: &EngineError) -> bool {
+    matches!(
+        error,
+        EngineError::DriveFailed {
+            source: KindError::ElevatedOutcomeUnknown(..),
+            ..
+        }
+    )
+}
+
 fn map_drive_err(effect: &EffectId, e: KindError) -> EngineError {
     match e {
         KindError::ResourceMissing(_) => EngineError::ResourceMissing(effect.clone()),
@@ -479,7 +500,7 @@ fn do_apply(
             // Atomic rollback (ADR-0001): never `let _ =` this result.
             let mut rollback_failures = rollback(tweak, corpus, &captured, &state.processed, deps);
             deps.probe_cache.invalidate(&tweak.id);
-            if rollback_failures.is_empty() {
+            if rollback_failures.is_empty() && !outcome_is_unknown(&original) {
                 // Verified full restore: the machine now matches the just-captured entry, so
                 // consume it (ADR-0002). A failed consume itself is surfaced, never swallowed --
                 // the entry then simply stays on disk, the safe failure mode.

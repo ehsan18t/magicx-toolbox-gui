@@ -236,6 +236,22 @@ fn write_response(resp_path: &str, out: &[u8]) -> std::io::Result<()> {
     file.flush()
 }
 
+/// Whether a non-zero broker exit means nothing ran, or means we cannot know.
+///
+/// Exit 2 and 3 are returned before `execute_request` is ever called, so the machine is provably
+/// untouched. Everything else, including the catch-all for a terminated or antivirus-killed child,
+/// happened at or after the point where operations begin, so the honest answer is that we do not
+/// know how far it got. Exits 4 and 5 in particular mean the batch ran to completion and only the
+/// response was lost, which is the furthest thing from "nothing happened".
+fn classify_exit(code: i32, detail: Error) -> BrokerOpError {
+    match code {
+        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST => {
+            BrokerOpError::CouldNotAcquire(detail)
+        }
+        _ => BrokerOpError::Indeterminate(detail),
+    }
+}
+
 /// Monotonic counter mixed into the per-invocation transport nonce.
 static BROKER_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -309,26 +325,38 @@ fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerRes
 pub fn run_elevated_broker(
     level: Elevation,
     request: &BrokerRequest,
-) -> Result<BrokerResponse, Error> {
+) -> Result<BrokerResponse, BrokerOpError> {
     if !level.is_elevated() {
         return Ok(execute_request(request));
     }
 
-    let exe = std::env::current_exe()
-        .map_err(|e| Error::ServiceControl(format!("current_exe failed: {}", e)))?;
+    let exe = std::env::current_exe().map_err(|e| {
+        BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!("current_exe failed: {e}")))
+    })?;
 
     let nonce = next_nonce();
     let wire = BrokerRequest {
         nonce,
         ops: request.ops.clone(),
     };
-    let req_json = serde_json::to_vec(&wire)
-        .map_err(|e| Error::ServiceControl(format!("serialize broker request: {}", e)))?;
+    let req_json = serde_json::to_vec(&wire).map_err(|e| {
+        BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
+            "serialize broker request: {e}"
+        )))
+    })?;
 
-    let req_file = ExclusiveTempFile::create("magicx-broker", "req.json", &req_json)
-        .map_err(|e| Error::ServiceControl(format!("write broker request: {}", e)))?;
-    let resp_path = exclusive_temp::unique_temp_path("magicx-broker", "resp.json")
-        .map_err(|e| Error::ServiceControl(format!("reserve broker response path: {}", e)))?;
+    let req_file =
+        ExclusiveTempFile::create("magicx-broker", "req.json", &req_json).map_err(|e| {
+            BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
+                "write broker request: {e}"
+            )))
+        })?;
+    let resp_path =
+        exclusive_temp::unique_temp_path("magicx-broker", "resp.json").map_err(|e| {
+            BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
+                "reserve broker response path: {e}"
+            )))
+        })?;
 
     // Spawn "<exe>" --broker "<req>" "<resp>" directly (no cmd.exe wrapper). Paths are quoted; the
     // values are our own generated temp names, never untrusted data.
@@ -345,23 +373,38 @@ pub fn run_elevated_broker(
     };
 
     // Gate on the child's real exit code before trusting the file: a non-zero exit means the broker
-    // did not finish writing the response, so any bytes at resp_path are stale or partial.
-    let read = spawn.and_then(|exit| {
-        if exit != 0 {
-            return Err(Error::ServiceControl(format!(
-                "broker process exited with code {} ({}) without completing",
-                exit,
-                describe_broker_exit(exit)
-            )));
-        }
-        std::fs::read(&resp_path)
-            .map_err(|e| Error::ServiceControl(format!("broker wrote no response: {}", e)))
-    });
+    // did not finish writing the response, so any bytes at resp_path are stale or partial. How far
+    // it got decides whether the caller may treat the machine as untouched, so every failure below
+    // is classified rather than collapsed.
+    let read = spawn
+        // A spawn that never returned an exit code never created a child.
+        .map_err(BrokerOpError::CouldNotAcquire)
+        .and_then(|exit| {
+            if exit != 0 {
+                return Err(classify_exit(
+                    exit,
+                    Error::ServiceControl(format!(
+                        "broker process exited with code {} ({}) without completing",
+                        exit,
+                        describe_broker_exit(exit)
+                    )),
+                ));
+            }
+            // Exit 0 means the batch ran AND the response was written, so a read failure here is
+            // about the response, not about whether anything happened.
+            std::fs::read(&resp_path).map_err(|e| {
+                BrokerOpError::Indeterminate(Error::ServiceControl(format!(
+                    "broker completed but its response could not be read: {e}"
+                )))
+            })
+        });
 
     drop(req_file); // releases the share-mode lock and deletes the request
     let _ = std::fs::remove_file(&resp_path);
 
-    validate_response(&read?, nonce)
+    // A response that fails validation came from a child that ran: the ops happened, the answer is
+    // untrustworthy.
+    validate_response(&read?, nonce).map_err(BrokerOpError::Indeterminate)
 }
 
 /// The two distinct ways a multi-op batch can fail (spec §9, ADR-0005 as amended; invariant 24):
@@ -372,20 +415,35 @@ pub fn run_elevated_broker(
 /// site; neither is ever silently downgraded to the other or to a benign value.
 #[derive(Debug, thiserror::Error)]
 pub enum BrokerOpError {
+    /// The elevated child was never acquired, or was acquired but provably executed nothing.
+    /// Environmental: the TrustedInstaller service would not start, `SeDebugPrivilege` was denied,
+    /// the spawn failed, or the child could not even read its request. No operation was attempted,
+    /// so the machine is unchanged.
     #[error("could not acquire the elevated child: {0}")]
     CouldNotAcquire(#[source] Error),
     /// The child ran and an operation inside it failed.
     ///
     /// `index` is the failing op's position in the slice handed to [`run_ops`], carried
     /// structurally rather than only in the message so a caller that submitted a batch on behalf
-    /// of several effects can name which one failed. It is `None` for a truncated response, where
-    /// the child reported no failure but did not attempt every op, so no single op is to blame.
+    /// of several effects can name which one failed.
     #[error("operation failed inside the elevated child: {source}")]
     OpFailed {
         index: Option<usize>,
         #[source]
         source: Error,
     },
+    /// The child ran, and how far it got is unknowable.
+    ///
+    /// This is the case ADR-0005's two failure modes cannot express, and folding it into either
+    /// one is a lie with consequences. Reported as `CouldNotAcquire` it says "nothing happened",
+    /// which is what lets a caller roll back, verify the restore, and then delete the snapshot as
+    /// no longer describing anything (ADR-0002) while the machine may in fact have changed.
+    /// Reported as `OpFailed` it would name an operation that may well have succeeded.
+    ///
+    /// Reachable when the child is terminated mid-batch on a timeout, panics, completes the batch
+    /// but cannot return its response, or returns a response that fails validation.
+    #[error("the elevated child ran but its outcome is unknown: {0}")]
+    Indeterminate(#[source] Error),
 }
 
 impl BrokerOpError {
@@ -393,7 +451,7 @@ impl BrokerOpError {
     pub fn failed_op_index(&self) -> Option<usize> {
         match self {
             BrokerOpError::OpFailed { index, .. } => *index,
-            BrokerOpError::CouldNotAcquire(_) => None,
+            BrokerOpError::CouldNotAcquire(_) | BrokerOpError::Indeterminate(_) => None,
         }
     }
 }
@@ -402,8 +460,7 @@ impl BrokerOpError {
 /// entry point into the broker.
 pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError> {
     let sent = ops.len();
-    let response = run_elevated_broker(level, &BrokerRequest { nonce: 0, ops })
-        .map_err(BrokerOpError::CouldNotAcquire)?;
+    let response = run_elevated_broker(level, &BrokerRequest { nonce: 0, ops })?;
     check_response(sent, &response)
 }
 
@@ -421,14 +478,16 @@ fn check_response(sent: usize, response: &BrokerResponse) -> Result<(), BrokerOp
             )),
         });
     }
+    // Fewer ops attempted than sent, yet no failure named: the executor cannot produce that, so
+    // the response is truncated or forged. Some prefix of the batch may well have run, which makes
+    // this indeterminate rather than a named operation failure.
     if response.attempted != sent {
-        return Err(BrokerOpError::OpFailed {
-            index: None,
-            source: Error::ServiceControl(format!(
+        return Err(BrokerOpError::Indeterminate(Error::ServiceControl(
+            format!(
                 "broker attempted {} of {sent} ops but reported no failure",
                 response.attempted
-            )),
-        });
+            ),
+        )));
     }
     Ok(())
 }
@@ -541,14 +600,25 @@ mod tests {
         };
         check_response(3, &clean(3)).expect("all three attempted, none failed");
 
+        // A short-but-clean response is Indeterminate, not OpFailed. The executor cannot produce
+        // it, so the response is truncated or forged -- and a prefix of the batch may well have
+        // run, which is exactly the state that must not be reported as a named operation failure
+        // (which would blame an op that may have succeeded) nor as "nothing happened" (which would
+        // let the caller consume the snapshot).
         let err = check_response(3, &clean(2))
             .expect_err("two of three attempted with no failure is not a completed batch");
-        assert!(matches!(err, BrokerOpError::OpFailed { .. }), "got {err:?}");
+        assert!(
+            matches!(err, BrokerOpError::Indeterminate(_)),
+            "got {err:?}"
+        );
         assert!(err.to_string().contains("2 of 3"), "got {err}");
 
         let err = check_response(3, &clean(0))
             .expect_err("a response claiming nothing ran must never be Ok");
-        assert!(matches!(err, BrokerOpError::OpFailed { .. }), "got {err:?}");
+        assert!(
+            matches!(err, BrokerOpError::Indeterminate(_)),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -861,5 +931,43 @@ mod tests {
         write_response(path.to_str().unwrap(), b"{}").expect("a clean path must still work");
         assert_eq!(std::fs::read(&path).unwrap(), b"{}");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A non-zero broker exit has to say whether the machine could have changed, because the
+    /// caller's next decision is whether the snapshot still describes anything (ADR-0002).
+    ///
+    /// Exits 2 and 3 happen before `execute_request` is ever called, so nothing ran. Exits 4 and 5
+    /// happen only after it returns, meaning the whole batch ran and only the response was lost --
+    /// the furthest thing from "nothing happened". A panic or an outright kill lands in between and
+    /// is unknowable, which is the honest answer rather than a convenient one.
+    #[test]
+    fn a_broker_exit_says_whether_anything_could_have_run() {
+        let detail = || Error::ServiceControl("detail".into());
+
+        for code in [EXIT_UNREADABLE_REQUEST, EXIT_UNPARSEABLE_REQUEST] {
+            assert!(
+                matches!(
+                    classify_exit(code, detail()),
+                    BrokerOpError::CouldNotAcquire(_)
+                ),
+                "exit {code} happens before any op runs"
+            );
+        }
+
+        for code in [
+            EXIT_UNSERIALIZABLE_RESPONSE,
+            EXIT_UNWRITABLE_RESPONSE,
+            EXIT_PANICKED,
+            // The catch-all: terminated on timeout, or killed by a security product mid-batch.
+            42,
+        ] {
+            assert!(
+                matches!(
+                    classify_exit(code, detail()),
+                    BrokerOpError::Indeterminate(_)
+                ),
+                "exit {code} happens at or after the point where ops begin"
+            );
+        }
     }
 }

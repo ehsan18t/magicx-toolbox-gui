@@ -77,6 +77,19 @@ pub enum Error {
     #[error("could not acquire {0:?} elevation: {1}")]
     CouldNotAcquireElevation(Level, String),
 
+    /// The elevated child ran and how far it got is unknowable: it was terminated on a timeout,
+    /// panicked, or completed but could not return a trustworthy response.
+    ///
+    /// Deliberately distinct from both neighbours, because the caller's next move differs. Treated
+    /// as [`Error::CouldNotAcquireElevation`] it would claim nothing happened, and a rollback that
+    /// then verified clean would delete the snapshot under ADR-0002 while the machine may have
+    /// changed. Treated as [`Error::AccessDenied`] it would name an operation that may have
+    /// succeeded. The tweak still rolls back; the snapshot is what must survive.
+    #[error(
+        "{1} elevation ran but its outcome is unknown, so the machine may have changed: {0:?}"
+    )]
+    ElevatedOutcomeUnknown(Level, String),
+
     /// The addressed service or task does not exist, but the caller asked to drive it to a real
     /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4),
     /// so this is a typed refusal, never a silent no-op. Driving *to* `Missing` is the defined
