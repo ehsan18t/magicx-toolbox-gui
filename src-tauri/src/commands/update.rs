@@ -206,6 +206,15 @@ fn is_trusted_download_url(url: &str) -> bool {
 pub fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
     log::info!("Starting update download: {}", asset_name);
 
+    // The installer replaces this executable while this process keeps running, and the broker
+    // resolves its own image with current_exe() at spawn time, so an apply in flight could spawn a
+    // child from a newly-installed binary against a request the old parent built. Refuse instead.
+    if crate::tweaks::engine::lifecycle::any_apply_in_flight() {
+        return Err(Error::Update(
+            "A tweak is still being applied. Wait for it to finish before updating.".into(),
+        ));
+    }
+
     // Security: Validate download URL is from trusted source
     if !is_trusted_download_url(&download_url) {
         log::error!("Rejected untrusted download URL: {}", download_url);
