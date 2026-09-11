@@ -10,6 +10,9 @@ use windows_sys::Win32::System::Services::{
     SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_START,
     SERVICE_STATUS_PROCESS,
 };
+use windows_sys::Win32::System::SystemInformation::{
+    GetSystemDirectoryW, GetSystemWindowsDirectoryW,
+};
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, OpenProcess,
     QueryFullProcessImageNameW, UpdateProcThreadAttribute, CREATE_NO_WINDOW,
@@ -29,10 +32,6 @@ const SERVICE_START_PENDING: u32 = 2;
 const SERVICE_RUNNING: u32 = 4;
 
 const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
-
-/// The image the TrustedInstaller service must actually be running, checked before its handle is
-/// used as a spawn parent.
-const TI_IMAGE_SUFFIX: &str = r"\servicing\TrustedInstaller.exe";
 
 /// Turn the Win32 codes this path actually produces into something a support engineer can act on.
 /// Anything else keeps its bare number, which is still better than nothing.
@@ -145,11 +144,9 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             }
         }
 
-        // Poll for up to 10 seconds. Query first and sleep only between attempts: a service that
-        // is already running by the time StartServiceW returns should cost nothing. The last
-        // observed state is carried out of the loop so a timeout can say what the service was
-        // actually doing, which is the difference between "stuck starting" and "never started".
-        let mut last_state = SERVICE_STOPPED;
+        // Poll up to 10s, querying first so a running service costs nothing. The last state and
+        // query error leave the loop, so a timeout tells "stuck starting" from "never started".
+        let mut last_state = current_state;
         let mut last_query_err = None;
         for attempt in 0..100 {
             if attempt > 0 {
@@ -169,6 +166,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
                 last_query_err = Some(GetLastError());
                 continue;
             }
+            last_query_err = None;
 
             let status = status.assume_init();
             last_state = status.dwCurrentState;
@@ -210,22 +208,56 @@ unsafe fn process_image_path(handle: HANDLE) -> Option<String> {
     Some(String::from_utf16_lossy(&buf[..len as usize]))
 }
 
-/// Open the TrustedInstaller process with `PROCESS_CREATE_PROCESS`, the access the parent spoof
-/// needs, and verify it really is TrustedInstaller before handing the handle back. The returned
-/// handle is owned by the caller.
-///
-/// The verification is not paranoia. `start_trusted_installer_service` reads a pid out of the SCM
-/// and closes its handles before returning it, and the service stops itself when idle, so the pid
-/// can be dead and recycled by the time it is opened. Spoofing a recycled pid as
-/// `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` would make the broker child inherit THAT process's token
-/// instead, silently, at whatever privilege it happens to hold. Checking the image closes the
-/// window between the SCM's answer and the handle we actually use.
+fn system_folder(
+    query: unsafe extern "system" fn(*mut u16, u32) -> u32,
+    name: &str,
+) -> Result<Vec<u16>, Error> {
+    let mut buf = [0u16; 1024];
+    // SAFETY: `buf` is writable for the length passed.
+    let len = unsafe { query(buf.as_mut_ptr(), buf.len() as u32) } as usize;
+    if len == 0 {
+        return Err(Error::WindowsApi(format!(
+            "Failed to read the {name} folder: {}",
+            describe_win32(unsafe { GetLastError() })
+        )));
+    }
+    if len >= buf.len() {
+        // Too small a buffer succeeds, returns the size needed, and sets no last-error.
+        return Err(Error::WindowsApi(format!(
+            "The {name} folder path needs a {len}-character buffer"
+        )));
+    }
+    Ok(buf[..len].to_vec())
+}
+
+fn unprefixed(path: &str) -> &str {
+    path.strip_prefix(r"\\?\")
+        .or_else(|| path.strip_prefix(r"\??\"))
+        .unwrap_or(path)
+}
+
+fn ti_image_path(windows_dir: &str) -> String {
+    format!(
+        r"{}\servicing\TrustedInstaller.exe",
+        unprefixed(windows_dir).trim_end_matches('\\')
+    )
+}
+
+fn is_ti_image(image: &str, ti_image: &str) -> bool {
+    unprefixed(image).eq_ignore_ascii_case(ti_image)
+}
+
+/// Open TrustedInstaller with `PROCESS_CREATE_PROCESS` for the parent spoof; the caller owns the
+/// handle. The SCM's pid can be recycled by now (the service stops when idle), so once the open
+/// handle pins it, its image must match and the SCM must still report that pid running.
 fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
+    let windows_dir = system_folder(GetSystemWindowsDirectoryW, "Windows")?;
+    let ti_image = ti_image_path(&String::from_utf16_lossy(&windows_dir));
     let pid = start_trusted_installer_service()?;
 
-    // SAFETY: `pid` came from the SCM's own status for a running service; the handle is closed on
-    // every failure path below and otherwise owned by the caller.
+    // SAFETY: `pid` may be stale: the open handle pins it, and its identity is verified through
+    // that same handle before it is returned. Closed on every failure path, else the caller's.
     unsafe {
         let handle = OpenProcess(
             PROCESS_CREATE_PROCESS | PROCESS_QUERY_LIMITED_INFORMATION,
@@ -240,26 +272,38 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
         }
 
         match process_image_path(handle) {
-            Some(path)
-                if path
-                    .to_ascii_lowercase()
-                    .ends_with(&TI_IMAGE_SUFFIX.to_ascii_lowercase()) =>
-            {
-                Ok(handle)
-            }
+            Some(path) if is_ti_image(&path, &ti_image) => {}
             Some(path) => {
                 CloseHandle(handle);
-                Err(Error::ServiceControl(format!(
-                    "pid {pid} is {path}, not TrustedInstaller: the service stopped and the pid was reused"
-                )))
+                log::warn!("TrustedInstaller pid {pid} runs {path}, not {ti_image}");
+                return Err(Error::ServiceControl(format!(
+                    "pid {pid} is {path}, not {ti_image}: the service stopped and its pid was \
+                     reused, or it runs from a non-default path"
+                )));
             }
             None => {
                 let err = GetLastError();
                 CloseHandle(handle);
-                Err(Error::ServiceControl(format!(
+                return Err(Error::ServiceControl(format!(
                     "Could not verify that pid {pid} is TrustedInstaller: {}",
                     describe_win32(err)
+                )));
+            }
+        }
+
+        // The pid is pinned, so the SCM still reporting it RUNNING makes this handle the service.
+        // A stopped service restarts here under a new pid, which fails the match.
+        match start_trusted_installer_service() {
+            Ok(current) if current == pid => Ok(handle),
+            Ok(current) => {
+                CloseHandle(handle);
+                Err(Error::ServiceControl(format!(
+                    "pid {pid} is no longer the TrustedInstaller service (now pid {current})"
                 )))
+            }
+            Err(e) => {
+                CloseHandle(handle);
+                Err(e)
             }
         }
     }
@@ -275,13 +319,15 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
     // actually needs from this line.
     log::info!("Spawning the broker as TrustedInstaller");
 
+    let mut work_dir =
+        system_folder(GetSystemDirectoryW, "System32").map_err(SpawnError::NoChild)?;
+    work_dir.push(0);
     let ti_handle = get_trusted_installer_handle().map_err(SpawnError::NoChild)?;
     let mut command_wide = to_wide_string(command_line);
 
-    // SAFETY: `ti_handle` is closed on every path. The attribute list buffer is usize-aligned and
-    // sized by the API's own first (sizing) call, and is deleted before its backing Vec drops.
-    // `command_wide` is NUL-terminated and outlives the call, which CreateProcessW may mutate in
-    // place. `process_info`'s handles are reaped by wait_and_reap.
+    // SAFETY: `ti_handle` closes on every path once `spawn` returns. The usize-aligned list buffer,
+    // sized by the sizing call, and `ti_handle_copy` outlive DeleteProcThreadAttributeList.
+    // CreateProcessW may write into the owned `command_wide`; wait_and_reap closes `process_info`.
     unsafe {
         let mut create = || -> Result<PROCESS_INFORMATION, Error> {
             let mut attr_list_size: usize = 0;
@@ -305,6 +351,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
                 )));
             }
 
+            // The list stores a pointer to this, so it must outlive every use of `attr_list`.
             let mut ti_handle_copy = ti_handle;
             let updated = UpdateProcThreadAttribute(
                 attr_list,
@@ -333,6 +380,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
             startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
             let mut process_info = empty_process_info();
 
+            // Null lpEnvironment: the child inherits this app's (the admin user's) environment.
             let created = CreateProcessW(
                 ptr::null(),
                 command_wide.as_mut_ptr(),
@@ -341,7 +389,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
                 FALSE,
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
                 ptr::null(),
-                ptr::null(),
+                work_dir.as_ptr(),
                 &startup_info.StartupInfo,
                 &mut process_info,
             );
@@ -399,25 +447,45 @@ mod tests {
         assert_eq!(describe_service_state(SERVICE_RUNNING), "running");
     }
 
-    /// The parent-spoof identity check is a suffix match on the image path, so it has to be
-    /// case-insensitive (Windows paths are) and must not match a lookalike that merely contains
-    /// the name somewhere.
+    fn passes(image: &str, windows_dir: &str) -> bool {
+        is_ti_image(image, &ti_image_path(windows_dir))
+    }
+
     #[test]
-    fn the_image_check_matches_case_insensitively_and_only_at_the_end() {
-        let matches = |path: &str| {
-            path.to_ascii_lowercase()
-                .ends_with(&TI_IMAGE_SUFFIX.to_ascii_lowercase())
-        };
-        assert!(matches(r"C:\Windows\servicing\TrustedInstaller.exe"));
-        assert!(matches(r"c:\windows\SERVICING\trustedinstaller.EXE"));
-        assert!(
-            !matches(r"C:\Temp\TrustedInstaller.exe"),
-            "the servicing directory is part of the identity"
-        );
-        assert!(
-            !matches(r"C:\Windows\servicing\TrustedInstaller.exe.bak"),
-            "a suffix match must anchor at the end"
-        );
-        assert!(!matches(r"C:\Windows\System32\svchost.exe"));
+    fn the_image_check_accepts_the_windows_folder_in_every_spelling() {
+        let win = r"C:\Windows";
+        assert!(passes(r"C:\Windows\servicing\TrustedInstaller.exe", win));
+        assert!(passes(r"c:\windows\SERVICING\trustedinstaller.EXE", win));
+        assert!(passes(
+            r"\\?\C:\Windows\servicing\TrustedInstaller.exe",
+            win
+        ));
+        assert!(passes(
+            r"\??\C:\Windows\servicing\TrustedInstaller.exe",
+            win
+        ));
+        assert!(passes(
+            r"C:\Windows\servicing\TrustedInstaller.exe",
+            r"C:\Windows\"
+        ));
+        assert!(passes(
+            r"D:\WINNT\servicing\TrustedInstaller.exe",
+            r"D:\WINNT"
+        ));
+    }
+
+    #[test]
+    fn the_image_check_rejects_a_servicing_folder_outside_the_windows_folder() {
+        for image in [
+            r"C:\Temp\servicing\TrustedInstaller.exe",
+            r"\\?\C:\Temp\servicing\TrustedInstaller.exe",
+            r"\??\C:\Temp\servicing\TrustedInstaller.exe",
+            r"C:\Windows\Temp\servicing\TrustedInstaller.exe",
+            r"D:\Windows\servicing\TrustedInstaller.exe",
+            r"C:\Windows\servicing\TrustedInstaller.exe.bak",
+            r"C:\Windows\System32\svchost.exe",
+        ] {
+            assert!(!passes(image, r"C:\Windows"), "{image} passed");
+        }
     }
 }
