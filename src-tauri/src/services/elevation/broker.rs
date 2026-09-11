@@ -16,7 +16,7 @@ use crate::error::Error;
 use crate::models::{RegistryHive, RegistryValueType, SchedulerAction, ServiceStartupType};
 use crate::services::exclusive_temp::{self, ExclusiveTempFile};
 use crate::services::{registry_service, registry_value, scheduler_service, service_control};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ};
 
@@ -29,6 +29,7 @@ use super::Elevation;
 /// variant with no producer is still reachable by anything that can hand the child a request file,
 /// so it is pure attack surface: add one only together with the translation that emits it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub enum BrokerOp {
     /// Set a typed registry value.
     RegSet {
@@ -61,19 +62,36 @@ pub enum BrokerOp {
     },
 }
 
+/// Bump on any change to the wire types or exit codes (`the_wire_format_is_pinned`): after an
+/// update, parent and child are separate builds.
+const WIRE_VERSION: u32 = 1;
+
 /// A batch of operations for one broker invocation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct BrokerRequest {
+    pub version: u32,
     /// Transport nonce. Assigned freshly by [`run_elevated_broker`] at send time and echoed back in
     /// the response, so a stale or foreign response file (e.g. a leftover from a prior run at a
-    /// reused pid) is detected rather than read as a fresh success. Callers may leave it 0.
+    /// reused pid) is detected rather than read as a fresh success.
     #[serde(default)]
     pub nonce: u64,
     pub ops: Vec<BrokerOp>,
 }
 
+impl BrokerRequest {
+    pub fn new(ops: Vec<BrokerOp>) -> Self {
+        Self {
+            version: WIRE_VERSION,
+            nonce: 0,
+            ops,
+        }
+    }
+}
+
 /// The op a batch died on, by position in the request's `ops`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct OpFailure {
     pub index: usize,
     pub message: String,
@@ -81,7 +99,9 @@ pub struct OpFailure {
 
 /// The broker's typed response.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct BrokerResponse {
+    pub version: u32,
     /// Echoes the request's [`BrokerRequest::nonce`] so the parent can reject a stale/foreign file.
     #[serde(default)]
     pub nonce: u64,
@@ -149,17 +169,47 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
         }
     }
     BrokerResponse {
+        version: WIRE_VERSION,
         nonce: request.nonce,
         attempted,
         failure,
     }
 }
 
-// Transport-failure exit codes: the child's ONLY channel (no logger, console, or stderr yet), each
-// turned back into a phrase by `describe_broker_exit`. Code 2 also covers a malformed `--broker`
-// argv: either way no request was read.
-const EXIT_UNREADABLE_REQUEST: i32 = 2;
-const EXIT_UNPARSEABLE_REQUEST: i32 = 3;
+enum WireReject {
+    Malformed(String),
+    Version(Option<u64>),
+}
+
+/// Object form only: a derived struct also accepts a JSON array, which has no field names or
+/// version key. The version is read first, so another build reports as a mismatch, not malformed.
+fn parse_wire<T: DeserializeOwned>(
+    bytes: &[u8],
+    version: impl Fn(&T) -> u32,
+) -> Result<T, WireReject> {
+    let malformed = |e: serde_json::Error| WireReject::Malformed(e.to_string());
+    let object: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_slice(bytes).map_err(malformed)?;
+    let declared = object.get("version").and_then(serde_json::Value::as_u64);
+    if declared != Some(WIRE_VERSION.into()) {
+        return Err(WireReject::Version(declared));
+    }
+    let parsed: T = serde_json::from_value(object.into()).map_err(malformed)?;
+    match version(&parsed) {
+        WIRE_VERSION => Ok(parsed),
+        other => Err(WireReject::Version(Some(other.into()))),
+    }
+}
+
+const DIFFERENT_BUILD: &str =
+    "the elevated helper is a different build of the app; restart the app and try again";
+
+// Transport-failure exit codes, the child's only channel; `describe_broker_exit` names each.
+// A nothing-ran code must be a whole 32-bit value no kill or crash picks: `TerminateProcess` takes
+// any code and CRT `abort()` exits 3. Pinned with the wire format (`WIRE_VERSION`).
+const EXIT_UNREADABLE_REQUEST: i32 = 0x204D_5801;
+const EXIT_UNPARSEABLE_REQUEST: i32 = 0x204D_5802;
+const EXIT_WIRE_VERSION_MISMATCH: i32 = 0x204D_5803;
 const EXIT_UNSERIALIZABLE_RESPONSE: i32 = 4;
 const EXIT_UNWRITABLE_RESPONSE: i32 = 5;
 /// A panic inside the child. Distinct from the catch-all so a bug in our own executor is never
@@ -172,7 +222,8 @@ fn describe_broker_exit(code: i32) -> &'static str {
         EXIT_UNREADABLE_REQUEST => {
             "could not read its request (bad arguments or an unreadable file)"
         }
-        EXIT_UNPARSEABLE_REQUEST => "request file was not valid JSON",
+        EXIT_UNPARSEABLE_REQUEST => "request file was not a valid request",
+        EXIT_WIRE_VERSION_MISMATCH => DIFFERENT_BUILD,
         EXIT_UNSERIALIZABLE_RESPONSE => "could not serialize the response",
         EXIT_UNWRITABLE_RESPONSE => "could not write the response file",
         EXIT_PANICKED => "panicked while executing the batch",
@@ -184,17 +235,22 @@ pub fn malformed_argv_exit_code() -> i32 {
     EXIT_UNREADABLE_REQUEST
 }
 
-/// Broker entrypoint: read a request file, execute it, write a response file. Returns a process
-/// exit code. 0 means the batch was executed and a response was written; non-zero is a transport
-/// failure, distinct from op failures, which are reported inside the response.
+/// The real child's entrypoint. The panic hook is process-wide, so tests call [`serve_request`].
 pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
     install_panic_exit_hook();
+    serve_request(req_path, resp_path)
+}
 
+/// Read a request file, execute it, write a response file. 0 means the batch ran and a response
+/// was written; non-zero is a transport failure, distinct from op failures inside the response.
+fn serve_request(req_path: &str, resp_path: &str) -> i32 {
     let Ok(bytes) = std::fs::read(req_path) else {
         return EXIT_UNREADABLE_REQUEST;
     };
-    let Ok(request) = serde_json::from_slice::<BrokerRequest>(&bytes) else {
-        return EXIT_UNPARSEABLE_REQUEST;
+    let request = match parse_wire(&bytes, |r: &BrokerRequest| r.version) {
+        Ok(request) => request,
+        Err(WireReject::Version(_)) => return EXIT_WIRE_VERSION_MISMATCH,
+        Err(WireReject::Malformed(_)) => return EXIT_UNPARSEABLE_REQUEST,
     };
     let Ok(out) = serde_json::to_vec(&execute_request(&request)) else {
         return EXIT_UNSERIALIZABLE_RESPONSE;
@@ -205,14 +261,9 @@ pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
     0
 }
 
-/// Give a panicking child a distinct exit code.
-///
-/// The child runs before the logger is initialised, with no console and no inherited stderr, so the
-/// exit code is its only channel. Release builds are `panic = "abort"`, under which a panic in
-/// `execute_op` produces an abort the parent can only report as its catch-all, "crashed or was
-/// terminated before writing a response" -- indistinguishable from an antivirus kill. The hook runs
-/// before the abort, so exiting from it claims a code of our own. The message goes to stderr for
-/// the documented manual-verification run from an elevated shell, where a console does exist.
+/// Under release `panic = "abort"` a child panic otherwise reads as the catch-all exit, like an
+/// antivirus kill; the hook runs first and claims `EXIT_PANICKED`. The exit code is the child's
+/// only channel; stderr serves the manual run from an elevated shell.
 fn install_panic_exit_hook() {
     std::panic::set_hook(Box::new(|info| {
         eprintln!("broker panicked: {info}");
@@ -242,16 +293,11 @@ fn write_response(resp_path: &str, out: &[u8]) -> std::io::Result<()> {
     file.flush()
 }
 
-/// Whether a non-zero broker exit means nothing ran, or means we cannot know.
-///
-/// Exit 2 and 3 are returned before `execute_request` is ever called, so the machine is provably
-/// untouched. Everything else, including the catch-all for a terminated or antivirus-killed child,
-/// happened at or after the point where operations begin, so the honest answer is that we do not
-/// know how far it got. Exits 4 and 5 in particular mean the batch ran to completion and only the
-/// response was lost, which is the furthest thing from "nothing happened".
+/// Only the request-side exits precede `execute_request` and prove nothing ran; any other non-zero
+/// code, a kill included, may have run ops.
 fn classify_exit(code: i32, detail: Error) -> BrokerOpError {
     match code {
-        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST => {
+        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST | EXIT_WIRE_VERSION_MISMATCH => {
             BrokerOpError::CouldNotAcquire(detail)
         }
         _ => BrokerOpError::Indeterminate(detail),
@@ -285,12 +331,24 @@ fn next_nonce() -> u64 {
 }
 
 /// Parse a broker response, rejecting it unless its nonce matches the one we sent. This is what
-/// turns a stale or foreign response file into a hard error instead of a silent success.
-fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerResponse, Error> {
-    let resp: BrokerResponse = serde_json::from_slice(resp_bytes)
-        .map_err(|e| Error::ServiceControl(format!("parse broker response: {}", e)))?;
+/// turns a stale or foreign response file into a hard error instead of a silent success. Every
+/// rejection is `Indeterminate`: only a child that ran writes a response.
+fn validate_response(
+    resp_bytes: &[u8],
+    expected_nonce: u64,
+) -> Result<BrokerResponse, BrokerOpError> {
+    let rejected = |msg: String| BrokerOpError::Indeterminate(Error::ServiceControl(msg));
+    let resp = parse_wire(resp_bytes, |r: &BrokerResponse| r.version).map_err(|e| {
+        rejected(match e {
+            WireReject::Malformed(e) => format!("parse broker response: {e}"),
+            WireReject::Version(got) => format!(
+                "broker response wire version is {}, expected {WIRE_VERSION}: {DIFFERENT_BUILD}",
+                got.map_or_else(|| "missing".to_owned(), |v| v.to_string())
+            ),
+        })
+    })?;
     if resp.nonce != expected_nonce {
-        return Err(Error::ServiceControl(format!(
+        return Err(rejected(format!(
             "broker response nonce mismatch (sent {:#018x}, got {:#018x}): stale or foreign response",
             expected_nonce, resp.nonce
         )));
@@ -300,9 +358,8 @@ fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerRes
 
 /// Run a batch of typed operations at the given elevation.
 ///
-/// `Elevation::None` runs them in-process. `System`/`TrustedInstaller` write the request to a temp
-/// file, spawn `<this exe> --broker <req> <resp>` under the corresponding token, and read the typed
-/// response back. No shell parses anything, and the request *data* never reaches a command line;
+/// `Elevation::None` runs them in-process. `TrustedInstaller` writes the request to a temp file,
+/// spawns `<this exe> --broker <req> <resp>` under that token, and reads the typed response back. No shell parses anything, and the request *data* never reaches a command line;
 /// only our own generated paths do.
 ///
 /// ## The request file is the thing an attacker would want
@@ -337,10 +394,10 @@ fn validate_response(resp_bytes: &[u8], expected_nonce: u64) -> Result<BrokerRes
 /// the shape that would work, and it is a larger change than this comment once implied.
 pub fn run_elevated_broker(
     level: Elevation,
-    request: &BrokerRequest,
+    ops: Vec<BrokerOp>,
 ) -> Result<BrokerResponse, BrokerOpError> {
     if !level.is_elevated() {
-        return Ok(execute_request(request));
+        return Ok(execute_request(&BrokerRequest::new(ops)));
     }
 
     let exe = std::env::current_exe().map_err(|e| {
@@ -350,7 +407,7 @@ pub fn run_elevated_broker(
     let nonce = next_nonce();
     let wire = BrokerRequest {
         nonce,
-        ops: request.ops.clone(),
+        ..BrokerRequest::new(ops)
     };
     let req_json = serde_json::to_vec(&wire).map_err(|e| {
         BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
@@ -392,8 +449,7 @@ pub fn run_elevated_broker(
             return Err(classify_exit(
                 exit,
                 Error::ServiceControl(format!(
-                    "broker process exited with code {} ({}) without completing",
-                    exit,
+                    "broker process exited with code {exit:#x}: {}",
                     describe_broker_exit(exit)
                 )),
             ));
@@ -410,9 +466,7 @@ pub fn run_elevated_broker(
     drop(req_file); // releases the share-mode lock and deletes the request
     let _ = std::fs::remove_file(&resp_path);
 
-    // A response that fails validation came from a child that ran: the ops happened, the answer is
-    // untrustworthy.
-    validate_response(&read?, nonce).map_err(BrokerOpError::Indeterminate)
+    validate_response(&read?, nonce)
 }
 
 /// How a batch fails (spec §9, ADR-0005 as amended; invariant 24). Each aborts and rolls back at
@@ -420,7 +474,8 @@ pub fn run_elevated_broker(
 #[derive(Debug, thiserror::Error)]
 pub enum BrokerOpError {
     /// Nothing ran: the TrustedInstaller service would not start, `SeDebugPrivilege` was denied, no
-    /// child was created, or it could not read its request. The machine is unchanged.
+    /// child was created, or it refused its request (unreadable, unparseable, or from a different
+    /// build) before any op. The machine is unchanged.
     #[error("could not acquire the elevated child: {0}")]
     CouldNotAcquire(#[source] Error),
     /// The child ran and an operation inside it failed.
@@ -455,7 +510,7 @@ impl BrokerOpError {
 /// entry point into the broker.
 pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError> {
     let sent = ops.len();
-    let response = run_elevated_broker(level, &BrokerRequest { nonce: 0, ops })?;
+    let response = run_elevated_broker(level, ops)?;
     check_response(sent, &response)
 }
 
@@ -518,6 +573,7 @@ mod tests {
     #[test]
     fn request_round_trips_through_json() {
         let req = BrokerRequest {
+            version: WIRE_VERSION,
             nonce: 0xDEAD_BEEF,
             ops: vec![
                 BrokerOp::RegSet {
@@ -589,6 +645,7 @@ mod tests {
     #[test]
     fn check_response_requires_a_full_attempt_count_not_just_an_absent_failure() {
         let clean = |attempted| BrokerResponse {
+            version: WIRE_VERSION,
             nonce: 1,
             attempted,
             failure: None,
@@ -619,6 +676,7 @@ mod tests {
     #[test]
     fn check_response_surfaces_the_failing_op_index() {
         let response = BrokerResponse {
+            version: WIRE_VERSION,
             nonce: 1,
             attempted: 2,
             failure: Some(OpFailure {
@@ -635,6 +693,7 @@ mod tests {
     fn execute_request_reports_per_op_outcomes() {
         let scratch = Scratch::new();
         let req = BrokerRequest {
+            version: WIRE_VERSION,
             nonce: 0,
             ops: vec![
                 BrokerOp::RegCreateKey {
@@ -655,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn run_broker_reads_request_and_writes_response() {
+    fn serve_request_reads_request_and_writes_response() {
         // The file-transport contract: read a request file, execute, write a response file.
         let scratch = Scratch::new();
         let dir = std::env::temp_dir();
@@ -672,6 +731,7 @@ mod tests {
         ));
 
         let req = BrokerRequest {
+            version: WIRE_VERSION,
             nonce: 0,
             ops: vec![
                 BrokerOp::RegCreateKey {
@@ -689,7 +749,7 @@ mod tests {
         };
         std::fs::write(&req_path, serde_json::to_vec(&req).unwrap()).unwrap();
 
-        let code = run_broker(req_path.to_str().unwrap(), resp_path.to_str().unwrap());
+        let code = serve_request(req_path.to_str().unwrap(), resp_path.to_str().unwrap());
         assert_eq!(code, 0);
 
         let resp: BrokerResponse =
@@ -708,17 +768,14 @@ mod tests {
     fn run_elevated_broker_none_runs_in_process() {
         // Elevation::None takes the in-process path (no spawn), exercising the dispatch wrapper.
         let scratch = Scratch::new();
-        let req = BrokerRequest {
-            nonce: 0,
-            ops: vec![BrokerOp::RegSet {
-                hive: RegistryHive::Hkcu,
-                key: scratch.key.clone(),
-                value_name: "N".into(),
-                value_type: RegistryValueType::Dword,
-                value: serde_json::json!(5),
-            }],
-        };
-        let resp = run_elevated_broker(Elevation::None, &req).unwrap();
+        let ops = vec![BrokerOp::RegSet {
+            hive: RegistryHive::Hkcu,
+            key: scratch.key.clone(),
+            value_name: "N".into(),
+            value_type: RegistryValueType::Dword,
+            value: serde_json::json!(5),
+        }];
+        let resp = run_elevated_broker(Elevation::None, ops).unwrap();
         assert_eq!((resp.attempted, resp.failure), (1, None));
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "N").unwrap(),
@@ -729,6 +786,7 @@ mod tests {
     #[test]
     fn execute_request_echoes_the_request_nonce() {
         let resp = execute_request(&BrokerRequest {
+            version: WIRE_VERSION,
             nonce: 0xABCD_1234,
             ops: vec![],
         });
@@ -742,7 +800,10 @@ mod tests {
         // that stops a leftover file from being read as this invocation's success.
         let stale = serde_json::to_vec(&clean_response(111, 1)).unwrap();
         let err = validate_response(&stale, 222).expect_err("mismatched nonce must be rejected");
-        assert!(matches!(err, Error::ServiceControl(_)), "got {err:?}");
+        assert!(
+            matches!(err, BrokerOpError::Indeterminate(Error::ServiceControl(_))),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -754,6 +815,7 @@ mod tests {
 
     fn clean_response(nonce: u64, attempted: usize) -> BrokerResponse {
         BrokerResponse {
+            version: WIRE_VERSION,
             nonce,
             attempted,
             failure: None,
@@ -816,6 +878,7 @@ mod tests {
     fn execute_request_stops_at_the_first_failing_op_never_running_the_rest() {
         let scratch = Scratch::new();
         let req = BrokerRequest {
+            version: WIRE_VERSION,
             nonce: 0,
             ops: vec![
                 BrokerOp::RegSet {
@@ -841,7 +904,7 @@ mod tests {
             "must stop after the first failing op; the second is never attempted"
         );
         assert_eq!(resp.failure.map(|f| f.index), Some(0));
-        assert_second_value_was_never_written(&scratch.key);
+        assert_value_never_written(&scratch.key, "Second");
     }
 
     /// The `run_ops` half of the same fix: the whole batch fails, naming the first op, and (via
@@ -873,34 +936,287 @@ mod tests {
             err.to_string().contains("op 0"),
             "must name the failing op's index; got {err}"
         );
-        assert_second_value_was_never_written(&scratch.key);
+        assert_value_never_written(&scratch.key, "Second");
     }
 
-    /// "Second" absent (never written) is true whether the SCRATCH KEY itself was never created
-    /// (`RegistryKeyNotFound` -- the first op failed before any write at all) or the key exists but
-    /// the value doesn't (`Ok(None)`) -- both mean "the second op never ran."
-    fn assert_second_value_was_never_written(key: &str) {
-        match registry_service::read_dword(&RegistryHive::Hkcu, key, "Second") {
+    /// An absent key and an absent value both mean the op never ran.
+    fn assert_value_never_written(key: &str, name: &str) {
+        match registry_service::read_dword(&RegistryHive::Hkcu, key, name) {
             Ok(None) => {}
             Err(Error::RegistryKeyNotFound(_)) => {}
-            other => panic!(
-                "the second op's effect must never be applied once the first op failed, got {other:?}"
-            ),
+            other => panic!("{name} must never be written, got {other:?}"),
         }
     }
 
-    // There is deliberately no elevated end-to-end test here, and there cannot be one:
-    // `run_ops(Elevation::System, ..)` respawns `current_exe()` with `--broker`, but under `cargo
-    // test` that is the libtest harness binary, which rejects the flag and exits non-zero. The
-    // respawn design makes this structural, not a gap in these tests.
-    //
-    // Verify the real path against the built `magicx-toolbox.exe` instead: serialize a
-    // `BrokerRequest` to a file, run `magicx-toolbox.exe --broker <req> <resp>` from an elevated
-    // shell, and check both the response and the machine state it claims to have produced.
+    /// One `RegSet` of `Flag` under `key`, as the JSON a parent would write.
+    fn request_json(key: &str) -> serde_json::Value {
+        serde_json::to_value(BrokerRequest {
+            version: WIRE_VERSION,
+            nonce: 0,
+            ops: vec![BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: key.into(),
+                value_name: "Flag".into(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!(1),
+            }],
+        })
+        .unwrap()
+    }
 
-    /// The child creates the response at a path the parent only reserved. `std::fs::write` was
-    /// `CREATE_ALWAYS`, which follows a reparse point planted at that name and would land the write
-    /// wherever it pointed, as TrustedInstaller. `CREATE_NEW` has to refuse anything already there.
+    fn temp_path(kind: &str) -> std::path::PathBuf {
+        let seq = SCRATCH_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let pid = std::process::id();
+        std::env::temp_dir().join(format!("magicx-brokertest-{pid}-{seq}-{kind}.json"))
+    }
+
+    /// `serve_request` on raw request bytes: its exit code and whether it wrote a response.
+    fn run_broker_on(request: &[u8]) -> (i32, bool) {
+        let (req_path, resp_path) = (temp_path("req"), temp_path("resp"));
+        std::fs::write(&req_path, request).unwrap();
+        let code = serve_request(req_path.to_str().unwrap(), resp_path.to_str().unwrap());
+        let responded = resp_path.exists();
+        let _ = std::fs::remove_file(&req_path);
+        let _ = std::fs::remove_file(&resp_path);
+        (code, responded)
+    }
+
+    fn to_bytes(json: &serde_json::Value) -> Vec<u8> {
+        serde_json::to_vec(json).unwrap()
+    }
+
+    /// The child refuses a request it cannot fully understand before running any op, with an exit
+    /// the parent reads as nothing-ran.
+    fn assert_refused_before_any_op(case: &str, request: &[u8], key: &str, exit: i32) {
+        let (code, responded) = run_broker_on(request);
+        assert_eq!(code, exit, "{case}");
+        assert!(
+            matches!(
+                classify_exit(code, Error::ServiceControl("detail".into())),
+                BrokerOpError::CouldNotAcquire(_)
+            ),
+            "{case}: exit {code} must classify as nothing-ran"
+        );
+        assert!(!responded, "{case}: no response may be written");
+        assert_value_never_written(key, "Flag");
+    }
+
+    #[test]
+    fn a_request_with_an_unknown_field_is_refused_before_any_op() {
+        let scratch = Scratch::new();
+        let mut top = request_json(&scratch.key);
+        top["future"] = serde_json::json!(1);
+        let unparseable = EXIT_UNPARSEABLE_REQUEST;
+        assert_refused_before_any_op(
+            "top-level field",
+            &to_bytes(&top),
+            &scratch.key,
+            unparseable,
+        );
+
+        let mut in_op = request_json(&scratch.key);
+        in_op["ops"][0]["RegSet"]["future"] = serde_json::json!(1);
+        let in_op = to_bytes(&in_op);
+        assert_refused_before_any_op("field inside an op", &in_op, &scratch.key, unparseable);
+    }
+
+    #[test]
+    fn a_request_that_is_not_our_json_object_is_refused_before_any_op() {
+        let scratch = Scratch::new();
+        let full = to_bytes(&request_json(&scratch.key));
+        let op = request_json(&scratch.key)["ops"][0].clone();
+        for (case, bytes) in [
+            ("not JSON", b"not json".to_vec()),
+            ("truncated", full[..full.len() / 2].to_vec()),
+            (
+                "array, other version",
+                to_bytes(&serde_json::json!([2, 0, [op.clone()]])),
+            ),
+            (
+                "array, our version",
+                to_bytes(&serde_json::json!([WIRE_VERSION, 0, [op]])),
+            ),
+        ] {
+            assert_refused_before_any_op(case, &bytes, &scratch.key, EXIT_UNPARSEABLE_REQUEST);
+        }
+    }
+
+    #[test]
+    fn an_unreadable_request_file_is_refused_before_any_op() {
+        let (missing, resp_path) = (temp_path("missing"), temp_path("resp"));
+        let code = serve_request(missing.to_str().unwrap(), resp_path.to_str().unwrap());
+        assert_eq!(code, EXIT_UNREADABLE_REQUEST);
+        assert!(!resp_path.exists());
+    }
+
+    /// `run_broker`'s hook would exit the whole test run on the next failing assert, unnamed.
+    #[test]
+    fn a_test_side_broker_run_installs_no_panic_hook() {
+        assert_eq!(run_broker_on(b"{}").0, EXIT_WIRE_VERSION_MISMATCH);
+        assert!(std::panic::catch_unwind(|| panic!("probe")).is_err());
+    }
+
+    #[test]
+    fn a_request_with_an_unknown_variant_is_refused_before_any_op() {
+        let scratch = Scratch::new();
+        let mut op = request_json(&scratch.key);
+        let body = op["ops"][0]["RegSet"].take();
+        op["ops"][0] = serde_json::json!({ "RegFuture": body });
+        let unparseable = EXIT_UNPARSEABLE_REQUEST;
+        assert_refused_before_any_op("op variant", &to_bytes(&op), &scratch.key, unparseable);
+
+        let mut hive = request_json(&scratch.key);
+        hive["ops"][0]["RegSet"]["hive"] = serde_json::json!("HKFUTURE");
+        assert_refused_before_any_op("hive variant", &to_bytes(&hive), &scratch.key, unparseable);
+    }
+
+    #[test]
+    fn a_request_from_another_wire_version_is_refused_before_any_op() {
+        let scratch = Scratch::new();
+        let mut newer = request_json(&scratch.key);
+        newer["version"] = serde_json::json!(u32::MAX);
+        let mismatch = EXIT_WIRE_VERSION_MISMATCH;
+        assert_refused_before_any_op("newer version", &to_bytes(&newer), &scratch.key, mismatch);
+
+        let mut unversioned = request_json(&scratch.key);
+        unversioned.as_object_mut().unwrap().remove("version");
+        let unversioned = to_bytes(&unversioned);
+        assert_refused_before_any_op("no version", &unversioned, &scratch.key, mismatch);
+    }
+
+    #[test]
+    fn a_response_that_is_not_exactly_ours_is_outcome_unknown() {
+        let good = || serde_json::to_value(clean_response(222, 1)).unwrap();
+        let full = to_bytes(&good());
+        let mut cases = vec![
+            ("not JSON", b"not json".to_vec()),
+            ("truncated", full[..full.len() / 2].to_vec()),
+            (
+                "array, other version",
+                to_bytes(&serde_json::json!([2, 222, 1, null])),
+            ),
+            (
+                "array, our version",
+                to_bytes(&serde_json::json!([WIRE_VERSION, 222, 1, null])),
+            ),
+        ];
+
+        let mut top = good();
+        top["future"] = serde_json::json!(1);
+        cases.push(("top-level field", to_bytes(&top)));
+
+        let mut in_failure = good();
+        in_failure["failure"] = serde_json::json!({ "index": 0, "message": "x", "future": 1 });
+        cases.push(("field inside the failure", to_bytes(&in_failure)));
+
+        let mut newer = good();
+        newer["version"] = serde_json::json!(u32::MAX);
+        cases.push(("newer version", to_bytes(&newer)));
+
+        let mut unversioned = good();
+        unversioned.as_object_mut().unwrap().remove("version");
+        cases.push(("no version", to_bytes(&unversioned)));
+
+        for (case, bytes) in cases {
+            let got = validate_response(&bytes, 222);
+            assert!(
+                matches!(got, Err(BrokerOpError::Indeterminate(_))),
+                "{case}: {got:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_nothing_ran_exit_carries_the_full_distinctive_prefix() {
+        for code in [
+            EXIT_UNREADABLE_REQUEST,
+            EXIT_UNPARSEABLE_REQUEST,
+            EXIT_WIRE_VERSION_MISMATCH,
+            malformed_argv_exit_code(),
+        ] {
+            assert_eq!(code as u32 >> 16, 0x204D, "{code:#x}");
+        }
+    }
+
+    #[test]
+    fn the_wire_format_is_pinned() {
+        // Changing any byte below, or any exit code, needs a WIRE_VERSION bump.
+        const REQUEST: &str = r#"{"version":1,"nonce":7,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
+        const RESPONSE: &str =
+            r#"{"version":1,"nonce":7,"attempted":2,"failure":{"index":1,"message":"denied"}}"#;
+        assert_eq!(WIRE_VERSION, 1);
+        assert_eq!(
+            [
+                EXIT_UNREADABLE_REQUEST,
+                EXIT_UNPARSEABLE_REQUEST,
+                EXIT_WIRE_VERSION_MISMATCH,
+                EXIT_UNSERIALIZABLE_RESPONSE,
+                EXIT_UNWRITABLE_RESPONSE,
+                EXIT_PANICKED,
+            ],
+            [0x204D_5801, 0x204D_5802, 0x204D_5803, 4, 5, 6]
+        );
+
+        let (hive, key, value_name) = (RegistryHive::Hkcu, "K".to_owned(), "V".to_owned());
+        let request = BrokerRequest {
+            nonce: 7,
+            ..BrokerRequest::new(vec![
+                BrokerOp::RegSet {
+                    hive: RegistryHive::Hklm,
+                    key: key.clone(),
+                    value_name: value_name.clone(),
+                    value_type: RegistryValueType::Dword,
+                    value: serde_json::json!(1),
+                },
+                BrokerOp::RegDeleteValue {
+                    hive,
+                    key: key.clone(),
+                    value_name,
+                },
+                BrokerOp::RegDeleteKey {
+                    hive,
+                    key: key.clone(),
+                },
+                BrokerOp::RegCreateKey { hive, key },
+                BrokerOp::SvcSetStartup {
+                    name: "S".into(),
+                    startup: ServiceStartupType::Manual,
+                },
+                BrokerOp::Scheduler {
+                    task_path: "P".into(),
+                    task_name: "T".into(),
+                    action: SchedulerAction::Disable,
+                },
+            ])
+        };
+        let response = BrokerResponse {
+            version: WIRE_VERSION,
+            nonce: 7,
+            attempted: 2,
+            failure: Some(OpFailure {
+                index: 1,
+                message: "denied".into(),
+            }),
+        };
+        assert_eq!(serde_json::to_string(&request).unwrap(), REQUEST);
+        assert_eq!(serde_json::to_string(&response).unwrap(), RESPONSE);
+        assert_eq!(
+            serde_json::from_str::<BrokerRequest>(REQUEST).unwrap(),
+            request
+        );
+        assert_eq!(
+            serde_json::from_str::<BrokerResponse>(RESPONSE).unwrap(),
+            response
+        );
+    }
+
+    // No elevated end-to-end test: under `cargo test`, `current_exe()` is the libtest harness, which
+    // rejects `--broker`. Verify against the built exe: run `magicx-toolbox.exe --broker <req>
+    // <resp>` from an elevated shell and check the response and the machine state.
+
+    /// The child creates the response at a path the parent only reserved. `CREATE_ALWAYS` follows a
+    /// reparse point planted there and writes wherever it points, as TrustedInstaller; `CREATE_NEW`
+    /// must refuse anything already there.
     #[test]
     fn the_response_write_refuses_a_pre_planted_path() {
         let dir = std::env::temp_dir();
@@ -928,18 +1244,17 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// A non-zero broker exit has to say whether the machine could have changed, because the
-    /// caller's next decision is whether the snapshot still describes anything (ADR-0002).
-    ///
-    /// Exits 2 and 3 happen before `execute_request` is ever called, so nothing ran. Exits 4 and 5
-    /// happen only after it returns, meaning the whole batch ran and only the response was lost --
-    /// the furthest thing from "nothing happened". A panic or an outright kill lands in between and
-    /// is unknowable, which is the honest answer rather than a convenient one.
+    /// Only a nothing-ran exit lets the caller consume the snapshot (ADR-0002); any code a kill,
+    /// crash or panic can produce must stay outcome-unknown.
     #[test]
     fn a_broker_exit_says_whether_anything_could_have_run() {
         let detail = || Error::ServiceControl("detail".into());
 
-        for code in [EXIT_UNREADABLE_REQUEST, EXIT_UNPARSEABLE_REQUEST] {
+        for code in [
+            EXIT_UNREADABLE_REQUEST,
+            EXIT_UNPARSEABLE_REQUEST,
+            EXIT_WIRE_VERSION_MISMATCH,
+        ] {
             assert!(
                 matches!(
                     classify_exit(code, detail()),
@@ -961,8 +1276,12 @@ mod tests {
             EXIT_UNSERIALIZABLE_RESPONSE,
             EXIT_UNWRITABLE_RESPONSE,
             EXIT_PANICKED,
-            // The catch-all: killed mid-batch, e.g. by a security product.
+            // Killed mid-batch (`TerminateProcess` takes any code), CRT `abort()`, a fail-fast.
+            1,
+            2,
+            3,
             42,
+            0xC000_0409_u32 as i32,
         ] {
             assert!(
                 matches!(

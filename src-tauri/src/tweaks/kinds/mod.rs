@@ -71,8 +71,8 @@ pub enum Error {
     UnsupportedLevel(Level),
 
     /// Nothing ran: the TI service would not start, `SeDebugPrivilege` was denied, the child was
-    /// never created, or it could not read its request. Unlike [`Error::AccessDenied`], where the
-    /// child ran and an operation was refused.
+    /// never created, or it refused its request (unreadable, unparseable, or a different build).
+    /// Unlike [`Error::AccessDenied`], where the child ran and an operation was refused.
     #[error("could not acquire {0:?} elevation: {1}")]
     CouldNotAcquireElevation(Level, String),
 
