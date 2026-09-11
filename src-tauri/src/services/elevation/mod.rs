@@ -16,5 +16,5 @@ mod common;
 mod level;
 mod ti_elevation;
 
-pub use broker::{run_broker, run_ops, BrokerOp, BrokerOpError};
+pub use broker::{malformed_argv_exit_code, run_broker, run_ops, BrokerOp, BrokerOpError};
 pub use level::Elevation;

@@ -18,18 +18,35 @@ pub use error::Error;
 pub use models::*;
 use tauri_plugin_log::{Target, TargetKind};
 
-/// If this process was launched as `--broker <request-file> <response-file>`, run the elevated
-/// effect broker and return its exit code; returns `None` for a normal launch (start the GUI).
-///
-/// The main app spawns the app binary with this flag under a SYSTEM/TrustedInstaller token; the
-/// child executes typed operations against the effect services and writes a typed response. No
-/// shell is involved. Must be checked before any GUI/Tauri initialization.
+#[derive(Debug, PartialEq)]
+enum Launch<'a> {
+    Gui,
+    Broker { req: &'a str, resp: &'a str },
+    MalformedBroker,
+}
+
+// Only argv[1], where `run_elevated_broker` puts it; a later `--broker` is a GUI arg, and the GUI ignores args.
+fn classify_launch(args: &[std::ffi::OsString]) -> Launch<'_> {
+    match args {
+        [_, flag, rest @ ..] if flag == "--broker" => match rest {
+            [req, resp] => match (req.to_str(), resp.to_str()) {
+                (Some(req), Some(resp)) => Launch::Broker { req, resp },
+                _ => Launch::MalformedBroker,
+            },
+            _ => Launch::MalformedBroker,
+        },
+        _ => Launch::Gui,
+    }
+}
+
+/// `Some(exit code)` when launched as the broker, `None` to start the GUI. Call before any Tauri init.
 pub fn run_broker_if_requested() -> Option<i32> {
-    let args: Vec<String> = std::env::args().collect();
-    let pos = args.iter().position(|a| a == "--broker")?;
-    let req = args.get(pos + 1)?;
-    let resp = args.get(pos + 2)?;
-    Some(services::elevation::run_broker(req, resp))
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    match classify_launch(&args) {
+        Launch::Gui => None,
+        Launch::Broker { req, resp } => Some(services::elevation::run_broker(req, resp)),
+        Launch::MalformedBroker => Some(services::elevation::malformed_argv_exit_code()),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -154,4 +171,64 @@ pub fn run() {
             log::error!("Failed to run Tauri application: {:?}", e);
             std::process::exit(1);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_launch, Launch};
+    use std::ffi::OsString;
+
+    fn argv(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn broker_mode_is_entered_only_from_argv1() {
+        assert_eq!(
+            classify_launch(&argv(&["app.exe", "--broker", "r.json", "s.json"])),
+            Launch::Broker {
+                req: "r.json",
+                resp: "s.json"
+            }
+        );
+        assert_eq!(
+            classify_launch(&argv(&["app.exe", "x", "--broker", "r.json", "s.json"])),
+            Launch::Gui
+        );
+    }
+
+    #[test]
+    fn a_launch_without_broker_opens_the_gui() {
+        assert_eq!(classify_launch(&argv(&["app.exe"])), Launch::Gui);
+        assert_eq!(classify_launch(&argv(&[])), Launch::Gui);
+        assert_eq!(classify_launch(&argv(&["app.exe", "r.json"])), Launch::Gui);
+    }
+
+    #[test]
+    fn a_malformed_broker_invocation_never_opens_the_gui() {
+        for args in [
+            &["app.exe", "--broker"][..],
+            &["app.exe", "--broker", "r.json"],
+            &["app.exe", "--broker", "r.json", "s.json", "extra"],
+        ] {
+            assert_eq!(
+                classify_launch(&argv(args)),
+                Launch::MalformedBroker,
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_unicode_broker_path_is_malformed() {
+        use std::os::windows::ffi::OsStringExt;
+        let lone_surrogate = OsString::from_wide(&[0xD800]);
+        let args = [
+            OsString::from("app.exe"),
+            OsString::from("--broker"),
+            lone_surrogate,
+            OsString::from("s.json"),
+        ];
+        assert_eq!(classify_launch(&args), Launch::MalformedBroker);
+    }
 }

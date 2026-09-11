@@ -155,10 +155,9 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
     }
 }
 
-// Transport-failure exit codes. The exit code is the child's ONLY channel: it runs before the
-// logger is initialized and is spawned with no console and no inherited stderr, so anything it
-// wrote would be discarded. `describe_broker_exit` turns each one back into a phrase in the
-// parent, where the error can actually reach the user.
+// Transport-failure exit codes: the child's ONLY channel (no logger, console, or stderr yet), each
+// turned back into a phrase by `describe_broker_exit`. Code 2 also covers a malformed `--broker`
+// argv: either way no request was read.
 const EXIT_UNREADABLE_REQUEST: i32 = 2;
 const EXIT_UNPARSEABLE_REQUEST: i32 = 3;
 const EXIT_UNSERIALIZABLE_RESPONSE: i32 = 4;
@@ -170,13 +169,19 @@ const EXIT_PANICKED: i32 = 6;
 
 fn describe_broker_exit(code: i32) -> &'static str {
     match code {
-        EXIT_UNREADABLE_REQUEST => "could not read the request file",
+        EXIT_UNREADABLE_REQUEST => {
+            "could not read its request (bad arguments or an unreadable file)"
+        }
         EXIT_UNPARSEABLE_REQUEST => "request file was not valid JSON",
         EXIT_UNSERIALIZABLE_RESPONSE => "could not serialize the response",
         EXIT_UNWRITABLE_RESPONSE => "could not write the response file",
         EXIT_PANICKED => "panicked while executing the batch",
         _ => "crashed or was terminated before writing a response",
     }
+}
+
+pub fn malformed_argv_exit_code() -> i32 {
+    EXIT_UNREADABLE_REQUEST
 }
 
 /// Broker entrypoint: read a request file, execute it, write a response file. Returns a process
@@ -943,6 +948,14 @@ mod tests {
                 "exit {code} happens before any op runs"
             );
         }
+
+        assert!(
+            matches!(
+                classify_exit(malformed_argv_exit_code(), detail()),
+                BrokerOpError::CouldNotAcquire(_)
+            ),
+            "a malformed --broker argv exits before any op runs"
+        );
 
         for code in [
             EXIT_UNSERIALIZABLE_RESPONSE,
