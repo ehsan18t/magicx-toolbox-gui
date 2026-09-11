@@ -279,20 +279,22 @@ pub fn install_update(download_url: String, asset_name: String) -> Result<(), Er
 
     log::info!("Download complete, launching installer...");
 
-    // Launch the installer
-    // For .exe installers, just run them
-    // For .msi installers, use msiexec
     let extension = download_path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
 
     let result = if extension.eq_ignore_ascii_case("msi") {
-        Command::new("msiexec")
-            .arg("/i")
-            .arg(&download_path)
-            .arg("/passive")
-            .spawn()
+        crate::services::system32::SystemTool::Msiexec
+            .command()
+            .map_err(|e| std::io::Error::other(e.to_string()))
+            .and_then(|mut msiexec| {
+                msiexec
+                    .arg("/i")
+                    .arg(&download_path)
+                    .arg("/passive")
+                    .spawn()
+            })
     } else {
         Command::new(&download_path).spawn()
     };

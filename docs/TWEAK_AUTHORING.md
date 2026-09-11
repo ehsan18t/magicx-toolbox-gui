@@ -1494,10 +1494,7 @@ script body inline. (`probe` is the one field that also takes a map, for the nat
 > `build.rs`). The **shipped `ActionRaw` schema accepts only a string**, so filed scripts are not
 > available today. This guide documents the shipped behavior. See the task report for this discrepancy.
 
-**Execution mechanics:** `powershell` runs via `powershell.exe -EncodedCommand` (base64 of UTF-16LE), so
-size, loops, quotes, and special characters carry **no escaping risk**; `cmd` runs the body from a temp
-script file via `cmd.exe /c`. Every script has a **bounded timeout**: a hang is killed and surfaced as
-a typed error, never a silent success.
+**Execution mechanics:** `powershell` runs via `powershell.exe -EncodedCommand` (base64 of UTF-16LE), so size, loops, quotes, and special characters carry **no escaping risk**; `cmd` runs the body from a temp script file via `cmd.exe /c`. Both shells launch by absolute path from System32 (`powershell` is Windows PowerShell 5.1 at `System32\WindowsPowerShell\v1.0\powershell.exe`, never `pwsh`), with System32 as the working directory. What that guarantees: the shell itself is the real one, and a bare command name in a `cmd` script that exists in System32 (such as `rundll32.exe`) resolves there, never from the app's folder. What it does not guarantee: any other name a script uses. A bare command name not in System32 falls through to `PATH` (in `powershell`, bare names always resolve through `PATH`; it never searches the working directory), and a relative file path resolves against System32. When it matters, write the full path (`%SystemRoot%\System32\...` in `cmd`, `$env:SystemRoot\System32\...` in `powershell`) and never rely on the working directory. Every script has a **bounded timeout**: a hang is killed and surfaced as a typed error, never a silent success.
 
 ### 12.7 Actions and distinctness (the subtle part)
 

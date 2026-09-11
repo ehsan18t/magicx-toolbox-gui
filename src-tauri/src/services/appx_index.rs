@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use crate::error::Error;
+use crate::services::system32::SystemTool;
 
 /// Lists every installed package name, per-user and provisioned, one per line. `-AllUsers` needs
 /// admin; without it the call fails rather than silently reporting only the current user's
@@ -67,7 +68,8 @@ fn enumerate() -> Result<HashSet<String>, Error> {
         .encode_utf16()
         .flat_map(u16::to_le_bytes)
         .collect();
-    let output = std::process::Command::new("powershell.exe")
+    let output = SystemTool::PowerShell
+        .command()?
         .args([
             "-NoProfile",
             "-NonInteractive",

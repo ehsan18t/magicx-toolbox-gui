@@ -60,6 +60,7 @@ use windows_sys::Win32::System::JobObjects::{
 };
 
 use crate::services::exclusive_temp::ExclusiveTempFile;
+use crate::services::system32::SystemTool;
 use crate::tweaks::model::{ActionDef, Probe, Setting, Shell, Value};
 
 use super::registry::RegistryKind;
@@ -182,7 +183,7 @@ fn spawn_powershell(body: &str) -> Result<Child, Error> {
     let utf16: Vec<u8> = body.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let encoded = base64_encode(&utf16);
     spawn_command(
-        "powershell.exe",
+        SystemTool::PowerShell,
         &[
             "-NoProfile",
             "-NonInteractive",
@@ -200,18 +201,26 @@ fn spawn_powershell(body: &str) -> Result<Child, Error> {
 /// the file `script_path` names.
 fn spawn_cmd(script_path: &Path) -> Result<Child, Error> {
     let path = script_path.to_string_lossy();
-    spawn_command("cmd.exe", &["/c", &path])
+    spawn_command(SystemTool::Cmd, &["/c", &path])
 }
 
-fn spawn_command(program: &str, args: &[&str]) -> Result<Child, Error> {
-    Command::new(program)
-        .args(args)
+fn spawn_command(tool: SystemTool, args: &[&str]) -> Result<Child, Error> {
+    let cmd = tool
+        .command()
+        .map_err(|e| Error::ActionExecFailed(e.to_string()))?;
+    spawn(cmd, args)
+}
+
+fn spawn(mut cmd: Command, args: &[&str]) -> Result<Child, Error> {
+    cmd.args(args)
         .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| Error::ActionExecFailed(format!("failed to spawn {program}: {e}")))
+        .stderr(Stdio::piped());
+    cmd.spawn().map_err(|e| {
+        let program = cmd.get_program().to_string_lossy();
+        Error::ActionExecFailed(format!("failed to spawn {program}: {e}"))
+    })
 }
 
 /// Waits for `child`, killing + reaping it if `timeout` elapses first — std has no built-in
@@ -219,11 +228,8 @@ fn spawn_command(program: &str, args: &[&str]) -> Result<Child, Error> {
 /// (`log::debug!` only, spec §14's "captured for logging") so a chatty script can never deadlock
 /// against a full OS pipe buffer while the loop below only polls exit status.
 fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<i32, Error> {
-    // Bind `child` (and, transitively, anything it later spawns) into a fresh kill-on-close job
-    // right away, before anything else -- minimizing the window in which a fast-spawning
-    // grandchild could start outside the container (Fix 3). Either step failing kills the process
-    // immediately rather than leaving it running unmonitored: fail closed, matching the "did-it-
-    // work" contract's honest-failure principle.
+    // Bind `child` into its kill-on-close job before anything else, so a fast-spawning grandchild
+    // cannot start outside it. Either step failing kills the child: fail closed, never unmonitored.
     let job = match KillOnCloseJob::new() {
         Ok(job) => job,
         Err(e) => {
@@ -257,8 +263,7 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<i32, Error> 
                 )));
             }
             Err(e) => {
-                // Symmetric with the timeout arm above: a failed wait must not leave the child
-                // running/unreaped either (Fix 2).
+                // Symmetric with the timeout arm: a failed wait must not leave the child running.
                 let _ = child.kill();
                 let _ = child.wait();
                 break Err(Error::ActionExecFailed(format!(
@@ -268,11 +273,8 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<i32, Error> 
         }
     };
 
-    // Close the job *before* joining the drain threads below, on every path: closing the last
-    // handle to a JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE job terminates any descendant the immediate
-    // child left behind (e.g. a detached grandchild holding the inherited stdout/stderr pipe
-    // open), which is what lets that pipe finally reach EOF so the joins below can't hang past the
-    // bound (Fix 3). Dropping it after the joins instead would defeat the whole point.
+    // Close the job before joining the drain threads: it kills any descendant still holding the
+    // inherited stdout/stderr pipe, so the pipe reaches EOF and the joins cannot hang past the bound.
     drop(job);
 
     if let Some(t) = out {
@@ -284,11 +286,8 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<i32, Error> 
     status.map(|s| s.code().unwrap_or(-1))
 }
 
-/// A Windows Job Object configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: every process
-/// assigned to it (the spawned child, and anything *it* spawns — descendants inherit job
-/// membership by default) is terminated the moment the job's last handle closes, on any exit path,
-/// even across a panic unwind (`Drop` runs regardless). This is what makes the bounded timeout a
-/// real guarantee on the whole process tree, not just the immediate pid (Fix 3).
+/// A Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: the child and every descendant die when
+/// the last handle closes, on any exit path including unwind. Bounds the whole tree, not one pid.
 struct KillOnCloseJob(HANDLE);
 
 impl KillOnCloseJob {
@@ -523,8 +522,8 @@ mod tests {
 
     #[test]
     fn spawn_failure_is_err_never_ok() {
-        let err = spawn_command("definitely-not-a-real-executable-98213.exe", &[])
-            .expect_err("a nonexistent program must fail to spawn");
+        let missing = std::env::temp_dir().join("definitely-not-a-real-executable-98213.exe");
+        let err = spawn(Command::new(missing), &[]).expect_err("a nonexistent program must fail");
         assert!(matches!(err, Error::ActionExecFailed(_)), "got {err:?}");
     }
 
@@ -697,9 +696,8 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
         );
     }
 
-    /// Fix 4: `drive_rejects_system_and_ti_for_script_actions` above only covers the `Script`
-    /// variant -- this asserts the same guard for `DeleteTree`'s `run_apply` (via the reused
-    /// `RegistryKind::drive`) and `run_undo` directly, rather than only through code inspection.
+    /// The `DeleteTree` counterpart of `drive_rejects_system_and_ti_for_script_actions`: apply (via
+    /// `RegistryKind::drive`) and undo both reject System/Ti.
     #[test]
     fn delete_tree_rejects_system_and_ti_levels() {
         let scratch = Scratch::new("level_gate");

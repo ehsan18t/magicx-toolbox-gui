@@ -5,17 +5,13 @@
 
 use crate::error::Error;
 use crate::models::win_types::{FirewallChange, FirewallProtocol, FirewallRuleAction};
-use std::process::Command;
+use crate::services::system32::SystemTool;
 
-/// Check if a firewall rule exists by name.
-///
-/// Keys on netsh's **exit status**, not on the localized "No rules match the specified criteria"
-/// text: `netsh advfirewall firewall show rule name=X` exits 0 when the rule exists and non-zero
-/// when it does not. This is locale-independent and, unlike the old text check, no longer lets a
-/// genuine netsh failure masquerade as "rule exists" — which previously made `create` silently
-/// no-op (a failed existence probe was read as `!contains("No rules match") == true`).
+/// Keys on netsh's exit status (0 = the rule exists), never its "No rules match" text: that text is
+/// localized, and matching it lets a genuine netsh failure read as "rule exists".
 pub fn rule_exists(name: &str) -> Result<bool, Error> {
-    let output = Command::new("netsh")
+    let output = SystemTool::Netsh
+        .command()?
         .args([
             "advfirewall",
             "firewall",
@@ -39,8 +35,8 @@ pub fn create_firewall_rule(change: &FirewallChange) -> Result<(), Error> {
 
     let args = build_create_rule_args(change)?;
 
-    // Execute netsh command
-    let output = Command::new("netsh")
+    let output = SystemTool::Netsh
+        .command()?
         .args(&args)
         .output()
         .map_err(|e| Error::CommandExecution(format!("Failed to create firewall rule: {}", e)))?;
@@ -145,7 +141,8 @@ pub fn delete_firewall_rule(name: &str) -> Result<(), Error> {
         return Ok(());
     }
 
-    let output = Command::new("netsh")
+    let output = SystemTool::Netsh
+        .command()?
         .args([
             "advfirewall",
             "firewall",
@@ -247,13 +244,9 @@ mod tests {
         assert!(!minimal.iter().any(|a| a.starts_with("description=")));
     }
 
-    /// The audit flagged YAML-authored firewall strings as a command-injection
-    /// surface. This pins why they are NOT: the args go to `Command::new("netsh")`
-    /// via `.args()`, which builds the argv directly through CreateProcessW. No
-    /// shell is involved, so `&`, `|`, `"` and newlines are inert data.
-    ///
-    /// What they DO risk is netsh's own `key=value` parsing, so each value must stay
-    /// in exactly ONE argv element -- never split, never merged.
+    /// YAML firewall strings reach netsh via `.args()` (argv through CreateProcessW, no shell), so
+    /// `&`, `|`, `"` and newlines are inert. netsh's own `key=value` parsing is the risk: each
+    /// value must stay in exactly one argv element.
     #[test]
     fn hostile_characters_in_a_rule_name_stay_in_a_single_argument() {
         let hostile = r#"evil" & calc.exe & echo "pwned"#;
