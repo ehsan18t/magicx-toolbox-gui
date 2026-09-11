@@ -109,10 +109,6 @@ windows-sys = { version = "0.61", features = [
     # under-reports on an unmanifested process; see tweaks/winver.rs).
     "Wdk_System_SystemServices",
     "Win32_System_SystemInformation",
-    # QueryUnbiasedInterruptTime -- awake-only elapsed time. WaitForSingleObject timeouts are
-    # biased, so a machine that sleeps mid-apply burns the elevated child's budget and a healthy
-    # child reads as hung (see services/elevation/common.rs).
-    "Win32_System_WindowsProgramming",
     # ProcessIdToSessionId/WTSQuerySessionInformationW -- the owner of this process's own session,
     # for the over-the-shoulder SID guard (see tweaks/engine/context.rs). Deliberately NOT
     # WTSQueryUserToken: that needs SE_TCB_NAME, which only LocalSystem holds.

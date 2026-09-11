@@ -14,12 +14,13 @@ use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, OpenProcess,
     QueryFullProcessImageNameW, UpdateProcThreadAttribute, CREATE_NO_WINDOW,
     CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, LPPROC_THREAD_ATTRIBUTE_LIST,
-    PROCESS_CREATE_PROCESS, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTUPINFOEXW,
+    PROCESS_CREATE_PROCESS, PROCESS_INFORMATION, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTUPINFOEXW,
 };
 
 use super::common::{
     empty_process_info, enable_debug_privilege, hidden_startup_info, to_wide_string, wait_and_reap,
+    SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
 };
 
 /// dwCurrentState values we distinguish while waiting for the service.
@@ -267,14 +268,14 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
 /// Spawn `command_line` with TrustedInstaller.exe as its parent, so it inherits the TI token, and
 /// wait for it. The broker's TI launcher; the command line is built by
 /// `broker::run_elevated_broker`, never by a caller.
-pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Error> {
+pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, SpawnError> {
     // Deliberately not the command line. It carries the request and response temp paths, and a
     // persisted log is readable by anyone who can read the log directory; the response path in
     // particular is only guarded by being unguessable. The op count is what a support engineer
     // actually needs from this line.
     log::info!("Spawning the broker as TrustedInstaller");
 
-    let ti_handle = get_trusted_installer_handle()?;
+    let ti_handle = get_trusted_installer_handle().map_err(SpawnError::NoChild)?;
     let mut command_wide = to_wide_string(command_line);
 
     // SAFETY: `ti_handle` is closed on every path. The attribute list buffer is usize-aligned and
@@ -282,7 +283,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Erro
     // `command_wide` is NUL-terminated and outlives the call, which CreateProcessW may mutate in
     // place. `process_info`'s handles are reaped by wait_and_reap.
     unsafe {
-        let mut spawn = || -> Result<i32, Error> {
+        let mut create = || -> Result<PROCESS_INFORMATION, Error> {
             let mut attr_list_size: usize = 0;
             // First call sizes the buffer; it is documented to fail, so only the size is meaningful.
             InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut attr_list_size);
@@ -352,13 +353,18 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Erro
                     "Failed to create the broker process as TrustedInstaller: {}",
                     describe_win32(code)
                 ))),
-                None => wait_and_reap(&process_info, "TrustedInstaller command"),
+                None => Ok(process_info),
             }
         };
 
-        let result = spawn();
+        let created = create();
         CloseHandle(ti_handle);
-        result
+        let process_info = created.map_err(SpawnError::NoChild)?;
+        wait_and_reap(
+            &process_info,
+            "TrustedInstaller command",
+            ELEVATED_PROCESS_TIMEOUT_MS,
+        )
     }
 }
 

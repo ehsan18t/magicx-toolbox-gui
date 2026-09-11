@@ -18,26 +18,29 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, GetExitCodeProcess, OpenProcessToken, TerminateProcess, WaitForSingleObject,
     PROCESS_INFORMATION, STARTUPINFOW,
 };
-use windows_sys::Win32::System::WindowsProgramming::QueryUnbiasedInterruptTime;
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 const STARTF_USESHOWWINDOW: u32 = 0x00000001;
 /// `AdjustTokenPrivileges` reports a privilege it could not grant through this, not a FALSE return.
 const ERROR_NOT_ALL_ASSIGNED: u32 = 1300;
 
-/// How long to wait on a spawned elevated child before treating it as hung. Charged in awake time
-/// only (see [`wait_awake`]), never wall-clock.
+/// How long to wait on a spawned elevated child before treating it as hung.
 pub(super) const ELEVATED_PROCESS_TIMEOUT_MS: u32 = 30_000;
 
 /// How long to wait for a child we terminated to actually die before saying so.
 const TERMINATE_GRACE_MS: u32 = 5_000;
 
-/// One blocking slice of the timeout budget. Small enough that a suspend/resume is noticed
-/// promptly, large enough that the loop costs nothing on the common path.
-const WAIT_SLICE_MS: u32 = 1_000;
-
 const WAIT_OBJECT_0: u32 = 0x0000_0000;
 const WAIT_TIMEOUT: u32 = 0x0000_0102;
+
+/// Why a spawn returned no exit code, split on whether the child process ever existed.
+#[derive(Debug)]
+pub(super) enum SpawnError {
+    /// Failed before `CreateProcessW` created a child: nothing ran.
+    NoChild(Error),
+    /// A child was created, so ops may have run.
+    ChildRan(Error),
+}
 
 /// Convert a Rust string to a null-terminated wide string.
 pub(super) fn to_wide_string(s: &str) -> Vec<u16> {
@@ -127,185 +130,106 @@ unsafe fn close_then(handle: HANDLE, err: Error) -> Error {
     err
 }
 
-/// Unbiased interrupt time in milliseconds: time the machine has spent awake, excluding sleep and
-/// hibernation. Returns `None` if the clock is unavailable, which callers treat as "no better
-/// information than the biased clock".
-unsafe fn unbiased_now_ms() -> Option<u64> {
-    let mut t: u64 = 0;
-    // QueryUnbiasedInterruptTime reports 100-nanosecond intervals.
-    (QueryUnbiasedInterruptTime(&mut t) != FALSE).then_some(t / 10_000)
-}
-
-/// Wait on `h`, charging only awake time against `budget_ms`.
-///
-/// `WaitForSingleObject`'s own timeout is biased: suspended time counts against it. Closing a laptop
-/// lid for thirty seconds mid-apply therefore reports a perfectly healthy elevated child as hung,
-/// terminates it, and rolls the tweak back. Waiting in slices and charging the budget from the
-/// unbiased clock makes the timeout mean "the child ran for this long without finishing", which is
-/// the only thing it was ever supposed to mean.
-///
-/// Returns a raw `WaitForSingleObject` result, so callers keep the same three-outcome shape.
-///
-/// # Safety
-/// `h` must be a valid process handle.
-unsafe fn wait_awake(h: HANDLE, budget_ms: u32) -> u32 {
-    let Some(start) = unbiased_now_ms() else {
-        // No unbiased clock: one biased wait is strictly better than looping forever.
-        return WaitForSingleObject(h, budget_ms);
-    };
-    loop {
-        let result = WaitForSingleObject(h, WAIT_SLICE_MS);
-        if result != WAIT_TIMEOUT {
-            return result;
-        }
-        // A failed clock read is charged as a full budget rather than spinning: conservative, and
-        // it guarantees the loop terminates.
-        let awake_ms =
-            unbiased_now_ms().map_or(u64::from(budget_ms), |now| now.saturating_sub(start));
-        if awake_ms >= u64::from(budget_ms) {
-            return WAIT_TIMEOUT;
-        }
-    }
-}
-
-/// Terminate a hung child and confirm it is actually gone, returning the error to report.
-///
-/// `TerminateProcess` only *initiates* termination. Returning before the process has died lets the
-/// engine roll back from the snapshot while an elevated child is still writing the very keys being
-/// restored, and then delete that snapshot because the restore verified clean (ADR-0002). So the
-/// two cases are reported differently: a confirmed kill is an ordinary timeout, an unconfirmed one
-/// says plainly that the machine may still be changing under us.
-///
-/// # Safety
-/// `h` must be a valid process handle opened with `PROCESS_TERMINATE`.
-unsafe fn terminate_and_confirm(h: HANDLE, label: &str) -> Error {
+/// Terminate the child after `failure`, saying whether it may still run. `TerminateProcess` only
+/// starts termination and fails with error 5 on an exited child, so a wait on `h` confirms death
+/// either way. Safety: `h` must be a valid process handle.
+unsafe fn terminate_after(h: HANDLE, label: &str, failure: String) -> Error {
     let terminate_err = (TerminateProcess(h, 1) == FALSE).then(|| GetLastError());
-    let confirmed_dead =
-        terminate_err.is_none() && WaitForSingleObject(h, TERMINATE_GRACE_MS) == WAIT_OBJECT_0;
-
-    if confirmed_dead {
-        return Error::ServiceControl(format!(
-            "{label} timed out after {ELEVATED_PROCESS_TIMEOUT_MS}ms of running time and was terminated"
-        ));
-    }
-    let detail = match terminate_err {
-        Some(code) => format!("TerminateProcess failed: {code}"),
-        None => format!("still running {TERMINATE_GRACE_MS}ms after being terminated"),
+    let grace_ms = if terminate_err.is_some() {
+        0
+    } else {
+        TERMINATE_GRACE_MS
+    };
+    let detail = match (WaitForSingleObject(h, grace_ms), terminate_err) {
+        (WAIT_OBJECT_0, None) => {
+            return Error::ServiceControl(format!("{label} {failure} and was terminated"))
+        }
+        (WAIT_OBJECT_0, Some(_)) => {
+            return Error::ServiceControl(format!("{label} {failure} and had already exited"))
+        }
+        (_, Some(code)) => format!("TerminateProcess failed: {code}"),
+        (WAIT_TIMEOUT, None) => {
+            format!("still running {TERMINATE_GRACE_MS}ms after being terminated")
+        }
+        (other, None) => format!(
+            "confirming the kill failed (result {other:#x}): {}",
+            GetLastError()
+        ),
     };
     log::error!("{label}: could not confirm the elevated child died ({detail})");
     Error::ServiceControl(format!(
-        "{label} timed out after {ELEVATED_PROCESS_TIMEOUT_MS}ms of running time and could not be confirmed dead ({detail}); it may still be modifying the system"
+        "{label} {failure} and could not be confirmed dead ({detail}); it may still be modifying the system"
     ))
 }
 
-/// Wait for a spawned elevated process to finish, reap it, and return its real exit code.
-///
-/// The three wait outcomes stay distinct, so a wait failure can never masquerade as a completed
-/// process with exit code 0, which the broker would then read as success: the process exited (its
-/// exit code, with the `GetExitCodeProcess` BOOL checked rather than assumed), it hung (terminate
-/// and report a timeout), or the wait itself failed (report it, never `Ok(0)`).
-///
-/// # Safety
-/// `pi` must hold valid process and thread handles from a successful `CreateProcess*`. Both handles
-/// are closed on every return path.
-pub(super) unsafe fn wait_and_reap(pi: &PROCESS_INFORMATION, label: &str) -> Result<i32, Error> {
-    let wait_result = wait_awake(pi.hProcess, ELEVATED_PROCESS_TIMEOUT_MS);
-
-    // Every branch reads its error before reaping, then reaps exactly once.
-    let outcome = if wait_result == WAIT_TIMEOUT {
-        log::warn!("{label} timed out after {ELEVATED_PROCESS_TIMEOUT_MS}ms of running time");
-        Err(terminate_and_confirm(pi.hProcess, label))
-    } else if wait_result != WAIT_OBJECT_0 {
-        // WAIT_FAILED (0xFFFF_FFFF) or any unexpected value: do NOT fall through to a bogus Ok(0).
-        Err(Error::ServiceControl(format!(
-            "{label} wait failed (result {wait_result:#x}): {}",
-            GetLastError()
-        )))
-    } else {
-        let mut exit_code: u32 = 0;
-        if GetExitCodeProcess(pi.hProcess, &mut exit_code) == FALSE {
-            Err(Error::ServiceControl(format!(
-                "{label} exit-code query failed: {}",
-                GetLastError()
-            )))
-        } else {
-            log::debug!("{label} completed with exit code: {exit_code}");
-            Ok(exit_code as i32)
+/// Wait up to `timeout_ms` for a spawned child, reap it, and return its real exit code; a failed
+/// wait never falls through to `Ok(0)`, which the broker reads as success. Safety: `pi` holds valid
+/// handles from a successful `CreateProcess*`; both are closed on every path.
+pub(super) unsafe fn wait_and_reap(
+    pi: &PROCESS_INFORMATION,
+    label: &str,
+    timeout_ms: u32,
+) -> Result<i32, SpawnError> {
+    // The timeout excludes sleep and hibernate (Windows 8+), so no awake-time accounting.
+    let outcome = match WaitForSingleObject(pi.hProcess, timeout_ms) {
+        WAIT_OBJECT_0 => {
+            let mut exit_code: u32 = 0;
+            if GetExitCodeProcess(pi.hProcess, &mut exit_code) == FALSE {
+                // Signaled, so the child has exited: nothing to terminate.
+                Err(Error::ServiceControl(format!(
+                    "{label} exit-code query failed: {}",
+                    GetLastError()
+                )))
+            } else {
+                log::debug!("{label} completed with exit code: {exit_code}");
+                Ok(exit_code as i32)
+            }
+        }
+        WAIT_TIMEOUT => {
+            log::warn!("{label} timed out after {timeout_ms}ms");
+            Err(terminate_after(
+                pi.hProcess,
+                label,
+                format!("timed out after {timeout_ms}ms"),
+            ))
+        }
+        other => {
+            let failure = format!("wait failed (result {other:#x}): {}", GetLastError());
+            Err(terminate_after(pi.hProcess, label, failure))
         }
     };
 
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    outcome
+    outcome.map_err(SpawnError::ChildRan)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::windows::io::AsRawHandle;
-    use std::process::{Command, Stdio};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
 
     #[test]
-    fn the_unbiased_clock_is_available_and_never_goes_backwards() {
-        // SAFETY: pure out-param read of a kernel clock.
-        let a = unsafe { unbiased_now_ms() }.expect("QueryUnbiasedInterruptTime must be available");
-        std::thread::sleep(std::time::Duration::from_millis(25));
-        // SAFETY: as above.
-        let b = unsafe { unbiased_now_ms() }.expect("QueryUnbiasedInterruptTime must be available");
-        assert!(b >= a, "unbiased clock went backwards: {a} -> {b}");
-    }
-
-    /// The slice loop has to keep both halves of the old single-call behaviour: return as soon as
-    /// the child exits, and still report `WAIT_TIMEOUT` once the budget is genuinely spent. Only
-    /// the accounting changed, from wall-clock to awake time.
-    #[test]
-    fn wait_awake_returns_on_exit_and_still_times_out() {
-        let mut quick = Command::new("cmd.exe")
+    fn a_refused_terminate_on_an_exited_child_reports_it_exited() {
+        let root = std::env::var_os("SystemRoot").expect("SystemRoot is set");
+        let cmd = std::path::Path::new(&root).join(r"System32\cmd.exe");
+        let mut child = std::process::Command::new(cmd)
             .args(["/c", "exit", "0"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
             .spawn()
-            .expect("spawn a short-lived child");
-        // SAFETY: the handle is owned by `quick` and outlives the wait.
-        let result = unsafe { wait_awake(quick.as_raw_handle() as HANDLE, 30_000) };
-        assert_eq!(result, WAIT_OBJECT_0, "a child that exits must signal");
-        let _ = quick.wait();
-
-        let mut slow = Command::new("cmd.exe")
-            .args(["/c", "ping", "-n", "6", "127.0.0.1"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn a longer-lived child");
-        // A budget below one slice still spends a whole slice, then finds the budget exhausted.
-        // SAFETY: the handle is owned by `slow` and outlives the wait.
-        let result = unsafe { wait_awake(slow.as_raw_handle() as HANDLE, 500) };
-        assert_eq!(result, WAIT_TIMEOUT, "a child still running must time out");
-        let _ = slow.kill();
-        let _ = slow.wait();
-    }
-
-    /// A terminated child must be confirmed dead before the caller is told the batch is over,
-    /// because the caller's next move is to roll back from the snapshot.
-    #[test]
-    fn terminate_and_confirm_reports_an_ordinary_timeout_once_the_child_is_gone() {
-        let mut child = Command::new("cmd.exe")
-            .args(["/c", "ping", "-n", "30", "127.0.0.1"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn a long-lived child");
-        // SAFETY: the handle is owned by `child` and outlives the call.
-        let err = unsafe { terminate_and_confirm(child.as_raw_handle() as HANDLE, "test child") };
-        let message = err.to_string();
+            .expect("spawn a test child");
+        child.wait().expect("the child exits");
+        // SAFETY: the handle is checked, used once, then closed.
+        let message = unsafe {
+            // No PROCESS_TERMINATE right: TerminateProcess fails with error 5.
+            let h = OpenProcess(PROCESS_SYNCHRONIZE, FALSE, child.id());
+            assert!(!h.is_null(), "open the exited child");
+            let message = terminate_after(h, "test child", "timed out".into()).to_string();
+            CloseHandle(h);
+            message
+        };
         assert!(
-            message.contains("was terminated"),
-            "a confirmed kill must not warn about a live process: {message}"
+            message.ends_with("test child timed out and had already exited"),
+            "{message}"
         );
-        assert!(
-            !message.contains("may still be modifying"),
-            "a confirmed kill must not warn about a live process: {message}"
-        );
-        let _ = child.wait();
     }
 }

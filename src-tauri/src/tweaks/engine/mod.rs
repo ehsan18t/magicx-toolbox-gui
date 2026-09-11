@@ -180,10 +180,9 @@ fn failing_item(spans: &[std::ops::Range<usize>], failed_op: Option<usize>, sent
         .unwrap_or(spans.len().saturating_sub(1))
 }
 
-/// Submits `ops` through the elevation broker in ONE child (spec §9), keeping the two failure
-/// modes apart: the child was never acquired (environmental) versus it ran and the op was refused.
-/// An empty `ops` list, which a Service/Task drive to `Missing` produces, is a verified no-op that
-/// never spawns a child.
+/// Submits `ops` through the elevation broker in ONE child (spec §9), keeping its three failure
+/// modes apart. An empty `ops` list, which a Service/Task drive to `Missing` produces, is a
+/// verified no-op that never spawns a child.
 fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
     if ops.is_empty() {
         return Ok(());

@@ -55,7 +55,7 @@ pub enum Error {
         actual: RegType,
     },
 
-    /// A packed value's live string could not be parsed by its declared format — never guessed
+    /// A packed value's live string could not be parsed by its declared format: never guessed
     /// at, never partially rewritten (spec §5.2).
     #[error("{path}\\{name} is not a valid packed value: {source}")]
     MalformedPacked {
@@ -70,23 +70,17 @@ pub enum Error {
     #[error("{0:?} elevation is not yet routed by this build")]
     UnsupportedLevel(Level),
 
-    /// Could not ACQUIRE the declared level at all: the TI service would not start,
-    /// `SeDebugPrivilege` was denied, winlogon was not found, or the child failed to spawn or
-    /// respond. Environmental, not a mis-declared level, and deliberately distinct from
-    /// [`Error::AccessDenied`], which means the child ran but the operation was still refused.
+    /// Nothing ran: the TI service would not start, `SeDebugPrivilege` was denied, the child was
+    /// never created, or it could not read its request. Unlike [`Error::AccessDenied`], where the
+    /// child ran and an operation was refused.
     #[error("could not acquire {0:?} elevation: {1}")]
     CouldNotAcquireElevation(Level, String),
 
-    /// The elevated child ran and how far it got is unknowable: it was terminated on a timeout,
-    /// panicked, or completed but could not return a trustworthy response.
-    ///
-    /// Deliberately distinct from both neighbours, because the caller's next move differs. Treated
-    /// as [`Error::CouldNotAcquireElevation`] it would claim nothing happened, and a rollback that
-    /// then verified clean would delete the snapshot under ADR-0002 while the machine may have
-    /// changed. Treated as [`Error::AccessDenied`] it would name an operation that may have
-    /// succeeded. The tweak still rolls back; the snapshot is what must survive.
+    /// The elevated child may have run ops: it timed out, its wait or exit-code query failed, it
+    /// panicked, or its response was lost or invalid. Rolls back like its neighbours, but the
+    /// snapshot survives (ADR-0002, ADR-0005).
     #[error(
-        "{1} elevation ran but its outcome is unknown, so the machine may have changed: {0:?}"
+        "{0:?} elevation ran but its outcome is unknown, so the machine may have changed: {1}"
     )]
     ElevatedOutcomeUnknown(Level, String),
 
@@ -188,8 +182,8 @@ fn guard_level(cx: &ExecCx) -> Result<(), Error> {
 
 /// Backend-error fallback for kinds whose primitive exposes no richer typed distinction than this
 /// (service/task): a declared "requires admin" signal becomes our typed [`Error::AccessDenied`];
-/// anything else is the least-specific [`Error::Backend`] bucket. Never produces `Value::Missing`
-/// — that is exclusively the caller's job when the resource genuinely does not exist (invariant
+/// anything else is the least-specific [`Error::Backend`] bucket. Never produces `Value::Missing`:
+/// that is exclusively the caller's job when the resource genuinely does not exist (invariant
 /// 2), so a backend error here can never be confused with an absent resource.
 fn map_backend_error(e: BackendError) -> Error {
     match e {
@@ -224,6 +218,15 @@ mod tests {
         assert_ne!(
             std::mem::discriminant(&could_not_acquire),
             std::mem::discriminant(&acquired_but_denied)
+        );
+    }
+
+    #[test]
+    fn an_unknown_outcome_names_the_level_before_the_detail() {
+        let err = Error::ElevatedOutcomeUnknown(Level::Ti, "timed out".into());
+        assert_eq!(
+            err.to_string(),
+            "Ti elevation ran but its outcome is unknown, so the machine may have changed: timed out"
         );
     }
 }

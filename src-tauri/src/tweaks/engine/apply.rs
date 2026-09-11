@@ -6,14 +6,14 @@
 //! ## The five steps (spec §8.1), each a named invariant this file's tests pin directly
 //! 0. **Lock + detect.** [`lifecycle::lock_tweak`] serializes the whole sequence per tweak id
 //!    (spec §8.7). Already-`Active(target)` is a verified no-op: no snapshot, nothing driven. An
-//!    `Unknown` surface aborts before touching anything — a partially-observed surface is never a
+//!    `Unknown` surface aborts before touching anything: a partially-observed surface is never a
 //!    safe base for a decision (invariant 3).
 //! 1. **Capture, all reads before any mutation** (invariant 4). Every applicable non-shared
 //!    Setting is read once; every probeable Action the target *omits* is probed once, to decide
 //!    up front (never touched again after this point) whether it needs driving back. A read/probe
 //!    failure aborts here, having driven nothing.
 //! 2. **Persist the WAL entry before mutating** (invariant 5). The journal is exactly the actions
-//!    Step 1 already decided will run — built and pushed to disk before Step 3 drives a single
+//!    Step 1 already decided will run, built and pushed to disk before Step 3 drives a single
 //!    effect.
 //!
 //!    3/4. **Drive + verify, in declaration order** (invariant 18). Each effect kind's own
@@ -22,14 +22,14 @@
 //! ## Rollback (ADR-0001)
 //! On any Step 3/4 failure: undo the journal's completed actions in reverse order (a completed
 //! no-undo action is reported un-undoable, never fatal to the rest); then drive the *whole*
-//! captured pre-apply state back via [`drive_to_captured`] — drive-to-value is absolute, so partial
+//! captured pre-apply state back via [`drive_to_captured`]: drive-to-value is absolute, so partial
 //! forward progress on Settings needs no per-step tracking. Shared claims taken/released during the
 //! failed attempt are reversed too (claim ↔ release), tracked via [`ProcessedEffect`] alongside
-//! completed actions, since the captured entry itself excludes shared effects (spec §8.1 step 1) —
+//! completed actions, since the captured entry itself excludes shared effects (spec §8.1 step 1);
 //! without this, a claim taken just before a later effect failed would survive the rollback
 //! unreversed, leaving the claims record silently wrong. A verified full rollback consumes the
 //! just-captured entry; any unverified restore keeps it and reports every unrecoverable item
-//! (ADR-0001/0002, invariant 20) — never `let _ =` on a rollback outcome.
+//! (ADR-0001/0002, invariant 20); never `let _ =` on a rollback outcome.
 //!
 //! ## Deviation from the brief (flagged per the task's own instruction)
 //! The brief's `apply` signature omits `corpus`; both `detect` (already reviewed, Task 11) and
@@ -164,22 +164,17 @@ pub enum EngineError {
     },
 }
 
-/// Whether a drive failure leaves the machine in a state we cannot describe.
-///
-/// The consume rule (ADR-0002) says a verified full restore means the snapshot entry no longer
-/// describes anything, so it may be deleted. That reasoning depends on knowing what was driven. An
-/// elevated child that was terminated on a timeout, panicked, or completed but could not return a
-/// trustworthy response may have driven operations the parent never recorded, and never rolled
-/// back, because it does not know they happened.
-///
-/// In that case "the restore verified clean" is a statement about the effects we know of, not about
-/// the machine. Keeping the entry is the only safe reading, and the entry staying on disk is what
-/// surfaces the tweak as Needs Attention rather than silently finished.
+/// An elevated child may have run ops and what it did cannot be proven: its response is lost or
+/// untrusted, an SCM or Task Scheduler RPC may complete server-side after a kill, or the kill is
+/// unconfirmed. So a verified rollback still keeps the entry, which ADR-0002 always allows.
 fn outcome_is_unknown(error: &EngineError) -> bool {
     matches!(
         error,
         EngineError::DriveFailed {
             source: KindError::ElevatedOutcomeUnknown(..),
+            ..
+        } | EngineError::Claim {
+            source: ClaimsError::Kind(KindError::ElevatedOutcomeUnknown(..)),
             ..
         }
     )
@@ -1273,6 +1268,8 @@ mod tests {
         NoOp,
         Err,
         ResourceMissing,
+        /// Drives the value, then reports an unknown elevated outcome; later drives succeed.
+        OutcomeUnknownOnce,
     }
 
     #[derive(Default)]
@@ -1348,8 +1345,17 @@ mod tests {
                 f();
             }
             self.log.lock().unwrap().push(Op::Drive(key.clone()));
-            match self.drive_plan.lock().unwrap().get(&key) {
+            let plan = self.drive_plan.lock().unwrap().get(&key).cloned();
+            match plan {
                 Some(DrivePlan::Err) => Err(KindError::Backend("mock drive failure".into())),
+                Some(DrivePlan::OutcomeUnknownOnce) => {
+                    self.drive_plan.lock().unwrap().remove(&key);
+                    self.live.lock().unwrap().insert(key, target.clone());
+                    Err(KindError::ElevatedOutcomeUnknown(
+                        Level::Ti,
+                        "mock timeout".into(),
+                    ))
+                }
                 Some(DrivePlan::ResourceMissing) => {
                     Err(KindError::ResourceMissing("mock resource missing".into()))
                 }
@@ -2182,6 +2188,100 @@ mod tests {
                 .unwrap()
                 .is_none(),
             "a verified rollback must consume the entry"
+        );
+    }
+
+    /// The rollback verifies, yet what the child ran cannot be proven: the entry stays (ADR-0002).
+    #[test]
+    fn an_unknown_elevated_outcome_keeps_the_entry_after_a_verified_rollback() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind
+            .seed("s1", Value::Startup(StartupType::Manual))
+            .drive_plan("s1", DrivePlan::OutcomeUnknownOnce);
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect_err("s1's outcome is unknown");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(
+            rollback_failures.is_empty(),
+            "the restore verifies: {rollback_failures:?}"
+        );
+        assert_eq!(h.kind.live_value("s1"), Value::Startup(StartupType::Manual));
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_some(),
+            "an unknown outcome must keep the entry"
+        );
+    }
+
+    #[test]
+    fn an_unknown_elevated_outcome_inside_a_shared_claim_keeps_the_entry() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind
+            .seed("sh_addr", Value::Startup(StartupType::Manual))
+            .drive_plan("sh_addr", DrivePlan::OutcomeUnknownOnce);
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), shared_effect("sh_eff", "sh")],
+            vec![opt(
+                "A",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("sh_eff", OptValue::Claim(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![shared]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect_err("the claim's outcome is unknown");
+        let EngineError::RollbackReport {
+            original,
+            rollback_failures,
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(
+            matches!(*original, EngineError::Claim { .. }),
+            "{original:?}"
+        );
+        assert!(
+            rollback_failures.is_empty(),
+            "the restore verifies: {rollback_failures:?}"
+        );
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_some(),
+            "an unknown outcome inside a shared claim must keep the entry"
         );
     }
 

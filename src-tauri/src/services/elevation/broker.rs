@@ -4,7 +4,7 @@
 //! composing `cmd.exe /c <string>` command lines and escaping values (the source of the injection
 //! and REG_SZ-corruption classes), the main app serializes a list of **typed** operations, spawns
 //! this broker with a SYSTEM or TrustedInstaller token, and the broker runs the very same effect
-//! functions the unelevated path uses — now succeeding on protected resources because the process
+//! functions the unelevated path uses, now succeeding on protected resources because the process
 //! holds the elevated token.
 //!
 //! Transport is a request file + a response file (paths passed as argv to `--broker`), so no shell
@@ -20,13 +20,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ};
 
+use super::common::SpawnError;
 use super::Elevation;
 
 /// One typed operation for the broker to perform in the elevated process.
 ///
 /// Every variant must have a producer in `tweaks::kinds` (`to_broker_op`/`to_broker_ops`). A
 /// variant with no producer is still reachable by anything that can hand the child a request file,
-/// so it is pure attack surface — add one only together with the translation that emits it.
+/// so it is pure attack surface: add one only together with the translation that emits it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BrokerOp {
     /// Set a typed registry value.
@@ -252,12 +253,19 @@ fn classify_exit(code: i32, detail: Error) -> BrokerOpError {
     }
 }
 
+fn classify_spawn(e: SpawnError) -> BrokerOpError {
+    match e {
+        SpawnError::NoChild(e) => BrokerOpError::CouldNotAcquire(e),
+        SpawnError::ChildRan(e) => BrokerOpError::Indeterminate(e),
+    }
+}
+
 /// Monotonic counter mixed into the per-invocation transport nonce.
 static BROKER_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// A per-invocation transport nonce. Mixes wall-clock, a process-local counter, and the pid so two
 /// invocations get distinct nonces even across a process restart that reuses our pid and resets the
-/// counter — the exact conjunction that could otherwise let a stale response file be read as a
+/// counter: the exact conjunction that could otherwise let a stale response file be read as a
 /// fresh success.
 fn next_nonce() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -372,32 +380,27 @@ pub fn run_elevated_broker(
         Elevation::None => unreachable!("handled above"),
     };
 
-    // Gate on the child's real exit code before trusting the file: a non-zero exit means the broker
-    // did not finish writing the response, so any bytes at resp_path are stale or partial. How far
-    // it got decides whether the caller may treat the machine as untouched, so every failure below
-    // is classified rather than collapsed.
-    let read = spawn
-        // A spawn that never returned an exit code never created a child.
-        .map_err(BrokerOpError::CouldNotAcquire)
-        .and_then(|exit| {
-            if exit != 0 {
-                return Err(classify_exit(
+    // A non-zero exit means the response is stale or partial. How far the child got decides whether
+    // the machine is untouched, so every failure is classified, never collapsed.
+    let read = spawn.map_err(classify_spawn).and_then(|exit| {
+        if exit != 0 {
+            return Err(classify_exit(
+                exit,
+                Error::ServiceControl(format!(
+                    "broker process exited with code {} ({}) without completing",
                     exit,
-                    Error::ServiceControl(format!(
-                        "broker process exited with code {} ({}) without completing",
-                        exit,
-                        describe_broker_exit(exit)
-                    )),
-                ));
-            }
-            // Exit 0 means the batch ran AND the response was written, so a read failure here is
-            // about the response, not about whether anything happened.
-            std::fs::read(&resp_path).map_err(|e| {
-                BrokerOpError::Indeterminate(Error::ServiceControl(format!(
-                    "broker completed but its response could not be read: {e}"
-                )))
-            })
-        });
+                    describe_broker_exit(exit)
+                )),
+            ));
+        }
+        // Exit 0 means the batch ran AND the response was written, so a read failure here is
+        // about the response, not about whether anything happened.
+        std::fs::read(&resp_path).map_err(|e| {
+            BrokerOpError::Indeterminate(Error::ServiceControl(format!(
+                "broker completed but its response could not be read: {e}"
+            )))
+        })
+    });
 
     drop(req_file); // releases the share-mode lock and deletes the request
     let _ = std::fs::remove_file(&resp_path);
@@ -407,18 +410,12 @@ pub fn run_elevated_broker(
     validate_response(&read?, nonce).map_err(BrokerOpError::Indeterminate)
 }
 
-/// The two distinct ways a multi-op batch can fail (spec §9, ADR-0005 as amended; invariant 24):
-/// the elevated child could never be ACQUIRED at all (environmental -- the TI service would not
-/// start, `SeDebugPrivilege` was denied, winlogon was not found, or the child failed to spawn or
-/// respond) versus the child WAS acquired and ran, but at least one operation inside it failed
-/// (the declaration is genuinely too low for this machine). Both abort + roll back at the call
-/// site; neither is ever silently downgraded to the other or to a benign value.
+/// How a batch fails (spec §9, ADR-0005 as amended; invariant 24). Each aborts and rolls back at
+/// the call site; none is ever downgraded to another or to a benign value.
 #[derive(Debug, thiserror::Error)]
 pub enum BrokerOpError {
-    /// The elevated child was never acquired, or was acquired but provably executed nothing.
-    /// Environmental: the TrustedInstaller service would not start, `SeDebugPrivilege` was denied,
-    /// the spawn failed, or the child could not even read its request. No operation was attempted,
-    /// so the machine is unchanged.
+    /// Nothing ran: the TrustedInstaller service would not start, `SeDebugPrivilege` was denied, no
+    /// child was created, or it could not read its request. The machine is unchanged.
     #[error("could not acquire the elevated child: {0}")]
     CouldNotAcquire(#[source] Error),
     /// The child ran and an operation inside it failed.
@@ -432,16 +429,9 @@ pub enum BrokerOpError {
         #[source]
         source: Error,
     },
-    /// The child ran, and how far it got is unknowable.
-    ///
-    /// This is the case ADR-0005's two failure modes cannot express, and folding it into either
-    /// one is a lie with consequences. Reported as `CouldNotAcquire` it says "nothing happened",
-    /// which is what lets a caller roll back, verify the restore, and then delete the snapshot as
-    /// no longer describing anything (ADR-0002) while the machine may in fact have changed.
-    /// Reported as `OpFailed` it would name an operation that may well have succeeded.
-    ///
-    /// Reachable when the child is terminated mid-batch on a timeout, panics, completes the batch
-    /// but cannot return its response, or returns a response that fails validation.
+    /// A child was created, so ops may have run: a timeout, a failed wait or exit-code query, a
+    /// panic, or a lost or invalid response. As `CouldNotAcquire`, a verified rollback would delete
+    /// the snapshot (ADR-0002); as `OpFailed`, it would blame an op that may have succeeded.
     #[error("the elevated child ran but its outcome is unknown: {0}")]
     Indeterminate(#[source] Error),
 }
@@ -575,7 +565,7 @@ mod tests {
     #[test]
     fn deleting_an_absent_value_is_success() {
         let scratch = Scratch::new();
-        // Key present, value absent — the common "already gone" case the apply flow hits.
+        // Key present, value absent: the common "already gone" case the apply flow hits.
         assert!(execute_op(&BrokerOp::RegCreateKey {
             hive: RegistryHive::Hkcu,
             key: scratch.key.clone(),
@@ -958,7 +948,7 @@ mod tests {
             EXIT_UNSERIALIZABLE_RESPONSE,
             EXIT_UNWRITABLE_RESPONSE,
             EXIT_PANICKED,
-            // The catch-all: terminated on timeout, or killed by a security product mid-batch.
+            // The catch-all: killed mid-batch, e.g. by a security product.
             42,
         ] {
             assert!(
@@ -967,6 +957,147 @@ mod tests {
                     BrokerOpError::Indeterminate(_)
                 ),
                 "exit {code} happens at or after the point where ops begin"
+            );
+        }
+    }
+
+    /// Only a spawn that created no child ran nothing. Every failure after `CreateProcessW` keeps
+    /// the snapshot (ADR-0002), and its error says whether the child may still be running.
+    #[test]
+    fn only_a_spawn_that_created_no_child_is_could_not_acquire() {
+        use super::super::common::wait_and_reap;
+        use std::os::windows::io::AsRawHandle;
+        use std::process::{Child, Command, Stdio};
+        use windows_sys::Win32::Foundation::{FALSE, HANDLE, WAIT_OBJECT_0};
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, WaitForSingleObject, PROCESS_INFORMATION,
+            PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+        };
+
+        /// Kills the child on drop, so a failing row cannot leak it.
+        struct Spawned(Child);
+        impl Drop for Spawned {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        fn spawn(exe: &str, args: &[&str]) -> Spawned {
+            let root = std::env::var_os("SystemRoot").expect("SystemRoot is set");
+            let path = std::path::Path::new(&root).join("System32").join(exe);
+            Spawned(
+                Command::new(path)
+                    .args(args)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("spawn a test child"),
+            )
+        }
+        fn handles(child: &Spawned, rights: u32) -> PROCESS_INFORMATION {
+            let pid = child.0.id();
+            // SAFETY: OpenProcess only reads its arguments; the handles are checked below.
+            let pi = unsafe {
+                PROCESS_INFORMATION {
+                    hProcess: OpenProcess(rights, FALSE, pid),
+                    // wait_and_reap only closes hThread; any owned handle stands in.
+                    hThread: OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid),
+                    dwProcessId: pid,
+                    dwThreadId: 0,
+                }
+            };
+            assert!(!pi.hProcess.is_null() && !pi.hThread.is_null());
+            pi
+        }
+
+        let no_child = classify_spawn(SpawnError::NoChild(Error::ServiceControl(
+            "CreateProcessW failed".into(),
+        )));
+        assert!(
+            matches!(no_child, BrokerOpError::CouldNotAcquire(_)),
+            "{no_child:?}"
+        );
+
+        let exits = spawn("cmd.exe", &["/c", "exit", "7"]);
+        let full = PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE;
+        // SAFETY: both handles are owned by `handles` and closed by wait_and_reap.
+        let code = unsafe { wait_and_reap(&handles(&exits, full), "test child", 30_000) };
+        assert!(
+            matches!(code, Ok(7)),
+            "a child that exits reports its code: {code:?}"
+        );
+
+        struct PostSpawn {
+            kind: &'static str,
+            hangs: bool,
+            rights: u32,
+            timeout_ms: u32,
+            says: &'static str,
+            dies: bool,
+        }
+        let rows = [
+            PostSpawn {
+                kind: "confirmed kill",
+                hangs: true,
+                rights: PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
+                timeout_ms: 200,
+                says: "timed out after 200ms and was terminated",
+                dies: true,
+            },
+            // No PROCESS_TERMINATE: TerminateProcess fails.
+            PostSpawn {
+                kind: "unconfirmed kill",
+                hangs: true,
+                rights: PROCESS_SYNCHRONIZE,
+                timeout_ms: 200,
+                says: "timed out after 200ms and could not be confirmed dead (TerminateProcess failed: 5); it may still be modifying the system",
+                dies: false,
+            },
+            // No SYNCHRONIZE: both the wait and the kill's confirming wait fail.
+            PostSpawn {
+                kind: "failed wait",
+                hangs: true,
+                rights: PROCESS_TERMINATE,
+                timeout_ms: 30_000,
+                says: "wait failed (result 0xffffffff): 5 and could not be confirmed dead",
+                dies: true,
+            },
+            // No query right: the wait succeeds, GetExitCodeProcess fails.
+            PostSpawn {
+                kind: "failed exit-code query",
+                hangs: false,
+                rights: PROCESS_SYNCHRONIZE,
+                timeout_ms: 30_000,
+                says: "exit-code query failed",
+                dies: true,
+            },
+        ];
+        for row in rows {
+            let child = if row.hangs {
+                spawn("PING.EXE", &["-n", "30", "127.0.0.1"])
+            } else {
+                spawn("cmd.exe", &["/c", "exit", "0"])
+            };
+            // SAFETY: both handles are owned by `handles` and closed by wait_and_reap.
+            let err = unsafe {
+                wait_and_reap(&handles(&child, row.rights), "test child", row.timeout_ms)
+            }
+            .expect_err(row.kind);
+            let grace_ms = if row.dies { 5_000 } else { 0 };
+            // SAFETY: `child` owns this handle and outlives the wait.
+            let dead = unsafe { WaitForSingleObject(child.0.as_raw_handle() as HANDLE, grace_ms) }
+                == WAIT_OBJECT_0;
+
+            let classified = classify_spawn(err);
+            assert!(
+                matches!(&classified, BrokerOpError::Indeterminate(e) if e.to_string().contains(row.says)),
+                "{}: {classified:?}",
+                row.kind
+            );
+            assert_eq!(
+                dead, row.dies,
+                "{}: whether the child outlives the error",
+                row.kind
             );
         }
     }
