@@ -75,12 +75,10 @@ explicitly with `cargo test -- --ignored`.
 ## Git
 
 - **Never push.** The maintainer does all pushes; commit locally only.
-- **Never `git add -A` / `git add .`.** `PROGRESS.md` at the repo root is untracked scratch and
-  `docs/ROADMAP.md` is often mid-edit — `-A` sweeps both in. Always stage explicit paths.
+- **Never `git add -A` / `git add .`.** `PROGRESS.md` at the repo root is untracked scratch, and `-A` sweeps it in. Always stage explicit paths.
 - **Commit by task, not by file.** Conventional-commit titles (`fix(registry): …`, `feat(ui): …`),
   imperative mood, **no internal labels** ("WP", "Stage N", "wip"). Don't group unrelated changes.
-- **Batch docs.** Don't commit `ROADMAP.md` / status docs after each work-package; fold them into one
-  docs commit at the end of a stage.
+- **Batch docs.** Don't commit status docs after each work-package; fold them into one docs commit at the end of a stage.
 - **CRLF is enforced** (`.gitattributes eol=crlf`, `rustfmt.toml newline_style = "Windows"`, and a CI
   job asserts every tracked text file is CRLF). The Edit/Write tools emit LF; git normalizes to CRLF
   on commit, so committing is fine. To discard an LF-only working-tree diff, `git checkout -- <file>`.
@@ -93,11 +91,7 @@ explicitly with `cargo test -- --ignored`.
   log at entry) and register in `lib.rs` via `generate_handler!`.
 - Errors: `thiserror`, propagate with `?`. Logging: the `log` crate **only** — never
   `println!` / `eprintln!`. Lock mutexes minimally; don't block the main thread or hardcode paths.
-- **Privileged operations run through the typed elevation broker** (`services/elevation/`), never by
-  composing shell strings: the app re-spawns itself under a SYSTEM / TrustedInstaller token and runs
-  typed `BrokerOp`s through the same effect services. Registry via `RegSetValueExW`, services via
-  `windows-sys` SCM, scheduler via `windows` COM. `BrokerOp` carries no script variant: PowerShell
-  runs only through the `action` effect kind (`tweaks/kinds/action.rs`), never through the broker.
+- **Privileged operations run through the typed elevation broker** (`services/elevation/`), never by composing shell strings: `admin` runs in-process in the elevated app; `ti` re-spawns the app under a TrustedInstaller token and runs typed `BrokerOp`s through the same effect services. Registry via `RegSetValueExW`, services via `windows-sys` SCM, scheduler via `windows` COM. `BrokerOp` carries no script variant: PowerShell runs only through the `action` effect kind (`tweaks/kinds/action.rs`), never through the broker.
 - **The "did-it-work" contract:** a failed privileged or effect operation must surface as `Err`, never
   a benign-looking value. Registry reads must distinguish *not-found* from *access-denied*. Never
   `let _ =` a privileged call.
@@ -135,9 +129,7 @@ explicitly with `cargo test -- --ignored`.
   option → toggle, 2+ → dropdown; you never author "System Default", it is the computed state when
   the live surface matches no option. `optional: true` (with an optional `if_missing:`) tolerates a
   *missing* resource at capture and detect; it does not weaken the post-apply verify.
-- **When tweak runtime behavior changes, update `docs/TWEAK_AUTHORING.md`** — it is the authoritative
-  author guide. `docs/TWEAK_SYSTEM.md` is the architecture reference and `docs/ROADMAP.md` is the
-  stage tracker.
+- **When tweak runtime behavior changes, update `docs/TWEAK_AUTHORING.md`**, the authoritative author guide. `docs/TWEAK_SYSTEM.md` is the architecture reference.
 
 ## Dependencies
 

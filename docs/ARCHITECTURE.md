@@ -198,7 +198,7 @@ tweaks:
     name: "Human Readable Name"
     description: "What this tweak does"
     risk_level: low | medium | high | critical
-    elevation: user | admin | system | ti     # per-tweak floor (never requires_admin/_system/_ti)
+    elevation: user | admin | ti              # per-tweak floor; there are no requires_* flags
     reversible: true | false                   # declared and build-checked against the computed value
     requires_reboot: false                     # optional
     effects:                                   # the managed surface, declared once
@@ -263,9 +263,9 @@ per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_
 - Uses Windows SC (Service Control Manager) API
 
 ### 4. `scheduler_service` - Task Scheduler Management
-- Enable/disable/delete scheduled tasks
+- Enable or disable scheduled tasks; it never creates or deletes them
 - Query task state (Ready, Disabled, Running, NotFound)
-- Uses Windows `schtasks.exe` CLI
+- Uses the Task Scheduler COM API (`ITaskService`)
 
 ### 5. Snapshot store + shared claims (`tweaks/snapshot.rs`, `tweaks/shared_claims.rs`)
 - `SnapshotStore::open_default()` - per-tweak history in the portable `snapshots/` directory **next to

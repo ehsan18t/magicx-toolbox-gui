@@ -154,7 +154,7 @@ tweaks:
     name: "Example: Registry Tri-State"
     description: "A single registry value with an on state and a removed state."
     risk_level: low # low | medium | high | critical
-    elevation: user # user | admin | system | ti: the privilege FLOOR
+    elevation: user # user | admin | ti: the privilege FLOOR
     reversible: true # declared AND build-checked against the computed value
     effects:
       - id: demo_flag
@@ -1490,9 +1490,7 @@ scripts, or a quoted one-liner. There is **no `apply: { file: scripts/x.ps1 }` f
 the shipped schema**: writing a map there is a build error (`data did not match … EffectRaw`). Put the
 script body inline. (`probe` is the one field that also takes a map, for the native forms in §12.5.)
 
-> 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by
-> `build.rs`). The **shipped `ActionRaw` schema accepts only a string**, so filed scripts are not
-> available today. This guide documents the shipped behavior. See the task report for this discrepancy.
+> 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by `build.rs`). The **shipped `ActionRaw` schema accepts only a string** (`apply: String`, `undo: Option<String>` in `src-tauri/src/tweaks/schema.rs`), so filed scripts are not available and the spec is wrong on this point. This guide documents the shipped behavior.
 
 **Execution mechanics:** `powershell` runs via `powershell.exe -EncodedCommand` (base64 of UTF-16LE), so size, loops, quotes, and special characters carry **no escaping risk**; `cmd` runs the body from a temp script file via `cmd.exe /c`. Both shells launch by absolute path from System32 (`powershell` is Windows PowerShell 5.1 at `System32\WindowsPowerShell\v1.0\powershell.exe`, never `pwsh`), with System32 as the working directory. What that guarantees: the shell itself is the real one, and a bare command name in a `cmd` script that exists in System32 (such as `rundll32.exe`) resolves there, never from the app's folder. What it does not guarantee: any other name a script uses. A bare command name not in System32 falls through to `PATH` (in `powershell`, bare names always resolve through `PATH`; it never searches the working directory), and a relative file path resolves against System32. When it matters, write the full path (`%SystemRoot%\System32\...` in `cmd`, `$env:SystemRoot\System32\...` in `powershell`) and never rely on the working directory. Every script has a **bounded timeout**: a hang is killed and surfaced as a typed error, never a silent success.
 
@@ -1571,7 +1569,7 @@ The app ships **unelevated** (`asInvoker`); Admin is **user-provided** (launch a
 **Elevate** relaunch), never silently acquired (ADR-0005). You declare a privilege level; the app never
 infers or escalates it.
 
-### 13.1 The four levels
+### 13.1 The three levels
 
 | level    | what it means at runtime                                                                 |
 | -------- | ---------------------------------------------------------------------------------------- |
@@ -2331,7 +2329,7 @@ option-centric tool), here is what no longer exists and what replaces it:
 
 | gone                                                                                    | replaced by                                                                                     |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `requires_admin` (auto-inferred), `requires_system`, `requires_ti`                      | the four-level `elevation` **floor** + per-effect escalation (§13)                              |
+| `requires_admin` (auto-inferred), `requires_system`, `requires_ti`                      | the three-level `elevation` **floor** + per-effect escalation (§13)                             |
 | `skip_validation`                                                                       | nothing: detectability is structural; you cannot opt out (§15)                                  |
 | `ignore_not_found`                                                                      | typed presence: `optional` / `if_missing` (§8)                                                  |
 | `task_name_pattern` (patterns/wildcards)                                                | **exact** task paths + `optional` (§4.4)                                                        |

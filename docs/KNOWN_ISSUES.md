@@ -11,8 +11,7 @@ and here is why" is an architecture decision and belongs in `docs/adr/`, where t
 durable and reviewable. If an entry below turns out to be something we accept rather than fix, write
 the ADR and delete the entry.
 
-**Related:** `docs/ROADMAP.md` is planned feature work; `PRE_MERGE_TASKS.md` is what blocks a
-specific merge. Neither is a bug list.
+**Related:** `PRE_MERGE_TASKS.md` is what blocks a specific merge; it is not a bug list.
 
 | #   | Issue                            | Bites today?                 | Found      |
 | --- | -------------------------------- | ---------------------------- | ---------- |

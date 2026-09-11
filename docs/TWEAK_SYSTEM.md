@@ -57,8 +57,8 @@ EffectKind modules (src-tauri/src/tweaks/kinds/)
         │  execute through →
         ▼
 Elevation broker (src-tauri/src/services/elevation/)
-   user (in-process) · admin (in-process) · system · ti (short-lived children),
-   grouped multi-op execution for same-level System/TI steps
+   user (in-process) · admin (in-process) · ti (short-lived child),
+   grouped multi-op execution for consecutive TI steps
 ```
 
 - The **build script** is the gatekeeper: `build.rs` `#[path]`-includes the runtime's own
@@ -70,9 +70,7 @@ Elevation broker (src-tauri/src/services/elevation/)
   primitives (`registry_service` `RegSetValueExW`, `service_control` SCM, scheduler COM, `hosts_service`,
   `firewall_service`) are reused and hardened as adopted (e.g. the `delete_key` guards against
   lone/leading/trailing-backslash parent deletion).
-- The **broker** owns privilege and is reused as-is; its wire protocol already carries `Vec<BrokerOp>`,
-  so consecutive same-level System/TI steps batch into one child (order-preserving) without adding UAC
-  prompts.
+- The **broker** owns privilege; its wire protocol carries `Vec<BrokerOp>`, so consecutive `ti` steps batch into one child (order-preserving) without adding UAC prompts.
 
 ---
 
