@@ -184,18 +184,52 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
     })
 }
 
-/// Allowed GitHub repository prefixes for update downloads
-/// This prevents downloading from untrusted sources
+// Each prefix ends in '/': without it "magicx-toolbox-evil" matches too.
 const ALLOWED_DOWNLOAD_PREFIXES: &[&str] = &[
-    "https://github.com/ehsan18t/magicx-toolbox",
+    "https://github.com/ehsan18t/magicx-toolbox/",
     "https://objects.githubusercontent.com/",
 ];
 
-/// Validate that a download URL is from a trusted source
 fn is_trusted_download_url(url: &str) -> bool {
     ALLOWED_DOWNLOAD_PREFIXES
         .iter()
         .any(|prefix| url.starts_with(prefix))
+}
+
+// Windows opens the device for a reserved stem whatever the extension ("NUL.exe", "COM1 .msi").
+fn is_reserved_device(stem: &str) -> bool {
+    let b = stem.trim_end().as_bytes();
+    let numbered =
+        |p: &[u8]| b.len() == 4 && b[..3].eq_ignore_ascii_case(p) && b[3].is_ascii_digit();
+    ["CON", "PRN", "AUX", "NUL"]
+        .iter()
+        .any(|d| b.eq_ignore_ascii_case(d.as_bytes()))
+        || numbered(b"COM")
+        || numbered(b"LPT")
+}
+
+fn validate_asset_name(name: &str) -> Result<(), Error> {
+    // ASCII only: bidi/zero-width characters disguise a name and superscript digits open COM¹.
+    // ':' is a drive prefix or an ADS; `join` replaces the whole base on "C:x.exe".
+    let allowed = |c: char| matches!(c, ' '..='~') && !r#"<>:"/\|?*"#.contains(c);
+    let stem = name.split('.').next().unwrap_or_default();
+    if name.contains("..") || !name.chars().all(allowed) || is_reserved_device(stem) {
+        log::error!("Rejected invalid asset name: {:?}", name);
+        return Err(Error::Update("Invalid asset name".into()));
+    }
+
+    let extension = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    if !matches!(extension.to_lowercase().as_str(), "exe" | "msi") {
+        log::error!("Rejected unsupported file type: {}", extension);
+        return Err(Error::Update(
+            "Unsupported installer type. Only .exe and .msi files are allowed.".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -215,7 +249,7 @@ fn install_update_in(
     download_url: String,
     asset_name: String,
 ) -> Result<(), Error> {
-    log::info!("Starting update download: {}", asset_name);
+    log::info!("Starting update download: {:?}", asset_name);
 
     // Latched through the download and kept once the installer runs, until the frontend exits: the
     // broker spawns current_exe(), so no apply may run while the installer replaces this executable.
@@ -225,30 +259,13 @@ fn install_update_in(
 
     // Security: Validate download URL is from trusted source
     if !is_trusted_download_url(&download_url) {
-        log::error!("Rejected untrusted download URL: {}", download_url);
+        log::error!("Rejected untrusted download URL: {:?}", download_url);
         return Err(Error::Update(
             "Download URL is not from a trusted source. Updates must come from the official GitHub repository.".into()
         ));
     }
 
-    // Validate asset name to prevent path traversal
-    if asset_name.contains("..") || asset_name.contains('/') || asset_name.contains('\\') {
-        log::error!("Rejected invalid asset name: {}", asset_name);
-        return Err(Error::Update("Invalid asset name".into()));
-    }
-
-    // Validate file extension
-    let extension = std::path::Path::new(&asset_name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-
-    if !matches!(extension.to_lowercase().as_str(), "exe" | "msi") {
-        log::error!("Rejected unsupported file type: {}", extension);
-        return Err(Error::Update(
-            "Unsupported installer type. Only .exe and .msi files are allowed.".into(),
-        ));
-    }
+    validate_asset_name(&asset_name)?;
 
     let temp_dir = std::env::temp_dir();
     let download_path = temp_dir.join(&asset_name);
@@ -393,12 +410,108 @@ mod tests {
         assert!(is_newer_version("v3.0.0", "3.1.0"));
     }
 
+    #[test]
+    fn bare_installer_names_are_accepted() {
+        for name in [
+            "x.exe",
+            "MagicX-Toolbox_3.1.0_x64-setup.exe",
+            "App 3.1.0.MSI",
+            "x.ExE",
+            "CONSOLE.exe",
+            "NULL.exe",
+            "COM10.exe",
+            "LPTX.msi",
+        ] {
+            assert!(validate_asset_name(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn device_and_disguised_names_are_rejected() {
+        for name in [
+            "x.exe.",
+            "x.exe ",
+            ".exe",
+            "NUL.exe",
+            "con.exe",
+            "Prn.msi",
+            "AUX.exe",
+            "COM0.exe",
+            "com1.exe",
+            "LPT1.msi",
+            "lpt9.exe",
+            "NUL .exe",
+            "CON.tar.exe",
+            "COM\u{b9}.exe",
+            "LPT\u{b2}.msi",
+            "COM\u{b3}.exe",
+            "x\u{202e}exe.msi",
+            "x\u{200b}.exe",
+            "x\u{feff}.exe",
+            "\u{e9}.exe",
+        ] {
+            assert!(
+                matches!(validate_asset_name(name), Err(Error::Update(_))),
+                "{name:?} accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn download_url_must_sit_under_the_repo_directory() {
+        assert!(is_trusted_download_url(
+            "https://github.com/ehsan18t/magicx-toolbox/releases/download/v3.1.0/x.exe"
+        ));
+        assert!(is_trusted_download_url(
+            "https://objects.githubusercontent.com/x"
+        ));
+        for url in [
+            "https://github.com/ehsan18t/magicx-toolbox-evil/releases/download/v1/x.exe",
+            "https://github.com/ehsan18t/magicx-toolbox",
+            "https://example.com/x.exe",
+        ] {
+            assert!(!is_trusted_download_url(url), "{url} trusted");
+        }
+    }
+
+    #[test]
+    fn non_bare_asset_names_are_rejected() {
+        for name in [
+            "",
+            r"C:\x.exe",
+            "/x.exe",
+            r"..\x.exe",
+            "..",
+            "sub/x.exe",
+            r"sub\x.exe",
+            "C:x.exe",
+            r"\\server\share\x.exe",
+            r"\\?\C:\x.exe",
+            "x.exe:stream",
+            "a.txt:s.exe",
+            "x<.exe",
+            "x|.exe",
+            "x?.exe",
+            "x*.exe",
+            "x\".exe",
+            "x>.exe",
+            "x\u{1}.exe",
+            "x.zip",
+        ] {
+            assert!(
+                matches!(validate_asset_name(name), Err(Error::Update(_))),
+                "{name:?} accepted"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn rejected_install_leaves_the_latch_released() {
         let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
         for (url, name) in [
             ("https://example.com/x.exe", "x.exe"),
             ("https://github.com/ehsan18t/magicx-toolbox/x", "..\\x.exe"),
+            ("https://github.com/ehsan18t/magicx-toolbox/x", "C:x.exe"),
             ("https://github.com/ehsan18t/magicx-toolbox/x", "x.zip"),
         ] {
             let result = install_update_in(&gate, url.into(), name.into());
