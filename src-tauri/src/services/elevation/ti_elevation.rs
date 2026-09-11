@@ -67,7 +67,6 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
     // are closed on both success and error paths. Service status query uses properly
     // sized structures.
     unsafe {
-        // Open Service Control Manager
         let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
         if scm.is_null() {
             return Err(Error::ServiceControl(format!(
@@ -94,7 +93,6 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             )));
         }
 
-        // Check current status
         let mut bytes_needed: u32 = 0;
         let mut status = std::mem::MaybeUninit::<SERVICE_STATUS_PROCESS>::zeroed();
 
@@ -119,7 +117,6 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
         let status = status.assume_init();
         let current_state = status.dwCurrentState;
 
-        // If already running, return the PID
         if current_state == SERVICE_RUNNING {
             let pid = status.dwProcessId;
             CloseServiceHandle(service);
@@ -128,7 +125,6 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             return Ok(pid);
         }
 
-        // Start the service
         log::debug!("Starting TrustedInstaller service...");
         let start_result = StartServiceW(service, 0, ptr::null());
 
@@ -216,6 +212,7 @@ fn system_folder(
     // SAFETY: `buf` is writable for the length passed.
     let len = unsafe { query(buf.as_mut_ptr(), buf.len() as u32) } as usize;
     if len == 0 {
+        // SAFETY: GetLastError only reads thread-local state.
         return Err(Error::WindowsApi(format!(
             "Failed to read the {name} folder: {}",
             describe_win32(unsafe { GetLastError() })
@@ -254,6 +251,72 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
     let windows_dir = system_folder(GetSystemWindowsDirectoryW, "Windows")?;
     let ti_image = ti_image_path(&String::from_utf16_lossy(&windows_dir));
+    // An idle-stop and restart between the start and the check moves the pid: retry once.
+    match open_trusted_installer(&ti_image)? {
+        Ok(handle) => Ok(handle),
+        Err(mismatch) => {
+            log::warn!("{mismatch}; retrying once");
+            open_trusted_installer(&ti_image)?.map_err(Error::ServiceControl)
+        }
+    }
+}
+
+/// The TI service's (state, pid), by query only: never starts it.
+fn ti_service_status() -> Result<(u32, u32), Error> {
+    let name = to_wide_string("TrustedInstaller");
+    // SAFETY: each handle opened here is closed before returning; the buffer fits the struct.
+    unsafe {
+        let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
+        let service = if scm.is_null() {
+            ptr::null_mut()
+        } else {
+            OpenServiceW(scm, name.as_ptr(), SERVICE_QUERY_STATUS)
+        };
+        let mut status = std::mem::MaybeUninit::<SERVICE_STATUS_PROCESS>::zeroed();
+        let mut bytes_needed = 0;
+        let queried = !service.is_null()
+            && QueryServiceStatusEx(
+                service,
+                SC_STATUS_PROCESS_INFO,
+                status.as_mut_ptr() as *mut u8,
+                std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
+                &mut bytes_needed,
+            ) != 0;
+        let err = (!queried).then(|| GetLastError());
+        if !service.is_null() {
+            CloseServiceHandle(service);
+        }
+        if !scm.is_null() {
+            CloseServiceHandle(scm);
+        }
+        match err {
+            Some(code) => Err(Error::ServiceControl(format!(
+                "TrustedInstaller verification failed: could not query the service: {}",
+                describe_win32(code)
+            ))),
+            None => {
+                let status = status.assume_init();
+                Ok((status.dwCurrentState, status.dwProcessId))
+            }
+        }
+    }
+}
+
+fn service_pid_mismatch(pinned: u32, state: u32, current: u32) -> Option<String> {
+    let found = if state != SERVICE_RUNNING {
+        describe_service_state(state).to_string()
+    } else if current != pinned {
+        format!("running as pid {current}")
+    } else {
+        return None;
+    };
+    Some(format!(
+        "TrustedInstaller verification failed: pinned pid {pinned}, but the service is {found}"
+    ))
+}
+
+/// One acquisition. The inner `Err` is a service-pid mismatch, which a TI restart can explain.
+fn open_trusted_installer(ti_image: &str) -> Result<Result<HANDLE, String>, Error> {
     let pid = start_trusted_installer_service()?;
 
     // SAFETY: `pid` may be stale: the open handle pins it, and its identity is verified through
@@ -272,7 +335,7 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
         }
 
         match process_image_path(handle) {
-            Some(path) if is_ti_image(&path, &ti_image) => {}
+            Some(path) if is_ti_image(&path, ti_image) => {}
             Some(path) => {
                 CloseHandle(handle);
                 log::warn!("TrustedInstaller pid {pid} runs {path}, not {ti_image}");
@@ -292,14 +355,12 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
         }
 
         // The pid is pinned, so the SCM still reporting it RUNNING makes this handle the service.
-        // A stopped service restarts here under a new pid, which fails the match.
-        match start_trusted_installer_service() {
-            Ok(current) if current == pid => Ok(handle),
-            Ok(current) => {
+        match ti_service_status().map(|(state, current)| service_pid_mismatch(pid, state, current))
+        {
+            Ok(None) => Ok(Ok(handle)),
+            Ok(Some(mismatch)) => {
                 CloseHandle(handle);
-                Err(Error::ServiceControl(format!(
-                    "pid {pid} is no longer the TrustedInstaller service (now pid {current})"
-                )))
+                Ok(Err(mismatch))
             }
             Err(e) => {
                 CloseHandle(handle);
@@ -313,10 +374,8 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
 /// wait for it. The broker's TI launcher; the command line is built by
 /// `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, SpawnError> {
-    // Deliberately not the command line. It carries the request and response temp paths, and a
-    // persisted log is readable by anyone who can read the log directory; the response path in
-    // particular is only guarded by being unguessable. The op count is what a support engineer
-    // actually needs from this line.
+    // Not the command line: it holds the request and response temp paths, and the response path
+    // is guarded only by being unguessable; anyone who can read the log directory reads the log.
     log::info!("Spawning the broker as TrustedInstaller");
 
     let mut work_dir =
@@ -325,9 +384,9 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
     let ti_handle = get_trusted_installer_handle().map_err(SpawnError::NoChild)?;
     let mut command_wide = to_wide_string(command_line);
 
-    // SAFETY: `ti_handle` closes on every path once `spawn` returns. The usize-aligned list buffer,
-    // sized by the sizing call, and `ti_handle_copy` outlive DeleteProcThreadAttributeList.
-    // CreateProcessW may write into the owned `command_wide`; wait_and_reap closes `process_info`.
+    // SAFETY: `ti_handle` closes on every path once `create` returns. The usize-aligned list
+    // buffer is sized by the sizing call and outlives DeleteProcThreadAttributeList. `command_wide`
+    // is owned, NUL-terminated and writable by CreateProcessW; wait_and_reap reaps `process_info`.
     unsafe {
         let mut create = || -> Result<PROCESS_INFORMATION, Error> {
             let mut attr_list_size: usize = 0;
@@ -435,6 +494,16 @@ mod tests {
     #[test]
     fn an_unmapped_error_keeps_its_number() {
         assert_eq!(describe_win32(999_999), "999999");
+    }
+
+    #[test]
+    fn the_service_pid_check_needs_the_pinned_pid_still_running() {
+        assert_eq!(service_pid_mismatch(10, SERVICE_RUNNING, 10), None);
+        let moved = service_pid_mismatch(10, SERVICE_RUNNING, 20).expect("a moved pid fails");
+        assert!(moved.contains("running as pid 20"), "{moved}");
+        let stopped =
+            service_pid_mismatch(10, SERVICE_STOPPED, 0).expect("a stopped service fails");
+        assert!(stopped.contains("stopped"), "{stopped}");
     }
 
     #[test]
