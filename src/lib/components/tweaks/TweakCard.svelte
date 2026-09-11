@@ -16,7 +16,7 @@
     unstageChange,
   } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
-  import { PERMISSION_INFO, permissionFromElevation, RISK_INFO } from "$lib/types";
+  import { permissionInfoFor, RISK_INFO } from "$lib/types";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -80,9 +80,7 @@
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level]);
   const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
 
-  // Permission level derived from the declared elevation floor.
-  const permission = $derived(permissionFromElevation(tweak.definition.elevation));
-  const permissionInfo = $derived(permission !== "none" ? PERMISSION_INFO[permission] : null);
+  const permissionInfo = $derived(permissionInfoFor(tweak.definition.elevation));
 
   const riskConfig: Record<RiskLevel, { icon: string; color: string }> = {
     low: { icon: "mdi:check-circle", color: "text-success" },

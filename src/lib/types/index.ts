@@ -3,9 +3,6 @@
 /** Risk level for tweaks */
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
-/** Permission level for tweaks (hierarchical: ti > system > admin > none) */
-export type PermissionLevel = "none" | "admin" | "ti";
-
 /** Registry hive types */
 export type RegistryHive = "HKCU" | "HKLM";
 
@@ -61,22 +58,16 @@ export interface ServiceChange {
 }
 
 /** Action for scheduled task changes */
-export type SchedulerAction = "enable" | "disable" | "delete";
+export type SchedulerAction = "enable" | "disable";
 
 /** Scheduler change within an option */
 export interface SchedulerChange {
   /** Task path in Task Scheduler (e.g., "\\Microsoft\\Windows\\Application Experience") */
   task_path: string;
-  /** Exact task name (e.g., "Microsoft Compatibility Appraiser"). Mutually exclusive with task_name_pattern. */
-  task_name?: string;
-  /** Regex pattern to match multiple task names (e.g., "USO|Reboot|Refresh"). Mutually exclusive with task_name. */
-  task_name_pattern?: string;
   /** Action to perform on the task(s) */
   action: SchedulerAction;
   /** If true, skip this change for tweak status validation and ignore failures during apply */
   skip_validation?: boolean;
-  /** If true, don't error if task/path not found (useful for optional tasks) */
-  ignore_not_found?: boolean;
 }
 
 /** Action for hosts file changes */
@@ -178,10 +169,7 @@ export interface TweakOption {
   scheduler_missing_is_match?: boolean;
 }
 
-// ============================================================================
-// REDESIGNED ENGINE — BACKEND COMMAND/EVENT DTOs (Task 16 contract)
-// These mirror the exact serde shapes emitted by src-tauri/src/commands/tweaks.rs.
-// ============================================================================
+// Mirrors the serde shapes emitted by src-tauri/src/commands/tweaks.rs.
 
 /** Elevation floor / app ceiling (serde: exact Rust variant names). */
 export type Level = "User" | "Admin" | "Ti";
@@ -734,47 +722,26 @@ export interface UpdateCheckResult {
   error?: string;
 }
 
-// ============================================================================
-// PERMISSION LEVEL HELPERS
-// ============================================================================
-
 /** Permission info for UI display */
 export interface PermissionInfo {
   name: string;
   description: string;
   icon: string;
-  /** Color class for styling (e.g., 'text-foreground-muted', 'text-accent') */
-  colorClass: string;
 }
 
-/** Permission level metadata for UI */
-export const PERMISSION_INFO: Record<Exclude<PermissionLevel, "none">, PermissionInfo> = {
-  admin: {
+const PERMISSION_INFO: Record<Exclude<Level, "User">, PermissionInfo> = {
+  Admin: {
     name: "Admin",
     description: "Requires Administrator privileges to apply",
     icon: "mdi:shield-account-outline",
-    colorClass: "text-foreground-muted",
   },
-  ti: {
+  Ti: {
     name: "TrustedInstaller",
     description: "Requires TrustedInstaller elevation for highly protected resources",
     icon: "mdi:shield-key",
-    colorClass: "text-warning",
   },
 };
 
-/**
- * Map a declared elevation floor (the redesigned engine's `Level`) to a permission
- * level for UI display. The app process is only ever User or Admin, but a tweak may
- * declare a TrustedInstaller floor that the broker reaches once elevated.
- */
-export function permissionFromElevation(level: Level): PermissionLevel {
-  switch (level) {
-    case "Ti":
-      return "ti";
-    case "Admin":
-      return "admin";
-    default:
-      return "none";
-  }
+export function permissionInfoFor(level: Level): PermissionInfo | null {
+  return level === "User" ? null : PERMISSION_INFO[level];
 }

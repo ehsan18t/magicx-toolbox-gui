@@ -12,7 +12,7 @@
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, revertTweak, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { EntrySummary, TweakEffectOption } from "$lib/types";
-  import { PERMISSION_INFO, permissionFromElevation, RISK_INFO } from "$lib/types";
+  import { permissionInfoFor, RISK_INFO } from "$lib/types";
 
   const isOpen = $derived(tweakDetailsModalStore.isOpen);
 
@@ -32,8 +32,7 @@
   });
 
   const riskInfo = $derived(def ? RISK_INFO[def.risk_level] : null);
-  const permission = $derived(def ? permissionFromElevation(def.elevation) : "none");
-  const permissionInfo = $derived(permission !== "none" ? PERMISSION_INFO[permission] : null);
+  const permissionInfo = $derived(def ? permissionInfoFor(def.elevation) : null);
 
   // Drives the "not active on this Windows" dimming inside RegistryChangeItem for version-scoped effects.
   const currentWindowsVersion = $derived(systemStore.info ? (systemStore.info.windows.is_windows_11 ? 11 : 10) : null);
