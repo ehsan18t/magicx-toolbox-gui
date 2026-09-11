@@ -11,9 +11,49 @@ pure cost.
 
 - Write no more code than the task needs — keep it small and optimized. "Small" is never an excuse to
   cut what's genuinely required; use what's necessary.
-- Comment sparingly and with intent: capture decisions, non-obvious rationale, and gotchas — the things
-  worth knowing for that block — not the obvious. "Minimal" is never an excuse to drop a genuinely useful
-  comment.
+
+## Comments — hard rules
+
+Every comment is re-read on every pass over the file, so it must earn its tokens. **The test: a comment
+is justified only when omitting it would cost more than including it** — a wrong edit, or a fact
+re-derived from scratch. Its bytes are paid on every read; the saving is paid once. A line that stops
+someone reintroducing `GetVersionEx` clears that bar. A paragraph restating the function name never
+does. "Mildly useful" is below the bar.
+
+- **Budget, enforced.** One line is the default, three lines the hard cap, a module `//!` header five.
+  Over budget means compress or delete, never wrap onto more lines. Length is the real cost here, not
+  count: a few long blocks outweigh all the short ones put together.
+- **Fragments, not prose.** `// TerminateProcess fails with error 5 on an already-exited process.` — not
+  "We check the error code after TerminateProcess because if the child has already exited the call
+  fails with ERROR_ACCESS_DENIED, which we then treat as success rather than a real failure…". Cut every word that is not the fact: no "note that", "worth
+  naming", "deliberately", "belt-and-suspenders", "this is the whole story about", and no "see X for
+  why" pointer the reader already reaches from the type.
+- **Prefer a name.** If a comment explains *what* something is, rename the item and delete the comment.
+  The identifier is already in the file, so it costs nothing extra.
+- **Rustdoc is not ceremony.** `///` only where the signature is genuinely ambiguous. Never a
+  `# Errors` / `# Returns` / `# Arguments` section restating the types: `Result<T, Error>` already says
+  it can fail and the `Error` enum already lists how. Most `pub` items in a binary crate need no doc at
+  all; `pub` here is a visibility modifier, not a published API.
+- **Banned: history framing.** No comment narrates this repo's past: `previously`, `used to`, `the old
+  code`, `changed from`, `no longer`, `until this fix`, `(review fix)`, `now that we`, plus dates,
+  shas, PR or issue numbers, "Stage N" / "WP" labels, before/after pairs. That is the commit message's
+  job. **But keep the fact** — most history comments here guard a real trap, so rewrite present-tense
+  rather than deleting: `// the old code parsed the localized "Status:" line` becomes `// Read the exit
+  code: the "Status:" text is translated.`
+- **The only four reasons to comment at all:**
+  1. **A Windows behaviour the code cannot show** — an API that lies, a locale trap, a flag with a
+     non-obvious effect. (`RtlGetVersion`, never `GetVersionEx`: the compat shim under-reports.)
+  2. **A deliberate non-choice** — the obvious alternative reintroduces a defect. Name both.
+     (`serde_yaml_bw`, not `serde_yml`: RUSTSEC-2025-0068.)
+  3. **A safety-contract link** — cite the ADR (`ADR-0002`) so a refactor sees what it holds up.
+  4. **Non-obvious code that must not be simplified**, because clarity would cost stability or
+     performance. Say which of the two.
+- **Everything else is deleted:** restating the code, section banners, commented-out code,
+  `TODO`/`FIXME` (fix it or file it in `docs/KNOWN_ISSUES.md`), and any comment on a private helper
+  whose name and signature already say it.
+
+Applies to `.rs`, `.ts`, `.svelte`, tweak YAML, `Cargo.toml`, and CI alike. Bring any comment you touch
+into compliance in the same change.
 
 ## Docs style
 
