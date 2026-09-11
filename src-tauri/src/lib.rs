@@ -16,7 +16,7 @@ mod generated_corpus {
 pub use debug::{emit_debug_log, is_debug_enabled, set_debug_enabled, DebugLevel, DebugLogEntry};
 pub use error::Error;
 pub use models::*;
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 #[derive(Debug, PartialEq)]
 enum Launch<'a> {
@@ -76,22 +76,18 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
-                    // Log to console in debug builds only
                     Target::new(TargetKind::Stdout),
-                    // Log to webview console for frontend debugging
                     Target::new(TargetKind::Webview),
-                    // A persisted log, because neither of the above survives the session. Until
-                    // this existed, a user reporting "applying it did nothing" left nothing to
-                    // read: the elevated broker child in particular has no console and no
-                    // inherited stderr, so its side of a failure was only ever an exit code the
-                    // parent turned into one line. Nothing here logs the broker command line,
-                    // which carries the request and response temp paths.
+                    // The only record that outlives the session. Never log the broker command
+                    // line: it carries the request and response temp paths.
                     Target::new(TargetKind::LogDir {
                         file_name: Some("magicx-toolbox".into()),
                     }),
                 ])
-                // In debug mode: show debug level and above
-                // In release mode: show warn level and above
+                // Not the default KeepOne: it deletes the only file at 40,000 bytes.
+                // KeepSome(n) keeps n archives plus the active file: 5 x 2 MiB = 10 MiB cap.
+                .max_file_size(2 * 1024 * 1024)
+                .rotation_strategy(RotationStrategy::KeepSome(4))
                 .level(if cfg!(debug_assertions) {
                     log::LevelFilter::Debug
                 } else {
