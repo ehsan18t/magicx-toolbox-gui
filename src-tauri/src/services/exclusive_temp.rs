@@ -57,14 +57,21 @@ pub fn random_hex_token() -> io::Result<String> {
 /// A temp file only this process can write to, for the lifetime of this value. See the module docs.
 pub struct ExclusiveTempFile {
     path: PathBuf,
+    kind: &'static str,
     /// `Option` so `Drop` can close the handle before deleting: Windows refuses to delete a file
     /// while a `FILE_SHARE_READ`-only handle to it is open, including our own.
     handle: Option<File>,
 }
 
 impl ExclusiveTempFile {
-    /// Create `<temp>/<prefix>-<pid>-<random>.<ext>` holding `contents`.
-    pub fn create(prefix: &str, ext: &str, contents: &[u8]) -> io::Result<Self> {
+    /// Create `<temp>/<prefix>-<pid>-<random>.<ext>` holding `contents`. `kind` is the path-free
+    /// label a cleanup-failure warning names.
+    pub fn create(
+        prefix: &str,
+        ext: &str,
+        kind: &'static str,
+        contents: &[u8],
+    ) -> io::Result<Self> {
         let path = unique_temp_path(prefix, ext)?;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -75,6 +82,7 @@ impl ExclusiveTempFile {
         file.flush()?;
         Ok(Self {
             path,
+            kind,
             handle: Some(file),
         })
     }
@@ -87,7 +95,46 @@ impl ExclusiveTempFile {
 impl Drop for ExclusiveTempFile {
     fn drop(&mut self) {
         drop(self.handle.take()); // release the share-mode lock before attempting the delete
-        let _ = std::fs::remove_file(&self.path);
+        remove_temp(&self.path, self.kind);
+    }
+}
+
+/// Deletes, on drop, a path another process creates after we only reserved it (the broker
+/// response), so cleanup runs on every return path. Not on a release-build panic: `panic = "abort"`
+/// runs no destructors.
+pub struct TempPathGuard {
+    path: PathBuf,
+    kind: &'static str,
+}
+
+impl TempPathGuard {
+    pub fn new(path: PathBuf, kind: &'static str) -> Self {
+        Self { path, kind }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempPathGuard {
+    fn drop(&mut self) {
+        remove_temp(&self.path, self.kind);
+    }
+}
+
+/// Logs `kind`, never the path: the `%TEMP%` names are guarded only by being unguessable.
+fn remove_temp(path: &Path, kind: &str) {
+    if let Some(kind_of_failure) = cleanup_failure(std::fs::remove_file(path)) {
+        log::warn!("could not delete the {kind} temp file: {kind_of_failure}");
+    }
+}
+
+/// A missing file is not a failure: a reserved response path may never have been created.
+fn cleanup_failure(result: io::Result<()>) -> Option<io::ErrorKind> {
+    match result {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Some(e.kind()),
+        _ => None,
     }
 }
 
@@ -115,7 +162,7 @@ mod tests {
     fn create_new_refuses_an_already_existing_path() {
         // The pre-plant guard, pinned against the OS behaviour it relies on: a path that already
         // exists must fail the open outright, never be followed or truncated.
-        let file = ExclusiveTempFile::create("magicx-test", "tmp", b"first").unwrap();
+        let file = ExclusiveTempFile::create("magicx-test", "tmp", "test file", b"first").unwrap();
         let err = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -131,7 +178,8 @@ mod tests {
         /// map to a named `ErrorKind`, so the raw code is what pins this.
         const ERROR_SHARING_VIOLATION: i32 = 32;
 
-        let file = ExclusiveTempFile::create("magicx-test", "tmp", b"payload").unwrap();
+        let file =
+            ExclusiveTempFile::create("magicx-test", "tmp", "test file", b"payload").unwrap();
 
         // This is the guard that matters: the process we hand the path to can still read it...
         assert_eq!(std::fs::read(file.path()).unwrap(), b"payload");
@@ -154,9 +202,38 @@ mod tests {
     #[test]
     fn drop_releases_the_lock_and_removes_the_file() {
         let path = {
-            let file = ExclusiveTempFile::create("magicx-test", "tmp", b"x").unwrap();
+            let file = ExclusiveTempFile::create("magicx-test", "tmp", "test file", b"x").unwrap();
             file.path().to_path_buf()
         };
         assert!(!path.exists(), "drop must delete the file, not leak it");
+    }
+
+    #[test]
+    fn a_missing_file_is_not_a_cleanup_failure_but_any_other_error_is() {
+        let err = |kind| Err(io::Error::from(kind));
+        assert_eq!(cleanup_failure(Ok(())), None);
+        assert_eq!(cleanup_failure(err(io::ErrorKind::NotFound)), None);
+        let denied = io::ErrorKind::PermissionDenied;
+        assert_eq!(cleanup_failure(err(denied)), Some(denied));
+    }
+
+    #[test]
+    fn temp_path_guard_removes_the_reserved_path_on_drop() {
+        let path = unique_temp_path("magicx-test", "tmp").unwrap();
+        std::fs::write(&path, b"resp").unwrap();
+        {
+            let _guard = TempPathGuard::new(path.clone(), "magicx-test");
+        }
+        assert!(
+            !path.exists(),
+            "the guard must delete on drop, on every exit path"
+        );
+    }
+
+    #[test]
+    fn temp_path_guard_on_a_never_created_path_is_a_noop() {
+        let path = unique_temp_path("magicx-test", "tmp").unwrap();
+        drop(TempPathGuard::new(path.clone(), "magicx-test"));
+        assert!(!path.exists());
     }
 }

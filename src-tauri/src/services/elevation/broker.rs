@@ -416,17 +416,19 @@ pub fn run_elevated_broker(
     })?;
 
     let req_file =
-        ExclusiveTempFile::create("magicx-broker", "req.json", &req_json).map_err(|e| {
-            BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
-                "write broker request: {e}"
-            )))
-        })?;
+        ExclusiveTempFile::create("magicx-broker", "req.json", "broker request", &req_json)
+            .map_err(|e| {
+                BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
+                    "write broker request: {e}"
+                )))
+            })?;
     let resp_path =
         exclusive_temp::unique_temp_path("magicx-broker", "resp.json").map_err(|e| {
             BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
                 "reserve broker response path: {e}"
             )))
         })?;
+    let resp_guard = exclusive_temp::TempPathGuard::new(resp_path, "broker response");
 
     // Spawn "<exe>" --broker "<req>" "<resp>" directly (no cmd.exe wrapper). Paths are quoted; the
     // values are our own generated temp names, never untrusted data.
@@ -434,7 +436,7 @@ pub fn run_elevated_broker(
         "\"{}\" --broker \"{}\" \"{}\"",
         exe.display(),
         req_file.path().display(),
-        resp_path.display()
+        resp_guard.path().display()
     );
 
     let spawn = match level {
@@ -456,15 +458,12 @@ pub fn run_elevated_broker(
         }
         // Exit 0 means the batch ran AND the response was written, so a read failure here is
         // about the response, not about whether anything happened.
-        std::fs::read(&resp_path).map_err(|e| {
+        std::fs::read(resp_guard.path()).map_err(|e| {
             BrokerOpError::Indeterminate(Error::ServiceControl(format!(
                 "broker completed but its response could not be read: {e}"
             )))
         })
     });
-
-    drop(req_file); // releases the share-mode lock and deletes the request
-    let _ = std::fs::remove_file(&resp_path);
 
     validate_response(&read?, nonce)
 }

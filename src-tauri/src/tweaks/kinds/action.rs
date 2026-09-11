@@ -168,8 +168,9 @@ fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<i32, Error>
     match shell {
         Shell::PowerShell => wait_with_timeout(spawn_powershell(body)?, timeout),
         Shell::Cmd => {
-            let file = ExclusiveTempFile::create("magicx-action", "cmd", body.as_bytes())
-                .map_err(|e| Error::ActionExecFailed(format!("temp script: {e}")))?;
+            let file =
+                ExclusiveTempFile::create("magicx-action", "cmd", "action script", body.as_bytes())
+                    .map_err(|e| Error::ActionExecFailed(format!("temp script: {e}")))?;
             wait_with_timeout(spawn_cmd(file.path())?, timeout)
             // `file` drops here, after the child has fully exited: the share-mode lock holds for
             // the whole execution and the temp `.cmd` is deleted only once cmd.exe is done.
