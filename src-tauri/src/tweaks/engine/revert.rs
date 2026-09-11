@@ -114,7 +114,7 @@ pub async fn restore(
     corpus: &Corpus,
     deps: &Deps<'_>,
 ) -> Result<RestoreOutcome, EngineError> {
-    let _guard = lifecycle::lock_tweak(&tweak.id).await;
+    let _guard = lifecycle::lock_tweak(&tweak.id).await?;
     do_restore(tweak, corpus, deps)
 }
 

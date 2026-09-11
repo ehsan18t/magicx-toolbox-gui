@@ -5,6 +5,7 @@
   import { debugState } from "$lib/stores/debug.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { errorMessage, isAppExiting } from "$lib/utils/error";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -102,7 +103,10 @@
     try {
       await invoke("restart_as_admin");
     } catch (error) {
-      console.error("Failed to restart as admin:", error);
+      const message = errorMessage(error);
+      console.error("Failed to restart as admin:", message);
+      if (isAppExiting(error)) toastStore.warning(message);
+      else toastStore.error(message);
       isRestarting = false;
     }
   };

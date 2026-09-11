@@ -8,6 +8,7 @@
 
 import * as api from "$lib/api/tweaks";
 import type { PendingChange } from "$lib/types";
+import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { toastStore } from "./toast.svelte";
 import { tweaksStore } from "./tweaksData.svelte";
 import { errorStore, loadingStore } from "./tweaksLoading.svelte";
@@ -58,6 +59,10 @@ export const filterStore = {
 
 // === Actions ===
 
+type ActionResult = { status: "ok" | "failed" } | { status: "exiting"; message: string };
+
+const EXITING_REST_KEPT = "because the app is restarting or updating.";
+
 /**
  * Apply a tweak's option by LABEL. The command returns the fresh post-op status,
  * which we adopt directly (no re-fetch / no re-scan).
@@ -67,30 +72,41 @@ export async function applyTweak(
   optionLabel: string,
   options?: { showToast?: boolean; tweakName?: string },
 ): Promise<boolean> {
+  return (await applyTweakResult(tweakId, optionLabel, options)).status === "ok";
+}
+
+async function applyTweakResult(
+  tweakId: string,
+  optionLabel: string,
+  options?: { showToast?: boolean; tweakName?: string },
+): Promise<ActionResult> {
   const showToast = options?.showToast ?? true;
   const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
 
   loadingStore.start(tweakId);
-  errorStore.clearError(tweakId);
 
   try {
     const outcome = await api.applyTweak(tweakId, optionLabel);
+    errorStore.clearError(tweakId);
     tweaksStore.setStatusView(tweakId, outcome.status);
     pendingChangesStore.clear(tweakId);
 
     if (showToast) {
       toastStore.success("Applied successfully", { tweakName });
     }
-    return true;
+    return { status: "ok" };
   } catch (error) {
-    // Tauri v2 rejects with the raw serialized Error object ({code, message}), not a JS
-    // Error instance — read `.message` off the object, fall back to a stringified form.
-    const message = (error as { message?: string })?.message ?? String(error);
+    const message = errorMessage(error);
+    // An exit refusal touched nothing, so the tweak's status and error are left as they were.
+    if (isAppExiting(error)) {
+      if (showToast) toastStore.warning(message, { tweakName });
+      return { status: "exiting", message };
+    }
     errorStore.setError(tweakId, message);
     if (showToast) {
       toastStore.error(message, { tweakName });
     }
-    return false;
+    return { status: "failed" };
   } finally {
     loadingStore.stop(tweakId);
   }
@@ -105,14 +121,21 @@ export async function revertTweak(
   tweakId: string,
   options?: { showToast?: boolean; tweakName?: string },
 ): Promise<boolean> {
+  return (await revertTweakResult(tweakId, options)).status === "ok";
+}
+
+async function revertTweakResult(
+  tweakId: string,
+  options?: { showToast?: boolean; tweakName?: string },
+): Promise<ActionResult> {
   const showToast = options?.showToast ?? true;
   const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
 
   loadingStore.start(tweakId);
-  errorStore.clearError(tweakId);
 
   try {
     const outcome = await api.restoreTweak(tweakId);
+    errorStore.clearError(tweakId);
     tweaksStore.setStatusView(tweakId, outcome.status);
     pendingChangesStore.clear(tweakId);
 
@@ -127,11 +150,14 @@ export async function revertTweak(
         tweakName,
       });
     }
-    return true;
+    return { status: "ok" };
   } catch (error) {
-    // Tauri v2 rejects with the raw serialized Error object ({code, message}) — carrying the
-    // real per-resource RollbackReport text — not a JS Error instance. Read it off the object.
-    const message = (error as { message?: string })?.message ?? String(error);
+    const message = errorMessage(error);
+    // An exit refusal touched nothing: not a failed rollback, so no Needs Attention.
+    if (isAppExiting(error)) {
+      if (showToast) toastStore.warning(message, { tweakName });
+      return { status: "exiting", message };
+    }
     errorStore.setError(tweakId, message);
 
     // Needs Attention (ADR-0001): only meaningful while a snapshot still exists to retry from.
@@ -145,16 +171,27 @@ export async function revertTweak(
     if (showToast) {
       toastStore.warning(`Restore needs attention: ${message}`, { tweakName });
     }
-    return false;
+    return { status: "failed" };
   } finally {
     loadingStore.stop(tweakId);
   }
 }
 
+async function refreshSnapshotFlags(tweakId: string): Promise<void> {
+  try {
+    const remaining = await api.listSnapshotEntries(tweakId);
+    if (remaining.length === 0) {
+      tweaksStore.patchStatus(tweakId, { has_backup: false, needs_attention: false, unrestorable_resources: [] });
+      pendingRebootStore.remove(tweakId);
+    }
+  } catch (error) {
+    console.error("Failed to re-read snapshot entries:", errorMessage(error));
+  }
+}
+
 /**
  * Explicit-consent snapshot release (ADR-0002): discard every snapshot entry for the
- * tweak. Replaces the old keep_current_state — the way out of Needs Attention when the
- * user accepts the current state.
+ * tweak, the way out of Needs Attention when the user accepts the current state.
  */
 export async function discardSnapshots(
   tweakId: string,
@@ -164,10 +201,12 @@ export async function discardSnapshots(
   const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
 
   loadingStore.start(tweakId);
+  let discarded = 0;
   try {
     const entries = await api.listSnapshotEntries(tweakId);
     for (const entry of entries) {
       await api.discardSnapshotEntry(tweakId, entry.seq);
+      discarded++;
     }
 
     tweaksStore.patchStatus(tweakId, {
@@ -183,7 +222,17 @@ export async function discardSnapshots(
     }
     return true;
   } catch (error) {
-    const message = (error as { message?: string })?.message ?? String(error);
+    const message = errorMessage(error);
+    // Entries discarded before the failure are gone, so the backup flags are re-read.
+    if (discarded > 0) await refreshSnapshotFlags(tweakId);
+    if (isAppExiting(error)) {
+      if (showToast) {
+        const entries = `${discarded} snapshot ${discarded === 1 ? "entry" : "entries"}`;
+        const text = discarded === 0 ? message : `Discarded ${entries}; the rest were kept ${EXITING_REST_KEPT}`;
+        toastStore.warning(text, { tweakName });
+      }
+      return false;
+    }
     errorStore.setError(tweakId, message);
     if (showToast) {
       toastStore.error(message, { tweakName });
@@ -204,6 +253,21 @@ export function unstageChange(tweakId: string): void {
   pendingChangesStore.clear(tweakId);
 }
 
+/** The backend's refusal says nothing was changed, so it is quoted only when nothing ran. */
+function batchStopMessage(
+  verb: string,
+  noun: string,
+  counts: { success: number; failed: number; skipped: number },
+  refusal: string,
+): string {
+  const { success, failed, skipped } = counts;
+  const items = `${skipped} ${noun}${skipped === 1 ? "" : "s"}`;
+  const were = skipped === 1 ? "was" : "were";
+  if (success + failed === 0) return `${items} ${were} not ${verb}. ${refusal}`;
+  const done = verb[0].toUpperCase() + verb.slice(1);
+  return `${done} ${success}, failed ${failed}; the remaining ${items} ${were} not attempted ${EXITING_REST_KEPT}`;
+}
+
 /**
  * Apply all pending changes as a client-side sequential loop over apply_tweak
  * (no backend batch command exists). Per-tweak results are surfaced via the loop.
@@ -216,10 +280,15 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
 
   let success = 0;
   let failed = 0;
-  for (const change of changes) {
+  for (const [index, change] of changes.entries()) {
     const tweakName = tweaksStore.getById(change.tweakId)?.definition.name;
-    const ok = await applyTweak(change.tweakId, change.optionLabel, { showToast: false, tweakName });
-    if (ok) success++;
+    const result = await applyTweakResult(change.tweakId, change.optionLabel, { showToast: false, tweakName });
+    if (result.status === "exiting") {
+      const counts = { success, failed, skipped: changes.length - index };
+      toastStore.warning(batchStopMessage("applied", "tweak", counts, result.message));
+      return { success, failed };
+    }
+    if (result.status === "ok") success++;
     else failed++;
   }
 
@@ -245,9 +314,14 @@ export async function batchRevertTweaks(tweakIds: string[]): Promise<{ success: 
 
   let success = 0;
   let failed = 0;
-  for (const tweakId of tweakIds) {
-    const ok = await revertTweak(tweakId, { showToast: false });
-    if (ok) success++;
+  for (const [index, tweakId] of tweakIds.entries()) {
+    const result = await revertTweakResult(tweakId, { showToast: false });
+    if (result.status === "exiting") {
+      const counts = { success, failed, skipped: tweakIds.length - index };
+      toastStore.warning(batchStopMessage("restored", "snapshot", counts, result.message));
+      return { success, failed };
+    }
+    if (result.status === "ok") success++;
     else failed++;
   }
 

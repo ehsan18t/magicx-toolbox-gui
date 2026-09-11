@@ -10,7 +10,9 @@
   } from "$lib/components/tweaks/details";
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import { pendingChangesStore, revertTweak, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { errorMessage, isAppExiting } from "$lib/utils/error";
   import type { EntrySummary, TweakEffectOption } from "$lib/types";
   import { permissionInfoFor, RISK_INFO } from "$lib/types";
 
@@ -98,15 +100,25 @@
     busySeq = seq;
     try {
       await discardSnapshotEntry(t.definition.id, seq);
-      const remaining = await listSnapshotEntries(t.definition.id);
-      entries = remaining;
-      if (remaining.length === 0) {
-        tweaksStore.patchStatus(t.definition.id, { has_backup: false });
-      }
     } catch (e) {
-      console.error("Failed to discard snapshot entry:", e);
+      const message = errorMessage(e);
+      console.error("Failed to discard snapshot entry:", message);
+      if (isAppExiting(e)) toastStore.warning(message);
+      else toastStore.error(message);
+      busySeq = null;
+      return;
+    }
+
+    entries = entries.filter((entry) => entry.seq !== seq);
+    try {
+      entries = await listSnapshotEntries(t.definition.id);
+    } catch (e) {
+      toastStore.warning(`The entry was discarded, but the list could not be refreshed: ${errorMessage(e)}`);
     } finally {
       busySeq = null;
+    }
+    if (entries.length === 0) {
+      tweaksStore.patchStatus(t.definition.id, { has_backup: false });
     }
   }
 

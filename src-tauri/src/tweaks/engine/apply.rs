@@ -79,6 +79,9 @@ pub enum EngineError {
     #[error("tweak is unavailable on this machine/build: {0}")]
     Unavailable(String),
 
+    #[error(transparent)]
+    AppExiting(#[from] lifecycle::AppExiting),
+
     /// Step 1: a capture read failed -- aborts before any mutation (invariant 4).
     #[error("capture of effect '{effect}' failed before any mutation: {source}")]
     CaptureFailed {
@@ -304,7 +307,7 @@ pub async fn apply(
     target: &OptLabel,
     deps: &Deps<'_>,
 ) -> Result<ApplyOutcome, EngineError> {
-    let _guard = lifecycle::lock_tweak(&tweak.id).await;
+    let _guard = lifecycle::lock_tweak(&tweak.id).await?;
     do_apply(tweak, corpus, target, deps)
 }
 

@@ -5,7 +5,9 @@
  */
 
 import { APP_CONFIG } from "$lib/config/app";
+import { toastStore } from "$lib/stores/toast.svelte";
 import type { UpdateInfo } from "$lib/types";
+import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { invoke } from "@tauri-apps/api/core";
 
 // === State ===
@@ -83,12 +85,12 @@ export const updateStore = {
       error = null;
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error("Update check failed:", errorMessage);
+      const message = errorMessage(err);
+      console.error("Update check failed:", message);
 
       // Only store error for non-silent checks
       if (!silent) {
-        error = errorMessage;
+        error = message;
       }
 
       return null;
@@ -116,9 +118,10 @@ export const updateStore = {
       });
       return true;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error("Update installation failed:", errorMessage);
-      error = errorMessage;
+      const message = errorMessage(err);
+      console.error("Update installation failed:", message);
+      if (isAppExiting(err)) toastStore.warning(message);
+      else error = message;
       return false;
     } finally {
       isInstalling = false;

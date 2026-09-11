@@ -1,89 +1,166 @@
-//! Per-tweak concurrency (spec §8.7) and Needs-Attention assembly (ADR-0001/0002).
+//! Per-tweak apply/restore locks (spec §8.7), the exit latch, and the crash-residue scan.
 //!
-//! **The lock.** "A per-tweak-id async lock spans check→capture→save→mutate→verify. Different
-//! tweaks may run concurrently; the same tweak may not" (§8.7). `apply`'s own signature is fixed by
-//! the brief to exactly `(tweak, corpus, target, deps)` — no extra handle to thread through — so
-//! the lock table lives here as a process-wide static, keyed by tweak id, rather than as a `Deps`
-//! field every call site (and every existing `detect`-only test) would otherwise need to grow.
-//!
-//! **Needs Attention.** Two distinct situations produce it, and neither is a detection verdict
-//! (spec §8.4: "Needs Attention is not a detection verdict"): a live rollback that could not verify
-//! every restore (ADR-0001, surfaced by `apply`'s own `Err(EngineError::RollbackReport{..})`), and
-//! — the case this module scans for directly — a journal left `intended && !completed` by a
-//! process that crashed between running an action and its completion mark being fsynced (spec §8.1,
-//! invariant 5). [`scan_for_crash_residue`] is the recovery check a startup pass runs per entry.
+//! One process-wide [`ApplyGate`] holds the locks and the exit state under a single mutex, so a
+//! committed exit refuses every later lock and no exit commits while a lock is held.
+//! [`scan_for_crash_residue`] flags journal rows a crash mid-apply left `intended && !completed`.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 use crate::tweaks::model::EffectId;
 use crate::tweaks::snapshot::{Entry, Seq};
 
-type LockTable = Mutex<HashMap<String, Arc<AsyncMutex<()>>>>;
-
-static LOCKS: OnceLock<LockTable> = OnceLock::new();
-
-fn locks() -> &'static LockTable {
-    LOCKS.get_or_init(|| Mutex::new(HashMap::new()))
+/// Refused before anything was touched; a pending exit can still be called off, a final one cannot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum AppExiting {
+    #[error("The app is restarting as administrator or installing an update, so nothing was changed. If it stays open, try again.")]
+    Pending,
+    #[error(
+        "The app is closing, so nothing was changed. Restart the app before changing settings."
+    )]
+    Final,
 }
 
-/// Acquires (creating on first use) `tweak_id`'s async lock, serializing the whole apply/restore
-/// sequence for that one tweak while other tweaks proceed concurrently (spec §8.7). The map lookup
-/// itself is a brief, never-held-across-`.await` `std::sync::Mutex` section; the returned owned
-/// guard is what the caller actually holds across its async body.
-pub(crate) async fn lock_tweak(tweak_id: &str) -> OwnedMutexGuard<()> {
-    let arc = {
-        let mut map = locks().lock().expect("tweak-locks mutex poisoned");
-        map.entry(tweak_id.to_string())
+#[derive(Debug, PartialEq, Eq)]
+pub enum ExitRefused {
+    ApplyInFlight,
+    Exiting(AppExiting),
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum Exit {
+    #[default]
+    Open,
+    Pending,
+    Final,
+}
+
+#[derive(Default)]
+struct GateState {
+    locks: HashMap<String, Arc<AsyncMutex<()>>>,
+    exit: Exit,
+}
+
+impl GateState {
+    fn any_locked(&self) -> bool {
+        self.locks.values().any(|arc| arc.try_lock().is_err())
+    }
+
+    fn refusal(&self) -> Option<AppExiting> {
+        match self.exit {
+            Exit::Open => None,
+            Exit::Pending => Some(AppExiting::Pending),
+            Exit::Final => Some(AppExiting::Final),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct ApplyGate(Mutex<GateState>);
+
+static GATE: OnceLock<ApplyGate> = OnceLock::new();
+
+pub fn gate() -> &'static ApplyGate {
+    GATE.get_or_init(ApplyGate::default)
+}
+
+impl ApplyGate {
+    fn state(&self) -> MutexGuard<'_, GateState> {
+        self.0.lock().expect("tweak-locks mutex poisoned")
+    }
+
+    /// Serializes one tweak's whole apply/restore (spec §8.7); other tweaks proceed concurrently.
+    pub async fn lock_tweak(&self, tweak_id: &str) -> Result<OwnedMutexGuard<()>, AppExiting> {
+        let arc = self
+            .state()
+            .locks
+            .entry(tweak_id.to_string())
             .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-            .clone()
-    };
-    arc.lock_owned().await
+            .clone();
+        let guard = arc.lock_owned().await;
+        // Checked while holding the lock, under the mutex `begin_exit` takes: either this sees the
+        // latch or the exit sees this lock held. Checking before the await leaves a gap (stability).
+        if let Some(refused) = self.state().refusal() {
+            return Err(refused);
+        }
+        Ok(guard)
+    }
+
+    /// Starts a pending exit: every later [`Self::lock_tweak`] is refused until the latch drops or
+    /// is kept (final). An exit mid-drive would leave a tweak partly applied under its snapshot.
+    pub fn begin_exit(&self) -> Result<ExitLatch<'_>, ExitRefused> {
+        let mut state = self.state();
+        if let Some(exiting) = state.refusal() {
+            return Err(ExitRefused::Exiting(exiting));
+        }
+        if state.any_locked() {
+            return Err(ExitRefused::ApplyInFlight);
+        }
+        state.exit = Exit::Pending;
+        Ok(ExitLatch(self))
+    }
+
+    /// Whether a window close may proceed; it then makes the exit final, which no latch drop undoes.
+    /// A pending exit already rules out an apply in flight, so it never blocks the close.
+    pub fn commit_close(&self) -> bool {
+        let mut state = self.state();
+        if state.exit == Exit::Open && state.any_locked() {
+            return false;
+        }
+        state.exit = Exit::Final;
+        true
+    }
 }
 
-/// Whether `tweak_id`'s apply/restore lock is currently held by someone.
-///
-/// Synchronous and non-blocking, because its caller is the corpus-wide detect sweep, which runs on
-/// a rayon pool and cannot await. A held lock means that tweak is mid-apply or mid-restore, so its
-/// surface is half-driven and any reading taken now would be torn -- the sweep skips it rather than
-/// publishing a status that was never true. Racy by nature: a lock can be taken the instant after
-/// this returns false, which is why this is a best-effort filter for a read-only sweep and never a
-/// substitute for the lock itself.
+pub(crate) async fn lock_tweak(tweak_id: &str) -> Result<OwnedMutexGuard<()>, AppExiting> {
+    gate().lock_tweak(tweak_id).await
+}
+
+/// Whether `tweak_id` is mid-apply or mid-restore. Non-blocking for the rayon detect sweep, which
+/// skips such a tweak because its surface is half-driven. Racy: a best-effort filter, never a lock.
 pub(crate) fn is_locked(tweak_id: &str) -> bool {
-    let map = locks().lock().expect("tweak-locks mutex poisoned");
-    map.get(tweak_id).is_some_and(|arc| arc.try_lock().is_err())
+    let state = gate().state();
+    state
+        .locks
+        .get(tweak_id)
+        .is_some_and(|arc| arc.try_lock().is_err())
 }
 
-/// Whether ANY tweak is currently mid-apply or mid-restore.
-///
-/// The guard for anything that would take the process away underneath one: closing the window,
-/// relaunching elevated, or running an installer over this executable. A snapshot entry is written
-/// before the first drive, so a process that disappears mid-drive leaves an entry describing a
-/// tweak that was only partly applied, with nothing to roll it back. Crash recovery does not cover
-/// that case either: it scans per-Action journal rows, and a Settings-only tweak writes none.
-pub fn any_apply_in_flight() -> bool {
-    let map = locks().lock().expect("tweak-locks mutex poisoned");
-    map.values().any(|arc| arc.try_lock().is_err())
+/// Calls off a pending exit on drop, so a declined UAC prompt or a failed download re-enables
+/// applies. A final exit stays final.
+#[must_use]
+pub struct ExitLatch<'a>(&'a ApplyGate);
+
+impl ExitLatch<'_> {
+    pub fn keep_until_exit(self) {
+        self.0.state().exit = Exit::Final;
+    }
 }
 
-/// One tweak's snapshot entry left in a state that cannot be silently trusted (ADR-0001/0002):
-/// named, exact unrecoverable items — never a guess, never a silent retry.
+impl Drop for ExitLatch<'_> {
+    fn drop(&mut self) {
+        let mut state = self.0.state();
+        if state.exit == Exit::Pending {
+            state.exit = Exit::Open;
+        }
+    }
+}
+
+/// One tweak's snapshot entry that cannot be silently trusted (ADR-0001/0002): exact
+/// unrecoverable items, never a guess and never a silent retry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NeedsAttention {
     pub tweak_id: String,
     pub seq: Seq,
-    /// One line per unrecoverable item — a crash-left unmarked action, or a rollback restore that
-    /// failed verification. Plain strings (not the underlying error types) so this stays trivially
-    /// comparable in tests and displayable in the UI without re-deriving `PartialEq` through every
-    /// wrapped `kinds`/`snapshot`/`shared_claims` error type.
+    /// One line per unrecoverable item (a crash-left unmarked action or a failed rollback
+    /// restore). Plain strings keep it comparable in tests and displayable in the UI.
     pub unrecoverable: Vec<String>,
 }
 
 impl NeedsAttention {
-    /// Builds a `NeedsAttention` from a rollback's collected failures (ADR-0001) — one line per
-    /// failure, in the order they occurred.
+    /// One line per rollback failure (ADR-0001), in the order they occurred.
     pub fn from_rollback_failures(
         tweak_id: &str,
         seq: Seq,
@@ -97,10 +174,9 @@ impl NeedsAttention {
     }
 }
 
-/// Scans one entry's journal for rows left `intended && !completed` (spec §8.1, invariant 5): the
-/// exact signature a process crash between running an action and fsyncing its completion mark
-/// leaves behind. `None` means the entry is not crash-residue (every intended action is marked, or
-/// there is no journal at all — a pure Settings apply/restore never touches this path).
+/// Flags rows left `intended && !completed` (spec §8.1, invariant 5), the mark of a crash between
+/// running an action and fsyncing its completion. `None` when every intended action is marked or
+/// there is no journal (a pure Settings apply/restore).
 pub fn scan_for_crash_residue(tweak_id: &str, entry: &Entry) -> Option<NeedsAttention> {
     let unmarked: Vec<EffectId> = entry
         .journal
@@ -180,11 +256,8 @@ mod tests {
         assert!(scan_for_crash_residue("demo", &entry).is_none());
     }
 
-    /// Proves real mutual exclusion, not accidental non-preemption: a multi-thread runtime runs
-    /// two `apply`-shaped tasks for the SAME tweak id concurrently, each holding the lock across a
-    /// real (blocking, on its own worker thread) sleep while pushing ordered markers into a shared
-    /// log. Without the lock, a second worker thread could interleave its markers into the first
-    /// task's window; with it, one task's markers must appear as a contiguous block.
+    /// Two same-id holders on a multi-thread runtime, each sleeping on its own worker while holding
+    /// the lock: their markers must form contiguous blocks, proving real exclusion.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn per_tweak_lock_serializes_same_tweak() {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -192,7 +265,7 @@ mod tests {
         let id = format!("lock_test_tweak_{}", COUNTER.fetch_add(1, Ordering::SeqCst));
 
         async fn holder(id: String, tag: &'static str, log: Arc<Mutex<Vec<(u32, &'static str)>>>) {
-            let _guard = lock_tweak(&id).await;
+            let _guard = lock_tweak(&id).await.expect("no exit pending");
             log.lock().unwrap().push((0, tag));
             // A real cross-thread window: while this task holds the guard, another worker thread
             // attempting the same tweak id's lock must genuinely block, not merely lose a race.
@@ -221,11 +294,15 @@ mod tests {
     async fn different_tweak_ids_run_concurrently() {
         let start = std::time::Instant::now();
         let a = tokio::spawn(async {
-            let _g = lock_tweak("distinct_tweak_a").await;
+            let _g = lock_tweak("distinct_tweak_a")
+                .await
+                .expect("no exit pending");
             std::thread::sleep(Duration::from_millis(150));
         });
         let b = tokio::spawn(async {
-            let _g = lock_tweak("distinct_tweak_b").await;
+            let _g = lock_tweak("distinct_tweak_b")
+                .await
+                .expect("no exit pending");
             std::thread::sleep(Duration::from_millis(150));
         });
         a.await.unwrap();
@@ -235,5 +312,62 @@ mod tests {
             "distinct tweak ids must overlap, not serialize: took {:?}",
             start.elapsed()
         );
+    }
+
+    #[tokio::test]
+    async fn exit_is_refused_while_a_tweak_is_locked() {
+        let gate = ApplyGate::default();
+        let guard = gate.lock_tweak("t").await.expect("no exit pending");
+        assert_eq!(gate.begin_exit().err(), Some(ExitRefused::ApplyInFlight));
+        drop(guard);
+        assert!(gate.begin_exit().is_ok());
+    }
+
+    #[tokio::test]
+    async fn committed_exit_refuses_applies_until_it_drops() {
+        let gate = ApplyGate::default();
+        let latch = gate.begin_exit().expect("nothing locked");
+        assert_eq!(gate.lock_tweak("t").await.err(), Some(AppExiting::Pending));
+        drop(latch);
+        assert!(gate.lock_tweak("t").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn kept_exit_latch_never_lifts() {
+        let gate = ApplyGate::default();
+        gate.begin_exit().expect("nothing locked").keep_until_exit();
+        assert_eq!(gate.lock_tweak("t").await.err(), Some(AppExiting::Final));
+    }
+
+    #[test]
+    fn second_exit_is_refused_while_one_is_pending() {
+        let gate = ApplyGate::default();
+        let _first = gate.begin_exit().expect("nothing locked");
+        assert_eq!(
+            gate.begin_exit().err(),
+            Some(ExitRefused::Exiting(AppExiting::Pending))
+        );
+    }
+
+    #[tokio::test]
+    async fn close_is_blocked_only_by_an_apply_in_flight() {
+        let gate = ApplyGate::default();
+        let guard = gate.lock_tweak("t").await.expect("no exit pending");
+        assert!(!gate.commit_close(), "a close must not kill an apply");
+        drop(guard);
+        assert!(gate.commit_close());
+        assert_eq!(gate.lock_tweak("t").await.err(), Some(AppExiting::Final));
+    }
+
+    #[tokio::test]
+    async fn a_close_stays_committed_after_a_pending_exit_is_called_off() {
+        let gate = ApplyGate::default();
+        let pending = gate.begin_exit().expect("nothing locked");
+        assert!(
+            gate.commit_close(),
+            "a pending exit already rules out an apply"
+        );
+        drop(pending);
+        assert_eq!(gate.lock_tweak("t").await.err(), Some(AppExiting::Final));
     }
 }

@@ -198,22 +198,30 @@ fn is_trusted_download_url(url: &str) -> bool {
         .any(|prefix| url.starts_with(prefix))
 }
 
-/// Download and install an update
-///
-/// Downloads the update asset to a temporary location and launches the installer.
-/// The app should exit after calling this to allow the installer to complete.
 #[tauri::command]
-pub fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
+pub async fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
+    tauri::async_runtime::spawn_blocking(move || {
+        install_update_in(
+            crate::tweaks::engine::lifecycle::gate(),
+            download_url,
+            asset_name,
+        )
+    })
+    .await?
+}
+
+fn install_update_in(
+    gate: &crate::tweaks::engine::lifecycle::ApplyGate,
+    download_url: String,
+    asset_name: String,
+) -> Result<(), Error> {
     log::info!("Starting update download: {}", asset_name);
 
-    // The installer replaces this executable while this process keeps running, and the broker
-    // resolves its own image with current_exe() at spawn time, so an apply in flight could spawn a
-    // child from a newly-installed binary against a request the old parent built. Refuse instead.
-    if crate::tweaks::engine::lifecycle::any_apply_in_flight() {
-        return Err(Error::Update(
-            "A tweak is still being applied. Wait for it to finish before updating.".into(),
-        ));
-    }
+    // Latched through the download and kept once the installer runs, until the frontend exits: the
+    // broker spawns current_exe(), so no apply may run while the installer replaces this executable.
+    let latch = gate
+        .begin_exit()
+        .map_err(|refused| Error::exit_refused(refused, "install the update"))?;
 
     // Security: Validate download URL is from trusted source
     if !is_trusted_download_url(&download_url) {
@@ -242,7 +250,6 @@ pub fn install_update(download_url: String, asset_name: String) -> Result<(), Er
         ));
     }
 
-    // Get temp directory
     let temp_dir = std::env::temp_dir();
     let download_path = temp_dir.join(&asset_name);
 
@@ -302,6 +309,7 @@ pub fn install_update(download_url: String, asset_name: String) -> Result<(), Er
     match result {
         Ok(_) => {
             log::info!("Installer launched successfully");
+            latch.keep_until_exit();
             Ok(())
         }
         Err(e) => {
@@ -383,5 +391,34 @@ mod tests {
     fn test_is_newer_version_with_v_prefix() {
         assert!(is_newer_version("3.0.0", "v3.1.0"));
         assert!(is_newer_version("v3.0.0", "3.1.0"));
+    }
+
+    #[tokio::test]
+    async fn rejected_install_leaves_the_latch_released() {
+        let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
+        for (url, name) in [
+            ("https://example.com/x.exe", "x.exe"),
+            ("https://github.com/ehsan18t/magicx-toolbox/x", "..\\x.exe"),
+            ("https://github.com/ehsan18t/magicx-toolbox/x", "x.zip"),
+        ] {
+            let result = install_update_in(&gate, url.into(), name.into());
+            assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
+        }
+        drop(
+            gate.begin_exit()
+                .expect("latch released after every rejection"),
+        );
+        assert!(gate.lock_tweak("t").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn install_is_refused_under_an_apply() {
+        let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
+        let _guard = gate.lock_tweak("t").await.expect("no exit pending");
+        let result = install_update_in(&gate, "https://example.com/x.exe".into(), "x.exe".into());
+        assert!(
+            matches!(result, Err(Error::ApplyInFlight(_))),
+            "got {result:?}"
+        );
     }
 }

@@ -51,6 +51,9 @@ export { updateStore } from "./stores/update.svelte";
 // Config
 export { APP_CONFIG, type AppConfig } from "./config/app";
 
+// Utils
+export { errorMessage, isAppExiting } from "./utils/error";
+
 // Types
 export * from "./types";
 

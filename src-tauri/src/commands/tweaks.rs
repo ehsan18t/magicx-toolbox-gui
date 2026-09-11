@@ -246,11 +246,11 @@ fn find_tweak<'a>(corpus: &'a Corpus, tweak_id: &str) -> Result<&'a Tweak> {
         .ok_or_else(|| Error::NotFound(format!("tweak '{tweak_id}'")))
 }
 
-/// Maps a restore-originated `EngineError` to the app's error type. Wording-only carry-forward
-/// (Task 13): `EngineError::RollbackReport`'s `Display` was written for `apply`'s own rollback
-/// ("apply failed (...)"), so a restore failure is re-prefixed HERE, at the command boundary --
-/// never by editing `EngineError` in the engine (outside this task's touch boundary).
+/// `RollbackReport` reads "apply failed" for a restore too, so a restore failure is re-prefixed.
 fn map_restore_err(e: EngineError) -> Error {
+    if let EngineError::AppExiting(refused) = e {
+        return Error::AppExiting(refused);
+    }
     let msg = e.to_string();
     let msg = msg
         .strip_prefix("apply failed")
@@ -1066,7 +1066,10 @@ pub async fn apply_tweak(
     let target = OptLabel(option_label);
     apply_tweak_logic(tweak, corpus, &target, &deps)
         .await
-        .map_err(|e| Error::Tweak(e.to_string()))
+        .map_err(|e| match e {
+            EngineError::AppExiting(refused) => Error::AppExiting(refused),
+            e => Error::Tweak(e.to_string()),
+        })
 }
 
 #[tauri::command]
@@ -1116,6 +1119,10 @@ pub async fn discard_snapshot_entry(
     seq: Seq,
 ) -> Result<()> {
     log::info!("discard_snapshot_entry: '{tweak_id}' seq {seq:?}");
+    // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
+    let _guard = lifecycle::lock_tweak(&tweak_id)
+        .await
+        .map_err(Error::AppExiting)?;
     state
         .snapshots
         .discard(&tweak_id, seq)

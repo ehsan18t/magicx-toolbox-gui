@@ -30,6 +30,12 @@ pub enum Error {
     #[error("Update error: {0}")]
     Update(String),
 
+    #[error("A tweak is still being changed. Wait for it to finish, then {0}.")]
+    ApplyInFlight(&'static str),
+
+    #[error(transparent)]
+    AppExiting(crate::tweaks::engine::lifecycle::AppExiting),
+
     #[error("Command execution failed: {0}")]
     CommandExecution(String),
 
@@ -65,11 +71,24 @@ impl Error {
             Error::RequiresAdmin => "REQUIRES_ADMIN",
             Error::ServiceControl(_) => "SERVICE_CONTROL_FAILED",
             Error::Update(_) => "UPDATE_ERROR",
+            Error::ApplyInFlight(_) => "APPLY_IN_FLIGHT",
             Error::CommandExecution(_) => "COMMAND_EXECUTION_FAILED",
             Error::NotFound(_) => "NOT_FOUND",
             Error::ValidationError(_) => "VALIDATION_FAILED",
             Error::Tweak(_) => "TWEAK_ENGINE_ERROR",
             Error::TweakUnavailable(_) => "TWEAK_UNAVAILABLE",
+            Error::AppExiting(_) => "APP_EXITING",
+        }
+    }
+
+    pub fn exit_refused(
+        refused: crate::tweaks::engine::lifecycle::ExitRefused,
+        action: &'static str,
+    ) -> Self {
+        use crate::tweaks::engine::lifecycle::ExitRefused;
+        match refused {
+            ExitRefused::ApplyInFlight => Error::ApplyInFlight(action),
+            ExitRefused::Exiting(exiting) => Error::AppExiting(exiting),
         }
     }
 }

@@ -57,13 +57,13 @@ pub fn run() {
         // it. Refuse, and say so, rather than losing the tweak halfway.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if crate::tweaks::engine::lifecycle::any_apply_in_flight() {
+                if !crate::tweaks::engine::lifecycle::gate().commit_close() {
                     api.prevent_close();
                     log::warn!("close refused: an apply is still in flight");
                     use tauri::Emitter;
                     let _ = window.emit(
                         "close-blocked",
-                        "A tweak is still being applied. The window will close once it finishes.",
+                        "A tweak is still being changed. Close the window again once it finishes.",
                     );
                 }
             }
