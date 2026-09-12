@@ -19,7 +19,9 @@ use crate::tweaks::engine::detect::{
     UnknownReason,
 };
 use crate::tweaks::engine::revert::{self, RestoreOutcome};
-use crate::tweaks::engine::{apply, lifecycle, AllKinds, Deps, ProbeCache, RealActions, RealProbe};
+use crate::tweaks::engine::{
+    apply, lifecycle, log_elevated_failure, AllKinds, Deps, ProbeCache, RealActions, RealProbe,
+};
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol, Hive, Level,
     Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType, Tweak,
@@ -1098,9 +1100,12 @@ pub async fn apply_tweak(
     let target = OptLabel(option_label);
     apply_tweak_logic(tweak, corpus, &target, &deps)
         .await
-        .map_err(|e| match e {
-            EngineError::AppExiting(refused) => Error::AppExiting(refused),
-            e => Error::Tweak(e.to_string()),
+        .map_err(|e| {
+            log_elevated_failure(&tweak_id, &e);
+            match e {
+                EngineError::AppExiting(refused) => Error::AppExiting(refused),
+                e => Error::Tweak(e.to_string()),
+            }
         })
 }
 
@@ -1121,7 +1126,10 @@ pub async fn restore_tweak(
     revert::restore(tweak, corpus, &deps)
         .await
         .map(RestoreOutcomeView::from)
-        .map_err(map_restore_err)
+        .map_err(|e| {
+            log_elevated_failure(&tweak_id, &e);
+            map_restore_err(e)
+        })
 }
 
 #[tauri::command]

@@ -14,6 +14,8 @@ pub mod detect;
 pub mod lifecycle;
 pub mod revert;
 
+use apply::EngineError;
+
 use crate::services::appx_index::AppxIndex;
 use crate::services::elevation::{self, BrokerOp, BrokerOpError, Elevation};
 use crate::tweaks::kinds::{
@@ -26,7 +28,7 @@ use crate::tweaks::kinds::{
     BatchFailure, EffectKind, Error as KindError, ExecCx,
 };
 use crate::tweaks::model::{ActionDef, EffectId, Level, Setting, Value};
-use crate::tweaks::shared_claims::ClaimsStore;
+use crate::tweaks::shared_claims::{ClaimsError, ClaimsStore};
 use crate::tweaks::snapshot::SnapshotStore;
 use crate::tweaks::winver::WinVer;
 use std::collections::HashMap;
@@ -45,8 +47,8 @@ impl AllKinds {
     ///
     /// The pre-check mirrors what `drive_service`/`drive_task` do in-process (invariant 12). The
     /// broker translations are deliberately pure, and without this an absent service or task
-    /// reaches the child, fails there, and returns as an opaque `OpFailed` -> `AccessDenied`. That
-    /// is the wrong shape twice over: apply's `optional`/`if_missing` no-op guard matches only
+    /// reaches the child, fails there, and returns as an opaque `OpFailed` -> `ElevatedOpFailed`.
+    /// That is the wrong shape twice over: apply's `optional`/`if_missing` no-op guard matches only
     /// `ResourceMissing`, so an `optional` effect whose resource is absent on this build would
     /// abort the tweak and roll it back instead of reading as the verified no-op detect already
     /// advertises. Reads never escalate, so this costs the same in-process read detect just
@@ -156,7 +158,7 @@ impl EffectKind for AllKinds {
             },
             ref failed @ BrokerOpError::OpFailed { ref source, .. } => BatchFailure {
                 index: failing_item(&spans, failed.failed_op_index(), sent),
-                error: KindError::AccessDenied(source.to_string()),
+                error: KindError::ElevatedOpFailed(Level::Ti, source.to_string()),
             },
             // No op index to attribute this to: the point is that we do not know which ran. The
             // first item is where the batch is treated as having stopped.
@@ -191,11 +193,77 @@ fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
         BrokerOpError::CouldNotAcquire(err) => {
             KindError::CouldNotAcquireElevation(level, err.to_string())
         }
-        BrokerOpError::OpFailed { source, .. } => KindError::AccessDenied(source.to_string()),
+        BrokerOpError::OpFailed { source, .. } => {
+            KindError::ElevatedOpFailed(level, source.to_string())
+        }
         BrokerOpError::Indeterminate(err) => {
             KindError::ElevatedOutcomeUnknown(level, err.to_string())
         }
     })
+}
+
+/// One release-visible line per elevated failure: which tweak, where in it, which level, and how
+/// the broker classified it. Called by the command layer, the first point that owns both halves:
+/// the drive sites below know the classification but not which tweak is running.
+pub fn log_elevated_failure(tweak_id: &str, e: &EngineError) {
+    for line in elevated_failure_lines(tweak_id, e) {
+        log::error!("{line}");
+    }
+}
+
+/// Every elevated failure `e` carries, a rollback's own failures included: ADR-0001's Needs
+/// Attention state is exactly a rollback that hit one, so it can never be the line that is missing.
+fn elevated_failure_lines(tweak_id: &str, e: &EngineError) -> Vec<String> {
+    let mut lines = Vec::new();
+    collect_elevated_failures(tweak_id, e, "", &mut lines);
+    lines
+}
+
+fn collect_elevated_failures(tweak_id: &str, e: &EngineError, phase: &str, out: &mut Vec<String>) {
+    let (site, source) = match e {
+        EngineError::RollbackReport {
+            original,
+            rollback_failures,
+        } => {
+            collect_elevated_failures(tweak_id, original, phase, out);
+            for failed in rollback_failures {
+                collect_elevated_failures(tweak_id, failed, " during rollback", out);
+            }
+            return;
+        }
+        EngineError::CaptureFailed { effect, source }
+        | EngineError::DriveFailed { effect, source }
+        | EngineError::ActionFailed { effect, source } => (format!("effect '{effect}'"), source),
+        EngineError::Claim {
+            shared,
+            source: ClaimsError::Kind(source),
+        } => (format!("shared '{shared}'"), source),
+        _ => return,
+    };
+    if let Some((level, classification)) = elevated_failure(source) {
+        out.push(format!(
+            "tweak '{tweak_id}': {site} failed{phase} at {level:?} elevation: {classification}"
+        ));
+    }
+}
+
+/// The three ways a failure can have reached the elevated child, named without the detail behind
+/// them: that text is the broker's and can carry a path, a nonce or a registry value.
+fn elevated_failure(e: &KindError) -> Option<(Level, &'static str)> {
+    match e {
+        KindError::CouldNotAcquireElevation(level, _) => Some((
+            *level,
+            "could not acquire the elevated child, so nothing ran",
+        )),
+        KindError::ElevatedOpFailed(level, _) => {
+            Some((*level, "an operation was refused inside the elevated child"))
+        }
+        KindError::ElevatedOutcomeUnknown(level, _) => Some((
+            *level,
+            "the elevated child ran but its outcome is unknown, so the machine may have changed",
+        )),
+        _ => None,
+    }
 }
 
 /// Maps a tweak's declared [`Level`] to the broker's [`Elevation`]. Only ever called for
@@ -322,17 +390,145 @@ impl ProbeCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tweaks::model::{StartupType, SvcAddr, TaskAddr};
+    use crate::tweaks::model::{OptLabel, SharedId, StartupType, SvcAddr, TaskAddr};
+
+    /// A detail carrying one of everything a log line must never print: a path, a transport nonce,
+    /// and a registry key with its data.
+    const HOSTILE_DETAIL: &str =
+        "C:\\Users\\Someone\\AppData\\Local\\Temp\\magicx-broker-req.json \
+         nonce 0x0123456789abcdef HKLM\\Software\\Policies\\Secret = 1";
+
+    fn assert_no_detail(line: &str) {
+        for leaked in [
+            "C:\\Users",
+            "magicx-broker",
+            "0x0123456789abcdef",
+            "HKLM",
+            "Secret",
+        ] {
+            assert!(!line.contains(leaked), "{line} names {leaked}");
+        }
+    }
+
+    /// The parent's identity line for a failed elevated drive: which tweak, which effect, which
+    /// level, which classification, and none of the detail behind it.
+    #[test]
+    fn every_elevated_drive_failure_is_named_by_tweak_effect_level_and_classification() {
+        for (source, classification) in [
+            (
+                KindError::CouldNotAcquireElevation(Level::Ti, HOSTILE_DETAIL.into()),
+                "nothing ran",
+            ),
+            (
+                KindError::ElevatedOpFailed(Level::Ti, HOSTILE_DETAIL.into()),
+                "refused inside the elevated child",
+            ),
+            (
+                KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
+                "outcome is unknown",
+            ),
+        ] {
+            let lines = elevated_failure_lines(
+                "wu_block",
+                &EngineError::DriveFailed {
+                    effect: EffectId("block_updates".into()),
+                    source,
+                },
+            );
+            let [line] = &lines[..] else {
+                panic!("one line per elevated failure, got {lines:?}");
+            };
+            assert!(line.contains("wu_block"), "{line}");
+            assert!(line.contains("block_updates"), "{line}");
+            assert!(line.contains("Ti"), "{line}");
+            assert!(line.contains(classification), "{line}");
+            assert_no_detail(line);
+        }
+    }
+
+    /// A drive is not the only step that reaches the elevated child: a shared claim drives through
+    /// it too, and capture and action failures carry the same kinds.
+    #[test]
+    fn every_shape_that_can_carry_an_elevated_failure_is_named() {
+        let unknown = || KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into());
+        let effect = || EffectId("wu_sih".into());
+        for shape in [
+            EngineError::Claim {
+                shared: SharedId("wu_service".into()),
+                source: ClaimsError::Kind(unknown()),
+            },
+            EngineError::CaptureFailed {
+                effect: effect(),
+                source: unknown(),
+            },
+            EngineError::ActionFailed {
+                effect: effect(),
+                source: unknown(),
+            },
+        ] {
+            let lines = elevated_failure_lines("wu_block", &shape);
+            let [line] = &lines[..] else {
+                panic!("{shape:?} went unnamed");
+            };
+            assert!(line.contains("outcome is unknown"), "{line}");
+            assert_no_detail(line);
+        }
+    }
+
+    /// A rollback report is what the command layer actually receives, and an elevated failure
+    /// inside the rollback itself is ADR-0001's Needs Attention state: both have to be named.
+    #[test]
+    fn a_rollback_report_names_the_original_and_every_rollback_failure() {
+        let lines = elevated_failure_lines(
+            "wu_block",
+            &EngineError::RollbackReport {
+                original: Box::new(EngineError::DriveFailed {
+                    effect: EffectId("wu_sih".into()),
+                    source: KindError::ElevatedOpFailed(Level::Ti, HOSTILE_DETAIL.into()),
+                }),
+                rollback_failures: vec![EngineError::DriveFailed {
+                    effect: EffectId("wu_orch".into()),
+                    source: KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
+                }],
+            },
+        );
+        let [original, rolled_back] = &lines[..] else {
+            panic!("both failures must be named, got {lines:?}");
+        };
+        assert!(original.contains("wu_sih"), "{original}");
+        assert!(!original.contains("rollback"), "{original}");
+        assert!(rolled_back.contains("wu_orch"), "{rolled_back}");
+        assert!(rolled_back.contains("during rollback"), "{rolled_back}");
+        assert_no_detail(original);
+        assert_no_detail(rolled_back);
+    }
+
+    /// A failure that never reached the broker must not be recorded as an elevated one.
+    #[test]
+    fn a_failure_that_never_reached_the_broker_is_not_an_elevated_one() {
+        for e in [
+            EngineError::DriveFailed {
+                effect: EffectId("e".into()),
+                source: KindError::AccessDenied("denied in-process".into()),
+            },
+            EngineError::Claim {
+                shared: SharedId("s".into()),
+                source: ClaimsError::Corrupt,
+            },
+            EngineError::UnknownOption(OptLabel("On".into())),
+        ] {
+            assert!(elevated_failure_lines("wu_block", &e).is_empty(), "{e:?}");
+        }
+    }
 
     /// Names that certainly do not exist, so these need no elevation and no real resource.
     const NO_SUCH_SERVICE: &str = "MagicXNoSuchService_5F3F1D2E-6A4B-4C9E-9B0A-6B6E6C7D8E9F";
     const NO_SUCH_TASK: &str = r"\MagicXNoSuchFolder_5F3F1D2E\NoSuchTask";
 
     /// An `optional` effect whose resource is absent has to reach apply as `ResourceMissing`: that
-    /// is the only error its `if_missing` no-op guard matches on (`apply::drive_forward`). The
-    /// routed System/Ti path used to hand the drive to the elevated child, where absence came back
-    /// as an opaque `OpFailed` -> `AccessDenied`, so `optional` silently did nothing above User/
-    /// Admin and a tweak with a task absent on this Windows build aborted and rolled back.
+    /// is the only error its `if_missing` no-op guard matches on (`apply::drive_forward`). Without
+    /// the pre-check the child sees the absence instead and it comes back opaque, which aborts and
+    /// rolls back a tweak whose task is simply not on this Windows build.
     ///
     /// The pre-check runs before any spawn, which is exactly why this test needs no elevation.
     #[test]

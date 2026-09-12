@@ -13,10 +13,11 @@ the ADR and delete the entry.
 
 **Related:** `PRE_MERGE_TASKS.md` is what blocks a specific merge; it is not a bug list.
 
-| #   | Issue                                   | Bites today?                                 | Found      |
-| --- | --------------------------------------- | -------------------------------------------- | ---------- |
-| 1   | Snapshots carry no user identity        | yes, on a multi-user machine                 | 2026-07-26 |
-| 2   | Broker response is written to user TEMP | only as a forced false failure, never silent | 2026-09-12 |
+| #   | Issue                                         | Bites today?                                 | Found      |
+| --- | --------------------------------------------- | -------------------------------------------- | ---------- |
+| 1   | Snapshots carry no user identity              | yes, on a multi-user machine                 | 2026-07-26 |
+| 2   | Broker response is written to user TEMP       | only as a forced false failure, never silent | 2026-09-12 |
+| 3   | Nothing inside the broker child is observable | only as thin support detail after a failure  | 2026-09-12 |
 
 ---
 
@@ -54,3 +55,11 @@ Costs a `schema_version` bump and a migration decision for snapshots already on 
 **Candidate fix.** Exchange the request and response through `%SystemRoot%\SystemTemp` instead. A medium-integrity process of the admin user holds `Administrators` only as a deny-only SID, so an ACL that grants nothing to `Users` or the user's own SID keeps it out, and because it does not own that directory it has no `FILE_DELETE_CHILD` there to rename or replace the files. Observed on the development machine (Windows 11 24H2, build 10.0.26100): the directory exists and `icacls C:\Windows\SystemTemp` reports exactly `NT AUTHORITY\SYSTEM:(OI)(CI)(F)` and `BUILTIN\Administrators:(OI)(CI)(F)`, both full control. Availability and ACL on other Windows versions are unverified.
 
 **Why it is deferred.** Getting it wrong breaks every elevated apply, and two things need a real elevated run: that the TrustedInstaller child can read and write there, and that the directory exists with that ACL on every supported Windows version (a fallback to `%TEMP%` would reopen this gap). A per-run directory under `%TEMP%` with a restrictive DACL does not work: the user owns `%TEMP%`, so `FILE_DELETE_CHILD` lets it rename or delete that directory regardless of its DACL.
+
+## 3. Nothing inside the broker child is observable
+
+**The gap.** The TrustedInstaller child has no logger of its own. An op failure crosses back as `OpFailure.message` in the response, but a transport failure or a panic reaches the parent only as an exit code, so for exactly the failures where the child writes no response there is nothing to read but that number. The parent names each exit code it is given (`describe_broker_exit` in `services/elevation/broker.rs`) and records the level and the classification alongside it, which is as far as the parent alone can see. What it deliberately does not record is the op's own message: it can name a registry key or the data written to it, so an operation refused inside the child is logged by position, and what the operation actually complained about is readable nowhere.
+
+**Candidate fixes, and why each waits.** Carrying structured log lines back inside the response costs a `WIRE_VERSION` bump and still says nothing about the two cases that matter, because a child that panics or cannot write its response writes no response at all. A log file of the child's own does cover them. Two places could hold it: beside the response, which inherits issue 2's directory decision and so is best done after it; or the app's own log directory, which is independent of issue 2 but puts a TrustedInstaller-owned file in a directory the unelevated app also writes, so the ACL question moves rather than disappears. Either way the file is created as TrustedInstaller and needs the `CREATE_NEW` and reparse-point guards the response write already uses, and either way a real elevated run is what settles it.
+
+**The order.** Not forced, but cheaper in one direction: settling issue 2 first leaves the transport directory holding both files under a single decision, so the guard is built once.

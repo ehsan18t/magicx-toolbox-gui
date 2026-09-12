@@ -40,9 +40,9 @@ pub enum Error {
     #[error("registry key not found: {0}")]
     KeyNotFound(String),
 
-    /// The operation was denied for want of rights. For a routed System/TI drive this also covers
-    /// "the child ran, but the op inside it failed", which is why it reads as the broad denial
-    /// rather than a registry-specific one.
+    /// The operation was denied for want of rights, in this process. Broad rather than
+    /// registry-specific because service and task denials land here too; a refusal inside the
+    /// elevated child is [`Error::ElevatedOpFailed`].
     #[error("registry access denied: {0}")]
     AccessDenied(String),
 
@@ -83,6 +83,12 @@ pub enum Error {
         "{0:?} elevation ran but its outcome is unknown, so the machine may have changed: {1}"
     )]
     ElevatedOutcomeUnknown(Level, String),
+
+    /// The elevated child ran and one operation inside it was refused. Carries the level so a
+    /// failure the child reported can be named as an elevated one without its own message, which
+    /// can hold a registry key or the data written to it.
+    #[error("{0:?} elevation ran but an operation inside it failed: {1}")]
+    ElevatedOpFailed(Level, String),
 
     /// The addressed service or task does not exist, but the caller asked to drive it to a real
     /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4),

@@ -348,10 +348,10 @@ fn validate_response(
         })
     })?;
     if resp.nonce != expected_nonce {
-        return Err(rejected(format!(
-            "broker response nonce mismatch (sent {:#018x}, got {:#018x}): stale or foreign response",
-            expected_nonce, resp.nonce
-        )));
+        // Never the two values: this string crosses IPC to the UI and into the log.
+        return Err(rejected(
+            "broker response nonce mismatch: stale or foreign response".to_owned(),
+        ));
     }
     Ok(resp)
 }
@@ -449,12 +449,12 @@ fn run_elevated_broker(
     // the machine is untouched, so every failure is classified, never collapsed.
     let read = spawned.map_err(classify_spawn).and_then(|exit| {
         if exit != 0 {
+            // The only place that owns both the code and its meaning, and both are ours.
+            let why = describe_broker_exit(exit);
+            log::warn!("The broker child exited with {exit:#x}: {why}");
             return Err(classify_exit(
                 exit,
-                Error::ServiceControl(format!(
-                    "broker process exited with code {exit:#x}: {}",
-                    describe_broker_exit(exit)
-                )),
+                Error::ServiceControl(format!("broker process exited with code {exit:#x}: {why}")),
             ));
         }
         // Exit 0 means the batch ran AND the response was written, so a read failure here is
@@ -519,8 +519,51 @@ fn run_ops_with(
     spawn: impl FnOnce(&str) -> Result<i32, SpawnError>,
 ) -> Result<(), BrokerOpError> {
     let sent = ops.len();
-    let response = run_elevated_broker(level, ops, spawn)?;
-    check_response(sent, &response)
+    let outcome =
+        run_elevated_broker(level, ops, spawn).and_then(|response| check_response(sent, &response));
+    if let Err(e) = &outcome {
+        log_failure(level, e);
+    }
+    outcome
+}
+
+/// The parent's record of a failed elevated batch: the level and what the failure means for the
+/// machine, built only from values the parent itself produced. An error's own text can carry a
+/// path, a nonce, or the registry key an op wrote, so none of it crosses into a log line.
+fn failure_summary(level: Elevation, e: &BrokerOpError) -> String {
+    let what = match e {
+        BrokerOpError::CouldNotAcquire(_) => {
+            "could not acquire the child, so nothing ran".to_owned()
+        }
+        BrokerOpError::OpFailed {
+            index: Some(index), ..
+        } => format!("operation {index} was refused in the child"),
+        BrokerOpError::OpFailed { index: None, .. } => {
+            "an operation was refused in the child".to_owned()
+        }
+        BrokerOpError::Indeterminate(_) => {
+            "the child ran but its outcome is unknown, so the machine may have changed".to_owned()
+        }
+    };
+    format!("{level:?} broker batch failed: {what}")
+}
+
+/// `None` for an in-process batch, which is not the broker's to report: its caller sees the same
+/// error directly.
+fn failure_log_level(level: Elevation, e: &BrokerOpError) -> Option<log::Level> {
+    if !level.is_elevated() {
+        return None;
+    }
+    Some(match e {
+        BrokerOpError::Indeterminate(_) => log::Level::Error,
+        _ => log::Level::Warn,
+    })
+}
+
+fn log_failure(level: Elevation, e: &BrokerOpError) {
+    if let Some(at) = failure_log_level(level, e) {
+        log::log!(at, "{}", failure_summary(level, e));
+    }
 }
 
 /// The did-it-work decision, isolated from the spawn so it is testable against a response the
@@ -1255,6 +1298,14 @@ mod tests {
         ops: Vec<BrokerOp>,
         child: impl FnOnce(&str, &str) -> Result<i32, SpawnError>,
     ) -> Result<(), BrokerOpError> {
+        run_with_child_paths(ops, child).0
+    }
+
+    /// [`run_with_child`], also handing back the two temp paths the child was given.
+    fn run_with_child_paths(
+        ops: Vec<BrokerOp>,
+        child: impl FnOnce(&str, &str) -> Result<i32, SpawnError>,
+    ) -> (Result<(), BrokerOpError>, [String; 2]) {
         let mut handed = None;
         let result = run_ops_with(Elevation::TrustedInstaller, ops, |cmdline| {
             let argv = child_argv(cmdline);
@@ -1268,10 +1319,11 @@ mod tests {
             handed = Some([req.to_owned(), resp.to_owned()]);
             child(req, resp)
         });
-        for path in handed.expect("the elevated arm must spawn a child") {
-            assert!(!std::path::Path::new(&path).exists(), "left behind: {path}");
+        let handed = handed.expect("the elevated arm must spawn a child");
+        for path in &handed {
+            assert!(!std::path::Path::new(path).exists(), "left behind: {path}");
         }
-        result
+        (result, handed)
     }
 
     fn serve(req: &str, resp: &str) -> Result<i32, SpawnError> {
@@ -1382,6 +1434,106 @@ mod tests {
         assert!(
             matches!(got, Err(BrokerOpError::Indeterminate(_))),
             "{got:?}"
+        );
+    }
+
+    /// A detail carrying one of everything a log line must never print: a path, a transport nonce,
+    /// and a registry key with its data.
+    const HOSTILE_DETAIL: &str =
+        "C:\\Users\\Someone\\AppData\\Local\\Temp\\magicx-broker-resp.json \
+         nonce 0x0123456789abcdef HKLM\\Software\\Policies\\Secret = 1";
+
+    /// Summarises `e` and fails if any part of [`HOSTILE_DETAIL`] survived into the line.
+    fn hostile_summary(e: BrokerOpError) -> String {
+        let summary = failure_summary(Elevation::TrustedInstaller, &e);
+        for leaked in [
+            "C:\\Users",
+            "magicx-broker",
+            "0x0123456789abcdef",
+            "HKLM",
+            "Secret",
+        ] {
+            assert!(!summary.contains(leaked), "{summary} names {leaked}");
+        }
+        summary
+    }
+
+    /// What a support engineer gets for a failed elevated batch, and what they must never get: the
+    /// two temp paths the parent generated for this very run.
+    #[test]
+    fn a_failed_elevated_batch_is_summarised_without_any_path() {
+        let scratch = Scratch::new();
+        let (got, handed) = run_with_child_paths(scratch_ops(&scratch.key), |_, _| {
+            Ok(EXIT_UNREADABLE_REQUEST)
+        });
+        let err = got.expect_err("a nothing-ran exit fails the batch");
+
+        let summary = failure_summary(Elevation::TrustedInstaller, &err);
+        assert!(summary.contains("TrustedInstaller"), "{summary}");
+        assert!(summary.contains("nothing ran"), "{summary}");
+        for path in handed {
+            assert!(!summary.contains(&path), "{summary} names {path}");
+        }
+    }
+
+    /// Each classification reads as itself, and none of them echoes the detail it carries.
+    #[test]
+    fn no_classification_echoes_the_detail_behind_it() {
+        let detail = || Error::ServiceControl(HOSTILE_DETAIL.to_owned());
+
+        let acquire = hostile_summary(BrokerOpError::CouldNotAcquire(detail()));
+        assert!(acquire.contains("nothing ran"), "{acquire}");
+
+        let unknown = hostile_summary(BrokerOpError::Indeterminate(detail()));
+        assert!(unknown.contains("outcome is unknown"), "{unknown}");
+
+        let op = hostile_summary(BrokerOpError::OpFailed {
+            index: Some(2),
+            source: detail(),
+        });
+        assert!(op.contains("operation 2"), "{op}");
+
+        let unplaced = hostile_summary(BrokerOpError::OpFailed {
+            index: None,
+            source: detail(),
+        });
+        assert!(unplaced.contains("an operation was refused"), "{unplaced}");
+    }
+
+    /// Only an elevated batch is the broker's to record, and only an unknown outcome is an error:
+    /// the other two say plainly what happened to the machine.
+    #[test]
+    fn only_an_elevated_failure_is_recorded_and_only_an_unknown_outcome_is_an_error() {
+        let detail = || Error::ServiceControl(HOSTILE_DETAIL.to_owned());
+        let at = |level, e: BrokerOpError| failure_log_level(level, &e);
+
+        assert_eq!(
+            at(Elevation::None, BrokerOpError::Indeterminate(detail())),
+            None
+        );
+        assert_eq!(
+            at(
+                Elevation::TrustedInstaller,
+                BrokerOpError::Indeterminate(detail())
+            ),
+            Some(log::Level::Error)
+        );
+        assert_eq!(
+            at(
+                Elevation::TrustedInstaller,
+                BrokerOpError::CouldNotAcquire(detail())
+            ),
+            Some(log::Level::Warn)
+        );
+        assert_eq!(
+            at(
+                Elevation::TrustedInstaller,
+                BrokerOpError::OpFailed {
+                    index: None,
+                    source: detail(),
+                }
+            ),
+            Some(log::Level::Warn)
         );
     }
 

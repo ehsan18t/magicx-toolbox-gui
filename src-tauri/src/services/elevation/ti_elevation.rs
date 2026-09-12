@@ -121,11 +121,14 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             let pid = status.dwProcessId;
             CloseServiceHandle(service);
             CloseServiceHandle(scm);
-            log::debug!("TrustedInstaller already running with PID: {}", pid);
+            log::info!("The TrustedInstaller service is already running (pid {pid})");
             return Ok(pid);
         }
 
-        log::debug!("Starting TrustedInstaller service...");
+        log::info!(
+            "Starting the TrustedInstaller service, currently {}",
+            describe_service_state(current_state)
+        );
         let start_result = StartServiceW(service, 0, ptr::null());
 
         if start_result == 0 {
@@ -170,7 +173,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
                 let pid = status.dwProcessId;
                 CloseServiceHandle(service);
                 CloseServiceHandle(scm);
-                log::debug!("TrustedInstaller started with PID: {pid}");
+                log::info!("The TrustedInstaller service started (pid {pid})");
                 return Ok(pid);
             }
         }
@@ -244,19 +247,39 @@ fn is_ti_image(image: &str, ti_image: &str) -> bool {
     unprefixed(image).eq_ignore_ascii_case(ti_image)
 }
 
+/// Names a foreign image found at TrustedInstaller's pid by file name plus whether it sits under
+/// the Windows folder. Its full path is a user profile directory as often as not, and this crosses
+/// into the log and to the UI. `windows_dir` must already be unprefixed and unterminated.
+fn foreign_image(image: &str, windows_dir: &str) -> String {
+    let image = unprefixed(image);
+    let name = image.rsplit('\\').next().unwrap_or(image);
+    let under = image
+        .get(..windows_dir.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(windows_dir))
+        && image.as_bytes().get(windows_dir.len()) == Some(&b'\\');
+    let where_it_sits = if under {
+        "under the Windows folder"
+    } else {
+        "outside the Windows folder"
+    };
+    format!("{name} ({where_it_sits})")
+}
+
 /// Open TrustedInstaller with `PROCESS_CREATE_PROCESS` for the parent spoof; the caller owns the
 /// handle. The SCM's pid can be recycled by now (the service stops when idle), so once the open
 /// handle pins it, its image must match and the SCM must still report that pid running.
 fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
     enable_debug_privilege()?;
-    let windows_dir = system_folder(GetSystemWindowsDirectoryW, "Windows")?;
-    let ti_image = ti_image_path(&String::from_utf16_lossy(&windows_dir));
+    let windows_dir =
+        String::from_utf16_lossy(&system_folder(GetSystemWindowsDirectoryW, "Windows")?);
+    let windows_dir = unprefixed(&windows_dir).trim_end_matches('\\');
+    let ti_image = ti_image_path(windows_dir);
     // An idle-stop and restart between the start and the check moves the pid: retry once.
-    match open_trusted_installer(&ti_image)? {
+    match open_trusted_installer(&ti_image, windows_dir)? {
         Ok(handle) => Ok(handle),
         Err(mismatch) => {
             log::warn!("{mismatch}; retrying once");
-            open_trusted_installer(&ti_image)?.map_err(Error::ServiceControl)
+            open_trusted_installer(&ti_image, windows_dir)?.map_err(Error::ServiceControl)
         }
     }
 }
@@ -316,7 +339,10 @@ fn service_pid_mismatch(pinned: u32, state: u32, current: u32) -> Option<String>
 }
 
 /// One acquisition. The inner `Err` is a service-pid mismatch, which a TI restart can explain.
-fn open_trusted_installer(ti_image: &str) -> Result<Result<HANDLE, String>, Error> {
+fn open_trusted_installer(
+    ti_image: &str,
+    windows_dir: &str,
+) -> Result<Result<HANDLE, String>, Error> {
     let pid = start_trusted_installer_service()?;
 
     // SAFETY: `pid` may be stale: the open handle pins it, and its identity is verified through
@@ -338,10 +364,11 @@ fn open_trusted_installer(ti_image: &str) -> Result<Result<HANDLE, String>, Erro
             Some(path) if is_ti_image(&path, ti_image) => {}
             Some(path) => {
                 CloseHandle(handle);
-                log::warn!("TrustedInstaller pid {pid} runs {path}, not {ti_image}");
+                let image = foreign_image(&path, windows_dir);
+                log::warn!("The pid the SCM reported for TrustedInstaller ({pid}) runs {image}");
                 return Err(Error::ServiceControl(format!(
-                    "pid {pid} is {path}, not {ti_image}: the service stopped and its pid was \
-                     reused, or it runs from a non-default path"
+                    "pid {pid} runs {image}, not TrustedInstaller: the service stopped and its \
+                     pid was reused, or it runs from a non-default path"
                 )));
             }
             None => {
@@ -541,6 +568,35 @@ mod tests {
             r"D:\WINNT\servicing\TrustedInstaller.exe",
             r"D:\WINNT"
         ));
+    }
+
+    /// A foreign image at TI's pid is diagnostic, but its path names a user. Only the file name and
+    /// whether it sits under the Windows folder may be said.
+    #[test]
+    fn a_foreign_image_is_named_without_its_path() {
+        let win = r"C:\Windows";
+        for (image, expected) in [
+            (
+                r"C:\Users\Someone\AppData\Local\app.exe",
+                "app.exe (outside the Windows folder)",
+            ),
+            (
+                r"\\?\C:\Windows\System32\svchost.exe",
+                "svchost.exe (under the Windows folder)",
+            ),
+            (
+                r"C:\WindowsApps\thing.exe",
+                "thing.exe (outside the Windows folder)",
+            ),
+            (
+                r"c:\windows\explorer.exe",
+                "explorer.exe (under the Windows folder)",
+            ),
+        ] {
+            let got = foreign_image(image, win);
+            assert_eq!(got, expected, "{image}");
+            assert!(!got.contains('\\'), "{got} still carries a path");
+        }
     }
 
     #[test]

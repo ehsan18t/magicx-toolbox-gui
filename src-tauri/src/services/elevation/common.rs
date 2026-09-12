@@ -140,26 +140,38 @@ unsafe fn terminate_after(h: HANDLE, label: &str, failure: String) -> Error {
     } else {
         TERMINATE_GRACE_MS
     };
-    let detail = match (WaitForSingleObject(h, grace_ms), terminate_err) {
-        (WAIT_OBJECT_0, None) => {
-            return Error::ServiceControl(format!("{label} {failure} and was terminated"))
-        }
-        (WAIT_OBJECT_0, Some(_)) => {
-            return Error::ServiceControl(format!("{label} {failure} and had already exited"))
-        }
-        (_, Some(code)) => format!("TerminateProcess failed: {code}"),
-        (WAIT_TIMEOUT, None) => {
-            format!("still running {TERMINATE_GRACE_MS}ms after being terminated")
-        }
-        (other, None) => format!(
-            "confirming the kill failed (result {other:#x}): {}",
-            GetLastError()
+    let unconfirmed = |detail: String| {
+        format!("could not be confirmed dead ({detail}); it may still be modifying the system")
+    };
+    let (outcome, dead) = match (WaitForSingleObject(h, grace_ms), terminate_err) {
+        (WAIT_OBJECT_0, None) => ("was terminated".to_owned(), true),
+        (WAIT_OBJECT_0, Some(_)) => ("had already exited".to_owned(), true),
+        (_, Some(code)) => (
+            unconfirmed(format!("TerminateProcess failed: {code}")),
+            false,
+        ),
+        (WAIT_TIMEOUT, None) => (
+            unconfirmed(format!(
+                "still running {TERMINATE_GRACE_MS}ms after being terminated"
+            )),
+            false,
+        ),
+        (other, None) => (
+            unconfirmed(format!(
+                "confirming the kill failed (result {other:#x}): {}",
+                GetLastError()
+            )),
+            false,
         ),
     };
-    log::error!("{label}: could not confirm the elevated child died ({detail})");
-    Error::ServiceControl(format!(
-        "{label} {failure} and could not be confirmed dead ({detail}); it may still be modifying the system"
-    ))
+    // One line for the whole kill, since the broker records only its classification.
+    let message = format!("{label} {failure} and {outcome}");
+    if dead {
+        log::warn!("{message}");
+    } else {
+        log::error!("{message}");
+    }
+    Error::ServiceControl(message)
 }
 
 /// Wait up to `timeout_ms` for a spawned child, reap it, and return its real exit code; a failed
@@ -181,18 +193,15 @@ pub(super) unsafe fn wait_and_reap(
                     GetLastError()
                 )))
             } else {
-                log::debug!("{label} completed with exit code: {exit_code}");
+                // The exit code is logged where it is interpreted, in `broker::run_elevated_broker`.
                 Ok(exit_code as i32)
             }
         }
-        WAIT_TIMEOUT => {
-            log::warn!("{label} timed out after {timeout_ms}ms");
-            Err(terminate_after(
-                pi.hProcess,
-                label,
-                format!("timed out after {timeout_ms}ms"),
-            ))
-        }
+        WAIT_TIMEOUT => Err(terminate_after(
+            pi.hProcess,
+            label,
+            format!("timed out after {timeout_ms}ms"),
+        )),
         other => {
             let failure = format!("wait failed (result {other:#x}): {}", GetLastError());
             Err(terminate_after(pi.hProcess, label, failure))
