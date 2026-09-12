@@ -1,0 +1,57 @@
+category:
+  id: dup_address_three_tweaks
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Three different tweaks all directly own the same registry address."
+
+tweaks:
+  - id: tweak_a
+    name: "Tweak A"
+    description: "Owns the widget toggle."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: slot_a
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          slot_a: 1
+      - label: "Off"
+        values:
+          slot_a: 0
+
+  - id: tweak_b
+    name: "Tweak B"
+    description: "Also owns the widget toggle."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: slot_b
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          slot_b: 1
+      - label: "Off"
+        values:
+          slot_b: 0
+
+  - id: tweak_c
+    name: "Tweak C"
+    description: "Also owns the widget toggle — this is the third colliding owner."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: slot_c
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          slot_c: 1
+      - label: "Off"
+        values:
+          slot_c: 0

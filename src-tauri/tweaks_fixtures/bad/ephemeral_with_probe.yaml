@@ -1,0 +1,27 @@
+category:
+  id: ephemeral_with_probe
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An ephemeral action must not carry undo or probe (spec §7) — this exercises the probe-only branch (see also ephemeral_with_undo.yaml for the undo branch)."
+
+tweaks:
+  - id: ephemeral_with_probe_tweak
+    name: "Ephemeral With Probe"
+    description: "flush_dns is ephemeral but also declares probe, which spec §7 forbids."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: flush_dns
+        action:
+          apply: "ipconfig /flushdns"
+          probe: "ipconfig /flushdns"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "On"
+        values:
+          marker: 1
+          flush_dns: run

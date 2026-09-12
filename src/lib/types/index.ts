@@ -3,9 +3,6 @@
 /** Risk level for tweaks */
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
-/** Permission level for tweaks (hierarchical: ti > system > admin > none) */
-export type PermissionLevel = "none" | "admin" | "system" | "ti";
-
 /** Registry hive types */
 export type RegistryHive = "HKCU" | "HKLM";
 
@@ -13,7 +10,7 @@ export type RegistryHive = "HKCU" | "HKLM";
 export type RegistryValueType = "REG_DWORD" | "REG_SZ" | "REG_EXPAND_SZ" | "REG_BINARY" | "REG_MULTI_SZ" | "REG_QWORD";
 
 /** Windows service startup type */
-export type ServiceStartupType = "disabled" | "manual" | "automatic" | "boot" | "system";
+export type ServiceStartupType = "disabled" | "manual" | "automatic" | "automatic_delayed" | "boot" | "system";
 
 /**
  * Registry value type - maps to the RegistryValueType enum.
@@ -61,22 +58,16 @@ export interface ServiceChange {
 }
 
 /** Action for scheduled task changes */
-export type SchedulerAction = "enable" | "disable" | "delete";
+export type SchedulerAction = "enable" | "disable";
 
 /** Scheduler change within an option */
 export interface SchedulerChange {
   /** Task path in Task Scheduler (e.g., "\\Microsoft\\Windows\\Application Experience") */
   task_path: string;
-  /** Exact task name (e.g., "Microsoft Compatibility Appraiser"). Mutually exclusive with task_name_pattern. */
-  task_name?: string;
-  /** Regex pattern to match multiple task names (e.g., "USO|Reboot|Refresh"). Mutually exclusive with task_name. */
-  task_name_pattern?: string;
   /** Action to perform on the task(s) */
   action: SchedulerAction;
   /** If true, skip this change for tweak status validation and ignore failures during apply */
   skip_validation?: boolean;
-  /** If true, don't error if task/path not found (useful for optional tasks) */
-  ignore_not_found?: boolean;
 }
 
 /** Action for hosts file changes */
@@ -178,7 +169,217 @@ export interface TweakOption {
   scheduler_missing_is_match?: boolean;
 }
 
-/** Category definition loaded from YAML file */
+// Mirrors the serde shapes emitted by src-tauri/src/commands/tweaks.rs.
+
+/** Elevation floor / app ceiling (serde: exact Rust variant names). */
+export type Level = "User" | "Admin" | "Ti";
+
+/** Risk level as serialized by the engine (PascalCase, unlike the UI's RiskLevel). */
+export type BackendRiskLevel = "Low" | "Medium" | "High" | "Critical";
+
+/**
+ * Whether a tweak can be applied/restored right now (spec §9).
+ *
+ * `sid_mismatch` and `sid_unknown` are separate on purpose: the first means the guard positively
+ * identified a different account, the second means it could not read a SID at all. Both block
+ * HKCU-touching tweaks, but only the first may tell the user another account is involved.
+ *
+ * `elevation_path_unavailable` is separate from `needs_elevation` for the same kind of reason: the
+ * first is a machine the user cannot fix by restarting the app (the TrustedInstaller service is
+ * disabled or absent), and telling them to restart as administrator would send them in a circle.
+ */
+export type Availability =
+  | { state: "available" }
+  | { state: "needs_elevation"; reason: string }
+  | { state: "sid_mismatch"; reason: string }
+  | { state: "sid_unknown"; reason: string }
+  | { state: "elevation_path_unavailable"; reason: string };
+
+/** The compiled tweak model for the UI (`get_tweaks`). */
+/** Corpus category metadata from `get_categories` (id, display name, icon, description). */
+export interface CategoryMeta {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+/**
+ * One option with the concrete per-effect changes it drives, projected by the backend so the
+ * Details modal can show a power user exactly what each state writes. The `*_changes` shapes are
+ * the same ones the detail components already render.
+ */
+export interface TweakEffectOption {
+  label: string;
+  registry_changes: RegistryChange[];
+  service_changes: ServiceChange[];
+  scheduler_changes: SchedulerChange[];
+  hosts_changes: HostsChange[];
+  firewall_changes: FirewallChange[];
+  /** Action scripts this option runs (Appx removal, powercfg, DISM, and the like), shown verbatim. */
+  commands: string[];
+}
+
+export interface TweakView {
+  id: string;
+  name: string;
+  description: string;
+  /** Rich markdown detail for the Details modal (authored `info:`); null if none. */
+  info: string | null;
+  category: string;
+  risk: BackendRiskLevel;
+  reversible: boolean;
+  /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
+  requires_reboot: boolean;
+  /** Each option with the concrete effects it drives (apply targets are addressed by label). */
+  options: TweakEffectOption[];
+  /** The level the engine will actually run the tweak at, not its declared floor (ADR-0005). */
+  required_level: Level;
+  availability: Availability;
+}
+
+/** Why one applicable effect could not be read (spec §8.4). */
+export type UnknownCause = "AccessDenied" | "Malformed" | "MissingRequired" | "Other";
+
+export interface UnknownReason {
+  effect: string;
+  cause: UnknownCause;
+  /** True only when elevating could resolve the read (AccessDenied). */
+  needs_elevation: boolean;
+}
+
+/** An option that cannot be selected on this machine/build right now. */
+export interface UnavailableOpt {
+  label: string;
+  reason: string;
+}
+
+/** Which authored options wanted the value one effect actually holds. Empty = none do. */
+export interface EffectAgreement {
+  effect: string;
+  /** The registry value / service / task the effect addresses, not the author's effect id. */
+  name: string;
+  wanted_by: string[];
+}
+
+/**
+ * What the machine reads when it matches no authored option. `changes` is shaped exactly like a
+ * TweakOption so the UI renders it with the same components, letting the user compare like with like.
+ */
+export interface ObservedState {
+  changes: TweakEffectOption;
+  agreement: EffectAgreement[];
+}
+
+/** A shared setting's current claimants, surfaced as info regardless of match. */
+export interface HeldInfo {
+  shared: string;
+  holders: string[];
+}
+
+/** A tweak's detected state (nested inside TweakStatusView.state). */
+export type TweakStateView =
+  | { state: "active"; option: string }
+  | { state: "system_default" }
+  | { state: "unavailable"; reason: string }
+  | { state: "unknown"; reasons: UnknownReason[] };
+
+/** What kind of step could not be verified, so the UI never parses a message to find out. */
+export type AttentionKind =
+  "drive" | "verify" | "outcome_unknown" | "action" | "no_undo" | "claim" | "store" | "crash_residue" | "other";
+
+/** One step the failed operation could not verify. */
+export interface AttentionItem {
+  effect: string | null;
+  kind: AttentionKind;
+  message: string;
+}
+
+/**
+ * A tweak's Needs Attention record (ADR-0001/0002). Kept per tweak rather than per snapshot entry,
+ * so releasing an entry cannot drop it; it clears only on a verified apply or restore, or when the
+ * user discards the snapshot.
+ */
+export interface Attention {
+  reason: "apply_failed" | "restore_failed" | "crash_residue" | "record_unreadable";
+  items: AttentionItem[];
+}
+
+/** What each Needs Attention reason means, in the words the cards and the modal both use. */
+export const ATTENTION_CAUSE: Record<Attention["reason"], string> = {
+  apply_failed: "The last apply couldn't be fully verified",
+  restore_failed: "The last restore didn't fully complete",
+  crash_residue: "The app stopped during an apply, so part of it was never confirmed",
+  record_unreadable: "This tweak's Needs Attention record couldn't be read, so whatever it holds is unresolved",
+};
+
+/** Reason text with a fallback, so a reason added in Rust never interpolates `undefined` into the UI. */
+export function attentionCause(reason: Attention["reason"] | undefined): string {
+  return (reason && ATTENTION_CAUSE[reason]) || "The last operation couldn't be fully verified";
+}
+
+/** One tweak's live status, delivered per-tweak via the `tweak-status` event. */
+export interface TweakStatusView {
+  state: TweakStateView;
+  unavailable: UnavailableOpt[];
+  residues: string[];
+  has_history: boolean;
+  /** The tweak's Needs Attention record, or null. */
+  attention: Attention | null;
+  /** Publication order: a status stamped lower than the one already shown read the machine earlier. */
+  stamp: number;
+  held_shared: HeldInfo[];
+  /** Non-empty only at System Default: what the surface reads and which options wanted it. */
+  observed: ObservedState | null;
+}
+
+/** `tweak-status` event payload: one tweak's freshly detected status. */
+export interface TweakStatusEvent {
+  tweak_id: string;
+  status: TweakStatusView;
+}
+
+/**
+ * `get_elevation_state` result: app ceiling + over-the-shoulder SID guard.
+ *
+ * `sid_mismatch` is "per-user tweaks are blocked", which covers BOTH a confirmed different account
+ * and an unresolvable one. It does not distinguish them; the per-tweak `Availability` does, via
+ * `sid_mismatch` vs `sid_unknown`. Do not render this field as "another account elevated the app".
+ */
+export interface ElevationState {
+  level: Level;
+  sid_mismatch: boolean;
+}
+
+/** `apply_tweak` result — carries the fresh post-op status (use it, don't re-fetch). */
+export interface ApplyOutcome {
+  effects: { effect: string; kind: Record<string, unknown> }[];
+  status: TweakStatusView;
+}
+
+/** Why one snapshot entry cannot be a restore target. */
+export type InvalidReason = "Corrupt" | "WrongSchema" | "WrongMachine" | "DanglingRef" | "TargetUnavailable";
+
+/** Entry validity — "Valid" or an externally-tagged Invalid(reason). */
+export type EntryValidity = "Valid" | { Invalid: InvalidReason };
+
+/** One `list_snapshot_entries` row (drives the discard affordance). */
+export interface EntrySummary {
+  seq: number;
+  validity: EntryValidity;
+  timestamp: string | null;
+  captured: unknown;
+}
+
+/** `restore_tweak` result — fresh status + advisories, computed without a re-scan. */
+export interface RestoreOutcome {
+  status: TweakStatusView;
+  consumed: number | null;
+  reboot_advisory: boolean;
+  skipped_invalid: EntrySummary[];
+}
+
+/** Category definition (derived on the frontend from the tweaks' category strings). */
 export interface CategoryDefinition {
   id: string;
   name: string;
@@ -188,59 +389,74 @@ export interface CategoryDefinition {
   order: number;
 }
 
-/** A complete tweak definition loaded from YAML */
+/**
+ * A tweak's presentation model — the frontend adapter over the engine's `TweakView`.
+ * Field names the many view components already read (id/name/description/category_id/
+ * risk_level) are preserved so those components need no changes.
+ */
 export interface TweakDefinition {
   id: string;
   name: string;
   description: string;
-  /** Category ID from YAML */
+  /** The engine's category string (kept under the old name view components read). */
   category_id: string;
+  /** Lowercased from the engine's PascalCase risk, for the existing UI maps. */
   risk_level: RiskLevel;
+  /** Whether the tweak declares itself reversible. */
+  reversible: boolean;
+  /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
   requires_reboot: boolean;
-  requires_admin: boolean;
-  /** Requires SYSTEM elevation for protected registry keys */
-  requires_system: boolean;
-  /** Requires TrustedInstaller elevation for protected services (e.g., WaaSMedicSvc) */
-  requires_ti: boolean;
-  /** Additional info/documentation */
+  /**
+   * The level the engine will actually run this tweak at: its declared floor raised by any effect
+   * that routes higher, which is what the permission badge names (ADR-0005).
+   */
+  required_level: Level;
+  /** Whether the tweak can be applied/restored right now (spec §9). */
+  availability: Availability;
+  /** Authored option labels, in order. Apply targets are addressed by label, not index. */
+  optionLabels: string[];
+  /** Each option with the concrete per-effect changes it drives, for the Details modal breakdown. */
+  options: TweakEffectOption[];
+  /** Rich markdown detail block (authored `info:`), shown in the Details modal; undefined if none. */
   info?: string;
-  /** Force dropdown UI even with 2 options (default: false). 2 options = toggle, 3+ = dropdown */
-  force_dropdown: boolean;
-  /** Available options for this tweak (minimum 2) */
-  options: TweakOption[];
 }
 
-/** Status of a tweak in the system */
+/**
+ * A tweak's live status — the frontend adapter over the engine's `TweakStatusView`.
+ * `is_applied`/`has_backup` are kept as convenience booleans so count/coloring
+ * consumers stay unchanged; the richer new-state fields drive the card markers.
+ */
 export interface TweakStatus {
   tweak_id: string;
-  /** Whether we have a snapshot (tweak was applied by this app) */
+  /** False until the first `tweak-status` event has arrived for this tweak. */
+  loaded: boolean;
+  /** Detected state tag ("loading" before the first event arrives). */
+  state: "loading" | "active" | "system_default" | "unavailable" | "unknown";
+  /** Active option label when state === "active", else null. */
+  activeOption: string | null;
+  /** Reason the whole tweak is unavailable (state === "unavailable"). */
+  unavailableReason: string | null;
+  /** Effects that could not be read (state === "unknown"). */
+  unknownReasons: UnknownReason[];
+  /** True when any Unknown reason is fixable by elevating. */
+  needsElevation: boolean;
+  /** Options that cannot be selected on this machine/build right now. */
+  unavailableOptions: UnavailableOpt[];
+  /** Effects left in a detectable residual state (informational). */
+  residues: string[];
+  /** Shared settings currently held, with their holders (informational). */
+  heldShared: HeldInfo[];
+  /**
+   * What the managed surface actually reads, shaped like an option so it renders beside them.
+   * Present only at System Default, the one state that says what the machine is NOT.
+   */
+  observed: ObservedState | null;
+  /** Convenience: state === "active" (drives applied counts/coloring). */
   is_applied: boolean;
-  /** When the tweak was last applied (ISO 8601 timestamp) */
-  last_applied?: string;
-  /** Whether a snapshot exists for reverting */
+  /** A snapshot exists to restore from (the engine's has_history). */
   has_backup: boolean;
-  /** Current option index that matches system state, or null if "System Default" */
-  current_option_index: number | null;
-  /**
-   * The original option index from the snapshot, if one exists.
-   * - undefined: No snapshot exists (tweak was never applied)
-   * - null: Snapshot exists but original state was unknown (didn't match any option)
-   * - number: Snapshot exists and original state matched that option index
-   * Used by frontend to show "Default" segment when original state was unknown.
-   */
-  snapshot_original_option_index?: number | null;
-  /**
-   * True if the status was inferred from missing items (via missing_is_match flag)
-   * rather than detected from actual registry/service values.
-   * Used by frontend to show an indicator that the status is based on missing components.
-   */
-  status_inferred?: boolean;
-  /** Error message if state detection failed (tweak still usable but with unknown state) */
-  error?: string;
-  /** True when the last revert did not fully succeed and the snapshot was kept for retry (ADR-0001). */
-  needs_attention?: boolean;
-  /** Resources a partial revert could not restore (present only when needs_attention). */
-  unrestorable_resources?: string[];
+  /** Needs Attention as the engine recorded it, or null (ADR-0001/0002). */
+  attention: Attention | null;
 }
 
 /** Combined tweak info for UI display */
@@ -455,12 +671,12 @@ export interface BatchApplyResult {
   total_failed: number;
 }
 
-/** Pending change for staged apply pattern */
+/** Pending change for staged apply pattern (apply targets by option label). */
 export interface PendingChange {
   /** Tweak ID */
   tweakId: string;
-  /** Option index to apply */
-  optionIndex: number;
+  /** Option label to apply. */
+  optionLabel: string;
 }
 
 /**
@@ -546,55 +762,26 @@ export interface UpdateCheckResult {
   error?: string;
 }
 
-// ============================================================================
-// PERMISSION LEVEL HELPERS
-// ============================================================================
-
 /** Permission info for UI display */
 export interface PermissionInfo {
   name: string;
   description: string;
   icon: string;
-  /** Color class for styling (e.g., 'text-foreground-muted', 'text-accent') */
-  colorClass: string;
 }
 
-/** Permission level metadata for UI */
-export const PERMISSION_INFO: Record<Exclude<PermissionLevel, "none">, PermissionInfo> = {
-  admin: {
+const PERMISSION_INFO: Record<Exclude<Level, "User">, PermissionInfo> = {
+  Admin: {
     name: "Admin",
     description: "Requires Administrator privileges to apply",
     icon: "mdi:shield-account-outline",
-    colorClass: "text-foreground-muted",
   },
-  system: {
-    name: "System",
-    description: "Requires SYSTEM elevation for protected registry keys and services",
-    icon: "mdi:shield-lock",
-    colorClass: "text-accent",
-  },
-  ti: {
+  Ti: {
     name: "TrustedInstaller",
     description: "Requires TrustedInstaller elevation for highly protected resources",
     icon: "mdi:shield-key",
-    colorClass: "text-warning",
   },
 };
 
-/**
- * Get the highest permission level from a tweak definition.
- * Permission hierarchy: ti > system > admin > none
- *
- * @param tweak - Object with requires_admin, requires_system, requires_ti flags
- * @returns The highest permission level required
- */
-export function getHighestPermission(tweak: {
-  requires_admin: boolean;
-  requires_system: boolean;
-  requires_ti: boolean;
-}): PermissionLevel {
-  if (tweak.requires_ti) return "ti";
-  if (tweak.requires_system) return "system";
-  if (tweak.requires_admin) return "admin";
-  return "none";
+export function permissionInfoFor(level: Level): PermissionInfo | null {
+  return level === "User" ? null : PERMISSION_INFO[level];
 }

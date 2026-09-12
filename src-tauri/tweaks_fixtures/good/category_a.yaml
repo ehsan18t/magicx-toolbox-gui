@@ -1,0 +1,75 @@
+category:
+  id: category_a
+  name: "Category A"
+  icon: "mdi:cog"
+  description: "First good-fixture category — registry/service/task kinds (spec §6 example, adapted)."
+
+shared:
+  - id: telemetry_off
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    value: 0
+
+tweaks:
+  - id: windows_update_control
+    name: "Windows Update"
+    description: "Controls automatic update behavior."
+    risk_level: high
+    elevation: admin
+    reversible: true
+    effects:
+      - id: no_auto_update
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name: NoAutoUpdate, type: REG_DWORD }
+      - id: au_options
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU', name: AUOptions, type: REG_DWORD }
+      - id: update_service
+        service: { name: wuauserv }
+      - id: medic_task
+        task: { path: '\Microsoft\Windows\WaaSMedic\PerformRemediation' }
+    options:
+      - label: "Fully Disabled"
+        values:
+          no_auto_update: 1
+          au_options: absent
+          update_service: disabled
+          medic_task: disabled
+      - label: "Notify Only"
+        values:
+          no_auto_update: 1
+          au_options: 0x2
+          update_service: manual
+          medic_task: enabled
+
+  - id: directx_swap_effect
+    name: "DirectX Swap Effect"
+    description: "Demonstrates packed-field addressing (spec §5.2)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: swap_effect_field
+        registry: { key: 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences', name: DirectXUserGlobalSettings, type: REG_SZ, field: SwapEffectUpgradeEnable, format: kv_semicolon }
+    options:
+      - label: "Enabled"
+        values:
+          swap_effect_field: "1"
+      - label: "Disabled"
+        values:
+          swap_effect_field: "0"
+
+  - id: build_26100_only_tweak
+    name: "26100-Only Feature"
+    description: "Tweak-level windows: build >=26100 — inapplicable (not errored) on earlier support-matrix milestones (spec §6.6, Task 4 Fix 3)."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: only_effect
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget26100', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          only_effect: 1
+      - label: "Off"
+        values:
+          only_effect: 0

@@ -1,0 +1,15 @@
+category:
+  id: dup_shared_decls
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two shared: declarations reuse the same id (at different addresses)."
+
+shared:
+  - id: telemetry_off
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    value: 0
+  - id: telemetry_off
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: MaxTelemetryAllowed, type: REG_DWORD }
+    value: 1
+
+tweaks: []

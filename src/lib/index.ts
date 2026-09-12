@@ -39,13 +39,11 @@ export {
   revertTweak,
   stageChange,
   systemStore,
-  toggleTweak,
   tweaksStore,
   unstageChange,
 } from "./stores/tweaks.svelte";
 
 // System elevation store (runes-based)
-export { systemElevationStore } from "./stores/systemElevation.svelte";
 
 // Update store (runes-based)
 export { updateStore } from "./stores/update.svelte";
@@ -53,16 +51,21 @@ export { updateStore } from "./stores/update.svelte";
 // Config
 export { APP_CONFIG, type AppConfig } from "./config/app";
 
+// Utils
+export { errorMessage, isAppExiting } from "./utils/error";
+
 // Types
 export * from "./types";
 
-// API - explicitly export to avoid conflicts with stores
+// API - explicitly export to avoid conflicts with stores (which export applyTweak)
 export {
-  batchApplyTweaks,
-  getAllTweaksWithStatus,
-  getAvailableTweaks,
+  discardSnapshotEntry,
+  getElevationState,
+  getStatusesStream,
   getSystemInfo,
-  getTweakStatus,
-  getWindowsVersion,
-  isAdmin,
+  getTweaks,
+  listSnapshotEntries,
+  onTweakStatus,
+  rescanAfterElevation,
+  restoreTweak,
 } from "./api";

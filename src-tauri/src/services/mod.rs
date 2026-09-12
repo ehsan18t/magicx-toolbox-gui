@@ -1,15 +1,12 @@
-pub mod backup;
+pub mod appx_index;
 pub mod elevation;
+pub mod exclusive_temp;
 pub mod firewall_service;
 pub mod hosts_service;
 pub mod registry_service;
 pub mod registry_value;
 pub mod scheduler_service;
 pub mod service_control;
+pub mod system32;
 pub mod system_info_service;
-pub mod tweak_loader;
-
-// Re-export backup_service for backwards compatibility
-pub use backup as backup_service;
-// Re-export trusted_installer for backwards compatibility
-pub use elevation as trusted_installer;
+pub mod ti_probe;

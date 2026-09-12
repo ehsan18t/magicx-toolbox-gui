@@ -1,0 +1,141 @@
+category:
+  id: category_b
+  name: "Category B"
+  icon: "mdi:eye-off"
+  description: "Second good-fixture category — proves cross-file shared merge + Action loading."
+
+tweaks:
+  - id: disable_telemetry
+    name: "Disable Telemetry"
+    description: "Claims the corpus-wide telemetry-off shared setting declared in category_a.yaml. telemetry_notice is a non-shared Setting: a shared claim alone can never be the sole distinguisher (spec §10), since another tweak claiming telemetry_off would make it match Enabled too."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: telemetry
+        shared: telemetry_off
+      - id: telemetry_notice
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Privacy', name: TelemetryNoticeShown, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values:
+          telemetry: claim
+          telemetry_notice: 1
+      - label: "Enabled"
+        values:
+          telemetry: unclaimed
+          telemetry_notice: 0
+
+  - id: flush_dns_cache
+    name: "Flush DNS Cache"
+    description: "Runs ipconfig /flushdns as a one-shot ephemeral action."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: flush
+        action:
+          apply: "ipconfig /flushdns"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "Run Now"
+        values:
+          flush: run
+
+  - id: enable_feature_key
+    name: "Enable Feature Key"
+    description: "Demonstrates a RegistryKey presence Setting (key existence as a switch)."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: feature_key
+        registry_key: { key: 'HKLM\SOFTWARE\ExampleCo\FeatureFlag' }
+    options:
+      - label: "Present"
+        values:
+          feature_key: present
+      - label: "Absent"
+        values:
+          feature_key: absent
+
+  - id: block_known_tracker
+    name: "Block Known Tracker"
+    description: "Demonstrates a Hosts presence Setting."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: tracker_host
+        hosts: { ip: "0.0.0.0", domain: "tracker.example.com" }
+    options:
+      - label: "Blocked"
+        values:
+          tracker_host: present
+      - label: "Allowed"
+        values:
+          tracker_host: absent
+
+  - id: block_bad_actor_ip
+    name: "Block Known Bad Actor"
+    description: "Demonstrates a Firewall presence Setting (named rule + full rule definition)."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: bad_actor_rule
+        firewall:
+          name: "MagicX Block Bad Actor"
+          direction: outbound
+          action: block
+          protocol: tcp
+          remote_addresses: ["203.0.113.0/24"]
+          description: "Blocks outbound TCP to a known bad actor range."
+    options:
+      - label: "Blocked"
+        values:
+          bad_actor_rule: present
+      - label: "Allowed"
+        values:
+          bad_actor_rule: absent
+
+  - id: version_scoped_demo
+    name: "Version Scoped Demo"
+    description: "Demonstrates tweak/effect/option-value windows scoping (incl. on a non-Setting Action value), optional/if_missing, and per-effect elevation (Task 4)."
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [10, 11] }
+    effects:
+      - id: primary_setting
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Modern', name: Enabled, type: REG_DWORD }
+      - id: modern_only_setting
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Modern', name: ModernOnly, type: REG_DWORD }
+        windows: { build: ">=22621" }
+        elevation: admin
+      - id: legacy_service
+        service: { name: LegacyOptionalSvc }
+        optional: true
+        if_missing: disabled
+      - id: notify_action
+        action:
+          apply: "echo notify"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "On"
+        values:
+          primary_setting: 1
+          modern_only_setting:
+            value: 1
+            windows: { build: ">=26100" }
+          legacy_service: automatic
+          notify_action:
+            value: run
+            windows: { build: ">=26100" }
+      - label: "Off"
+        values:
+          primary_setting: 0
+          modern_only_setting: 0
+          legacy_service: disabled

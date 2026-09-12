@@ -3,7 +3,6 @@
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { SegmentedSwitch, Select, StatusBadge } from "$lib/components/ui";
-  import type { SegmentOption } from "$lib/components/ui/SegmentedSwitch.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
@@ -17,7 +16,7 @@
     unstageChange,
   } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
-  import { getHighestPermission, PERMISSION_INFO, RISK_INFO } from "$lib/types";
+  import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -30,21 +29,43 @@
 
   let { tweak, titleSlot, descriptionSlot }: Props = $props();
 
+  // Sentinel dropdown value for the computed "System Default" position (ADR-0003).
+  const SYSTEM_DEFAULT = "__system_default__";
+
   const isLoading = $derived(loadingStore.isLoading(tweak.definition.id));
   const tweakError = $derived(errorStore.getError(tweak.definition.id));
-  // Detection error from backend (status couldn't be determined)
-  const hasDetectionError = $derived(!!tweak.status.error);
+
+  const status = $derived(tweak.status);
+  const availability = $derived(tweak.definition.availability);
+
+  // --- new engine states ---------------------------------------------------
+  const isChecking = $derived(status.state === "loading");
+  const isUnknown = $derived(status.state === "unknown");
+  const isUnavailable = $derived(status.state === "unavailable");
+  const residues = $derived(status.residues);
+  const heldShared = $derived(status.heldShared);
+  const unknownTip = $derived.by(() => {
+    if (!isUnknown) return "";
+    const causes = status.unknownReasons.map((r) => `${r.effect}: ${r.cause}`).join("; ");
+    const base = `Could not read this tweak's state (${causes || "unknown"}).`;
+    return status.needsElevation ? `${base} Restart as administrator to resolve.` : base;
+  });
+
+  // Why the control is disabled (availability gate or a detected-unavailable tweak).
+  const controlDisabledReason = $derived.by(() => {
+    if (isUnavailable) return status.unavailableReason ?? "Not available on this system";
+    if (availability.state !== "available") return availability.reason;
+    return null;
+  });
+  const controlDisabled = $derived(isLoading || controlDisabledReason !== null);
 
   // Highlight state for search navigation
   const shouldHighlight = $derived(searchStore.highlightTweakId === tweak.definition.id);
   let isHighlighting = $state(false);
 
-  // Handle highlight animation
   $effect(() => {
     if (!shouldHighlight) return;
-
     isHighlighting = true;
-    // Clear highlight after animation
     const timer = setTimeout(() => {
       isHighlighting = false;
       searchStore.clearHighlight();
@@ -56,14 +77,11 @@
   let showRestoreConfirmDialog = $state(false);
   let showKeepStateConfirmDialog = $state(false);
 
-  const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level as RiskLevel]);
+  const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level]);
   const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
 
-  // Get highest permission level (hierarchy: ti > system > admin > none)
-  const highestPermission = $derived(getHighestPermission(tweak.definition));
-  const permissionInfo = $derived(highestPermission !== "none" ? PERMISSION_INFO[highestPermission] : null);
+  const permissionInfo = $derived(permissionInfoFor(tweak.definition.required_level));
 
-  // Risk level config
   const riskConfig: Record<RiskLevel, { icon: string; color: string }> = {
     low: { icon: "mdi:check-circle", color: "text-success" },
     medium: { icon: "mdi:alert", color: "text-warning" },
@@ -73,170 +91,119 @@
 
   // Favorite state
   const isFavorite = $derived(favoritesStore.isFavorite(tweak.definition.id));
-
   function toggleFavorite() {
     favoritesStore.toggle(tweak.definition.id);
   }
 
-  // Has a snapshot that can be restored
-  const hasSnapshot = $derived(tweak.status.has_backup);
+  const hasSnapshot = $derived(status.has_backup);
 
-  // Needs Attention (ADR-0001): the last revert didn't fully succeed and the snapshot was kept.
-  const needsAttention = $derived(tweak.status.needs_attention ?? false);
-  const unrestorableResources = $derived(tweak.status.unrestorable_resources ?? []);
-  // When in Needs Attention, the Restore button IS the retry.
-  const restoreLabel = $derived(needsAttention ? "Retry" : "Restore");
+  // Needs Attention (ADR-0001/0002): the engine's own record, kept per tweak.
+  const attention = $derived(status.attention);
+  const needsAttention = $derived(attention !== null);
+  const attentionMessages = $derived((attention?.items ?? []).map((item) => item.message));
+  const restoreFailed = $derived(attention?.reason === "restore_failed");
+  const attentionText = $derived(attentionCause(attention?.reason));
+  const restoreLabel = $derived(restoreFailed ? "Retry" : "Restore");
 
-  // Get options from tweak definition
-  const options = $derived(tweak.definition.options);
-
-  // Check if this is a toggle (2 options and not forced dropdown) or dropdown (3+ options or forced)
-  const isToggle = $derived(tweak.definition.options.length === 2 && !tweak.definition.force_dropdown);
-
-  // Current option index from registry (actual applied state, null/undefined if no match = system default)
-  const currentOptionIndex = $derived(tweak.status.current_option_index);
-
-  // Original option index from snapshot (undefined = no snapshot, null = unknown original, number = known original)
-  const snapshotOriginalOptionIndex = $derived(tweak.status.snapshot_original_option_index);
-
-  // Determine if we should show the "Default" segment in the segmented switch.
-  // ADR-0003: System Default is selectable whenever a snapshot exists (choosing it reverts); also
-  // shown when the current state is unknown so there is something to display.
-  const showDefaultSegment = $derived(
-    hasSnapshot || currentOptionIndex === null || snapshotOriginalOptionIndex === null,
-  );
-
-  // Get pending change for this tweak
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
-
-  // Determine if there's a pending change
   const hasPending = $derived(pendingChange !== undefined);
+  const activeOption = $derived(status.activeOption);
 
-  // Calculate effective value for segmented switch
-  // -1 = Default/System, 0 = ON (option 0), 1 = OFF (option 1)
-  const effectiveSegmentValue = $derived.by(() => {
-    if (pendingChange !== undefined) {
-      return pendingChange.optionIndex;
-    }
-    // If current state is unknown, show as Default (-1)
-    if (currentOptionIndex === null) {
-      return -1;
-    }
-    return currentOptionIndex;
-  });
+  // --- option shape (1 or 2 authored options -> segmented; 3+ -> dropdown) --
+  const optionLabels = $derived(tweak.definition.optionLabels);
+  const isSegmented = $derived(optionLabels.length <= 2);
 
-  // Build segment options for segmented switch
-  const segmentOptions = $derived.by(() => {
-    const segments: SegmentOption[] = [];
+  // ADR-0003: System Default is a computed *status*, not a state anyone picks. It means the live
+  // surface matched none of the authored options, so it only exists while that is true. Once an
+  // option matches there is nothing for it to describe and it is not offered; the way back out of
+  // an applied option is Restore, which is its own button.
+  const atSystemDefault = $derived(activeOption === null || activeOption === undefined);
 
-    // Option 0 is always first (ON/Applied state)
-    segments.push({
-      value: 0,
-      label: options[0]?.label ?? "ON",
-      icon: "mdi:check-circle",
+  // Authored options in order, with the System Default position spliced in only while it is the
+  // live state: [option 1] [System Default] [option 2], or just the options once one matches.
+  const segments = $derived.by(() => {
+    const [first, second] = optionLabels;
+    const ordered = second === undefined ? [first] : [first, second];
+    if (atSystemDefault) ordered.splice(second === undefined ? 0 : 1, 0, SYSTEM_DEFAULT);
+    return ordered.map((label, i) => {
+      const isDefault = label === SYSTEM_DEFAULT;
+      const unavailable = isDefault ? undefined : status.unavailableOptions.find((u) => u.label === label);
+      return {
+        value: i,
+        label: isDefault ? "System Default" : unavailable ? `${label} (unavailable)` : label,
+        // Icon follows the option's rank, not the segment index, so the acting option the corpus
+        // authors first is always the tick even when System Default sits to its left.
+        icon: isDefault ? "mdi:monitor" : label === first ? "mdi:check" : "mdi:close-circle-outline",
+        disabled: !!unavailable,
+        target: label,
+      };
     });
-
-    // Add Default segment in the middle if needed
-    if (showDefaultSegment) {
-      segments.push({
-        value: -1,
-        label: "Default",
-        icon: "icon-park-twotone:new-computer",
-      });
-    }
-
-    // Option 1 is last (OFF/Original state)
-    segments.push({
-      value: 1,
-      label: options[1]?.label ?? "OFF",
-      icon: "mdi:close-circle-outline",
-    });
-
-    return segments;
   });
 
-  // Calculate effective option index for dropdowns
-  const effectiveOptionIndex = $derived.by(() => {
-    if (pendingChange !== undefined) {
-      return pendingChange.optionIndex;
-    }
-    return currentOptionIndex;
-  });
-
-  // Build options for Select component
+  // Pending label, else the active option, else the System Default position. Shared by both shapes.
+  const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? SYSTEM_DEFAULT);
+  const segmentValue = $derived(
+    Math.max(
+      0,
+      segments.findIndex((s) => s.target === selectValue),
+    ),
+  );
   const selectOptions = $derived.by(() => {
-    const opts: { value: number; label: string; disabled?: boolean }[] = [];
-
-    // ADR-0003: offer "System Default" whenever a snapshot exists (selectable → Revert), and as a
-    // display-only placeholder when the current state is unknown with nothing to restore.
-    if (hasSnapshot || currentOptionIndex === null) {
-      opts.push({ value: -1, label: "System Default", disabled: !hasSnapshot });
+    const opts: { value: string; label: string; disabled?: boolean }[] = [];
+    // Same rule as the segments: offered only while it is the live state.
+    if (atSystemDefault) opts.push({ value: SYSTEM_DEFAULT, label: "System Default" });
+    for (const label of optionLabels) {
+      const un = status.unavailableOptions.find((u) => u.label === label);
+      opts.push({ value: label, label: un ? `${label} (unavailable)` : label, disabled: !!un });
     }
-
-    // Add actual options
-    options.forEach((option, i) => {
-      opts.push({ value: i, label: option.label });
-    });
-
     return opts;
   });
 
-  // Track pending high-risk action for confirmation
-  let pendingHighRiskValue: number | null = $state(null);
+  // Track a pending high-risk apply for confirmation.
+  let pendingHighRiskLabel: string | null = $state(null);
 
-  function handleSegmentChange(newValue: number) {
-    // "System Default": cancel any pending change, and — with a snapshot — Revert to it (ADR-0003).
-    if (newValue === -1) {
+  /**
+   * The one place a clicked target becomes an action, so every control gets the same answer and no
+   * caller can stage a target that should never be staged.
+   *
+   * Ordering matters. System Default is handled first because it is a Restore, never an Apply
+   * (ADR-0003), and because the cancel branch below cannot cover it: `activeOption` is null while
+   * System Default is the live state, so no label ever equals it. Routing that position here rather
+   * than at each call site is what keeps "clicking what is already live clears the staged change"
+   * true for every state, instead of true only where a caller remembered to special-case it.
+   */
+  function selectTarget(target: string) {
+    if (target === SYSTEM_DEFAULT) {
       unstageChange(tweak.definition.id);
       if (hasSnapshot) handleRestoreClick();
       return;
     }
-
-    // Check for high-risk confirmation (only when enabling option 0)
-    if (isHighRisk && newValue === 0 && effectiveSegmentValue !== 0) {
-      pendingHighRiskValue = newValue;
+    if (target === activeOption) {
+      unstageChange(tweak.definition.id);
+      return;
+    }
+    if (isHighRisk) {
+      pendingHighRiskLabel = target;
       showConfirmDialog = true;
       return;
     }
-
-    executeSegmentChange(newValue);
+    stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionLabel: target });
   }
 
-  function executeSegmentChange(newValue: number) {
-    showConfirmDialog = false;
-    pendingHighRiskValue = null;
-
-    // If selecting current state, unstage
-    if (newValue === currentOptionIndex) {
-      unstageChange(tweak.definition.id);
-    } else {
-      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex: newValue });
-    }
-  }
-
-  function handleConfirmHighRisk() {
-    if (pendingHighRiskValue !== null) {
-      executeSegmentChange(pendingHighRiskValue);
-    }
+  function handleSegmentChange(index: number) {
+    const target = segments[index]?.target;
+    if (target !== undefined) selectTarget(target);
   }
 
   function handleSelectChange(value: string | number) {
-    const optionIndex = typeof value === "number" ? value : parseInt(value, 10);
+    selectTarget(String(value));
+  }
 
-    // Guard against invalid values
-    if (isNaN(optionIndex)) return;
-
-    // "System Default": cancel any pending change, and — with a snapshot — Revert to it (ADR-0003).
-    if (optionIndex === -1) {
-      unstageChange(tweak.definition.id);
-      if (hasSnapshot) handleRestoreClick();
-      return;
-    }
-
-    if (optionIndex === currentOptionIndex) {
-      unstageChange(tweak.definition.id);
-    } else {
-      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionIndex });
+  function handleConfirmHighRisk() {
+    showConfirmDialog = false;
+    if (pendingHighRiskLabel !== null) {
+      stageChange(tweak.definition.id, { tweakId: tweak.definition.id, optionLabel: pendingHighRiskLabel });
+      pendingHighRiskLabel = null;
     }
   }
 
@@ -250,18 +217,12 @@
 
   async function executeRestore() {
     showRestoreConfirmDialog = false;
-    await revertTweak(tweak.definition.id, {
-      showToast: true,
-      tweakName: tweak.definition.name,
-    });
+    await revertTweak(tweak.definition.id, { showToast: true, tweakName: tweak.definition.name });
   }
 
   async function executeKeepCurrentState() {
     showKeepStateConfirmDialog = false;
-    await keepCurrentState(tweak.definition.id, {
-      showToast: true,
-      tweakName: tweak.definition.name,
-    });
+    await keepCurrentState(tweak.definition.id, { showToast: true, tweakName: tweak.definition.name });
   }
 </script>
 
@@ -270,7 +231,7 @@
   class="tweak-card group relative flex overflow-hidden rounded-lg border transition-all duration-200
     {hasPending
     ? 'border-warning/40 bg-warning/3'
-    : tweak.status.is_applied
+    : status.is_applied
       ? 'border-accent/30 bg-accent/3'
       : 'border-border bg-card hover:border-border-hover'}
     {isHighlighting ? 'tweak-highlight' : ''}"
@@ -279,7 +240,7 @@
   <div
     class="absolute top-0 left-0 h-full w-1 transition-colors duration-200 {hasPending
       ? 'bg-warning'
-      : tweak.status.is_applied
+      : status.is_applied
         ? 'bg-accent'
         : 'group-hover:bg-muted bg-transparent'}"
   ></div>
@@ -294,35 +255,87 @@
           {:else}
             {tweak.definition.name}
           {/if}
-          {#if hasDetectionError}
-            <span
-              class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
-              use:tooltip={tweak.status.error}
-            >
-              <Icon icon="mdi:alert" width="10" />
-              Unknown
-            </span>
-          {/if}
-          {#if tweak.status.status_inferred}
+
+          {#if isChecking}
             <span
               class="bg-muted/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide text-foreground-muted"
-              use:tooltip={"Status inferred: The feature or service doesn't exist on this system, so the status is assumed based on its absence."}
+              use:tooltip={"Checking this tweak's current state…"}
             >
-              <Icon icon="mdi:eye-off-outline" width="10" />
-              Inferred
+              <Icon icon="mdi:loading" width="10" class="animate-spin" />
+              Checking
             </span>
           {/if}
+
+          {#if isUnknown}
+            <span
+              class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
+              use:tooltip={unknownTip}
+            >
+              <Icon icon="mdi:help-circle-outline" width="10" />
+              Unknown{status.needsElevation ? " · needs elevation" : ""}
+            </span>
+          {/if}
+
+          {#if isUnavailable}
+            <span
+              class="bg-muted/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide text-foreground-muted"
+              use:tooltip={status.unavailableReason ?? "Not available on this system"}
+            >
+              <Icon icon="mdi:cancel" width="10" />
+              Unavailable
+            </span>
+          {/if}
+
+          {#if !isUnavailable && availability.state !== "available"}
+            <span
+              class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
+              use:tooltip={availability.reason}
+            >
+              <Icon icon="mdi:shield-lock-outline" width="10" />
+              {availability.state === "sid_mismatch"
+                ? "Different account"
+                : availability.state === "sid_unknown"
+                  ? "Account unknown"
+                  : availability.state === "elevation_path_unavailable"
+                    ? "Not available on this PC"
+                    : "Needs elevation"}
+            </span>
+          {/if}
+
+          {#if residues.length > 0}
+            <span
+              class="inline-flex items-center gap-1 rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-info"
+              use:tooltip={`Residual settings remain outside the active option: ${residues.join(", ")}`}
+            >
+              <Icon icon="mdi:information-outline" width="10" />
+              Residue
+            </span>
+          {/if}
+
+          {#if heldShared.length > 0}
+            <span
+              class="bg-muted/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide text-foreground-muted"
+              use:tooltip={`Shared with: ${heldShared.map((h) => `${h.shared} (${h.holders.join(", ")})`).join("; ")}`}
+            >
+              <Icon icon="mdi:link-variant" width="10" />
+              Shared
+            </span>
+          {/if}
+
           {#if needsAttention}
             <span
               class="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-error"
-              use:tooltip={unrestorableResources.length
-                ? `The last revert didn't fully restore: ${unrestorableResources.join("; ")}. The snapshot is kept — retry, or keep the current state.`
-                : "The last revert didn't fully succeed. The snapshot is kept for retry."}
+              use:tooltip={`${attentionText}${attentionMessages.length ? `: ${attentionMessages.join(", ")}` : ""}. ${
+                hasSnapshot
+                  ? "Your snapshot is safe, so you can restore it or keep things as they are."
+                  : "There is no snapshot left to restore, so you can only keep the current state."
+              }`}
             >
               <Icon icon="mdi:alert-circle" width="10" />
               Needs Attention
             </span>
           {/if}
+
           {#if hasPending}
             <span
               class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-warning"
@@ -343,25 +356,25 @@
       </div>
 
       <!-- Control -->
-      <div class="shrink-0 pt-0.5">
-        {#if !isToggle}
+      <div class="shrink-0 pt-0.5" use:tooltip={controlDisabledReason}>
+        {#if isSegmented}
+          <SegmentedSwitch
+            value={segmentValue}
+            options={segments}
+            pending={hasPending}
+            loading={isLoading}
+            disabled={controlDisabled}
+            iconOnly
+            onchange={handleSegmentChange}
+          />
+        {:else}
           <Select
-            value={effectiveOptionIndex ?? -1}
+            value={selectValue}
             options={selectOptions}
             pending={hasPending}
             loading={isLoading}
-            disabled={isLoading}
+            disabled={controlDisabled}
             onchange={handleSelectChange}
-          />
-        {:else}
-          <SegmentedSwitch
-            value={effectiveSegmentValue}
-            options={segmentOptions}
-            pending={hasPending}
-            loading={isLoading}
-            disabled={isLoading}
-            iconOnly
-            onchange={handleSegmentChange}
           />
         {/if}
       </div>
@@ -377,6 +390,7 @@
         <button
           class="flex shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0.5 text-error/70 transition-colors duration-150 hover:bg-error/10 hover:text-error"
           onclick={() => errorStore.clearError(tweak.definition.id)}
+          aria-label="Dismiss error"
         >
           <Icon icon="mdi:close" width="16" />
         </button>
@@ -396,7 +410,7 @@
               : tweak.definition.risk_level === "high"
                 ? "orange"
                 : "error"}
-          icon={riskConfig[tweak.definition.risk_level as RiskLevel].icon}
+          icon={riskConfig[tweak.definition.risk_level].icon}
           label={riskInfo.name}
           tooltip={riskInfo.description}
         />
@@ -417,7 +431,7 @@
             variant="info"
             icon="mdi:restart"
             label="Reboot"
-            tooltip="System restart required after applying or reverting"
+            tooltip="System restart required after applying or restoring"
           />
         {/if}
       </div>
@@ -442,11 +456,13 @@
             type="button"
             class="card-action inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-accent transition-all duration-150 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleRestoreClick}
-            disabled={isLoading}
-            aria-label={needsAttention ? "Retry revert" : "Restore snapshot"}
-            use:tooltip={needsAttention
-              ? "Retry restoring the original state"
-              : "Restore to original state from snapshot"}
+            disabled={isLoading || availability.state !== "available"}
+            aria-label={restoreFailed ? "Retry restore" : "Restore snapshot"}
+            use:tooltip={availability.state !== "available"
+              ? availability.reason
+              : restoreFailed
+                ? "Retry restoring the original state"
+                : "Restore to original state from snapshot"}
           >
             <Icon icon="mdi:history" width="18" class="card-action-icon" />
             <span class="card-action-label">{restoreLabel}</span>
@@ -492,16 +508,14 @@
   onconfirm={handleConfirmHighRisk}
   oncancel={() => {
     showConfirmDialog = false;
-    pendingHighRiskValue = null;
+    pendingHighRiskLabel = null;
   }}
 />
 
 <ConfirmDialog
   open={showRestoreConfirmDialog}
   title="Restore Snapshot?"
-  message="This will restore the original state from before the tweak was applied. {tweak.definition.requires_reboot
-    ? 'A system restart may be required.'
-    : ''}"
+  message="This will restore the original state from before the tweak was applied."
   confirmText="Restore"
   cancelText="Cancel"
   onconfirm={executeRestore}
@@ -511,7 +525,7 @@
 <ConfirmDialog
   open={showKeepStateConfirmDialog}
   title="Keep Current State?"
-  message="This releases the saved snapshot and accepts the current state as-is. The original state can no longer be restored for this tweak."
+  message="This accepts the current state as-is and releases any saved snapshot. The original state can no longer be restored for this tweak."
   confirmText="Keep current state"
   cancelText="Cancel"
   onconfirm={executeKeepCurrentState}
@@ -523,21 +537,13 @@
     container-type: inline-size;
   }
 
-  /* Subtle shadow on hover for depth */
   .tweak-card:hover {
     box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
   }
 
-  /* Dark theme shadow adjustment */
   :global([data-theme="dark"]) .tweak-card:hover {
     box-shadow: 0 2px 12px -2px rgba(0, 0, 0, 0.3);
   }
-
-  /*
-    Labels should be visible by default.
-    Collapse to icon-only only when the card is tight.
-    Cards with BOTH actions (Restore + Details) need more room, so collapse earlier.
-  */
 
   @container (max-width: 430px) {
     .card-actions.has-restore .card-action {

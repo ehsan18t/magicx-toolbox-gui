@@ -41,7 +41,7 @@ Manual tweak apply is handled by `src-tauri/src/commands/tweaks/apply.rs` and `h
 - Core changes apply in order: registry, services, scheduler, hosts, firewall. Each phase is atomic *in intent*; a failed phase rolls the whole tweak back from the snapshot.
 - Revert restores all five phases and collects failures; the snapshot is released only on a fully verified restore. A partial revert enters "Needs Attention" — the snapshot is kept and the user can retry or explicitly "keep current state" (ADR-0001 / ADR-0002).
 - Pre-command and pre-PowerShell failures abort before core changes; post-hook failures are logged and do not roll back successful core changes.
-- `requires_admin` / `requires_system` / `requires_ti` determine elevation; privileged operations run through the typed broker (no shell strings) and a failed privileged op surfaces as an error.
+- A tweak's `elevation:` level (`user` / `admin` / `ti`) determines elevation; `ti` operations run through the typed broker (no shell strings) and a failed privileged op surfaces as an error.
 
 Do not duplicate system-change application logic. New profile/batch paths should reuse the same apply engine or shared helpers.
 
@@ -62,7 +62,7 @@ The profile system (`.mgx` export/import) was removed in the current build and i
 - `src-tauri/src/commands/tweaks/`: tweak query/apply/batch commands.
 - `src-tauri/src/services/backup/`: snapshot capture, restore (all-phase), storage (atomic), detection, inspection.
 - `src-tauri/src/services/registry_value.rs`: canonical registry JSON parsing, writing, and comparison.
-- `src-tauri/src/services/elevation/`: SYSTEM and TrustedInstaller execution.
+- `src-tauri/src/services/elevation/`: TrustedInstaller execution through the typed broker.
 - `src-tauri/src/services/system_info_service.rs`: lightweight runtime context and full WMI-backed system information.
 
 ## Frontend Map

@@ -1,0 +1,29 @@
+category:
+  id: identical_on_detectable_projection
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two options differ only by a probe-less action, which contributes nothing to detection."
+
+tweaks:
+  - id: silent_action_tweak
+    name: "Silent Action"
+    description: "Both options set the same registry value; only a probe-less (but undo-carrying) action differs between them."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: silent_action
+        action:
+          apply: "reg.exe add HKCU\\Software\\ExampleCo\\Widget\\Silent /f"
+          undo: "reg.exe delete HKCU\\Software\\ExampleCo\\Widget\\Silent /f"
+          shell: cmd
+    options:
+      - label: "Run It"
+        values:
+          marker: 1
+          silent_action: run
+      - label: "Skip It"
+        values:
+          marker: 1

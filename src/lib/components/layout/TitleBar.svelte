@@ -3,9 +3,12 @@
   import { ThemeToggle } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
   import { debugState } from "$lib/stores/debug.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { errorMessage, isAppExiting } from "$lib/utils/error";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import WindowControlButton from "./WindowControlButton.svelte";
@@ -20,6 +23,10 @@
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
+    // The backend refuses to close mid-apply, because a snapshot entry is written before the first
+    // drive and going away half-way leaves a tweak partly applied with nothing to undo it. Without
+    // this the window would just silently not close.
+    let unlistenCloseBlocked: (() => void) | undefined;
 
     const init = async () => {
       try {
@@ -36,6 +43,10 @@
         isMaximized = maximized.status === "fulfilled" ? maximized.value : false;
 
         isLoaded = true;
+
+        unlistenCloseBlocked = await listen<string>("close-blocked", (event) => {
+          toastStore.show("warning", event.payload);
+        });
 
         unlisten = await appWindow.onResized(async () => {
           try {
@@ -56,6 +67,7 @@
 
     return () => {
       if (unlisten) unlisten();
+      if (unlistenCloseBlocked) unlistenCloseBlocked();
     };
   });
 
@@ -91,7 +103,10 @@
     try {
       await invoke("restart_as_admin");
     } catch (error) {
-      console.error("Failed to restart as admin:", error);
+      const message = errorMessage(error);
+      console.error("Failed to restart as admin:", message);
+      if (isAppExiting(error)) toastStore.warning(message);
+      else toastStore.error(message);
       isRestarting = false;
     }
   };

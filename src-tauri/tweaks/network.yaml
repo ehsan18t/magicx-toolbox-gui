@@ -1,531 +1,1036 @@
-# Network Tweaks - Optimize network performance and latency
-
 category:
   id: network
-  name: "Network"
-  description: "Optimize network performance, latency, and connectivity"
-  icon: "mdi:wifi"
-  order: 9
+  name: "Network & Power"
+  icon: "mdi:lan"
+  description: "Network hardening and power/sleep behavior. Machine-wide (HKLM) policies and powercfg actions, reversible from snapshots."
 
 tweaks:
-  - id: disable_nagle_algorithm
-    name: "Disable Nagle's Algorithm"
-    description: "Reduce network latency by disabling TCP packet bundling"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
+  - id: dns_over_https
+    name: "Enable DNS over HTTPS auto-upgrade"
+    description: "Auto-upgrade DNS lookups to encrypted HTTPS, but only where the configured resolver is already DoH-capable."
     info: |
-      ## What This Does
-      Disables Nagle's algorithm which bundles small TCP packets together before sending.
+      **Upgrades your DNS lookups to encrypted HTTPS, but only if you already use a resolver Windows recognises as DoH-capable.**
+
+      ## What it does
+      Sets `EnableAutoDoh = 2` under `Dnscache\Parameters`, which tells the Windows 11 DNS client to
+      promote plaintext lookups to DNS over HTTPS whenever the configured resolver is on Windows'
+      known-DoH list (Cloudflare, Google, Quad9). It does not choose a resolver for you, and it does
+      not force encryption.
 
       ## Benefits
-      - **Lower latency**: Packets sent immediately instead of waiting
-      - **Gaming**: Reduced input lag in online games
-      - **Real-time apps**: Better responsiveness for VoIP, streaming
+      - **Hides your lookups**: your ISP and anyone on the path stop seeing which names you resolve
+      - **Blocks on-path tampering**: encrypted answers cannot be silently rewritten in transit
+      - **No configuration UI needed**: one value, applied machine-wide across every adapter
 
       ## Drawbacks
-      - **More network overhead**: More packets sent
-      - **Slightly higher bandwidth usage**: More packet headers
+      - **Does nothing by itself**: on an ordinary ISP resolver nothing is encrypted, because auto-upgrade only fires for known-DoH servers
+      - **Unsupported by Microsoft**: the blog that published this value said registry DoH configuration would not be supported in release builds
+      - **No feedback**: nothing in Settings reflects the change, so you cannot tell whether it took effect
+      - **Breaks captive portals and internal DNS**: hotel and airport sign-in pages, and split-horizon corporate names, can stop resolving
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer. The built-in DoH client does not exist on Windows 10, including 22H2 and LTSC 2021, so this does nothing there.
+      - **Takes effect**: after reboot
+      - **Reverting**: deletes the value, restoring the Windows default of no auto-upgrade
+      - **Set a DoH resolver first**: point the adapter at 1.1.1.1, 8.8.8.8 or 9.9.9.9, or this write is inert
+      - **The supported route** is the "Require DoH" policy tweak, the Settings UI, or `Add-DnsClientDohServerAddress`
 
       ## Recommendation
-      Enable for gaming and real-time applications. Most modern networks can handle the extra overhead.
-    options:
-      - label: "Nagle Disabled (Low Latency)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpAckFrequency"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpNoDelay"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpDelAckTicks"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Nagle Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpAckFrequency"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpNoDelay"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpDelAckTicks"
-            action: delete_value
+      Use it only if you have already set a DoH-capable resolver such as Cloudflare or Quad9; on an
+      ISP-assigned resolver it changes nothing. If you want encryption guaranteed rather than
+      opportunistic, use the policy-based "Require DoH" control instead.
 
-  - id: ipv6_transition_mode
-    name: "IPv6 Transition Technologies"
-    description: "Configure Teredo and ISATAP IPv6 tunneling protocols"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Controls IPv6 transition technologies that tunnel IPv6 over IPv4 networks.
-
-      ## Options Explained
-      - **All Disabled**: Disables both Teredo and ISATAP (lowest latency)
-      - **Teredo Only**: Keeps Teredo for Xbox/P2P, disables ISATAP
-      - **ISATAP Only**: Keeps ISATAP for enterprise, disables Teredo
-      - **All Enabled**: Default Windows behavior
-
-      ## Teredo
-      - Used by Xbox Live for party chat
-      - Required for some P2P applications
-      - Tunnels IPv6 through NAT
-
-      ## ISATAP
-      - Enterprise IPv6 transition
-      - Rarely needed for home users
-      - Adds network overhead
-
-      ## Recommendation
-      "All Disabled" for gaming/low latency. "Teredo Only" if you use Xbox Live party chat.
-    options:
-      - label: "All Disabled (Lowest Latency)"
-        pre_commands:
-          - "netsh interface teredo set state disabled"
-          - "netsh interface isatap set state disabled"
-      - label: "Teredo Only (Xbox)"
-        pre_commands:
-          - "netsh interface teredo set state default"
-          - "netsh interface isatap set state disabled"
-      - label: "ISATAP Only (Enterprise)"
-        pre_commands:
-          - "netsh interface teredo set state disabled"
-          - "netsh interface isatap set state default"
-      - label: "All Enabled (Default)"
-        pre_commands:
-          - "netsh interface teredo set state default"
-          - "netsh interface isatap set state default"
-
-  # NOTE: disable_teredo, disable_isatap consolidated into ipv6_transition_mode above
-
-  - id: disable_network_throttling
-    name: "Disable Network Throttling"
-    description: "Disable Windows network throttling for multimedia applications"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Removes Windows' default network throttling that limits throughput to give CPU time for multimedia playback.
-
-      ## Benefits
-      - **Maximum throughput**: No artificial network limits
-      - **Gaming**: Better network performance during gameplay
-      - **Streaming**: Improved upload/download speeds
-
-      ## Technical Details
-      Windows by default limits network throughput to 10 packets per millisecond. This tweak removes that limit (0xFFFFFFFF = unlimited).
-
-      ## Recommendation
-      Safe to enable on modern hardware with sufficient CPU power.
-    options:
-      - label: "Throttling Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
-            value_name: "NetworkThrottlingIndex"
-            value_type: "REG_DWORD"
-            value: 4294967295
-      - label: "Throttling Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
-            value_name: "NetworkThrottlingIndex"
-            value_type: "REG_DWORD"
-            value: 10
-
-  - id: legacy_network_protocols
-    name: "Legacy Network Protocols"
-    description: "Configure legacy protocols (LLMNR, WPAD, NetBIOS) for security"
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Windows Insiders can now test DNS over HTTPS](https://techcommunity.microsoft.com/blog/networkingblog/windows-insiders-can-now-test-dns-over-https/1381282)
+      - [Secure DNS Client over HTTPS (DoH)](https://learn.microsoft.com/en-us/windows-server/networking/dns/doh-client-support)
+      - [Add-DnsClientDohServerAddress](https://learn.microsoft.com/en-us/powershell/module/dnsclient/add-dnsclientdohserveraddress)
     risk_level: medium
-    requires_admin: true
+    elevation: admin
+    reversible: true
     requires_reboot: true
-    info: |
-      ## What This Does
-      Controls legacy network protocols that can be exploited for attacks.
-
-      ## Options Explained
-      - **Maximum Security**: Disables LLMNR, WPAD, and NetBIOS (recommended)
-      - **NetBIOS Only Enabled**: Legacy device compatibility, other protocols disabled
-      - **WPAD Only Enabled**: For corporate proxy auto-discovery
-      - **All Enabled**: Default Windows behavior (less secure)
-
-      ## Security Risks
-      - **LLMNR**: Can be exploited for credential theft (LLMNR poisoning)
-      - **WPAD**: Attackers can redirect your traffic through rogue proxies
-      - **NetBIOS**: Legacy protocol vulnerable to various network attacks
-
-      ## Compatibility Notes
-      - Some old printers/devices may need NetBIOS
-      - Corporate networks may require WPAD for proxy configuration
-      - DNS misconfiguration may cause slow name resolution without LLMNR
-
-      ## Recommendation
-      Use "Maximum Security" unless you have specific compatibility requirements.
+    windows: { products: [11] }
+    effects:
+      - id: auto_doh
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters', name: EnableAutoDoh, type: REG_DWORD }
     options:
-      - label: "Maximum Security (All Disabled)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
-            value_name: "EnableMulticast"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
-            value_name: "WpadOverride"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "EnableLMHOSTS"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "NodeType"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-            value_name: "SMB1"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "NetBIOS Only Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
-            value_name: "EnableMulticast"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
-            value_name: "WpadOverride"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "EnableLMHOSTS"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "NodeType"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-            value_name: "SMB1"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
-      - label: "WPAD Only Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
-            value_name: "EnableMulticast"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
-            value_name: "WpadOverride"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "EnableLMHOSTS"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "NodeType"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-            value_name: "SMB1"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "All Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows NT\\DNSClient"
-            value_name: "EnableMulticast"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WinHttpAutoProxySvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Wpad"
-            value_name: "WpadOverride"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "EnableLMHOSTS"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\NetBT\\Parameters"
-            value_name: "NodeType"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-            value_name: "SMB1"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\mrxsmb10"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
+      - label: "Auto-upgrade to DoH"
+        values: { auto_doh: 2 }
+      - label: "No auto-upgrade"
+        values: { auto_doh: absent }
 
-  # NOTE: disable_netbios, disable_llmnr, disable_wpad consolidated into legacy_network_protocols above
-
-  - id: increase_irp_stack_size
-    name: "Increase Network IRP Stack Size"
-    description: "Increase I/O Request Packet stack size for better network performance"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
+  - id: require_doh
+    name: "Require encrypted DNS"
+    description: "Enforce DNS over HTTPS by policy so lookups fail rather than silently falling back to plaintext."
     info: |
-      ## What This Does
-      Increases the IRP (I/O Request Packet) stack size used for network file operations.
+      **Forces encrypted DNS: if the resolver will not do DNS over HTTPS, name resolution fails rather than falling back to plaintext.**
+
+      ## What it does
+      Sets `DoHPolicy = 3` ("Require encryption") under the DNS Client policy key, the first-party
+      Group Policy "Configure DNS over HTTPS (DoH) name resolution". Unlike opportunistic
+      auto-upgrade, this never falls back to unencrypted queries.
 
       ## Benefits
-      - **File sharing**: Improved SMB/network share performance
-      - **Complex networks**: Better handling of multi-hop file access
-      - **Multiple NICs**: Better performance with multiple network adapters
+      - **A real guarantee**: no silent plaintext fallback, which is the whole weakness of auto-upgrade
+      - **Microsoft-documented**: an ADMX-backed policy, not an undocumented registry value
+      - **Machine-wide**: applies across every interface, not per-server
 
-      ## Technical Details
-      Default is 15-20 depending on Windows version. Increasing to 30 helps with complex network topologies.
+      ## Drawbacks
+      - **Total name-resolution failure if misconfigured**: if your DNS servers do not speak DoH, nothing resolves and the machine looks like it has no internet
+      - **Breaks captive portals**: hotel and airport sign-in pages depend on plaintext DNS interception
+      - **Wrong for domain-joined machines**: Microsoft warns against requiring DoH where Windows Server DNS answers internal names, because it does not serve DoH
+      - **Needs a DoH-capable resolver set first**: this policy enforces encryption, it does not provide a server
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer. The policy itself declares Windows 10 20H2 and later, but no shipping Windows 10 release has the DoH client, so it has no practical effect there.
+      - **Takes effect**: after reboot, or after restarting the DNS Client (`Dnscache`) service
+      - **Reverting**: deletes the value, restoring Windows' default encryption behaviour
+      - **Set a DoH resolver first** (Cloudflare, Google or Quad9, or one added with `Add-DnsClientDohServerAddress`), then apply this
+      - The same policy also carries separate DoH and DNS over TLS sub-settings, which this does not write
 
       ## Recommendation
-      Safe optimization for all users, especially those using network shares.
-    options:
-      - label: "Increased (30)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-            value_name: "IRPStackSize"
-            value_type: "REG_DWORD"
-            value: 30
-      - label: "Default (20)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\LanmanServer\\Parameters"
-            value_name: "IRPStackSize"
-            value_type: "REG_DWORD"
-            value: 20
+      The right choice for a privacy-motivated user on a standalone machine who has already configured
+      a DoH-capable resolver and wants encryption guaranteed rather than opportunistic. Do not apply it
+      on a domain-joined machine, or on a laptop that regularly connects through captive portals,
+      without an easy way to revert.
 
-  - id: tcp_optimization
-    name: "TCP Stack Optimization"
-    description: "Optimize TCP parameters for lower latency"
-    risk_level: low
-    requires_admin: true
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Secure DNS Client over HTTPS (DoH)](https://learn.microsoft.com/en-us/windows-server/networking/dns/doh-client-support)
+      - [Policy CSP - ADMX_DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [Add-DnsClientDohServerAddress](https://learn.microsoft.com/en-us/powershell/module/dnsclient/add-dnsclientdohserveraddress)
+    warning: "If your DNS servers do not support DNS over HTTPS, name resolution stops entirely and the machine will look like it has no internet. Configure a DoH-capable resolver first, and do not apply this on a domain-joined machine."
+    risk_level: medium
+    elevation: admin
+    reversible: true
     requires_reboot: true
-    info: |
-      ## What This Does
-      Optimizes TCP/IP stack parameters:
-      - **Window Scaling Only**: Enables TCP window scaling without timestamps (saves 12 bytes per packet)
-      - **Fewer Retransmissions**: Reduces max data retransmissions from 5 to 3 (faster failure detection)
-      - **Lower TTL**: Sets TTL to 64 (standard for Linux/Unix, reduces fingerprinting)
+    windows: { products: [11] }
+    effects:
+      - id: doh_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient', name: DoHPolicy, type: REG_DWORD }
+    options:
+      - label: "Require encryption"
+        values: { doh_policy: 3 }
+      - label: "Encryption optional"
+        values: { doh_policy: absent }
 
-      ## Performance Impact
-      - Slightly lower latency per packet
-      - Faster detection of dead connections
-      - Reduced packet overhead
+  - id: disable_llmnr
+    name: "Disable LLMNR"
+    description: "Turn off multicast LLMNR name resolution to block a common credential-theft and spoofing vector."
+    info: |
+      **Turns off the legacy LLMNR name-resolution fallback, closing a favourite target for local-network credential theft.**
+
+      ## What it does
+      Sets the `EnableMulticast` policy value to 0, the registry form of the Group Policy "Turn off
+      multicast name resolution". LLMNR is the fallback Windows uses to find machines by name when
+      DNS does not answer, and it broadcasts those queries to the whole local network.
+
+      ## Benefits
+      - **Closes LLMNR poisoning**: the highest-yield, lowest-effort attack on a flat Windows network
+      - **Stops credential capture**: tools like Responder answer the broadcast and harvest NTLM hashes
+      - **Benchmark-backed**: CIS control 18.5.4.1 recommends exactly this
+      - **Survives updates**: it is a policy value, not a preference
+
+      ## Drawbacks
+      - **Short names may fail**: on a network with no DNS server, single-label lookups fall back to NetBIOS or stop working
+      - **Pairs with NetBIOS**: if you also disable NetBIOS, short-name discovery on a DNS-less network stops entirely
+      - **Not the whole picture**: mDNS is a third broadcast protocol and needs its own control
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021
+      - **Takes effect**: after reboot, when the DNS Client service next reads the policy
+      - **Reverting**: deletes the value, which is the Windows default state (LLMNR enabled)
+      - **Editions**: documented for Pro, Education, Enterprise and IoT Enterprise; the DNS client reads the value on Home too, but Microsoft does not document that
 
       ## Recommendation
-      Safe for most users. Beneficial for gaming and real-time applications.
-    options:
-      - label: "TCP Optimized"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "Tcp1323Opts"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpMaxDataRetransmissions"
-            value_type: "REG_DWORD"
-            value: 3
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "DefaultTTL"
-            value_type: "REG_DWORD"
-            value: 64
-      - label: "TCP Default"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "Tcp1323Opts"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "TcpMaxDataRetransmissions"
-            value_type: "REG_DWORD"
-            value: 5
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "DefaultTTL"
-            value_type: "REG_DWORD"
-            value: 128
+      Apply it. On any network with a working DNS server, which includes essentially every home
+      router, the cost is zero and the security gain is real. Skip it only if you depend on short-name
+      discovery on a network with no DNS at all.
 
-  - id: tcp_fast_open
-    name: "Enable TCP Fast Open"
-    description: "Enable TCP Fast Open for faster connection establishment"
-    risk_level: low
-    requires_admin: true
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - ADMX_DnsClient, Turn_Off_Multicast](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [CIS 18.5.4.1, Turn off multicast name resolution](https://www.tenable.com/audits/items/CIS_DC_SERVER_2012_Level_1_v2.2.0.audit:f9584c0c934378405ec052736485f437)
+    risk_level: medium
+    elevation: admin
+    reversible: true
     requires_reboot: true
-    info: |
-      ## What This Does
-      Enables TCP Fast Open (TFO) which allows data to be sent during the TCP handshake, reducing connection setup time by one round trip.
+    effects:
+      - id: enable_multicast
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient', name: EnableMulticast, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { enable_multicast: 0 }
+      - label: "Enabled"
+        values: { enable_multicast: absent }
 
-      ## Performance Impact
-      - Faster initial connections to frequently visited websites
-      - Reduces latency by ~1 RTT for repeat connections
-      - Supported by most modern web servers
+  - id: disable_netbios_tcpip
+    name: "Disable NetBIOS over TCP/IP"
+    description: "Disable the legacy NetBIOS name service (NBT-NS) on every adapter to close a spoofing and poisoning attack surface."
+    info: |
+      **Shuts off the ancient NetBIOS name service on every adapter, removing a second broadcast attack surface that credential-theft tools abuse.**
+
+      ## What it does
+      Writes `NetbiosOptions = 2` to every `Tcpip_*` interface under `NetBT\Parameters\Interfaces`,
+      the registry equivalent of selecting "Disable NetBIOS over TCP/IP" on the WINS tab. Like LLMNR,
+      NBT-NS answers name requests by broadcast, which attackers hijack.
+
+      ## Benefits
+      - **Closes NBT-NS poisoning**: the twin of LLMNR poisoning, targeted by the same tooling
+      - **Completes the pair**: with LLMNR off, the two classic broadcast name-resolution holes are both shut
+      - **Machine-wide**: applied to every adapter present, not just the active one
+
+      ## Drawbacks
+      - **Breaks legacy discovery**: NetBIOS-only NAS boxes, old network printers and some line-of-business apps stop resolving
+      - **Not applied to new adapters**: a USB NIC, VPN adapter or Hyper-V switch added later keeps NetBIOS until you re-apply
+      - **WINS networks**: any network still using WINS depends on this
+      - **`net view` browsing** stops working where it relied on NetBIOS names
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions
+      - **Takes effect**: after reboot (or `ipconfig /renew` on a DHCP interface)
+      - **Reverting**: restores the previous per-interface value from the snapshot
+      - Modern file sharing over SMB on port 445 with DNS names is unaffected
 
       ## Recommendation
-      Safe to enable. Most modern networks and servers support TFO.
-    options:
-      - label: "TFO Enabled (Client+Server)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "EnableTFO"
-            value_type: "REG_DWORD"
-            value: 3
-      - label: "TFO Server Only (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
-            value_name: "EnableTFO"
-            value_type: "REG_DWORD"
-            value: 2
+      Apply it on any modern network, ideally together with disabling LLMNR. Skip it if you still run
+      genuinely old NetBIOS-only hardware, or test first and re-enable NetBIOS on the one adapter that
+      needs it.
 
-  - id: dns_cache_optimization
-    name: "Optimize DNS Cache"
-    description: "Reduce DNS negative cache times for faster recovery"
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [NetbiosOptions (Core Services)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776524(v=ws.10))
+      - [TCP/IP and NBT configuration parameters](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/tcpip-and-nbt-configuration-parameters)
+      - [Unattend NetbiosOptions setting](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-netbt-interfaces-interface-netbiosoptions)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: NetbiosTcpip, type: REG_DWORD }
+      - id: netbios_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $root = 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NetbiosTcpip'
+            New-Item -Path $snap -Force | Out-Null
+            Get-ChildItem $root | Where-Object { $_.PSChildName -like 'Tcpip_*' } | ForEach-Object {
+              $prior = (Get-ItemProperty -Path $_.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue).NetbiosOptions
+              # -1 records "the value was absent" so the undo deletes it instead of inventing a default.
+              Set-ItemProperty -Path $snap -Name $_.PSChildName -Value $(if ($null -eq $prior) { -1 } else { [int]$prior }) -Type DWord
+              Set-ItemProperty -Path $_.PSPath -Name NetbiosOptions -Value 2 -Type DWord
+            }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $root = 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NetbiosTcpip'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            Get-ChildItem $root | Where-Object { $_.PSChildName -like 'Tcpip_*' } | ForEach-Object {
+              $p = if ($s) { $s.PSObject.Properties[$_.PSChildName] } else { $null }
+              if ($null -eq $p -or [int]$p.Value -lt 0) {
+                Remove-ItemProperty -Path $_.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue
+              } else {
+                Set-ItemProperty -Path $_.PSPath -Name NetbiosOptions -Value ([int]$p.Value) -Type DWord
+              }
+            }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $ifaces = Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces' |
+              Where-Object { $_.PSChildName -like 'Tcpip_*' }
+            if (-not $ifaces) { exit 1 }
+            foreach ($i in $ifaces) {
+              if ((Get-ItemProperty $i.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue).NetbiosOptions -ne 2) { exit 1 }
+            }
+            exit 0
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, netbios_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_mdns
+    name: "Disable mDNS"
+    description: "Turn off multicast DNS, the third broadcast name-resolution protocol, at both the policy and service keys."
+    info: |
+      **Turns off mDNS, the third broadcast name-resolution protocol, closing the last leg of the LLMNR and NetBIOS spoofing triad.**
+
+      ## What it does
+      Sets `EnableMDNS = 0` both under the DNS Client policy key and under the `Dnscache\Parameters`
+      service key, which is the "locally configured setting" the policy's own help text defers to.
+      The DNS client then stops answering and issuing multicast DNS queries.
+
+      ## Benefits
+      - **Closes mDNS poisoning**: the same Responder-class attack that motivates disabling LLMNR works over mDNS
+      - **Completes the set**: with LLMNR and NetBIOS already off, this is the remaining broadcast name-resolution protocol
+      - **First-party control**: Windows ships a Group Policy for it, "Configure multicast DNS (mDNS) protocol"
+      - **Fully reversible**: deleting both values restores the default
+
+      ## Drawbacks
+      - **`.local` names stop resolving**: anything you reach by a `.local` hostname becomes unreachable by name
+      - **Network printers vanish**: AirPrint and IPP Everywhere printers are discovered over mDNS
+      - **Casting and smart-home discovery break**: Chromecast, Google Cast, Apple device discovery and some smart-home apps rely on it
+      - **Highest cost of the three**: this is the name-resolution tweak users are most likely to notice
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer. The policy declares "At least Windows 10", so Windows 10 including LTSC 2021 should honour it, but that was verified on 26100 only.
+      - **Takes effect**: after reboot, or after restarting the DNS Client (`Dnscache`) service
+      - **Reverting**: deletes both values, restoring mDNS
+      - Apply this after LLMNR and NetBIOS, not before; it is the one most likely to be noticed
+
+      ## Recommendation
+      Worth applying on a hardened workstation with no `.local` dependencies and no mDNS-discovered
+      printers or cast devices. If you print to a network printer found by name, or cast to a TV,
+      expect that to stop and skip this one.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Policy CSP - ADMX_DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [DNS Client Group Policy settings](https://learn.microsoft.com/en-us/windows-server/networking/dns/dns-top)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: mdns_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient', name: EnableMDNS, type: REG_DWORD }
+      - id: mdns_service
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters', name: EnableMDNS, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { mdns_policy: 0, mdns_service: 0 }
+      - label: "Enabled"
+        values: { mdns_policy: absent, mdns_service: absent }
+
+  - id: disable_wpad
+    name: "Disable WPAD auto-proxy discovery"
+    description: "Disable Web Proxy Auto-Discovery machine-wide so attackers cannot hijack traffic via rogue WPAD responses."
+    info: |
+      **Blocks Windows from auto-hunting the network for proxy settings, killing a classic man-in-the-middle trick that reroutes your web traffic.**
+
+      ## What it does
+      Sets `DisableWpad = 1` under `Internet Settings\WinHttp`, the method Microsoft documents for
+      switching Web Proxy Auto-Discovery off since Windows 10 1809. Every proxy-detection call made
+      through the WinHTTP API stops looking for a WPAD configuration file.
+
+      ## Benefits
+      - **Kills a live MITM vector**: a rogue device can no longer answer WPAD and route your traffic through its proxy
+      - **Documented switch**: Microsoft's own supported way to turn WPAD off
+      - **Free if unused**: costs nothing on any network that does not hand out proxy config by WPAD
+      - **Works on Home**: a product key, not a policy key, so no edition gate
+
+      ## Drawbacks
+      - **Breaks WPAD networks**: where proxy settings are distributed this way, web access stops until you set a proxy by hand
+      - **Not complete coverage**: applications can still resolve the name "WPAD" through plain DNS, so DNS-level WPAD queries continue
+      - **Settings UI still matters**: third-party apps and browsers may read the Windows Settings proxy auto-discovery toggle, which this does not change
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1809 and later including LTSC 2021, all editions
+      - **Takes effect**: after reboot, because WinHTTP caches proxy configuration per process
+      - **Reverting**: deletes the value, restoring automatic proxy discovery
+      - This deliberately does not disable the `WinHttpAutoProxySvc` service, because many Windows components depend on it
+
+      ## Recommendation
+      Apply it on any home or small-office machine that does not use automatic proxy configuration,
+      and also turn off auto-discovery in Settings for full coverage. On a corporate network that
+      distributes proxy settings by WPAD, leave it alone or configure the proxy manually first.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [How to disable HTTP proxy features](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/disable-http-proxy-auth-features)
+      - [WinHTTP AutoProxy functions](https://learn.microsoft.com/en-us/windows/win32/winhttp/winhttp-autoproxy-api)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: disable_wpad_value
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\WinHttp', name: DisableWpad, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { disable_wpad_value: 1 }
+      - label: "Enabled"
+        values: { disable_wpad_value: absent }
+
+  - id: disable_ipv6_transition
+    name: "Disable IPv6 transition technologies"
+    description: "Drop the legacy IPv6 tunnel interfaces (6to4 and the generic tunnel) without touching native IPv6."
+    info: |
+      **Drops the legacy IPv6 tunnel interfaces so 6to4 cannot quietly build a tunnel and register its addresses in DNS, while native IPv6 keeps working.**
+
+      ## What it does
+      Sets `DisabledComponents = 0x01` on the IPv6 stack, the low bit of Microsoft's documented
+      bitmask, which disables the tunnel interfaces (6to4, Teredo, ISATAP). Native IPv6 lives in a
+      different bit and is untouched.
+
+      ## Benefits
+      - **Stops 6to4 auto-tunnels**: 6to4 enables itself whenever an interface holds a public IPv4 address, and Microsoft itself recommends disabling it when that is unwanted
+      - **Fewer address leaks**: no tunnel addresses registered in DNS and no unexpected connectivity path
+      - **Native IPv6 intact**: this is bit 0, not the 0x10 bit that disables native IPv6
+
+      ## Drawbacks
+      - **Breaks Routing and Remote Access**: Microsoft states any value other than 0 or 32 causes RRAS to fail, and `0x01` is such a value
+      - **Smaller change than it sounds**: ISATAP and Teredo are already disabled by default in Windows, so on a stock machine only 6to4 and the generic tunnel interface actually go away
+      - **Teredo-dependent apps**: some older peer-to-peer software and legacy console networking need Teredo
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions
+      - **Takes effect**: after reboot, which Microsoft requires for this value
+      - **Reverting**: deletes the value, restoring the Windows default of 0x00
+      - **Do not confuse `0x01` with `0xFF`**: 0xFF disables IPv6 entirely, which Microsoft does not support and which breaks Windows features that assume IPv6 is present
+
+      ## Recommendation
+      Worth applying on an ordinary client that does not need tunnelled IPv6, which is most machines.
+      Do not apply it on anything running Routing and Remote Access, or on a machine that depends on
+      Teredo or on an ISATAP intranet deployment.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Guidance for configuring IPv6 in Windows for advanced users](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/configure-ipv6-in-windows)
+      - [IPv6 transition technologies overview](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/bb726951(v=technet.10))
+    warning: "Microsoft states that any DisabledComponents value other than 0 or 32 causes the Routing and Remote Access service to fail. Do not apply this on a machine running RRAS."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: disabled_components
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters', name: DisabledComponents, type: REG_DWORD }
+    options:
+      - label: "Tunnels disabled"
+        values: { disabled_components: 0x01 }
+      - label: "Enabled"
+        values: { disabled_components: absent }
+
+  - id: disable_internet_connection_sharing
+    name: "Disable Internet Connection Sharing"
+    description: "Disable the ICS service and hide its UI so the PC cannot be turned into an unmanaged router and NAT."
+    info: |
+      **Turns off Internet Connection Sharing, so the PC cannot be turned into an unmanaged router and NAT.**
+
+      ## What it does
+      Disables the `SharedAccess` service (Internet Connection Sharing) and enables the "Prohibit use
+      of Internet Connection Sharing" policy, which writes `NC_ShowSharedAccessUI = 0` and removes the
+      sharing option from network connection properties.
+
+      ## Benefits
+      - **No accidental routing**: the machine cannot start NATting another network onto your connection
+      - **Removes the UI**: the sharing tab option disappears, so it cannot be enabled by mistake
+      - **Benchmark-backed**: DISA's Windows 11 STIG has a dedicated rule requiring ICS be disabled
+
+      ## Drawbacks
+      - **Breaks WSL2 and the Hyper-V Default Switch**: `SharedAccess` is the NAT engine behind them, so WSL2 and Windows Sandbox lose internet access
+      - **Mobile Hotspot may stop working**: the Hotspot service does not formally depend on this one, but it uses the same NAT engine
+      - **No sharing a connection**: if you ever tether one adapter's connection to another, that stops
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The policy is declared for Windows XP and later, so every target platform qualifies.
+      - **Takes effect**: immediately, the service is stopped on apply
+      - **Reverting**: restores the previous service start type from the snapshot and deletes the policy value
+      - **Do not apply this on a machine that runs WSL2, Docker Desktop or Windows Sandbox.** It is the most common cause of "WSL2 suddenly has no internet".
+
+      ## Recommendation
+      Apply it on an ordinary desktop or work machine that will never share a connection. Do not apply
+      it on a development machine using WSL2, Docker Desktop or Windows Sandbox, and do not apply it if
+      you use Mobile Hotspot.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Prohibit use of Internet Connection Sharing, Policy CSP ADMX_NetworkConnections](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-networkconnections)
+      - [Internet Connection Sharing overview](https://learn.microsoft.com/en-us/windows/win32/ics/internet-connection-sharing)
+    warning: "SharedAccess is the NAT engine behind the Hyper-V Default Switch, so disabling it is a well-known cause of WSL2, Docker Desktop and Windows Sandbox losing internet access. Do not apply it on a development machine."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: ics_service
+        service: { name: SharedAccess }
+      - id: show_shared_access_ui
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Network Connections', name: NC_ShowSharedAccessUI, type: REG_DWORD }
+    options:
+      # Only the hardened state is authored: the stock start type of SharedAccess is unconfirmed, so
+      # the return path is the snapshot rather than a guessed literal.
+      - label: "Disabled"
+        values: { ics_service: disabled, show_shared_access_ui: 0 }
+
+  - id: firewall_logging_and_merge
+    name: "Firewall logging and local policy merge"
+    description: "Log dropped packets on all three firewall profiles, and optionally stop applications adding their own allow rules."
+    info: |
+      **Turns on firewall drop logging across all three profiles, and optionally stops applications adding their own allow rules.**
+
+      ## What it does
+      Writes `LogDroppedPackets = 1` with a log path and a 16 MB size limit into the Domain, Private
+      and Public firewall profile policy keys, so blocked inbound packets are recorded. The stricter
+      option also sets `AllowLocalPolicyMerge = 0`, which makes Windows ignore locally created
+      firewall rules.
+
+      ## Benefits
+      - **You can see what is blocked**: dropped packets land in a per-profile log instead of vanishing silently
+      - **Bigger log**: 16 MB instead of the 4 MB default, so the log covers more than a few minutes of noise
+      - **Stops silent rule creation**: with local policy merge off, an application cannot quietly add an allow rule for itself
+      - **Benchmark-backed**: CIS recommends firewall logging and merge control on all three profiles
+
+      ## Drawbacks
+      - **Local policy merge off breaks inbound, silently**: on a standalone machine there is no pushed rule set to fall back to, so the "Windows Defender Firewall has blocked some features of this app" prompt never appears and games or servers just fail to accept connections
+      - **Log noise**: a Public-profile log fills quickly on a busy network
+      - **Small disk cost**: up to 16 MB per profile
+      - **Does nothing on Home for the merge half**: `AllowLocalPolicyMerge` is documented for Pro and above
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC
+      - **Takes effect**: immediately
+      - **Reverting**: deletes all four values per profile, restoring the default log settings and re-enabling local rule merge
+      - Logs land at `%SystemRoot%\System32\logfiles\firewall\<profile>fw.log`
+      - `AllowLocalPolicyMerge` is documented by Microsoft's Firewall CSP but is not in the shipped ADMX; it is written directly
+
+      ## Recommendation
+      Turn on logging on any machine where you want to diagnose blocked connections; it is cheap and
+      reversible. Only turn off local policy merge on a machine whose firewall rules are managed
+      centrally, because on a standalone PC it breaks inbound connections with no prompt and no
+      obvious cause.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Firewall CSP, MdmStore AllowLocalPolicyMerge](https://learn.microsoft.com/en-us/windows/client-management/mdm/firewall-csp)
+      - [Configure the Windows Firewall log](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure-logging)
+    warning: "The second option turns off local policy merge. On a standalone PC that silently stops inbound connections working: the usual firewall prompt never appears and games or servers simply fail to accept connections. Choose logging alone unless this machine's firewall rules are managed centrally."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: domain_log_dropped
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+      - id: domain_log_path
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging', name: LogFilePath, type: REG_SZ }
+      - id: domain_log_size
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging', name: LogFileSize, type: REG_DWORD }
+      - id: domain_merge
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+      - id: private_log_dropped
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+      - id: private_log_path
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogFilePath, type: REG_SZ }
+      - id: private_log_size
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogFileSize, type: REG_DWORD }
+      - id: private_merge
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+      - id: public_log_dropped
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+      - id: public_log_path
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogFilePath, type: REG_SZ }
+      - id: public_log_size
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogFileSize, type: REG_DWORD }
+      - id: public_merge
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+    options:
+      - label: "Log dropped packets"
+        values:
+          domain_log_dropped: 1
+          domain_log_path: '%SystemRoot%\System32\logfiles\firewall\domainfw.log'
+          domain_log_size: 16384
+          domain_merge: absent
+          private_log_dropped: 1
+          private_log_path: '%SystemRoot%\System32\logfiles\firewall\privatefw.log'
+          private_log_size: 16384
+          private_merge: absent
+          public_log_dropped: 1
+          public_log_path: '%SystemRoot%\System32\logfiles\firewall\publicfw.log'
+          public_log_size: 16384
+          public_merge: absent
+      - label: "Log dropped packets and ignore local rules"
+        values:
+          domain_log_dropped: 1
+          domain_log_path: '%SystemRoot%\System32\logfiles\firewall\domainfw.log'
+          domain_log_size: 16384
+          domain_merge: 0
+          private_log_dropped: 1
+          private_log_path: '%SystemRoot%\System32\logfiles\firewall\privatefw.log'
+          private_log_size: 16384
+          private_merge: 0
+          public_log_dropped: 1
+          public_log_path: '%SystemRoot%\System32\logfiles\firewall\publicfw.log'
+          public_log_size: 16384
+          public_merge: 0
+      - label: "No dropped-packet logging"
+        values:
+          domain_log_dropped: absent
+          domain_log_path: absent
+          domain_log_size: absent
+          domain_merge: absent
+          private_log_dropped: absent
+          private_log_path: absent
+          private_log_size: absent
+          private_merge: absent
+          public_log_dropped: absent
+          public_log_path: absent
+          public_log_size: absent
+          public_merge: absent
+
+  - id: disable_nic_power_management
+    name: "Disable NIC power management"
+    description: "Stop Windows powering down physical network adapters to prevent Wi-Fi drops and idle latency spikes."
+    info: |
+      **Stops Windows parking your network adapter to save power, curing Wi-Fi that drops when the PC sits idle.**
+
+      ## What it does
+      Writes `PnPCapabilities = 24` into the network adapter driver keys, which is Microsoft's
+      documented deployment value for clearing "Allow the computer to turn off this device to save
+      power". Windows then leaves the adapter powered instead of parking it when idle.
+
+      ## Benefits
+      - **Stops idle disconnects**: the standard fix for Wi-Fi that drops after the machine sits unused
+      - **No post-idle latency**: traffic resumes on a link Windows never parked
+      - **Microsoft-documented value**: 24 (0x18) is the value Microsoft names for deployment, not a community guess
+      - **Endorsed by Microsoft tooling**: the Exchange Health Checker "Sleepy NIC Check" flags NIC power saving as a cause of packet loss
+
+      ## Drawbacks
+      - **Higher idle power**: measurable battery cost on laptops
+      - **Written to every adapter**: the current action also writes to virtual adapters, WAN Miniports and the Bluetooth PAN device, none of which have a power management tab
+      - **Revert is imperfect today**: the undo deletes the value rather than restoring whatever your adapter vendor had set
+      - **Stock state varies**: some adapters ship with a vendor value already present and some with none, so there is no single correct "off"
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on physical adapters whose driver exposes the Power Management tab
+      - **Takes effect**: after reboot, when the device next starts
+      - **Reverting**: restores the previous per-adapter value from the snapshot
+      - Microsoft's supported per-adapter alternative is `Set-NetAdapterPowerManagement -AllowComputerToTurnOffDevice Disabled`
+
+      ## Recommendation
+      Worth it on a desktop, or on any machine that actually suffers idle network drops. On a laptop
+      with no connectivity symptoms, leave power management enabled and keep the battery life.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Power management setting on a network adapter (KB 2740020)](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/power-management-on-network-adapter)
+      - [Set-NetAdapterPowerManagement](https://learn.microsoft.com/en-us/powershell/module/netadapter/set-netadapterpowermanagement)
+      - [How NDIS sets the power policy for a network adapter](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/how-ndis-sets-the-power-policy-for-a-network-adapter)
+    warning: "PnPCapabilities = 24 is Microsoft's documented deployment value (KB 2740020). This tweak writes it only to the driver keys of adapters Windows reports as physical, and records each key's prior value (including absent) so the revert restores it. A driver reinstall or upgrade can reset the value without this app noticing."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: NicPowerManagement, type: REG_DWORD }
+      - id: nic_power_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement'
+            # Only adapters Windows reports as physical expose a Power Management tab; virtual
+            # adapters, WAN Miniports and the Bluetooth PAN device are deliberately skipped.
+            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceDescription })
+            if ($phys.Count -eq 0) { exit 1 }
+            New-Item -Path $snap -Force | Out-Null
+            $hit = 0
+            foreach ($k in @(Get-ChildItem $class -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' })) {
+              $desc = (Get-ItemProperty -Path $k.PSPath -Name DriverDesc -ErrorAction SilentlyContinue).DriverDesc
+              if ($desc -and $phys -contains $desc) {
+                $prior = (Get-ItemProperty -Path $k.PSPath -Name PnPCapabilities -ErrorAction SilentlyContinue).PnPCapabilities
+                Set-ItemProperty -Path $snap -Name $k.PSChildName -Value $(if ($null -eq $prior) { -1 } else { [int]$prior }) -Type DWord
+                Set-ItemProperty -Path $k.PSPath -Name PnPCapabilities -Value 24 -Type DWord
+                $hit++
+              }
+            }
+            if ($hit -eq 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            if ($s) {
+              foreach ($p in @($s.PSObject.Properties | Where-Object { $_.Name -match '^\d{4}$' })) {
+                $k = Join-Path $class $p.Name
+                if (Test-Path $k) {
+                  if ([int]$p.Value -lt 0) {
+                    Remove-ItemProperty -Path $k -Name PnPCapabilities -ErrorAction SilentlyContinue
+                  } else {
+                    Set-ItemProperty -Path $k -Name PnPCapabilities -Value ([int]$p.Value) -Type DWord
+                  }
+                }
+              }
+              Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            exit 0
+          probe: |
+            $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
+            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceDescription })
+            if ($phys.Count -eq 0) { exit 1 }
+            $seen = 0
+            foreach ($k in @(Get-ChildItem $class -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' })) {
+              $desc = (Get-ItemProperty -Path $k.PSPath -Name DriverDesc -ErrorAction SilentlyContinue).DriverDesc
+              if ($desc -and $phys -contains $desc) {
+                $seen++
+                if ((Get-ItemProperty -Path $k.PSPath -Name PnPCapabilities -ErrorAction SilentlyContinue).PnPCapabilities -ne 24) { exit 1 }
+              }
+            }
+            if ($seen -eq 0) { exit 1 }
+            exit 0
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, nic_power_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_hibernation
+    name: "Disable hibernation"
+    description: "Remove hibernation and delete hiberfil.sys to reclaim disk space (also disables Fast Startup)."
+    info: |
+      **Turns off hibernation and deletes hiberfil.sys, reclaiming gigabytes of disk space.**
+
+      ## What it does
+      Runs `powercfg /hibernate off`, which clears hibernation support and removes the hidden
+      `hiberfil.sys` file Windows reserves for it. Because Fast Startup is a partial hibernation,
+      turning hibernation off also disables Fast Startup.
+
+      ## Benefits
+      - **Reclaims disk space**: `hiberfil.sys` is sized as a fraction of installed RAM, often several gigabytes
+      - **Immediate**: the file is deleted on apply, no reboot needed
+      - **No loss on a desktop that never hibernates**: dead space recovered for nothing given up
+
+      ## Drawbacks
+      - **No hibernate, no hybrid sleep, no Fast Startup**: all three depend on the same file
+      - **Laptops lose the low-battery safety net**: hibernation is what saves your session to disk when the battery runs critically low
+      - **Modern Standby machines drain flat**: hibernate-after-sleep is what stops an idle Modern Standby laptop discharging completely
+      - **Reverting is currently blunt**: it enables hibernation unconditionally at full size, even on a machine that never had it
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
+      - **Takes effect**: immediately
+      - **Reverting**: re-enables hibernation from the snapshot; a machine that already had hibernation off before applying should stay that way
+      - A prior `powercfg /hibernate /size` or `/type reduced` configuration is not preserved by a plain re-enable
+
+      ## Recommendation
+      Good on a desktop or a space-constrained SSD where you never hibernate. On a laptop, think
+      twice: you give up the low-battery hibernate safety net, which is the one thing standing between
+      a flat battery and a lost session.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+      - [Sleep settings overview](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: Hibernation, type: REG_DWORD }
+      - id: hibernate_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $pw = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation'
+            New-Item -Path $snap -Force | Out-Null
+            $p = Get-ItemProperty -Path $pw -ErrorAction SilentlyContinue
+            $en = if ($p -and $null -ne $p.HibernateEnabled) { [int]$p.HibernateEnabled } else { -1 }
+            $pct = if ($p -and $null -ne $p.HiberFileSizePercent) { [int]$p.HiberFileSizePercent } else { -1 }
+            Set-ItemProperty -Path $snap -Name Enabled -Value $en -Type DWord
+            Set-ItemProperty -Path $snap -Name SizePercent -Value $pct -Type DWord
+            powercfg /hibernate off
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            # A machine that already had hibernation off before apply must stay off: re-enabling would
+            # recreate a multi-gigabyte hiberfil.sys and Fast Startup the user never had.
+            if ($s -and $s.Enabled -eq 0) {
+              Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+              exit 0
+            }
+            powercfg /hibernate on
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            if ($s -and [int]$s.SizePercent -gt 0) { powercfg /hibernate /size ([int]$s.SizePercent) }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe:
+            registry:
+              key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power'
+              name: HibernateEnabled
+              equals: 0
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, hibernate_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_usb_selective_suspend
+    name: "Disable USB selective suspend"
+    description: "Stop Windows suspending idle USB ports to fix device dropouts, audio glitches, and slow wakeups."
+    info: |
+      **Stops Windows parking idle USB ports, fixing device dropouts, audio glitches and slow wakeups.**
+
+      ## What it does
+      Sets the "USB selective suspend setting" power-plan value to Disabled for both AC and battery on
+      the current power scheme, then reactivates the scheme so the change applies. Ports stay powered
+      instead of being suspended when idle.
+
+      ## Benefits
+      - **Fixes USB audio dropouts**: the standard cure for USB DACs and interfaces that glitch after idle
+      - **Stops dongle disconnects**: wireless receivers stay awake and responsive
+      - **No slow-to-wake hubs**: devices behind a hub respond immediately instead of after a stall
+
+      ## Drawbacks
+      - **Higher idle power**: a small but real battery cost on laptops
+      - **Only the active power plan**: switching to another plan silently loses the change
+      - **No benefit without symptoms**: if your USB devices behave, this only costs power
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
+      - **Takes effect**: immediately, the power scheme is reactivated on apply
+      - **Reverting**: restores the previous AC and battery indices from the snapshot
+      - Stock Balanced has selective suspend enabled on both AC and battery
+
+      ## Recommendation
+      Apply it if you actually experience USB dropouts, audio glitches or slow wakeups. If your USB
+      devices behave fine, especially on a laptop, leave selective suspend on and keep the power
+      saving.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [USB selective suspend](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/usb-selective-suspend)
+      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: UsbSelectiveSuspend, type: REG_DWORD }
+      - id: usb_suspend_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
+            $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
+            # Pin the scheme GUID so the undo cannot write to a different plan the user switched to.
+            $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
+            if (-not $scheme) { exit 1 }
+            $q = (powercfg /QUERY $scheme $sub $set) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            New-Item -Path $snap -Force | Out-Null
+            Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
+            Set-ItemProperty -Path $snap -Name Ac -Value $(if ($ac) { [Convert]::ToInt32($ac, 16) } else { 1 }) -Type DWord
+            Set-ItemProperty -Path $snap -Name Dc -Value $(if ($dc) { [Convert]::ToInt32($dc, 16) } else { 1 }) -Type DWord
+            powercfg /SETACVALUEINDEX $scheme $sub $set 0
+            powercfg /SETDCVALUEINDEX $scheme $sub $set 0
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
+            $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            $scheme = if ($s -and $s.Scheme) { $s.Scheme } else { 'SCHEME_CURRENT' }
+            $ac = if ($s -and $null -ne $s.Ac) { [int]$s.Ac } else { 1 }
+            $dc = if ($s -and $null -ne $s.Dc) { [int]$s.Dc } else { 1 }
+            powercfg /SETACVALUEINDEX $scheme $sub $set $ac
+            powercfg /SETDCVALUEINDEX $scheme $sub $set $dc
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $q = (powercfg /QUERY SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            if (-not $ac -or -not $dc) { exit 1 }
+            if ([Convert]::ToInt32($ac, 16) -eq 0 -and [Convert]::ToInt32($dc, 16) -eq 0) { exit 0 }
+            exit 1
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, usb_suspend_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_wake_timers
+    name: "Disable wake timers"
+    description: "Block scheduled tasks from waking the PC from sleep (stops overnight update and maintenance wakes)."
+    info: |
+      **Stops scheduled tasks waking your PC out of sleep, ending mystery overnight wakeups.**
+
+      ## What it does
+      Sets the "Automatically wake for tasks" power-plan value to Disable for both AC and battery on
+      the current scheme. Windows stops using the system-wide wake-on-timer capability, so scheduled
+      jobs can no longer rouse a sleeping machine.
+
+      ## Benefits
+      - **The PC stays asleep**: no 3 a.m. wake for maintenance, and no fans spinning up overnight
+      - **No battery drain from wakes**: an unattended laptop is not woken to do work
+      - **Tightens the mains behaviour**: on AC, Windows normally allows "important" wake timers, and this removes those too
+
+      ## Drawbacks
+      - **Legitimate scheduled wakes stop**: overnight backups, media indexing and alarms no longer wake the machine
+      - **Update maintenance shifts**: Windows Update work may only run while you are actively using the PC
+      - **Less change than it sounds on battery**: Windows 11 already disables wake timers on battery by default, so only the mains behaviour actually changes
+      - **Only the active power plan**: switching to another plan silently loses the change
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on hardware with RTC wake. Requires administrator.
+      - **Takes effect**: immediately, the power scheme is reactivated on apply
+      - **Reverting**: restores the previous AC and battery indices from the snapshot. Stock Windows 11 Balanced is "Important Wake Timers Only" on AC and "Disable" on battery, not "Enable" on both.
+      - The setting has three states, not two: Disable, Enable, and Important Wake Timers Only
+
+      ## Recommendation
+      Worth applying if a PC that wakes itself overnight bothers you. Skip it if you rely on scheduled
+      overnight work such as automated backups, because those wakes stop too.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Automatically wake for tasks](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings-automatically-wake-for-tasks)
+      - [Sleep settings overview](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
+      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
     risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Reduces the time Windows caches failed DNS lookups. By default, a failed DNS lookup is cached for 5-15 minutes, meaning you can't reach a site even after the DNS issue resolves.
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: WakeTimers, type: REG_DWORD }
+      - id: wake_timers_off
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
+            $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
+            if (-not $scheme) { exit 1 }
+            $q = (powercfg /QUERY $scheme SUB_SLEEP RTCWAKE) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            New-Item -Path $snap -Force | Out-Null
+            Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
+            # Fall back to the Windows 11 stock Balanced indices (AC 2, DC 0), never to "Enable" on both.
+            Set-ItemProperty -Path $snap -Name Ac -Value $(if ($ac) { [Convert]::ToInt32($ac, 16) } else { 2 }) -Type DWord
+            Set-ItemProperty -Path $snap -Name Dc -Value $(if ($dc) { [Convert]::ToInt32($dc, 16) } else { 0 }) -Type DWord
+            powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
+            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
+            $scheme = if ($s -and $s.Scheme) { $s.Scheme } else { 'SCHEME_CURRENT' }
+            $ac = if ($s -and $null -ne $s.Ac) { [int]$s.Ac } else { 2 }
+            $dc = if ($s -and $null -ne $s.Dc) { [int]$s.Dc } else { 0 }
+            powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE $ac
+            powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE $dc
+            powercfg /SETACTIVE $scheme
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $q = (powercfg /QUERY SCHEME_CURRENT SUB_SLEEP RTCWAKE) -join "`n"
+            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            if (-not $ac -or -not $dc) { exit 1 }
+            if ([Convert]::ToInt32($ac, 16) -eq 0 -and [Convert]::ToInt32($dc, 16) -eq 0) { exit 0 }
+            exit 1
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, wake_timers_off: run }
+      - label: "Enabled"
+        values: { state: 0 }
 
-      ## Changes
-      - **MaxNegativeCacheTtl**: 900s → 5s (max time to cache NXDOMAIN responses)
-      - **NegativeCacheTime**: 300s → 5s (default negative cache TTL)
-      - **NetFailureCacheTime**: 30s → 5s (network failure cache time)
+  - id: disable_modern_standby
+    name: "Disable Modern Standby (force S3)"
+    description: "Force legacy S3 sleep instead of Modern Standby (S0) to stop in-bag battery drain and overheating."
+    info: |
+      **Forces old-style S3 deep sleep instead of Modern Standby, stopping in-bag battery drain, on hardware that still supports S3.**
+
+      ## What it does
+      Sets `PlatformAoAcOverride = 0` under the kernel power key, which tells Windows not to use the
+      always-on always-connected power model. On a platform whose firmware still exposes S3, Windows
+      then selects S3 instead of S0 Low Power Idle.
+
+      ## Benefits
+      - **Real deep sleep**: no background work while "asleep", so no warm laptop and no drained battery in a bag
+      - **Verifiable**: `powercfg /a` shows the change afterwards
+      - **Fully reversible**: deleting the value restores Modern Standby on the next boot
+
+      ## Drawbacks
+      - **Catastrophic on hardware without S3**: if `powercfg /a` does not list "Standby (S3)" as available, you can end up with no working sleep state at all
+      - **No instant-on or background connectivity**: S3 gives up the things Modern Standby exists to provide
+      - **Undocumented and unsupported**: Microsoft does not document this value and states that switching the power model "is not supported in Windows without a complete OS re-install"
+      - **Not always better**: Microsoft's own guidance is to measure idle power first, because it can be worse rather than better
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. The real gate is firmware, not Windows version.
+      - **Takes effect**: after reboot
+      - **Reverting**: deletes the value, restoring Modern Standby
+      - **Run `powercfg /a` first.** If "Standby (S3)" is not listed as available, do not apply this.
+      - The value is confirmed present in the Windows 11 24H2 kernel and corroborated by several independent references, but Microsoft has never documented it
 
       ## Recommendation
-      Safe to enable. Faster recovery from temporary DNS failures.
+      Only for users who have confirmed with `powercfg /a` that Standby (S3) is available and who are
+      actually fighting Modern Standby drain. If S3 is not listed, do not touch this; you risk a
+      machine that cannot sleep or wake properly.
+
+      ## Evidence
+      - **Risk**: high
+      - **Confidence**: Community-corroborated
+      - [What is Modern Standby](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby)
+      - [Modern Standby vs S3](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby-vs-s3)
+      - [How to disable Modern Standby on Windows](https://pureinfotech.com/disable-modern-standby-windows/)
+      - [Disable Modern Standby in Windows 10 and Windows 11](https://www.elevenforum.com/t/disable-modern-standby-in-windows-10-and-windows-11.3929/)
+    warning: "Applying this is refused unless powercfg /a reports an available S3 standby state. PlatformAoAcOverride is not documented by Microsoft, and Microsoft states that switching the power model is not supported without a complete OS re-install."
+    risk_level: high
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: platform_aoac_override
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power', name: PlatformAoAcOverride, type: REG_DWORD }
+      - id: require_s3
+        action:
+          # An enforceable precondition, not advisory text: on a platform with no S3 path this fails
+          # the apply (and the engine rolls the tweak back) rather than leaving no working sleep state.
+          apply: |
+            $lines = @(powercfg /a)
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '\(S3\)') {
+                $next = if ($i + 1 -lt $lines.Count) { $lines[$i + 1] } else { '' }
+                # An unavailable state carries a more-indented reason line beneath it; an available one does not.
+                $indent = ($lines[$i] -replace '\S[\s\S]*$', '').Length
+                $nindent = ($next -replace '\S[\s\S]*$', '').Length
+                if ($next.Trim() -eq '' -or $nindent -le $indent) { exit 0 }
+                exit 1
+              }
+            }
+            exit 1
+          ephemeral: true
+          shell: powershell
     options:
-      - label: "Fast DNS Recovery"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
-            value_name: "MaxNegativeCacheTtl"
-            value_type: "REG_DWORD"
-            value: 5
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
-            value_name: "NegativeCacheTime"
-            value_type: "REG_DWORD"
-            value: 5
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
-            value_name: "NetFailureCacheTime"
-            value_type: "REG_DWORD"
-            value: 5
-      - label: "DNS Cache Default"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
-            value_name: "MaxNegativeCacheTtl"
-            value_type: "REG_DWORD"
-            value: 900
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
-            value_name: "NegativeCacheTime"
-            value_type: "REG_DWORD"
-            value: 300
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\Dnscache\\Parameters"
-            value_name: "NetFailureCacheTime"
-            value_type: "REG_DWORD"
-            value: 30
-
-  - id: qos_reserved_bandwidth
-    name: "Remove QoS Reserved Bandwidth"
-    description: "Remove the 20% bandwidth reservation for QoS"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      By default, Windows reserves up to 20% of network bandwidth for QoS (Quality of Service) operations. This tweak removes that reservation.
-
-      ## Note
-      The reservation is only used when an application specifically requests QoS bandwidth. When no QoS requests are active, full bandwidth is available anyway.
-
-      ## Recommendation
-      Safe to set to 0. Most home users have no QoS-dependent applications.
-    options:
-      - label: "No Reserved Bandwidth"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Psched"
-            value_name: "NonBestEffortLimit"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "20% Reserved (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Psched"
-            value_name: "NonBestEffortLimit"
-            value_type: "REG_DWORD"
-            value: 20
+      - label: "Force S3"
+        values: { platform_aoac_override: 0, require_s3: run }
+      - label: "Modern Standby"
+        values: { platform_aoac_override: absent }

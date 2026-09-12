@@ -53,13 +53,11 @@ export {
   stageChange,
   // Data stores
   systemStore,
-  toggleTweak,
   tweaksStore,
   unstageChange,
 } from "./tweaks.svelte";
 
 // System elevation
-export { systemElevationStore } from "./systemElevation.svelte";
 
 // Update system
 export { updateStore } from "./update.svelte";

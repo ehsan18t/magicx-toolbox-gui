@@ -1,5 +1,6 @@
-use crate::services::backup_service;
-use tauri::App;
+use tauri::{App, Manager};
+
+use crate::commands::tweaks::TweakEngineState;
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // Register the handle debug events are emitted through. Held in debug.rs rather
@@ -7,22 +8,14 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // DEBUG_APP there. Must happen before anything that might emit.
     crate::debug::set_debug_app(app.handle().clone());
 
-    // Validate all snapshots on startup
-    // This removes stale snapshots where the tweak was externally reverted
-    log::info!("Validating snapshots on startup...");
-    match backup_service::validate_all_snapshots() {
-        Ok(removed) => {
-            if removed > 0 {
-                log::info!("Removed {} stale snapshots", removed);
-            } else {
-                log::debug!("All snapshots are valid");
-            }
-        }
-        Err(e) => {
-            log::warn!("Failed to validate snapshots: {}", e);
-            // Don't fail app startup for this
-        }
-    }
+    // Tweak engine managed state (Task 16, controller decision 2): SnapshotStore/ClaimsStore/
+    // ProbeCache are app-lifetime singletons, constructed once here and shared across every tweak
+    // command via Tauri's managed state -- never re-opened per call.
+    let tweak_state = TweakEngineState::new()?;
+    // Crash-interrupted apply carry-forward (spec §8.1 invariant 5): flags any snapshot entry left
+    // `intended && !completed` by a process that crashed mid-apply, before the frontend ever asks.
+    tweak_state.scan_startup_crash_residue();
+    app.manage(tweak_state);
 
     Ok(())
 }

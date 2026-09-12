@@ -1,0 +1,25 @@
+category:
+  id: undetectable_on_one_milestone
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "The only non-optional detectable effect is build-scoped to >=22000, so on 19045 nothing detects it."
+
+tweaks:
+  - id: scoped_detector_tweak
+    name: "Scoped Detector"
+    description: "effect_a is the real detector but only exists on Win11+; effect_b is optional so it can't cover for it on 19045."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: effect_a
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: EnabledA, type: REG_DWORD }
+        windows: { build: ">=22000" }
+      - id: effect_b
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: EnabledB, type: REG_DWORD }
+        optional: true
+    options:
+      - label: "On"
+        values:
+          effect_a: 1
+          effect_b: 1

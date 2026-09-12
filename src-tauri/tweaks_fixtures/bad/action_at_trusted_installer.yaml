@@ -1,0 +1,46 @@
+category:
+  id: action_at_trusted_installer
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An action effect may not route to TrustedInstaller (spec §7, ADR-0005): no BrokerOp carries a script, so apply and undo would both fail at runtime."
+
+tweaks:
+  - id: action_under_ti_floor
+    name: "Action Under TI Floor"
+    description: "The tweak's floor is ti, so its action inherits ti."
+    risk_level: low
+    elevation: ti
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: run_script
+        action:
+          apply: "echo apply"
+          undo: "echo undo"
+          shell: cmd
+    options:
+      - label: "On"
+        values:
+          marker: 1
+          run_script: run
+  - id: action_with_ti_step
+    name: "Action With TI Step"
+    description: "The tweak's floor is admin, but the action escalates itself to ti."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker2
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Gadget', name: Marker, type: REG_DWORD }
+      - id: run_script2
+        elevation: ti
+        action:
+          apply: "echo apply"
+          undo: "echo undo"
+          shell: cmd
+    options:
+      - label: "On"
+        values:
+          marker2: 1
+          run_script2: run

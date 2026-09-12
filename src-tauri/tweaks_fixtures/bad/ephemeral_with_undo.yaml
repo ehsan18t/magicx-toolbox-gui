@@ -1,0 +1,27 @@
+category:
+  id: ephemeral_with_undo
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An ephemeral action must not carry undo or probe (spec §7) — ephemeral is exempt from reversibility/detectability, not merely optional for them."
+
+tweaks:
+  - id: ephemeral_with_undo_tweak
+    name: "Ephemeral With Undo"
+    description: "flush_dns is ephemeral but also declares undo, which spec §7 forbids."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: flush_dns
+        action:
+          apply: "ipconfig /flushdns"
+          undo: "ipconfig /flushdns"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "On"
+        values:
+          marker: 1
+          flush_dns: run

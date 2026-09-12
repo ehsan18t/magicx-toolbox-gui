@@ -1,7 +1,16 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import type { Attachment } from "svelte/attachments";
+
   /**
    * Simple markdown renderer for tweak info sections.
-   * Supports: **bold**, *italic*, `code`, headers (##), bullet lists (-), numbered lists (1.), and line breaks.
+   * Supports: **bold**, *italic*, `code`, [links](https://…), headers (##/###),
+   * bullet lists (-), numbered lists (1.), and line breaks.
+   *
+   * Links open in the system browser via the Tauri opener. Because the body is
+   * rendered with {@html}, a Svelte component can't be embedded per-anchor, so a
+   * single delegated click handler (the `externalLinks` action) intercepts clicks
+   * on any rendered <a> — the same behavior as the ExternalLink component.
    */
   interface Props {
     content: string;
@@ -9,6 +18,24 @@
   }
 
   let { content, class: className = "" }: Props = $props();
+
+  /** Open real <a href> targets in the system browser instead of navigating the webview. */
+  const externalLinks: Attachment<HTMLElement> = (node) => {
+    const handler = async (event: MouseEvent) => {
+      const anchor = (event.target as HTMLElement | null)?.closest?.("a[href]");
+      const href = anchor?.getAttribute("href") ?? "";
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        event.preventDefault();
+        try {
+          await openUrl(href);
+        } catch (error) {
+          console.error(`Failed to open external link: ${href}`, error);
+        }
+      }
+    };
+    node.addEventListener("click", handler);
+    return () => node.removeEventListener("click", handler);
+  };
 
   /**
    * Parse markdown content into HTML segments
@@ -106,9 +133,36 @@
   }
 
   /**
-   * Process inline markdown: **bold**, *italic*, `code`
+   * Process inline markdown: [links](url), **bold**, *italic*, `code`.
+   * Links are extracted first and shielded behind a sentinel so the emphasis
+   * passes below can never mangle a URL (an underscore inside a href must not
+   * become <em>). The link label still receives full inline formatting.
    */
   function processInline(text: string): string {
+    const links: string[] = [];
+    const shielded = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
+      const trimmed = url.trim();
+      // Only http(s) may become a link. Any other scheme (javascript:, data:, vbscript:…)
+      // is dropped to plain text: rendering it as an <a href> would let a click fall
+      // through to native webview navigation and execute. Defense-in-depth even though
+      // the corpus is trusted, because this is a reusable shared component.
+      if (!/^https?:\/\//i.test(trimmed)) return label;
+      // The upstream pass already escaped & < >; quotes are the only attribute-breakout
+      // risk left, so percent-encode them. Label keeps full inline formatting.
+      const safeUrl = trimmed.replace(/"/g, "%22").replace(/'/g, "%27");
+      const idx =
+        links.push(
+          `<a href="${safeUrl}" rel="noopener noreferrer" class="cursor-pointer font-medium text-accent underline decoration-accent/40 underline-offset-2 transition-colors hover:decoration-accent">${emphasis(label)}</a>`,
+        ) - 1;
+      // Sentinel is emphasis-inert (no * _ backtick) and cannot occur in authored
+      // text, so a bare number in prose is never mistaken for a placeholder.
+      return `@@LINK${idx}@@`;
+    });
+    return emphasis(shielded).replace(/@@LINK(\d+)@@/g, (_m, i: string) => links[Number(i)]);
+  }
+
+  /** Bold / italic / inline-code, applied to link-free text or a link's label. */
+  function emphasis(text: string): string {
     return (
       text
         // Bold: **text** or __text__
@@ -129,6 +183,6 @@
 </script>
 
 <!-- eslint-disable svelte/no-at-html-tags -- Intentional for markdown rendering, content is escaped -->
-<div class="markdown-text text-sm leading-relaxed {className}">
+<div class="markdown-text text-sm leading-relaxed {className}" {@attach externalLinks}>
   {@html renderedHtml}
 </div>

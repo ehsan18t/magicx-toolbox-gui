@@ -1,1150 +1,1473 @@
-# Performance Tweaks - Optimize system performance and responsiveness
-
 category:
   id: performance
-  name: "Performance"
-  description: "Optimize system speed and responsiveness"
+  name: "Performance & Gaming"
   icon: "mdi:speedometer"
-  order: 2
+  description: "System responsiveness, memory, storage, power, and gaming/latency tweaks. Registry, service, power-plan, and scheduler changes, reversible from snapshots."
 
 tweaks:
-  - id: memory_prefetch_mode
-    name: "Memory Prefetch Mode"
-    description: "Configure Superfetch (SysMain) and Prefetch for your storage type"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
+  - id: optimize_visual_effects
+    name: "Set visual effects to best performance"
+    description: "Apply the Adjust for best performance visual profile by writing the values that actually drive the shell effects."
     info: |
-      ## What This Does
-      Controls Windows memory preloading services that cache frequently-used data.
+      **Turns off desktop fades and shadows so menus and windows appear instantly.**
 
-      ## Options Explained
-      - **SSD Optimized**: Disables both Superfetch and Prefetch (recommended for SSD-only systems)
-      - **Superfetch Only**: Disables Superfetch service but keeps file prefetching
-      - **HDD Optimized**: Keeps both enabled (recommended for HDD or mixed storage)
-      - **Custom (Prefetch Only)**: Disables Superfetch, enables Prefetch
+      ## What it does
+      Applies the "Adjust for best performance" visual profile. It sets `VisualFXSetting` to 2 and
+      writes the values that actually drive the effects: `UserPreferencesMask` under
+      `Control Panel\Desktop`, plus `ListviewAlphaSelect` and `ListviewShadow` under Explorer's
+      `Advanced` key. Window and taskbar animations have their own tweak under Interface, so they
+      are not touched here and you can turn them off independently.
 
-      ## Superfetch vs Prefetch
-      - **Superfetch (SysMain)**: Preloads frequently-used applications into RAM
-      - **Prefetch**: Caches application data based on usage patterns
+      ## Benefits
+      - **Instant menus**: no fade or slide before a menu or window appears
+      - **Helps weak GPUs**: the shell stops compositing effects it does not need to
+      - **Better over RDP**: animations are the worst thing to send down a remote session
 
-      ## When to Disable
-      - **SSD users**: SSDs are fast enough that preloading provides minimal benefit
-      - **High disk usage**: If you see constant 100% disk usage, try disabling
-      - **Low RAM systems**: Preloading can use RAM needed by active applications
+      ## Drawbacks
+      - **Flatter desktop**: no fades or drop shadows in menus, list views or tooltips
+      - **Not the whole profile**: window and taskbar animations stay on unless you also apply the window animations tweak under Interface
+      - **No FPS change**: this is shell chrome; it does not touch in-game frame rates
+      - **No measured gain**: no measurable gain on modern hardware; the animations cost close to nothing on a current
+        GPU, so the benefit is how it feels, not what it measures
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: immediately for most effects, fully after sign-out or restarting Explorer
+      - **Reverting**: restores the previous values from the snapshot, including removing
+        `VisualFXSetting` if it was not present before
 
       ## Recommendation
-      Use "SSD Optimized" for SSD-only systems. Use "HDD Optimized" if you have any HDDs.
-    options:
-      - label: "SSD Optimized (All Disabled)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\SysMain"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Superfetch Only Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\SysMain"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 3
-      - label: "Prefetch Only Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\SysMain"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "HDD Optimized (All Enabled)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\SysMain"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management\\PrefetchParameters"
-            value_name: "EnablePrefetcher"
-            value_type: "REG_DWORD"
-            value: 3
+      Worth it on an older or low-end machine, over Remote Desktop, or if you simply prefer an
+      instant, no-frills desktop. Leave it alone on modern hardware if you like the polished look;
+      you are trading appearance for a difference you will feel but not measure.
 
-  # NOTE: disable_superfetch, disable_prefetch consolidated into memory_prefetch_mode above
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [SystemParametersInfoW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
+      - [fsutil behavior (pattern for tool-written registry values)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      # VisualFXSetting alone only records the dialog's radio-button state; the three values below are
+      # what the shell actually reads, and the refresh action is what makes a running session pick
+      # them up rather than waiting for the next sign-in. MinAnimate and TaskbarAnimations belong to
+      # interface:disable_ui_animations, which owns them corpus-wide (one address, one owner).
+      - id: visual_fx
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects', name: VisualFXSetting, type: REG_DWORD }
+      - id: user_preferences_mask
+        registry: { key: 'HKCU\Control Panel\Desktop', name: UserPreferencesMask, type: REG_BINARY }
+      - id: listview_alpha_select
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ListviewAlphaSelect, type: REG_DWORD }
+      - id: listview_shadow
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ListviewShadow, type: REG_DWORD }
+      - id: refresh_shell
+        action:
+          apply: "rundll32.exe user32.dll,UpdatePerUserSystemParameters 1, True"
+          ephemeral: true
+          shell: cmd
+    options:
+      - label: "Best performance"
+        values:
+          visual_fx: 2
+          user_preferences_mask: "90,12,03,80,10,00,00,00"
+          listview_alpha_select: 0
+          listview_shadow: 0
+          refresh_shell: run
+      - label: "Full visual effects"
+        values:
+          visual_fx: absent
+          user_preferences_mask: "9e,1e,07,80,12,00,00,00"
+          listview_alpha_select: 1
+          listview_shadow: 1
+          refresh_shell: run
 
   - id: disable_search_indexing
-    name: "Disable Windows Search Indexing"
-    description: "Disable Windows Search indexing service"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
+    name: "Disable Windows Search indexing"
+    description: "Disable the WSearch service so Windows stops building and maintaining the file index."
     info: |
-      ## What This Does
-      Disables the Windows Search indexing service which continuously indexes files for fast searching.
+      **Stops the background file indexer, cutting idle disk and CPU activity.**
+
+      ## What it does
+      Disables the `WSearch` service, which continuously catalogs your files so Start and File
+      Explorer searches return instantly. With it stopped, Windows no longer builds or maintains
+      the search index.
 
       ## Benefits
-      - **Reduced disk I/O**: No background indexing activity
-      - **Lower CPU usage**: Indexing can be CPU-intensive
-      - **Better for SSDs**: Less unnecessary write activity
+      - **Less idle I/O**: no background indexing while you are not using the PC
+      - **Frees CPU**: indexing spikes noticeably on large libraries
+      - **Redundant with Everything**: no reason to index twice if you use a third-party search
 
       ## Drawbacks
-      - **Slow searches**: File searches will be much slower
-      - **Start menu search**: Search results may be incomplete
-      - **Outlook**: Email search will be affected
+      - **Slow file search**: Explorer scans on demand instead of reading a prebuilt index
+      - **Start menu search**: finding apps and settings becomes slower and less complete
+      - **Outlook search breaks**: classic Outlook depends on the Windows index
+      - **No measured gain**: no measurable gain on modern hardware; under 20 MB written per day and under 1 percent
+        idle CPU on a healthy SSD machine
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: immediately, the service stops on apply
+      - **Reverting**: restores the previous start type from the snapshot
+      - On Windows 11 the taskbar Search flyout is more tightly coupled to this service than it was
+        on Windows 10, and can return nothing rather than merely returning results slowly
 
       ## Recommendation
-      Only disable if you rarely use Windows Search. Consider using Everything search as an alternative.
+      Worth it on a hard drive or a low-RAM machine, or if you already search with Everything. On a
+      healthy SSD with adequate RAM, leave it enabled; the gain does not justify losing search.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Windows Search overview](https://learn.microsoft.com/en-us/windows/win32/search/-search-3x-wds-overview)
+      - [Guidelines for disabling system services](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: wsearch
+        service: { name: WSearch }
     options:
       - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WSearch"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\WSearch"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-
-  - id: disable_windows_tips
-    name: "Disable Windows Tips"
-    description: "Disable Windows Tips notifications"
-    risk_level: low
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables the "Get tips, tricks, and suggestions as you use Windows" feature.
-
-      ## Benefits
-      - No annoying popup tips
-      - Slightly reduced background activity
-      - Cleaner notification experience
-
-      ## Recommendation
-      Safe to disable for experienced users. New Windows users may find tips helpful.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SoftLandingEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SoftLandingEnabled"
-            value_type: "REG_DWORD"
-            value: 1
+        values: { wsearch: disabled }
+      - label: "Automatic, Delayed"
+        values: { wsearch: automatic_delayed }
 
   - id: disable_background_apps
-    name: "Disable Background App Permissions"
-    description: "Restrict background app permissions to improve performance"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: false
+    name: "Block UWP background apps"
+    description: "Set the LetAppsRunInBackground policy to Force Deny so Store and UWP apps cannot register background tasks."
     info: |
-      ## What This Does
-      Globally disables the ability for UWP/Store apps to run in the background.
+      **Stops Store and UWP apps waking to refresh in the background.**
+
+      ## What it does
+      Sets the `LetAppsRunInBackground` policy to Force Deny (2), which blocks packaged Store and
+      UWP apps from registering or running background tasks. Classic Win32 desktop programs are
+      not affected.
 
       ## Benefits
-      - **Better performance**: Fewer apps consuming resources
-      - **Battery life**: Improved on laptops
-      - **Privacy**: Apps can't collect data in background
+      - **Less idle CPU**: apps stop waking themselves while you are not using them
+      - **Less network chatter**: no background fetches from Store apps
+      - **Better battery**: the clearest win, on laptops and handhelds
 
       ## Drawbacks
-      - **No notifications**: Apps won't receive push notifications
-      - **Delayed updates**: Live tiles won't update
-      - **Communication apps**: May miss messages in apps like WhatsApp
+      - **Notifications stop**: push and toast alerts from Mail, Calendar and Store messengers stop
+        or are delayed
+      - **Live tiles freeze**: packaged apps no longer update their tiles
+      - **Search side effects**: Microsoft notes Cortana and Search "might not function as expected"
+        under Force Deny
+      - **Settings greyed out**: the per-app background permission UI is locked once the policy is set
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: immediately; each app picks it up at its next background-task registration
+      - **Reverting**: removes the policy value, returning control to the user
 
       ## Recommendation
-      Enable selectively in Settings > Apps > Installed Apps > [App] > Advanced options.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
-            value_name: "GlobalUserDisabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppPrivacy"
-            value_name: "LetAppsRunInBackground"
-            value_type: "REG_DWORD"
-            value: 2
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
-            value_name: "GlobalUserDisabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppPrivacy"
-            value_name: "LetAppsRunInBackground"
-            value_type: "REG_DWORD"
-            value: 0
+      Good for most people who do not live inside Store apps and want less background activity, and
+      close to mandatory on a battery-limited machine. Skip it if you rely on real-time alerts from
+      Mail or a Store messenger.
 
-  - id: reduce_startup_delay
-    name: "Reduce Startup Delay"
-    description: "Reduce delay for startup apps to launch faster"
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Privacy Policy CSP (LetAppsRunInBackground)](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Reduces or eliminates the artificial delay Windows adds before launching startup applications.
+    elevation: admin
+    reversible: true
+    effects:
+      - id: run_in_background
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy', name: LetAppsRunInBackground, type: REG_DWORD }
+    options:
+      - label: "Force denied"
+        values: { run_in_background: 2 } # 2 = Force Deny
+      - label: "User in control"
+        values: { run_in_background: absent }
 
-      ## Technical Details
-      Windows intentionally delays startup apps to prioritize system initialization. Default is typically 10 seconds.
+  - id: memory_prefetch_mode
+    name: "Disable SysMain (SuperFetch) prefetching"
+    description: "Disable the SysMain preloader so Windows stops profiling launches and warming the standby list."
+    info: |
+      **Turns off the SysMain preloader, a targeted fix for the case where it pins your disk at 100 percent.**
+
+      ## What it does
+      Disables `SysMain` (formerly SuperFetch), the service that studies which apps you launch and
+      preloads them into spare RAM so they open faster. With it off, Windows stops that background
+      profiling and pre-caching, along with the disk and memory activity that comes with it.
 
       ## Benefits
-      - Faster app availability after boot
-      - Quicker time to productivity
+      - **Stops disk thrashing**: the one clear win, when SysMain itself is the process pinning
+        the disk at 100 percent
+      - **No background profiling**: no launch-pattern tracking and no standby-list warming
+      - **Quieter idle**: less disk activity on a spinning drive that is already struggling
 
-      ## Potential Issues
-      On slow systems, removing the delay might cause apps to compete with Windows for resources during boot.
+      ## Drawbacks
+      - **Slower cold launches**: applications open from disk instead of from a warmed cache
+      - **ReadyBoost stops working**: irrelevant on any modern machine, but it does stop
+      - **No measured gain**: no measurable gain on modern hardware; on an SSD with adequate RAM, SysMain's cost is
+        negligible and no published measurement shows an FPS benefit from disabling it
 
-      ## Recommendation
-      Safe for SSD systems. Use with caution on older HDD systems.
-    options:
-      - label: "No Delay"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize"
-            value_name: "StartupDelayInMSec"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Default Delay"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize"
-            value_name: "StartupDelayInMSec"
-            value_type: "REG_DWORD"
-            value: 1000
-
-  - id: ssd_optimize_trim
-    name: "Enable SSD TRIM Optimization"
-    description: "Enable TRIM command for SSD optimization"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      TRIM is a command that tells your SSD which data blocks are no longer in use and can be wiped internally.
-
-      ## Benefits
-      - **Maintains SSD speed**: Prevents write performance degradation over time
-      - **Extends SSD lifespan**: More efficient wear leveling
-      - **Better garbage collection**: SSD can optimize storage more effectively
-
-      ## Technical Details
-      When you delete files, Windows marks them as deleted but the SSD doesn't know. TRIM tells the SSD these blocks are free.
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: immediately, the service stops on apply
+      - **Reverting**: restores the previous start type from the snapshot
+      - This is a different feature from memory compression; disabling `SysMain` does not disable
+        compression, which has its own tweak
 
       ## Recommendation
-      Should always be enabled on SSDs. Only disable for specific troubleshooting.
-    options:
-      - label: "TRIM Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "DisableDeleteNotification"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "TRIM Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "DisableDeleteNotification"
-            value_type: "REG_DWORD"
-            value: 1
+      Leave it enabled unless you have confirmed SysMain itself is causing sustained 100 percent disk
+      usage on your machine. It is a targeted fix for one failure mode, not a general speedup.
 
-  - id: optimize_visual_effects
-    name: "Optimize Visual Effects"
-    description: "Disable unnecessary visual effects for better performance"
-    risk_level: low
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Configures Windows visual effects to prioritize performance over appearance.
-
-      ## Performance Mode Disables
-      - Window animations
-      - Fade effects
-      - Shadow effects
-      - Smooth scrolling
-      - Font smoothing (in some cases)
-
-      ## Impact
-      - **Older hardware**: Noticeable performance improvement
-      - **Modern hardware**: Minimal difference, mostly cosmetic
-
-      ## Recommendation
-      Use Performance Mode on older systems or VMs. Modern systems can keep Best Appearance.
-    options:
-      - label: "Performance Mode"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects"
-            value_name: "VisualFXSetting"
-            value_type: "REG_DWORD"
-            value: 2
-      - label: "Best Appearance"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects"
-            value_name: "VisualFXSetting"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: enable_large_system_cache
-    name: "Enable Large System Cache"
-    description: "Enable large system cache for improved performance (recommended for 8GB+ RAM)"
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Disable-MMAgent (the MMAgent feature set SysMain drives)](https://learn.microsoft.com/en-us/powershell/module/mmagent/disable-mmagent)
+      - [Guidelines for disabling system services](https://learn.microsoft.com/en-us/windows-server/security/windows-services/security-guidelines-for-disabling-system-services-in-windows-server)
+    warning: "Microsoft recommends leaving SysMain on. Disable it only if SysMain is proven to spike disk usage on your machine. The Automatic start type offered here is the published stock value but has not been confirmed on a clean 24H2 image, so treat the restore path as best effort."
     risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Configures Windows to use more RAM for file system caching, similar to server behavior.
-
-      ## Benefits
-      - Faster file operations
-      - Reduced disk I/O
-      - Better performance for file-intensive tasks
-
-      ## Requirements
-      - **Minimum 8GB RAM**: Below this, you may experience memory pressure
-      - **16GB+ recommended**: Allows Windows to cache more data effectively
-
-      ## Caution
-      On low-RAM systems, this can cause applications to be swapped to disk, hurting performance.
-
-      ## Recommendation
-      Enable only on systems with 8GB+ RAM. Leave disabled on 4GB or less.
-    options:
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management"
-            value_name: "LargeSystemCache"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\SessionManager\\Memory Management"
-            value_name: "LargeSystemCache"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: icon_cache_size
-    name: "Icon Cache Size"
-    description: "Adjust icon cache size for faster icon loading in File Explorer"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Increases the size of Windows' icon cache stored in memory.
-
-      ## Benefits
-      - **Faster folder loading**: Icons display immediately instead of loading
-      - **Reduced disk I/O**: Fewer cache misses requiring disk reads
-      - **Smoother experience**: Especially in folders with many files
-
-      ## Size Options
-      - **500KB (Default)**: Suitable for light users
-      - **4MB**: Good for developers and power users
-      - **8MB**: For users with large folders and many applications
-
-      ## Recommendation
-      4MB is a good balance. 8MB if you frequently work with folders containing hundreds of files.
-    options:
-      - label: "Default (500KB)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-            value_name: "Max Cached Icons"
-            value_type: "REG_SZ"
-            value: "500"
-      - label: "4MB"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-            value_name: "Max Cached Icons"
-            value_type: "REG_SZ"
-            value: "4096"
-      - label: "8MB"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer"
-            value_name: "Max Cached Icons"
-            value_type: "REG_SZ"
-            value: "8192"
-
-  - id: disable_autologger
-    name: "Disable Diagnostic Autologger"
-    description: "Disable DiagTrack autologger for reduced disk I/O and telemetry"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables the DiagTrack autologger which records diagnostic data for Windows telemetry.
-
-      ## Benefits
-      - Reduced disk write activity
-      - Less CPU usage from logging
-      - Improved privacy (less telemetry data collected)
-
-      ## What's Affected
-      This only affects diagnostic logging, not core Windows functionality.
-
-      ## Recommendation
-      Safe to disable. This is a privacy and performance improvement with no downsides.
+    elevation: admin
+    reversible: true
+    effects:
+      - id: sysmain
+        service: { name: SysMain }
     options:
       - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\AutoLogger-Diagtrack-Listener"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\SQMLogger"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\CloudExperienceHostOobe"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\AutoLogger-Diagtrack-Listener"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\SQMLogger"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\ControlSet001\\Control\\WMI\\Autologger\\CloudExperienceHostOobe"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_map_auto_download
-    name: "Disable Map Data Auto Download"
-    description: "Prevent Windows from automatically downloading map data"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows Maps from automatically downloading map data in the background.
-
-      ## Benefits
-      - Saves bandwidth
-      - Reduces background data usage
-      - Less disk space used
-
-      ## Impact
-      - Maps app will need to download data on-demand
-      - Offline maps won't be available unless manually downloaded
-
-      ## Recommendation
-      Safe to disable if you don't use Windows Maps. Keep enabled if you rely on offline navigation.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Maps"
-            value_name: "AutoDownloadAndUpdateMapData"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Maps"
-            value_name: "AllowUntriggeredNetworkTrafficOnSettingsPage"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Maps"
-            value_name: "AutoDownloadAndUpdateMapData"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Maps"
-            value_name: "AllowUntriggeredNetworkTrafficOnSettingsPage"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: enable_long_paths
-    name: "Enable Long File Paths"
-    description: "Enable support for file paths longer than 260 characters"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Removes the legacy 260 character limit on file paths in Windows.
-
-      ## Why This Matters
-      - **Development**: Node.js, npm, and many build tools create deep folder structures
-      - **Gaming**: Some games have deeply nested file structures
-      - **Cloud sync**: Files synced from other platforms may have long paths
-
-      ## Compatibility
-      - Modern applications support long paths
-      - Some older applications may have issues (rare)
-      - Windows 10 1607+ and Windows 11 supported
-
-      ## Recommendation
-      Safe to enable. Essential for developers and anyone using npm/node.
-    options:
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "LongPathsEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "LongPathsEnabled"
-            value_type: "REG_DWORD"
-            value: 0
+        values: { sysmain: disabled }
+      - label: "Automatic"
+        values: { sysmain: automatic }
 
   - id: system_responsiveness
-    name: "System Responsiveness Priority"
-    description: "Adjust system resource allocation for foreground applications"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
+    name: "Halve the MMCSS reserved CPU (System Responsiveness)"
+    description: "Halve the CPU share MMCSS guarantees to low-priority tasks while a multimedia thread is registered."
     info: |
-      ## What This Does
-      Controls the percentage of CPU resources reserved for background system tasks.
+      **Lowers the CPU share MMCSS holds back for background work while audio or video is playing.**
 
-      ## Options Explained
-      - **Gaming/Performance (0%)**: All resources prioritize foreground apps
-      - **Balanced (20%)**: Default Windows behavior, reserves 20% for background tasks
-
-      ## Gaming Impact
-      Setting to 0% ensures games and active applications get maximum CPU priority.
-
-      ## Stability Note
-      Some background tasks may be delayed, but this rarely causes issues.
-
-      ## Recommendation
-      Use Gaming mode for gaming PCs. Use Balanced for general-purpose systems.
-    options:
-      - label: "Gaming/Performance (0%)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
-            value_name: "SystemResponsiveness"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Balanced (20% - Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
-            value_name: "SystemResponsiveness"
-            value_type: "REG_DWORD"
-            value: 20
-
-  - id: enable_auto_end_tasks
-    name: "Enable Auto End Hung Tasks"
-    description: "Automatically end non-responding tasks during shutdown"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Automatically closes applications that stop responding during shutdown or logoff.
+      ## What it does
+      Sets `SystemResponsiveness` to 10. Microsoft documents this value as the percentage of CPU
+      guaranteed to low-priority tasks while a multimedia thread is registered with the Multimedia
+      Class Scheduler Service. The default is 20, so this halves the reservation.
 
       ## Benefits
-      - Faster shutdown times
-      - No more "waiting for programs to close" dialogs
-      - Smoother restart experience
+      - **More headroom**: multimedia threads get a larger share under contention
+      - **Audio workstations**: the one setup where the reservation is worth tuning at all
+      - **Fully reversible**: a single documented DWORD with a documented default
 
-      ## Potential Issue
-      Unsaved work in hung applications will be lost. However, if an app is hung, you likely can't save anyway.
+      ## Drawbacks
+      - **Background stutter**: less CPU guaranteed to low-priority work can surface as glitches in
+        a background stream or recording under heavy load
+      - **Playback only**: the reservation does nothing unless something has registered
+        an MMCSS task
+      - **No measured gain**: no measurable gain on modern hardware; no published measurement shows an FPS or frame-time
+        effect from this value
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: after reboot
+      - **Reverting**: restores the previous value from the snapshot; the shipped default is 20 and
+        the value is present out of the box, not absent
+      - Values below 10 and above 100 are clamped back to 20, so setting 0 does not "reserve nothing";
+        it gives you the default. A value of 100 disables MMCSS entirely.
 
       ## Recommendation
-      Safe to enable. Makes shutdown much smoother.
+      Worth setting on an audio production machine where you want the audio engine to hold priority
+      under load. Gamers should skip it: MMCSS governs multimedia thread priority, not your game's
+      render thread, and there is no measurement showing a frame rate effect.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Multimedia Class Scheduler Service](https://learn.microsoft.com/en-us/windows/win32/procthread/multimedia-class-scheduler-service)
+      - [AvSetMmThreadCharacteristicsW](https://learn.microsoft.com/en-us/windows/win32/api/avrt/nf-avrt-avsetmmthreadcharacteristicsw)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: responsiveness
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile', name: SystemResponsiveness, type: REG_DWORD }
+    options:
+      - label: "Reduced (10)"
+        values: { responsiveness: 10 }
+      # Windows ships this value present with data 20; reverting must write 20, never delete it.
+      - label: "Reserve 20 percent"
+        values: { responsiveness: 20 }
+
+  - id: enable_game_mode
+    name: "Turn on Windows Game Mode"
+    description: "Set the Game Bar AutoGameModeEnabled flag so Windows deprioritizes background work during play."
+    info: |
+      **Lets Windows push background work out of the way while you play, smoothing your 1 percent lows.**
+
+      ## What it does
+      Enables Windows Game Mode by setting the Game Bar value `AutoGameModeEnabled` to 1. When
+      Windows detects a game, it deprioritises background work such as Windows Update and indexing
+      and gives the game more consistent CPU and GPU scheduling.
+
+      ## Benefits
+      - **Steadier frame times**: the reported benefit is better 1 percent lows, not higher average FPS
+      - **Fewer mid-game hitches**: background updates and indexing are held off during play
+      - **Zero risk**: a per-user toggle that mirrors the Settings switch exactly
+
+      ## Drawbacks
+      - **Background work slows**: a download, compile, or encode running alongside the game gets less
+      - **Occasional title conflicts**: a few games have historically behaved worse with it on
+      - **No measured gain**: no measurable gain on modern hardware; no tier A or B source publishes a benchmark, and
+        community measurements of the average-FPS effect land inside run-to-run noise
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: at the next game launch
+      - **Reverting**: restores the previous value from the snapshot
+      - Windows keeps per-game profile data under `HKCU\System\GameConfigStore`, which this tweak
+        does not touch
+
+      ## Recommendation
+      Leave it on. It is the safest tweak in this category and the failure mode is a single title
+      behaving oddly, which you can then handle per game. Turn it off if you stream or encode while
+      playing and want those processes to keep their share.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Game Mode in Windows](https://support.microsoft.com/en-us/windows/game-mode-in-windows-2ffe7e17-2c1b-c0a1-c5cb-ecb98efd41ae)
+      - [How to turn Game Mode on or off](https://www.majorgeeks.com/content/page/how_to_turn_on_or_off_game_mode_in_windows_10.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: auto_game_mode
+        registry: { key: 'HKCU\Software\Microsoft\GameBar', name: AutoGameModeEnabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values: { auto_game_mode: 1 }
+      - label: "Off"
+        values: { auto_game_mode: 0 }
+
+  - id: enable_gpu_scheduling
+    name: "Hardware-accelerated GPU scheduling (HAGS)"
+    description: "Choose whether GPU frame scheduling runs on the GPU, on the CPU, or is left to the system and driver."
+    info: |
+      **Hands GPU frame scheduling to the GPU itself, and unlocks NVIDIA Frame Generation.**
+
+      ## What it does
+      Sets `HwSchMode` to 2, enabling Hardware-Accelerated GPU Scheduling. Frame-queue management
+      moves from the CPU-side Windows scheduler to a dedicated processor on the GPU, trimming some
+      of the CPU overhead of submitting GPU work.
+
+      ## Benefits
+      - **Enables Frame Generation**: NVIDIA DLSS Frame Generation will not run without it, which
+        is the strongest reason to turn it on
+      - **Less CPU work**: helps marginally on a CPU-limited system
+      - **Mirrors Settings exactly**: the same toggle Windows exposes, applied from here
+
+      ## Drawbacks
+      - **Slightly more VRAM**: the GPU-side scheduler has its own footprint
+      - **VR stutter reports**: some VR users have seen regressions with it enabled
+      - **No measured gain**: no measurable gain on modern hardware; outside Frame Generation, published average-FPS
+        testing puts the effect inside run-to-run noise
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, on a GPU with a WDDM 2.7 or newer driver
+      - **Takes effect**: after reboot
+      - **Reverting**: restores the previous value from the snapshot
+      - The toggle is hidden in Settings on hardware that does not support it, and GPU driver
+        installers can rewrite this value
+
+      ## Recommendation
+      Turn it on if you want DLSS Frame Generation or you are CPU-limited; that is a concrete reason.
+      If you are on VR or you have no specific problem to solve, leave it where your machine shipped:
+      you will not measure the difference.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Community-corroborated
+      - [Hardware-accelerated GPU scheduling (Windows support)](https://support.microsoft.com/en-us/windows/hardware-accelerated-gpu-scheduling-4f5ba4a0-4b26-4f4e-8b4b-0a1e9a2b4d55)
+      - [Should you enable hardware-accelerated GPU scheduling?](https://www.pcworld.com/article/2339130/should-you-enable-hardware-accelerated-gpu-scheduling-in-windows-11.html)
+    warning: "The factory value varies by OEM image and GPU driver, so neither option here is a return to how your machine shipped. If you are unsure which state it shipped in, leave this tweak alone and use Settings > System > Display > Graphics instead."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: hw_sch_mode
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers', name: HwSchMode, type: REG_DWORD }
     options:
       - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "AutoEndTasks"
-            value_type: "REG_SZ"
-            value: "1"
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "HungAppTimeout"
-            value_type: "REG_SZ"
-            value: "2000"
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "WaitToKillAppTimeout"
-            value_type: "REG_SZ"
-            value: "2000"
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control"
-            value_name: "WaitToKillServiceTimeout"
-            value_type: "REG_SZ"
-            value: "2000"
+        values: { hw_sch_mode: 2 }
       - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "AutoEndTasks"
-            value_type: "REG_SZ"
-            value: "0"
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "HungAppTimeout"
-            value_type: "REG_SZ"
-            value: "5000"
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "WaitToKillAppTimeout"
-            value_type: "REG_SZ"
-            value: "20000"
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control"
-            value_name: "WaitToKillServiceTimeout"
-            value_type: "REG_SZ"
-            value: "5000"
+        values: { hw_sch_mode: 1 }
+      # Value-absent is a real shipped state on some images: the system and driver decide.
+      - label: "Let the system decide"
+        values: { hw_sch_mode: absent }
 
-  - id: reduce_menu_show_delay
-    name: "Reduce Menu Show Delay"
-    description: "Reduce delay when opening menus for snappier UI"
-    risk_level: low
-    requires_reboot: false
+  - id: disable_fullscreen_optimizations
+    name: "Force exclusive fullscreen in games"
+    description: "Write the GameConfigStore values that force games onto the legacy exclusive fullscreen path."
     info: |
-      ## What This Does
-      Reduces the delay before menus appear when hovering over menu items.
+      **Forces games out of the modern compositing path into legacy exclusive fullscreen.**
 
-      ## Default vs Fast
-      - **Default (400ms)**: Noticeable pause before menus open
-      - **Fast (100ms)**: Menus feel instant and responsive
+      ## What it does
+      Writes the `GameConfigStore` values `GameDVR_FSEBehaviorMode`,
+      `GameDVR_HonorUserFSEBehaviorMode` and `GameDVR_DXGIHonorFSEWindowsCompatible` so games that
+      ask for exclusive fullscreen get it, instead of being run as a borderless flip-model window
+      by the Desktop Window Manager.
 
       ## Benefits
-      - More responsive user interface
-      - Faster navigation through menus
-      - Better overall desktop experience
+      - **Troubleshooting lever**: for a specific title that stutters or tears in borderless mode
+      - **Bypasses the compositor**: the game gets direct control of the display
+      - **Per-user and instant**: no reboot, and it applies at the next game launch
+
+      ## Drawbacks
+      - **Breaks modern features**: Auto HDR, variable refresh rate, and fast Alt-Tab all depend on
+        the compositing path this bypasses
+      - **Alt-Tab flicker**: black-screen flashes on task switch are a common result
+      - **Wrong granularity**: this is a global override applied to every game, where the per-game
+        compatibility setting is targeted
+      - **No measured gain**: no measurable gain on modern hardware; on current flip-model DWM the exclusive path is
+        usually equal to or worse than the optimised one, and no measurement shows a general win
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: at the next game launch
+      - **Reverting**: restores the previous values from the snapshot
+      - These values are undocumented by Microsoft and community sources disagree on what each
+        number means, so treat the behaviour as title-dependent and verify it yourself
 
       ## Recommendation
-      100ms feels much snappier with no downsides. Highly recommended.
-    options:
-      - label: "Fast (100ms)"
-        registry_changes:
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "MenuShowDelay"
-            value_type: "REG_SZ"
-            value: "100"
-      - label: "Default (400ms)"
-        registry_changes:
-          - hive: HKCU
-            key: "Control Panel\\Desktop"
-            value_name: "MenuShowDelay"
-            value_type: "REG_SZ"
-            value: "400"
+      Only for troubleshooting one specific game that stutters in borderless mode, and only after
+      trying that game's own fullscreen setting first. Everyone else should leave it off; you are
+      trading Auto HDR, VRR, and fast Alt-Tab for an effect nobody has measured.
 
-  - id: disable_ndu
-    name: "Disable Network Data Usage Monitor"
-    description: "Disable Windows Network Data Usage monitoring service"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Disables the Network Data Usage (NDU) driver which monitors network traffic for statistics.
-
-      ## Benefits
-      - Reduced background CPU usage
-      - Less disk I/O from logging
-      - Slightly lower memory usage
-
-      ## What You Lose
-      - Network usage statistics in Settings > Network & Internet
-      - Data usage tracking per app
-
-      ## Recommendation
-      Safe to disable if you don't use Windows' built-in network usage tracking.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\ControlSet001\\Services\\Ndu"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-      - label: "Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\ControlSet001\\Services\\Ndu"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-
-  - id: ntfs_optimizations
-    name: "NTFS Optimizations"
-    description: "Optimize NTFS filesystem for SSDs and performance"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Applies three NTFS filesystem optimizations:
-      - **Disable Last Access Timestamp**: Prevents updating the access time on every file read (reduces write overhead)
-      - **Disable 8.3 Short Names**: Stops creating legacy DOS-compatible short filenames (reduces directory overhead)
-      - **Increase NTFS Memory**: Allocates more memory for NTFS paged-pool operations
-
-      ## Performance Impact
-      - Significant reduction in unnecessary disk writes
-      - Faster file creation and directory listing
-      - Particularly beneficial for SSDs
-
-      ## Compatibility
-      - 8.3 names only needed by very old 16-bit DOS programs
-      - Last access timestamps rarely used by modern software
-      - Safe for all modern Windows installations
-
-      ## Recommendation
-      Strongly recommended for SSD systems. Safe for HDD systems too.
-    options:
-      - label: "NTFS Optimized"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "NtfsDisableLastAccessUpdate"
-            value_type: "REG_DWORD"
-            value: 2147483649
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "NtfsDisable8dot3NameCreation"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "NtfsMemoryUsage"
-            value_type: "REG_DWORD"
-            value: 2
-      - label: "NTFS Default"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "NtfsDisableLastAccessUpdate"
-            value_type: "REG_DWORD"
-            value: 2147483651
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "NtfsDisable8dot3NameCreation"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\FileSystem"
-            value_name: "NtfsMemoryUsage"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_paging_executive
-    name: "Keep Kernel in RAM"
-    description: "Prevent Windows kernel from being paged to disk"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Keeps kernel-mode drivers and system code in physical RAM instead of allowing them to be paged to the swap file.
-
-      ## Performance Impact
-      - Faster system calls and kernel operations
-      - Eliminates page faults for kernel code
-      - Uses more physical RAM for system code
-
-      ## Requirements
-      - Recommended for systems with 8GB+ RAM
-      - Not recommended for systems with less than 4GB RAM
-
-      ## Recommendation
-      Enable on modern systems with adequate RAM (8GB+).
-    options:
-      - label: "Kernel Locked in RAM"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "DisablePagingExecutive"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Kernel Pageable (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "DisablePagingExecutive"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: process_scheduling
-    name: "Process Scheduling Priority"
-    description: "Configure CPU scheduling for foreground applications"
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Community-corroborated
+      - [Optimizations for windowed games in Windows 11](https://support.microsoft.com/en-us/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11)
+      - [Microsoft Q&A: enable or disable full-screen optimizations](https://learn.microsoft.com/en-us/answers/questions/4079856/enable-or-disable-full-screen-optimizations-on-win)
+    warning: "Microsoft documents none of these three values and community sources disagree on their meaning. It is a global per-user override applied to every game, not a per-title fix, and it can break Auto HDR, variable refresh rate, and fast Alt-Tab. Prefer the per-game compatibility setting first."
     risk_level: medium
-    requires_admin: true
-    requires_reboot: true
+    elevation: user
+    reversible: true
+    effects:
+      - id: fse_behavior
+        registry: { key: 'HKCU\System\GameConfigStore', name: GameDVR_FSEBehaviorMode, type: REG_DWORD }
+      - id: honor_user_fse
+        registry: { key: 'HKCU\System\GameConfigStore', name: GameDVR_HonorUserFSEBehaviorMode, type: REG_DWORD }
+      - id: dxgi_honor_fse
+        registry: { key: 'HKCU\System\GameConfigStore', name: GameDVR_DXGIHonorFSEWindowsCompatible, type: REG_DWORD }
+    options:
+      - label: "Exclusive fullscreen forced"
+        values: { fse_behavior: 2, honor_user_fse: 1, dxgi_honor_fse: 1 }
+      # Observed on an untouched 24H2 machine: all three present with data 0.
+      - label: "Fullscreen optimizations on"
+        values: { fse_behavior: 0, honor_user_fse: 0, dxgi_honor_fse: 0 }
+
+  - id: disable_multiplane_overlay
+    name: "Disable multi-plane overlay (MPO)"
+    description: "Turn off DWM hardware overlays using the value your Windows build actually reads."
     info: |
-      ## What This Does
-      Controls how Windows allocates CPU time between foreground and background processes via the Win32PrioritySeparation value.
+      **Turns off DWM hardware overlays, the fix for MPO screen flicker and frame-time spikes.**
 
-      ## Options Explained
-      - **Desktop Responsive**: Short variable quanta with maximum foreground boost (value 38/0x26). Best for desktop responsiveness.
-      - **Gaming Optimized**: Short variable quanta with high foreground boost (value 22/0x16). Reduces context switching.
-      - **Server Balanced**: Long fixed quanta with minimal boost (value 24/0x18). Equal time for all processes.
-      - **Windows Default**: Default scheduling (value 2). Long variable quanta.
+      ## What it does
+      Disables Multi-Plane Overlay, the Desktop Window Manager feature that hands video and game
+      layers to the display controller's hardware overlay planes. On builds before 24H2 it sets the
+      Dwm `OverlayTestMode` to 5; on 24H2 and newer it sets `DisableOverlays` under
+      `GraphicsDrivers`, because the older key is no longer read.
 
-      ## How It Works
-      The value encodes: [Quantum Length 2bit][Quantum Type 2bit][Foreground Boost 2bit]
-      - Quantum Length: Short (reduces latency) vs Long (reduces overhead)
-      - Quantum Type: Fixed vs Variable
-      - Foreground Boost: How much extra CPU time foreground apps get
+      ## Benefits
+      - **Stops MPO flicker**: the black flashes and screen flicker that hit some GPU and
+        multi-monitor combinations
+      - **Stops MPO micro-stutter**: frame-time spikes traceable to overlay plane switching
+      - **Build-aware**: applies the value your Windows build actually reads
+
+      ## Drawbacks
+      - **Higher GPU load**: DWM now composites everything itself, raising GPU use and power draw
+      - **Breaks in-game overlays**: on 24H2 and newer, `DisableOverlays` turns off all hardware
+        overlays, which is reported to break Discord, NVIDIA and AMD overlays
+      - **No measured gain**: no measurable gain on modern hardware; this is a bug workaround, not a speedup; if you
+        do not have the flicker, disabling overlays only costs you
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer (uses `DisableOverlays`); older builds use the Dwm
+        key instead
+      - **Takes effect**: after reboot
+      - **Reverting**: removes the value, which is the stock state on both paths
+      - Verify with `dxdiag`: MPO showing as "Not Supported" or `MaxPlanes: 1` confirms it took
 
       ## Recommendation
-      "Desktop Responsive" for general use, "Gaming Optimized" for gaming.
-    options:
-      - label: "Desktop Responsive"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\PriorityControl"
-            value_name: "Win32PrioritySeparation"
-            value_type: "REG_DWORD"
-            value: 38
-      - label: "Gaming Optimized"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\PriorityControl"
-            value_name: "Win32PrioritySeparation"
-            value_type: "REG_DWORD"
-            value: 22
-      - label: "Server Balanced"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\PriorityControl"
-            value_name: "Win32PrioritySeparation"
-            value_type: "REG_DWORD"
-            value: 24
-      - label: "Windows Default"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\PriorityControl"
-            value_name: "Win32PrioritySeparation"
-            value_type: "REG_DWORD"
-            value: 2
+      Use it only if you actually see MPO flicker or micro-stutter and a GPU driver update did not
+      fix it; recent drivers resolved most of these bugs, so update first. If you have no flicker,
+      leave overlays on, especially on 24H2 and newer where turning them off can break your Discord
+      or GPU overlay.
 
-  - id: disable_vbs_hvci
-    name: "Disable VBS / Core Isolation"
-    description: "Disable Virtualization Based Security and Core Isolation"
-    risk_level: critical
-    requires_admin: true
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Community-corroborated
+      - [What is Multi-Plane Overlay (MPO), NVIDIA KB 5157](https://nvidia.custhelp.com/app/answers/detail/a_id/5157)
+      - [MPO fix moved to the GraphicsDrivers path on newer builds](https://github.com/RedDot-3ND7355/MPO-GPU-FIX/issues/26)
+    warning: "Update your GPU driver first; recent drivers fixed most MPO bugs. On 24H2 and newer, DisableOverlays turns off all hardware overlays, which is reported to break Discord, NVIDIA, and AMD in-game overlays. Undocumented by Microsoft."
+    risk_level: medium
+    elevation: admin
+    reversible: true
     requires_reboot: true
+    effects:
+      # The gates must meet at 26100 with no gap: the older Dwm pair covers everything below it.
+      - id: overlay_test_mode
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\Dwm', name: OverlayTestMode, type: REG_DWORD }
+        windows: { build: "<=26099" }
+      - id: overlay_min_fps
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\Dwm', name: OverlayMinFPS, type: REG_DWORD }
+        windows: { build: "<=26099" }
+      - id: disable_overlays
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers', name: DisableOverlays, type: REG_DWORD }
+        windows: { build: ">=26100" }
+    options:
+      - label: "Overlays disabled"
+        values: { overlay_test_mode: 5, overlay_min_fps: 0, disable_overlays: 1 }
+      - label: "Enabled"
+        values: { overlay_test_mode: absent, overlay_min_fps: absent, disable_overlays: absent }
+
+  - id: variable_refresh_rate
+    name: "Variable refresh rate for windowed games"
+    description: "Set the VRROptimizeEnable field that extends adaptive sync to DX11 and borderless titles."
     info: |
-      ## What This Does
-      Disables Virtualization Based Security (VBS) and Hypervisor-enforced Code Integrity (HVCI), also known as "Core Isolation / Memory Integrity" in Windows Security.
+      **Extends adaptive sync to DX11 and borderless games so motion stays smooth with less tearing.**
 
-      ## Performance Impact
-      - **5-25% FPS improvement** in games (documented by Tom's Hardware, TechPowerUp)
-      - Significant CPU overhead reduction for all workloads
-      - Win11 24H2 enables this by default on new installs
+      ## What it does
+      Sets the `VRROptimizeEnable` field inside the packed `DirectXUserGlobalSettings` string, which
+      is the same value Settings > Display > Graphics writes. It extends the OS-level variable
+      refresh rate path to DirectX 11 and windowed games that do not drive adaptive sync themselves.
 
-      ## Security Trade-off
-      - Reduces protection against kernel-level exploits
-      - Credential Guard may be affected
-      - Less isolation between user/kernel mode
+      ## Benefits
+      - **Less tearing**: in windowed and DX11 titles that would not otherwise get adaptive sync
+      - **Works alongside G-Sync**: it complements the driver-level toggle rather than replacing it
+      - **Free where supported**: no measurable cost on hardware that has VRR
+
+      ## Drawbacks
+      - **Needs VRR hardware**: on a fixed-refresh display it does nothing at all
+      - **Frame limiter interactions**: some titles have reported oddities when combined with a cap
+      - **No FPS change**: this is a smoothness and tearing setting, not a frame rate one
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, with a WDDM 2.6 or newer driver and an
+        adaptive-sync capable display
+      - **Takes effect**: at the next game launch
+      - **Reverting**: restores the previous field value from the snapshot, leaving the other fields
+        in the shared string untouched
+      - This value shares one registry string with Auto HDR and the windowed-games optimisation, so
+        it is edited field by field rather than overwritten
 
       ## Recommendation
-      Disable for gaming/performance PCs. Keep enabled on work machines handling sensitive data.
+      Turn it on if you have a FreeSync or G-Sync compatible display and play DX11 or borderless
+      titles; it is one of the few genuinely free wins in this category. There is nothing to gain on
+      a fixed-refresh monitor.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Optimizations for windowed games in Windows 11](https://support.microsoft.com/en-us/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11)
+      - [Enable or disable variable refresh rate for games in Windows 11](https://www.elevenforum.com/t/enable-or-disable-variable-refresh-rate-for-games-in-windows-11.12052/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: vrr_optimize
+        registry: { key: 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences', name: DirectXUserGlobalSettings, type: REG_SZ, field: VRROptimizeEnable, format: kv_semicolon }
     options:
-      - label: "VBS/HVCI Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\DeviceGuard"
-            value_name: "EnableVirtualizationBasedSecurity"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
-            value_name: "Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "VBS/HVCI Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\DeviceGuard"
-            value_name: "EnableVirtualizationBasedSecurity"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
-            value_name: "Enabled"
-            value_type: "REG_DWORD"
-            value: 1
+      - label: "Enabled"
+        values: { vrr_optimize: "1" }
+      # "Off" has two real representations: Settings writes 0 once you have ever turned it on, and a
+      # machine that never touched it has no field at all. Both are authored so neither reads Unknown.
+      - label: "Off"
+        values: { vrr_optimize: "0" }
+      - label: "Driver decides"
+        values: { vrr_optimize: absent }
 
-  - id: disable_spectre_meltdown
-    name: "Disable Spectre/Meltdown Mitigations"
-    description: "Disable CPU vulnerability mitigations for maximum performance"
-    risk_level: critical
-    requires_admin: true
-    requires_reboot: true
+  - id: optimizations_windowed_games
+    name: "Turn on optimizations for windowed games"
+    description: "Set the SwapEffectUpgradeEnable field that routes borderless DX10 and DX11 games through DirectFlip."
     info: |
-      ## What This Does
-      Disables software mitigations for Spectre V2 and Meltdown CPU vulnerabilities.
+      **Routes borderless DX10 and DX11 games through DirectFlip for lower input latency.**
 
-      ## Performance Impact
-      - **5-30% improvement** on I/O-heavy and syscall-heavy workloads
-      - Database, compilation, and file operations see largest gains
-      - Gaming improvement varies (0-10%)
+      ## What it does
+      Sets the `SwapEffectUpgradeEnable` field inside the packed `DirectXUserGlobalSettings` string,
+      the same value the Settings > Display > Graphics toggle writes. It upgrades the legacy
+      blt-model presentation path to the modern flip model, which is what lowers present latency.
 
-      ## Security Risk
-      - Exposes system to Spectre/Meltdown side-channel attacks
-      - Only safe on air-gapped or trusted networks
-      - Modern CPUs (12th gen+) have hardware mitigations making this less impactful
+      ## Benefits
+      - **Lower input latency**: close to exclusive fullscreen, for borderless DX10 and DX11 titles
+      - **Keeps the perks**: fast Alt-Tab, Auto HDR and VRR all keep working
+      - **Microsoft-supported**: a documented Windows feature, not a community recipe
+
+      ## Drawbacks
+      - **Occasional tearing**: Microsoft acknowledges this and suggests matching frame rate to
+        refresh rate or enabling V-Sync
+      - **Rare per-title glitches**: a minority of games render incorrectly on the flip path
+      - **Can be overridden**: turning on Auto HDR force-enables this and you cannot turn it off
+        while Auto HDR is on, so it may read as drifted
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer (the feature arrived in 22H2)
+      - **Takes effect**: at the next game launch
+      - **Reverting**: restores the previous field value from the snapshot, leaving the other fields
+        in the shared string untouched
+      - This value shares one registry string with Auto HDR and variable refresh rate, so it is
+        edited field by field rather than overwritten
 
       ## Recommendation
-      Only disable on dedicated gaming/benchmark machines. Never on internet-facing servers.
+      Turn it on if you play DX10 or DX11 games in borderless or windowed mode; this is the closest
+      thing in this category to a free latency win, and it is a first-party feature. Turn it off for
+      a specific title that tears or renders wrongly with it.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Optimizations for windowed games in Windows 11](https://support.microsoft.com/en-us/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11)
+      - [Windows 11 22H2 enables new gaming features](https://www.thurrott.com/windows/windows-11/273204/windows-11-version-22h2-enables-new-gaming-features)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { build: ">=22621" }
+    effects:
+      - id: swap_effect_upgrade
+        registry: { key: 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences', name: DirectXUserGlobalSettings, type: REG_SZ, field: SwapEffectUpgradeEnable, format: kv_semicolon }
     options:
-      - label: "Mitigations Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "FeatureSettingsOverride"
-            value_type: "REG_DWORD"
-            value: 3
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "FeatureSettingsOverrideMask"
-            value_type: "REG_DWORD"
-            value: 3
-      - label: "Mitigations Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "FeatureSettingsOverride"
-            action: delete_value
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "FeatureSettingsOverrideMask"
-            action: delete_value
+      - label: "Enabled"
+        values: { swap_effect_upgrade: "1" }
+      - label: "Off"
+        values: { swap_effect_upgrade: absent }
+
+  - id: disable_gamedvr_capture
+    name: "Disable Xbox Game Bar capture (Game DVR)"
+    description: "Turn off Game DVR per user and apply the machine policy that disables Windows Game Recording and Broadcasting."
+    info: |
+      **Turns off Game DVR, removing the always-on background recorder from every game session.**
+
+      ## What it does
+      Sets the per-user `GameDVR_Enabled` and `AppCaptureEnabled` values to 0 and applies the
+      machine policy `AllowGameDVR = 0`. The policy is the Windows Game Recording and Broadcasting
+      setting, so it removes recording and streaming, not only the background capture buffer.
+
+      ## Benefits
+      - **No background recorder**: a small constant overhead is gone from every game session
+      - **Steadier lows**: where the effect shows up, it shows up here rather than in
+        average FPS
+      - **Machine-wide**: the policy holds regardless of what any user toggles in Settings
+
+      ## Drawbacks
+      - **Loses instant replay**: the "record the last 30 seconds" clip feature stops working
+      - **Loses manual capture**: the policy disables all Game Recording and
+        Broadcasting, and greys out the Settings page
+      - **Affects every user**: one effect is a machine policy inside an otherwise per-user tweak
+      - **No measured gain**: no measurable gain on modern hardware; the overhead removed is small and no published
+        benchmark isolates it
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: at the next game session
+      - **Reverting**: restores the per-user values and removes the machine policy
+      - The Game Bar overlay itself is a separate feature; this removes its capture capability, not
+        the overlay
+
+      ## Recommendation
+      Worth applying if you never use Game Bar clips and want the recorder out of the way. Skip it if
+      you ever hit "record that", because this takes manual capture with it, not just the background
+      buffer.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [AllowGameDVR policy (GameDVR.admx)](https://admx.help/?Category=Windows_10_2016&Policy=Microsoft.Policies.GameDVR::AllowGameDVR)
+      - [DISA STIG V-220845, Game Recording and Broadcasting must be disabled](https://www.stigviewer.com/stigs/microsoft_windows_10/2025-02-25/finding/V-220845)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: gamedvr_enabled
+        registry: { key: 'HKCU\System\GameConfigStore', name: GameDVR_Enabled, type: REG_DWORD }
+      - id: app_capture_enabled
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR', name: AppCaptureEnabled, type: REG_DWORD }
+      - id: allow_gamedvr_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR', name: AllowGameDVR, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { gamedvr_enabled: 0, app_capture_enabled: 0, allow_gamedvr_policy: 0 }
+      - label: "Enabled"
+        values: { gamedvr_enabled: 1, app_capture_enabled: 1, allow_gamedvr_policy: absent }
+
+  - id: ultimate_performance_power_plan
+    name: "Activate the Ultimate Performance power plan"
+    description: "Duplicate the hidden Ultimate Performance scheme and activate the copy, restoring your previous plan on revert."
+    info: |
+      **Activates the hidden Ultimate Performance power plan, cutting CPU idle transitions on a desktop.**
+
+      ## What it does
+      Duplicates the hidden Ultimate Performance scheme template with `powercfg /duplicatescheme`
+      and activates the copy. The plan disables core parking, raises the minimum processor state,
+      and removes most idle power transitions.
+
+      ## Benefits
+      - **Less jitter**: the CPU spends less time ramping cores back up from low-power states
+      - **No core parking**: all cores stay available for bursty loads
+      - **Instant and reversible**: no reboot, and your previous plan is restored on revert
+
+      ## Drawbacks
+      - **Higher idle power**: more heat and louder fans, continuously
+      - **Bad on battery**: materially worse runtime on any laptop or handheld
+      - **Duplicates High Performance**: the delta against the stock High Performance plan is
+        small
+      - **No measured gain**: no measurable gain on modern hardware; no average-FPS improvement in any published
+        measurement; the honest claim is reduced micro-latency, not more frames
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, desktops on AC power
+      - **Takes effect**: immediately
+      - **Reverting**: restores the power scheme that was active before, and deletes the duplicated
+        plan
+      - On Modern Standby hardware the scheme list may show only Balanced, in which case this plan
+        cannot be selected
+
+      ## Recommendation
+      Worth trying on a desktop on AC power where you want minimum latency and do not mind the extra
+      heat and power. On a laptop, or if you already run High Performance, skip it: you are paying
+      real power for a difference you are unlikely to measure.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+      - [PowerDuplicateScheme function](https://learn.microsoft.com/en-us/windows/win32/api/powrprof/nf-powrprof-powerduplicatescheme)
+    warning: "Keeps the CPU in high power states with core parking off, so idle power, heat, and fan noise rise continuously. On a laptop it costs real battery runtime for a difference you are unlikely to measure."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: UltimatePerformance, type: REG_DWORD }
+      # `/duplicatescheme` mints a NEW guid, so the template guid can never be activated or probed.
+      # Apply captures both the guid it created and the scheme that was active before, in the app's
+      # own HKLM store, so undo restores the real prior plan instead of hardcoding Balanced.
+      - id: ultimate_scheme
+        action:
+          apply: |
+            $store = 'HKLM:\SOFTWARE\MagicXToolbox\PowerPlan'
+            $guidRx = '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+            $prior = [regex]::Match((powercfg /getactivescheme | Out-String), $guidRx).Value
+            if (-not $prior) { Write-Error 'Could not read the currently active power scheme'; exit 1 }
+            $known = (Get-ItemProperty -Path $store -Name AppliedScheme -ErrorAction SilentlyContinue).AppliedScheme
+            $list = (powercfg /list | Out-String)
+            $guid = $null
+            if ($known -and $list -match [regex]::Escape($known)) {
+              $guid = $known
+            } else {
+              $line = (powercfg /list) | Where-Object { $_ -match 'Ultimate Performance' } | Select-Object -First 1
+              if ($line) {
+                $guid = [regex]::Match($line, $guidRx).Value
+              } else {
+                $out = powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Error ($out | Out-String); exit 1 }
+                $guid = [regex]::Match(($out | Out-String), $guidRx).Value
+              }
+            }
+            if (-not $guid) { Write-Error 'Could not determine the Ultimate Performance scheme guid'; exit 1 }
+            New-Item -Path $store -Force | Out-Null
+            if ($prior -ne $guid) { Set-ItemProperty -Path $store -Name PriorScheme -Value $prior -Force }
+            Set-ItemProperty -Path $store -Name AppliedScheme -Value $guid -Force
+            powercfg /setactive $guid
+            if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /setactive failed'; exit 1 }
+            exit 0
+          undo: |
+            $store = 'HKLM:\SOFTWARE\MagicXToolbox\PowerPlan'
+            $guidRx = '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+            $props = Get-ItemProperty -Path $store -ErrorAction SilentlyContinue
+            $applied = $props.AppliedScheme
+            $prior = $props.PriorScheme
+            if (-not $prior) {
+              $prior = (powercfg /list) |
+                ForEach-Object { [regex]::Match($_, $guidRx).Value } |
+                Where-Object { $_ -and $_ -ne $applied } | Select-Object -First 1
+            }
+            if (-not $prior) { Write-Error 'Could not determine a power scheme to restore'; exit 1 }
+            powercfg /setactive $prior
+            if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /setactive failed'; exit 1 }
+            if ($applied) { powercfg /delete $applied }
+            Remove-ItemProperty -Path $store -Name AppliedScheme -Force -ErrorAction SilentlyContinue
+            Remove-ItemProperty -Path $store -Name PriorScheme -Force -ErrorAction SilentlyContinue
+            exit 0
+          probe: |
+            $applied = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\PowerPlan' -Name AppliedScheme -ErrorAction SilentlyContinue).AppliedScheme
+            if (-not $applied) { exit 1 }
+            $active = powercfg /getactivescheme | Out-String
+            if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /getactivescheme failed'; exit 1 }
+            if ($active -match [regex]::Escape($applied)) { exit 0 } else { exit 1 }
+          shell: powershell
+    options:
+      - label: "Ultimate Performance"
+        values: { state: 1, ultimate_scheme: run }
+      - label: "Previous power plan"
+        values: { state: 0 }
+
+  - id: disable_power_throttling
+    name: "Disable CPU power throttling"
+    description: "Stop Windows down-clocking background, minimized, and occluded processes to save power."
+    info: |
+      **Stops Windows down-clocking your background work, so minimized jobs keep running at full speed.**
+
+      ## What it does
+      Creates the `PowerThrottling` subkey and sets `PowerThrottlingOff` to 1, which turns off
+      Windows Power Throttling system-wide. Windows classifies minimized and occluded processes as
+      low quality-of-service and parks them in the CPU's most efficient operating points; this
+      removes that behaviour.
+
+      ## Benefits
+      - **Background jobs unthrottled**: a compile, encode, download or server-style workload in a
+        minimized or covered window is no longer clocked down
+      - **Window state irrelevant**: work does not slow down just because you switched away
+        from it
+      - **Cleanly reversible**: removing the value hands the decision back to Windows
+
+      ## Drawbacks
+      - **Worse battery life**: the throttling exists to save power, and removing it costs runtime
+      - **More heat**: the CPU holds higher operating points, and fans respond, for work you are not
+        watching
+      - **Nothing for foreground**: Windows already classifies the focused window as high
+        priority and never power-throttles it, so this does not speed up what you are using
+      - **No measured gain**: no measurable gain on modern hardware; on a desktop already running a high-performance
+        power plan, almost no throttling happens to remove
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, on hardware with Intel Speed Shift (6th generation
+        Core or newer) or an equivalent hardware P-state implementation; it is inert without it
+      - **Takes effect**: after reboot
+      - **Reverting**: removes the value, which is the stock state; the subkey does not exist on an
+        untouched machine
+      - Efficiency-core scheduling on hybrid CPUs is not affected by this value, so it is not a fix
+        for "my game ran on an E-core"
+
+      ## Recommendation
+      Worth it on a plugged-in machine that runs long background jobs you keep minimized. Skip it on
+      battery, and skip it if the goal is a faster foreground app: Windows was never throttling that
+      one.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Community-corroborated
+      - [Quality of Service (the In Focus = High classification)](https://learn.microsoft.com/en-us/windows/win32/procthread/quality-of-service)
+      - [Introducing Power Throttling, Windows Insider Blog](https://blogs.windows.com/windows-insider/2017/04/18/introducing-power-throttling/)
+    warning: "Microsoft documents the feature but not this registry override, so treat it as community-corroborated. It is inert on hardware without Intel Speed Shift or an equivalent hardware P-state implementation, and it costs battery runtime and heat on anything portable."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: power_throttling_off
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling', name: PowerThrottlingOff, type: REG_DWORD }
+    options:
+      - label: "Throttling off"
+        values: { power_throttling_off: 1 }
+      - label: "Windows managed"
+        values: { power_throttling_off: absent }
+
+  - id: network_throttling_index
+    name: "Lift the multimedia network throttling cap"
+    description: "Lift the MMCSS packet-rate cap that applies while a multimedia task is registered."
+    info: |
+      **Lifts the legacy 10-packet-per-millisecond network cap that applies while media is playing.**
+
+      ## What it does
+      Sets `NetworkThrottlingIndex` to 0xFFFFFFFF, which Microsoft documents as completely turning
+      off the Multimedia Class Scheduler throttle. The shipped default is 10, meaning roughly 10
+      packets per millisecond while a multimedia task is registered.
+
+      ## Benefits
+      - **Removes a ceiling**: on a very fast link saturated during audio or video playback
+      - **Documented switch**: Microsoft's own KB gives this value and the disable constant
+      - **Cleanly reversible**: the shipped default is a known number, not a guess
+
+      ## Drawbacks
+      - **Can hurt playback**: the cap exists to protect glitch-free audio and video under network and
+        CPU contention, and removing it can reintroduce that glitching
+      - **Not latency**: this has nothing to do with ping, jitter, or packet scheduling for a
+        game's own traffic, and it is one of the most reliably mis-sold tweaks in circulation
+      - **No measured gain**: no measurable gain on modern hardware; RSS and receive-side coalescing made the Vista-era
+        failure mode largely historical, and the tweak is repeated far more often than it is measured
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: after reboot
+      - **Reverting**: writes 10 back, which is the value Windows ships; this value is present out of
+        the box, not absent
+      - The cap only binds while something has registered a multimedia task with MMCSS, so it does
+        nothing when no audio or video is playing
+
+      ## Recommendation
+      Only worth it if you are saturating a very fast link while media plays and you have measured
+      the cap biting. Everyone else should leave it at 10; it will not improve your ping or your
+      in-game latency, and removing it can cost you smooth playback under load.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [KB 948066, throttling mechanism for network performance](https://www.freelists.org/post/thin/KB-How-to-use-the-throttling-mechanism-to-control-network-performance-in-Windows-Vista)
+      - [Multimedia Class Scheduler Service](https://learn.microsoft.com/en-us/windows/win32/procthread/multimedia-class-scheduler-service)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: throttling_index
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile', name: NetworkThrottlingIndex, type: REG_DWORD }
+    options:
+      - label: "Disabled (0xffffffff)"
+        values: { throttling_index: 0xffffffff }
+      # KB 948066: Windows ships this value present with data 10. Reverting writes 10, never absent.
+      - label: "Throttled (index 10)"
+        values: { throttling_index: 10 }
 
   - id: disable_storage_sense
-    name: "Disable Storage Sense"
-    description: "Disable automatic disk cleanup by Storage Sense"
-    risk_level: low
-    requires_reboot: false
+    name: "Disable Storage Sense auto-cleanup"
+    description: "Pin Storage Sense off with the machine policy so nothing can turn automatic file deletion back on."
     info: |
-      ## What This Does
-      Disables Storage Sense which automatically deletes temporary files, empties recycle bin, and removes old downloads.
+      **Locks Storage Sense off so nothing can turn automatic file deletion back on.**
 
-      ## Why Disable
-      - Prevents unexpected file deletion
-      - You control when cleanup happens
-      - Avoids accidental removal of needed temp files
-
-      ## Recommendation
-      Disable if you prefer manual disk cleanup control. Keep enabled on low-storage devices.
-    options:
-      - label: "Storage Sense Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\StorageSense\\Parameters\\StoragePolicy"
-            value_name: "01"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Storage Sense Enabled (Default)"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\StorageSense\\Parameters\\StoragePolicy"
-            value_name: "01"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: font_cache_size
-    name: "Increase Font Cache"
-    description: "Increase font cache size for faster text rendering"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Doubles the font cache from 4MB to 8MB, reducing font rendering delays.
-
-      ## Performance Impact
-      - Faster text rendering in applications with many fonts
-      - Reduces font cache misses
-      - Minimal memory overhead (4MB additional)
-
-      ## Recommendation
-      Safe to enable on all systems. Especially beneficial for design applications.
-    options:
-      - label: "8MB Font Cache"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Font Management"
-            value_name: "Font Cache Max Size"
-            value_type: "REG_DWORD"
-            value: 8
-      - label: "4MB Font Cache (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Font Management"
-            value_name: "Font Cache Max Size"
-            value_type: "REG_DWORD"
-            value: 4
-
-  - id: clear_page_file_shutdown
-    name: "Clear Page File at Shutdown"
-    description: "Clear the virtual memory page file when shutting down"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Overwrites the page file (pagefile.sys) with zeros during shutdown to prevent sensitive data from being recovered.
-
-      ## Security Benefit
-      - Passwords and encryption keys in memory cannot be recovered from page file
-      - Protects against offline attacks on the disk
-
-      ## Trade-off
-      - Shutdown takes longer (proportional to page file size)
-      - No impact on startup or runtime performance
-
-      ## Recommendation
-      Enable for security-sensitive systems. Skip if fast shutdown is a priority.
-    options:
-      - label: "Clear at Shutdown"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "ClearPageFileAtShutdown"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Don't Clear (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "ClearPageFileAtShutdown"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: io_page_lock_limit
-    name: "I/O Page Lock Limit"
-    description: "Configure maximum memory for I/O operations"
-    risk_level: medium
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Controls how much RAM can be locked for I/O operations. Higher values allow more concurrent I/O.
-
-      ## Options Explained
-      - **2MB (16GB+ RAM)**: Maximum I/O throughput for high-memory systems
-      - **960KB (8GB+ RAM)**: Good balance for most modern systems
-      - **Auto (Default)**: Windows manages automatically
-
-      ## Recommendation
-      Use "960KB" for 8-16GB systems, "2MB" for 16GB+. Leave "Auto" if unsure.
-    options:
-      - label: "2MB (16GB+ RAM)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "IoPageLockLimit"
-            value_type: "REG_DWORD"
-            value: 2097152
-      - label: "960KB (8GB+ RAM)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "IoPageLockLimit"
-            value_type: "REG_DWORD"
-            value: 983040
-      - label: "Auto (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Session Manager\\Memory Management"
-            value_name: "IoPageLockLimit"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: delivery_optimization_cache
-    name: "Limit Delivery Optimization Cache"
-    description: "Minimize disk space used by Windows Update cache"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Limits the Delivery Optimization cache which stores Windows Update files for potential sharing.
+      ## What it does
+      Sets the machine policy `AllowStorageSenseGlobal` to 0. Microsoft documents this state as
+      Storage Sense off with the user unable to enable it. Left unconfigured, Storage Sense is off
+      until you hit low disk space or switch it on yourself, and when on it runs during low free
+      disk space rather than on a schedule.
 
       ## Benefits
-      - Frees disk space used by cached update files
-      - Prevents stale update files from accumulating
-      - Works alongside P2P delivery settings
+      - **Permanent lockout**: neither a user, an OEM image, nor a later Windows setup pass can turn
+        it on
+      - **No surprise deletions**: Downloads, temp files and the Recycle Bin stay exactly as you
+        leave them
+      - **Documented policy**: a shipped ADMX setting with a documented Not Configured state
+
+      ## Drawbacks
+      - **You manage space**: Windows will not reclaim anything automatically, even under
+        pressure
+      - **Settings greyed out**: the Storage Sense controls are locked, which can look like breakage
+      - **No speed change**: no performance change of any kind; this is a behaviour control, not a speed tweak, and it
+        has no effect on FPS or responsiveness
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, Pro, Enterprise, Education and IoT Enterprise;
+        Home reads the value in practice but is not in Microsoft's supported list
+      - **Takes effect**: immediately
+      - **Reverting**: removes the policy value, returning control to the user
+      - The per-user Storage Sense state lives elsewhere, under
+        `HKCU\...\StorageSense\Parameters\StoragePolicy`; the machine policy overrides it, so this
+        tweak deliberately does not touch it
 
       ## Recommendation
-      Safe to enable. Update files are re-downloaded when needed.
+      Worth applying if you have ever lost a file to an automatic cleanup, or if you want the
+      decision pinned so nothing can flip it later. Leave Storage Sense available if you are short on
+      disk space and would rather Windows handle it.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Storage Policy CSP (AllowStorageSenseGlobal)](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-storage)
+      - [Group Policy Search, Allow Storage Sense](https://gpsearch.azurewebsites.net/default.aspx?policyid=14518)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: storage_sense_global
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\StorageSense', name: AllowStorageSenseGlobal, type: REG_DWORD }
     options:
-      - label: "Cache Minimized"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
-            value_name: "DOMaxCacheSize"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
-            value_name: "DOMaxCacheAge"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Cache Default (20% Disk)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
-            value_name: "DOMaxCacheSize"
-            value_type: "REG_DWORD"
-            value: 20
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DeliveryOptimization"
-            value_name: "DOMaxCacheAge"
-            value_type: "REG_DWORD"
-            value: 259200
+      - label: "Disabled"
+        values: { storage_sense_global: 0 }
+      - label: "Allowed"
+        values: { storage_sense_global: absent }
+
+  - id: ssd_optimize_trim
+    name: "Enable SSD TRIM (delete notification)"
+    description: "Read and repair DisableDeleteNotification so TRIM stays on for SSD and NVMe media."
+    info: |
+      **Confirms TRIM is on, so your SSD keeps its sustained write speed and endurance.**
+
+      ## What it does
+      Reads and, if needed, repairs `DisableDeleteNotification` under the FileSystem control key.
+      With it at 0, Windows tells the drive which blocks are free when files are deleted, which is
+      what lets the SSD controller manage free space efficiently.
+
+      ## Benefits
+      - **Sustained write speed**: an SSD without TRIM slows down as it fills and stays slow
+      - **Better endurance**: the controller does less write amplification when it knows what is free
+      - **Repairs broken machines**: fixes the case where a previous tool or image turned TRIM off
+
+      ## Drawbacks
+      - **Usually nothing broken**: Windows enables TRIM by default, so on a healthy system
+        this confirms a state you already had
+      - **No measured gain**: no measurable gain on modern hardware; this is a health check, not a speed boost; expect
+        no change if your defaults were already correct
+      - **Nothing for HDDs**: TRIM is meaningless outside SSD and NVMe media
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, on SSD or NVMe drives that report TRIM support
+      - **Takes effect**: immediately, at the next delete; no restart is required
+      - **Reverting**: restores the previous value from the snapshot
+      - The opposite setting, turning TRIM off, has a real and negative long-term effect on an SSD;
+        Microsoft's only stated reason for it is a rare class of device that regresses with it on
+
+      ## Recommendation
+      Safe to apply as a health check on any SSD system. Never select the TRIM-disabled option unless
+      your drive vendor has specifically told you to; you would be trading long-term write
+      performance for nothing.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [fsutil behavior (disabledeletenotify)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior)
+      - [Optimize-Volume (ReTrim)](https://learn.microsoft.com/en-us/powershell/module/storage/optimize-volume)
+    warning: "The TRIM disabled option is actively harmful on normal SSD and NVMe hardware: it degrades sustained write performance and endurance over time. Select it only if your drive vendor has specifically told you to."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      # The value name is DisableDeleteNotification. `NtfsDisableDeleteNotify` does not exist: the
+      # `NTFS DisableDeleteNotify` string is only fsutil's display label for this same value.
+      - id: disable_delete_notify
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem', name: DisableDeleteNotification, type: REG_DWORD }
+    options:
+      - label: "TRIM enabled"
+        values: { disable_delete_notify: 0 }
+      - label: "TRIM disabled"
+        values: { disable_delete_notify: 1 }
+
+  - id: ntfs_disable_lastaccess
+    name: "Pin NTFS last-access updates off"
+    description: "Pin last-access timestamp updates off in User Managed mode instead of letting Windows decide at boot."
+    info: |
+      **Pins NTFS last-access timestamp updates off instead of leaving the choice to Windows.**
+
+      ## What it does
+      Sets `NtfsDisableLastAccessUpdate` to 0x80000001, which is User Managed mode with updates
+      disabled. Windows normally ships 0x80000002, System Managed with updates enabled, and then
+      decides at boot based on the size of your system volume.
+
+      ## Benefits
+      - **Fewer metadata writes**: no "last read" stamp update per file read
+      - **Deterministic**: your choice holds regardless of volume size or a later disk change
+      - **Documented switch**: the same value `fsutil behavior set disablelastaccess` writes
+
+      ## Drawbacks
+      - **Breaks last-access tooling**: Microsoft warns this "can affect programs such as Backup and
+        Remote Storage", and forensic and archiving tools rely on it too
+      - **Overrides Windows**: a later change of volume layout will not be reflected
+      - **No visible change today**: on any system volume larger than 128 GB, System Managed mode has
+        already disabled these updates, so you will usually see no difference after applying it
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: after reboot
+      - **Reverting**: writes 0x80000002 back, which is the value Windows ships; this value is
+        present out of the box, not absent
+      - NTFS defers on-disk last-access writes by up to an hour and answers queries from memory, so
+        the write volume being saved is smaller than intuition suggests
+
+      ## Recommendation
+      Worth applying if you want last-access updates pinned off by your own decision rather than left
+      to Windows to re-evaluate at every boot. Skip it if you run backup, archiving, or forensic
+      software that reads last-access times.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [fsutil behavior (disablelastaccess)](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-behavior)
+      - [The Last Access updates are almost back (the four-state encoding and the 128 GB rule)](https://dfir.ru/2018/12/08/the-last-access-updates-are-almost-back/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: disable_lastaccess
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem', name: NtfsDisableLastAccessUpdate, type: REG_DWORD }
+    options:
+      - label: "Disabled (user managed)"
+        values: { disable_lastaccess: 0x80000001 }
+      - label: "System managed"
+        values: { disable_lastaccess: 0x80000002 }
+
+  - id: disable_memory_compression
+    name: "Disable RAM memory compression"
+    description: "Run Disable-MMAgent -MemoryCompression so cold pages are paged out instead of compressed in RAM."
+    info: |
+      **Turns off RAM page compression, trading memory headroom for a little less CPU work.**
+
+      ## What it does
+      Runs `Disable-MMAgent -MemoryCompression`. Windows normally compresses infrequently used pages
+      in RAM, via the Memory Compression process, to fit more data before it has to page to disk.
+      With it off, those pages are simply paged out instead.
+
+      ## Benefits
+      - **No compression cost**: the compress and decompress work disappears
+      - **Simpler memory behaviour**: pages go to the page file rather than into a compressed store
+      - **Documented cmdlet**: a supported Microsoft switch with a matching enable command
+
+      ## Drawbacks
+      - **Worse under pressure**: on 8 or 16 GB, removing the cushion causes more paging to disk
+        and more hard faults, which hurts rather than helps
+      - **Earlier out-of-memory**: with a small or absent page file, you hit the ceiling earlier
+      - **No measured gain**: no measurable gain on modern hardware; the Memory Compression process normally uses very
+        little CPU, and this is one of the most commonly recommended and most commonly harmful tweaks
+        in circulation
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, sensibly only with 32 GB of RAM or more
+      - **Takes effect**: immediately for newly compressed pages; the existing compressed store
+        drains over time or at the next reboot
+      - **Reverting**: runs `Enable-MMAgent -MemoryCompression`, restoring the shipped behaviour
+      - This is a different MMAgent feature from SysMain prefetching; disabling the SysMain service
+        does not disable compression
+
+      ## Recommendation
+      Only on a high-RAM machine where you have actually proven compression is costing you something
+      measurable. On a typical 8 to 16 GB machine, leave it enabled: disabling it will make things
+      worse, not better.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Disable-MMAgent](https://learn.microsoft.com/en-us/powershell/module/mmagent/disable-mmagent)
+      - [Enable-MMAgent](https://learn.microsoft.com/en-us/powershell/module/mmagent/enable-mmagent)
+    warning: "Only sensible with abundant RAM (32 GB or more) that rarely hits pressure. On an 8 to 16 GB machine it removes a cushion and causes more paging to disk, which hurts. Disable it only after proving compression is your bottleneck."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: MemoryCompression, type: REG_DWORD }
+      - id: memory_compression
+        action:
+          apply: |
+            try { Disable-MMAgent -MemoryCompression -ErrorAction Stop } catch { Write-Error $_; exit 1 }
+            exit 0
+          undo: |
+            try { Enable-MMAgent -MemoryCompression -ErrorAction Stop } catch { Write-Error $_; exit 1 }
+            exit 0
+          probe: |
+            try { $mm = Get-MMAgent -ErrorAction Stop } catch { Write-Error $_; exit 1 }
+            if ($mm.MemoryCompression -eq $false) { exit 0 } else { exit 1 }
+          shell: powershell
+    options:
+      - label: "Disabled"
+        values: { state: 1, memory_compression: run }
+      - label: "Enabled"
+        values: { state: 0 }
+
+  - id: disable_fast_startup
+    name: "Disable Fast Startup (hiberboot)"
+    description: "Set HiberbootEnabled to 0 so Shut Down performs a true full shutdown instead of a partial hibernation."
+    info: |
+      **Makes Shut Down a real shutdown, so drivers and kernel state start fresh every time.**
+
+      ## What it does
+      Sets `HiberbootEnabled` to 0. Fast Startup normally turns Shut Down into a partial
+      hibernation: your session logs off but the kernel and loaded drivers are saved to
+      `hiberfil.sys` and restored on the next power-on. With it off, every start reinitialises
+      everything.
+
+      ## Benefits
+      - **Clears driver state**: GPU and USB quirks that only a true cold boot resolves
+      - **Safer for dual-boot**: a hibernated NTFS volume mounted read-write by another OS can be
+        corrupted, and this removes that hazard
+      - **Honest shutdown**: no surprise when a "shutdown" did not actually reset anything
+
+      ## Drawbacks
+      - **Slower cold boot**: a handful of seconds on a modern NVMe machine, more on older hardware
+      - **Stability, not speed**: this changes no frame rate and no responsiveness
+      - **No measured gain**: no measurable gain on modern hardware; the benefit is the class of problem it prevents,
+        not anything you can benchmark
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: at your next shutdown, not after a restart; a Restart is already a full
+        cold boot and does not exercise this setting
+      - **Reverting**: writes 1 back, which is the value Windows ships; this value is present out of
+        the box, not absent
+      - If hibernation has been removed with `powercfg /h off`, Fast Startup is already unavailable
+        regardless of this value
+
+      ## Recommendation
+      Turn it off if you dual-boot, or if you are chasing driver and GPU oddities that clear after a
+      real power cycle. If your machine boots cleanly and you value the few seconds, leave it on.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Community-corroborated
+      - [Turn on or off Fast Startup in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-fast-startup-in-windows-11.1212/)
+      - [Disabling Windows Fast Startup (HP Wolf Security)](https://support.hpwolf.com/s/article/Disabling-Windows-10-Fast-Startup)
+    # No requires_reboot: the value governs the next SHUTDOWN. A restart is already a cold boot and
+    # never exercises it, so flagging a reboot would tell the user to do the one thing that cannot work.
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: hiberboot
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power', name: HiberbootEnabled, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { hiberboot: 0 }
+      - label: "Enabled"
+        values: { hiberboot: 1 }
+
+  - id: disable_vbs_hvci
+    name: "Disable VBS and Memory Integrity (HVCI)"
+    description: "Turn off Memory Integrity to recover CPU-bound frame times, at a critical cost to security."
+    info: |
+      **Turns off Memory Integrity to recover CPU-bound frame times, at a critical cost to security.**
+
+      ## What it does
+      Sets `EnableVirtualizationBasedSecurity` and the `HypervisorEnforcedCodeIntegrity` `Enabled`
+      value to 0. HVCI validates kernel-mode code inside a hypervisor-isolated environment, and that
+      validation is what costs CPU time on memory and driver operations.
+
+      ## Benefits
+      - **Recovers CPU headroom**: the largest effect is on 1 percent lows in CPU-limited games
+      - **Older CPUs benefit**: Microsoft states processors without the newer virtualization
+        features fall back to emulation and "will have a bigger impact on performance"
+      - **Fixes driver blocks**: some older drivers cannot load at all with memory integrity on
+
+      ## Drawbacks
+      - **Critical security downgrade**: you lose hypervisor-enforced protection against kernel-mode
+        malware and malicious or vulnerable drivers
+      - **Breaks Credential Guard**: it is VBS-hosted, so do not combine this with the Credential
+        Guard tweak in the security category; the two contradict each other
+      - **Anti-cheat and policy**: some anti-cheat systems require memory integrity, and every
+        enterprise or compliance policy does
+      - **VBS keeps running**: measured on 24H2, the hypervisor stays running for Hyper-V,
+        WSL2, Sandbox and Credential Guard, so the recovered performance is less than advertised
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer on hardware meeting the VBS bar
+      - **Takes effect**: after reboot
+      - **Reverting**: restores the previous values from the snapshot
+      - If memory integrity was enabled with UEFI lock, this will not take effect until Secure Boot
+        is disabled from firmware
+      - The published 5 to 15 percent figures come from technical press, not Microsoft, so treat them
+        as indicative rather than measured
+
+      ## Recommendation
+      Only consider this on a personal gaming machine where you knowingly accept a weaker security
+      posture for CPU headroom, and only after confirming your anti-cheat allows it. Never on a work,
+      shared, or sensitive machine, and never alongside Credential Guard.
+
+      ## Evidence
+      - **Risk**: critical
+      - **Confidence**: Microsoft-documented
+      - [Enable memory integrity (the exact registry values)](https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity)
+      - [Memory integrity and VBS enablement, OEM guidance](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-hvci-enablement)
+    warning: "CRITICAL SECURITY DOWNGRADE. Conflicts directly with the security category's Credential Guard tweak: Credential Guard is VBS-hosted and cannot run once this is applied, so never enable both. This tweak does not touch WasEnabledBy, so the Windows Security memory integrity page may still read as administrator-managed after a revert, and if memory integrity was enabled with UEFI lock nothing changes until Secure Boot is disabled in firmware."
+    risk_level: critical
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: enable_vbs
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard', name: EnableVirtualizationBasedSecurity, type: REG_DWORD }
+      - id: hvci_enabled
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { enable_vbs: 0, hvci_enabled: 0 }
+      # EnableVirtualizationBasedSecurity is a policy value that is absent unless configured, so the
+      # enabled state is `absent` plus HVCI Enabled = 1.
+      - label: "Memory integrity enabled"
+        values: { enable_vbs: absent, hvci_enabled: 1 }
+
+  - id: disable_spectre_meltdown
+    name: "Disable Spectre / Meltdown CPU mitigations"
+    description: "Write the KB4073119 override pair that disables the Spectre v2 and Meltdown mitigations."
+    info: |
+      **Removes the Spectre v2 and Meltdown mitigations to reclaim CPU throughput on older processors.**
+
+      ## What it does
+      Writes `FeatureSettingsOverride` and `FeatureSettingsOverrideMask` as 3, the exact pair
+      Microsoft's KB4073119 gives for disabling the mitigations for CVE-2017-5715 (Spectre variant 2)
+      and CVE-2017-5754 (Meltdown). Nothing else is changed.
+
+      ## Benefits
+      - **Reclaims syscall throughput**: the mitigations cost most on syscall-heavy and
+        context-switch-heavy workloads
+      - **Older CPUs benefit**: machines relying on the software retpoline or IBRS/IBPB paths pay
+        the biggest penalty
+      - **Microsoft-documented switch**: the same two values Microsoft's own KB publishes
+
+      ## Drawbacks
+      - **Critical security downgrade**: re-exposes the machine to side-channel attacks that read
+        memory across process and virtual machine boundaries
+      - **Two CVEs only**: MDS, TAA, L1TF, SSBD and Downfall use different bits and stay on,
+        so this is not "mitigations off"
+      - **Clobbers other settings**: this is one DWORD, so writing 3 overwrites any Downfall
+        mitigation override an administrator had configured
+      - **No measured gain**: no measurable gain on modern hardware; on any CPU reporting RDCL_NO, roughly Intel 10th
+        generation onward and all AMD, Meltdown protection was never enabled, so half of this tweak
+        has nothing to reclaim
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer, with the largest effect on older CPUs lacking
+        silicon-level fixes
+      - **Takes effect**: after reboot
+      - **Reverting**: removes both values, which is the stock state
+      - Some benchmarks regress after disabling these, so measure your own workload rather than
+        assuming a gain
+
+      ## Recommendation
+      Hard to justify on modern hardware: the benefit is small or absent and the risk is real. Only
+      an option on an isolated, older, personal machine where you knowingly accept the exposure.
+      Never on a shared, work, or virtualization-hosting machine.
+
+      ## Evidence
+      - **Risk**: critical
+      - **Confidence**: Microsoft-documented
+      - [KB4073119, Windows client guidance for speculative execution side-channel vulnerabilities](https://support.microsoft.com/en-us/topic/kb4073119-windows-client-guidance-for-it-pros-to-protect-against-silicon-based-microarchitectural-and-speculative-execution-side-channel-vulnerabilities-35820a8a-ae13-1299-88cc-357f104f5b11)
+      - [KVA Shadow: Mitigating Meltdown on Windows (MSRC)](https://www.microsoft.com/en-us/msrc/blog/2018/03/kva-shadow-mitigating-meltdown-on-windows)
+    warning: "CRITICAL SECURITY DOWNGRADE. FeatureSettingsOverride is a single DWORD, so writing 3 overwrites any other mitigation override already configured, including the 0x2000000 value KB5029778 specifies for the Downfall (Gather Data Sampling) mitigation. Reverting to absent likewise deletes an administrator's deliberate setting. Check the current value before applying this on a managed machine."
+    risk_level: critical
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: feature_settings_override
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management', name: FeatureSettingsOverride, type: REG_DWORD }
+      - id: feature_settings_override_mask
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management', name: FeatureSettingsOverrideMask, type: REG_DWORD }
+    options:
+      - label: "Spectre v2 and Meltdown mitigations disabled"
+        values: { feature_settings_override: 3, feature_settings_override_mask: 3 }
+      - label: "Enabled"
+        values: { feature_settings_override: absent, feature_settings_override_mask: absent }
+
+  - id: disable_mouse_acceleration
+    name: "Disable mouse acceleration (Enhance Pointer Precision)"
+    description: "Set the pointer ballistics values to 0 for a strict 1:1 mouse-to-cursor mapping."
+    info: |
+      **Makes pointer movement 1:1 with the mouse, so the same motion always moves the same distance.**
+
+      ## What it does
+      Sets `MouseSpeed`, `MouseThreshold1` and `MouseThreshold2` to 0. These are the pointer
+      ballistics values behind the "Enhance pointer precision" checkbox; with all three at 0 Windows
+      stops changing the mouse-to-cursor ratio based on how fast you move.
+
+      ## Benefits
+      - **Predictable aim**: muscle memory maps to a fixed physical distance, which matters in
+        aim-heavy shooters
+      - **Immediately noticeable**: one of the few tweaks in this category you can feel the moment it
+        applies
+      - **Cleanly reversible**: three string values with well-known defaults
+
+      ## Drawbacks
+      - **More desk movement**: crossing a large or multi-monitor desktop takes a bigger physical
+        motion
+      - **Often already bypassed**: many games read raw input and ignore Windows ballistics entirely,
+        so this may change nothing in-game and only affect the desktop cursor
+      - **Not exhaustive**: `SmoothMouseXCurve` and `SmoothMouseYCurve` in the same key define the
+        modern acceleration curve and are not touched, so a machine with a custom curve is not fully
+        neutralised
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: after sign-out, or immediately if the tool signals the change to Windows
+      - **Reverting**: restores the previous values from the snapshot
+      - These values are strings, not numbers, in the registry; a tool that writes them as DWORDs is
+        silently ignored by Windows
+
+      ## Recommendation
+      Strongly recommended for gamers, especially in shooters, where 1:1 movement is a real
+      advantage. If you only use the mouse for desktop work across a large screen and like the
+      accelerated feel, leave it on.
+
+      ## Evidence
+      - **Risk**: low
+      - **Confidence**: Microsoft-documented
+      - [Q149228, How to Disable Mouse Acceleration (Microsoft KB archive)](https://jeffpar.github.io/kbarchive/kb/149/Q149228/)
+      - [SystemParametersInfoW (SPI_SETMOUSE)](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
+    # No requires_reboot: these are read into the session at sign-in, so a sign-out is sufficient.
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: mouse_speed
+        registry: { key: 'HKCU\Control Panel\Mouse', name: MouseSpeed, type: REG_SZ }
+      - id: mouse_threshold1
+        registry: { key: 'HKCU\Control Panel\Mouse', name: MouseThreshold1, type: REG_SZ }
+      - id: mouse_threshold2
+        registry: { key: 'HKCU\Control Panel\Mouse', name: MouseThreshold2, type: REG_SZ }
+    options:
+      - label: "Acceleration off"
+        values: { mouse_speed: "0", mouse_threshold1: "0", mouse_threshold2: "0" }
+      - label: "Acceleration on"
+        values: { mouse_speed: "1", mouse_threshold1: "6", mouse_threshold2: "10" }
+
+  - id: reserved_storage_off
+    name: "Turn off reserved storage"
+    description: "Run Set-WindowsReservedStorageState to release the disk space Windows sets aside for updates."
+    info: |
+      **Frees the disk space Windows sets aside for updates, at the cost of update headroom.**
+
+      ## What it does
+      Runs `Set-WindowsReservedStorageState -State Disabled`. Reserved storage is a block Windows
+      sets aside so feature updates, temporary files and system caches always have room; disabling
+      it returns that space to you.
+
+      ## Benefits
+      - **Reclaims several GB**: the largest single reclaimable allocation on a stock install
+      - **Supported switch**: a first-party DISM cmdlet with a matching enable command, not a
+        registry poke
+      - **Helps small drives**: on a 128 GB device the reclaimed space is a meaningful fraction
+
+      ## Drawbacks
+      - **Updates can fail**: with the reserve gone, an update on a nearly full disk can fail
+        or demand you free space manually
+      - **Often nothing there**: reserved storage is only enabled on clean installs
+        and preinstalled 1903-and-later PCs, never on upgrades, so many machines never had it
+      - **No speed change**: no performance change of any kind; this is disk space, not speed; it will not make
+        anything faster
+
+      ## Good to know
+      - **Applies to**: Windows 11 24H2 and newer
+      - **Takes effect**: immediately, unless a servicing operation is in progress, in which case
+        Windows refuses and the tweak reports the failure rather than claiming success
+      - **Reverting**: runs `Set-WindowsReservedStorageState -State Enabled`
+      - The amount reclaimed varies with your installed language packs and optional features, so
+        check the reported figure rather than expecting a fixed number
+
+      ## Recommendation
+      Worth it on a small drive where several GB actually matters and you are willing to manage free
+      space around feature updates yourself. On a roomy drive, leave it alone; you are trading update
+      reliability for space you are not short of.
+
+      ## Evidence
+      - **Risk**: medium
+      - **Confidence**: Microsoft-documented
+      - [Set-WindowsReservedStorageState](https://learn.microsoft.com/en-us/powershell/module/dism/set-windowsreservedstoragestate)
+      - [Get-WindowsReservedStorageState](https://learn.microsoft.com/en-us/powershell/module/dism/get-windowsreservedstoragestate)
+    warning: "Windows refuses to disable reserved storage while a servicing operation is in flight, and the apply then fails rather than reporting a false success. A machine upgraded from an earlier Windows version may never have had reserved storage at all, in which case there is nothing to reclaim."
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: state
+        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: ReservedStorage, type: REG_DWORD }
+      # Out-String matching is the interim probe: the property name returned by
+      # Get-WindowsReservedStorageState on 26100 is not yet confirmed.
+      - id: reserved_storage
+        action:
+          apply: |
+            try { Set-WindowsReservedStorageState -State Disabled -ErrorAction Stop } catch { Write-Error $_; exit 1 }
+            exit 0
+          undo: |
+            try { Set-WindowsReservedStorageState -State Enabled -ErrorAction Stop } catch { Write-Error $_; exit 1 }
+            exit 0
+          probe: |
+            try { $state = Get-WindowsReservedStorageState -ErrorAction Stop | Out-String } catch { Write-Error $_; exit 1 }
+            if ($state -match 'Disabled') { exit 0 } else { exit 1 }
+          shell: powershell
+    options:
+      - label: "Reserved storage off"
+        values: { state: 1, reserved_storage: run }
+      - label: "Reserved storage on"
+        values: { state: 0 }
