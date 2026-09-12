@@ -392,9 +392,10 @@ fn validate_response(
 /// `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`, under which handle inheritance is sourced from the
 /// attribute parent rather than from us. A named pipe with a random name and a restrictive DACL is
 /// the shape that would work, and it is a larger change than this comment once implied.
-pub fn run_elevated_broker(
+fn run_elevated_broker(
     level: Elevation,
     ops: Vec<BrokerOp>,
+    spawn: impl FnOnce(&str) -> Result<i32, SpawnError>,
 ) -> Result<BrokerResponse, BrokerOpError> {
     if !level.is_elevated() {
         return Ok(execute_request(&BrokerRequest::new(ops)));
@@ -439,14 +440,14 @@ pub fn run_elevated_broker(
         resp_guard.path().display()
     );
 
-    let spawn = match level {
-        Elevation::TrustedInstaller => super::ti_elevation::spawn_as_trusted_installer(&cmdline),
+    let spawned = match level {
+        Elevation::TrustedInstaller => spawn(&cmdline),
         Elevation::None => unreachable!("handled above"),
     };
 
     // A non-zero exit means the response is stale or partial. How far the child got decides whether
     // the machine is untouched, so every failure is classified, never collapsed.
-    let read = spawn.map_err(classify_spawn).and_then(|exit| {
+    let read = spawned.map_err(classify_spawn).and_then(|exit| {
         if exit != 0 {
             return Err(classify_exit(
                 exit,
@@ -508,8 +509,17 @@ impl BrokerOpError {
 /// Runs a whole batch of operations in ONE elevated child (spec §9's grouped execution). The only
 /// entry point into the broker.
 pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError> {
+    run_ops_with(level, ops, super::ti_elevation::spawn_as_trusted_installer)
+}
+
+/// `spawn` runs the child's command line: the TrustedInstaller launch, or a test's fake child.
+fn run_ops_with(
+    level: Elevation,
+    ops: Vec<BrokerOp>,
+    spawn: impl FnOnce(&str) -> Result<i32, SpawnError>,
+) -> Result<(), BrokerOpError> {
     let sent = ops.len();
-    let response = run_elevated_broker(level, ops)?;
+    let response = run_elevated_broker(level, ops, spawn)?;
     check_response(sent, &response)
 }
 
@@ -774,7 +784,8 @@ mod tests {
             value_type: RegistryValueType::Dword,
             value: serde_json::json!(5),
         }];
-        let resp = run_elevated_broker(Elevation::None, ops).unwrap();
+        let resp =
+            run_elevated_broker(Elevation::None, ops, |_| panic!("None never spawns")).unwrap();
         assert_eq!((resp.attempted, resp.failure), (1, None));
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "N").unwrap(),
@@ -1209,9 +1220,315 @@ mod tests {
         );
     }
 
-    // No elevated end-to-end test: under `cargo test`, `current_exe()` is the libtest harness, which
-    // rejects `--broker`. Verify against the built exe: run `magicx-toolbox.exe --broker <req>
-    // <resp>` from an elevated shell and check the response and the machine state.
+    // The fake child covers the parent side only: the real child cannot run under `cargo test`, where
+    // `current_exe()` is the libtest harness and rejects `--broker`. Verify it with the built exe:
+    // `magicx-toolbox.exe --broker <req> <resp>` from an elevated shell, then check the machine state.
+
+    /// The argv the child sees for `cmdline`.
+    fn child_argv(cmdline: &str) -> Vec<std::ffi::OsString> {
+        use std::os::windows::ffi::OsStringExt;
+        use windows_sys::Win32::Foundation::LocalFree;
+        use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
+
+        let wide = super::super::common::to_wide_string(cmdline);
+        let mut argc = 0;
+        // SAFETY: `wide` is NUL-terminated; each entry is a NUL-terminated string inside the one
+        // allocation, freed once all are copied out.
+        unsafe {
+            let argv = CommandLineToArgvW(wide.as_ptr(), &mut argc);
+            assert!(!argv.is_null(), "CommandLineToArgvW failed on {cmdline}");
+            let args = (0..argc as usize)
+                .map(|i| {
+                    let arg = *argv.add(i);
+                    let len = (0..).take_while(|&j| *arg.add(j) != 0).count();
+                    std::ffi::OsString::from_wide(std::slice::from_raw_parts(arg, len))
+                })
+                .collect();
+            LocalFree(argv.cast());
+            args
+        }
+    }
+
+    /// Runs `ops` through the whole elevated parent side with `child` in place of the
+    /// TrustedInstaller spawn, then asserts the request and response files are gone.
+    fn run_with_child(
+        ops: Vec<BrokerOp>,
+        child: impl FnOnce(&str, &str) -> Result<i32, SpawnError>,
+    ) -> Result<(), BrokerOpError> {
+        let mut handed = None;
+        let result = run_ops_with(Elevation::TrustedInstaller, ops, |cmdline| {
+            let argv = child_argv(cmdline);
+            assert_eq!(
+                std::path::Path::new(&argv[0]),
+                std::env::current_exe().unwrap()
+            );
+            let crate::Launch::Broker { req, resp } = crate::classify_launch(&argv) else {
+                panic!("the child would not start as the broker: {cmdline}");
+            };
+            handed = Some([req.to_owned(), resp.to_owned()]);
+            child(req, resp)
+        });
+        for path in handed.expect("the elevated arm must spawn a child") {
+            assert!(!std::path::Path::new(&path).exists(), "left behind: {path}");
+        }
+        result
+    }
+
+    fn serve(req: &str, resp: &str) -> Result<i32, SpawnError> {
+        Ok(serve_request(req, resp))
+    }
+
+    /// Parses the request as the real child does, then writes a success response, edited by
+    /// `edit`, without running any op.
+    fn respond_with(
+        edit: impl FnOnce(&BrokerRequest, &mut serde_json::Value),
+    ) -> impl FnOnce(&str, &str) -> Result<i32, SpawnError> {
+        move |req, resp| {
+            let bytes = std::fs::read(req).unwrap();
+            let Ok(request) = parse_wire(&bytes, |r: &BrokerRequest| r.version) else {
+                panic!("the child refused the request");
+            };
+            let mut body =
+                serde_json::to_value(clean_response(request.nonce, request.ops.len())).unwrap();
+            edit(&request, &mut body);
+            write_response(resp, &to_bytes(&body)).unwrap();
+            Ok(0)
+        }
+    }
+
+    fn scratch_ops(key: &str) -> Vec<BrokerOp> {
+        vec![
+            BrokerOp::RegCreateKey {
+                hive: RegistryHive::Hkcu,
+                key: key.into(),
+            },
+            BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: key.into(),
+                value_name: "Flag".into(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!(9),
+            },
+        ]
+    }
+
+    #[test]
+    fn the_elevated_arm_round_trips_through_a_fake_child() {
+        let scratch = Scratch::new();
+        run_with_child(scratch_ops(&scratch.key), serve).expect("a clean batch is Ok");
+        assert_eq!(
+            registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "Flag").unwrap(),
+            Some(9)
+        );
+    }
+
+    #[test]
+    fn a_child_that_exits_before_any_op_is_could_not_acquire() {
+        let scratch = Scratch::new();
+        for code in [
+            EXIT_UNREADABLE_REQUEST,
+            EXIT_UNPARSEABLE_REQUEST,
+            EXIT_WIRE_VERSION_MISMATCH,
+            malformed_argv_exit_code(),
+        ] {
+            let got = run_with_child(scratch_ops(&scratch.key), |_, _| Ok(code));
+            assert!(
+                matches!(got, Err(BrokerOpError::CouldNotAcquire(_))),
+                "exit {code:#x}: {got:?}"
+            );
+        }
+    }
+
+    /// The child ran the batch and left a valid success response, which must not rescue the exit.
+    #[test]
+    fn a_child_that_exits_nonzero_after_running_is_outcome_unknown() {
+        let scratch = Scratch::new();
+        for code in [
+            EXIT_UNSERIALIZABLE_RESPONSE,
+            EXIT_UNWRITABLE_RESPONSE,
+            EXIT_PANICKED,
+            1,
+            3,
+            0xC000_0409_u32 as i32,
+        ] {
+            let got = run_with_child(scratch_ops(&scratch.key), |req, resp| {
+                assert_eq!(serve_request(req, resp), 0);
+                Ok(code)
+            });
+            assert!(
+                matches!(got, Err(BrokerOpError::Indeterminate(_))),
+                "exit {code:#x}: {got:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_spawn_error_says_whether_a_child_was_created() {
+        let scratch = Scratch::new();
+        let detail = |msg: &str| Error::ServiceControl(msg.into());
+
+        let got = run_with_child(scratch_ops(&scratch.key), |_, _| {
+            Err(SpawnError::NoChild(detail("CreateProcessW failed")))
+        });
+        assert!(
+            matches!(got, Err(BrokerOpError::CouldNotAcquire(_))),
+            "{got:?}"
+        );
+
+        let got = run_with_child(scratch_ops(&scratch.key), |req, resp| {
+            assert_eq!(serve_request(req, resp), 0);
+            Err(SpawnError::ChildRan(detail("timed out")))
+        });
+        assert!(
+            matches!(got, Err(BrokerOpError::Indeterminate(_))),
+            "{got:?}"
+        );
+    }
+
+    #[test]
+    fn a_response_the_parent_cannot_trust_is_outcome_unknown() {
+        type Child = Box<dyn FnOnce(&str, &str) -> Result<i32, SpawnError>>;
+        let scratch = Scratch::new();
+        let cases: [(&str, Child); 5] = [
+            ("missing", Box::new(|_: &str, _: &str| Ok(0))),
+            (
+                "garbage",
+                Box::new(|_: &str, resp: &str| {
+                    write_response(resp, b"\x00 not a response").unwrap();
+                    Ok(0)
+                }),
+            ),
+            (
+                "wrong nonce",
+                Box::new(respond_with(|r, body| {
+                    body["nonce"] = serde_json::json!(r.nonce ^ 1)
+                })),
+            ),
+            (
+                "short attempted count",
+                Box::new(respond_with(|r, body| {
+                    body["attempted"] = serde_json::json!(r.ops.len() - 1)
+                })),
+            ),
+            (
+                "wrong version",
+                Box::new(respond_with(|_, body| {
+                    body["version"] = serde_json::json!(WIRE_VERSION + 1)
+                })),
+            ),
+        ];
+        let trusted: Vec<String> = cases
+            .into_iter()
+            .filter_map(|(case, child)| {
+                let got = run_with_child(scratch_ops(&scratch.key), child);
+                let unknown = matches!(got, Err(BrokerOpError::Indeterminate(_)));
+                (!unknown).then(|| format!("{case}: {got:?}"))
+            })
+            .collect();
+        assert!(trusted.is_empty(), "{trusted:#?}");
+    }
+
+    #[test]
+    fn an_op_failure_in_the_child_names_that_op() {
+        let scratch = Scratch::new();
+        let mut ops = scratch_ops(&scratch.key);
+        for (value_name, value) in [("Bad", "not-a-number".into()), ("Second", 1.into())] {
+            ops.push(BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: scratch.key.clone(),
+                value_name: value_name.into(),
+                value_type: RegistryValueType::Dword,
+                value,
+            });
+        }
+        let err = run_with_child(ops, serve).expect_err("a failing op fails the batch");
+        assert!(matches!(err, BrokerOpError::OpFailed { .. }), "{err:?}");
+        assert_eq!(err.failed_op_index(), Some(2));
+        assert_value_never_written(&scratch.key, "Second");
+    }
+
+    /// Every `BrokerOp` variant and every value of the enums inside one. Never executed: the
+    /// service and scheduler ops would change the real machine.
+    fn every_op() -> Vec<BrokerOp> {
+        use RegistryHive::{Hkcu, Hklm};
+        let key = "Software\\MagicX \"quoted\" \u{e9}\\K".to_owned();
+        let values = [
+            (RegistryValueType::Dword, serde_json::json!(u32::MAX)),
+            (RegistryValueType::Qword, serde_json::json!(u64::MAX)),
+            (RegistryValueType::String, serde_json::json!("text")),
+            (
+                RegistryValueType::ExpandString,
+                serde_json::json!("%SystemRoot%\\x"),
+            ),
+            (RegistryValueType::MultiString, serde_json::json!(["a", ""])),
+            (RegistryValueType::Binary, serde_json::json!([0, 255])),
+        ];
+        let mut ops: Vec<BrokerOp> = values
+            .into_iter()
+            .zip([Hkcu, Hklm].into_iter().cycle())
+            .map(|((value_type, value), hive)| BrokerOp::RegSet {
+                hive,
+                key: key.clone(),
+                value_name: String::new(),
+                value_type,
+                value,
+            })
+            .collect();
+        for hive in [Hkcu, Hklm] {
+            ops.extend([
+                BrokerOp::RegDeleteValue {
+                    hive,
+                    key: key.clone(),
+                    value_name: "V".into(),
+                },
+                BrokerOp::RegDeleteKey {
+                    hive,
+                    key: key.clone(),
+                },
+                BrokerOp::RegCreateKey {
+                    hive,
+                    key: key.clone(),
+                },
+            ]);
+        }
+        use ServiceStartupType::{Automatic, Boot, Disabled, Manual, System};
+        ops.extend([Disabled, Manual, Automatic, Boot, System].map(|startup| {
+            BrokerOp::SvcSetStartup {
+                name: "S".into(),
+                startup,
+            }
+        }));
+        ops.extend(
+            [SchedulerAction::Enable, SchedulerAction::Disable].map(|action| BrokerOp::Scheduler {
+                task_path: "\\Microsoft\\Windows\\P".into(),
+                task_name: "T".into(),
+                action,
+            }),
+        );
+        ops
+    }
+
+    #[test]
+    fn every_broker_op_crosses_from_the_parent_to_the_child_intact() {
+        let sent = every_op();
+        // No wildcard: a new variant fails to compile here until `every_op` sends it.
+        let variants: std::collections::HashSet<u8> = sent
+            .iter()
+            .map(|op| match op {
+                BrokerOp::RegSet { .. } => 0,
+                BrokerOp::RegDeleteValue { .. } => 1,
+                BrokerOp::RegDeleteKey { .. } => 2,
+                BrokerOp::RegCreateKey { .. } => 3,
+                BrokerOp::SvcSetStartup { .. } => 4,
+                BrokerOp::Scheduler { .. } => 5,
+            })
+            .collect();
+        assert_eq!(variants.len(), 6);
+
+        let expected = sent.clone();
+        run_with_child(sent, respond_with(|r, _| assert_eq!(r.ops, expected)))
+            .expect("the child parsed exactly what the parent sent");
+    }
 
     /// The child creates the response at a path the parent only reserved. `CREATE_ALWAYS` follows a
     /// reparse point planted there and writes wherever it points, as TrustedInstaller; `CREATE_NEW`
