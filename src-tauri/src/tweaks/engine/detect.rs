@@ -23,6 +23,7 @@ use crate::tweaks::model::{
     Tweak, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
+use crate::tweaks::snapshot::{Attention, AttentionItem, AttentionKind, AttentionReason};
 use crate::tweaks::validate::{
     applicable_surface, applicable_value, option_unavailable, Milestone,
 };
@@ -101,6 +102,8 @@ pub struct TweakStatus {
     pub unavailable: Vec<UnavailableOpt>,
     pub residues: Vec<EffectId>,
     pub has_history: bool,
+    /// The newest Needs Attention mark on a valid entry (ADR-0001/0002).
+    pub attention: Option<Attention>,
     pub held_shared: Vec<HeldInfo>,
     /// What the surface actually reads, populated **only** for [`TweakState::SystemDefault`].
     ///
@@ -176,6 +179,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
     let winver = deps.running;
     let milestone = winver.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
+    let (has_history, attention) = history(&tweak.id, corpus, deps);
 
     if surface.is_empty() {
         return TweakStatus {
@@ -185,7 +189,8 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             )),
             unavailable: Vec::new(),
             residues: Vec::new(),
-            has_history: has_history(tweak, corpus, deps),
+            has_history,
+            attention,
             held_shared: Vec::new(),
             observed: Vec::new(),
         };
@@ -252,7 +257,8 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             state: TweakState::Unknown(unknown),
             unavailable: Vec::new(),
             residues: Vec::new(),
-            has_history: has_history(tweak, corpus, deps),
+            has_history,
+            attention,
             held_shared,
             observed: Vec::new(),
         };
@@ -293,13 +299,13 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
         }
     }
 
-    let has_history = has_history(tweak, corpus, deps);
     match matched.len() {
         0 => TweakStatus {
             state: TweakState::SystemDefault,
             unavailable,
             residues: Vec::new(),
             has_history,
+            attention,
             held_shared,
             // The one verdict that says only what the machine is not, so it carries its reading.
             observed: observe(tweak, &surface, &milestone, &readings),
@@ -311,6 +317,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
                 unavailable,
                 residues,
                 has_history,
+                attention,
                 held_shared,
                 observed: Vec::new(),
             }
@@ -332,6 +339,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
                 unavailable,
                 residues: Vec::new(),
                 has_history,
+                attention,
                 held_shared,
                 observed: Vec::new(),
             }
@@ -574,18 +582,42 @@ fn option_matches(
     Some(residues)
 }
 
-/// "A history exists to restore from" (spec §8.4) — decoupled from the match result above. A
-/// snapshot I/O error is logged and treated as "no history": this is a UI hint, not a correctness-
-/// critical reading, so it must never poison the tweak's detected state.
-fn has_history(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> bool {
-    match deps
-        .snapshots
-        .head(&tweak.id, corpus, deps.machine_guid, deps.running.build)
-    {
-        Ok(entry) => entry.is_some(),
+/// Whether a valid entry exists to restore from (spec §8.4), and the tweak's Needs Attention
+/// record. Both are UI hints, so an unreadable store is logged and read as none rather than
+/// poisoning the detected state. `head` stops at the newest valid entry instead of parsing every one.
+pub(crate) fn history(tweak_id: &str, corpus: &Corpus, deps: &Deps) -> (bool, Option<Attention>) {
+    let has_history =
+        match deps
+            .snapshots
+            .head(tweak_id, corpus, deps.machine_guid, deps.running.build)
+        {
+            Ok(entry) => entry.is_some(),
+            Err(e) => {
+                log::warn!("detect '{tweak_id}': snapshot history unreadable: {e}");
+                false
+            }
+        };
+    (has_history, attention(tweak_id, deps))
+}
+
+/// The Needs Attention record alone, for callers that already know the history state -- reading it
+/// through `history` would cost a full head walk for a boolean they throw away. A record that
+/// exists but cannot be read is surfaced as itself: as "no attention" it would hide a real mark.
+pub(crate) fn attention(tweak_id: &str, deps: &Deps) -> Option<Attention> {
+    match deps.snapshots.attention(tweak_id, deps.machine_guid) {
+        Ok(attention) => attention,
         Err(e) => {
-            log::warn!("detect '{}': snapshot history unreadable: {e}", tweak.id);
-            false
+            log::error!("detect '{tweak_id}': Needs Attention record unreadable: {e}");
+            Some(Attention {
+                reason: AttentionReason::RecordUnreadable,
+                items: vec![AttentionItem {
+                    effect: None,
+                    kind: AttentionKind::Store,
+                    message: format!(
+                        "the Needs Attention record could not be read, so anything it holds is still unresolved: {e}"
+                    ),
+                }],
+            })
         }
     }
 }

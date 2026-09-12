@@ -84,13 +84,15 @@ cannot read is `Err` and aborts *before touching anything*. Persist the snapshot
 mutating, including the **WAL action journal** (the target's intended action list, unmarked). Drive each
 effect to its desired value in declaration order through its kind module and the broker; verify each by
 read-back (Settings) or `probe`/exit-code (Actions). Each action's completion is fsynced into the journal
-after it runs — a crash between run and mark surfaces as **Needs Attention**, never a silent skip.
+after it runs, and a row left planned but never confirmed complete surfaces as **Needs Attention**, never a silent skip.
+The journal proves the action was planned, never that it ran; the scan covers a tweak's whole history rather than only its newest entry, and a row carries its own resolution mark, written by the same path that marks a row completed, so a verified apply or restore takes the rows it drove and verified out of the scan while leaving every row it never accounted for in it.
 
 **Atomic rollback (ADR-0001).** Any failure restores the just-captured entry via the same path as a user
 Restore — undo the journal's completed actions in reverse, then drive the captured state back. The
 returned error carries both the original failure and any rollback failures. A verified full restore
-consumes the entry; a rollback that cannot fully complete keeps it and surfaces **Needs Attention**
-(ADR-0002). "Atomic" means *attempted atomically, with failure surfaced* — not a guaranteed all-or-nothing.
+consumes the entry; a rollback that cannot fully complete, or an elevated step whose outcome is unknown, keeps it and surfaces **Needs Attention** (ADR-0002, ADR-0005). "Atomic" means *attempted atomically, with failure surfaced*, not a guaranteed all-or-nothing.
+
+**Needs Attention is a per-tweak record**, `snapshots/<tweak-id>/_attention.json`, written atomically and stamped with the schema version and machine guid exactly like an entry. It is deliberately not a field on an entry: dedup, a later verified rollback's `consume`, and an entry turning invalid all delete or disqualify entries, and the mark has to outlive every one of them. It is **set** by an apply that fails and keeps its snapshot, by a restore that does not fully verify, and by the startup crash-residue scan; it is **cleared** only by a fully verified apply or restore of that tweak, or by the user's own decision to keep the current state. That decision is a single backend operation which releases the record whether or not any entry is left and discards the ones that are, so a record can never outlive the last entry with no way to release it (ADR-0002). Unresolved state is durable in a second place the startup crash scan reads, the journal rows a crash left planned and unconfirmed, so a verified apply or restore also **resolves those rows before it clears the record**, per row and in the entry that holds the row, through the same atomic rewrite that marks a row completed. It resolves exactly the rows whose action it drove and verified, so a restore of a captured value dump never retires an action it neither probed nor undid, and the user's own decision needs nothing extra because it discards every entry and takes their rows with them. Ordering the row marks before the record is what makes a crash between them safe: the worst case is a stale record the next clear releases, never a resolved tweak the next scan marks again. Nothing else clears the record, discarding the last entry by hand included, and a record that cannot be written is reported as itself rather than counted as an unrecovered resource. A record that cannot be *read* or *parsed* is surfaced as Needs Attention in its own right, since reporting it as "nothing to attend to" would hide a real mark behind a log line. A record stamped for another machine or another schema is never overwritten and never deleted, exactly like an entry across the same boundary; one that names no owner at all is this build's to replace and to release, or it would badge the tweak with nothing able to lift the badge. Each recorded item carries the effect id and a kind (drive, verify, outcome_unknown, action, no_undo, claim, store, crash_residue, other), so the UI can tell a retryable step from a one-way one.
 
 **Detect** — read each applicable, detectable, non-shared Setting once; `optional` effects map `Missing`
 through `if_missing`; probeable Actions contribute their session-cached present/absent; claimed shared
@@ -180,7 +182,7 @@ src-tauri/build.rs                 load + validate + compile the corpus at build
 
 **Command surface** (`commands/tweaks.rs`): `get_tweaks`, `get_statuses_stream` (background scan,
 streamed), `rescan_after_elevation`, `apply_tweak`, `restore_tweak`, `list_snapshot_entries`,
-`discard_snapshot_entry`, `get_elevation_state`. The `*View` types translate engine results into the
+`discard_snapshot_entry`, `keep_current_state`, `get_tweak_status`, `get_elevation_state`. The `*View` types translate engine results into the
 frontend model — per-tweak state (Active option / System Default / Unknown / Unavailable), per-option
 unavailable reasons, held-by info, and apply/restore outcomes with per-effect results.
 

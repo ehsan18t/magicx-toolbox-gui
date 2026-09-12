@@ -11,10 +11,17 @@
   import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { pendingChangesStore, revertTweak, systemStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import {
+    keepCurrentState,
+    pendingChangesStore,
+    refreshTweakStatus,
+    revertTweak,
+    systemStore,
+    tweaksStore,
+  } from "$lib/stores/tweaks.svelte";
   import { errorMessage, isAppExiting } from "$lib/utils/error";
   import type { EntrySummary, TweakEffectOption } from "$lib/types";
-  import { permissionInfoFor, RISK_INFO } from "$lib/types";
+  import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
 
   const isOpen = $derived(tweakDetailsModalStore.isOpen);
 
@@ -60,13 +67,16 @@
   let entries = $state<EntrySummary[]>([]);
   let entriesLoading = $state(false);
   let busySeq = $state<number | null>(null);
+  let keeping = $state(false);
 
   $effect(() => {
     const t = tweak;
     const open = isOpen;
     let cancelled = false;
 
-    if (open && t?.status.has_backup) {
+    // Not gated on `has_backup`: an all-invalid history reports no restorable head but still has
+    // entries, and ADR-0002's amendment requires a discard path for exactly those.
+    if (open && t) {
       entriesLoading = true;
       listSnapshotEntries(t.definition.id)
         .then((e) => {
@@ -117,8 +127,30 @@
     } finally {
       busySeq = null;
     }
-    if (entries.length === 0) {
-      tweaksStore.patchStatus(t.definition.id, { has_backup: false });
+    // The engine owns `has_backup` and the record, and its status arrives stamped, so an in-flight
+    // sweep can never put the badge back.
+    const read = await refreshTweakStatus(t.definition.id);
+    if (!read.ok) {
+      toastStore.warning(`The entry was discarded, but the tweak's state could not be re-read: ${read.message}`);
+    }
+  }
+
+  async function handleKeepCurrentState() {
+    const t = tweak;
+    if (!t) return;
+    keeping = true;
+    try {
+      if (await keepCurrentState(t.definition.id, { showToast: true, tweakName: t.definition.name })) {
+        entries = [];
+        return;
+      }
+      // Nothing was released. The loader only runs when the modal opens, so without this the panel
+      // claims there are no entries while they are still on disk.
+      entries = await listSnapshotEntries(t.definition.id);
+    } catch (e) {
+      toastStore.warning(`The snapshot entries could not be re-read: ${errorMessage(e)}`);
+    } finally {
+      keeping = false;
     }
   }
 
@@ -211,7 +243,7 @@
               aria-label="Restore to original state"
             >
               <Icon icon="mdi:history" width="16" />
-              {status.needs_attention ? "Retry restore" : "Restore to original state"}
+              {status.attention?.reason === "restore_failed" ? "Retry restore" : "Restore to original state"}
             </button>
           </div>
         {/if}
@@ -256,17 +288,41 @@
       {/if}
 
       <!-- Needs Attention detail -->
-      {#if status.needs_attention}
+      {#if status.attention}
         <div class="mt-4 flex items-start gap-3 rounded-xl border border-error/30 bg-error/5 p-4">
           <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0 text-error" />
           <div class="text-sm">
             <span class="font-medium text-foreground">Needs attention.</span>
             <span class="text-foreground-muted">
-              The last restore didn't fully complete, so the snapshot was kept.
-              {#if status.unrestorable_resources.length}
-                Unrecoverable: {status.unrestorable_resources.join("; ")}.
-              {/if}
+              {attentionCause(status.attention.reason)}{status.has_backup
+                ? ", so the snapshot was kept."
+                : ". There is no snapshot left to restore."}
             </span>
+            {#if status.attention.items.length}
+              <ul class="m-0 mt-2 list-none space-y-1 p-0">
+                {#each status.attention.items as item, i (`${item.effect}-${i}`)}
+                  <li class="flex items-start gap-2 text-xs text-foreground-muted">
+                    <Icon icon="mdi:circle-small" width="14" class="mt-0.5 shrink-0" />
+                    <span>
+                      {#if item.effect}<span class="font-mono text-foreground">{item.effect}</span>:{/if}
+                      {item.message}
+                      {#if item.kind === "no_undo"}(this one cannot be retried){/if}
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            <!-- Consent stays reachable whenever a record exists, entries left or not (ADR-0002). -->
+            <button
+              type="button"
+              class="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-foreground-muted transition-colors hover:border-error/40 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+              onclick={handleKeepCurrentState}
+              disabled={keeping}
+              aria-label="Keep the current state and release the snapshot"
+            >
+              <Icon icon={keeping ? "mdi:loading" : "mdi:check"} width="16" class={keeping ? "animate-spin" : ""} />
+              Keep current state
+            </button>
           </div>
         </div>
       {/if}
@@ -471,8 +527,9 @@
         </div>
       </div>
 
-      <!-- Snapshot entries (discard affordance) -->
-      {#if status.has_backup}
+      <!-- Snapshot entries (discard affordance). An all-invalid history has no restorable head but
+           still has entries, so this cannot gate on `has_backup` (ADR-0002's amendment). -->
+      {#if status.has_backup || entriesLoading || entries.length > 0}
         <div class="mt-6">
           <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
             <Icon icon="mdi:history" width="16" class="text-foreground-muted" />

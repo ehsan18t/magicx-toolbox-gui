@@ -7,8 +7,8 @@
   import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import {
-    discardSnapshots,
     errorStore,
+    keepCurrentState,
     loadingStore,
     pendingChangesStore,
     revertTweak,
@@ -16,7 +16,7 @@
     unstageChange,
   } from "$lib/stores/tweaks.svelte";
   import type { RiskLevel, TweakWithStatus } from "$lib/types";
-  import { permissionInfoFor, RISK_INFO } from "$lib/types";
+  import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -97,10 +97,13 @@
 
   const hasSnapshot = $derived(status.has_backup);
 
-  // Needs Attention (ADR-0001): a restore didn't fully succeed; the snapshot was kept.
-  const needsAttention = $derived(status.needs_attention);
-  const unrestorableResources = $derived(status.unrestorable_resources);
-  const restoreLabel = $derived(needsAttention ? "Retry" : "Restore");
+  // Needs Attention (ADR-0001/0002): the engine's own record, kept per tweak.
+  const attention = $derived(status.attention);
+  const needsAttention = $derived(attention !== null);
+  const attentionMessages = $derived((attention?.items ?? []).map((item) => item.message));
+  const restoreFailed = $derived(attention?.reason === "restore_failed");
+  const attentionText = $derived(attentionCause(attention?.reason));
+  const restoreLabel = $derived(restoreFailed ? "Retry" : "Restore");
 
   const pendingChange = $derived(pendingChangesStore.get(tweak.definition.id));
   const hasPending = $derived(pendingChange !== undefined);
@@ -217,9 +220,9 @@
     await revertTweak(tweak.definition.id, { showToast: true, tweakName: tweak.definition.name });
   }
 
-  async function executeDiscard() {
+  async function executeKeepCurrentState() {
     showKeepStateConfirmDialog = false;
-    await discardSnapshots(tweak.definition.id, { showToast: true, tweakName: tweak.definition.name });
+    await keepCurrentState(tweak.definition.id, { showToast: true, tweakName: tweak.definition.name });
   }
 </script>
 
@@ -322,9 +325,11 @@
           {#if needsAttention}
             <span
               class="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-error"
-              use:tooltip={unrestorableResources.length
-                ? `The last restore didn't fully complete: ${unrestorableResources.join(", ")}. Your snapshot is safe, so you can retry the restore or keep things as they are.`
-                : "The last restore didn't fully succeed. The snapshot is kept for retry."}
+              use:tooltip={`${attentionText}${attentionMessages.length ? `: ${attentionMessages.join(", ")}` : ""}. ${
+                hasSnapshot
+                  ? "Your snapshot is safe, so you can restore it or keep things as they are."
+                  : "There is no snapshot left to restore, so you can only keep the current state."
+              }`}
             >
               <Icon icon="mdi:alert-circle" width="10" />
               Needs Attention
@@ -452,10 +457,10 @@
             class="card-action inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-accent transition-all duration-150 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
             onclick={handleRestoreClick}
             disabled={isLoading || availability.state !== "available"}
-            aria-label={needsAttention ? "Retry restore" : "Restore snapshot"}
+            aria-label={restoreFailed ? "Retry restore" : "Restore snapshot"}
             use:tooltip={availability.state !== "available"
               ? availability.reason
-              : needsAttention
+              : restoreFailed
                 ? "Retry restoring the original state"
                 : "Restore to original state from snapshot"}
           >
@@ -520,10 +525,10 @@
 <ConfirmDialog
   open={showKeepStateConfirmDialog}
   title="Keep Current State?"
-  message="This releases the saved snapshot and accepts the current state as-is. The original state can no longer be restored for this tweak."
+  message="This accepts the current state as-is and releases any saved snapshot. The original state can no longer be restored for this tweak."
   confirmText="Keep current state"
   cancelText="Cancel"
-  onconfirm={executeDiscard}
+  onconfirm={executeKeepCurrentState}
   oncancel={() => (showKeepStateConfirmDialog = false)}
 />
 

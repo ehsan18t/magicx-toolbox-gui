@@ -49,7 +49,7 @@
 //! System/TI here. `rollback`'s own body, `verify_reversed_probe`, and `do_apply`'s consume-gate are
 //! untouched by this -- only which `ExecCx` a drive/read call receives changed.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::tweaks::kinds::{BatchFailure, Error as KindError, ExecCx};
 use crate::tweaks::model::{
@@ -57,13 +57,16 @@ use crate::tweaks::model::{
     Setting, SharedDef, SharedId, Tweak, Value,
 };
 use crate::tweaks::shared_claims::{ClaimsError, ReleaseOutcome};
-use crate::tweaks::snapshot::{Captured, JournalRow, NewEntry, Seq, SnapshotError};
+use crate::tweaks::snapshot::{
+    Attention, AttentionItem, AttentionKind, AttentionReason, Captured, JournalRow, NewEntry, Seq,
+    SnapshotError,
+};
 use crate::tweaks::validate::{applicable_surface, applicable_value, Milestone};
 use crate::tweaks::winver::WinVer;
 
 use super::context;
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnknownReason};
-use super::{lifecycle, Deps};
+use super::{lifecycle, user_facing_failure, Deps, Phase};
 
 /// Every way this pipeline can fail (spec §8.1). Each abort point names exactly what stage it
 /// happened in, so a caller (and this file's own tests) can tell "aborted before touching
@@ -158,13 +161,113 @@ pub enum EngineError {
     #[error("internal engine inconsistency: {0}")]
     Invalid(String),
 
+    /// Step 1 of a restore: a completed action declares no `undo` (spec §8.5). No retry changes
+    /// that, which is why it is typed apart from an internal inconsistency.
+    #[error(
+        "action '{0}' ran and cannot be undone (no undo script), so the restore is incomplete"
+    )]
+    NoUndo(EffectId),
+
     /// Atomic rollback's result (ADR-0001, invariant 20): the original failure, plus every failure
-    /// the rollback itself hit. Empty `rollback_failures` means the rollback fully verified.
-    #[error("apply failed ({original}); rollback {}", if rollback_failures.is_empty() { "fully verified".to_string() } else { format!("left {} item(s) unrecoverable", rollback_failures.len()) })]
+    /// the rollback itself hit.
+    #[error("apply failed ({original}); {}", rollback_summary(rollback_failures, *outcome_unknown, store))]
     RollbackReport {
         original: Box<EngineError>,
         rollback_failures: Vec<EngineError>,
+        /// Keeps the snapshot even when every restore verified (ADR-0005 amendment).
+        outcome_unknown: bool,
+        /// Snapshot-store failures, named as themselves: neither is an unrecovered resource.
+        store: Vec<EngineError>,
     },
+
+    /// A restore that did not fully verify; its entry is kept (ADR-0002).
+    #[error(
+        "restore failed ({}); the snapshot was kept{}",
+        join_errors(failures),
+        store_suffix(store)
+    )]
+    RestoreFailed {
+        failures: Vec<EngineError>,
+        store: Vec<EngineError>,
+    },
+
+    /// Every effect verified, so the machine is restored; only releasing the entry failed. Reported
+    /// apart from a failed restore, which this is not (ADR-0002).
+    #[error("the machine was restored, but its snapshot entry could not be removed: {0}")]
+    EntryCleanup(#[source] SnapshotError),
+
+    /// Needs Attention could not be persisted, so the failure it describes may not survive a
+    /// restart. Never folded into the unrecovered-item count.
+    #[error("Needs Attention could not be recorded: {0}")]
+    AttentionWrite(#[source] SnapshotError),
+}
+
+fn rollback_summary(
+    failures: &[EngineError],
+    outcome_unknown: bool,
+    store: &[EngineError],
+) -> String {
+    let outcome = match (failures.len(), outcome_unknown) {
+        (0, false) => "rollback fully verified".to_string(),
+        (0, true) => {
+            "rollback restored every captured setting, but the elevated step's outcome is \
+                      unknown, so the snapshot was kept"
+                .to_string()
+        }
+        (n, _) => format!("rollback left {n} item(s) unrecoverable, so the snapshot was kept"),
+    };
+    format!("{outcome}{}", store_suffix(store))
+}
+
+fn store_suffix(store: &[EngineError]) -> String {
+    if store.is_empty() {
+        String::new()
+    } else {
+        format!("; {}", join_errors(store))
+    }
+}
+
+fn join_errors(errors: &[EngineError]) -> String {
+    errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// One persisted Needs Attention line: the effect and a coarse kind, so the UI can tell a
+/// retryable drive from a one-way action without parsing the message back apart. The message is
+/// [`user_facing_failure`]'s text: this line reaches both disk and the UI, so it names no detail.
+pub(super) fn attention_item(phase: Phase, error: &EngineError) -> AttentionItem {
+    let (effect, kind) = match error {
+        EngineError::DriveFailed {
+            effect,
+            source: KindError::ElevatedOutcomeUnknown(..),
+        } => (Some(effect), AttentionKind::OutcomeUnknown),
+        EngineError::DriveFailed { effect, .. }
+        | EngineError::ResourceMissing(effect)
+        | EngineError::CaptureFailed { effect, .. }
+        | EngineError::CaptureMissingRequired(effect) => (Some(effect), AttentionKind::Drive),
+        EngineError::VerifyMismatch { effect, .. }
+        | EngineError::ActionVerifyMismatch { effect, .. } => (Some(effect), AttentionKind::Verify),
+        EngineError::ActionFailed { effect, .. } => (Some(effect), AttentionKind::Action),
+        EngineError::NoUndo(effect) => (Some(effect), AttentionKind::NoUndo),
+        EngineError::JournalMark { effect, .. } => (Some(effect), AttentionKind::Store),
+        EngineError::Claim {
+            source: ClaimsError::Kind(KindError::ElevatedOutcomeUnknown(..)),
+            ..
+        } => (None, AttentionKind::OutcomeUnknown),
+        EngineError::Claim { .. } => (None, AttentionKind::Claim),
+        EngineError::SnapshotWrite(_)
+        | EngineError::EntryCleanup(_)
+        | EngineError::AttentionWrite(_) => (None, AttentionKind::Store),
+        _ => (None, AttentionKind::Other),
+    };
+    AttentionItem {
+        effect: effect.cloned(),
+        kind,
+        message: user_facing_failure(phase, error),
+    }
 }
 
 /// An elevated child may have run ops and what it did cannot be proven: its response is lost or
@@ -295,6 +398,34 @@ pub(crate) struct DriveState {
     processed: Vec<ProcessedEffect>,
     pub(crate) effect_results: Vec<EffectResult>,
     pub(crate) held_shared: Vec<HeldInfo>,
+}
+
+impl DriveState {
+    /// The actions this pass drove: on a pass that verified end to end, exactly the journal rows
+    /// its outcome may resolve. Settings need no row and Shared effects have none.
+    pub(crate) fn driven_actions(&self) -> BTreeSet<EffectId> {
+        self.processed
+            .iter()
+            .filter_map(|p| match p {
+                ProcessedEffect::Action(id, _) => Some(id.clone()),
+                ProcessedEffect::SharedClaim(_) | ProcessedEffect::SharedRelease(_) => None,
+            })
+            .collect()
+    }
+}
+
+/// Marks the journal rows a verified outcome accounted for, before its record is cleared: a crash
+/// between the two leaves a stale mark the next clear releases, never a resolved tweak the next
+/// crash scan marks again. A store failure only leaves residue that scan raises, so it is logged.
+pub(crate) fn resolve_accounted(deps: &Deps, tweak_id: &str, accounted: &BTreeSet<EffectId>) {
+    if let Err(e) = deps
+        .snapshots
+        .resolve_journal_rows(tweak_id, accounted, deps.machine_guid)
+    {
+        log::warn!(
+            "tweak '{tweak_id}': could not resolve the journal rows this run accounted for: {e}"
+        );
+    }
 }
 
 /// Applies `target` to `tweak` (spec §8.1). Async only to hold the per-tweak lock across the whole
@@ -451,6 +582,7 @@ fn do_apply(
             action_id: id.clone(),
             intended: true,
             completed: false,
+            resolved: false,
         })
         .collect();
     let seq = deps
@@ -482,6 +614,13 @@ fn do_apply(
     match drive_result {
         Ok(()) => {
             deps.probe_cache.invalidate(&tweak.id);
+            // A fully verified apply is one of the three clears (ADR-0002), and it accounts for
+            // the actions it drove -- never for a row it left alone. A failed clear keeps the
+            // record, so the status below still reports it rather than dropping it silently.
+            resolve_accounted(deps, &tweak.id, &state.driven_actions());
+            if let Err(e) = deps.snapshots.clear_attention(&tweak.id, deps.machine_guid) {
+                log::warn!("tweak '{}': could not clear Needs Attention: {e}", tweak.id);
+            }
             Ok(ApplyOutcome {
                 effects: state.effect_results,
                 status: TweakStatus {
@@ -489,6 +628,7 @@ fn do_apply(
                     unavailable: pre_status.unavailable,
                     residues,
                     has_history: true,
+                    attention: detect::attention(&tweak.id, deps),
                     held_shared: state.held_shared,
                     observed: Vec::new(),
                 },
@@ -496,19 +636,37 @@ fn do_apply(
         }
         Err(original) => {
             // Atomic rollback (ADR-0001): never `let _ =` this result.
-            let mut rollback_failures = rollback(tweak, corpus, &captured, &state.processed, deps);
+            let rollback_failures = rollback(tweak, corpus, &captured, &state.processed, deps);
             deps.probe_cache.invalidate(&tweak.id);
-            if rollback_failures.is_empty() && !outcome_is_unknown(&original) {
+            let outcome_unknown = outcome_is_unknown(&original);
+            let mut store = Vec::new();
+            if rollback_failures.is_empty() && !outcome_unknown {
                 // Verified full restore: the machine now matches the just-captured entry, so
-                // consume it (ADR-0002). A failed consume itself is surfaced, never swallowed --
-                // the entry then simply stays on disk, the safe failure mode.
+                // consume it (ADR-0002). A failed consume leaves the entry on disk, the safe
+                // failure mode, and is named as itself instead of as an unrecovered resource.
                 if let Err(e) = deps.snapshots.consume(&tweak.id, seq) {
-                    rollback_failures.push(EngineError::SnapshotWrite(e));
+                    store.push(EngineError::EntryCleanup(e));
+                }
+            } else {
+                let attention = Attention {
+                    reason: AttentionReason::ApplyFailed,
+                    items: std::iter::once(&original)
+                        .chain(&rollback_failures)
+                        .map(|e| attention_item(Phase::Apply, e))
+                        .collect(),
+                };
+                if let Err(e) =
+                    deps.snapshots
+                        .set_attention(&tweak.id, deps.machine_guid, attention)
+                {
+                    store.push(EngineError::AttentionWrite(e));
                 }
             }
             Err(EngineError::RollbackReport {
                 original: Box::new(original),
                 rollback_failures,
+                outcome_unknown,
+                store,
             })
         }
     }
@@ -1958,6 +2116,7 @@ mod tests {
         let EngineError::RollbackReport {
             original,
             rollback_failures,
+            ..
         } = err
         else {
             panic!("expected RollbackReport");
@@ -2010,6 +2169,7 @@ mod tests {
         let EngineError::RollbackReport {
             original,
             rollback_failures,
+            ..
         } = err
         else {
             panic!("expected RollbackReport");
@@ -2263,6 +2423,7 @@ mod tests {
         let EngineError::RollbackReport {
             original,
             rollback_failures,
+            ..
         } = err
         else {
             panic!("expected RollbackReport");
@@ -2282,6 +2443,274 @@ mod tests {
                 .is_some(),
             "an unknown outcome inside a shared claim must keep the entry"
         );
+    }
+
+    /// One failing tweak whose single Setting reaches `plan`, at `Manual`, with option "A" driving
+    /// it to `Disabled`.
+    fn attention_fixture(h: &Harness, plan: DrivePlan) -> (Tweak, Corpus) {
+        use crate::tweaks::model::StartupType;
+        h.kind
+            .seed("s1", Value::Startup(StartupType::Manual))
+            .drive_plan("s1", plan);
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        (t, c)
+    }
+
+    /// ADR-0005 amendment: a kept snapshot surfaces as Needs Attention on a rescan and after a
+    /// restart (a fresh store over the same directory).
+    #[test]
+    fn an_unknown_outcome_is_needs_attention_across_rescan_and_restart() {
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        let (t, c) = attention_fixture(&h, DrivePlan::OutcomeUnknownOnce);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect_err("s1's outcome is unknown");
+        let message = err.to_string();
+        assert!(!message.contains("fully verified"), "{message}");
+        assert!(message.contains("snapshot was kept"), "{message}");
+
+        let attention = detect::detect(&t, &c, &h.deps())
+            .attention
+            .expect("a rescan shows Needs Attention");
+        assert_eq!(attention.reason, AttentionReason::ApplyFailed);
+        assert!(
+            attention
+                .items
+                .iter()
+                .any(|i| i.effect.as_ref() == Some(&EffectId("s1".into()))),
+            "{attention:?}"
+        );
+
+        let reopened = SnapshotStore::open(h._tmp.path().to_path_buf());
+        let after_restart = Deps {
+            snapshots: &reopened,
+            ..h.deps()
+        };
+        assert_eq!(
+            detect::detect(&t, &c, &after_restart).attention,
+            Some(attention)
+        );
+    }
+
+    #[test]
+    fn an_incomplete_rollback_records_needs_attention_and_keeps_its_entry() {
+        let h = Harness::new();
+        let (t, c) = attention_fixture(&h, DrivePlan::Err);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("drive fails");
+        assert!(err.to_string().contains("unrecoverable"), "{err}");
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_some(),
+            "an incomplete rollback keeps the entry"
+        );
+        let attention = h
+            .snapshots
+            .attention("demo", Some("test-guid"))
+            .unwrap()
+            .expect("the failure is recorded");
+        assert!(!attention.items.is_empty());
+    }
+
+    /// The record is not the entry's, so an option label the corpus no longer defines cannot hide
+    /// an unresolved failure (ADR-0002's amendment keeps the invalid entry, surfaced, undeleted).
+    #[test]
+    fn needs_attention_survives_its_entry_turning_invalid() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind
+            .seed("s1", Value::Startup(StartupType::Disabled))
+            .drive_plan("s1", DrivePlan::OutcomeUnknownOnce);
+        let options = |first: &str| {
+            vec![
+                opt(
+                    first,
+                    vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+                ),
+                opt("B", vec![("s1", set(Value::Startup(StartupType::Manual)))]),
+            ]
+        };
+        let t = tweak("demo", vec![svc_effect("s1", false)], options("A"));
+        let c = corpus(vec![t.clone()], vec![]);
+
+        run_apply(&t, &c, &OptLabel("B".into()), &h.deps()).expect_err("s1's outcome is unknown");
+        assert!(detect::detect(&t, &c, &h.deps()).attention.is_some());
+
+        // "A" is renamed, so the entry that captured it is now a dangling reference.
+        let renamed = tweak("demo", vec![svc_effect("s1", false)], options("A2"));
+        let renamed_corpus = corpus(vec![renamed.clone()], vec![]);
+        let status = detect::detect(&renamed, &renamed_corpus, &h.deps());
+        assert!(!status.has_history, "the entry no longer restores");
+        assert!(
+            status.attention.is_some(),
+            "but the tweak still needs the user"
+        );
+    }
+
+    #[test]
+    fn a_verified_apply_clears_the_record() {
+        let h = Harness::new();
+        let (t, c) = attention_fixture(&h, DrivePlan::OutcomeUnknownOnce);
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s1's outcome is unknown");
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("the retry works");
+        assert_eq!(outcome.status.attention, None);
+        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
+        assert_eq!(
+            h.snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+    }
+
+    /// The recurrence the record alone could never stop: journal residue on a `Values` entry, which
+    /// no push ever dedups away, outlives the clear and re-marks a tweak the user resolved at every
+    /// later launch. The re-apply drove `act1`, so it resolves `act1`'s row and only that row.
+    #[test]
+    fn a_verified_apply_resolves_the_residue_a_crash_left_on_a_superseded_entry() {
+        use crate::tweaks::engine::lifecycle::record_crash_residue;
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("act1", true, false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("act1", OptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        // The crash: an action row planned and never confirmed, on an entry nothing will displace.
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: vec![JournalRow {
+                        action_id: EffectId("act1".into()),
+                        intended: true,
+                        completed: false,
+                        resolved: false,
+                    }],
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        record_crash_residue(&h.snapshots, "demo", Some("test-guid"));
+        assert_eq!(
+            h.snapshots
+                .attention("demo", Some("test-guid"))
+                .unwrap()
+                .map(|a| a.reason),
+            Some(AttentionReason::CrashResidue)
+        );
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("the re-apply verifies");
+        assert_eq!(
+            h.snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+
+        for _ in 0..2 {
+            record_crash_residue(&h.snapshots, "demo", Some("test-guid"));
+            assert_eq!(
+                h.snapshots.attention("demo", Some("test-guid")).unwrap(),
+                None,
+                "the crash entry's row must not re-mark a tweak the re-apply resolved"
+            );
+        }
+        assert!(
+            h.snapshots
+                .list("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .len()
+                >= 2,
+            "and nothing was deleted to achieve it (ADR-0002)"
+        );
+    }
+
+    /// The record is for uncertainty, not for every failure: a drive that fails with a known
+    /// outcome and a rollback that fully verifies consumes its entry and records nothing.
+    #[test]
+    fn a_failed_apply_whose_rollback_verifies_records_nothing() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("anchor", Value::Startup(StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![
+                svc_effect("anchor", false),
+                action_effect("act1", true, true),
+            ],
+            vec![opt(
+                "A",
+                vec![
+                    ("anchor", set(Value::Startup(StartupType::Disabled))),
+                    ("act1", OptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.actions.fail_apply("act1_apply");
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("act1's apply fails");
+
+        assert_eq!(
+            h.snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None,
+            "a verified rollback with a known outcome leaves nothing to attend to"
+        );
+        assert_eq!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap(),
+            None,
+            "and its entry is consumed, not kept"
+        );
+        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
+    }
+
+    /// A record that cannot be written is named as itself: a rollback that restored everything must
+    /// never be described as leaving items unrecoverable.
+    #[test]
+    fn a_failed_record_write_is_not_reported_as_an_unrecovered_item() {
+        let h = Harness::new();
+        let (t, c) = attention_fixture(&h, DrivePlan::OutcomeUnknownOnce);
+        // A directory where the record file belongs: the atomic rename cannot replace it.
+        std::fs::create_dir_all(h._tmp.path().join("demo").join("_attention.json")).unwrap();
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect_err("s1's outcome is unknown");
+        let message = err.to_string();
+        assert!(
+            message.contains("Needs Attention could not be recorded"),
+            "{message}"
+        );
+        assert!(!message.contains("unrecoverable"), "{message}");
+
+        // And the card reads the same state: a record that cannot be read is never a clean tweak.
+        let attention = detect::detect(&t, &c, &h.deps())
+            .attention
+            .expect("an unreadable record is surfaced, not swallowed");
+        assert_eq!(attention.reason, AttentionReason::RecordUnreadable);
     }
 
     #[test]
@@ -2743,11 +3172,10 @@ mod tests {
             .head("demo", &c, Some("test-guid"), 19045)
             .unwrap()
             .expect("kept");
-        let flagged = crate::tweaks::engine::lifecycle::scan_for_crash_residue("demo", &entry)
+        let flagged = crate::tweaks::engine::lifecycle::scan_for_crash_residue(&[entry])
             .expect("act2's intended-but-unmarked row must be flagged");
-        assert_eq!(flagged.tweak_id, "demo");
-        assert_eq!(flagged.unrecoverable.len(), 1);
-        assert!(flagged.unrecoverable[0].contains("act2"));
+        assert_eq!(flagged.items.len(), 1);
+        assert!(flagged.items[0].message.contains("act2"));
     }
 
     #[test]

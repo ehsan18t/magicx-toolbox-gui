@@ -228,6 +228,7 @@ fn collect_elevated_failures(tweak_id: &str, e: &EngineError, during: &str, out:
         EngineError::RollbackReport {
             original,
             rollback_failures,
+            ..
         } => {
             collect_elevated_failures(tweak_id, original, during, out);
             for failed in rollback_failures {
@@ -349,22 +350,47 @@ pub fn user_facing_failure(phase: Phase, e: &EngineError) -> String {
             format!("shared setting '{shared}': {}", claims_failure(source))
         }
         EngineError::Invalid(_) => "internal engine inconsistency".to_owned(),
+        EngineError::NoUndo(effect) => {
+            format!("action '{effect}' ran and declares no undo, so it cannot be reversed")
+        }
+        EngineError::EntryCleanup(_) => {
+            "the machine was restored, but its spent snapshot could not be released".to_owned()
+        }
+        EngineError::AttentionWrite(_) => "Needs Attention could not be recorded".to_owned(),
+        EngineError::RestoreFailed { failures, store } => {
+            let named: Vec<String> = failures
+                .iter()
+                .chain(store)
+                .map(|f| user_facing_failure(phase, f))
+                .collect();
+            format!("{}; the snapshot was kept", named.join("; "))
+        }
         EngineError::RollbackReport {
             original,
             rollback_failures,
+            outcome_unknown,
+            store,
         } => {
             let undone = match phase {
                 Phase::Apply => "the tweak was rolled back",
                 Phase::Restore => "the restore was undone",
             };
-            let after = if rollback_failures.is_empty() {
-                format!("{undone} and verified")
-            } else {
+            let mut after = if !rollback_failures.is_empty() {
                 format!(
                     "{undone}, but {}",
                     needing_attention(rollback_failures.len())
                 )
+            } else if *outcome_unknown {
+                format!("{undone}, but an elevated step's outcome cannot be proven either way")
+            } else {
+                format!("{undone} and verified")
             };
+            // Named as itself: a rollback that restored everything must not read as one that left
+            // the machine unrecovered just because the store could not be written afterwards.
+            for failure in store {
+                after.push_str("; ");
+                after.push_str(&user_facing_failure(phase, failure));
+            }
             format!("{}; {after}", user_facing_failure(phase, original))
         }
     }
@@ -638,6 +664,8 @@ mod tests {
                     effect: EffectId("wu_orch".into()),
                     source: KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
                 }],
+                outcome_unknown: true,
+                store: Vec::new(),
             },
         );
         let [original, rolled_back] = &lines[..] else {
@@ -688,6 +716,8 @@ mod tests {
                 &EngineError::RollbackReport {
                     original: Box::new(in_process()),
                     rollback_failures: vec![elevated()],
+                    outcome_unknown: false,
+                    store: Vec::new(),
                 }
             ),
             "the original went unrecorded"
@@ -697,6 +727,8 @@ mod tests {
             &EngineError::RollbackReport {
                 original: Box::new(elevated()),
                 rollback_failures: vec![in_process()],
+                outcome_unknown: false,
+                store: Vec::new(),
             }
         ));
     }
@@ -741,6 +773,10 @@ mod tests {
             EngineError::RollbackReport {
                 original: Box::new(hostile()),
                 rollback_failures: vec![hostile()],
+                outcome_unknown: false,
+                store: vec![EngineError::AttentionWrite(
+                    crate::tweaks::snapshot::SnapshotError::ExeDir,
+                )],
             },
         ] {
             let shown = user_facing_failure(Phase::Apply, &e);
@@ -764,6 +800,54 @@ mod tests {
         assert!(!shown.contains("Present"), "{shown}");
     }
 
+    /// The Needs Attention record is persisted and then printed verbatim in the card tooltip and the
+    /// details modal, so it is held to the error channel's rule: the structure around the failure,
+    /// never the text the failure came with.
+    #[test]
+    fn a_persisted_attention_item_never_quotes_the_failure_text() {
+        let effect = || EffectId("wu_sih".into());
+        for e in [
+            EngineError::DriveFailed {
+                effect: effect(),
+                source: KindError::AccessDenied(HOSTILE_DETAIL.into()),
+            },
+            EngineError::CaptureFailed {
+                effect: effect(),
+                source: KindError::NotFound(HOSTILE_DETAIL.into()),
+            },
+            EngineError::ActionFailed {
+                effect: effect(),
+                source: KindError::ActionExecFailed(HOSTILE_DETAIL.into()),
+            },
+            EngineError::VerifyMismatch {
+                effect: effect(),
+                expected: Value::Present(true),
+                actual: Value::Present(false),
+            },
+            EngineError::Claim {
+                shared: SharedId("wu_sih".into()),
+                source: ClaimsError::Kind(KindError::AccessDenied(HOSTILE_DETAIL.into())),
+            },
+            EngineError::JournalMark {
+                effect: effect(),
+                source: crate::tweaks::snapshot::SnapshotError::ExeDir,
+            },
+        ] {
+            for phase in [Phase::Apply, Phase::Restore] {
+                let item = apply::attention_item(phase, &e);
+                assert_no_detail(&item.message);
+                // `VerifyMismatch`'s own text, the one shape whose raw form quotes both values.
+                assert!(
+                    !item.message.contains("verify mismatch"),
+                    "{}",
+                    item.message
+                );
+                assert!(!item.message.contains("Present"), "{}", item.message);
+                assert_eq!(item.message, user_facing_failure(phase, &e));
+            }
+        }
+    }
+
     /// A restore has no rollback phase, so it never borrows apply's word for one, and neither
     /// phase counts "item(s)" at the user.
     #[test]
@@ -775,6 +859,8 @@ mod tests {
         let report = |n: usize| EngineError::RollbackReport {
             original: Box::new(failed()),
             rollback_failures: (0..n).map(|_| failed()).collect(),
+            outcome_unknown: false,
+            store: Vec::new(),
         };
 
         let apply = user_facing_failure(Phase::Apply, &report(1));

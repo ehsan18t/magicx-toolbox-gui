@@ -1,25 +1,15 @@
-//! Snapshot store: the persistence backbone the restore/rollback safety story depends on (spec
-//! §8.2/§8.3/§11; ADR-0002). Pure storage — no Windows effect APIs, no elevation. One JSON file
-//! per entry inside a per-tweak subdirectory: a single corrupt or huge history can never make
-//! another tweak's history unreadable, and `discard`/dedup ever touch exactly the one file they
-//! target instead of rewriting a shared blob.
-//!
-//! **Seq, never wall-clock** (invariant 6). The next seq is the max of what's actually on disk
-//! (`scan_max_seq`, filenames only — corruption in one file's *content* can never block issuing a
-//! seq) and a best-effort cache (`_seq.json`) that remembers the high-water mark even after a
-//! dedup vacates the highest entry. Losing the cache costs a directory scan, never correctness.
-//!
-//! **Invalid entries are never deleted by this module** (ADR-0002). `classify` is the only
-//! gatekeeper: it returns a verdict, `head`/`list` act on it, and `push`'s dedup only ever removes
-//! an existing entry that itself `classify`s `Valid` against the caller's own corpus/machine/build
-//! — a foreign-machine or otherwise-invalid entry that happens to parse and share the label is
-//! left untouched. `discard` (explicit consent) and `consume` (caller-verified restore) are the
-//! only other removal paths.
+//! Snapshot store (spec §8.2/§8.3/§11; ADR-0002): pure storage, one JSON file per entry under a
+//! per-tweak subdirectory, so one corrupt history never hides another's. Seq comes from disk plus a
+//! `_seq.json` hint, never wall-clock (invariant 6). Needs Attention is a per-tweak record
+//! (`_attention.json`), not an entry field, because dedup/`consume`/`discard` all delete entries.
+//! Journal residue is the other durable form of unresolved state, and it is resolved per row in the
+//! entry that holds it, by the operation that accounted for that row.
+//! Nothing here deletes an invalid entry, or a record this machine and build do not own.
 
 use crate::tweaks::model::{Corpus, EffectId, Value};
 use crate::tweaks::validate::{option_unavailable, Milestone};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -29,6 +19,8 @@ use std::path::{Path, PathBuf};
 const SCHEMA_VERSION: u32 = 1;
 
 const SEQ_CACHE_FILE: &str = "_seq.json";
+
+const ATTENTION_FILE: &str = "_attention.json";
 
 /// Monotonic per-tweak sequence number (spec §8.2) — never derived from wall-clock. Orders a
 /// tweak's history; `head`/`consume`/`discard`/`mark_completed` address entries by this alone.
@@ -55,25 +47,113 @@ pub enum Captured {
 /// defaultable, for the same reason as `Entry`'s identity fields: `action_id` is itself an
 /// identity key `mark_completed` matches on, and `intended`/`completed` are the WAL state the
 /// whole durability guarantee is about — a missing field here must be `Corrupt`, never a guess.
+/// `resolved` is the exception: absent means "still outstanding", the surfacing direction, so an
+/// entry written before the field existed still loads and still raises its residue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalRow {
     pub action_id: EffectId,
     pub intended: bool,
     pub completed: bool,
+    /// An operation that drove and verified this action has accounted for the row, so the crash
+    /// scan must not raise it again. Set only by `resolve_journal_rows`, never by driving.
+    #[serde(default)]
+    pub resolved: bool,
 }
 
-/// One persisted snapshot entry (spec §8.3).
-///
-/// `#[serde(default)]` is applied **only** to `schema_version`/`machine_guid` — spec §11's
-/// forward-compat intent is that a genuinely old external file (predating one of these fields, or
-/// a future additive field on either) still loads, matching the proven pattern in
-/// `services/backup/storage.rs`'s `TweakSnapshot`. It is deliberately NOT a blanket
-/// container-level default: `seq`, `tweak_id`, `captured`, and `journal` are identity data, and
-/// silently defaulting any of them would be worse than refusing to parse. Concretely, a blanket
-/// default once let a `seq`-less entry deserialize as `Seq(0)`, and `mark_completed` trusted that
-/// content-derived value to pick which file to rewrite — exactly the "content decides which file
-/// gets written" failure `mark_completed`/`rewrite_entry` are built to rule out. An entry missing
-/// any of the four mandatory fields is correctly `Corrupt`, never guessed at.
+/// Which operation left the tweak in a state the user has to resolve (ADR-0001/0002).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttentionReason {
+    ApplyFailed,
+    RestoreFailed,
+    CrashResidue,
+    /// The record itself could not be read, so whatever it holds is still unresolved. Never
+    /// persisted: synthesized by the reader so an I/O failure cannot read as a clean tweak.
+    RecordUnreadable,
+}
+
+/// What kind of step could not be verified, so the UI can tell a retryable drive from a one-way
+/// action or a store failure instead of re-parsing a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttentionKind {
+    Drive,
+    Verify,
+    OutcomeUnknown,
+    Action,
+    NoUndo,
+    Claim,
+    Store,
+    CrashResidue,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttentionItem {
+    #[serde(default)]
+    pub effect: Option<EffectId>,
+    pub kind: AttentionKind,
+    pub message: String,
+}
+
+/// Needs Attention for one tweak, persisted in its own record so nothing that deletes an entry --
+/// dedup, a later verified rollback's `consume`, an entry turning invalid -- can drop it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attention {
+    pub reason: AttentionReason,
+    pub items: Vec<AttentionItem>,
+}
+
+/// The attention record as it sits on disk, stamped like an `Entry` so a foreign-machine or
+/// future-schema record is ignored rather than believed.
+#[derive(Debug, Serialize, Deserialize)]
+struct AttentionRecord {
+    #[serde(default)]
+    schema_version: u32,
+    #[serde(default)]
+    machine_guid: Option<String>,
+    tweak_id: String,
+    timestamp: String,
+    attention: Attention,
+}
+
+/// What sits at the record path, and whether this build on this machine owns it.
+enum RecordState {
+    Absent,
+    /// Claims no owner at all, so a later mark may replace it; still never deleted (ADR-0002).
+    Unreadable,
+    /// Another machine's or a *newer* build's: never overwritten, never removed.
+    Theirs,
+    Ours(Attention),
+}
+
+/// Whether a stamp belongs to a build this one must defer to. An older or missing version is this
+/// build's to replace: refusing it would leave such a record unreadable, unwritable and unclearable.
+fn written_by_a_newer_build(schema_version: u32) -> bool {
+    schema_version > SCHEMA_VERSION
+}
+
+fn read_record(path: &Path, machine_guid: Option<&str>) -> Result<RecordState, SnapshotError> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(RecordState::Absent),
+        Err(e) => return Err(SnapshotError::Io(e)),
+    };
+    let Ok(record) = serde_json::from_slice::<AttentionRecord>(&bytes) else {
+        return Ok(RecordState::Unreadable);
+    };
+    if written_by_a_newer_build(record.schema_version) {
+        return Ok(RecordState::Theirs);
+    }
+    match (record.machine_guid.as_deref(), machine_guid) {
+        (Some(recorded), Some(current)) if recorded != current => Ok(RecordState::Theirs),
+        _ => Ok(RecordState::Ours(record.attention)),
+    }
+}
+
+/// One persisted snapshot entry (spec §8.3). Only `schema_version` and `machine_guid` default when
+/// absent: `seq`, `tweak_id`, `captured` and `journal` are identity data, and a defaulted `seq`
+/// once let file content pick which file `mark_completed` rewrote.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     #[serde(default)]
@@ -164,6 +244,11 @@ pub enum SnapshotError {
         seq: Seq,
         action_id: String,
     },
+
+    #[error(
+        "the Needs Attention record for tweak '{tweak_id}' belongs to another machine or build"
+    )]
+    ForeignAttention { tweak_id: String },
 }
 
 /// Portable, per-tweak, atomic-write snapshot history (spec §11). One subdirectory per tweak-id
@@ -224,6 +309,7 @@ impl SnapshotStore {
         // schema, scoped out — is never treated as "the prior capture of this option" by this
         // store; it stays on disk, surfaced via `list`, released only by `discard`. Values dumps
         // never dedup.
+        let mut superseded: Vec<Seq> = Vec::new();
         if let Captured::OptionRef(label) = &new_entry.captured {
             for raw in read_raw_entries(&dir)? {
                 let (validity, parsed) =
@@ -234,12 +320,17 @@ impl SnapshotStore {
                 if validity != EntryValidity::Valid {
                     continue;
                 }
-                if matches!(&existing.captured, Captured::OptionRef(l) if l == label) {
-                    fs::remove_file(entry_path(&dir, raw.seq))?;
-                    log::debug!(
-                        "tweak '{tweak_id}': dedup removed seq {:?} for option '{label}'",
+                // An outstanding row is the whole durable mark for work a probe-less action left
+                // undetectable, so it outlives dedup: superseding the entry would delete it.
+                if existing.journal.iter().any(is_outstanding) {
+                    log::warn!(
+                        "tweak '{tweak_id}': entry {:?} kept by dedup -- its journal is still outstanding",
                         raw.seq
                     );
+                    continue;
+                }
+                if matches!(&existing.captured, Captured::OptionRef(l) if l == label) {
+                    superseded.push(raw.seq);
                 }
             }
         }
@@ -254,7 +345,17 @@ impl SnapshotStore {
             captured: new_entry.captured,
             journal: new_entry.journal,
         };
+        // The new return point is durable before the superseded one goes (ADR-0002): a failed write
+        // must never be able to leave the tweak with no entry at all.
         write_entry_create_new(&dir, &entry)?;
+        for old in superseded {
+            match fs::remove_file(entry_path(&dir, old)) {
+                // Only a duplicate return point is left behind, which the next push dedups again --
+                // far cheaper than failing an apply whose entry is already on disk.
+                Err(e) => log::warn!("tweak '{tweak_id}': dedup could not remove {old:?}: {e}"),
+                Ok(()) => log::debug!("tweak '{tweak_id}': dedup removed {old:?}"),
+            }
+        }
         // Best-effort: losing this hint only costs a directory scan on the next push, never
         // correctness — `scan_max_seq` always recovers the true high-water mark from disk.
         if let Err(e) = write_seq_cache(&dir, seq) {
@@ -310,6 +411,49 @@ impl SnapshotStore {
             .collect())
     }
 
+    /// Every entry whose journal is still the crash scan's business: this build's and machine's,
+    /// newest first. Residue can sit on a superseded entry or on one the corpus has since made
+    /// dangling, so `head`'s walk would miss it. Which *rows* are still outstanding is the reader's
+    /// call, per row -- see [`JournalRow::resolved`].
+    pub fn unresolved_entries(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+    ) -> Result<Vec<Entry>, SnapshotError> {
+        let dir = self.tweak_dir(tweak_id);
+        let mut raws = read_raw_entries(&dir)?;
+        raws.sort_by_key(|r| std::cmp::Reverse(r.seq));
+        Ok(raws
+            .iter()
+            .filter_map(|raw| serde_json::from_slice::<Entry>(&raw.bytes).ok())
+            .filter(|e| e.schema_version == SCHEMA_VERSION)
+            .filter(|e| match (e.machine_guid.as_deref(), machine_guid) {
+                (Some(entry_guid), Some(current)) => entry_guid == current,
+                _ => true,
+            })
+            .collect())
+    }
+
+    /// Tweak ids whose directory holds a Needs Attention record, so one the corpus no longer defines
+    /// can be named rather than left with no card to badge and no way to release it.
+    pub fn recorded_tweaks(&self) -> Result<Vec<String>, SnapshotError> {
+        if !self.root.exists() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        for entry in fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() || !entry.path().join(ATTENTION_FILE).exists() {
+                continue;
+            }
+            if let Some(name) = entry.file_name().to_str() {
+                out.push(name.to_string());
+            }
+        }
+        out.sort_unstable();
+        Ok(out)
+    }
+
     /// Removes the entry after a verified restore (caller-enforced, ADR-0002). Mechanically
     /// identical to `discard`; kept as a separate method because the two release paths carry
     /// different caller obligations the store itself cannot check.
@@ -323,44 +467,198 @@ impl SnapshotStore {
         remove_entry(&self.tweak_dir(tweak_id), tweak_id, seq)
     }
 
-    /// Durably flips one journal row's `completed` bit (spec §8.1, invariant 5): an atomic
-    /// rewrite of the whole entry, fsynced, so the mark survives a crash immediately after.
-    ///
-    /// `seq` — the parameter, i.e. the filename this method read the entry from — is the ONLY
-    /// trusted identity for where the rewrite lands; the entry's own (content-derived) `seq` field
-    /// is never used to pick a write path, and is overwritten to match before the rewrite so the
-    /// file's content can't drift from its own filename. Content must never decide which file gets
-    /// written.
+    /// Durably flips one journal row's `completed` bit (spec §8.1, invariant 5). `seq` (the
+    /// filename) is the only trusted write target; the content's own `seq` is overwritten to match,
+    /// so content never picks which file is written.
     pub fn mark_completed(
         &self,
         tweak_id: &str,
         seq: Seq,
         action_id: &EffectId,
     ) -> Result<(), SnapshotError> {
-        let dir = self.tweak_dir(tweak_id);
-        let path = entry_path(&dir, seq);
-        let bytes = fs::read(&path).map_err(|e| io_to_not_found(e, tweak_id, seq))?;
-        let mut entry: Entry =
-            serde_json::from_slice(&bytes).map_err(|_| SnapshotError::Corrupt {
-                tweak_id: tweak_id.to_string(),
-                seq,
-            })?;
-
-        let row = entry
-            .journal
-            .iter_mut()
-            .find(|r| r.action_id == *action_id)
-            .ok_or_else(|| SnapshotError::UnknownJournalAction {
-                tweak_id: tweak_id.to_string(),
-                seq,
-                action_id: action_id.to_string(),
-            })?;
-        row.completed = true;
-        entry.seq = seq; // self-heal: the file's own content must agree with its trusted filename
-
-        rewrite_entry(&dir, seq, &entry)?;
+        update_journal(&self.tweak_dir(tweak_id), tweak_id, seq, |journal| {
+            let row = journal
+                .iter_mut()
+                .find(|r| r.action_id == *action_id)
+                .ok_or_else(|| SnapshotError::UnknownJournalAction {
+                    tweak_id: tweak_id.to_string(),
+                    seq,
+                    action_id: action_id.to_string(),
+                })?;
+            row.completed = true;
+            Ok(())
+        })?;
         log::debug!("tweak '{tweak_id}': marked action '{action_id}' completed at seq {seq:?}");
         Ok(())
+    }
+
+    /// Marks every outstanding row naming an action in `accounted` resolved, in the entry that
+    /// holds it, so the crash scan stops raising it. `accounted` is what the calling operation
+    /// actually drove and verified: a row it never probed or undid stays outstanding. Only a fully
+    /// verified apply or restore may call it (ADR-0002), never a failure path.
+    pub fn resolve_journal_rows(
+        &self,
+        tweak_id: &str,
+        accounted: &BTreeSet<EffectId>,
+        machine_guid: Option<&str>,
+    ) -> Result<usize, SnapshotError> {
+        if accounted.is_empty() {
+            return Ok(0);
+        }
+        let dir = self.tweak_dir(tweak_id);
+        let mut resolved = 0usize;
+        for entry in self.unresolved_entries(tweak_id, machine_guid)? {
+            let rows: Vec<EffectId> = entry
+                .journal
+                .iter()
+                .filter(|r| is_outstanding(r) && accounted.contains(&r.action_id))
+                .map(|r| r.action_id.clone())
+                .collect();
+            if rows.is_empty() {
+                continue;
+            }
+            update_journal(&dir, tweak_id, entry.seq, |journal| {
+                for row in journal.iter_mut().filter(|r| rows.contains(&r.action_id)) {
+                    row.resolved = true;
+                }
+                Ok(())
+            })?;
+            log::info!(
+                "tweak '{tweak_id}': resolved {} journal row(s) at seq {:?}",
+                rows.len(),
+                entry.seq
+            );
+            resolved += rows.len();
+        }
+        Ok(resolved)
+    }
+
+    /// This tweak's Needs Attention record (ADR-0001/0002), or `None` only when there is no record
+    /// at all. A record this build cannot use is reported as [`AttentionReason::RecordUnreadable`],
+    /// never believed and never read as a clean tweak: what it holds is still unresolved.
+    pub fn attention(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+    ) -> Result<Option<Attention>, SnapshotError> {
+        match read_record(&self.attention_path(tweak_id), machine_guid)? {
+            RecordState::Ours(attention) => Ok(Some(attention)),
+            RecordState::Absent => Ok(None),
+            RecordState::Unreadable => {
+                log::warn!("tweak '{tweak_id}': unreadable Needs Attention record, kept on disk");
+                Ok(Some(unusable_record(
+                    "the Needs Attention record could not be parsed, so anything it holds is still unresolved",
+                )))
+            }
+            RecordState::Theirs => {
+                log::warn!("tweak '{tweak_id}': Needs Attention record is another machine's or another build's, kept on disk");
+                Ok(Some(unusable_record(
+                    "the Needs Attention record belongs to another machine or another build, so this one cannot say whether it is resolved",
+                )))
+            }
+        }
+    }
+
+    /// Durably records Needs Attention, replacing any earlier record. Deliberately independent of
+    /// the entries: dedup, `consume`, `discard` and an entry turning invalid must not drop it.
+    /// Refuses to overwrite another machine's or build's record, exactly as dedup refuses its entry.
+    pub fn set_attention(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+        attention: Attention,
+    ) -> Result<(), SnapshotError> {
+        if matches!(
+            read_record(&self.attention_path(tweak_id), machine_guid)?,
+            RecordState::Theirs
+        ) {
+            log::error!("tweak '{tweak_id}': another machine's or build's Needs Attention record is on disk, so this mark was not recorded");
+            return Err(SnapshotError::ForeignAttention {
+                tweak_id: tweak_id.to_string(),
+            });
+        }
+        let dir = self.tweak_dir(tweak_id);
+        fs::create_dir_all(&dir)?;
+        let reason = attention.reason;
+        let record = AttentionRecord {
+            schema_version: SCHEMA_VERSION,
+            machine_guid: machine_guid.map(str::to_string),
+            tweak_id: tweak_id.to_string(),
+            timestamp: chrono::Local::now().to_rfc3339(),
+            attention,
+        };
+        let json = serde_json::to_vec_pretty(&record).expect("AttentionRecord always serializes");
+        write_atomic(&dir, ATTENTION_FILE, &json)?;
+        log::warn!("tweak '{tweak_id}': recorded Needs Attention ({reason:?})");
+        Ok(())
+    }
+
+    /// Releases the record, never the journal residue ([`Self::resolve_journal_rows`] resolves that
+    /// per row, so a record cleared over an outstanding row is re-marked by the next crash scan).
+    /// Only a verified apply or restore may call it, never a failure path (ADR-0002).
+    pub fn clear_attention(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+    ) -> Result<(), SnapshotError> {
+        self.remove_record(tweak_id, machine_guid, false)
+    }
+
+    /// Consent's release, and the only one that also removes a record stamped for another machine or
+    /// build: nothing here can ever resolve that record, so refusing it badges the tweak permanently.
+    pub fn clear_attention_consented(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+    ) -> Result<(), SnapshotError> {
+        self.remove_record(tweak_id, machine_guid, true)
+    }
+
+    /// A record naming no owner is this build's to remove, exactly as it is this build's to replace.
+    fn remove_record(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+        consented: bool,
+    ) -> Result<(), SnapshotError> {
+        let path = self.attention_path(tweak_id);
+        match read_record(&path, machine_guid)? {
+            RecordState::Absent => return Ok(()),
+            RecordState::Theirs if !consented => {
+                log::warn!("tweak '{tweak_id}': Needs Attention record is not this build's to clear, left on disk");
+                return Ok(());
+            }
+            RecordState::Theirs | RecordState::Ours(_) | RecordState::Unreadable => {}
+        }
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                log::debug!("tweak '{tweak_id}': cleared Needs Attention");
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(SnapshotError::Io(e)),
+        }
+    }
+
+    fn attention_path(&self, tweak_id: &str) -> PathBuf {
+        self.tweak_dir(tweak_id).join(ATTENTION_FILE)
+    }
+}
+
+/// A row a crash could have left half-done: planned, never confirmed complete, and not since
+/// accounted for by an operation that drove and verified the same action.
+pub fn is_outstanding(row: &JournalRow) -> bool {
+    row.intended && !row.completed && !row.resolved
+}
+
+fn unusable_record(message: &str) -> Attention {
+    Attention {
+        reason: AttentionReason::RecordUnreadable,
+        items: vec![AttentionItem {
+            effect: None,
+            kind: AttentionKind::Store,
+            message: message.to_string(),
+        }],
     }
 }
 
@@ -476,21 +774,29 @@ fn read_seq_cache(dir: &Path) -> Option<u64> {
 
 fn write_seq_cache(dir: &Path, seq: Seq) -> Result<(), SnapshotError> {
     let json = serde_json::to_vec(&SeqCache { last: seq.0 }).expect("SeqCache always serializes");
+    write_atomic(dir, SEQ_CACHE_FILE, &json)
+}
+
+/// Replacing atomic write for the directory's non-entry files: temp file beside them, fsynced,
+/// then renamed over. Entries use `write_entry_create_new`, which must never replace.
+fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), SnapshotError> {
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-    tmp.write_all(&json)?;
+    tmp.write_all(bytes)?;
     tmp.as_file().sync_all()?;
-    tmp.persist(dir.join(SEQ_CACHE_FILE))
+    tmp.persist(dir.join(name))
         .map_err(|e| SnapshotError::Io(e.error))?;
     Ok(())
 }
 
-/// Next monotonic seq (spec §8.2, invariant 6): max of what's actually on disk and the persisted
+/// The high-water mark (spec §8.2, invariant 6): max of what's actually on disk and the persisted
 /// cache, so a dedup-vacated head can never reissue an old number and a lost/corrupt cache
 /// self-heals from the directory. Never wall-clock derived.
+fn current_max_seq(dir: &Path) -> Result<u64, SnapshotError> {
+    Ok(scan_max_seq(dir)?.max(read_seq_cache(dir).unwrap_or(0)))
+}
+
 fn next_seq(dir: &Path) -> Result<Seq, SnapshotError> {
-    let scan_max = scan_max_seq(dir)?;
-    let cached = read_seq_cache(dir).unwrap_or(0);
-    Ok(Seq(scan_max.max(cached) + 1))
+    Ok(Seq(current_max_seq(dir)? + 1))
 }
 
 /// All entry files currently on disk, full content. IO failure here is a genuine failure (never
@@ -544,13 +850,26 @@ fn write_entry_create_new(dir: &Path, entry: &Entry) -> Result<(), SnapshotError
     Ok(())
 }
 
-/// Atomic in-place rewrite of an existing entry (spec §8.1, invariant 5) — used only by
-/// `mark_completed`, where overwriting the current seq's file is exactly the intent.
-///
-/// `seq` is taken as an explicit, caller-trusted parameter and is the ONLY thing that decides the
-/// write path — never `entry.seq`. Content must never decide which file gets written: an entry
-/// whose own `seq` field is missing/wrong (e.g. a stray `#[serde(default)]` letting it read back
-/// as `Seq(0)`) must not silently redirect a rewrite to some other file.
+/// The one read-modify-rewrite path for a journal: `seq` (the filename) is the only trusted write
+/// target, and the content's own `seq` is overwritten to match, so content never picks which file is
+/// written. An `edit` that fails writes nothing.
+fn update_journal(
+    dir: &Path,
+    tweak_id: &str,
+    seq: Seq,
+    edit: impl FnOnce(&mut Vec<JournalRow>) -> Result<(), SnapshotError>,
+) -> Result<(), SnapshotError> {
+    let bytes = fs::read(entry_path(dir, seq)).map_err(|e| io_to_not_found(e, tweak_id, seq))?;
+    let mut entry: Entry = serde_json::from_slice(&bytes).map_err(|_| SnapshotError::Corrupt {
+        tweak_id: tweak_id.to_string(),
+        seq,
+    })?;
+    edit(&mut entry.journal)?;
+    entry.seq = seq;
+    rewrite_entry(dir, seq, &entry)
+}
+
+/// Atomic in-place rewrite at the caller-trusted `seq`, never `entry.seq` (see `update_journal`).
 fn rewrite_entry(dir: &Path, seq: Seq, entry: &Entry) -> Result<(), SnapshotError> {
     let json = serde_json::to_vec_pretty(entry).expect("Entry always serializes");
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
@@ -862,6 +1181,7 @@ mod tests {
                         action_id: action.clone(),
                         intended: true,
                         completed: false,
+                        resolved: false,
                     }],
                 },
                 &empty_corpus(),
@@ -892,6 +1212,440 @@ mod tests {
             .mark_completed("demo", seq, &EffectId("nope".into()))
             .unwrap_err();
         assert!(matches!(err, SnapshotError::UnknownJournalAction { .. }));
+    }
+
+    fn attention() -> Attention {
+        Attention {
+            reason: AttentionReason::ApplyFailed,
+            items: vec![AttentionItem {
+                effect: Some(EffectId("eff1".into())),
+                kind: AttentionKind::OutcomeUnknown,
+                message: "the elevated step's outcome is unknown".into(),
+            }],
+        }
+    }
+
+    /// A folder written by a build that kept the mark on the entry still loads, and its on-entry
+    /// field asserts nothing: no record means no attention.
+    #[test]
+    fn an_older_folder_loads_and_its_on_entry_mark_is_not_attention() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        let json = format!(
+            r#"{{"schema_version":{SCHEMA_VERSION},"machine_guid":"{GUID}","tweak_id":"demo","seq":3,"timestamp":"t","captured":{{"OptionRef":"A"}},"journal":[],"attention":{{"reason":"apply_failed","items":["x"]}}}}"#
+        );
+        fs::write(entry_path(&dir, Seq(3)), json).unwrap();
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+
+        let s = store(tmp.path());
+        let head = s
+            .head("demo", &c, Some(GUID), 19045)
+            .unwrap()
+            .expect("the older entry is still valid");
+        assert_eq!(head.seq, Seq(3));
+        assert_eq!(s.attention("demo", Some(GUID)).unwrap(), None);
+    }
+
+    /// ADR-0002: every entry release deletes a file the mark must outlive.
+    #[test]
+    fn the_record_survives_reopen_dedup_and_consume() {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let s = store(tmp.path());
+        let seq = s
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        s.set_attention("demo", Some(GUID), attention()).unwrap();
+
+        let reopened = store(tmp.path());
+        assert_eq!(
+            reopened.attention("demo", Some(GUID)).unwrap(),
+            Some(attention())
+        );
+
+        let deduped = reopened
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        assert_ne!(deduped, seq);
+        reopened.consume("demo", deduped).unwrap();
+        assert_eq!(reopened.head("demo", &c, Some(GUID), 19045).unwrap(), None);
+        assert_eq!(
+            reopened.attention("demo", Some(GUID)).unwrap(),
+            Some(attention())
+        );
+
+        reopened.clear_attention("demo", Some(GUID)).unwrap();
+        assert_eq!(reopened.attention("demo", Some(GUID)).unwrap(), None);
+    }
+
+    /// Never believed, and never read as clean either: this machine cannot say whether the tweak
+    /// the other one marked is resolved, and answering "nothing pending" would claim it can.
+    #[test]
+    fn a_record_from_another_machine_is_reported_not_believed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        s.set_attention("demo", Some("another-machine"), attention())
+            .unwrap();
+        assert_eq!(
+            s.attention("demo", Some(GUID)).unwrap().map(|a| a.reason),
+            Some(AttentionReason::RecordUnreadable)
+        );
+    }
+
+    /// ADR-0002: entries are never deleted across a machine boundary, and the record follows the
+    /// same rule -- a local mark may not overwrite it and a local clear may not remove it.
+    #[test]
+    fn a_foreign_record_is_never_overwritten_or_deleted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        s.set_attention("demo", Some("another-machine"), attention())
+            .unwrap();
+        let path = tmp.path().join("demo").join(ATTENTION_FILE);
+        let before = fs::read(&path).unwrap();
+
+        let err = s
+            .set_attention("demo", Some(GUID), attention())
+            .expect_err("a local mark must not overwrite another machine's record");
+        assert!(matches!(err, SnapshotError::ForeignAttention { .. }));
+
+        s.clear_attention("demo", Some(GUID))
+            .expect("clearing what this machine does not own is not a failure");
+        assert!(path.exists(), "the foreign record must stay on disk");
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    /// Copy `snapshots/` to a second machine and the record there is one this build can neither
+    /// read nor resolve. Consent is the one release left; without it the badge is permanent, which
+    /// is the "no legitimate way to release" ADR-0002 forbids.
+    #[test]
+    fn only_consent_releases_another_machines_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        s.set_attention("demo", Some("another-machine"), attention())
+            .unwrap();
+        let path = tmp.path().join("demo").join(ATTENTION_FILE);
+
+        s.clear_attention("demo", Some(GUID)).unwrap();
+        assert!(
+            path.exists(),
+            "a verified apply or restore must not release another machine's record"
+        );
+        assert_eq!(
+            s.attention("demo", Some(GUID)).unwrap().map(|a| a.reason),
+            Some(AttentionReason::RecordUnreadable)
+        );
+
+        s.clear_attention_consented("demo", Some(GUID))
+            .expect("consent releases what nothing on this machine can resolve");
+        assert!(!path.exists());
+        assert_eq!(s.attention("demo", Some(GUID)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_wrong_schema_record_is_left_alone_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        let json = format!(
+            r#"{{"schema_version":{},"machine_guid":"{GUID}","tweak_id":"demo","timestamp":"t","attention":{{"reason":"apply_failed","items":[]}}}}"#,
+            SCHEMA_VERSION + 1
+        );
+        fs::write(dir.join(ATTENTION_FILE), &json).unwrap();
+
+        let s = store(tmp.path());
+        assert_eq!(
+            s.attention("demo", Some(GUID)).unwrap().map(|a| a.reason),
+            Some(AttentionReason::RecordUnreadable)
+        );
+        assert!(s.set_attention("demo", Some(GUID), attention()).is_err());
+        s.clear_attention("demo", Some(GUID)).unwrap();
+        assert_eq!(fs::read_to_string(dir.join(ATTENTION_FILE)).unwrap(), json);
+
+        s.clear_attention_consented("demo", Some(GUID))
+            .expect("consent is the one release left for a record this build cannot read");
+        assert!(!dir.join(ATTENTION_FILE).exists());
+    }
+
+    /// A record that will not parse is surfaced, not swallowed: as "no attention" it would hide a
+    /// real mark. It names no owner, so this build may replace it and may release it -- keeping it
+    /// through a clear would badge the tweak with nothing able to lift the badge.
+    #[test]
+    fn an_unparseable_record_reports_itself_and_is_still_releasable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(ATTENTION_FILE), b"{ not json").unwrap();
+
+        let s = store(tmp.path());
+        let reported = s
+            .attention("demo", Some(GUID))
+            .unwrap()
+            .expect("an unparseable record is never a clean tweak");
+        assert_eq!(reported.reason, AttentionReason::RecordUnreadable);
+
+        s.set_attention("demo", Some(GUID), attention())
+            .expect("a record naming no owner may be replaced");
+        assert_eq!(s.attention("demo", Some(GUID)).unwrap(), Some(attention()));
+
+        fs::write(dir.join(ATTENTION_FILE), b"{ not json").unwrap();
+        s.clear_attention("demo", Some(GUID)).unwrap();
+        assert_eq!(s.attention("demo", Some(GUID)).unwrap(), None);
+    }
+
+    /// `head` stops at the newest valid entry, so the crash scan needs its own source: residue can
+    /// sit on a superseded entry the head walk never reaches.
+    #[test]
+    fn unresolved_entries_reaches_entries_head_skips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let older = s
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        let newer = s
+            .push("demo", values_entry(), &c, Some(GUID), 19045)
+            .unwrap();
+
+        let seqs: Vec<Seq> = s
+            .unresolved_entries("demo", Some(GUID))
+            .unwrap()
+            .iter()
+            .map(|e| e.seq)
+            .collect();
+        assert_eq!(
+            seqs,
+            vec![newer, older],
+            "newest first, superseded included"
+        );
+        assert_eq!(
+            s.head("demo", &c, Some(GUID), 19045)
+                .unwrap()
+                .map(|e| e.seq),
+            Some(newer),
+            "head stops at the newest valid entry, so the older one needs its own source"
+        );
+    }
+
+    #[test]
+    fn unresolved_entries_skips_another_machines_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        let foreign = Entry {
+            schema_version: SCHEMA_VERSION,
+            machine_guid: Some("foreign-machine".into()),
+            tweak_id: "demo".into(),
+            seq: Seq(1),
+            timestamp: "t".into(),
+            captured: Captured::Values(BTreeMap::new()),
+            journal: Vec::new(),
+        };
+        write_entry_create_new(&dir, &foreign).unwrap();
+        let s = store(tmp.path());
+        assert!(s.unresolved_entries("demo", Some(GUID)).unwrap().is_empty());
+    }
+
+    fn crashed_entry_for(action_id: &str) -> NewEntry {
+        NewEntry {
+            captured: Captured::Values(BTreeMap::new()),
+            journal: vec![JournalRow {
+                action_id: EffectId(action_id.into()),
+                intended: true,
+                completed: false,
+                resolved: false,
+            }],
+        }
+    }
+
+    fn crashed_entry() -> NewEntry {
+        crashed_entry_for("act1")
+    }
+
+    /// Every row the crash scan would still raise, across the whole history.
+    fn outstanding(s: &SnapshotStore) -> Vec<EffectId> {
+        s.unresolved_entries("demo", Some(GUID))
+            .unwrap()
+            .iter()
+            .flat_map(|e| e.journal.iter())
+            .filter(|r| is_outstanding(r))
+            .map(|r| r.action_id.clone())
+            .collect()
+    }
+
+    /// The mark lands in the entry that holds the row, so it survives a reopen, and the entry
+    /// itself is untouched (ADR-0002).
+    #[test]
+    fn an_accounted_row_resolves_in_place_and_keeps_its_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        s.push("demo", crashed_entry(), &empty_corpus(), Some(GUID), 0)
+            .unwrap();
+        assert_eq!(outstanding(&s), vec![EffectId("act1".into())]);
+
+        let resolved = s
+            .resolve_journal_rows(
+                "demo",
+                &BTreeSet::from([EffectId("act1".into())]),
+                Some(GUID),
+            )
+            .unwrap();
+        assert_eq!(resolved, 1);
+        assert!(outstanding(&store(tmp.path())).is_empty());
+        assert_eq!(
+            read_raw_entries(&tmp.path().join("demo")).unwrap().len(),
+            1,
+            "nothing was deleted to achieve it (ADR-0002)"
+        );
+    }
+
+    /// Only what the operation accounted for: an unrelated row on another entry stays outstanding,
+    /// and so does a crash pushed afterwards.
+    #[test]
+    fn a_row_the_operation_did_not_account_for_stays_outstanding() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        s.push("demo", crashed_entry(), &empty_corpus(), Some(GUID), 0)
+            .unwrap();
+        s.push(
+            "demo",
+            crashed_entry_for("act2"),
+            &empty_corpus(),
+            Some(GUID),
+            0,
+        )
+        .unwrap();
+
+        s.resolve_journal_rows(
+            "demo",
+            &BTreeSet::from([EffectId("act1".into())]),
+            Some(GUID),
+        )
+        .unwrap();
+        assert_eq!(outstanding(&s), vec![EffectId("act2".into())]);
+
+        s.push("demo", crashed_entry(), &empty_corpus(), Some(GUID), 0)
+            .unwrap();
+        assert_eq!(
+            outstanding(&s),
+            vec![EffectId("act1".into()), EffectId("act2".into())],
+            "a fresh crash after a resolve is still a crash"
+        );
+    }
+
+    /// A probe-less action leaves detect reading the old option, so the outstanding row is the only
+    /// durable mark left. Re-capturing the same label must not delete the entry that holds it: the
+    /// applying operation resolves only what it drove, so nothing else would account for the row.
+    #[test]
+    fn dedup_keeps_an_entry_whose_journal_is_still_outstanding() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let crashed = NewEntry {
+            captured: Captured::OptionRef("A".into()),
+            journal: vec![JournalRow {
+                action_id: EffectId("act1".into()),
+                intended: true,
+                completed: false,
+                resolved: false,
+            }],
+        };
+        let first = s.push("demo", crashed, &c, Some(GUID), 19045).unwrap();
+
+        let second = s
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        assert_ne!(first, second);
+        assert!(
+            entry_path(&tmp.path().join("demo"), first).exists(),
+            "the entry holding an outstanding row must outlive a re-capture of its own label"
+        );
+        assert_eq!(
+            outstanding(&store(tmp.path())),
+            vec![EffectId("act1".into())]
+        );
+    }
+
+    /// An older or unstamped record stays this build's to read, replace and clear. Refusing it as
+    /// another build's would strand it: permanently unreadable, unwritable and unclearable.
+    #[test]
+    fn an_older_or_unstamped_record_is_this_builds_to_replace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(ATTENTION_FILE),
+            format!(
+                r#"{{"machine_guid":"{GUID}","tweak_id":"demo","timestamp":"t","attention":{{"reason":"restore_failed","items":[]}}}}"#
+            ),
+        )
+        .unwrap();
+
+        let s = store(tmp.path());
+        assert_eq!(
+            s.attention("demo", Some(GUID)).unwrap(),
+            Some(Attention {
+                reason: AttentionReason::RestoreFailed,
+                items: Vec::new(),
+            }),
+            "an unstamped record still reads"
+        );
+        s.set_attention("demo", Some(GUID), attention())
+            .expect("and may be replaced");
+        s.clear_attention("demo", Some(GUID)).unwrap();
+        assert_eq!(s.attention("demo", Some(GUID)).unwrap(), None);
+    }
+
+    #[test]
+    fn recorded_tweaks_names_only_directories_holding_a_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        s.push("no_record", values_entry(), &empty_corpus(), None, 0)
+            .unwrap();
+        s.set_attention("marked", Some(GUID), attention()).unwrap();
+        assert_eq!(s.recorded_tweaks().unwrap(), vec!["marked".to_string()]);
+    }
+
+    /// ADR-0002: the new return point is durable before the superseded one goes, so a dedup whose
+    /// removal fails still leaves a restorable head.
+    #[test]
+    fn push_writes_the_new_entry_before_removing_the_superseded_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let s = store(tmp.path());
+        let first = s
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        // A handle sharing read but not delete: the dedup's removal fails with a sharing violation.
+        // (A read-only attribute would not do it: `remove_file` clears that itself and retries.)
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(entry_path(&dir, first))
+            .unwrap();
+
+        let second = s
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        assert!(
+            entry_path(&dir, second).exists(),
+            "the new entry is written"
+        );
+        assert_eq!(
+            s.head("demo", &c, Some(GUID), 19045)
+                .unwrap()
+                .map(|e| e.seq),
+            Some(second)
+        );
+
+        assert!(
+            entry_path(&dir, first).exists(),
+            "the superseded entry's removal must really have failed"
+        );
+        drop(held);
     }
 
     #[test]
@@ -930,6 +1684,7 @@ mod tests {
                 action_id: action.clone(),
                 intended: true,
                 completed: false,
+                resolved: false,
             }],
         };
         let mut json = serde_json::to_value(&target).unwrap();

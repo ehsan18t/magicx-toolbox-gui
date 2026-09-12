@@ -67,25 +67,24 @@
 //! a shared setting straight from a never-touched machine. [`release_shared_claims`] closes this:
 //! it releases every Shared effect this tweak currently holds, mirroring `apply::drive_shared`'s
 //! own `Unclaimed`-release logic minus the option lookup (there is no option to consult here).
-//!
-//! `EngineError` is reused as-is (its variant set is closed to this file -- apply.rs's own body is
-//! untouched): a restore failure is reported via the existing `RollbackReport{original,
-//! rollback_failures}` shape, which structurally matches restore's own failure bundle (undo
-//! failures + re-apply failures) even though its `Display` wording ("apply failed...") was written
-//! for apply's rollback. Documented here rather than silently reused.
 
+use std::collections::BTreeSet;
+
+use super::apply::attention_item;
 use crate::tweaks::kinds::ExecCx;
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, SharedId, Tweak,
 };
 use crate::tweaks::shared_claims::ReleaseOutcome;
-use crate::tweaks::snapshot::{Captured, EntrySummary, EntryValidity, JournalRow, Seq};
+use crate::tweaks::snapshot::{
+    Attention, AttentionReason, Captured, EntrySummary, EntryValidity, JournalRow, Seq,
+};
 use crate::tweaks::validate::{applicable_surface, option_unavailable, Milestone};
 use crate::tweaks::winver::WinVer;
 
 use super::apply::{self, ActionPlan, DriveCtx, DriveState, EngineError};
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnavailableOpt};
-use super::{lifecycle, Deps};
+use super::{lifecycle, Deps, Phase};
 
 /// `restore`'s result (controller decision 3): a fresh [`TweakStatus`] computed from this
 /// operation's own verify reads (grill Q1 -- no re-scan), which entry (if any) this restore
@@ -156,7 +155,7 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
     let mut failures: Vec<EngineError> = Vec::new();
 
     // Step 1: undo the entry's completed journal actions, in reverse order.
-    undo_journal(current_tweak, &entry.journal, &cx, deps, &mut failures);
+    let mut accounted = undo_journal(current_tweak, &entry.journal, &cx, deps, &mut failures);
 
     // Step 2 (+ step 3, folded in via `drive_forward`'s own Shared handling): re-apply the target.
     let mut reboot_advisory = false;
@@ -169,6 +168,7 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
             failures.extend(result.failures);
             held_shared = result.held_shared;
             residues = result.residues;
+            accounted.extend(result.driven_actions);
             Some(OptLabel(label.clone()))
         }
         Captured::Values(_) => {
@@ -194,41 +194,48 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
     deps.probe_cache.invalidate(&current_tweak.id);
 
     // Step 4: verify + consume/keep (ADR-0002, invariant 8/20) -- never consume on uncertainty.
-    if failures.is_empty() {
-        if let Err(e) = deps.snapshots.consume(&current_tweak.id, entry.seq) {
-            failures.push(EngineError::SnapshotWrite(e));
-        }
-    }
     if !failures.is_empty() {
-        let original = failures.remove(0);
-        return Err(EngineError::RollbackReport {
-            original: Box::new(original),
-            rollback_failures: failures,
-        });
+        let attention = Attention {
+            reason: AttentionReason::RestoreFailed,
+            items: failures
+                .iter()
+                .map(|e| attention_item(Phase::Restore, e))
+                .collect(),
+        };
+        let mut store = Vec::new();
+        if let Err(e) =
+            deps.snapshots
+                .set_attention(&current_tweak.id, deps.machine_guid, attention)
+        {
+            store.push(EngineError::AttentionWrite(e));
+        }
+        return Err(EngineError::RestoreFailed { failures, store });
+    }
+    // A verified restore accounts for the actions it undid and re-drove, and for no other row: a
+    // `Values` head carries no re-drive, so residue it never probed stays for the next crash scan.
+    apply::resolve_accounted(deps, &current_tweak.id, &accounted);
+    if let Err(e) = deps
+        .snapshots
+        .clear_attention(&current_tweak.id, deps.machine_guid)
+    {
+        log::warn!(
+            "tweak '{}': could not clear Needs Attention: {e}",
+            current_tweak.id
+        );
+    }
+    if let Err(e) = deps.snapshots.consume(&current_tweak.id, entry.seq) {
+        // Every effect verified, so this is not a failed restore and nothing needs attention: the
+        // machine is restored and only the spent return point outlived it.
+        return Err(EngineError::EntryCleanup(e));
     }
 
-    let has_history = deps
-        .snapshots
-        .head(
-            &current_tweak.id,
-            corpus,
-            deps.machine_guid,
-            milestone.build,
-        )
-        .map(|e| e.is_some())
-        .unwrap_or_else(|e| {
-            log::warn!(
-                "tweak '{}': snapshot history unreadable after restore: {e}",
-                current_tweak.id
-            );
-            false
-        });
-
+    let (has_history, attention) = detect::history(&current_tweak.id, corpus, deps);
     let status = TweakStatus {
         state: restored_label.map_or(TweakState::SystemDefault, TweakState::Active),
         unavailable: unavailable_options(current_tweak, &milestone),
         residues,
         has_history,
+        attention,
         held_shared,
         // Left empty deliberately: the restore path has no readings pass, and the frontend only
         // renders the panel when this is non-empty, so the next detect fills it in.
@@ -245,14 +252,16 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
 /// Step 1 (spec §8.5): undoes `journal`'s completed rows in reverse declaration order -- the
 /// actions that ran when the user left the state now being restored to (ADR-0007). Reuses
 /// [`apply::verify_reversed_probe`] verbatim for the did-it-work check; a completed action with no
-/// `undo` is reported un-undoable (incomplete), never fatal to the rest of the walk.
+/// `undo` is reported un-undoable (incomplete), never fatal to the rest of the walk. Returns the
+/// rows it drove back and verified, which is what a verified restore may resolve.
 fn undo_journal(
     tweak: &Tweak,
     journal: &[JournalRow],
     cx: &ExecCx,
     deps: &Deps,
     failures: &mut Vec<EngineError>,
-) {
+) -> BTreeSet<EffectId> {
+    let mut undone = BTreeSet::new();
     for row in journal.iter().rev().filter(|r| r.completed) {
         let Some(action_def) = find_action(tweak, &row.action_id) else {
             failures.push(EngineError::Invalid(format!(
@@ -273,15 +282,16 @@ fn undo_journal(
                 "tweak '{}': completed action '{}' has no undo -- reported un-undoable, restore incomplete",
                 tweak.id, row.action_id
             );
-            failures.push(EngineError::Invalid(format!(
-                "action '{}' ran and cannot be undone (no undo script) -- restore is incomplete",
-                row.action_id
-            )));
+            failures.push(EngineError::NoUndo(row.action_id.clone()));
             continue;
         }
         match deps.actions.undo(action_def, cx) {
             Ok(()) => {
-                apply::verify_reversed_probe(action_def, &row.action_id, false, cx, deps, failures)
+                let before = failures.len();
+                apply::verify_reversed_probe(action_def, &row.action_id, false, cx, deps, failures);
+                if failures.len() == before {
+                    undone.insert(row.action_id.clone());
+                }
             }
             Err(e) => failures.push(EngineError::ActionFailed {
                 effect: row.action_id.clone(),
@@ -289,6 +299,7 @@ fn undo_journal(
             }),
         }
     }
+    undone
 }
 
 /// What re-applying an OptionRef target's non-Setting effects produced -- bundled so
@@ -297,6 +308,8 @@ struct OptionRefResult {
     failures: Vec<EngineError>,
     held_shared: Vec<HeldInfo>,
     residues: Vec<EffectId>,
+    /// The actions the re-apply drove, so a verified restore resolves their rows and no others.
+    driven_actions: BTreeSet<EffectId>,
 }
 
 /// Step 2's `Captured::OptionRef` case (spec §8.5, ADR-0007): drives `label`'s Settings via
@@ -336,6 +349,7 @@ fn reapply_option_ref(
             failures,
             held_shared,
             residues,
+            driven_actions: BTreeSet::new(),
         };
     };
 
@@ -399,6 +413,7 @@ fn reapply_option_ref(
             failures,
             held_shared,
             residues,
+            driven_actions: BTreeSet::new(),
         };
     }
 
@@ -424,12 +439,14 @@ fn reapply_option_ref(
     if let Err(e) = apply::drive_forward(&ctx, &surface, &action_plan, &mut state) {
         failures.push(e);
     }
+    let driven_actions = state.driven_actions();
     held_shared.extend(state.held_shared);
 
     OptionRefResult {
         failures,
         held_shared,
         residues,
+        driven_actions,
     }
 }
 
@@ -548,7 +565,7 @@ mod tests {
         SharedDef, SharedId, Shell, StartupType, SvcAddr, Value,
     };
     use crate::tweaks::shared_claims::ClaimsStore;
-    use crate::tweaks::snapshot::{InvalidReason, NewEntry, SnapshotStore};
+    use crate::tweaks::snapshot::{is_outstanding, InvalidReason, NewEntry, SnapshotStore};
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
@@ -893,11 +910,13 @@ mod tests {
                             action_id: EffectId("a".into()),
                             intended: true,
                             completed: true,
+                            resolved: false,
                         },
                         JournalRow {
                             action_id: EffectId("b".into()),
                             intended: true,
                             completed: true,
+                            resolved: false,
                         },
                     ],
                 },
@@ -1247,6 +1266,63 @@ mod tests {
         assert_eq!(head.seq, seq1, "the next-most-recent entry becomes head");
     }
 
+    /// A verified restore marks the rows it drove and no others. With every row it would silently
+    /// clear residue it never touched; with none it would leave its own work for the crash scan to
+    /// raise again on the next start.
+    #[test]
+    fn a_verified_restore_marks_only_the_rows_it_drove() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![action_effect("driven", true, false)],
+            vec![opt("A", vec![("driven", ModelOptValue::Run(None))])],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        let residue = |id: &str| JournalRow {
+            action_id: EffectId(id.into()),
+            intended: true,
+            completed: false,
+            resolved: false,
+        };
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: vec![residue("driven"), residue("untouched")],
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("A".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        let still: Vec<EffectId> = h
+            .snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .iter()
+            .flat_map(|e| e.journal.iter())
+            .filter(|r| is_outstanding(r))
+            .map(|r| r.action_id.clone())
+            .collect();
+        assert_eq!(still, vec![EffectId("untouched".into())]);
+    }
+
     #[test]
     fn failed_restore_keeps_entry() {
         let h = Harness::new();
@@ -1263,6 +1339,7 @@ mod tests {
                         action_id: EffectId("act".into()),
                         intended: true,
                         completed: true,
+                        resolved: false,
                     }],
                 },
                 &c,
@@ -1272,7 +1349,7 @@ mod tests {
             .unwrap();
 
         let err = run_restore(&t, &c, &h.deps()).expect_err("an un-undoable action must fail");
-        assert!(matches!(err, EngineError::RollbackReport { .. }));
+        assert!(matches!(err, EngineError::RestoreFailed { .. }));
 
         let head = h
             .snapshots
@@ -1314,7 +1391,7 @@ mod tests {
             .unwrap();
 
         let err = run_restore(&t, &c, &h.deps()).expect_err("the reapply drive fails");
-        assert!(matches!(err, EngineError::RollbackReport { .. }));
+        assert!(matches!(err, EngineError::RestoreFailed { .. }));
         let head = h
             .snapshots
             .head("demo", &c, Some("test-guid"), 19045)
@@ -1324,6 +1401,101 @@ mod tests {
             seq,
             "an incomplete restore keeps the entry, surfaced as Needs Attention"
         );
+    }
+
+    /// ADR-0001/0002: the mark survives rescans and clears only when a restore verifies.
+    #[test]
+    fn a_failed_restore_is_needs_attention_until_a_verified_restore() {
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s1", DrivePlan::Err);
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("A".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        let err = run_restore(&t, &c, &h.deps()).expect_err("the reapply drive fails");
+        assert!(!err.to_string().contains("fully verified"), "{err}");
+        for _ in 0..2 {
+            let attention = detect::detect(&t, &c, &h.deps())
+                .attention
+                .expect("still Needs Attention");
+            assert_eq!(attention.reason, AttentionReason::RestoreFailed);
+        }
+
+        h.kind.drive_plan.lock().unwrap().clear();
+        let outcome = run_restore(&t, &c, &h.deps()).expect("the retry verifies");
+        assert_eq!(outcome.status.attention, None);
+        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
+    }
+
+    /// ADR-0002: a restore that verified every effect is not a failed restore just because the
+    /// store could not release the spent entry. The machine is restored, so nothing is marked.
+    #[test]
+    fn a_verified_restore_whose_entry_cannot_be_removed_is_not_a_failed_restore() {
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        let seq = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("A".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        // A handle sharing read but not delete: `consume` fails with a sharing violation.
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let path = h
+            ._tmp
+            .path()
+            .join("demo")
+            .join(format!("{:020}.json", seq.0));
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&path)
+            .unwrap();
+
+        let err = run_restore(&t, &c, &h.deps()).expect_err("the entry cannot be removed");
+        assert!(matches!(err, EngineError::EntryCleanup(_)), "{err}");
+        assert!(!err.to_string().contains("restore failed"), "{err}");
+        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
+        assert!(path.exists(), "the entry is kept, never silently lost");
+        drop(held);
     }
 
     #[test]

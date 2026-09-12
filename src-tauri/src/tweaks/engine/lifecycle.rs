@@ -9,8 +9,9 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
-use crate::tweaks::model::EffectId;
-use crate::tweaks::snapshot::{Entry, Seq};
+use crate::tweaks::snapshot::{
+    is_outstanding, Attention, AttentionItem, AttentionKind, AttentionReason, Entry, SnapshotStore,
+};
 
 /// Refused before anything was touched; a pending exit can still be called off, a final one cannot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -148,64 +149,67 @@ impl Drop for ExitLatch<'_> {
     }
 }
 
-/// One tweak's snapshot entry that cannot be silently trusted (ADR-0001/0002): exact
-/// unrecoverable items, never a guess and never a silent retry.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NeedsAttention {
-    pub tweak_id: String,
-    pub seq: Seq,
-    /// One line per unrecoverable item (a crash-left unmarked action or a failed rollback
-    /// restore). Plain strings keep it comparable in tests and displayable in the UI.
-    pub unrecoverable: Vec<String>,
+/// Flags every still-outstanding row across a tweak's whole history (spec §8.1, invariant 5). The
+/// row is written before the action is driven, so it proves only that the action was planned and
+/// never confirmed complete -- never that it ran.
+pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
+    let items: Vec<AttentionItem> = entries
+        .iter()
+        .flat_map(|entry| entry.journal.iter())
+        .filter(|row| is_outstanding(row))
+        .map(|row| AttentionItem {
+            effect: Some(row.action_id.clone()),
+            kind: AttentionKind::CrashResidue,
+            message: format!(
+                "action '{}' was planned but never confirmed complete, so it may or may not have \
+                 run: the app stopped mid-apply",
+                row.action_id
+            ),
+        })
+        .collect();
+    (!items.is_empty()).then_some(Attention {
+        reason: AttentionReason::CrashResidue,
+        items,
+    })
 }
 
-impl NeedsAttention {
-    /// One line per rollback failure (ADR-0001), in the order they occurred.
-    pub fn from_rollback_failures(
-        tweak_id: &str,
-        seq: Seq,
-        failures: &[impl std::fmt::Display],
-    ) -> Self {
-        Self {
-            tweak_id: tweak_id.to_string(),
-            seq,
-            unrecoverable: failures.iter().map(ToString::to_string).collect(),
+/// One tweak's share of the startup carry-forward (spec §8.1, invariant 5), so a crash mid-apply
+/// reaches the UI like any other kept failure (ADR-0001) instead of living only in the log. Rows a
+/// verified apply or restore already accounted for carry their own mark, so they are not raised.
+pub(crate) fn record_crash_residue(snapshots: &SnapshotStore, tweak_id: &str, guid: Option<&str>) {
+    let entries = match snapshots.unresolved_entries(tweak_id, guid) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::warn!("tweak '{tweak_id}': snapshot history unreadable in the crash scan: {e}");
+            return;
+        }
+    };
+    let Some(attention) = scan_for_crash_residue(&entries) else {
+        return;
+    };
+    // An existing record describes a failure this scan cannot see, so it wins.
+    match snapshots.attention(tweak_id, guid) {
+        Ok(None) => {}
+        Ok(Some(_)) => return,
+        Err(e) => {
+            log::warn!("tweak '{tweak_id}': attention record unreadable: {e}");
+            return;
         }
     }
-}
-
-/// Flags rows left `intended && !completed` (spec §8.1, invariant 5), the mark of a crash between
-/// running an action and fsyncing its completion. `None` when every intended action is marked or
-/// there is no journal (a pure Settings apply/restore).
-pub fn scan_for_crash_residue(tweak_id: &str, entry: &Entry) -> Option<NeedsAttention> {
-    let unmarked: Vec<EffectId> = entry
-        .journal
-        .iter()
-        .filter(|row| row.intended && !row.completed)
-        .map(|row| row.action_id.clone())
-        .collect();
-    if unmarked.is_empty() {
-        return None;
+    log::error!(
+        "tweak '{tweak_id}' needs attention after a crash-interrupted apply ({} unconfirmed action(s))",
+        attention.items.len()
+    );
+    if let Err(e) = snapshots.set_attention(tweak_id, guid, attention) {
+        log::error!("tweak '{tweak_id}': could not record Needs Attention: {e}");
     }
-    Some(NeedsAttention {
-        tweak_id: tweak_id.to_string(),
-        seq: entry.seq,
-        unrecoverable: unmarked
-            .into_iter()
-            .map(|id| {
-                format!(
-                    "action '{id}' ran but its completion was never durably marked -- the process \
-                     likely crashed mid-apply"
-                )
-            })
-            .collect(),
-    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tweaks::snapshot::{Captured, JournalRow};
+    use crate::tweaks::model::EffectId;
+    use crate::tweaks::snapshot::{Captured, JournalRow, Seq};
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::Duration;
@@ -231,13 +235,20 @@ mod tests {
             action_id: EffectId("flush_dns".into()),
             intended: true,
             completed: false,
+            resolved: false,
         }]);
 
-        let flagged = scan_for_crash_residue("demo", &entry).expect("must flag crash residue");
-        assert_eq!(flagged.tweak_id, "demo");
-        assert_eq!(flagged.seq, Seq(7));
-        assert_eq!(flagged.unrecoverable.len(), 1);
-        assert!(flagged.unrecoverable[0].contains("flush_dns"));
+        let flagged = scan_for_crash_residue(&[entry]).expect("must flag crash residue");
+        assert_eq!(flagged.reason, AttentionReason::CrashResidue);
+        assert_eq!(flagged.items.len(), 1);
+        assert_eq!(flagged.items[0].effect, Some(EffectId("flush_dns".into())));
+        assert!(flagged.items[0].message.contains("flush_dns"));
+        // The row is written before the action is driven, so the wording must not claim it ran.
+        assert!(
+            !flagged.items[0].message.contains("ran but"),
+            "{}",
+            flagged.items[0].message
+        );
     }
 
     #[test]
@@ -246,14 +257,49 @@ mod tests {
             action_id: EffectId("flush_dns".into()),
             intended: true,
             completed: true,
+            resolved: false,
         }]);
-        assert!(scan_for_crash_residue("demo", &entry).is_none());
+        assert!(scan_for_crash_residue(&[entry]).is_none());
+    }
+
+    /// The mark a verified apply or restore leaves on the row it accounted for: read back off the
+    /// entry, it takes that row out of the scan without deleting anything.
+    #[test]
+    fn a_resolved_row_is_not_crash_residue() {
+        let entry = entry_with_journal(vec![JournalRow {
+            action_id: EffectId("flush_dns".into()),
+            intended: true,
+            completed: false,
+            resolved: true,
+        }]);
+        assert!(scan_for_crash_residue(&[entry]).is_none());
     }
 
     #[test]
     fn empty_journal_is_not_crash_residue() {
         let entry = entry_with_journal(Vec::new());
-        assert!(scan_for_crash_residue("demo", &entry).is_none());
+        assert!(scan_for_crash_residue(&[entry]).is_none());
+    }
+
+    /// Residue can sit on a superseded entry, which `head` never reaches -- the scan takes the set.
+    #[test]
+    fn residue_is_found_on_every_entry_not_just_the_newest() {
+        let newest = entry_with_journal(vec![JournalRow {
+            action_id: EffectId("done".into()),
+            intended: true,
+            completed: true,
+            resolved: false,
+        }]);
+        let superseded = entry_with_journal(vec![JournalRow {
+            action_id: EffectId("stale".into()),
+            intended: true,
+            completed: false,
+            resolved: false,
+        }]);
+        let flagged =
+            scan_for_crash_residue(&[newest, superseded]).expect("the older row still counts");
+        assert_eq!(flagged.items.len(), 1);
+        assert_eq!(flagged.items[0].effect, Some(EffectId("stale".into())));
     }
 
     /// Two same-id holders on a multi-thread runtime, each sleeping on its own worker while holding

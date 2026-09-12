@@ -284,12 +284,50 @@ export type TweakStateView =
   | { state: "unavailable"; reason: string }
   | { state: "unknown"; reasons: UnknownReason[] };
 
+/** What kind of step could not be verified, so the UI never parses a message to find out. */
+export type AttentionKind =
+  "drive" | "verify" | "outcome_unknown" | "action" | "no_undo" | "claim" | "store" | "crash_residue" | "other";
+
+/** One step the failed operation could not verify. */
+export interface AttentionItem {
+  effect: string | null;
+  kind: AttentionKind;
+  message: string;
+}
+
+/**
+ * A tweak's Needs Attention record (ADR-0001/0002). Kept per tweak rather than per snapshot entry,
+ * so releasing an entry cannot drop it; it clears only on a verified apply or restore, or when the
+ * user discards the snapshot.
+ */
+export interface Attention {
+  reason: "apply_failed" | "restore_failed" | "crash_residue" | "record_unreadable";
+  items: AttentionItem[];
+}
+
+/** What each Needs Attention reason means, in the words the cards and the modal both use. */
+export const ATTENTION_CAUSE: Record<Attention["reason"], string> = {
+  apply_failed: "The last apply couldn't be fully verified",
+  restore_failed: "The last restore didn't fully complete",
+  crash_residue: "The app stopped during an apply, so part of it was never confirmed",
+  record_unreadable: "This tweak's Needs Attention record couldn't be read, so whatever it holds is unresolved",
+};
+
+/** Reason text with a fallback, so a reason added in Rust never interpolates `undefined` into the UI. */
+export function attentionCause(reason: Attention["reason"] | undefined): string {
+  return (reason && ATTENTION_CAUSE[reason]) || "The last operation couldn't be fully verified";
+}
+
 /** One tweak's live status, delivered per-tweak via the `tweak-status` event. */
 export interface TweakStatusView {
   state: TweakStateView;
   unavailable: UnavailableOpt[];
   residues: string[];
   has_history: boolean;
+  /** The tweak's Needs Attention record, or null. */
+  attention: Attention | null;
+  /** Publication order: a status stamped lower than the one already shown read the machine earlier. */
+  stamp: number;
   held_shared: HeldInfo[];
   /** Non-empty only at System Default: what the surface reads and which options wanted it. */
   observed: ObservedState | null;
@@ -417,10 +455,8 @@ export interface TweakStatus {
   is_applied: boolean;
   /** A snapshot exists to restore from (the engine's has_history). */
   has_backup: boolean;
-  /** A restore could not fully complete; the snapshot was kept (ADR-0001). */
-  needs_attention: boolean;
-  /** Items a partial restore could not recover (present with needs_attention). */
-  unrestorable_resources: string[];
+  /** Needs Attention as the engine recorded it, or null (ADR-0001/0002). */
+  attention: Attention | null;
 }
 
 /** Combined tweak info for UI display */

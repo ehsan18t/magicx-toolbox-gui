@@ -63,6 +63,26 @@ type ActionResult = { status: "ok" | "failed" } | { status: "exiting"; message: 
 
 const EXITING_REST_KEPT = "because the app is restarting or updating.";
 
+/** A status re-read either answered, or failed as itself, never silently as "no attention". */
+export type StatusRead = { ok: true; needsAttention: boolean } | { ok: false; message: string };
+
+/**
+ * Re-read one tweak's status from the engine, which owns Needs Attention: a failed apply or
+ * restore keeps its snapshot and records it, and only the backend knows whether it did. A failed
+ * read is reported as itself, since reading it as "no attention" leaves a marked tweak unbadged.
+ */
+export async function refreshTweakStatus(tweakId: string): Promise<StatusRead> {
+  try {
+    const view = await api.getTweakStatus(tweakId);
+    tweaksStore.setStatusView(tweakId, view);
+    return { ok: true, needsAttention: view.attention !== null };
+  } catch (error) {
+    const message = errorMessage(error);
+    console.error("Failed to re-read tweak status:", message);
+    return { ok: false, message };
+  }
+}
+
 /**
  * Apply a tweak's option by LABEL. The command returns the fresh post-op status,
  * which we adopt directly (no re-fetch / no re-scan).
@@ -103,8 +123,17 @@ async function applyTweakResult(
       return { status: "exiting", message };
     }
     errorStore.setError(tweakId, message);
+    // A failed apply may have recorded Needs Attention, and only the engine knows: without the
+    // re-read's answer the card keeps its pre-apply status for the rest of the session.
+    const read = await refreshTweakStatus(tweakId);
+
     if (showToast) {
-      toastStore.error(message, { tweakName });
+      const text = !read.ok
+        ? `Apply failed, and the tweak's state could not be re-read: ${message}`
+        : read.needsAttention
+          ? `Apply needs attention: ${message}`
+          : message;
+      toastStore.error(text, { tweakName });
     }
     return { status: "failed" };
   } finally {
@@ -159,17 +188,17 @@ async function revertTweakResult(
       return { status: "exiting", message };
     }
     errorStore.setError(tweakId, message);
-
-    // Needs Attention (ADR-0001): only meaningful while a snapshot still exists to retry from.
-    if (tweaksStore.getById(tweakId)?.status.has_backup) {
-      tweaksStore.patchStatus(tweakId, {
-        needs_attention: true,
-        unrestorable_resources: [message],
-      });
-    }
+    // A restore can fail without leaving anything to attend to (the machine was restored and only
+    // the spent entry outlived it), so the wording follows what the engine actually recorded.
+    const read = await refreshTweakStatus(tweakId);
 
     if (showToast) {
-      toastStore.warning(`Restore needs attention: ${message}`, { tweakName });
+      const text = !read.ok
+        ? `Restore failed, and the tweak's state could not be re-read: ${message}`
+        : read.needsAttention
+          ? `Restore needs attention: ${message}`
+          : `Restore reported a problem: ${message}`;
+      toastStore.warning(text, { tweakName });
     }
     return { status: "failed" };
   } finally {
@@ -177,23 +206,12 @@ async function revertTweakResult(
   }
 }
 
-async function refreshSnapshotFlags(tweakId: string): Promise<void> {
-  try {
-    const remaining = await api.listSnapshotEntries(tweakId);
-    if (remaining.length === 0) {
-      tweaksStore.patchStatus(tweakId, { has_backup: false, needs_attention: false, unrestorable_resources: [] });
-      pendingRebootStore.remove(tweakId);
-    }
-  } catch (error) {
-    console.error("Failed to re-read snapshot entries:", errorMessage(error));
-  }
-}
-
 /**
- * Explicit-consent snapshot release (ADR-0002): discard every snapshot entry for the
- * tweak, the way out of Needs Attention when the user accepts the current state.
+ * Explicit-consent release (ADR-0002), and the only way out of Needs Attention when the user
+ * accepts the current state. One backend operation: it clears the record whether or not any entry
+ * is left and discards the ones that are, then hands back the stamped status it produced.
  */
-export async function discardSnapshots(
+export async function keepCurrentState(
   tweakId: string,
   options?: { showToast?: boolean; tweakName?: string },
 ): Promise<boolean> {
@@ -201,36 +219,22 @@ export async function discardSnapshots(
   const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
 
   loadingStore.start(tweakId);
-  let discarded = 0;
   try {
-    const entries = await api.listSnapshotEntries(tweakId);
-    for (const entry of entries) {
-      await api.discardSnapshotEntry(tweakId, entry.seq);
-      discarded++;
-    }
-
-    tweaksStore.patchStatus(tweakId, {
-      has_backup: false,
-      needs_attention: false,
-      unrestorable_resources: [],
-    });
+    tweaksStore.setStatusView(tweakId, await api.keepCurrentState(tweakId));
     errorStore.clearError(tweakId);
     pendingRebootStore.remove(tweakId);
 
     if (showToast) {
-      toastStore.success("Snapshot discarded", { tweakName });
+      toastStore.success("Current state kept", { tweakName });
     }
     return true;
   } catch (error) {
     const message = errorMessage(error);
-    // Entries discarded before the failure are gone, so the backup flags are re-read.
-    if (discarded > 0) await refreshSnapshotFlags(tweakId);
+    // Whatever the call managed to release is in the engine's own status, so re-read it rather
+    // than guess which entries survived.
+    await refreshTweakStatus(tweakId);
     if (isAppExiting(error)) {
-      if (showToast) {
-        const entries = `${discarded} snapshot ${discarded === 1 ? "entry" : "entries"}`;
-        const text = discarded === 0 ? message : `Discarded ${entries}; the rest were kept ${EXITING_REST_KEPT}`;
-        toastStore.warning(text, { tweakName });
-      }
+      if (showToast) toastStore.warning(message, { tweakName });
       return false;
     }
     errorStore.setError(tweakId, message);

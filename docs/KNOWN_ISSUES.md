@@ -13,11 +13,12 @@ the ADR and delete the entry.
 
 **Related:** `PRE_MERGE_TASKS.md` is what blocks a specific merge; it is not a bug list.
 
-| #   | Issue                                         | Bites today?                                 | Found      |
-| --- | --------------------------------------------- | -------------------------------------------- | ---------- |
-| 1   | Snapshots carry no user identity              | yes, on a multi-user machine                 | 2026-07-26 |
-| 2   | Broker response is written to user TEMP       | only as a forced false failure, never silent | 2026-09-12 |
-| 3   | Nothing inside the broker child is observable | only as thin support detail after a failure  | 2026-09-12 |
+| #   | Issue                                           | Bites today?                                 | Found      |
+| --- | ----------------------------------------------- | -------------------------------------------- | ---------- |
+| 1   | Snapshots carry no user identity                | yes, on a multi-user machine                 | 2026-07-26 |
+| 2   | Broker response is written to user TEMP         | only as a forced false failure, never silent | 2026-09-12 |
+| 3   | Nothing inside the broker child is observable   | only as thin support detail after a failure  | 2026-09-12 |
+| 4   | An older build cannot read what this one resolved | only where two builds share one folder     | 2026-09-12 |
 
 ---
 
@@ -63,3 +64,13 @@ Costs a `schema_version` bump and a migration decision for snapshots already on 
 **Candidate fixes, and why each waits.** Carrying structured log lines back inside the response costs a `WIRE_VERSION` bump and still says nothing about the two cases that matter, because a child that panics or cannot write its response writes no response at all. A log file of the child's own does cover them. Two places could hold it: beside the response, which inherits issue 2's directory decision and so is best done after it; or the app's own log directory, which is independent of issue 2 but puts a TrustedInstaller-owned file in a directory the unelevated app also writes, so the ACL question moves rather than disappears. Either way the file is created as TrustedInstaller and needs the `CREATE_NEW` and reparse-point guards the response write already uses, and either way a real elevated run is what settles it.
 
 **The order.** Not forced, but cheaper in one direction: settling issue 2 first leaves the transport directory holding both files under a single decision, so the guard is built once.
+
+## 4. An older build cannot read what this one resolved
+
+Unresolved state has two durable forms, and a build older than this one knows neither. Needs Attention lives in `snapshots/<tweak-id>/_attention.json`; a journal row an operation has accounted for carries `resolved: true` inside its own entry (`tweaks/snapshot.rs`). The snapshots directory is portable and sits next to the executable, so any build dropped into that folder drives the same history.
+
+**What happens then.** Nothing breaks and no snapshot entry is lost. The entry walk skips every file whose name is not a sequence number, so the record is invisible to the older build rather than corrupting it, and a record this build cannot use is surfaced as Needs Attention in its own right instead of reading as a clean tweak. A wrong-schema or foreign-machine record is never overwritten and never deleted: this build refuses to record over one and logs that it refused, so neither build can silently destroy the other's mark. The row mark is the softer case, because an unknown JSON field is simply ignored: the older build's crash scan raises a row this build already resolved, and any entry that build rewrites to mark an action completed drops the `resolved` flag on every row in that entry, so this build raises it again afterwards. What the user sees either way is a badge out of step with reality, in both directions: a tweak this build marked shows nothing under the older one, and a tweak the older one applies or restores successfully still shows Needs Attention the next time this build reads it.
+
+**The way out already exists in the UI:** Keep current state is a single backend operation that releases the record whether or not any entry is left and discards the ones that are, which takes every row with them, and a fully verified apply or restore under this build resolves the rows it accounted for.
+
+**The fix.** Nothing in either mark: this resolves when the older build is gone, and downgrades are not a supported flow. Cross-build agreement would need the marks to live somewhere an older build already parses, and for the record that is exactly the entry field this design moved away from, because entry releases kept dropping it.

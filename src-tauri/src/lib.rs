@@ -152,8 +152,10 @@ pub fn run() {
             commands::tweaks::get_statuses_stream,
             commands::tweaks::apply_tweak,
             commands::tweaks::restore_tweak,
+            commands::tweaks::get_tweak_status,
             commands::tweaks::list_snapshot_entries,
             commands::tweaks::discard_snapshot_entry,
+            commands::tweaks::keep_current_state,
             commands::tweaks::rescan_after_elevation,
             commands::tweaks::get_elevation_state,
             // Elevation commands

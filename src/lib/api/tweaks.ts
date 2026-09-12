@@ -12,6 +12,7 @@ import type {
   RestoreOutcome,
   SystemInfo,
   TweakStatusEvent,
+  TweakStatusView,
   TweakView,
 } from "../types";
 
@@ -56,6 +57,11 @@ export async function restoreTweak(tweakId: string): Promise<RestoreOutcome> {
   return await invoke<RestoreOutcome>("restore_tweak", { tweakId });
 }
 
+/** One tweak's freshly detected status, for the failure paths that carry no outcome. */
+export async function getTweakStatus(tweakId: string): Promise<TweakStatusView> {
+  return await invoke<TweakStatusView>("get_tweak_status", { tweakId });
+}
+
 /** List a tweak's snapshot entries (drives the discard affordance). */
 export async function listSnapshotEntries(tweakId: string): Promise<EntrySummary[]> {
   return await invoke<EntrySummary[]>("list_snapshot_entries", { tweakId });
@@ -64,6 +70,15 @@ export async function listSnapshotEntries(tweakId: string): Promise<EntrySummary
 /** Explicit-consent snapshot release: discard one entry by its sequence number. */
 export async function discardSnapshotEntry(tweakId: string, seq: number): Promise<void> {
   await invoke("discard_snapshot_entry", { tweakId, seq });
+}
+
+/**
+ * "Keep current state" (ADR-0002): release the Needs Attention record whether or not any entry
+ * remains, then discard the ones that do. Returns the fresh status, so the caller never has to
+ * patch the record away locally.
+ */
+export async function keepCurrentState(tweakId: string): Promise<TweakStatusView> {
+  return await invoke<TweakStatusView>("keep_current_state", { tweakId });
 }
 
 /** The app's current elevation ceiling + over-the-shoulder SID guard reading. */

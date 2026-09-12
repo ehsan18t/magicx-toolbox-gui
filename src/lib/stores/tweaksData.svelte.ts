@@ -83,8 +83,7 @@ function loadingStatus(tweakId: string): TweakStatus {
     observed: null,
     is_applied: false,
     has_backup: false,
-    needs_attention: false,
-    unrestorable_resources: [],
+    attention: null,
   };
 }
 
@@ -105,8 +104,9 @@ function mapStatusView(tweakId: string, view: TweakStatusView): TweakStatus {
     observed: view.observed,
     is_applied: s.state === "active",
     has_backup: view.has_history,
-    needs_attention: false,
-    unrestorable_resources: [],
+    // The engine owns Needs Attention: it keeps a per-tweak record, so it survives a rescan, a
+    // restart, and any snapshot entry being released (ADR-0001/0002).
+    attention: view.attention,
   };
 }
 
@@ -115,6 +115,9 @@ function mapStatusView(tweakId: string, view: TweakStatusView): TweakStatus {
  * `loadModel`, and without this the event would be dropped and the card would spin forever.
  */
 let pendingStatusViews: Record<string, TweakStatusView> = {};
+
+/** Highest stamp adopted per tweak, so an older reading can never replace a newer one. */
+let statusStamps: Record<string, number> = {};
 
 // Derived: tweaks grouped by category
 const tweaksByCategory = $derived.by(() => {
@@ -381,7 +384,7 @@ export const tweaksStore = {
       return tweaks;
     } catch (error) {
       console.error("Failed to load tweaks:", error);
-      // Surface the error — the app cannot function without the tweak model.
+      // Surface the error: the app cannot function without the tweak model.
       throw error;
     } finally {
       tweaksLoading = false;
@@ -390,16 +393,15 @@ export const tweaksStore = {
 
   /** Replace a tweak's status from a freshly detected engine status view. */
   setStatusView(tweakId: string, view: TweakStatusView) {
+    // A sweep event whose reads began before an apply recorded Needs Attention would otherwise
+    // land afterwards and clear it. The backend stamps each status when its reads begin.
+    if (view.stamp < (statusStamps[tweakId] ?? 0)) return;
+    statusStamps[tweakId] = view.stamp;
     if (!tweaks.some((t) => t.definition.id === tweakId)) {
       pendingStatusViews[tweakId] = view;
       return;
     }
     tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: mapStatusView(tweakId, view) } : t));
-  },
-
-  /** Patch selected status fields (needs-attention / has_backup after restore/discard). */
-  patchStatus(tweakId: string, patch: Partial<TweakStatus>) {
-    tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: { ...t.status, ...patch } } : t));
   },
 
   /** Get a tweak by ID */
@@ -441,7 +443,7 @@ let unlistenStatus: UnlistenFn | null = null;
 
 /**
  * Register the `tweak-status` listener once, then kick the background scan. Each event
- * fills in one tweak's status as the backend detects it — never awaiting one bulk result.
+ * fills in one tweak's status as the backend detects it, never awaiting one bulk result.
  */
 async function startStatusStream(): Promise<void> {
   if (statusStreamStarted) {

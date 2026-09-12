@@ -1753,9 +1753,13 @@ effects:
 
 A `reversible: false` tweak is **labelled one-way up front**, before apply. On restore, **everything else
 still reverts**: only the genuinely one-way action cannot, and it surfaces as **Needs Attention**
-(ADR-0001). "Partial" never means "nothing reverts." Likewise, a rollback that cannot fully complete
-(a locked service, access denied) surfaces as **Needs Attention** with its snapshot kept for retry:
-never hidden.
+(ADR-0001). "Partial" never means "nothing reverts."
+
+**Four runtime outcomes set it**, all of them a state the app cannot verify: a rollback that cannot fully complete (a locked service, access denied), an elevated step whose outcome cannot be proven either way, a restore that does not fully verify, and an app that stopped mid-apply with an action left unmarked in the journal. In every case the snapshot is kept, never hidden.
+
+**It belongs to the tweak, not to one snapshot entry.** The engine keeps a per-tweak record beside that tweak's entries, so releasing an entry (a re-capture of the same option, a later rollback consuming its own entry, an entry that no longer matches the corpus) cannot drop it. The record names each unverified step with its effect id and a kind, so the UI can say which effect is involved and whether retrying can help: a one-way action never can.
+
+**It clears in exactly three ways**: a fully verified apply of that tweak, a fully verified restore, or the user deciding to keep the current state (discarding the snapshot). Nothing else clears it, not even discarding the last snapshot entry by hand, which is why a tweak that reports Needs Attention keeps reporting it across a rescan and a restart until one of those three happens. An interrupted apply also leaves unconfirmed journal rows behind, and each of the three accounts for them too, so the startup scan cannot raise the same crash again next launch and put the badge straight back: a verified apply or restore marks the rows whose action it actually drove and verified, leaving any row it never touched to be raised, and keeping the current state discards the entries those rows live in.
 
 ---
 
@@ -1795,7 +1799,7 @@ From the author's point of view, here is what makes a tweak show each status:
 | **System Default**                | the live surface matches **no** option                                                                   | the machine drifted / was never in a defined state                                         |
 | **Unknown**                       | a read failed: access denied, malformed packed value, a **non-optional** Missing resource                | use `optional`/`if_missing` for resources that may be absent; declare adequate `elevation` |
 | **Unavailable on this machine**   | an option needs a value a Missing resource can't satisfy, or the tweak/effect is version-scoped out here | expected for `optional` effects and `windows`-scoped tweaks (§8, §10)                      |
-| **Needs Attention**               | an apply/rollback/restore could **not fully complete**                                                   | a runtime outcome, not a detection verdict (§14)                                           |
+| **Needs Attention**               | an apply, rollback, restore, or interrupted apply could **not fully complete**, and the snapshot was kept | a runtime outcome, not a detection verdict (§14.3)                                          |
 
 ### 15.4 What the build guarantees for you
 

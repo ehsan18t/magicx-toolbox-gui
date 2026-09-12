@@ -29,7 +29,7 @@ use crate::tweaks::model::{
     TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
-use crate::tweaks::snapshot::{EntrySummary, Seq, SnapshotError, SnapshotStore};
+use crate::tweaks::snapshot::{Attention, EntrySummary, Seq, SnapshotError, SnapshotStore};
 use crate::tweaks::winver::{running_winver, WinVer};
 
 // --- managed state (controller decision 2) -----------------------------------------------------
@@ -56,36 +56,41 @@ impl TweakEngineState {
         })
     }
 
-    /// Startup carry-forward (spec §8.1 invariant 5, Task 11's `scan_for_crash_residue` wired here
-    /// for the first time): walks every tweak's most recent snapshot entry and logs any left in a
-    /// crash-interrupted `intended && !completed` state -- surfaced as Needs Attention via the log;
-    /// no dedicated command exists yet to push this list to the UI.
+    /// Startup carry-forward (spec §8.1 invariant 5): records Needs Attention for every tweak whose
+    /// history still holds a crash-interrupted `intended && !completed` row, so a crash mid-apply
+    /// reaches the UI like any other kept failure (ADR-0001) instead of living only in the log.
     pub fn scan_startup_crash_residue(&self) {
         let corpus = compiled_corpus();
-        let running_build = running_winver().build;
         for tweak in &corpus.tweaks {
-            match self.snapshots.head(
+            lifecycle::record_crash_residue(
+                &self.snapshots,
                 &tweak.id,
-                corpus,
                 self.machine_guid.as_deref(),
-                running_build,
-            ) {
-                Ok(Some(entry)) => {
-                    if let Some(needs_attention) =
-                        lifecycle::scan_for_crash_residue(&tweak.id, &entry)
-                    {
-                        log::error!(
-                            "tweak '{}' needs attention after a crash-interrupted apply (seq {:?}): {:?}",
-                            tweak.id, needs_attention.seq, needs_attention.unrecoverable
-                        );
-                    }
-                }
-                Ok(None) => {}
-                Err(e) => log::warn!(
-                    "tweak '{}': could not read snapshot history during startup crash scan: {e}",
-                    tweak.id
-                ),
+            );
+        }
+        self.report_unreachable_records(corpus);
+    }
+
+    /// A record naming a tweak this build no longer defines has no card to badge and no clear path,
+    /// so it is named once here. Never deleted: ADR-0002 releases user data on consent alone.
+    fn report_unreachable_records(&self, corpus: &Corpus) {
+        let recorded = match self.snapshots.recorded_tweaks() {
+            Ok(recorded) => recorded,
+            Err(e) => {
+                log::warn!("could not enumerate the Needs Attention records: {e}");
+                return;
             }
+        };
+        let unreachable: Vec<String> = recorded
+            .into_iter()
+            .filter(|id| !corpus.tweaks.iter().any(|t| &t.id == id))
+            .collect();
+        if !unreachable.is_empty() {
+            log::warn!(
+                "Needs Attention is recorded for {} tweak(s) this build does not define, so nothing can surface or release them: {}",
+                unreachable.len(),
+                unreachable.join(", ")
+            );
         }
     }
 }
@@ -299,6 +304,9 @@ fn map_snapshot_err(what: &str, e: SnapshotError) -> Error {
         SnapshotError::NotFound { .. } => "there is no snapshot with that number",
         SnapshotError::Corrupt { .. } => "that snapshot cannot be read",
         SnapshotError::UnknownJournalAction { .. } => "that snapshot does not record the action",
+        SnapshotError::ForeignAttention { .. } => {
+            "another machine or build owns this tweak's Needs Attention record"
+        }
     };
     Error::Tweak(format!("{what} failed: {why}"))
 }
@@ -690,19 +698,28 @@ pub struct TweakStatusView {
     pub unavailable: Vec<UnavailableOptView>,
     pub residues: Vec<EffectId>,
     pub has_history: bool,
+    pub attention: Option<Attention>,
+    /// Ordering for the frontend: a status stamped lower than the one a card already shows read
+    /// the machine earlier, so it must not replace it. See [`next_status_stamp`].
+    pub stamp: u64,
     pub held_shared: Vec<HeldInfoView>,
     /// Present only at System Default. Requires the tweak to build, so [`From`] leaves it `None`
     /// and [`scan_and_emit`] fills it in where the tweak is in scope.
     pub observed: Option<ObservedStateView>,
 }
 
-impl From<TweakStatus> for TweakStatusView {
-    fn from(s: TweakStatus) -> Self {
+impl TweakStatusView {
+    /// The one place a stamp is attached, so no conversion can mint a second one. `stamp` must be
+    /// taken BEFORE the reads this view publishes: a sweep that read the machine earlier must never
+    /// outrank a later reading.
+    fn stamped(s: TweakStatus, stamp: u64) -> Self {
         Self {
             state: s.state.into(),
             unavailable: s.unavailable.into_iter().map(Into::into).collect(),
             residues: s.residues,
             has_history: s.has_history,
+            attention: s.attention,
+            stamp,
             held_shared: s.held_shared.into_iter().map(Into::into).collect(),
             observed: None,
         }
@@ -887,11 +904,14 @@ pub struct ApplyOutcomeView {
     pub status: TweakStatusView,
 }
 
-impl From<ApplyOutcome> for ApplyOutcomeView {
-    fn from(o: ApplyOutcome) -> Self {
+impl ApplyOutcomeView {
+    /// `stamp` comes from the caller, taken before the engine runs: an outcome is built after its
+    /// own reads and after the tweak lock is released, so stamping here would outrank a sweep that
+    /// actually read the machine later.
+    fn stamped(o: ApplyOutcome, stamp: u64) -> Self {
         Self {
             effects: o.effects.into_iter().map(Into::into).collect(),
-            status: o.status.into(),
+            status: TweakStatusView::stamped(o.status, stamp),
         }
     }
 }
@@ -945,10 +965,11 @@ pub struct RestoreOutcomeView {
     pub skipped_invalid: Vec<EntrySummary>,
 }
 
-impl From<RestoreOutcome> for RestoreOutcomeView {
-    fn from(o: RestoreOutcome) -> Self {
+impl RestoreOutcomeView {
+    /// Stamped from the caller for the same reason as [`ApplyOutcomeView::stamped`].
+    fn stamped(o: RestoreOutcome, stamp: u64) -> Self {
         Self {
-            status: o.status.into(),
+            status: TweakStatusView::stamped(o.status, stamp),
             consumed: o.consumed,
             reboot_advisory: o.reboot_advisory,
             skipped_invalid: o.skipped_invalid,
@@ -958,11 +979,21 @@ impl From<RestoreOutcome> for RestoreOutcomeView {
 
 // --- scan/emit + apply, factored into plain functions for testing (brief's own testing note) -----
 
+/// Publication order for one tweak's status. A sweep event that read the machine before an apply
+/// recorded Needs Attention must not land on the card after the apply's own status and undo it,
+/// so every status is stamped when its reads BEGIN and the frontend drops the older one.
+static STATUS_STAMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_status_stamp() -> u64 {
+    STATUS_STAMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Detects one tweak and projects it into the event the frontend consumes.
 fn scan_one(tweak: &Tweak, corpus: &Corpus, deps: &Deps<'_>) -> TweakStatusEvent {
+    let stamp = next_status_stamp();
     let status = detect::detect(tweak, corpus, deps);
     let observed = observed_view(tweak, &status.observed);
-    let mut view: TweakStatusView = status.into();
+    let mut view = TweakStatusView::stamped(status, stamp);
     view.observed = observed;
     TweakStatusEvent {
         tweak_id: tweak.id.clone(),
@@ -1037,10 +1068,11 @@ async fn apply_tweak_logic(
     corpus: &Corpus,
     target: &OptLabel,
     deps: &Deps<'_>,
+    stamp: u64,
 ) -> std::result::Result<ApplyOutcomeView, EngineError> {
     apply::apply(tweak, corpus, target, deps)
         .await
-        .map(ApplyOutcomeView::from)
+        .map(|o| ApplyOutcomeView::stamped(o, stamp))
 }
 
 // --- commands -------------------------------------------------------------------------------------
@@ -1116,9 +1148,11 @@ pub async fn apply_tweak(
     let sid_check = context::sid_check(&RealSidProbe);
     refuse_if_unavailable(tweak, corpus, level, sid_check)?;
 
+    // Taken before the engine reads anything, so a sweep that reads later always outranks it.
+    let stamp = next_status_stamp();
     let deps = build_deps(state.inner());
     let target = OptLabel(option_label);
-    apply_tweak_logic(tweak, corpus, &target, &deps)
+    apply_tweak_logic(tweak, corpus, &target, &deps, stamp)
         .await
         .map_err(|e| map_engine_err(&tweak_id, Phase::Apply, e))
 }
@@ -1136,11 +1170,31 @@ pub async fn restore_tweak(
     let sid_check = context::sid_check(&RealSidProbe);
     refuse_if_unavailable(tweak, corpus, level, sid_check)?;
 
+    // Taken before the engine reads anything, so a sweep that reads later always outranks it.
+    let stamp = next_status_stamp();
     let deps = build_deps(state.inner());
     revert::restore(tweak, corpus, &deps)
         .await
-        .map(RestoreOutcomeView::from)
+        .map(|o| RestoreOutcomeView::stamped(o, stamp))
         .map_err(|e| map_engine_err(&tweak_id, Phase::Restore, e))
+}
+
+/// One tweak's fresh status, so a failed apply or restore shows the Needs Attention it left.
+#[tauri::command]
+pub async fn get_tweak_status(
+    state: State<'_, TweakEngineState>,
+    tweak_id: String,
+) -> Result<TweakStatusView> {
+    log::info!("get_tweak_status: '{tweak_id}'");
+    let corpus = compiled_corpus();
+    let tweak = find_tweak(corpus, &tweak_id)?;
+    // A pure read never enters the lock map: holding it would count as an apply in flight and could
+    // refuse a restart or update exit, and a long TrustedInstaller apply would block it with no
+    // timeout. Same non-blocking filter the sweep uses; the apply in flight publishes its own status.
+    if lifecycle::is_locked(&tweak_id) {
+        return Err(Error::ApplyInFlight("check its state again"));
+    }
+    Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
 }
 
 #[tauri::command]
@@ -1174,10 +1228,64 @@ pub async fn discard_snapshot_entry(
     let _guard = lifecycle::lock_tweak(&tweak_id)
         .await
         .map_err(Error::AppExiting)?;
+    // Releases the entry and nothing else: Needs Attention has exactly three clears (ADR-0002) and
+    // [`keep_current_state`] is the consented one, reachable whenever a record exists.
     state
         .snapshots
         .discard(&tweak_id, seq)
         .map_err(|e| map_snapshot_err("discarding this snapshot", e))
+}
+
+/// Explicit consent (ADR-0002), factored out of [`keep_current_state`] so a test can drive it over a
+/// temp store. The record is released FIRST, regardless of what is left or which machine stamped it:
+/// otherwise it is unreleasable, the "no legitimate way to release" ADR-0002 forbids.
+fn release_snapshot(
+    snapshots: &SnapshotStore,
+    tweak_id: &str,
+    corpus: &Corpus,
+    guid: Option<&str>,
+    build: u32,
+) -> Result<u32> {
+    snapshots
+        .clear_attention_consented(tweak_id, guid)
+        .map_err(|e| Error::Tweak(e.to_string()))?;
+    let entries = snapshots
+        .list(tweak_id, corpus, guid, build)
+        .map_err(|e| Error::Tweak(e.to_string()))?;
+    let mut discarded = 0;
+    for entry in entries {
+        snapshots
+            .discard(tweak_id, entry.seq)
+            .map_err(|e| Error::Tweak(e.to_string()))?;
+        discarded += 1;
+    }
+    log::info!("tweak '{tweak_id}': current state kept, {discarded} snapshot entries released");
+    Ok(discarded)
+}
+
+/// "Keep current state": the user accepting what is on the machine now (ADR-0002). Returns the
+/// fresh status so the card never patches the record away locally and an in-flight sweep event
+/// cannot put the badge back.
+#[tauri::command]
+pub async fn keep_current_state(
+    state: State<'_, TweakEngineState>,
+    tweak_id: String,
+) -> Result<TweakStatusView> {
+    log::info!("keep_current_state: '{tweak_id}'");
+    let corpus = compiled_corpus();
+    let tweak = find_tweak(corpus, &tweak_id)?;
+    // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
+    let _guard = lifecycle::lock_tweak(&tweak_id)
+        .await
+        .map_err(Error::AppExiting)?;
+    release_snapshot(
+        &state.snapshots,
+        &tweak_id,
+        corpus,
+        state.machine_guid.as_deref(),
+        running_winver().build,
+    )?;
+    Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
 }
 
 #[tauri::command]
@@ -1214,18 +1322,22 @@ mod tests {
     struct CountingKind {
         live: Mutex<Value>,
         reads: AtomicU32,
+        /// A stamp taken during each read, so a test can prove a view's own stamp predates them.
+        read_stamps: Mutex<Vec<u64>>,
     }
     impl CountingKind {
         fn new(initial: Value) -> Self {
             Self {
                 live: Mutex::new(initial),
                 reads: AtomicU32::new(0),
+                read_stamps: Mutex::new(Vec::new()),
             }
         }
     }
     impl EffectKind for CountingKind {
         fn read(&self, _s: &Setting, _cx: &ExecCx) -> std::result::Result<Value, KindError> {
             self.reads.fetch_add(1, Ordering::SeqCst);
+            self.read_stamps.lock().unwrap().push(next_status_stamp());
             Ok(self.live.lock().unwrap().clone())
         }
         fn drive(
@@ -1498,6 +1610,264 @@ mod tests {
 
     // --- availability + SID/elevation gating (pure logic, no Tauri runtime, no OS) --------------
 
+    // --- Needs Attention at the command seam ----------------------------------------------------
+
+    /// CRITICAL: a record whose entries have all gone must still be releasable. That state is
+    /// ordinary (a verified restore whose clear failed, then consuming the last entry), and without
+    /// this the badge returns on every restart with no way out -- exactly what ADR-0002 forbids.
+    #[test]
+    fn keeping_the_current_state_clears_a_record_that_has_no_entries_left() {
+        use crate::tweaks::snapshot::{Attention, AttentionItem, AttentionKind, AttentionReason};
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let c = corpus(vec![tweak("demo", vec![opt("A", StartupType::Manual)])]);
+        snapshots
+            .set_attention(
+                "demo",
+                Some("test-guid"),
+                Attention {
+                    reason: AttentionReason::RestoreFailed,
+                    items: vec![AttentionItem {
+                        effect: None,
+                        kind: AttentionKind::Store,
+                        message: "the clear failed, then the last entry was consumed".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        assert!(snapshots
+            .list("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_empty());
+
+        let discarded = release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045)
+            .expect("consent must release a record with nothing left to discard");
+        assert_eq!(discarded, 0);
+        assert_eq!(
+            snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+    }
+
+    /// CRITICAL: consent already discards another machine's entries, so it must release that
+    /// machine's record too. Leaving it re-badges the tweak on the next detect with nothing the user
+    /// can do about it -- ADR-0002's "no legitimate way to release" again.
+    #[test]
+    fn keeping_the_current_state_releases_another_machines_record() {
+        use crate::tweaks::snapshot::{Attention, AttentionReason};
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let c = corpus(vec![tweak("demo", vec![opt("A", StartupType::Manual)])]);
+        snapshots
+            .set_attention(
+                "demo",
+                Some("another-machine"),
+                Attention {
+                    reason: AttentionReason::ApplyFailed,
+                    items: Vec::new(),
+                },
+            )
+            .unwrap();
+
+        release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045)
+            .expect("consent must release a record this machine cannot resolve");
+        assert_eq!(
+            snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn keeping_the_current_state_discards_every_entry_and_the_record() {
+        use crate::tweaks::snapshot::{Attention, AttentionReason, Captured, NewEntry};
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let c = corpus(vec![tweak("demo", vec![opt("A", StartupType::Manual)])]);
+        for _ in 0..2 {
+            snapshots
+                .push(
+                    "demo",
+                    NewEntry {
+                        captured: Captured::Values(BTreeMap::new()),
+                        journal: Vec::new(),
+                    },
+                    &c,
+                    Some("test-guid"),
+                    19045,
+                )
+                .unwrap();
+        }
+        snapshots
+            .set_attention(
+                "demo",
+                Some("test-guid"),
+                Attention {
+                    reason: AttentionReason::ApplyFailed,
+                    items: Vec::new(),
+                },
+            )
+            .unwrap();
+
+        let discarded =
+            release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045).expect("consent");
+        assert_eq!(discarded, 2);
+        assert!(snapshots
+            .list("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+    }
+
+    /// The scan must not invent a mark for a tweak that finished normally, and must not speak over
+    /// a record that already describes a failure it cannot see.
+    #[test]
+    fn the_startup_crash_scan_marks_only_unconfirmed_work_and_never_overwrites_a_record() {
+        use crate::tweaks::snapshot::{Attention, AttentionReason, Captured, JournalRow, NewEntry};
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let c = corpus(vec![tweak("demo", vec![opt("A", StartupType::Manual)])]);
+        let push = |tweak_id: &str, completed: bool| {
+            snapshots
+                .push(
+                    tweak_id,
+                    NewEntry {
+                        captured: Captured::Values(BTreeMap::new()),
+                        journal: vec![JournalRow {
+                            action_id: EffectId("act1".into()),
+                            intended: true,
+                            completed,
+                            resolved: false,
+                        }],
+                    },
+                    &c,
+                    Some("test-guid"),
+                    19045,
+                )
+                .unwrap();
+        };
+
+        push("clean", true);
+        lifecycle::record_crash_residue(&snapshots, "clean", Some("test-guid"));
+        assert_eq!(
+            snapshots.attention("clean", Some("test-guid")).unwrap(),
+            None,
+            "a tweak whose actions were all confirmed has nothing to carry forward"
+        );
+
+        push("crashed", false);
+        lifecycle::record_crash_residue(&snapshots, "crashed", Some("test-guid"));
+        assert_eq!(
+            snapshots
+                .attention("crashed", Some("test-guid"))
+                .unwrap()
+                .map(|a| a.reason),
+            Some(AttentionReason::CrashResidue)
+        );
+
+        snapshots
+            .set_attention(
+                "crashed",
+                Some("test-guid"),
+                Attention {
+                    reason: AttentionReason::RestoreFailed,
+                    items: Vec::new(),
+                },
+            )
+            .unwrap();
+        lifecycle::record_crash_residue(&snapshots, "crashed", Some("test-guid"));
+        assert_eq!(
+            snapshots
+                .attention("crashed", Some("test-guid"))
+                .unwrap()
+                .map(|a| a.reason),
+            Some(AttentionReason::RestoreFailed),
+            "an existing record wins over what the scan can infer"
+        );
+    }
+
+    /// The stamp orders READS, not publication, so it has to be taken strictly BEFORE them: the
+    /// fixture stamps inside its own `read`, which a stamp moved after `detect` would then outrank.
+    #[test]
+    fn a_scan_stamps_the_view_from_when_its_reads_began() {
+        let h = Harness::new(Value::Startup(StartupType::Manual));
+        let t = tweak("demo", vec![opt("A", StartupType::Manual)]);
+        let c = corpus(vec![t.clone()]);
+
+        let event = scan_one(&t, &c, &h.deps());
+        let during = h.kind.read_stamps.lock().unwrap().clone();
+        assert!(
+            !during.is_empty(),
+            "the fixture's surface must have been read"
+        );
+        assert!(
+            event.status.stamp < during[0],
+            "the view's stamp must predate its first read, not follow it: {} vs {during:?}",
+            event.status.stamp
+        );
+
+        let status = detect::detect(&t, &c, &h.deps());
+        assert_eq!(
+            TweakStatusView::stamped(status, 7).stamp,
+            7,
+            "the constructor uses the stamp it is given, never one of its own"
+        );
+    }
+
+    /// The record is released BEFORE any entry is discarded: a discard that fails part-way must
+    /// still leave it gone, or consent the user already gave reads as consent never given.
+    #[test]
+    fn keeping_the_current_state_clears_the_record_before_it_discards_anything() {
+        use crate::tweaks::snapshot::{Attention, AttentionReason, Captured, NewEntry};
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let c = corpus(vec![tweak("demo", vec![opt("A", StartupType::Manual)])]);
+        let seq = snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        snapshots
+            .set_attention(
+                "demo",
+                Some("test-guid"),
+                Attention {
+                    reason: AttentionReason::ApplyFailed,
+                    items: Vec::new(),
+                },
+            )
+            .unwrap();
+
+        // A handle sharing read but not delete: the discard fails with a sharing violation.
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let path = tmp.path().join("demo").join(format!("{:020}.json", seq.0));
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&path)
+            .unwrap();
+
+        release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045)
+            .expect_err("the held entry cannot be discarded");
+        assert_eq!(
+            snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None,
+            "the record went first, so a failed discard cannot leave it behind"
+        );
+        assert!(path.exists(), "and the entry is kept, never silently lost");
+        drop(held);
+    }
+
     #[test]
     fn sid_guard_blocks_every_hkcu_touching_tweak_whatever_its_floor() {
         // The guard's input is the HIVE, not the floor. Every floor is checked, including Admin,
@@ -1750,8 +2120,14 @@ mod tests {
         let deps = h.deps();
 
         // A real transition: mutates the mock live value to "On".
-        let first = futures_block_on(apply_tweak_logic(&t, &c, &OptLabel("On".into()), &deps))
-            .expect("apply succeeds");
+        let first = futures_block_on(apply_tweak_logic(
+            &t,
+            &c,
+            &OptLabel("On".into()),
+            &deps,
+            next_status_stamp(),
+        ))
+        .expect("apply succeeds");
         assert_eq!(
             first.status.state,
             TweakStateView::Active {
@@ -1766,8 +2142,14 @@ mod tests {
         // exactly ONE read (the pre-status detect), nothing driven. If this command layer ever
         // performed its own extra `detect` before/after handing back the outcome, this would read
         // more than once.
-        let second = futures_block_on(apply_tweak_logic(&t, &c, &OptLabel("On".into()), &deps))
-            .expect("no-op apply succeeds");
+        let second = futures_block_on(apply_tweak_logic(
+            &t,
+            &c,
+            &OptLabel("On".into()),
+            &deps,
+            next_status_stamp(),
+        ))
+        .expect("no-op apply succeeds");
         assert_eq!(
             h.kind.reads.load(Ordering::SeqCst),
             1,
