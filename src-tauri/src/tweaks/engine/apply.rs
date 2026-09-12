@@ -36,18 +36,11 @@
 //! resolving a captured `OptionRef`'s current definition (ADR-0007) need it, so it is added here:
 //! `apply(tweak, corpus, target, deps)`.
 //!
-//! ## Per-effect execution-context routing (spec §9, ADR-0005; invariant 24)
-//! DRIVES route through [`context::route`] per effect (`Deps.level` is never used to build a
-//! drive's `ExecCx` directly): `route` computes `effective = max(tweak's floor, the effect's own
-//! declared level)`, EXCEPT a user-hive (HKCU) `Setting` always drives in-process as the
-//! interactive user regardless of the floor. READS (Step 1's capture, and every read-back
-//! verification after a drive) go through [`context::read_route`] instead: reads never escalate to
-//! a tweak's declared floor/step (invariant 24), so they stay at `Deps.level` -- the elevation the
-//! app currently HAS, i.e. the ceiling -- except an HKCU read is still forced to the interactive
-//! user for hive correctness. `Deps.level` therefore means exactly that ceiling (used for reads and
-//! for the command layer's runnability gating, a later task); it is never itself escalated to
-//! System/TI here. `rollback`'s own body, `verify_reversed_probe`, and `do_apply`'s consume-gate are
-//! untouched by this -- only which `ExecCx` a drive/read call receives changed.
+//! ## Per-effect routing (spec §9, ADR-0005; invariant 24)
+//! DRIVES use [`context::route`] per effect (`max(floor, step)`; HKCU always in-process as the
+//! user). READS use [`context::read_route`] and never escalate, staying at `Deps.level`. Reversals
+//! route per effect too, re-derived from the CURRENT corpus (ADR-0007): [`rollback`],
+//! `revert::undo_journal`, `revert::release_shared_claims`; a claim releases at its recorded level.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -354,10 +347,12 @@ pub(crate) enum ActionPlan {
 #[derive(Debug, Clone)]
 enum ProcessedEffect {
     Action(EffectId, ActionPlan),
-    SharedClaim(SharedId),
+    /// The `Level` is the routed level the claim was taken at: one surface may reference a shared
+    /// id from several effects at different steps, so the id alone cannot name the level back.
+    SharedClaim(SharedId, Level),
     /// Boxed: `SharedDef` (needed to re-`claim` on rollback) is far larger than the other
     /// variants, and this list is built one push at a time, never densely packed.
-    SharedRelease(Box<SharedDef>),
+    SharedRelease(Box<SharedDef>, Level),
 }
 
 /// Whether a drive pass should durably mark completed actions into an on-disk WAL entry, or skip
@@ -408,7 +403,7 @@ impl DriveState {
             .iter()
             .filter_map(|p| match p {
                 ProcessedEffect::Action(id, _) => Some(id.clone()),
-                ProcessedEffect::SharedClaim(_) | ProcessedEffect::SharedRelease(_) => None,
+                ProcessedEffect::SharedClaim(..) | ProcessedEffect::SharedRelease(..) => None,
             })
             .collect()
     }
@@ -577,7 +572,7 @@ fn do_apply(
     // downstream consumer.
     let journal: Vec<JournalRow> = action_plan
         .iter()
-        .filter(|(id, _)| !find_action(tweak, id).is_some_and(is_ephemeral))
+        .filter(|(id, _)| !find_action(tweak, id).is_some_and(|(_, a)| is_ephemeral(a)))
         .map(|(id, _)| JournalRow {
             action_id: id.clone(),
             intended: true,
@@ -801,7 +796,7 @@ fn drive_shared(
                 })?;
             state
                 .processed
-                .push(ProcessedEffect::SharedClaim(shared_id.clone()));
+                .push(ProcessedEffect::SharedClaim(shared_id.clone(), cx.level()));
             state.effect_results.push(EffectResult {
                 effect: effect.id.clone(),
                 kind: EffectResultKind::Claimed,
@@ -823,9 +818,10 @@ fn drive_shared(
                         shared: shared_id.clone(),
                         source: e,
                     })?;
-                state
-                    .processed
-                    .push(ProcessedEffect::SharedRelease(Box::new(shared_def.clone())));
+                state.processed.push(ProcessedEffect::SharedRelease(
+                    Box::new(shared_def.clone()),
+                    cx.level(),
+                ));
                 state.effect_results.push(EffectResult {
                     effect: effect.id.clone(),
                     kind: match outcome {
@@ -975,24 +971,22 @@ fn rollback(
     processed: &[ProcessedEffect],
     deps: &Deps,
 ) -> Vec<EngineError> {
-    let cx = ExecCx::new(deps.level);
     let mut failures = Vec::new();
 
     for item in processed.iter().rev() {
         match item {
             ProcessedEffect::Action(effect_id, ActionPlan::Apply) => {
-                let Some(action_def) = find_action(tweak, effect_id) else {
+                let Some((effect, action_def)) = find_action(tweak, effect_id) else {
                     failures.push(EngineError::Invalid(format!(
                         "completed action '{effect_id}' vanished from the surface during rollback"
                     )));
                     continue;
                 };
+                let cx = context::route(effect, tweak, corpus);
                 if is_ephemeral(action_def) {
-                    // Belt-and-suspenders (review fix): Step 2 no longer journals an ephemeral, and
-                    // `drive_action` no longer adds it to `state.processed`, so this arm should be
-                    // unreachable for one in practice -- but an ephemeral is exempt from ALL
-                    // reversibility bookkeeping (spec §7, invariant 10), so a future path that ever
-                    // does surface one here must skip it, never report it un-undoable.
+                    // An ephemeral is exempt from ALL reversibility bookkeeping (spec §7, invariant
+                    // 10): skip it, never report it un-undoable. Step 2 journals none and
+                    // `drive_action` records none, so reaching this arm means a new path added one.
                 } else if has_undo(action_def) {
                     match deps.actions.undo(action_def, &cx) {
                         Ok(()) => {
@@ -1004,9 +998,9 @@ fn rollback(
                             // expects the produced state to now read absent.
                             verify_reversed_probe(
                                 action_def,
-                                effect_id,
+                                effect,
                                 false,
-                                &cx,
+                                corpus,
                                 deps,
                                 &mut failures,
                             );
@@ -1027,12 +1021,13 @@ fn rollback(
                 }
             }
             ProcessedEffect::Action(effect_id, ActionPlan::UndoBack) => {
-                let Some(action_def) = find_action(tweak, effect_id) else {
+                let Some((effect, action_def)) = find_action(tweak, effect_id) else {
                     failures.push(EngineError::Invalid(format!(
                         "completed action '{effect_id}' vanished from the surface during rollback"
                     )));
                     continue;
                 };
+                let cx = context::route(effect, tweak, corpus);
                 // Reversing a drive-back-undo always means re-running `apply` -- mandatory on
                 // every `ActionDef::Script`/`DeleteTree`, so this is never "un-undoable".
                 match deps.actions.apply(action_def, &cx) {
@@ -1042,9 +1037,9 @@ fn rollback(
                         // path in `drive_action`, never downgraded to exit-code-only here).
                         verify_reversed_probe(
                             action_def,
-                            effect_id,
+                            effect,
                             true,
-                            &cx,
+                            corpus,
                             deps,
                             &mut failures,
                         );
@@ -1055,7 +1050,8 @@ fn rollback(
                     }),
                 }
             }
-            ProcessedEffect::SharedClaim(shared_id) => {
+            ProcessedEffect::SharedClaim(shared_id, level) => {
+                let cx = ExecCx::new(*level);
                 if let Err(e) = deps.claims.release(shared_id, &tweak.id, deps.kinds, &cx) {
                     failures.push(EngineError::Claim {
                         shared: shared_id.clone(),
@@ -1063,7 +1059,8 @@ fn rollback(
                     });
                 }
             }
-            ProcessedEffect::SharedRelease(shared_def) => {
+            ProcessedEffect::SharedRelease(shared_def, level) => {
+                let cx = ExecCx::new(*level);
                 // Re-`claim`s rather than restoring the historical "original" directly: this
                 // re-captures a fresh original from the live value at THIS moment. That is
                 // equivalent here, not a shortcut -- `release`'s own read-back verification
@@ -1086,48 +1083,47 @@ fn rollback(
     failures
 }
 
-/// Did-it-work for a rollback's action reversal (invariant 19): probe/read-back is checked
-/// identically at apply time and rollback time, never downgraded to trusting the reversal call's
-/// exit code alone. `expected_present` is the state the resource should read once the reversal
-/// (an `undo` reversing a forward `Apply`, or a re-run `apply` reversing an `UndoBack`) has
-/// actually taken effect. A probe-less action has no state to check here -- nothing to add. A
-/// probe `Err` is itself pushed as a failure, never swallowed and never read as `Ok(false)`.
-///
-/// `pub(crate)`: Task 13's restore reuses this verbatim for the same did-it-work discipline when
-/// undoing a completed journal action (visibility-only -- see this file's module docs; the body
-/// below is byte-identical to Task 12's).
+/// Did-it-work for an action reversal (invariant 19): the probe is checked exactly as at apply
+/// time, never downgraded to trusting the reversal's exit code, and a probe `Err` is a failure,
+/// never a benign `Ok(false)`. It only READS, so it routes at `read_route` and never escalates.
 pub(crate) fn verify_reversed_probe(
     action_def: &ActionDef,
-    effect_id: &EffectId,
+    effect: &EffectDef,
     expected_present: bool,
-    cx: &ExecCx,
+    corpus: &Corpus,
     deps: &Deps,
     failures: &mut Vec<EngineError>,
 ) {
     let ActionDef::Script { probe: Some(_), .. } = action_def else {
         return;
     };
-    match deps.probes.probe(action_def, cx) {
+    let cx = context::read_route(effect, deps.level, corpus);
+    match deps.probes.probe(action_def, &cx) {
         Ok(present) if present == expected_present => {}
         Ok(actual) => failures.push(EngineError::ActionVerifyMismatch {
-            effect: effect_id.clone(),
+            effect: effect.id.clone(),
             expected: expected_present,
             actual,
         }),
         Err(e) => failures.push(EngineError::ActionFailed {
-            effect: effect_id.clone(),
+            effect: effect.id.clone(),
             source: e,
         }),
     }
 }
 
-fn find_action<'a>(tweak: &'a Tweak, effect_id: &EffectId) -> Option<&'a ActionDef> {
+/// The effect is returned alongside its `ActionDef` because every caller that reverses one must
+/// route it, and only the `EffectDef` carries the step level [`context::route`] needs.
+fn find_action<'a>(
+    tweak: &'a Tweak,
+    effect_id: &EffectId,
+) -> Option<(&'a EffectDef, &'a ActionDef)> {
     tweak
         .surface
         .iter()
         .find(|e| &e.id == effect_id)
         .and_then(|e| match &e.kind {
-            Effect::Action(a) => Some(a),
+            Effect::Action(a) => Some((e, a)),
             _ => None,
         })
 }
@@ -1536,6 +1532,9 @@ mod tests {
         assert_before_drive: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
         /// The size of each `drive_batch` call, so a test can count children instead of drives.
         batches: Mutex<Vec<usize>>,
+        /// The `ExecCx::level()` each drive received, so a test can prove which level a reversal
+        /// actually ran at.
+        levels: Mutex<Vec<(String, Level)>>,
     }
 
     impl MockKind {
@@ -1574,6 +1573,17 @@ mod tests {
         fn batches(&self) -> Vec<usize> {
             self.batches.lock().unwrap().clone()
         }
+        /// Every drive level recorded for `name`, in order: a test pins both THAT a drive happened
+        /// and which level ran it, so a vanished reversal fails as loudly as a mis-routed one.
+        fn drive_levels(&self, name: &str) -> Vec<Level> {
+            self.levels
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(k, _)| k == name)
+                .map(|(_, l)| *l)
+                .collect()
+        }
     }
 
     impl EffectKind for MockKind {
@@ -1594,12 +1604,13 @@ mod tests {
             Ok(self.live_value(&key))
         }
 
-        fn drive(&self, s: &Setting, target: &Value, _cx: &ExecCx) -> Result<(), KindError> {
+        fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), KindError> {
             let key = setting_key(s);
             if let Some(f) = &*self.assert_before_drive.lock().unwrap() {
                 f();
             }
             self.log.lock().unwrap().push(Op::Drive(key.clone()));
+            self.levels.lock().unwrap().push((key.clone(), cx.level()));
             let plan = self.drive_plan.lock().unwrap().get(&key).cloned();
             match plan {
                 Some(DrivePlan::Err) => Err(KindError::Backend("mock drive failure".into())),
@@ -1650,16 +1661,33 @@ mod tests {
     struct MockProbes {
         log: Log,
         presence: Presence,
+        /// The `ExecCx::level()` each probe received, so a test can prove a read never escalated.
+        levels: Mutex<Vec<(String, Level)>>,
     }
     impl MockProbes {
         fn new(log: Log, presence: Presence) -> Self {
-            Self { log, presence }
+            Self {
+                log,
+                presence,
+                ..Default::default()
+            }
+        }
+        /// The level of the MOST RECENT probe of `key` -- on a rollback, the reversal's verify.
+        fn last_level_of(&self, key: &str) -> Option<Level> {
+            self.levels
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|(k, _)| k == key)
+                .map(|(_, l)| *l)
         }
     }
     impl ProbeSource for MockProbes {
-        fn probe(&self, action: &ActionDef, _cx: &ExecCx) -> Result<bool, KindError> {
+        fn probe(&self, action: &ActionDef, cx: &ExecCx) -> Result<bool, KindError> {
             let key = action_key(action);
             self.log.lock().unwrap().push(Op::Probe(key.clone()));
+            self.levels.lock().unwrap().push((key.clone(), cx.level()));
             Ok(*self.presence.lock().unwrap().get(&key).unwrap_or(&false))
         }
     }
@@ -1668,6 +1696,8 @@ mod tests {
     struct MockActions {
         log: Log,
         presence: Presence,
+        /// The `ExecCx::level()` each call received, keyed `"<action>:apply"` / `"<action>:undo"`.
+        levels: Mutex<Vec<(String, Level)>>,
         fail_apply: Mutex<HashSet<String>>,
         fail_undo: Mutex<HashSet<String>>,
         /// Simulates a buggy/racy `undo` that exits 0 (`Ok`) without actually reverting the
@@ -1691,20 +1721,36 @@ mod tests {
             self.lie_on_undo.lock().unwrap().insert(key.into());
             self
         }
+        fn level_of(&self, key: &str) -> Option<Level> {
+            self.levels
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, l)| *l)
+        }
     }
     impl ActionRunner for MockActions {
-        fn apply(&self, action: &ActionDef, _cx: &ExecCx) -> Result<(), KindError> {
+        fn apply(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError> {
             let key = action_key(action);
             self.log.lock().unwrap().push(Op::RunApply(key.clone()));
+            self.levels
+                .lock()
+                .unwrap()
+                .push((format!("{key}:apply"), cx.level()));
             if self.fail_apply.lock().unwrap().contains(&key) {
                 return Err(KindError::ActionFailed(1));
             }
             self.presence.lock().unwrap().insert(key, true);
             Ok(())
         }
-        fn undo(&self, action: &ActionDef, _cx: &ExecCx) -> Result<(), KindError> {
+        fn undo(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError> {
             let key = action_key(action);
             self.log.lock().unwrap().push(Op::RunUndo(key.clone()));
+            self.levels
+                .lock()
+                .unwrap()
+                .push((format!("{key}:undo"), cx.level()));
             if self.fail_undo.lock().unwrap().contains(&key) {
                 return Err(KindError::ActionFailed(1));
             }
@@ -3819,6 +3865,106 @@ mod tests {
             levels.iter().find(|(n, _)| n == "user_c").map(|(_, l)| *l),
             Some(Level::User),
             "the HKCU effect must still drive in-process as the user"
+        );
+    }
+
+    /// An Action's undo routes from the tweak's floor, never from what the app currently holds,
+    /// while its verify probe only reads and so stays at `Deps.level` (invariant 24). `ti` is not
+    /// tested here: validation forbids a ti-routed action outright (`check_action_never_ti`).
+    #[test]
+    fn an_action_undo_routes_from_the_floor_not_the_run_level() {
+        let h = Harness::new();
+        h.kind.seed(
+            "s1",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        // The later effect's drive failure is what forces the rollback that undoes the action.
+        h.kind.drive_plan("s1", DrivePlan::Err);
+        let mut t = tweak(
+            "demo",
+            vec![action_effect("act", true, true), svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("act", OptValue::Run(None)),
+                    (
+                        "s1",
+                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                    ),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+        let deps = Deps {
+            level: Level::User,
+            ..h.deps()
+        };
+
+        run_apply(&t, &c, &OptLabel("A".into()), &deps).expect_err("the later effect fails");
+
+        assert_eq!(
+            h.actions.level_of("act_apply:undo"),
+            Some(Level::Admin),
+            "the undo must run at the tweak's floor, not at Deps.level"
+        );
+        assert_eq!(
+            h.probes.last_level_of("act_apply"),
+            Some(Level::User),
+            "the reversal's verify probe only reads, so it stays at Deps.level"
+        );
+    }
+
+    /// A claim must be given back, and at the level it was taken at: the two recorded drives are
+    /// the claim and its reversal, so a release that never runs fails as loudly as a wrong level.
+    #[test]
+    fn a_shared_claim_is_released_at_the_level_it_was_taken_at() {
+        let h = Harness::new();
+        h.kind.seed(
+            "s1",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        h.kind.seed(
+            "sh_addr",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        h.kind.drive_plan("s1", DrivePlan::Err);
+        let mut sh = shared_effect("sh_eff", "sh");
+        sh.elevation = Some(Level::Ti);
+        let mut t = tweak(
+            "demo",
+            vec![sh, svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("sh_eff", OptValue::Claim(None)),
+                    (
+                        "s1",
+                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                    ),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(crate::tweaks::model::StartupType::Disabled),
+        };
+        let c = corpus(vec![t.clone()], vec![shared]);
+        let deps = Deps {
+            level: Level::Admin,
+            ..h.deps()
+        };
+
+        run_apply(&t, &c, &OptLabel("A".into()), &deps).expect_err("the later effect fails");
+
+        assert_eq!(
+            h.kind.drive_levels("sh_addr"),
+            vec![Level::Ti, Level::Ti],
+            "the claim drives at Ti, and the rollback's release must drive it back at Ti"
         );
     }
 }

@@ -7,24 +7,7 @@
 use crate::tweaks::kinds::ExecCx;
 use crate::tweaks::model::{ActionDef, Corpus, Effect, EffectDef, Hive, Level, Setting, Tweak};
 
-/// Escalate-only ranking for `effective_level` (spec §9): `User < Admin < Ti`.
-fn rank(level: Level) -> u8 {
-    match level {
-        Level::User => 0,
-        Level::Admin => 1,
-        Level::Ti => 2,
-    }
-}
-
-/// `effective = max(floor, step)`, escalate-only (spec §9, invariant 24): a step may raise the
-/// level above the tweak's floor, never lower it. `step: None` means the effect declared no level
-/// of its own, so the floor alone decides.
-pub fn effective_level(floor: Level, step: Option<Level>) -> Level {
-    match step {
-        Some(step) if rank(step) > rank(floor) => step,
-        _ => floor,
-    }
-}
+pub use crate::tweaks::model::effective_level;
 
 /// Whether `s` is a user-hive (HKCU) registry/registry-key effect (spec §9's HKCU exception) --
 /// the only two `Setting` variants that carry a `Hive` at all.
@@ -455,19 +438,16 @@ mod tests {
 
     #[test]
     fn effective_level_is_max_escalate_only() {
+        // Ascending, so a higher index is a higher level: `expected` needs no ranking helper.
         let levels = [Level::User, Level::Admin, Level::Ti];
-        for &floor in &levels {
+        for (floor_rank, &floor) in levels.iter().enumerate() {
             assert_eq!(
                 effective_level(floor, None),
                 floor,
                 "no step-level override must keep the floor"
             );
-            for &step in &levels {
-                let expected = if rank(step) > rank(floor) {
-                    step
-                } else {
-                    floor
-                };
+            for (step_rank, &step) in levels.iter().enumerate() {
+                let expected = if step_rank > floor_rank { step } else { floor };
                 assert_eq!(
                     effective_level(floor, Some(step)),
                     expected,

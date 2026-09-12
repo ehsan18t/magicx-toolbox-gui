@@ -585,6 +585,9 @@ contract in §12.
 
 **Value domain:** `run`, or **omit the entry entirely** (omitted = "this option does not run it").
 
+> ⚠️ **An action may never run at `ti`** (§13.2): a routed level of TrustedInstaller is a build error,
+> whether the `ti` comes from the tweak's floor or from the effect's own `elevation:`.
+
 > ⚠️ **`apply` and `undo` are inline strings only in v1** (usually a YAML block scalar with `|`).
 > There is **no `apply: { file: … }` filed-script form** in the shipped schema: writing one is a build
 > error. See §12.6. `probe` also accepts the native forms in §12.5, which avoid a process entirely and
@@ -1590,6 +1593,11 @@ effects:
     task: { path: '\Microsoft\Windows\WaaSMedic\PerformRemediation' }
     elevation: ti # this ONE effect escalates to TrustedInstaller
 ```
+
+> ⚠️ **An `action:` effect may never route to `ti`.** Nothing carries a script into a TrustedInstaller
+> child, so such an action could neither be applied nor undone. The build rejects it and names the
+> effect, whether the `ti` came from the tweak's floor or from the effect's own step. Express the
+> change as a typed effect (which does route to `ti`), or keep the action at `admin`.
 
 ### 13.3 The HKCU exception (and why)
 

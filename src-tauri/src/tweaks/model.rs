@@ -29,6 +29,25 @@ impl std::fmt::Display for Level {
     }
 }
 
+/// Escalate-only ranking for [`effective_level`] (spec §9): `User < Admin < Ti`.
+fn rank(level: Level) -> u8 {
+    match level {
+        Level::User => 0,
+        Level::Admin => 1,
+        Level::Ti => 2,
+    }
+}
+
+/// `effective = max(floor, step)`, escalate-only (spec §9, invariant 24): a step raises the level
+/// above the floor, never lowers it; `step: None` leaves the floor deciding. Here, not in
+/// `engine`, so the build-time guards and the runtime router compute one answer.
+pub fn effective_level(floor: Level, step: Option<Level>) -> Level {
+    match step {
+        Some(step) if rank(step) > rank(floor) => step,
+        _ => floor,
+    }
+}
+
 /// Advisory impact rating shown to the user (spec §6.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RiskLevel {

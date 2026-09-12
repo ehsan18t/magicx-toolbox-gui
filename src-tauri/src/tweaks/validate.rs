@@ -11,8 +11,8 @@
 //! test-only).
 
 use super::model::{
-    ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Opt, OptLabel, OptValue,
-    ScopedValue, Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
+    effective_level, ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Level, Opt,
+    OptLabel, OptValue, ScopedValue, Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
 };
 use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
@@ -241,6 +241,17 @@ pub enum ValidationError {
         second: OptLabel,
         build: u32,
     },
+
+    /// An `action:` effect whose routed level is TrustedInstaller (spec §7, ADR-0005): no `BrokerOp`
+    /// carries a script, so `ActionKind` rejects `Ti` and both apply and undo would fail at runtime.
+    #[error(
+        "tweak `{tweak}` effect `{effect}` is an action routed to TrustedInstaller, from {origin}: a script cannot run at `ti` (no broker op carries one), so lower the level or express the change as a typed effect"
+    )]
+    ActionAtTrustedInstaller {
+        tweak: String,
+        effect: EffectId,
+        origin: &'static str,
+    },
 }
 
 /// Runs every structural guard in scope for this task (spec §10) over an already-loaded corpus.
@@ -257,6 +268,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_ti_self_availability(tweak, &mut errors);
         check_if_missing_requires_optional(tweak, &mut errors);
         check_ephemeral_has_no_undo_probe(tweak, &mut errors);
+        check_action_never_ti(tweak, &mut errors);
     }
     errors
 }
@@ -573,6 +585,28 @@ fn check_ephemeral_has_no_undo_probe(tweak: &Tweak, errors: &mut Vec<ValidationE
                 });
             }
         }
+    }
+}
+
+/// An `action:` effect may never route to TrustedInstaller (spec §7, ADR-0005): `ActionKind`
+/// rejects `Ti` because no `BrokerOp` carries a script, so a shipped one would fail on apply AND on
+/// every undo. Rejected at build, where the author can still choose a level that runs.
+fn check_action_never_ti(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    for effect in &tweak.surface {
+        if !matches!(effect.kind, Effect::Action(_))
+            || effective_level(tweak.elevation, effect.elevation) != Level::Ti
+        {
+            continue;
+        }
+        errors.push(ValidationError::ActionAtTrustedInstaller {
+            tweak: tweak.id.clone(),
+            effect: effect.id.clone(),
+            origin: if effect.elevation == Some(Level::Ti) {
+                "the effect's own `elevation: ti`"
+            } else {
+                "the tweak's `elevation: ti` floor"
+            },
+        });
     }
 }
 
@@ -1193,6 +1227,40 @@ mod tests {
         };
         assert_eq!(tweak, "ephemeral_with_probe_tweak");
         assert_eq!(effect.0, "flush_dns");
+    }
+
+    /// Both sources of a routed `ti` are rejected: the tweak's floor, and the effect's own step.
+    #[test]
+    fn an_action_routed_to_trusted_installer_is_rejected() {
+        let errors = errors_for("action_at_trusted_installer.yaml");
+        assert_eq!(errors.len(), 2, "expected one per tweak, got {errors:?}");
+        let named: Vec<(&str, &str, &str)> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::ActionAtTrustedInstaller {
+                    tweak,
+                    effect,
+                    origin,
+                } => (tweak.as_str(), effect.0.as_str(), *origin),
+                other => panic!("expected ActionAtTrustedInstaller, got {other:?}"),
+            })
+            .collect();
+        assert!(
+            named.contains(&(
+                "action_under_ti_floor",
+                "run_script",
+                "the tweak's `elevation: ti` floor"
+            )),
+            "the floor-sourced one must be named: {named:?}"
+        );
+        assert!(
+            named.contains(&(
+                "action_with_ti_step",
+                "run_script2",
+                "the effect's own `elevation: ti`"
+            )),
+            "the step-sourced one must be named: {named:?}"
+        );
     }
 
     #[test]

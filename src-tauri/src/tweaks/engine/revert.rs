@@ -39,6 +39,12 @@
 //! (visibility-only -- see that file's own docs) and called here unmodified. Only the *sequencing*
 //! (undo loop, re-derivation lookups, consume/keep) is new.
 //!
+//! ## Execution levels
+//! Every undo here routes per effect through `context::route` against the CURRENT corpus
+//! (ADR-0007), never from `Deps.level`: [`undo_journal`] from the journaled action's own effect,
+//! [`release_shared_claims`] from the Shared effect it is releasing. Probes stay on
+//! `context::read_route`, since reads never escalate (invariant 24).
+//!
 //! ## Fix 1 (post-review): no throwaway snapshot entry
 //! An earlier revision pushed a throwaway `Captured::Values({})` entry purely to give
 //! `drive_action`'s hardcoded `mark_completed(tweak_id, seq, ..)` call somewhere durable to write,
@@ -71,7 +77,6 @@
 use std::collections::BTreeSet;
 
 use super::apply::attention_item;
-use crate::tweaks::kinds::ExecCx;
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, SharedId, Tweak,
 };
@@ -84,7 +89,7 @@ use crate::tweaks::winver::WinVer;
 
 use super::apply::{self, ActionPlan, DriveCtx, DriveState, EngineError};
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnavailableOpt};
-use super::{lifecycle, Deps, Phase};
+use super::{context, lifecycle, Deps, Phase};
 
 /// `restore`'s result (controller decision 3): a fresh [`TweakStatus`] computed from this
 /// operation's own verify reads (grill Q1 -- no re-scan), which entry (if any) this restore
@@ -151,11 +156,10 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
         )));
     };
 
-    let cx = ExecCx::new(deps.level);
     let mut failures: Vec<EngineError> = Vec::new();
 
     // Step 1: undo the entry's completed journal actions, in reverse order.
-    let mut accounted = undo_journal(current_tweak, &entry.journal, &cx, deps, &mut failures);
+    let mut accounted = undo_journal(current_tweak, corpus, &entry.journal, deps, &mut failures);
 
     // Step 2 (+ step 3, folded in via `drive_forward`'s own Shared handling): re-apply the target.
     let mut reboot_advisory = false;
@@ -163,8 +167,7 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
     let mut residues: Vec<EffectId> = Vec::new();
     let restored_label = match &entry.captured {
         Captured::OptionRef(label) => {
-            let result =
-                reapply_option_ref(current_tweak, corpus, label, milestone, &winver, &cx, deps);
+            let result = reapply_option_ref(current_tweak, corpus, label, milestone, &winver, deps);
             failures.extend(result.failures);
             held_shared = result.held_shared;
             residues = result.residues;
@@ -180,8 +183,8 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
             }
             release_shared_claims(
                 current_tweak,
+                corpus,
                 &milestone,
-                &cx,
                 deps,
                 &mut held_shared,
                 &mut failures,
@@ -256,14 +259,14 @@ fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutc
 /// rows it drove back and verified, which is what a verified restore may resolve.
 fn undo_journal(
     tweak: &Tweak,
+    corpus: &Corpus,
     journal: &[JournalRow],
-    cx: &ExecCx,
     deps: &Deps,
     failures: &mut Vec<EngineError>,
 ) -> BTreeSet<EffectId> {
     let mut undone = BTreeSet::new();
     for row in journal.iter().rev().filter(|r| r.completed) {
-        let Some(action_def) = find_action(tweak, &row.action_id) else {
+        let Some((effect, action_def)) = find_action(tweak, &row.action_id) else {
             failures.push(EngineError::Invalid(format!(
                 "completed action '{}' vanished from the surface during restore",
                 row.action_id
@@ -285,10 +288,11 @@ fn undo_journal(
             failures.push(EngineError::NoUndo(row.action_id.clone()));
             continue;
         }
-        match deps.actions.undo(action_def, cx) {
+        let cx = context::route(effect, tweak, corpus);
+        match deps.actions.undo(action_def, &cx) {
             Ok(()) => {
                 let before = failures.len();
-                apply::verify_reversed_probe(action_def, &row.action_id, false, cx, deps, failures);
+                apply::verify_reversed_probe(action_def, effect, false, corpus, deps, failures);
                 if failures.len() == before {
                     undone.insert(row.action_id.clone());
                 }
@@ -322,7 +326,6 @@ fn reapply_option_ref(
     label: &str,
     milestone: Milestone,
     winver: &WinVer,
-    cx: &ExecCx,
     deps: &Deps,
 ) -> OptionRefResult {
     let mut failures = Vec::new();
@@ -391,7 +394,10 @@ fn reapply_option_ref(
             ..
         } = action_def
         {
-            match deps.probes.probe(action_def, cx) {
+            match deps
+                .probes
+                .probe(action_def, &context::read_route(effect, deps.level, corpus))
+            {
                 Ok(true) if undo.is_some() => {
                     action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
                 }
@@ -459,8 +465,8 @@ fn reapply_option_ref(
 /// particular shared id is left untouched (nothing to release).
 fn release_shared_claims(
     tweak: &Tweak,
+    corpus: &Corpus,
     milestone: &Milestone,
-    cx: &ExecCx,
     deps: &Deps,
     held_shared: &mut Vec<HeldInfo>,
     failures: &mut Vec<EngineError>,
@@ -472,7 +478,8 @@ fn release_shared_claims(
         if !currently_holds(deps, shared_id, &tweak.id) {
             continue;
         }
-        match deps.claims.release(shared_id, &tweak.id, deps.kinds, cx) {
+        let cx = context::route(effect, tweak, corpus);
+        match deps.claims.release(shared_id, &tweak.id, deps.kinds, &cx) {
             Ok(ReleaseOutcome::StillHeld(holders)) => held_shared.push(HeldInfo {
                 shared: shared_id.clone(),
                 holders,
@@ -490,13 +497,18 @@ fn currently_holds(deps: &Deps, shared_id: &SharedId, tweak_id: &str) -> bool {
     deps.claims.holders(shared_id).iter().any(|h| h == tweak_id)
 }
 
-fn find_action<'a>(tweak: &'a Tweak, effect_id: &EffectId) -> Option<&'a ActionDef> {
+/// The effect is returned alongside its `ActionDef` because undoing one must route it, and only
+/// the `EffectDef` carries the step level [`context::route`] needs.
+fn find_action<'a>(
+    tweak: &'a Tweak,
+    effect_id: &EffectId,
+) -> Option<(&'a EffectDef, &'a ActionDef)> {
     tweak
         .surface
         .iter()
         .find(|e| &e.id == effect_id)
         .and_then(|e| match &e.kind {
-            Effect::Action(a) => Some(a),
+            Effect::Action(a) => Some((e, a)),
             _ => None,
         })
 }
@@ -559,7 +571,7 @@ fn list_invalid(tweak_id: &str, corpus: &Corpus, deps: &Deps) -> Vec<EntrySummar
 mod tests {
     use super::*;
     use crate::tweaks::engine::{ActionRunner, ProbeCache, ProbeSource};
-    use crate::tweaks::kinds::{BatchFailure, EffectKind, Error as KindError};
+    use crate::tweaks::kinds::{BatchFailure, EffectKind, Error as KindError, ExecCx};
     use crate::tweaks::model::{
         Level, OptValue as ModelOptValue, Probe, RiskLevel, ScopedValue, Script, Setting,
         SharedDef, SharedId, Shell, StartupType, SvcAddr, Value,
@@ -641,6 +653,9 @@ mod tests {
         /// The size of each `drive_batch` call, so a test can count children instead of drives.
         batches: Mutex<Vec<usize>>,
         batch_verdicts: Mutex<Vec<BatchVerdict>>,
+        /// The `ExecCx::level()` each drive received, so a test can prove which level an undo
+        /// actually ran at.
+        levels: Mutex<Vec<(String, Level)>>,
     }
 
     impl MockKind {
@@ -680,6 +695,28 @@ mod tests {
                 .cloned()
                 .unwrap_or(Value::Absent)
         }
+        /// The level of the MOST RECENT drive of `name` -- on a restore that is the undo, any
+        /// setup drive having already been recorded.
+        fn last_drive_level(&self, name: &str) -> Option<Level> {
+            self.levels
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|(k, _)| k == name)
+                .map(|(_, l)| *l)
+        }
+        /// Every drive level recorded for `name`, in order: a test pins both THAT a drive happened
+        /// and which level ran it, so a vanished release fails as loudly as a mis-routed one.
+        fn drive_levels(&self, name: &str) -> Vec<Level> {
+            self.levels
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(k, _)| k == name)
+                .map(|(_, l)| *l)
+                .collect()
+        }
     }
 
     impl EffectKind for MockKind {
@@ -689,9 +726,10 @@ mod tests {
             Ok(self.live_value(&key))
         }
 
-        fn drive(&self, s: &Setting, target: &Value, _cx: &ExecCx) -> Result<(), KindError> {
+        fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), KindError> {
             let key = setting_key(s);
             self.log.lock().unwrap().push(Op::Drive(key.clone()));
+            self.levels.lock().unwrap().push((key.clone(), cx.level()));
             match self.drive_plan.lock().unwrap().get(&key) {
                 Some(DrivePlan::Err) => Err(KindError::Backend("mock drive failure".into())),
                 Some(DrivePlan::ResourceMissing) => {
@@ -759,6 +797,8 @@ mod tests {
         log: Log,
         presence: Presence,
         fail_undo: Mutex<HashSet<String>>,
+        /// The `ExecCx::level()` each call received, keyed `"<action>:apply"` / `"<action>:undo"`.
+        levels: Mutex<Vec<(String, Level)>>,
     }
     impl MockActions {
         fn new(log: Log, presence: Presence) -> Self {
@@ -768,17 +808,33 @@ mod tests {
                 ..Default::default()
             }
         }
+        fn level_of(&self, key: &str) -> Option<Level> {
+            self.levels
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, l)| *l)
+        }
     }
     impl ActionRunner for MockActions {
-        fn apply(&self, action: &ActionDef, _cx: &ExecCx) -> Result<(), KindError> {
+        fn apply(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError> {
             let key = action_key(action);
             self.log.lock().unwrap().push(Op::RunApply(key.clone()));
+            self.levels
+                .lock()
+                .unwrap()
+                .push((format!("{key}:apply"), cx.level()));
             self.presence.lock().unwrap().insert(key, true);
             Ok(())
         }
-        fn undo(&self, action: &ActionDef, _cx: &ExecCx) -> Result<(), KindError> {
+        fn undo(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), KindError> {
             let key = action_key(action);
             self.log.lock().unwrap().push(Op::RunUndo(key.clone()));
+            self.levels
+                .lock()
+                .unwrap()
+                .push((format!("{key}:undo"), cx.level()));
             if self.fail_undo.lock().unwrap().contains(&key) {
                 return Err(KindError::ActionFailed(1));
             }
@@ -2066,6 +2122,123 @@ mod tests {
 
         run_restore(&t, &c, &h.deps()).expect("restore succeeds");
         assert!(!h.claims.is_claimed(&SharedId("sh".into())));
+    }
+
+    /// A journaled Action's undo routes from the tweak's floor, never from what the app currently
+    /// holds: `Deps.level` is the read ceiling (invariant 24), never a drive's level. `ti` is not
+    /// tested here because validation forbids a ti-routed action outright.
+    #[test]
+    fn an_action_undo_routes_from_the_floor_not_the_run_level() {
+        let h = Harness::new();
+        let mut t = tweak("demo", vec![action_effect("a", true, false)], vec![]);
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: vec![JournalRow {
+                        action_id: EffectId("a".into()),
+                        intended: true,
+                        completed: true,
+                        resolved: false,
+                    }],
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        assert_eq!(
+            h.actions.level_of("a_apply:undo"),
+            Some(Level::Admin),
+            "the undo must run at the tweak's floor, not at Deps.level"
+        );
+    }
+
+    /// The release must happen, and at the Shared effect's own routed level: the setup claims at
+    /// Admin, so the second drive is the release, and no second drive means none happened.
+    #[test]
+    fn a_values_dump_releases_a_shared_claim_at_its_routed_level() {
+        let h = Harness::new();
+        h.kind.seed("sh_addr", Value::Startup(StartupType::Manual));
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        h.claims
+            .claim(&shared, "demo", &h.kind, &ExecCx::new(Level::Admin))
+            .unwrap();
+
+        let mut sh = shared_effect("sh_eff", "sh");
+        sh.elevation = Some(Level::Ti);
+        let mut t = tweak(
+            "demo",
+            vec![sh],
+            vec![opt("A", vec![("sh_eff", ModelOptValue::Claim(None))])],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![shared]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        assert_eq!(
+            h.kind.drive_levels("sh_addr"),
+            vec![Level::Admin, Level::Ti],
+            "the setup claim drives at Admin; the release must then drive it back at Ti"
+        );
+    }
+
+    /// Pins pre-existing behaviour, not this change: `drive_to_captured` already routed per effect,
+    /// so a `ti` step's captured value is driven back at Ti.
+    #[test]
+    fn a_ti_setting_is_driven_back_at_ti() {
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        let mut t = tweak("demo", vec![ti_svc_effect("s1")], vec![]);
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+        let mut captured = BTreeMap::new();
+        captured.insert(EffectId("s1".into()), Value::Startup(StartupType::Manual));
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(captured),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        assert_eq!(
+            h.kind.last_drive_level("s1"),
+            Some(Level::Ti),
+            "a ti-declared setting must be driven back at Ti"
+        );
     }
 
     /// The core §11 invariant: `apply(option)` then `restore()` of the just-captured entry returns
