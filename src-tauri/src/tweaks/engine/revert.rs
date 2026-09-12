@@ -559,7 +559,7 @@ fn list_invalid(tweak_id: &str, corpus: &Corpus, deps: &Deps) -> Vec<EntrySummar
 mod tests {
     use super::*;
     use crate::tweaks::engine::{ActionRunner, ProbeCache, ProbeSource};
-    use crate::tweaks::kinds::{EffectKind, Error as KindError};
+    use crate::tweaks::kinds::{BatchFailure, EffectKind, Error as KindError};
     use crate::tweaks::model::{
         Level, OptValue as ModelOptValue, Probe, RiskLevel, ScopedValue, Script, Setting,
         SharedDef, SharedId, Shell, StartupType, SvcAddr, Value,
@@ -599,6 +599,38 @@ mod tests {
 
     enum DrivePlan {
         Err,
+        /// The resource is absent, so a drive to a real value refuses where `AllKinds`'s pre-check
+        /// refuses it: during translation, before any child is spawned.
+        ResourceMissing,
+    }
+
+    /// A scripted `drive_batch` outcome: the child drove `completed` of the run's items, then
+    /// failed naming `index`. The only way a test can produce `completed != index`, which is what
+    /// every re-drive decision on the undo path turns on.
+    #[derive(Clone, Copy)]
+    struct BatchVerdict {
+        index: usize,
+        completed: usize,
+        fail: BatchFail,
+    }
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum BatchFail {
+        OpFailed,
+        CouldNotAcquire,
+    }
+
+    impl BatchFail {
+        fn error(self) -> KindError {
+            match self {
+                BatchFail::OpFailed => {
+                    KindError::Backend("mock: an op inside the child failed".into())
+                }
+                BatchFail::CouldNotAcquire => {
+                    KindError::CouldNotAcquireElevation(Level::Ti, "mock: TI unavailable".into())
+                }
+            }
+        }
     }
 
     #[derive(Default)]
@@ -606,6 +638,9 @@ mod tests {
         log: Log,
         live: Mutex<HashMap<String, Value>>,
         drive_plan: Mutex<HashMap<String, DrivePlan>>,
+        /// The size of each `drive_batch` call, so a test can count children instead of drives.
+        batches: Mutex<Vec<usize>>,
+        batch_verdicts: Mutex<Vec<BatchVerdict>>,
     }
 
     impl MockKind {
@@ -622,6 +657,20 @@ mod tests {
         fn drive_plan(&self, name: &str, plan: DrivePlan) -> &Self {
             self.drive_plan.lock().unwrap().insert(name.into(), plan);
             self
+        }
+        fn batch_verdict(&self, verdict: BatchVerdict) -> &Self {
+            self.batch_verdicts.lock().unwrap().push(verdict);
+            self
+        }
+        /// A could-not-acquire stays queued: a token this machine cannot acquire is no more
+        /// acquirable on the next spawn, which is what makes a re-spawn per item measurable.
+        fn take_verdict(&self) -> Option<BatchVerdict> {
+            let mut queued = self.batch_verdicts.lock().unwrap();
+            let verdict = *queued.first()?;
+            if verdict.fail != BatchFail::CouldNotAcquire {
+                queued.remove(0);
+            }
+            Some(verdict)
         }
         fn live_value(&self, name: &str) -> Value {
             self.live
@@ -645,11 +694,45 @@ mod tests {
             self.log.lock().unwrap().push(Op::Drive(key.clone()));
             match self.drive_plan.lock().unwrap().get(&key) {
                 Some(DrivePlan::Err) => Err(KindError::Backend("mock drive failure".into())),
+                Some(DrivePlan::ResourceMissing) => {
+                    Err(KindError::ResourceMissing(format!("mock: {key} is absent")))
+                }
                 None => {
                     self.live.lock().unwrap().insert(key, target.clone());
                     Ok(())
                 }
             }
+        }
+
+        /// Records the run size, then behaves like the trait default unless a test scripted a
+        /// [`BatchVerdict`], so an unscripted batched call stays indistinguishable from the
+        /// per-effect one to every other assertion.
+        fn drive_batch(
+            &self,
+            items: &[(&Setting, &Value)],
+            cx: &ExecCx,
+        ) -> Result<(), BatchFailure> {
+            self.batches.lock().unwrap().push(items.len());
+            if let Some(verdict) = self.take_verdict() {
+                for (setting, target) in &items[..verdict.completed.min(items.len())] {
+                    self.drive(setting, target, cx)
+                        .expect("a scripted completed drive must pass");
+                }
+                return Err(BatchFailure {
+                    index: verdict.index,
+                    error: verdict.fail.error(),
+                    completed: verdict.completed,
+                });
+            }
+            for (index, (setting, target)) in items.iter().enumerate() {
+                self.drive(setting, target, cx)
+                    .map_err(|error| BatchFailure {
+                        index,
+                        error,
+                        completed: index,
+                    })?;
+            }
+            Ok(())
         }
     }
 
@@ -716,6 +799,15 @@ mod tests {
             optional,
             if_missing: None,
             windows: None,
+        }
+    }
+
+    /// A service effect that escalates to TrustedInstaller, the shipped corpus's shape: an `admin`
+    /// floor with `ti` steps interleaved among plain admin ones.
+    fn ti_svc_effect(id: &str) -> EffectDef {
+        EffectDef {
+            elevation: Some(Level::Ti),
+            ..svc_effect(id, false)
         }
     }
 
@@ -1187,6 +1279,264 @@ mod tests {
             Value::Startup(StartupType::Disabled)
         );
         assert_eq!(outcome.status.state, TweakState::SystemDefault);
+    }
+
+    /// A restore batches the way a rollback does: one child per run of consecutive elevated
+    /// effects, in the entry's own effect-id order, with `n3` splitting the two runs there exactly
+    /// as an in-process effect splits a forward one.
+    #[test]
+    fn a_restore_puts_each_run_of_elevated_effects_through_one_child() {
+        let h = Harness::new();
+        let ids = ["m1", "m2", "n3", "p4", "p5"];
+        for id in ids {
+            h.kind.seed(id, Value::Startup(StartupType::Disabled));
+        }
+        let mut t = tweak(
+            "demo",
+            vec![
+                ti_svc_effect("m1"),
+                ti_svc_effect("m2"),
+                svc_effect("n3", false),
+                ti_svc_effect("p4"),
+                ti_svc_effect("p5"),
+            ],
+            vec![],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+        let mut map = BTreeMap::new();
+        for id in ids {
+            map.insert(EffectId(id.into()), Value::Startup(StartupType::Manual));
+        }
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(map),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        assert_eq!(
+            *h.kind.batches.lock().unwrap(),
+            vec![2, 2],
+            "four elevated effects across two runs cost two children, not four"
+        );
+        for id in ids {
+            assert_eq!(
+                h.kind.live_value(id),
+                Value::Startup(StartupType::Manual),
+                "{id} must be restored"
+            );
+        }
+    }
+
+    /// A `Values` entry over `ids`, every one a TrustedInstaller service captured at `Manual` and
+    /// left live at `Disabled`, so one run covers them all and each has something to drive back.
+    fn ti_values_entry(h: &Harness, ids: &[&str]) -> (Tweak, Corpus) {
+        for id in ids {
+            h.kind.seed(id, Value::Startup(StartupType::Disabled));
+        }
+        let mut t = tweak(
+            "demo",
+            ids.iter().map(|id| ti_svc_effect(id)).collect(),
+            vec![],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+        let mut map = BTreeMap::new();
+        for id in ids {
+            map.insert(EffectId((*id).into()), Value::Startup(StartupType::Manual));
+        }
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(map),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        (t, c)
+    }
+
+    /// A child that drove NOTHING before failing at its third item must leave the first two to be
+    /// driven, never verified: `completed` is what the child proved, and it is not the failing
+    /// index. The items behind the failure are a run of their own and cross in one more child.
+    #[test]
+    fn a_batch_that_proved_no_drive_redrives_the_items_ahead_of_its_failure() {
+        let h = Harness::new();
+        let (t, c) = ti_values_entry(&h, &["m1", "m2", "m3", "m4", "m5"]);
+        h.kind.batch_verdict(BatchVerdict {
+            index: 2,
+            completed: 0,
+            fail: BatchFail::OpFailed,
+        });
+
+        let err = run_restore(&t, &c, &h.deps()).expect_err("m3 fails inside the child");
+        let EngineError::RestoreFailed { failures, .. } = err else {
+            panic!("expected RestoreFailed");
+        };
+        let [only] = &failures[..] else {
+            panic!("one failing effect, no more and no fewer: {failures:?}");
+        };
+        assert!(
+            matches!(only, EngineError::DriveFailed { effect, .. } if effect.0 == "m3"),
+            "the batch's failure names the effect that produced it: {only:?}"
+        );
+
+        assert_eq!(
+            *h.kind.batches.lock().unwrap(),
+            vec![5, 2, 2],
+            "the unproven prefix re-drives in one child and the untouched tail in one more"
+        );
+        for id in ["m1", "m2", "m4", "m5"] {
+            assert_eq!(
+                h.kind.live_value(id),
+                Value::Startup(StartupType::Manual),
+                "{id} was never proven driven, so it must be driven, not read back"
+            );
+        }
+        assert_eq!(
+            h.kind.live_value("m3"),
+            Value::Startup(StartupType::Disabled),
+            "the charged item is the one item left alone"
+        );
+    }
+
+    /// A report naming an item outside the run is malformed input on the one path a half-changed
+    /// machine depends on: it must charge a real item and re-drive the rest, never index past the
+    /// run.
+    #[test]
+    fn a_batch_failure_naming_an_item_outside_the_run_still_charges_a_real_one() {
+        let h = Harness::new();
+        let (t, c) = ti_values_entry(&h, &["m1", "m2", "m3"]);
+        h.kind.batch_verdict(BatchVerdict {
+            index: 99,
+            completed: 0,
+            fail: BatchFail::OpFailed,
+        });
+
+        let err = run_restore(&t, &c, &h.deps()).expect_err("the child failed");
+        let EngineError::RestoreFailed { failures, .. } = err else {
+            panic!("expected RestoreFailed");
+        };
+        let [only] = &failures[..] else {
+            panic!("one failing effect, no more and no fewer: {failures:?}");
+        };
+        assert!(
+            matches!(only, EngineError::DriveFailed { effect, .. } if effect.0 == "m3"),
+            "an unplaceable index charges the run's last item: {only:?}"
+        );
+        assert_eq!(*h.kind.batches.lock().unwrap(), vec![3, 2]);
+        for id in ["m1", "m2"] {
+            assert_eq!(h.kind.live_value(id), Value::Startup(StartupType::Manual));
+        }
+    }
+
+    /// A token that could not be acquired failed for the whole run, not for one item: it costs one
+    /// acquire attempt and one attention item, where re-spawning per item would cost one timeout
+    /// and one duplicate item per effect.
+    #[test]
+    fn a_run_whose_token_cannot_be_acquired_spawns_once_and_is_charged_once() {
+        let h = Harness::new();
+        let (t, c) = ti_values_entry(&h, &["m1", "m2", "m3", "m4"]);
+        h.kind.batch_verdict(BatchVerdict {
+            index: 0,
+            completed: 0,
+            fail: BatchFail::CouldNotAcquire,
+        });
+
+        let err = run_restore(&t, &c, &h.deps()).expect_err("TI is unavailable");
+        let EngineError::RestoreFailed { failures, .. } = err else {
+            panic!("expected RestoreFailed");
+        };
+        let [only] = &failures[..] else {
+            panic!("one attention item for the run, not one per effect: {failures:?}");
+        };
+        assert!(
+            matches!(
+                only,
+                EngineError::DriveFailed {
+                    effect,
+                    source: KindError::CouldNotAcquireElevation(Level::Ti, _),
+                } if effect.0 == "m1"
+            ),
+            "got {only:?}"
+        );
+        assert_eq!(
+            *h.kind.batches.lock().unwrap(),
+            vec![4],
+            "one acquire attempt for the run: the remaining items must not re-spawn"
+        );
+    }
+
+    /// An `optional` effect whose resource is absent and whose option value is its `if_missing` is
+    /// already where the restore wants it. It must never enter a batch: its refusal to translate
+    /// would abort the run and surface Needs Attention for an option that applies cleanly.
+    #[test]
+    fn an_absent_optional_effect_never_enters_an_option_ref_restore_batch() {
+        let h = Harness::new();
+        h.kind.seed("m1", Value::Startup(StartupType::Disabled));
+        h.kind.seed("m3", Value::Startup(StartupType::Disabled));
+        h.kind.seed("m2", Value::Missing);
+        h.kind.drive_plan("m2", DrivePlan::ResourceMissing);
+        let disabled = Value::Startup(StartupType::Disabled);
+        let mut t = tweak(
+            "demo",
+            vec![
+                ti_svc_effect("m1"),
+                EffectDef {
+                    optional: true,
+                    if_missing: Some(disabled.clone()),
+                    ..ti_svc_effect("m2")
+                },
+                ti_svc_effect("m3"),
+            ],
+            vec![opt(
+                "A",
+                vec![
+                    ("m1", set(Value::Startup(StartupType::Manual))),
+                    ("m2", set(disabled)),
+                    ("m3", set(Value::Startup(StartupType::Manual))),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("A".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps())
+            .expect("an absent optional effect already at its if_missing must not fail a restore");
+
+        assert_eq!(
+            *h.kind.batches.lock().unwrap(),
+            vec![2],
+            "the absent optional leaves the run, and its neighbours still share one child"
+        );
+        for id in ["m1", "m3"] {
+            assert_eq!(h.kind.live_value(id), Value::Startup(StartupType::Manual));
+        }
     }
 
     #[test]

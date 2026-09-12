@@ -1174,6 +1174,7 @@ pub(crate) fn drive_to_captured(
     let milestone = deps.running.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
     let mut failures = Vec::new();
+    let mut plan: Vec<Restorable> = Vec::new();
 
     match captured {
         Captured::Values(map) => {
@@ -1181,15 +1182,19 @@ pub(crate) fn drive_to_captured(
                 if *value == Value::Missing {
                     continue; // driving to Missing is a defined no-op (spec §5.4)
                 }
-                let Some(effect) = surface.iter().find(|e| &e.id == effect_id) else {
+                let Some(effect) = surface.iter().copied().find(|e| e.id == *effect_id) else {
                     continue; // no longer on the applicable surface here -- nothing to drive
                 };
                 let Effect::Setting(setting) = &effect.kind else {
                     continue;
                 };
                 // Per-effect execution context (spec §9): see this file's module docs.
-                let cx = context::route(effect, tweak, corpus);
-                drive_and_verify(&cx, deps, setting, effect_id, value, &mut failures);
+                plan.push(Restorable {
+                    effect,
+                    setting,
+                    value,
+                    cx: context::route(effect, tweak, corpus),
+                });
             }
         }
         Captured::OptionRef(label) => {
@@ -1199,7 +1204,7 @@ pub(crate) fn drive_to_captured(
                 )));
                 return Err(failures);
             };
-            for effect in &surface {
+            for effect in surface.iter().copied() {
                 let Effect::Setting(setting) = &effect.kind else {
                     continue;
                 };
@@ -1210,11 +1215,22 @@ pub(crate) fn drive_to_captured(
                 if scoped.value == Value::Missing {
                     continue;
                 }
-                let cx = context::route(effect, tweak, corpus);
-                drive_and_verify(&cx, deps, setting, &effect.id, &scoped.value, &mut failures);
+                plan.push(Restorable {
+                    effect,
+                    setting,
+                    value: &scoped.value,
+                    cx: context::route(effect, tweak, corpus),
+                });
             }
         }
     }
+
+    // An `optional` effect whose resource is absent already sits at its `if_missing` value (spec
+    // §5.4), which is where this would drive it. The forward path drops it from a run for the same
+    // reason: inside a batch, its refusal to translate would abort every item behind it.
+    plan.retain(|item| !absent_optional(item, deps));
+
+    drive_back(&plan, deps, &mut failures);
 
     if failures.is_empty() {
         Ok(())
@@ -1223,26 +1239,103 @@ pub(crate) fn drive_to_captured(
     }
 }
 
-fn drive_and_verify(
-    cx: &ExecCx,
-    deps: &Deps,
-    setting: &Setting,
-    effect_id: &EffectId,
-    value: &Value,
-    failures: &mut Vec<EngineError>,
-) {
-    if let Err(e) = deps.kinds.drive(setting, value, cx) {
-        failures.push(map_drive_err(effect_id, e));
+/// One captured Setting the undo side has to put back, resolved before anything is driven so a run
+/// of consecutive elevated ones can be recognised and share a single child.
+struct Restorable<'a> {
+    effect: &'a EffectDef,
+    setting: &'a Setting,
+    value: &'a Value,
+    cx: ExecCx,
+}
+
+fn absent_optional(item: &Restorable<'_>, deps: &Deps) -> bool {
+    item.effect.optional
+        && item.effect.if_missing.as_ref() == Some(item.value)
+        && matches!(deps.kinds.read(item.setting, &item.cx), Ok(Value::Missing))
+}
+
+/// Drives the whole plan back, each run of consecutive elevated Settings through ONE child. Runs
+/// are adjacent equals only, exactly as on the forward path (invariant 18): the machine goes back
+/// in the plan's own order and grouping never moves an effect past another.
+fn drive_back(plan: &[Restorable<'_>], deps: &Deps, failures: &mut Vec<EngineError>) {
+    let mut index = 0;
+    while index < plan.len() {
+        let run = brokerable_undo_run(plan, index);
+        if run >= 2 {
+            drive_back_run(&plan[index..index + run], deps, failures);
+            index += run;
+            continue;
+        }
+        drive_and_verify(&plan[index], deps, failures);
+        index += 1;
+    }
+}
+
+/// How many plan items from `from` can share one elevated child: the undo side's [`brokerable_run`],
+/// reading the level off the context already routed per effect.
+fn brokerable_undo_run(plan: &[Restorable<'_>], from: usize) -> usize {
+    plan[from..]
+        .iter()
+        .take_while(|item| {
+            item.cx.level() == Level::Ti
+                && !matches!(item.setting, Setting::Hosts(_) | Setting::Firewall(_))
+        })
+        .count()
+}
+
+/// One run back through a single elevated child, then a read-back per item. An undo never aborts
+/// early (ADR-0001): what the child proved it drove is verified, the failing item is charged to
+/// its own effect, and what it never reached comes back through here.
+fn drive_back_run(run: &[Restorable<'_>], deps: &Deps, failures: &mut Vec<EngineError>) {
+    let Some(first) = run.first() else {
+        return;
+    };
+    if run.len() < 2 {
+        drive_and_verify(first, deps, failures);
         return;
     }
-    match deps.kinds.read(setting, cx) {
-        Ok(actual) if &actual == value => {}
+    let items: Vec<(&Setting, &Value)> = run.iter().map(|i| (i.setting, i.value)).collect();
+    let Err(failed) = deps.kinds.drive_batch(&items, &first.cx) else {
+        for item in run {
+            verify_restored(item, deps, failures);
+        }
+        return;
+    };
+    // Clamped, not trusted: a report naming an item outside the run must not panic the one path a
+    // half-changed machine depends on.
+    let charged = failed.index.min(run.len() - 1);
+    // The token failed, not one item: re-spawning for the rest of the run would repeat the same
+    // wait and charge every effect for a failure that provably reached none of them.
+    if matches!(failed.error, KindError::CouldNotAcquireElevation(..)) {
+        failures.push(map_drive_err(&run[charged].effect.id, failed.error));
+        return;
+    }
+    let driven = failed.completed.min(charged);
+    for item in &run[..driven] {
+        verify_restored(item, deps, failures);
+    }
+    drive_back_run(&run[driven..charged], deps, failures);
+    failures.push(map_drive_err(&run[charged].effect.id, failed.error));
+    drive_back_run(&run[charged + 1..], deps, failures);
+}
+
+fn drive_and_verify(item: &Restorable<'_>, deps: &Deps, failures: &mut Vec<EngineError>) {
+    if let Err(e) = deps.kinds.drive(item.setting, item.value, &item.cx) {
+        failures.push(map_drive_err(&item.effect.id, e));
+        return;
+    }
+    verify_restored(item, deps, failures);
+}
+
+fn verify_restored(item: &Restorable<'_>, deps: &Deps, failures: &mut Vec<EngineError>) {
+    match deps.kinds.read(item.setting, &item.cx) {
+        Ok(actual) if &actual == item.value => {}
         Ok(actual) => failures.push(EngineError::VerifyMismatch {
-            effect: effect_id.clone(),
-            expected: value.clone(),
+            effect: item.effect.id.clone(),
+            expected: item.value.clone(),
             actual,
         }),
-        Err(e) => failures.push(map_drive_err(effect_id, e)),
+        Err(e) => failures.push(map_drive_err(&item.effect.id, e)),
     }
 }
 
@@ -1341,7 +1434,7 @@ fn drive_setting_run(
         .map(|(setting, value): (&Setting, &Value)| (setting, value))
         .collect();
 
-    if let Err(BatchFailure { index, error }) = ctx.deps.kinds.drive_batch(&items, &cx) {
+    if let Err(BatchFailure { index, error, .. }) = ctx.deps.kinds.drive_batch(&items, &cx) {
         let effect = batched
             .get(index)
             .map_or(&batched[batched.len() - 1].0.id, |(e, _)| &e.id);
@@ -1441,6 +1534,8 @@ mod tests {
         fail_read_from_call: Mutex<HashMap<String, u32>>,
         drive_plan: Mutex<HashMap<String, DrivePlan>>,
         assert_before_drive: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+        /// The size of each `drive_batch` call, so a test can count children instead of drives.
+        batches: Mutex<Vec<usize>>,
     }
 
     impl MockKind {
@@ -1475,6 +1570,9 @@ mod tests {
         }
         fn on_drive(&self, f: impl Fn() + Send + Sync + 'static) {
             *self.assert_before_drive.lock().unwrap() = Some(Box::new(f));
+        }
+        fn batches(&self) -> Vec<usize> {
+            self.batches.lock().unwrap().clone()
         }
     }
 
@@ -1522,6 +1620,25 @@ mod tests {
                     Ok(())
                 }
             }
+        }
+
+        /// Records the run size, then behaves exactly like the trait default, so a batched call
+        /// stays indistinguishable from the per-effect one to every other assertion.
+        fn drive_batch(
+            &self,
+            items: &[(&Setting, &Value)],
+            cx: &ExecCx,
+        ) -> Result<(), BatchFailure> {
+            self.batches.lock().unwrap().push(items.len());
+            for (index, (setting, target)) in items.iter().enumerate() {
+                self.drive(setting, target, cx)
+                    .map_err(|error| BatchFailure {
+                        index,
+                        error,
+                        completed: index,
+                    })?;
+            }
+            Ok(())
         }
     }
 
@@ -1610,6 +1727,15 @@ mod tests {
             optional,
             if_missing: None,
             windows: None,
+        }
+    }
+
+    /// A service effect that escalates to TrustedInstaller, the shipped corpus's shape: an `admin`
+    /// floor with `ti` steps interleaved among plain admin ones.
+    fn ti_svc_effect(id: &str) -> EffectDef {
+        EffectDef {
+            elevation: Some(Level::Ti),
+            ..svc_effect(id, false)
         }
     }
 
@@ -2347,6 +2473,238 @@ mod tests {
                 .unwrap()
                 .is_none(),
             "a verified rollback must consume the entry"
+        );
+    }
+
+    /// The undo side of grouped execution: a rollback puts each run of consecutive elevated effects
+    /// through ONE child. Rollback walks the captured values in effect-id order, not declaration
+    /// order, and grouping must not change that: `a5` sorts ahead of every `t*`, making one run.
+    #[test]
+    fn a_rollback_puts_each_run_of_elevated_effects_through_one_child() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        for id in ["t1", "t2", "t3", "t4", "a5"] {
+            h.kind.seed(id, Value::Startup(StartupType::Manual));
+        }
+        // Every Setting drives forward; the action declared last is what rolls the tweak back.
+        h.actions.fail_apply("z_act_apply");
+        let mut t = tweak(
+            "demo",
+            vec![
+                ti_svc_effect("t2"),
+                ti_svc_effect("t1"),
+                svc_effect("a5", false),
+                ti_svc_effect("t3"),
+                ti_svc_effect("t4"),
+                action_effect("z_act", false, false),
+            ],
+            vec![opt(
+                "A",
+                vec![
+                    ("t2", set(Value::Startup(StartupType::Disabled))),
+                    ("t1", set(Value::Startup(StartupType::Disabled))),
+                    ("a5", set(Value::Startup(StartupType::Disabled))),
+                    ("t3", set(Value::Startup(StartupType::Disabled))),
+                    ("t4", set(Value::Startup(StartupType::Disabled))),
+                    ("z_act", OptValue::Run(None)),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("z_act fails");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(
+            rollback_failures.is_empty(),
+            "nothing is configured to fail the restore: {rollback_failures:?}"
+        );
+
+        assert_eq!(
+            h.kind.batches(),
+            vec![2, 2, 4],
+            "two runs forward, one run back: four elevated effects restored through one child, \
+             not four"
+        );
+        let drives: Vec<String> = h
+            .log()
+            .into_iter()
+            .filter_map(|op| match op {
+                Op::Drive(key) => Some(key),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            drives,
+            ["t2", "t1", "a5", "t3", "t4", "a5", "t1", "t2", "t3", "t4"],
+            "grouping moves nothing: forward stays declaration order and the rollback stays \
+             effect-id order"
+        );
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_none(),
+            "a verified rollback still consumes the entry"
+        );
+    }
+
+    /// A failure inside a batched rollback is charged to the effect that produced it, and what the
+    /// child never reached is still attempted: an undo never stops at its first failure (ADR-0001),
+    /// and the entry stays (ADR-0002).
+    #[test]
+    fn a_failure_inside_a_batched_rollback_names_its_effect_and_still_attempts_the_rest() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        for id in ["t1", "t2", "t3", "t4", "a5"] {
+            h.kind.seed(id, Value::Startup(StartupType::Manual));
+        }
+        h.kind.drive_plan("t3", DrivePlan::Err); // fails forward AND inside the rollback's batch
+        let mut t = tweak(
+            "demo",
+            vec![
+                ti_svc_effect("t2"),
+                ti_svc_effect("t1"),
+                svc_effect("a5", false),
+                ti_svc_effect("t3"),
+                ti_svc_effect("t4"),
+            ],
+            vec![opt(
+                "A",
+                vec![
+                    ("t2", set(Value::Startup(StartupType::Disabled))),
+                    ("t1", set(Value::Startup(StartupType::Disabled))),
+                    ("a5", set(Value::Startup(StartupType::Disabled))),
+                    ("t3", set(Value::Startup(StartupType::Disabled))),
+                    ("t4", set(Value::Startup(StartupType::Disabled))),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("t3 fails");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        let [only] = &rollback_failures[..] else {
+            panic!("one failing effect, no more and no fewer: {rollback_failures:?}");
+        };
+        assert!(
+            matches!(only, EngineError::DriveFailed { effect, .. } if effect.0 == "t3"),
+            "the batch's failure must name the effect that produced it: {only:?}"
+        );
+
+        let drives: Vec<String> = h
+            .log()
+            .into_iter()
+            .filter_map(|op| match op {
+                Op::Drive(key) => Some(key),
+                _ => None,
+            })
+            .collect();
+        let count = |id: &str| drives.iter().filter(|k| k.as_str() == id).count();
+        assert_eq!(
+            count("t4"),
+            1,
+            "t4 never ran forward -- the batch stopped at t3 -- and must still be driven back: \
+             {drives:?}"
+        );
+        assert_eq!(
+            count("t1"),
+            2,
+            "once forward, once back: an item the child proved it drove is verified, never driven \
+             a second time: {drives:?}"
+        );
+        assert_eq!(h.kind.batches(), vec![2, 2, 4]);
+        assert_eq!(h.kind.live_value("t4"), Value::Startup(StartupType::Manual));
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_some(),
+            "an incomplete rollback keeps the snapshot (ADR-0001/0002)"
+        );
+    }
+
+    /// An unknown outcome from inside a batched undo classifies exactly as it does on the apply
+    /// side -- the child ran, so the machine may have changed -- never as a could-not-acquire that
+    /// claims nothing happened.
+    #[test]
+    fn an_unknown_outcome_inside_a_batched_rollback_keeps_the_entry_with_that_mark() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        for id in ["t1", "t2", "t9"] {
+            h.kind.seed(id, Value::Startup(StartupType::Manual));
+        }
+        // The failing action is declared first, so no Setting drives forward and t9's single
+        // unknown outcome lands inside the rollback's batch.
+        h.actions.fail_apply("act_apply");
+        h.kind.drive_plan("t9", DrivePlan::OutcomeUnknownOnce);
+        let mut t = tweak(
+            "demo",
+            vec![
+                action_effect("act", false, false),
+                ti_svc_effect("t1"),
+                ti_svc_effect("t2"),
+                ti_svc_effect("t9"),
+            ],
+            vec![opt(
+                "A",
+                vec![
+                    ("act", OptValue::Run(None)),
+                    ("t1", set(Value::Startup(StartupType::Disabled))),
+                    ("t2", set(Value::Startup(StartupType::Disabled))),
+                    ("t9", set(Value::Startup(StartupType::Disabled))),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("act fails");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        let [only] = &rollback_failures[..] else {
+            panic!("one failing effect, no more and no fewer: {rollback_failures:?}");
+        };
+        assert!(
+            matches!(
+                only,
+                EngineError::DriveFailed {
+                    effect,
+                    source: KindError::ElevatedOutcomeUnknown(Level::Ti, _),
+                } if effect.0 == "t9"
+            ),
+            "an unknown outcome must survive the batch as one: {only:?}"
+        );
+        assert_eq!(
+            attention_item(Phase::Apply, only).kind,
+            AttentionKind::OutcomeUnknown
+        );
+        assert_eq!(
+            h.kind.batches(),
+            vec![3],
+            "nothing drove forward; the rollback's three elevated effects share one child"
+        );
+        assert!(
+            h.snapshots
+                .head("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .is_some(),
+            "an unknown outcome must keep the entry"
         );
     }
 
@@ -3292,7 +3650,11 @@ mod tests {
             self.batches.lock().unwrap().push(items.len());
             for (index, (setting, target)) in items.iter().enumerate() {
                 self.drive(setting, target, cx)
-                    .map_err(|error| BatchFailure { index, error })?;
+                    .map_err(|error| BatchFailure {
+                        index,
+                        error,
+                        completed: index,
+                    })?;
             }
             Ok(())
         }

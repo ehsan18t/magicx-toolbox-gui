@@ -641,11 +641,21 @@ fn log_failure(level: Elevation, e: &BrokerOpError) {
 }
 
 /// The did-it-work decision, isolated from the spawn so it is testable against a response the
-/// executor would never produce. Success requires BOTH no reported failure AND a full attempt
-/// count: a response that ran fewer ops than were sent, yet names no failure, is a truncated or
-/// forged one, and reporting it as `Ok(())` would leave a half-applied batch looking complete.
+/// executor would never produce: success needs BOTH no reported failure AND a full attempt count,
+/// and a named failure must sit inside the ops sent, at the op the attempt count stops on.
 fn check_response(sent: usize, response: &BrokerResponse) -> Result<(), BrokerOpError> {
     if let Some(failure) = &response.failure {
+        // Indeterminate, not OpFailed: a response the executor cannot produce is truncated or
+        // forged, so which ops ran is precisely what it fails to say -- and a caller that believed
+        // the index would count the ops ahead of it as done.
+        if failure.index >= sent || response.attempted != failure.index + 1 {
+            return Err(BrokerOpError::Indeterminate(Error::ServiceControl(
+                format!(
+                    "broker named a failure at op {} of {sent} ops after {} attempts",
+                    failure.index, response.attempted
+                ),
+            )));
+        }
         return Err(BrokerOpError::OpFailed {
             index: Some(failure.index),
             class: failure.class,
@@ -810,6 +820,36 @@ mod tests {
         let err = check_response(3, &response).expect_err("a named failure must fail the batch");
         assert!(err.to_string().contains("op 1"), "got {err}");
         assert!(err.to_string().contains("access denied"), "got {err}");
+    }
+
+    /// A failure the executor could never have produced -- an op past the batch, or one the attempt
+    /// count contradicts -- says nothing about which ops ran, so it must not come back as a named
+    /// failure the caller would read as "everything ahead of it succeeded".
+    #[test]
+    fn check_response_refuses_a_failure_index_the_request_cannot_place() {
+        let named = |index, attempted| BrokerResponse {
+            version: WIRE_VERSION,
+            nonce: 1,
+            attempted,
+            failure: Some(OpFailure {
+                index,
+                class: OpFailureClass::AccessDenied,
+            }),
+        };
+        for (index, attempted) in [(99, 100), (5, 6), (1, 3), (3, 1)] {
+            let err = check_response(5, &named(index, attempted))
+                .expect_err("a response the executor cannot produce is never a named failure");
+            assert!(
+                matches!(err, BrokerOpError::Indeterminate(_)),
+                "op {index} after {attempted} attempts: got {err:?}"
+            );
+        }
+
+        let err = check_response(5, &named(4, 5)).expect_err("a real failure still fails");
+        assert!(
+            matches!(err, BrokerOpError::OpFailed { index: Some(4), .. }),
+            "the last op of a full batch is placeable: got {err:?}"
+        );
     }
 
     /// The child classifies its own error and sends only that: nothing an op carried -- the key, the

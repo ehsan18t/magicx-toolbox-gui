@@ -124,7 +124,11 @@ impl EffectKind for AllKinds {
         if cx.level() != Level::Ti || items.len() < 2 {
             for (index, (setting, target)) in items.iter().enumerate() {
                 self.drive(setting, target, cx)
-                    .map_err(|error| BatchFailure { index, error })?;
+                    .map_err(|error| BatchFailure {
+                        index,
+                        error,
+                        completed: index,
+                    })?;
             }
             return Ok(());
         }
@@ -139,7 +143,14 @@ impl EffectKind for AllKinds {
             let start = ops.len();
             match self.broker_ops_for(setting, target, cx) {
                 Ok(mut translated) => ops.append(&mut translated),
-                Err(error) => return Err(BatchFailure { index, error }),
+                Err(error) => {
+                    // Translation refuses before anything is spawned, so no earlier item ran either.
+                    return Err(BatchFailure {
+                        index,
+                        error,
+                        completed: 0,
+                    });
+                }
             }
             spans.push(start..ops.len());
         }
@@ -147,7 +158,6 @@ impl EffectKind for AllKinds {
         if ops.is_empty() {
             return Ok(());
         }
-        let sent = ops.len();
         elevation::run_ops(Elevation::TrustedInstaller, ops).map_err(|e| match e {
             // Acquisition failed, so no op ran. Attributing it to the first item is the truthful
             // choice: it is where the batch stopped, and the error type still says plainly that
@@ -155,31 +165,37 @@ impl EffectKind for AllKinds {
             BrokerOpError::CouldNotAcquire(err) => BatchFailure {
                 index: 0,
                 error: KindError::CouldNotAcquireElevation(Level::Ti, err.to_string()),
+                completed: 0,
             },
-            ref failed @ BrokerOpError::OpFailed { ref class, .. } => BatchFailure {
-                index: failing_item(&spans, failed.failed_op_index(), sent),
-                error: KindError::ElevatedOpFailed(Level::Ti, *class),
-            },
+            ref failed @ BrokerOpError::OpFailed { ref class, .. } => {
+                let named = failing_item(&spans, failed.failed_op_index());
+                BatchFailure {
+                    // Ops run in order and the child stops at its first failure, so an op inside a
+                    // named item's span proves every item ahead of it drove. An op that names no
+                    // item proves nothing about any, so the run re-drives from its start.
+                    index: named.unwrap_or(spans.len().saturating_sub(1)),
+                    error: KindError::ElevatedOpFailed(Level::Ti, *class),
+                    completed: named.unwrap_or(0),
+                }
+            }
             // No op index to attribute this to: the point is that we do not know which ran. The
             // first item is where the batch is treated as having stopped.
             BrokerOpError::Indeterminate(err) => BatchFailure {
                 index: 0,
                 error: KindError::ElevatedOutcomeUnknown(Level::Ti, err.to_string()),
+                completed: 0,
             },
         })
     }
 }
 
-/// Map a broker op failure back to the batch item whose translation produced that op.
+/// The batch item whose translation produced `failed_op`.
 ///
-/// Falls back to the last item when the index cannot be placed, so a response we did not expect
-/// still leaves the caller rolling back from a real position rather than panicking.
-fn failing_item(spans: &[std::ops::Range<usize>], failed_op: Option<usize>, sent: usize) -> usize {
-    let op_index = failed_op.unwrap_or(sent.saturating_sub(1));
-    spans
-        .iter()
-        .position(|span| span.contains(&op_index))
-        .unwrap_or(spans.len().saturating_sub(1))
+/// `None` when the child named no op, or named one outside every span: the failure is
+/// unattributable, which a caller must never read as progress through the run.
+fn failing_item(spans: &[std::ops::Range<usize>], failed_op: Option<usize>) -> Option<usize> {
+    let op_index = failed_op?;
+    spans.iter().position(|span| span.contains(&op_index))
 }
 
 /// Submits `ops` through the elevation broker in ONE child (spec §9), keeping its three failure
@@ -980,5 +996,55 @@ mod tests {
         AllKinds
             .drive(&task, &Value::Missing, &cx)
             .expect("driving an absent task to Missing is a no-op");
+    }
+
+    /// The child reports a failing OP, and only the span it lands in says which ITEM produced it.
+    /// An op outside every span names no item: nothing about the run can be inferred from it, so
+    /// the items ahead of it must not read as completed.
+    #[test]
+    fn failing_item_names_only_an_op_that_lands_inside_a_span() {
+        // One op, then two (a Service drive's startup plus its companion write), then one.
+        let spans = [0..1, 1..3, 3..4];
+        for (op, expected) in [(0, Some(0)), (1, Some(1)), (2, Some(1)), (3, Some(2))] {
+            assert_eq!(failing_item(&spans, Some(op)), expected, "op {op}");
+        }
+        assert_eq!(
+            failing_item(&spans, Some(4)),
+            None,
+            "an op just past the batch belongs to no item"
+        );
+        assert_eq!(failing_item(&spans, Some(99)), None);
+        assert_eq!(
+            failing_item(&spans, None),
+            None,
+            "an unnamed op belongs to no item"
+        );
+    }
+
+    /// A translation that refuses partway through a run aborts before any child exists, so the run
+    /// is still entirely undriven: the failure names the item that refused, and proves no drive.
+    #[test]
+    fn a_translation_refusal_names_its_item_and_proves_nothing_drove() {
+        let cx = ExecCx::new(Level::Ti);
+        // Item 0 translates to no ops (driving to Missing is the defined no-op); item 1 is an
+        // absent service, which the pre-check refuses before anything is spawned.
+        let svc = Setting::Service(SvcAddr {
+            name: NO_SUCH_SERVICE.to_string(),
+        });
+        let (missing, manual) = (Value::Missing, Value::Startup(StartupType::Manual));
+        let failure = AllKinds
+            .drive_batch(&[(&svc, &missing), (&svc, &manual)], &cx)
+            .expect_err("an absent service must refuse the batch");
+
+        assert_eq!(failure.index, 1, "the item that refused is the one charged");
+        assert_eq!(
+            failure.completed, 0,
+            "no child was spawned, so no item may count as driven"
+        );
+        assert!(
+            matches!(failure.error, KindError::ResourceMissing(_)),
+            "got {:?}",
+            failure.error
+        );
     }
 }

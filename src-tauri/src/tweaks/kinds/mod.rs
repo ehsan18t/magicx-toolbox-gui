@@ -159,7 +159,11 @@ pub trait EffectKind: Send + Sync {
     fn drive_batch(&self, items: &[(&Setting, &Value)], cx: &ExecCx) -> Result<(), BatchFailure> {
         for (index, (setting, target)) in items.iter().enumerate() {
             self.drive(setting, target, cx)
-                .map_err(|error| BatchFailure { index, error })?;
+                .map_err(|error| BatchFailure {
+                    index,
+                    error,
+                    completed: index,
+                })?;
         }
         Ok(())
     }
@@ -174,6 +178,10 @@ pub trait EffectKind: Send + Sync {
 pub struct BatchFailure {
     pub index: usize,
     pub error: Error,
+    /// How many leading items the run PROVED it drove. Zero covers two different states: a run
+    /// that provably drove nothing (a refusal before any spawn, a token never acquired) and one
+    /// whose child ran unattributably, so neither lets a caller assume a drive it cannot prove.
+    pub completed: usize,
 }
 
 // --- helpers shared by the service and task kinds ------------------------------------------------
