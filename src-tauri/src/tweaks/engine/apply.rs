@@ -514,14 +514,10 @@ fn do_apply(
     }
 }
 
-/// The surface actually driven on apply (spec §8.1 step 3) -- identical to
-/// `validate::applicable_surface` except it does NOT exclude ephemeral actions. `applicable_surface`
-/// is right to exclude them for detection/capture/reversibility (spec §6.4/§8.4: an ephemeral
-/// leaves no persistent state for any of those to observe), but a declared `run` ephemeral action
-/// must still physically execute when its option is applied (spec §7: "runs on apply") -- review
-/// fix: apply and restore's `reapply_option_ref` must agree on what applying an option does, and
-/// restore already ran ephemerals correctly.
-fn driving_surface<'a>(tweak: &'a Tweak, winver: &WinVer) -> Vec<&'a EffectDef> {
+/// The surface actually driven on apply (spec §8.1 step 3); `pub(crate)` so the availability gate
+/// scopes effects out exactly as apply does. Unlike `validate::applicable_surface` it keeps
+/// ephemeral actions: a declared `run` ephemeral still executes when its option is applied (spec §7).
+pub(crate) fn driving_surface<'a>(tweak: &'a Tweak, winver: &WinVer) -> Vec<&'a EffectDef> {
     if !tweak.windows.as_ref().is_none_or(|s| s.applies(winver)) {
         return Vec::new();
     }

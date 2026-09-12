@@ -233,7 +233,8 @@ export interface TweakView {
   requires_reboot: boolean;
   /** Each option with the concrete effects it drives (apply targets are addressed by label). */
   options: TweakEffectOption[];
-  elevation: Level;
+  /** The level the engine will actually run the tweak at, not its declared floor (ADR-0005). */
+  required_level: Level;
   availability: Availability;
 }
 
@@ -367,8 +368,11 @@ export interface TweakDefinition {
   reversible: boolean;
   /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
   requires_reboot: boolean;
-  /** Declared elevation floor (drives permission display + User-level SID gating). */
-  elevation: Level;
+  /**
+   * The level the engine will actually run this tweak at: its declared floor raised by any effect
+   * that routes higher, which is what the permission badge names (ADR-0005).
+   */
+  required_level: Level;
   /** Whether the tweak can be applied/restored right now (spec §9). */
   availability: Availability;
   /** Authored option labels, in order. Apply targets are addressed by label, not index. */

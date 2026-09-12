@@ -80,7 +80,7 @@
   const riskInfo = $derived(RISK_INFO[tweak.definition.risk_level]);
   const isHighRisk = $derived(tweak.definition.risk_level === "high" || tweak.definition.risk_level === "critical");
 
-  const permissionInfo = $derived(permissionInfoFor(tweak.definition.elevation));
+  const permissionInfo = $derived(permissionInfoFor(tweak.definition.required_level));
 
   const riskConfig: Record<RiskLevel, { icon: string; color: string }> = {
     low: { icon: "mdi:check-circle", color: "text-success" },
@@ -293,7 +293,9 @@
                 ? "Different account"
                 : availability.state === "sid_unknown"
                   ? "Account unknown"
-                  : "Needs elevation"}
+                  : availability.state === "elevation_path_unavailable"
+                    ? "Not available on this PC"
+                    : "Needs elevation"}
             </span>
           {/if}
 

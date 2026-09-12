@@ -59,7 +59,7 @@ function mapView(view: TweakView): TweakDefinition {
     risk_level: view.risk.toLowerCase() as RiskLevel,
     reversible: view.reversible,
     requires_reboot: view.requires_reboot,
-    elevation: view.elevation,
+    required_level: view.required_level,
     availability: view.availability,
     optionLabels: view.options.map((o) => o.label),
     options: view.options,

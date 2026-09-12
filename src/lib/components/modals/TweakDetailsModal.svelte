@@ -34,7 +34,7 @@
   });
 
   const riskInfo = $derived(def ? RISK_INFO[def.risk_level] : null);
-  const permissionInfo = $derived(def ? permissionInfoFor(def.elevation) : null);
+  const permissionInfo = $derived(def ? permissionInfoFor(def.required_level) : null);
 
   // Drives the "not active on this Windows" dimming inside RegistryChangeItem for version-scoped effects.
   const currentWindowsVersion = $derived(systemStore.info ? (systemStore.info.windows.is_windows_11 ? 11 : 10) : null);

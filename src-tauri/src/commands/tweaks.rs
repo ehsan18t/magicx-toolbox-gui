@@ -1,19 +1,8 @@
-//! Tauri command surface for the redesigned tweak engine (Task 16; spec §8.4/§9). Thin by design:
-//! every command builds `Deps` from managed, app-lifetime state ([`TweakEngineState`]) and
-//! delegates straight to the engine (`tweaks::engine::{detect, apply, revert}`) -- no tweak logic
-//! lives here. The `*View`/`TweakStatusEvent` types translate engine result types -- which
-//! intentionally carry no `Serialize`, since the engine internals are outside this task's touch
-//! boundary -- into IPC-safe shapes for the frontend.
-//!
-//! ## Availability + SID gating (spec §9, controller decision 5)
-//! Detection is never gated: reads run at whatever level the app currently holds regardless
-//! (invariant 24), so `get_tweaks`'s status is always attempted read-only. Only `apply_tweak`/
-//! `restore_tweak` refuse (typed [`Error::TweakUnavailable`]) when [`compute_availability`] reports
-//! anything but [`Availability::Available`] -- a tweak whose declared elevation floor exceeds the
-//! app's current ceiling ([`needs_elevation`]), or a tweak that *touches HKCU* while the
-//! over-the-shoulder SID guard has not confirmed the session owner
-//! (`engine::context::hkcu_disabled_by_sid_mismatch`). Note the second is keyed on the hive the
-//! tweak writes, never on its `elevation:` floor -- see ADR-0005's 2026-07-27 amendment.
+//! Tauri command surface for the tweak engine: builds `Deps` from managed state and delegates to
+//! `tweaks::engine`; the `*View` types are the IPC shapes, since engine types carry no `Serialize`.
+//! Detection is never gated. `apply_tweak`/`restore_tweak` refuse unless [`compute_availability`]
+//! is Available: the highest level any effect runs at is out of reach, TrustedInstaller is blocked
+//! for a `ti` effect, or an HKCU-touching tweak's session owner is unconfirmed (ADR-0005).
 
 use rayon::prelude::*;
 use serde::Serialize;
@@ -38,7 +27,7 @@ use crate::tweaks::model::{
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{EntrySummary, Seq, SnapshotStore};
-use crate::tweaks::winver::running_winver;
+use crate::tweaks::winver::{running_winver, WinVer};
 
 // --- managed state (controller decision 2) -----------------------------------------------------
 
@@ -165,13 +154,11 @@ pub enum Availability {
     },
 }
 
-/// `touches_hkcu` comes from `context::tweak_touches_hkcu`, NOT from the tweak's `elevation:` floor.
-/// The floor says which privilege the tweak needs; the hive says whose state it changes. Those are
-/// independent, and conflating them was the original defect: 31 `admin`-floor tweaks in the corpus
-/// drive HKCU effects and went unguarded, while all 54 `user`-floor tweaks were blocked outright.
+/// `required` is [`required_level`]. `touches_hkcu` keys the SID guard on the hive, never the level:
+/// an admin-level tweak can still write HKCU.
 fn compute_availability(
     touches_hkcu: bool,
-    tweak_elevation: Level,
+    required: Level,
     current_level: Level,
     sid_check: SidCheck,
     ti_blocked: Option<&str>,
@@ -190,14 +177,21 @@ fn compute_availability(
             },
         };
     }
-    if needs_elevation(tweak_elevation, current_level) {
+    if needs_elevation(required, current_level) {
+        let reason = match required {
+            Level::Ti => {
+                "Part of this tweak runs as TrustedInstaller. Restart the app as administrator to \
+                 enable it."
+            }
+            Level::User | Level::Admin => "Restart the app as administrator to enable this tweak.",
+        };
         return Availability::NeedsElevation {
-            reason: "Restart the app as administrator to enable this tweak.".to_string(),
+            reason: reason.to_string(),
         };
     }
     // Being elevated enough is not the same as the path existing. A hardening baseline or group
     // policy can disable the TrustedInstaller service, and then no amount of admin helps.
-    if tweak_elevation == Level::Ti {
+    if required == Level::Ti {
         if let Some(reason) = ti_blocked {
             return Availability::ElevationPathUnavailable {
                 reason: reason.to_string(),
@@ -207,12 +201,40 @@ fn compute_availability(
     Availability::Available
 }
 
-/// Whether `tweak_elevation`'s floor is out of reach at `current_level` (spec §9, controller
-/// decision 3): the app's own process level is only ever `User` or `Admin` -- once Admin, the
-/// elevation broker reaches System/TrustedInstaller for any declared floor, so Admin is the one
-/// ceiling that unlocks everything above `User`.
-fn needs_elevation(tweak_elevation: Level, current_level: Level) -> bool {
-    current_level == Level::User && tweak_elevation != Level::User
+/// The app process runs only as User or Admin; from Admin the broker reaches TrustedInstaller.
+fn needs_elevation(required: Level, current_level: Level) -> bool {
+    current_level == Level::User && required != Level::User
+}
+
+/// The highest level any effect `apply` would drive runs at, as `context::route` routes it (HKCU
+/// effects as `User`), never below the tweak's declared floor (ADR-0005).
+fn required_level(tweak: &Tweak, corpus: &Corpus, winver: &WinVer) -> Level {
+    // An `optional` effect still counts: whether its resource exists is only known once the apply
+    // runs, and over-stating the level beats a refusal from a card that promised it would work.
+    apply::driving_surface(tweak, winver)
+        .into_iter()
+        .map(|e| context::route(e, tweak, corpus).level())
+        .fold(tweak.elevation, |max, l| {
+            context::effective_level(max, Some(l))
+        })
+}
+
+/// `ti_blocked` is `ti_probe`'s answer, a parameter so tests can inject it.
+fn tweak_availability(
+    tweak: &Tweak,
+    corpus: &Corpus,
+    winver: &WinVer,
+    level: Level,
+    sid_check: SidCheck,
+    ti_blocked: Option<&str>,
+) -> Availability {
+    compute_availability(
+        context::tweak_touches_hkcu(tweak, corpus),
+        required_level(tweak, corpus, winver),
+        level,
+        sid_check,
+        ti_blocked,
+    )
 }
 
 /// `apply_tweak`/`restore_tweak`'s shared refusal gate: `Ok(())` iff [`Availability::Available`].
@@ -222,10 +244,10 @@ fn refuse_if_unavailable(
     level: Level,
     sid_check: SidCheck,
 ) -> Result<()> {
-    let touches_hkcu = context::tweak_touches_hkcu(tweak, corpus);
-    match compute_availability(
-        touches_hkcu,
-        tweak.elevation,
+    match tweak_availability(
+        tweak,
+        corpus,
+        &running_winver(),
         level,
         sid_check,
         ti_probe::trusted_installer_blocked().as_deref(),
@@ -279,7 +301,9 @@ pub struct TweakView {
     /// Each option with the concrete effects it drives, so the Details modal can show a power
     /// user exactly what a state writes (registry values, service start-types, tasks, and so on).
     pub options: Vec<TweakOptionView>,
-    pub elevation: Level,
+    /// The level the engine will actually run this tweak at, not its declared floor: the badge has
+    /// to name the level used (ADR-0005).
+    pub required_level: Level,
     pub availability: Availability,
 }
 
@@ -585,7 +609,13 @@ fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
 /// Builds one IPC [`TweakView`] from a compiled `Tweak` at the given elevation/SID context.
 /// Factored out of [`get_tweaks`] so a command-layer test can assert field carry-through
 /// (e.g. `requires_reboot`, spec §6) without needing a live Tauri runtime.
-fn tweak_view(t: &Tweak, corpus: &Corpus, level: Level, sid_check: SidCheck) -> TweakView {
+fn tweak_view(
+    t: &Tweak,
+    corpus: &Corpus,
+    winver: &WinVer,
+    level: Level,
+    sid_check: SidCheck,
+) -> TweakView {
     TweakView {
         id: t.id.clone(),
         name: t.name.clone(),
@@ -600,10 +630,11 @@ fn tweak_view(t: &Tweak, corpus: &Corpus, level: Level, sid_check: SidCheck) -> 
             .iter()
             .map(|o| option_view(t, o, corpus))
             .collect(),
-        elevation: t.elevation,
-        availability: compute_availability(
-            context::tweak_touches_hkcu(t, corpus),
-            t.elevation,
+        required_level: required_level(t, corpus, winver),
+        availability: tweak_availability(
+            t,
+            corpus,
+            winver,
             level,
             sid_check,
             ti_probe::trusted_installer_blocked().as_deref(),
@@ -998,10 +1029,11 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
     let corpus = compiled_corpus();
     let level = current_app_level();
     let sid_check = context::sid_check(&RealSidProbe);
+    let winver = running_winver();
     Ok(corpus
         .tweaks
         .iter()
-        .map(|t| tweak_view(t, corpus, level, sid_check))
+        .map(|t| tweak_view(t, corpus, &winver, level, sid_check))
         .collect())
 }
 
@@ -1146,8 +1178,8 @@ mod tests {
     use crate::tweaks::engine::{ActionRunner, ProbeSource};
     use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
     use crate::tweaks::model::{
-        ActionDef, Effect, EffectDef, Opt, OptValue, RiskLevel as ModelRisk, ScopedValue, Setting,
-        StartupType, SvcAddr,
+        ActionDef, BuildExpr, Effect, EffectDef, Opt, OptValue, RegAddr, RiskLevel as ModelRisk,
+        ScopedValue, Setting, StartupType, SvcAddr, WindowsScope,
     };
     use crate::tweaks::winver::WinVer;
     use std::collections::BTreeMap;
@@ -1481,13 +1513,13 @@ mod tests {
         let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
         let c = corpus(vec![]);
         t.requires_reboot = true;
-        assert!(tweak_view(&t, &c, Level::User, SidCheck::SameUser).requires_reboot);
+        assert!(tweak_view(&t, &c, &WINVER, Level::User, SidCheck::SameUser).requires_reboot);
         t.requires_reboot = false;
-        assert!(!tweak_view(&t, &c, Level::User, SidCheck::SameUser).requires_reboot);
+        assert!(!tweak_view(&t, &c, &WINVER, Level::User, SidCheck::SameUser).requires_reboot);
 
         // The option projection joins the surface address with the option's value: this fixture's
         // one Service effect driven to Manual must surface as exactly one service change.
-        let view = tweak_view(&t, &c, Level::User, SidCheck::SameUser);
+        let view = tweak_view(&t, &c, &WINVER, Level::User, SidCheck::SameUser);
         assert_eq!(view.options.len(), 1);
         assert_eq!(view.options[0].service_changes.len(), 1);
         assert_eq!(view.options[0].service_changes[0].startup, "manual");
@@ -1659,40 +1691,202 @@ mod tests {
         );
     }
 
-    /// A hardening baseline or group policy can disable the TrustedInstaller service. Detect never
-    /// escalates, so every read still succeeds and the card looked perfectly healthy; the user
-    /// only found out by clicking and waiting out the ten-second service poll for a rollback.
-    ///
-    /// This has to stay distinct from NeedsElevation, which the user fixes by restarting as
-    /// administrator. Telling them to restart here would send them in a circle.
-    #[test]
-    fn a_blocked_trusted_installer_path_is_not_a_needs_elevation() {
-        let blocked = Some("TrustedInstaller is disabled on this PC");
+    const TI_BLOCKED: Option<&str> = Some("TrustedInstaller is disabled on this PC");
+    const WINVER: WinVer = WinVer {
+        build: 19045,
+        revision: 0,
+    };
 
-        let avail =
-            compute_availability(false, Level::Ti, Level::Admin, SidCheck::SameUser, blocked);
+    /// The corpus shape: an `admin` floor with an effect escalated to `ti`.
+    fn admin_floor_ti_effect_tweak() -> Tweak {
+        let mut t = tweak("ti_effect", vec![opt("On", StartupType::Disabled)]);
+        t.elevation = Level::Admin;
+        t.surface[0].elevation = Some(Level::Ti);
+        t
+    }
+
+    fn hkcu_setting() -> Effect {
+        Effect::Setting(Setting::Registry(RegAddr {
+            hive: Hive::Hkcu,
+            path: r"Software\Demo".to_string(),
+            name: "Demo".to_string(),
+            ty: RegType::Dword,
+            field: None,
+        }))
+    }
+
+    /// Distinct from NeedsElevation: restarting as administrator cannot start a disabled service.
+    #[test]
+    fn a_trusted_installer_effect_is_blocked_by_the_probe_whatever_the_floor() {
+        let t = admin_floor_ti_effect_tweak();
+        let c = corpus(vec![]);
+
+        let avail = tweak_availability(
+            &t,
+            &c,
+            &WINVER,
+            Level::Admin,
+            SidCheck::SameUser,
+            TI_BLOCKED,
+        );
         assert!(
             matches!(avail, Availability::ElevationPathUnavailable { .. }),
-            "an admin app still cannot reach a disabled TrustedInstaller: got {avail:?}"
+            "an admin-floor tweak with a ti effect must read as blocked: got {avail:?}"
+        );
+        assert_eq!(
+            tweak_availability(&t, &c, &WINVER, Level::Admin, SidCheck::SameUser, None),
+            Availability::Available
         );
 
-        // Nothing below Ti depends on that service, so nothing below Ti may be blocked by it.
+        // Unelevated, restarting as administrator is still the first step.
+        let avail =
+            tweak_availability(&t, &c, &WINVER, Level::User, SidCheck::SameUser, TI_BLOCKED);
+        assert!(
+            matches!(avail, Availability::NeedsElevation { .. }),
+            "got {avail:?}"
+        );
+    }
+
+    #[test]
+    fn a_tweak_with_no_trusted_installer_effect_ignores_the_probe() {
+        let c = corpus(vec![]);
         for floor in [Level::User, Level::Admin] {
+            let mut t = tweak("no_ti", vec![opt("On", StartupType::Disabled)]);
+            t.elevation = floor;
             assert_eq!(
-                compute_availability(false, floor, Level::Admin, SidCheck::SameUser, blocked),
+                tweak_availability(
+                    &t,
+                    &c,
+                    &WINVER,
+                    Level::Admin,
+                    SidCheck::SameUser,
+                    TI_BLOCKED
+                ),
                 Availability::Available,
-                "{floor:?} does not need TrustedInstaller"
+                "floor {floor:?} with no ti effect"
             );
         }
 
-        // Not elevated yet is still the more actionable message: restarting as admin is the step
-        // the user takes first, and the probe result does not change that.
-        assert!(
-            matches!(
-                compute_availability(false, Level::Ti, Level::User, SidCheck::SameUser, blocked),
-                Availability::NeedsElevation { .. }
+        // An HKCU effect runs as the user whatever it declares, so it never reaches TrustedInstaller.
+        let mut t = admin_floor_ti_effect_tweak();
+        t.surface[0].kind = hkcu_setting();
+        assert_eq!(
+            tweak_availability(
+                &t,
+                &c,
+                &WINVER,
+                Level::Admin,
+                SidCheck::SameUser,
+                TI_BLOCKED
             ),
-            "an unelevated app must still be told to restart as administrator first"
+            Availability::Available
+        );
+    }
+
+    #[test]
+    fn the_gate_needs_the_highest_level_any_effect_runs_at() {
+        let c = corpus(vec![]);
+        let mut t = tweak("escalates", vec![opt("On", StartupType::Disabled)]);
+        assert_eq!(t.elevation, Level::User);
+
+        for (step, says) in [
+            (
+                Level::Admin,
+                "Restart the app as administrator to enable this tweak.",
+            ),
+            (Level::Ti, "Part of this tweak runs as TrustedInstaller."),
+        ] {
+            t.surface[0].elevation = Some(step);
+            let avail = tweak_availability(&t, &c, &WINVER, Level::User, SidCheck::SameUser, None);
+            let Availability::NeedsElevation { reason } = &avail else {
+                panic!("a user-floor tweak with a {step:?} effect must need elevation: {avail:?}");
+            };
+            assert!(
+                reason.contains(says),
+                "{step:?} must say {says:?}: {reason}"
+            );
+        }
+    }
+
+    /// The floor is a floor: every HKCU effect routes at `User`, so dropping [`required_level`]'s
+    /// seed would quietly lower an `admin` tweak to it.
+    #[test]
+    fn an_all_hkcu_surface_never_lowers_the_declared_floor() {
+        let mut t = tweak("hkcu_only", vec![opt("On", StartupType::Disabled)]);
+        t.elevation = Level::Admin;
+        t.surface[0].kind = hkcu_setting();
+        let c = corpus(vec![]);
+
+        assert_eq!(required_level(&t, &c, &WINVER), Level::Admin);
+        let avail = tweak_availability(&t, &c, &WINVER, Level::User, SidCheck::SameUser, None);
+        assert!(
+            matches!(avail, Availability::NeedsElevation { .. }),
+            "an admin tweak whose whole surface is HKCU still needs admin: got {avail:?}"
+        );
+    }
+
+    /// A `windows:`-excluded effect is never driven on this build, so it must raise neither the
+    /// level the card shows nor the one the gate demands.
+    #[test]
+    fn an_effect_outside_this_builds_windows_scope_does_not_raise_the_level() {
+        let mut t = admin_floor_ti_effect_tweak();
+        t.surface[0].windows = Some(WindowsScope {
+            products: None,
+            build: Some(BuildExpr::Min(26100)), // excludes WINVER's 19045
+            revision: None,
+        });
+        let c = corpus(vec![]);
+
+        assert_eq!(required_level(&t, &c, &WINVER), Level::Admin);
+        assert_eq!(
+            tweak_availability(
+                &t,
+                &c,
+                &WINVER,
+                Level::Admin,
+                SidCheck::SameUser,
+                TI_BLOCKED
+            ),
+            Availability::Available
+        );
+    }
+
+    /// `block_update_pipeline` is the corpus's one escalating tweak: an `admin` floor with `ti`
+    /// effects, so only the level the engine really uses can block it.
+    #[test]
+    fn exactly_one_corpus_tweak_is_blocked_when_trusted_installer_is() {
+        let corpus = compiled_corpus();
+        let winver = running_winver();
+        let blocked: Vec<&str> = corpus
+            .tweaks
+            .iter()
+            .filter(|t| {
+                matches!(
+                    tweak_availability(
+                        t,
+                        corpus,
+                        &winver,
+                        Level::Admin,
+                        SidCheck::SameUser,
+                        TI_BLOCKED
+                    ),
+                    Availability::ElevationPathUnavailable { .. }
+                )
+            })
+            .map(|t| t.id.as_str())
+            .collect();
+        assert_eq!(blocked, ["block_update_pipeline"]);
+
+        let t = find_tweak(corpus, "block_update_pipeline").expect("shipped tweak");
+        assert_eq!(t.elevation, Level::Admin, "its declared floor is below ti");
+
+        // The probe is what gates, not the level: with the service reachable, nothing is blocked.
+        assert!(
+            corpus.tweaks.iter().all(|t| !matches!(
+                tweak_availability(t, corpus, &winver, Level::Admin, SidCheck::SameUser, None),
+                Availability::ElevationPathUnavailable { .. }
+            )),
+            "no tweak may read as blocked when TrustedInstaller is reachable"
         );
     }
 }
