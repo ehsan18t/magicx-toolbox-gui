@@ -25,6 +25,7 @@ pub mod service;
 pub mod task;
 
 use crate::error::Error as BackendError;
+use crate::services::elevation::OpFailureClass;
 use crate::tweaks::model::{Level, RegType, Setting, Value};
 use crate::tweaks::parse::ParseError;
 
@@ -34,11 +35,11 @@ use crate::tweaks::parse::ParseError;
 /// packed value must never collapse into one another or into an opaque string.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// The registry key itself does not exist. A plain value `read` absorbs this into
-    /// `Ok(Value::Absent)` (a missing key trivially means a missing value); this variant exists
-    /// for the call paths where that collapse does not apply.
-    #[error("registry key not found: {0}")]
-    KeyNotFound(String),
+    /// The addressed resource does not exist: a registry key, the hosts file, a service the SCM no
+    /// longer knows. A plain value `read` absorbs a missing key into `Ok(Value::Absent)`; this
+    /// variant is for the call paths where that collapse does not apply.
+    #[error("not found: {0}")]
+    NotFound(String),
 
     /// The operation was denied for want of rights, in this process. Broad rather than
     /// registry-specific because service and task denials land here too; a refusal inside the
@@ -84,11 +85,11 @@ pub enum Error {
     )]
     ElevatedOutcomeUnknown(Level, String),
 
-    /// The elevated child ran and one operation inside it was refused. Carries the level so a
-    /// failure the child reported can be named as an elevated one without its own message, which
-    /// can hold a registry key or the data written to it.
+    /// The elevated child ran and one operation inside it was refused. The child sends only a
+    /// classification, never its own message, which can hold a registry key or the data written to
+    /// it (see [`OpFailureClass`]).
     #[error("{0:?} elevation ran but an operation inside it failed: {1}")]
-    ElevatedOpFailed(Level, String),
+    ElevatedOpFailed(Level, OpFailureClass),
 
     /// The addressed service or task does not exist, but the caller asked to drive it to a real
     /// (non-`Missing`) value. The engine never installs or uninstalls services/tasks (spec §5.4),
@@ -186,17 +187,17 @@ fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     }
 }
 
-/// Backend-error fallback for kinds whose primitive exposes no richer typed distinction than this
-/// (service/task): a declared "requires admin" signal becomes our typed [`Error::AccessDenied`];
-/// anything else is the least-specific [`Error::Backend`] bucket. Never produces `Value::Missing`:
-/// that is exclusively the caller's job when the resource genuinely does not exist (invariant
-/// 2), so a backend error here can never be confused with an absent resource.
-fn map_backend_error(e: BackendError) -> Error {
-    match e {
-        BackendError::RequiresAdmin => {
-            Error::AccessDenied("requires administrator privileges".to_string())
+/// Classifies the backing primitive's error by the Win32 code it carries, so Hosts and Firewall --
+/// which have no broker path -- read the same as a refused broker op. Never produces
+/// `Value::Missing`: an absent resource is the caller's call (invariant 2), never an error's.
+pub(crate) fn map_backend_error(e: BackendError) -> Error {
+    let detail = e.to_string();
+    match OpFailureClass::of(&e) {
+        OpFailureClass::AccessDenied => Error::AccessDenied(detail),
+        OpFailureClass::NotFound => Error::NotFound(detail),
+        OpFailureClass::InvalidData | OpFailureClass::Busy | OpFailureClass::Failed => {
+            Error::Backend(detail)
         }
-        other => Error::Backend(other.to_string()),
     }
 }
 
@@ -225,6 +226,24 @@ mod tests {
             std::mem::discriminant(&could_not_acquire),
             std::mem::discriminant(&acquired_but_denied)
         );
+    }
+
+    /// Hosts and Firewall reach no broker, so this is the only place their failures are classified
+    /// at all: a denied write must not arrive as the same opaque bucket as an unrecognized one.
+    #[test]
+    fn a_backend_failure_is_classified_by_the_code_it_carries() {
+        use crate::error::win32;
+        let mapped = |code| map_backend_error(BackendError::win32("writing the hosts file", code));
+        assert!(matches!(
+            mapped(win32::ACCESS_DENIED),
+            Error::AccessDenied(_)
+        ));
+        assert!(matches!(mapped(win32::FILE_NOT_FOUND), Error::NotFound(_)));
+        assert!(matches!(mapped(0), Error::Backend(_)));
+        assert!(matches!(
+            map_backend_error(BackendError::RequiresAdmin),
+            Error::AccessDenied(_)
+        ));
     }
 
     #[test]

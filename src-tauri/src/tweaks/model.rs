@@ -18,6 +18,17 @@ pub enum Level {
     Ti,
 }
 
+/// User copy. `Debug` keeps the internal spelling ("Ti"), which is what logs print.
+impl std::fmt::Display for Level {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Level::User => "User",
+            Level::Admin => "Admin",
+            Level::Ti => "TrustedInstaller",
+        })
+    }
+}
+
 /// Advisory impact rating shown to the user (spec §6.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RiskLevel {

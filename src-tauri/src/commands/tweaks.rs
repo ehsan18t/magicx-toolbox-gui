@@ -20,7 +20,8 @@ use crate::tweaks::engine::detect::{
 };
 use crate::tweaks::engine::revert::{self, RestoreOutcome};
 use crate::tweaks::engine::{
-    apply, lifecycle, log_elevated_failure, AllKinds, Deps, ProbeCache, RealActions, RealProbe,
+    apply, lifecycle, log_elevated_failure, user_facing_failure, AllKinds, Deps, Phase, ProbeCache,
+    RealActions, RealProbe,
 };
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol, Hive, Level,
@@ -28,7 +29,7 @@ use crate::tweaks::model::{
     TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
-use crate::tweaks::snapshot::{EntrySummary, Seq, SnapshotStore};
+use crate::tweaks::snapshot::{EntrySummary, Seq, SnapshotError, SnapshotStore};
 use crate::tweaks::winver::{running_winver, WinVer};
 
 // --- managed state (controller decision 2) -----------------------------------------------------
@@ -270,17 +271,36 @@ fn find_tweak<'a>(corpus: &'a Corpus, tweak_id: &str) -> Result<&'a Tweak> {
         .ok_or_else(|| Error::NotFound(format!("tweak '{tweak_id}'")))
 }
 
-/// `RollbackReport` reads "apply failed" for a restore too, so a restore failure is re-prefixed.
-fn map_restore_err(e: EngineError) -> Error {
+/// One log line per failed apply or restore, and the IPC boundary for it: an elevated failure is
+/// named by level and class with the broker's own text left out, anything else keeps the engine's
+/// text, which names the key or the value the frontend is no longer handed.
+fn map_engine_err(tweak_id: &str, phase: Phase, e: EngineError) -> Error {
     if let EngineError::AppExiting(refused) = e {
         return Error::AppExiting(refused);
     }
-    let msg = e.to_string();
-    let msg = msg
-        .strip_prefix("apply failed")
-        .map(|rest| format!("restore failed{rest}"))
-        .unwrap_or(msg);
-    Error::Tweak(msg)
+    if !log_elevated_failure(tweak_id, &e) {
+        log::error!("{phase} '{tweak_id}' failed: {e}");
+    }
+    Error::Tweak(format!(
+        "{phase} failed: {}",
+        user_facing_failure(phase, &e)
+    ))
+}
+
+/// The IPC boundary for the snapshot store: the log keeps its own text, which names the tweak, the
+/// sequence number and the action behind a failure, and the frontend is handed only the shape.
+fn map_snapshot_err(what: &str, e: SnapshotError) -> Error {
+    log::error!("{what} failed: {e}");
+    let why = match e {
+        SnapshotError::Io(_) | SnapshotError::ExeDir => {
+            "the snapshot folder could not be read or written"
+        }
+        SnapshotError::SeqCollision { .. } => "a snapshot with that number already exists",
+        SnapshotError::NotFound { .. } => "there is no snapshot with that number",
+        SnapshotError::Corrupt { .. } => "that snapshot cannot be read",
+        SnapshotError::UnknownJournalAction { .. } => "that snapshot does not record the action",
+    };
+    Error::Tweak(format!("{what} failed: {why}"))
 }
 
 // --- view/event DTOs (IPC-safe projections of the engine's own result types) ---------------------
@@ -1100,13 +1120,7 @@ pub async fn apply_tweak(
     let target = OptLabel(option_label);
     apply_tweak_logic(tweak, corpus, &target, &deps)
         .await
-        .map_err(|e| {
-            log_elevated_failure(&tweak_id, &e);
-            match e {
-                EngineError::AppExiting(refused) => Error::AppExiting(refused),
-                e => Error::Tweak(e.to_string()),
-            }
-        })
+        .map_err(|e| map_engine_err(&tweak_id, Phase::Apply, e))
 }
 
 #[tauri::command]
@@ -1126,10 +1140,7 @@ pub async fn restore_tweak(
     revert::restore(tweak, corpus, &deps)
         .await
         .map(RestoreOutcomeView::from)
-        .map_err(|e| {
-            log_elevated_failure(&tweak_id, &e);
-            map_restore_err(e)
-        })
+        .map_err(|e| map_engine_err(&tweak_id, Phase::Restore, e))
 }
 
 #[tauri::command]
@@ -1147,7 +1158,7 @@ pub async fn list_snapshot_entries(
             state.machine_guid.as_deref(),
             running_winver().build,
         )
-        .map_err(|e| Error::Tweak(e.to_string()))
+        .map_err(|e| map_snapshot_err("listing this tweak's snapshots", e))
 }
 
 /// The explicit-consent snapshot release (ADR-0002) -- `SnapshotStore::discard` never runs on a
@@ -1166,7 +1177,7 @@ pub async fn discard_snapshot_entry(
     state
         .snapshots
         .discard(&tweak_id, seq)
-        .map_err(|e| Error::Tweak(e.to_string()))
+        .map_err(|e| map_snapshot_err("discarding this snapshot", e))
 }
 
 #[tauri::command]
@@ -1360,6 +1371,129 @@ mod tests {
                 Poll::Pending => std::thread::yield_now(),
             }
         }
+    }
+
+    /// What the frontend actually receives for a failure: the effect and the class of failure, and
+    /// nothing the failure's own text carried -- whether it was refused in-process or in the child.
+    #[test]
+    fn a_failure_reaches_the_frontend_without_the_text_behind_it() {
+        const HOSTILE: &str =
+            r"HKLM\Software\Policies\Secret = 1 at C:\Users\Someone\AppData\Local\Temp\s.ps1";
+        for (phase, source, class) in [
+            (
+                Phase::Apply,
+                KindError::AccessDenied(HOSTILE.to_string()),
+                "access denied",
+            ),
+            (
+                Phase::Restore,
+                KindError::NotFound(HOSTILE.to_string()),
+                "not found",
+            ),
+            (
+                Phase::Apply,
+                KindError::ElevatedOpFailed(
+                    Level::Ti,
+                    crate::services::elevation::OpFailureClass::Busy,
+                ),
+                "busy or pending",
+            ),
+        ] {
+            let err = map_engine_err(
+                "wu_block",
+                phase,
+                EngineError::DriveFailed {
+                    effect: EffectId("wu_sih".to_string()),
+                    source,
+                },
+            );
+            let shown = serde_json::to_string(&err).expect("this is what crosses the IPC boundary");
+            for leaked in ["HKLM", "Software", "Secret", "Users", "s.ps1"] {
+                assert!(!shown.contains(leaked), "{shown} names {leaked}");
+            }
+            assert!(shown.contains("wu_sih"), "{shown}");
+            assert!(shown.contains(&phase.to_string()), "{shown}");
+            assert!(shown.contains(class), "{shown}");
+        }
+    }
+
+    /// The snapshot store's own text names the tweak, the seq and the action; none of it crosses.
+    #[test]
+    fn a_snapshot_failure_reaches_the_frontend_without_the_text_behind_it() {
+        let err = map_snapshot_err(
+            "discarding this snapshot",
+            SnapshotError::UnknownJournalAction {
+                tweak_id: "wu_block".to_string(),
+                seq: Seq(7),
+                action_id: "SecretAction".to_string(),
+            },
+        );
+        let shown = serde_json::to_string(&err).expect("this is what crosses the IPC boundary");
+        for leaked in ["wu_block", "SecretAction", "7"] {
+            assert!(!shown.contains(leaked), "{shown} names {leaked}");
+        }
+        assert!(shown.contains("does not record the action"), "{shown}");
+    }
+
+    /// A denied read has to reach the details modal as "restarting as administrator would help":
+    /// `map_backend_error` turns the Win32 code into `AccessDenied`, and detect keys
+    /// `needs_elevation` off exactly that variant. Nothing else in the chain pins the pairing.
+    #[test]
+    fn a_denied_read_tells_the_user_that_elevating_would_help() {
+        struct DeniedKind;
+        impl EffectKind for DeniedKind {
+            fn read(&self, _s: &Setting, _cx: &ExecCx) -> std::result::Result<Value, KindError> {
+                Err(crate::tweaks::kinds::map_backend_error(Error::win32(
+                    "OpenServiceW",
+                    crate::error::win32::ACCESS_DENIED,
+                )))
+            }
+            fn drive(
+                &self,
+                _s: &Setting,
+                _target: &Value,
+                _cx: &ExecCx,
+            ) -> std::result::Result<(), KindError> {
+                unreachable!("detect never drives")
+            }
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let kind = DeniedKind;
+        let probes_actions = NoProbesActions;
+        let claims = ClaimsStore::open(tmp.path().to_path_buf(), Some("test-guid".into()));
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let cache = ProbeCache::new();
+        let deps = Deps {
+            kinds: &kind,
+            probes: &probes_actions,
+            actions: &probes_actions,
+            claims: &claims,
+            snapshots: &snapshots,
+            probe_cache: &cache,
+            machine_guid: Some("test-guid"),
+            level: Level::User,
+            running: WinVer {
+                build: 19045,
+                revision: 0,
+            },
+        };
+
+        let t = tweak("svc_tweak", vec![opt("On", StartupType::Disabled)]);
+        let c = corpus(vec![tweak(
+            "svc_tweak",
+            vec![opt("On", StartupType::Disabled)],
+        )]);
+        let status = detect::detect(&t, &c, &deps);
+
+        let TweakState::Unknown(reasons) = &status.state else {
+            panic!("a denied read is Unknown, got {:?}", status.state);
+        };
+        assert_eq!(reasons[0].cause, UnknownCause::AccessDenied);
+        assert!(
+            reasons[0].needs_elevation,
+            "the restart-as-administrator advice keys off this"
+        );
     }
 
     // --- availability + SID/elevation gating (pure logic, no Tauri runtime, no OS) --------------

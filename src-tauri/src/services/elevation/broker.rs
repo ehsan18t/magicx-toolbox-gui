@@ -64,7 +64,7 @@ pub enum BrokerOp {
 
 /// Bump on any change to the wire types or exit codes (`the_wire_format_is_pinned`): after an
 /// update, parent and child are separate builds.
-const WIRE_VERSION: u32 = 1;
+const WIRE_VERSION: u32 = 2;
 
 /// A batch of operations for one broker invocation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -94,7 +94,77 @@ impl BrokerRequest {
 #[serde(deny_unknown_fields)]
 pub struct OpFailure {
     pub index: usize,
-    pub message: String,
+    pub class: OpFailureClass,
+}
+
+/// All the parent, its log and the user interface may learn about an op the child refused: the
+/// child sends this classification and never its error text, which quotes the key, the value or the
+/// path. The op index and the effect id are what join a report back to the tweak's YAML.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OpFailureClass {
+    AccessDenied,
+    NotFound,
+    /// The value did not match the type its op declared, so nothing was written.
+    InvalidData,
+    /// Locked, pending, or shutting down: the same op may behave differently later.
+    Busy,
+    /// Everything the typed error and its Win32 code do not separate.
+    Failed,
+}
+
+impl OpFailureClass {
+    /// Classifies the child's own typed error. Its text is dropped here, inside the child.
+    pub(crate) fn of(e: &Error) -> Self {
+        match e {
+            Error::RequiresAdmin | Error::RegistryAccessDenied(_) => Self::AccessDenied,
+            Error::RegistryKeyNotFound(_) | Error::NotFound(_) => Self::NotFound,
+            Error::ValidationError(_) => Self::InvalidData,
+            Error::Win32 { code, .. } => Self::of_code(*code),
+            _ => Self::Failed,
+        }
+    }
+
+    /// A `FACILITY_WIN32` HRESULT (`0x8007xxxx`), which is what the Task Scheduler COM API returns,
+    /// carries the same Win32 code in its low word.
+    fn of_code(code: u32) -> Self {
+        use crate::error::win32;
+        let code = if code >> 16 == 0x8007 {
+            code & 0xffff
+        } else {
+            code
+        };
+        match code {
+            win32::ACCESS_DENIED | win32::PRIVILEGE_NOT_HELD => Self::AccessDenied,
+            win32::FILE_NOT_FOUND
+            | win32::PATH_NOT_FOUND
+            | win32::SERVICE_DOES_NOT_EXIST
+            | win32::NOT_FOUND => Self::NotFound,
+            win32::INVALID_DATA | win32::INVALID_PARAMETER => Self::InvalidData,
+            // Held until every handle to the service closes, usually until reboot: not retryable.
+            win32::SERVICE_MARKED_FOR_DELETE => Self::Failed,
+            win32::SHARING_VIOLATION
+            | win32::LOCK_VIOLATION
+            | win32::BUSY
+            | win32::DEPENDENT_SERVICES_RUNNING
+            | win32::SERVICE_REQUEST_TIMEOUT
+            | win32::SERVICE_CANNOT_ACCEPT_CTRL
+            | win32::SHUTDOWN_IN_PROGRESS => Self::Busy,
+            _ => Self::Failed,
+        }
+    }
+}
+
+impl std::fmt::Display for OpFailureClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::AccessDenied => "access denied",
+            Self::NotFound => "not found",
+            Self::InvalidData => "invalid data",
+            Self::Busy => "busy or pending",
+            Self::Failed => "for an unclassified reason",
+        })
+    }
 }
 
 /// The broker's typed response.
@@ -163,7 +233,7 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
         if let Err(e) = execute_op(op) {
             failure = Some(OpFailure {
                 index,
-                message: e.to_string(),
+                class: OpFailureClass::of(&e),
             });
             break;
         }
@@ -483,17 +553,20 @@ pub enum BrokerOpError {
     /// `index` is the failing op's position in the slice handed to [`run_ops`], carried
     /// structurally rather than only in the message so a caller that submitted a batch on behalf
     /// of several effects can name which one failed.
-    #[error("operation failed inside the elevated child: {source}")]
+    #[error("{} inside the elevated child failed: {class}", op_label(.index))]
     OpFailed {
         index: Option<usize>,
-        #[source]
-        source: Error,
+        class: OpFailureClass,
     },
     /// A child was created, so ops may have run: a timeout, a failed wait or exit-code query, a
     /// panic, or a lost or invalid response. As `CouldNotAcquire`, a verified rollback would delete
     /// the snapshot (ADR-0002); as `OpFailed`, it would blame an op that may have succeeded.
     #[error("the elevated child ran but its outcome is unknown: {0}")]
     Indeterminate(#[source] Error),
+}
+
+fn op_label(index: &Option<usize>) -> String {
+    index.map_or_else(|| "an op".to_owned(), |i| format!("op {i}"))
 }
 
 impl BrokerOpError {
@@ -536,10 +609,11 @@ fn failure_summary(level: Elevation, e: &BrokerOpError) -> String {
             "could not acquire the child, so nothing ran".to_owned()
         }
         BrokerOpError::OpFailed {
-            index: Some(index), ..
-        } => format!("operation {index} was refused in the child"),
-        BrokerOpError::OpFailed { index: None, .. } => {
-            "an operation was refused in the child".to_owned()
+            index: Some(index),
+            class,
+        } => format!("operation {index} was refused in the child: {class}"),
+        BrokerOpError::OpFailed { index: None, class } => {
+            format!("an operation was refused in the child: {class}")
         }
         BrokerOpError::Indeterminate(_) => {
             "the child ran but its outcome is unknown, so the machine may have changed".to_owned()
@@ -574,10 +648,7 @@ fn check_response(sent: usize, response: &BrokerResponse) -> Result<(), BrokerOp
     if let Some(failure) = &response.failure {
         return Err(BrokerOpError::OpFailed {
             index: Some(failure.index),
-            source: Error::ServiceControl(format!(
-                "broker op {} failed: {}",
-                failure.index, failure.message
-            )),
+            class: failure.class,
         });
     }
     // Fewer ops attempted than sent, yet no failure named: the executor cannot produce that, so
@@ -733,12 +804,72 @@ mod tests {
             attempted: 2,
             failure: Some(OpFailure {
                 index: 1,
-                message: "denied".into(),
+                class: OpFailureClass::AccessDenied,
             }),
         };
         let err = check_response(3, &response).expect_err("a named failure must fail the batch");
         assert!(err.to_string().contains("op 1"), "got {err}");
-        assert!(err.to_string().contains("denied"), "got {err}");
+        assert!(err.to_string().contains("access denied"), "got {err}");
+    }
+
+    /// The child classifies its own error and sends only that: nothing an op carried -- the key, the
+    /// value name, the value -- may reach the parent, its log, or the user interface. Driven
+    /// through `execute_request`, the child's real entry point, so re-adding a message fails here.
+    #[test]
+    fn the_child_never_sends_its_own_error_text() {
+        let scratch = Scratch::new();
+        let request = BrokerRequest {
+            version: WIRE_VERSION,
+            nonce: 1,
+            ops: vec![BrokerOp::RegSet {
+                hive: RegistryHive::Hkcu,
+                key: scratch.key.clone(),
+                value_name: "LeakCanarySecret".into(),
+                value_type: RegistryValueType::Dword,
+                value: serde_json::json!("not-a-number"),
+            }],
+        };
+
+        let response = execute_request(&request);
+        let wire = serde_json::to_string(&response).unwrap();
+        let err = check_response(1, &response).expect_err("a named failure must fail the batch");
+        let summary = failure_summary(Elevation::TrustedInstaller, &err);
+        for leaked in [scratch.key.as_str(), "LeakCanarySecret", "not-a-number"] {
+            assert!(!wire.contains(leaked), "the wire names {leaked}: {wire}");
+            assert!(!err.to_string().contains(leaked), "{err} names {leaked}");
+            assert!(!summary.contains(leaked), "{summary} names {leaked}");
+        }
+        assert!(wire.contains("invalid_data"), "{wire}");
+        assert!(summary.contains("invalid data"), "{summary}");
+    }
+
+    /// Every class comes off a code the effect services really report, so a service or a task
+    /// failure is classified as sharply as a registry one rather than falling to `Failed`.
+    #[test]
+    fn every_class_is_reachable_from_a_code_the_services_report() {
+        use crate::error::win32;
+        let of = |code| OpFailureClass::of(&Error::win32("an op", code));
+        assert_eq!(of(win32::ACCESS_DENIED), OpFailureClass::AccessDenied);
+        assert_eq!(of(win32::SERVICE_DOES_NOT_EXIST), OpFailureClass::NotFound);
+        // The Task Scheduler COM API reports a missing task as a FACILITY_WIN32 HRESULT.
+        assert_eq!(of(0x8007_0002), OpFailureClass::NotFound);
+        assert_eq!(of(0x8007_0005), OpFailureClass::AccessDenied);
+        assert_eq!(of(win32::INVALID_PARAMETER), OpFailureClass::InvalidData);
+        assert_eq!(of(win32::DEPENDENT_SERVICES_RUNNING), OpFailureClass::Busy);
+        assert_eq!(of(0), OpFailureClass::Failed);
+        // A scheduler HRESULT outside FACILITY_WIN32 has no Win32 code to read.
+        assert_eq!(of(0x8004_1318), OpFailureClass::Failed);
+    }
+
+    /// A service marked for delete holds that way until every handle closes, usually until reboot,
+    /// so it must not carry the class whose copy invites a retry.
+    #[test]
+    fn a_service_marked_for_delete_is_never_reported_as_busy() {
+        use crate::error::win32;
+        let of = |code| OpFailureClass::of(&Error::win32("an op", code));
+        assert_ne!(of(win32::SERVICE_MARKED_FOR_DELETE), OpFailureClass::Busy);
+        // The genuinely transient neighbour keeps it.
+        assert_eq!(of(win32::DEPENDENT_SERVICES_RUNNING), OpFailureClass::Busy);
     }
 
     #[test]
@@ -1159,7 +1290,8 @@ mod tests {
         cases.push(("top-level field", to_bytes(&top)));
 
         let mut in_failure = good();
-        in_failure["failure"] = serde_json::json!({ "index": 0, "message": "x", "future": 1 });
+        in_failure["failure"] =
+            serde_json::json!({ "index": 0, "class": "access_denied", "future": 1 });
         cases.push(("field inside the failure", to_bytes(&in_failure)));
 
         let mut newer = good();
@@ -1194,10 +1326,19 @@ mod tests {
     #[test]
     fn the_wire_format_is_pinned() {
         // Changing any byte below, or any exit code, needs a WIRE_VERSION bump.
-        const REQUEST: &str = r#"{"version":1,"nonce":7,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
-        const RESPONSE: &str =
-            r#"{"version":1,"nonce":7,"attempted":2,"failure":{"index":1,"message":"denied"}}"#;
-        assert_eq!(WIRE_VERSION, 1);
+        const REQUEST: &str = r#"{"version":2,"nonce":7,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
+        const RESPONSE: &str = r#"{"version":2,"nonce":7,"attempted":2,"failure":{"index":1,"class":"access_denied"}}"#;
+        assert_eq!(WIRE_VERSION, 2);
+        // Every class name is on the wire too: renaming one needs the same bump.
+        for (class, name) in [
+            (OpFailureClass::AccessDenied, r#""access_denied""#),
+            (OpFailureClass::NotFound, r#""not_found""#),
+            (OpFailureClass::InvalidData, r#""invalid_data""#),
+            (OpFailureClass::Busy, r#""busy""#),
+            (OpFailureClass::Failed, r#""failed""#),
+        ] {
+            assert_eq!(serde_json::to_string(&class).unwrap(), name);
+        }
         assert_eq!(
             [
                 EXIT_UNREADABLE_REQUEST,
@@ -1248,7 +1389,7 @@ mod tests {
             attempted: 2,
             failure: Some(OpFailure {
                 index: 1,
-                message: "denied".into(),
+                class: OpFailureClass::AccessDenied,
             }),
         };
         assert_eq!(serde_json::to_string(&request).unwrap(), REQUEST);
@@ -1489,13 +1630,13 @@ mod tests {
 
         let op = hostile_summary(BrokerOpError::OpFailed {
             index: Some(2),
-            source: detail(),
+            class: OpFailureClass::AccessDenied,
         });
         assert!(op.contains("operation 2"), "{op}");
 
         let unplaced = hostile_summary(BrokerOpError::OpFailed {
             index: None,
-            source: detail(),
+            class: OpFailureClass::AccessDenied,
         });
         assert!(unplaced.contains("an operation was refused"), "{unplaced}");
     }
@@ -1530,7 +1671,7 @@ mod tests {
                 Elevation::TrustedInstaller,
                 BrokerOpError::OpFailed {
                     index: None,
-                    source: detail(),
+                    class: OpFailureClass::AccessDenied,
                 }
             ),
             Some(log::Level::Warn)

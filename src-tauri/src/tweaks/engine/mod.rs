@@ -17,7 +17,7 @@ pub mod revert;
 use apply::EngineError;
 
 use crate::services::appx_index::AppxIndex;
-use crate::services::elevation::{self, BrokerOp, BrokerOpError, Elevation};
+use crate::services::elevation::{self, BrokerOp, BrokerOpError, Elevation, OpFailureClass};
 use crate::tweaks::kinds::{
     action::ActionKind,
     firewall::FirewallKind,
@@ -156,9 +156,9 @@ impl EffectKind for AllKinds {
                 index: 0,
                 error: KindError::CouldNotAcquireElevation(Level::Ti, err.to_string()),
             },
-            ref failed @ BrokerOpError::OpFailed { ref source, .. } => BatchFailure {
+            ref failed @ BrokerOpError::OpFailed { ref class, .. } => BatchFailure {
                 index: failing_item(&spans, failed.failed_op_index(), sent),
-                error: KindError::ElevatedOpFailed(Level::Ti, source.to_string()),
+                error: KindError::ElevatedOpFailed(Level::Ti, *class),
             },
             // No op index to attribute this to: the point is that we do not know which ran. The
             // first item is where the batch is treated as having stopped.
@@ -193,22 +193,26 @@ fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
         BrokerOpError::CouldNotAcquire(err) => {
             KindError::CouldNotAcquireElevation(level, err.to_string())
         }
-        BrokerOpError::OpFailed { source, .. } => {
-            KindError::ElevatedOpFailed(level, source.to_string())
-        }
+        BrokerOpError::OpFailed { class, .. } => KindError::ElevatedOpFailed(level, class),
         BrokerOpError::Indeterminate(err) => {
             KindError::ElevatedOutcomeUnknown(level, err.to_string())
         }
     })
 }
 
-/// One release-visible line per elevated failure: which tweak, where in it, which level, and how
-/// the broker classified it. Called by the command layer, the first point that owns both halves:
-/// the drive sites below know the classification but not which tweak is running.
-pub fn log_elevated_failure(tweak_id: &str, e: &EngineError) {
+/// The elevated half of the command layer's one-line-per-failure record: which tweak, where in it,
+/// which level, and how the broker classified it, with the broker's own text (a temp path, the
+/// transport nonce) left out. `false` when nothing here is elevated, so the caller logs instead.
+pub fn log_elevated_failure(tweak_id: &str, e: &EngineError) -> bool {
     for line in elevated_failure_lines(tweak_id, e) {
         log::error!("{line}");
     }
+    // A line for a rollback failure is no record of the original, which then still needs its own.
+    let original = match e {
+        EngineError::RollbackReport { original, .. } => original.as_ref(),
+        other => other,
+    };
+    !elevated_failure_lines(tweak_id, original).is_empty()
 }
 
 /// Every elevated failure `e` carries, a rollback's own failures included: ADR-0001's Needs
@@ -219,13 +223,13 @@ fn elevated_failure_lines(tweak_id: &str, e: &EngineError) -> Vec<String> {
     lines
 }
 
-fn collect_elevated_failures(tweak_id: &str, e: &EngineError, phase: &str, out: &mut Vec<String>) {
+fn collect_elevated_failures(tweak_id: &str, e: &EngineError, during: &str, out: &mut Vec<String>) {
     let (site, source) = match e {
         EngineError::RollbackReport {
             original,
             rollback_failures,
         } => {
-            collect_elevated_failures(tweak_id, original, phase, out);
+            collect_elevated_failures(tweak_id, original, during, out);
             for failed in rollback_failures {
                 collect_elevated_failures(tweak_id, failed, " during rollback", out);
             }
@@ -242,27 +246,171 @@ fn collect_elevated_failures(tweak_id: &str, e: &EngineError, phase: &str, out: 
     };
     if let Some((level, classification)) = elevated_failure(source) {
         out.push(format!(
-            "tweak '{tweak_id}': {site} failed{phase} at {level:?} elevation: {classification}"
+            "tweak '{tweak_id}': {site} failed{during} at {level:?} elevation: {classification}"
         ));
     }
 }
 
 /// The three ways a failure can have reached the elevated child, named without the detail behind
-/// them: that text is the broker's and can carry a path, a nonce or a registry value.
-fn elevated_failure(e: &KindError) -> Option<(Level, &'static str)> {
+/// them: that text is the broker's and can carry a path, a nonce or a registry value. The refused
+/// case carries its class, which is the parent's own value and names no resource.
+fn elevated_failure(e: &KindError) -> Option<(Level, String)> {
     match e {
         KindError::CouldNotAcquireElevation(level, _) => Some((
             *level,
-            "could not acquire the elevated child, so nothing ran",
+            "could not acquire the elevated child, so nothing ran".to_owned(),
         )),
-        KindError::ElevatedOpFailed(level, _) => {
-            Some((*level, "an operation was refused inside the elevated child"))
-        }
+        KindError::ElevatedOpFailed(level, class) => Some((
+            *level,
+            format!("an operation was refused inside the elevated child: {class}"),
+        )),
         KindError::ElevatedOutcomeUnknown(level, _) => Some((
             *level,
-            "the elevated child ran but its outcome is unknown, so the machine may have changed",
+            "the elevated child ran but its outcome is unknown, so the machine may have changed"
+                .to_owned(),
         )),
         _ => None,
+    }
+}
+
+/// Which operation a failure is being described for: a restore has no rollback phase, so it cannot
+/// borrow apply's word for what happened to the machine afterwards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    Apply,
+    Restore,
+}
+
+impl std::fmt::Display for Phase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Phase::Apply => "apply",
+            Phase::Restore => "restore",
+        })
+    }
+}
+
+/// ADR-0001's Needs Attention state in the user's own words, rather than a count of "item(s)".
+fn needing_attention(count: usize) -> String {
+    if count == 1 {
+        "one effect still needs attention".to_owned()
+    } else {
+        format!("{count} effects still need attention")
+    }
+}
+
+/// The user-interface half of the decision recorded on `OpFailureClass`: the engine's own text
+/// names the key, the value, the path or the script behind a failure, so the frontend is handed the
+/// structure around it instead -- which effect, and which class of failure.
+pub fn user_facing_failure(phase: Phase, e: &EngineError) -> String {
+    match e {
+        EngineError::UnknownOption(label) => {
+            format!("'{label}' is not one of this tweak's options")
+        }
+        EngineError::SurfaceUnreadable(reasons) => {
+            let effects: Vec<String> = reasons.iter().map(|r| format!("'{}'", r.effect)).collect();
+            format!(
+                "this tweak's current state is unreadable: effect(s) {}",
+                effects.join(", ")
+            )
+        }
+        EngineError::Unavailable(reason) => reason.clone(),
+        EngineError::AppExiting(exiting) => exiting.to_string(),
+        EngineError::CaptureFailed { effect, source } => format!(
+            "effect '{effect}' could not be read before anything was changed: {}",
+            kind_failure(source)
+        ),
+        EngineError::CaptureMissingRequired(effect) => {
+            format!("effect '{effect}' is required but is not present on this machine")
+        }
+        EngineError::SnapshotWrite(_) => {
+            "the pre-apply snapshot could not be saved, so nothing was changed".to_owned()
+        }
+        EngineError::DriveFailed { effect, source } => format!(
+            "effect '{effect}' could not be changed: {}",
+            kind_failure(source)
+        ),
+        EngineError::ResourceMissing(effect) => {
+            format!("effect '{effect}': the target no longer exists on this machine")
+        }
+        EngineError::VerifyMismatch { effect, .. } => {
+            format!("effect '{effect}' did not read back what was written to it")
+        }
+        EngineError::ActionFailed { effect, source } => {
+            format!("action '{effect}' failed: {}", kind_failure(source))
+        }
+        EngineError::ActionVerifyMismatch { effect, .. } => {
+            format!("action '{effect}' ran but did not leave the state it declares")
+        }
+        EngineError::JournalMark { effect, .. } => {
+            format!("action '{effect}' ran but could not be recorded")
+        }
+        EngineError::Claim { shared, source } => {
+            format!("shared setting '{shared}': {}", claims_failure(source))
+        }
+        EngineError::Invalid(_) => "internal engine inconsistency".to_owned(),
+        EngineError::RollbackReport {
+            original,
+            rollback_failures,
+        } => {
+            let undone = match phase {
+                Phase::Apply => "the tweak was rolled back",
+                Phase::Restore => "the restore was undone",
+            };
+            let after = if rollback_failures.is_empty() {
+                format!("{undone} and verified")
+            } else {
+                format!(
+                    "{undone}, but {}",
+                    needing_attention(rollback_failures.len())
+                )
+            };
+            format!("{}; {after}", user_facing_failure(phase, original))
+        }
+    }
+}
+
+/// The class of one kind failure, never the text: `KindError`'s own `Display` quotes the key, the
+/// path, or the value it was given.
+fn kind_failure(e: &KindError) -> String {
+    match e {
+        KindError::NotFound(_) | KindError::ResourceMissing(_) => "not found".to_owned(),
+        KindError::AccessDenied(_) => "access denied".to_owned(),
+        KindError::TypeMismatch { .. } => {
+            "the live value is stored as a different type than this tweak declares".to_owned()
+        }
+        KindError::MalformedPacked { .. } => "the live value could not be parsed".to_owned(),
+        KindError::UnsupportedLevel(level) => {
+            format!("{level} elevation is not routed by this build")
+        }
+        KindError::CouldNotAcquireElevation(level, _) => {
+            format!("could not acquire {level} elevation, so nothing ran")
+        }
+        KindError::ElevatedOpFailed(level, class) => {
+            format!("refused at {level} elevation: {class}")
+        }
+        KindError::ElevatedOutcomeUnknown(level, _) => format!(
+            "{level} elevation ran but its outcome is unknown, so the machine may have changed"
+        ),
+        // A `&'static str` this crate wrote, so it names no live key, value or path.
+        KindError::Invalid(what) => (*what).to_owned(),
+        KindError::Backend(_) => OpFailureClass::Failed.to_string(),
+        KindError::ActionFailed(code) => format!("its script exited with code {code}"),
+        KindError::ActionExecFailed(_) => "its script could not be run".to_owned(),
+    }
+}
+
+fn claims_failure(e: &ClaimsError) -> String {
+    match e {
+        ClaimsError::Kind(source) => kind_failure(source),
+        ClaimsError::VerifyMismatch { .. } => {
+            "it did not read back what was written to it".to_owned()
+        }
+        ClaimsError::NotHeld { .. } => "this tweak does not currently hold it".to_owned(),
+        ClaimsError::Corrupt => "the shared-claims record is corrupt".to_owned(),
+        ClaimsError::Io(_) | ClaimsError::ExeDir => {
+            "the shared-claims record could not be read or written".to_owned()
+        }
     }
 }
 
@@ -390,7 +538,7 @@ impl ProbeCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tweaks::model::{OptLabel, SharedId, StartupType, SvcAddr, TaskAddr};
+    use crate::tweaks::model::{OptLabel, RegType, SharedId, StartupType, SvcAddr, TaskAddr};
 
     /// A detail carrying one of everything a log line must never print: a path, a transport nonce,
     /// and a registry key with its data.
@@ -420,8 +568,8 @@ mod tests {
                 "nothing ran",
             ),
             (
-                KindError::ElevatedOpFailed(Level::Ti, HOSTILE_DETAIL.into()),
-                "refused inside the elevated child",
+                KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::InvalidData),
+                "refused inside the elevated child: invalid data",
             ),
             (
                 KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
@@ -484,7 +632,7 @@ mod tests {
             &EngineError::RollbackReport {
                 original: Box::new(EngineError::DriveFailed {
                     effect: EffectId("wu_sih".into()),
-                    source: KindError::ElevatedOpFailed(Level::Ti, HOSTILE_DETAIL.into()),
+                    source: KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::AccessDenied),
                 }),
                 rollback_failures: vec![EngineError::DriveFailed {
                     effect: EffectId("wu_orch".into()),
@@ -519,6 +667,173 @@ mod tests {
         ] {
             assert!(elevated_failure_lines("wu_block", &e).is_empty(), "{e:?}");
         }
+    }
+
+    /// A line for a rollback failure is no record of the original, so an in-process original under
+    /// an elevated rollback failure must still send the caller to its own full-text line.
+    #[test]
+    fn an_unelevated_original_is_not_covered_by_an_elevated_rollback_failure() {
+        let elevated = || EngineError::DriveFailed {
+            effect: EffectId("wu_orch".into()),
+            source: KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
+        };
+        let in_process = || EngineError::DriveFailed {
+            effect: EffectId("wu_sih".into()),
+            source: KindError::AccessDenied("denied in-process".into()),
+        };
+
+        assert!(
+            !log_elevated_failure(
+                "wu_block",
+                &EngineError::RollbackReport {
+                    original: Box::new(in_process()),
+                    rollback_failures: vec![elevated()],
+                }
+            ),
+            "the original went unrecorded"
+        );
+        assert!(log_elevated_failure(
+            "wu_block",
+            &EngineError::RollbackReport {
+                original: Box::new(elevated()),
+                rollback_failures: vec![in_process()],
+            }
+        ));
+    }
+
+    /// The other side of the log's guarantee: what the frontend is handed carries the effect and
+    /// the class, and none of the text the failure itself came with.
+    #[test]
+    fn what_the_frontend_is_handed_never_quotes_the_failure_text() {
+        let effect = || EffectId("wu_sih".into());
+        let hostile = || EngineError::DriveFailed {
+            effect: effect(),
+            source: KindError::NotFound(HOSTILE_DETAIL.into()),
+        };
+        for e in [
+            hostile(),
+            EngineError::CaptureFailed {
+                effect: effect(),
+                source: KindError::AccessDenied(HOSTILE_DETAIL.into()),
+            },
+            EngineError::ActionFailed {
+                effect: effect(),
+                source: KindError::ActionExecFailed(HOSTILE_DETAIL.into()),
+            },
+            EngineError::DriveFailed {
+                effect: effect(),
+                source: KindError::Backend(HOSTILE_DETAIL.into()),
+            },
+            EngineError::DriveFailed {
+                effect: effect(),
+                source: KindError::TypeMismatch {
+                    path: HOSTILE_DETAIL.into(),
+                    name: "Secret".into(),
+                    expected: RegType::Dword,
+                    actual: RegType::Dword,
+                },
+            },
+            EngineError::Claim {
+                shared: SharedId("wu_sih".into()),
+                source: ClaimsError::Kind(KindError::AccessDenied(HOSTILE_DETAIL.into())),
+            },
+            EngineError::Invalid(HOSTILE_DETAIL.into()),
+            EngineError::RollbackReport {
+                original: Box::new(hostile()),
+                rollback_failures: vec![hostile()],
+            },
+        ] {
+            let shown = user_facing_failure(Phase::Apply, &e);
+            assert_no_detail(&shown);
+            assert!(!shown.is_empty(), "{e:?} rendered as nothing");
+        }
+    }
+
+    /// A verify mismatch is the one shape whose own text is a registry value rather than a key.
+    #[test]
+    fn a_verify_mismatch_never_shows_the_value_it_read_back() {
+        let shown = user_facing_failure(
+            Phase::Apply,
+            &EngineError::VerifyMismatch {
+                effect: EffectId("wu_sih".into()),
+                expected: Value::Present(true),
+                actual: Value::Present(false),
+            },
+        );
+        assert!(shown.contains("wu_sih"), "{shown}");
+        assert!(!shown.contains("Present"), "{shown}");
+    }
+
+    /// A restore has no rollback phase, so it never borrows apply's word for one, and neither
+    /// phase counts "item(s)" at the user.
+    #[test]
+    fn a_restore_failure_is_never_described_as_a_rollback() {
+        let failed = || EngineError::DriveFailed {
+            effect: EffectId("wu_sih".into()),
+            source: KindError::AccessDenied(HOSTILE_DETAIL.into()),
+        };
+        let report = |n: usize| EngineError::RollbackReport {
+            original: Box::new(failed()),
+            rollback_failures: (0..n).map(|_| failed()).collect(),
+        };
+
+        let apply = user_facing_failure(Phase::Apply, &report(1));
+        assert!(apply.contains("the tweak was rolled back"), "{apply}");
+        assert!(
+            apply.contains("one effect still needs attention"),
+            "{apply}"
+        );
+
+        let restore = user_facing_failure(Phase::Restore, &report(2));
+        assert!(!restore.contains("roll"), "{restore}");
+        assert!(
+            restore.contains("2 effects still need attention"),
+            "{restore}"
+        );
+
+        for shown in [
+            apply,
+            restore,
+            user_facing_failure(Phase::Restore, &report(0)),
+        ] {
+            assert!(!shown.contains("item"), "{shown}");
+            assert_no_detail(&shown);
+        }
+    }
+
+    /// User copy spells the level out; "Ti" is the internal name and belongs in the log only.
+    #[test]
+    fn user_copy_never_prints_the_internal_level_name() {
+        for source in [
+            KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::Busy),
+            KindError::CouldNotAcquireElevation(Level::Ti, HOSTILE_DETAIL.into()),
+            KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
+            KindError::UnsupportedLevel(Level::Ti),
+        ] {
+            let shown = user_facing_failure(
+                Phase::Apply,
+                &EngineError::DriveFailed {
+                    effect: EffectId("wu_sih".into()),
+                    source,
+                },
+            );
+            assert!(shown.contains("TrustedInstaller elevation"), "{shown}");
+            assert!(!shown.contains("Ti elevation"), "{shown}");
+        }
+    }
+
+    /// The generic class has to compose inside the frame that already says "failed".
+    #[test]
+    fn an_unclassified_failure_does_not_double_its_own_wording() {
+        let shown = user_facing_failure(
+            Phase::Apply,
+            &EngineError::DriveFailed {
+                effect: EffectId("wu_sih".into()),
+                source: KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::Failed),
+            },
+        );
+        assert!(shown.ends_with("for an unclassified reason"), "{shown}");
+        assert!(!shown.contains("failed: failed"), "{shown}");
     }
 
     /// Names that certainly do not exist, so these need no elevation and no real resource.

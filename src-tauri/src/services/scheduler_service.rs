@@ -46,7 +46,7 @@ pub enum TaskState {
 }
 
 fn com_err(e: windows::core::Error) -> Error {
-    Error::CommandExecution(format!("Task Scheduler COM error: {}", e))
+    Error::win32(format!("Task Scheduler COM error: {e}"), e.code().0 as u32)
 }
 
 fn is_not_found(e: &windows::core::Error) -> bool {

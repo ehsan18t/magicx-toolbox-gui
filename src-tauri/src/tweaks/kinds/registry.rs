@@ -94,7 +94,7 @@ fn new_type(ty: RegistryValueType) -> RegType {
 /// contract requires (spec invariant 2) instead of flattening everything to a string.
 fn backend(e: BackendError) -> Error {
     match e {
-        BackendError::RegistryKeyNotFound(msg) => Error::KeyNotFound(msg),
+        BackendError::RegistryKeyNotFound(msg) => Error::NotFound(msg),
         BackendError::RegistryAccessDenied(msg) => Error::AccessDenied(msg),
         BackendError::RequiresAdmin => {
             Error::AccessDenied("requires administrator privileges".to_string())

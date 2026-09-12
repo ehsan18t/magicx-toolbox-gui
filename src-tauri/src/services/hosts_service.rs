@@ -219,11 +219,13 @@ fn apply_security(path: &Path, capture: &SecurityCapture) -> Result<(), Error> {
         )
     };
     if err != 0 {
-        return Err(Error::WindowsApi(format!(
-            "Failed to apply the captured owner/permissions to {} (error {})",
-            path.display(),
-            err
-        )));
+        return Err(Error::win32(
+            format!(
+                "failed to apply the captured owner/permissions to {}",
+                path.display()
+            ),
+            err,
+        ));
     }
     Ok(())
 }
@@ -329,7 +331,7 @@ fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
     // nothing for atomicity to protect.
     if !hosts_path.exists() {
         return fs::write(&hosts_path, new_content.as_bytes())
-            .map_err(|e| Error::WindowsApi(format!("Failed to create hosts file: {}", e)));
+            .map_err(|e| Error::from_io("failed to create the hosts file", &e));
     }
 
     // Capture BEFORE writing anything, and fail closed: an irreversible swap whose permission side
@@ -351,10 +353,7 @@ fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
 
     if let Err(e) = fs::write(&tmp_path, new_content.as_bytes()) {
         let _ = fs::remove_file(&tmp_path); // best-effort: don't leave our own temp file behind
-        return Err(Error::WindowsApi(format!(
-            "Failed to write temp hosts file: {}",
-            e
-        )));
+        return Err(Error::from_io("failed to write the temp hosts file", &e));
     }
 
     // Apply the captured security to the temp file *before* the swap (see the function doc
@@ -403,9 +402,10 @@ fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
     }
 
     let _ = fs::remove_file(&tmp_path); // best-effort: don't leave our own temp file behind
-    Err(Error::WindowsApi(format!(
-        "ReplaceFile failed while writing the hosts file after {REPLACE_RETRY_ATTEMPTS} attempt(s) (error {last_err})"
-    )))
+    Err(Error::win32(
+        format!("ReplaceFile failed while writing the hosts file after {REPLACE_RETRY_ATTEMPTS} attempts"),
+        last_err,
+    ))
 }
 
 /// Represents a single entry in the hosts file
@@ -464,7 +464,7 @@ pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
     }
 
     let content = fs::read_to_string(&hosts_path)
-        .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?;
+        .map_err(|e| Error::from_io("failed to read the hosts file", &e))?;
 
     Ok(parse_hosts_lines(&content))
 }
@@ -515,7 +515,7 @@ pub fn add_hosts_entry(ip: &str, domain: &str, comment: Option<&str>) -> Result<
     let hosts_path = get_hosts_path();
     let existing_content = if hosts_path.exists() {
         fs::read_to_string(&hosts_path)
-            .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?
+            .map_err(|e| Error::from_io("failed to read the hosts file", &e))?
     } else {
         String::new()
     };
@@ -644,7 +644,7 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
     }
 
     let content = fs::read_to_string(&hosts_path)
-        .map_err(|e| Error::WindowsApi(format!("Failed to read hosts file: {}", e)))?;
+        .map_err(|e| Error::from_io("failed to read the hosts file", &e))?;
 
     let new_content = remove_entry_from_hosts(&content, ip, domain);
     log::info!("Removing hosts entry: {} -> {}", domain, ip);

@@ -65,10 +65,10 @@ fn read_typed<T: FromRegValue>(
     match reg_key.get_value::<T, _>(value_name) {
         Ok(v) => Ok(Some(v)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to read {} from {}: {}",
-            type_label, value_name, e
-        ))),
+        Err(e) => Err(Error::from_io(
+            format!("failed to read {type_label} {value_name}"),
+            &e,
+        )),
     }
 }
 
@@ -124,10 +124,10 @@ pub fn read_binary(
     match reg_key.get_raw_value(value_name) {
         Ok(v) => Ok(Some(v.bytes)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to read Binary from {}: {}",
-            value_name, e
-        ))),
+        Err(e) => Err(Error::from_io(
+            format!("failed to read Binary {value_name}"),
+            &e,
+        )),
     }
 }
 
@@ -171,12 +171,9 @@ fn set_typed<T: ToRegValue>(
         value_name
     );
     let reg_key = open_write_key(hive, key_path)?;
-    reg_key.set_value(value_name, value).map_err(|e| {
-        Error::RegistryOperation(format!(
-            "Failed to set {} {}: {}",
-            type_label, value_name, e
-        ))
-    })?;
+    reg_key
+        .set_value(value_name, value)
+        .map_err(|e| Error::from_io(format!("failed to set {type_label} {value_name}"), &e))?;
     log::trace!("{} value set successfully", type_label);
     Ok(())
 }
@@ -239,12 +236,9 @@ fn set_raw(
     );
     let reg_key = open_write_key(hive, key_path)?;
     let reg_value = RegValue { vtype, bytes };
-    reg_key.set_raw_value(value_name, &reg_value).map_err(|e| {
-        Error::RegistryOperation(format!(
-            "Failed to set {} {}: {}",
-            type_label, value_name, e
-        ))
-    })?;
+    reg_key
+        .set_raw_value(value_name, &reg_value)
+        .map_err(|e| Error::from_io(format!("failed to set {type_label} {value_name}"), &e))?;
     log::trace!("{} value set successfully", type_label);
     Ok(())
 }
@@ -313,7 +307,7 @@ pub fn delete_value(hive: &RegistryHive, key_path: &str, value_name: &str) -> Re
         if e.kind() == io::ErrorKind::NotFound {
             Error::RegistryKeyNotFound(format!("{}\\{}", key_path, value_name))
         } else {
-            Error::RegistryOperation(format!("Failed to delete {}: {}", value_name, e))
+            Error::from_io(format!("failed to delete {value_name}"), &e)
         }
     })?;
 
@@ -369,7 +363,7 @@ pub fn delete_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
         if e.kind() == io::ErrorKind::NotFound {
             Error::RegistryKeyNotFound(key_path.to_string())
         } else {
-            Error::RegistryOperation(format!("Failed to delete key {}: {}", key_path, e))
+            Error::from_io(format!("failed to delete key {key_path}"), &e)
         }
     })?;
 
@@ -427,10 +421,10 @@ pub fn detect_value_type(
     match reg_key.get_raw_value(value_name) {
         Ok(v) => Ok(Some(reg_type_to_value_type(v.vtype))),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(Error::RegistryOperation(format!(
-            "Failed to inspect value type of {}: {}",
-            value_name, e
-        ))),
+        Err(e) => Err(Error::from_io(
+            format!("failed to inspect the type of {value_name}"),
+            &e,
+        )),
     }
 }
 

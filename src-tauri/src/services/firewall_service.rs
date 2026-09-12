@@ -20,7 +20,7 @@ pub fn rule_exists(name: &str) -> Result<bool, Error> {
             &format!("name={}", name),
         ])
         .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to query firewall rule: {}", e)))?;
+        .map_err(|e| Error::from_io("failed to query the firewall rule", &e))?;
 
     Ok(output.status.success())
 }
@@ -39,7 +39,7 @@ pub fn create_firewall_rule(change: &FirewallChange) -> Result<(), Error> {
         .command()?
         .args(&args)
         .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to create firewall rule: {}", e)))?;
+        .map_err(|e| Error::from_io("failed to create the firewall rule", &e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -151,7 +151,7 @@ pub fn delete_firewall_rule(name: &str) -> Result<(), Error> {
             &format!("name={}", name),
         ])
         .output()
-        .map_err(|e| Error::CommandExecution(format!("Failed to delete firewall rule: {}", e)))?;
+        .map_err(|e| Error::from_io("failed to delete the firewall rule", &e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

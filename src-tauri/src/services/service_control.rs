@@ -89,10 +89,7 @@ fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>,
     unsafe {
         let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
         if scm.is_null() {
-            return Err(Error::ServiceControl(format!(
-                "OpenSCManager failed: {}",
-                GetLastError()
-            )));
+            return Err(Error::win32("OpenSCManager failed", GetLastError()));
         }
         let scm = ScHandle(scm);
 
@@ -103,10 +100,7 @@ fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>,
             if err == ERROR_SERVICE_DOES_NOT_EXIST {
                 return Ok(None);
             }
-            return Err(Error::ServiceControl(format!(
-                "OpenService '{}' failed: {}",
-                name, err
-            )));
+            return Err(Error::win32(format!("OpenService '{name}' failed"), err));
         }
         Ok(Some((scm, ScHandle(svc))))
     }
@@ -150,10 +144,7 @@ fn query_current_state(svc: SC_HANDLE) -> Result<u32, Error> {
             &mut needed,
         );
         if ok == 0 {
-            return Err(Error::ServiceControl(format!(
-                "QueryServiceStatusEx failed: {}",
-                GetLastError()
-            )));
+            return Err(Error::win32("QueryServiceStatusEx failed", GetLastError()));
         }
         Ok(status.dwCurrentState)
     }
@@ -210,7 +201,10 @@ pub fn set_service_startup(
     }
 
     let (_scm, svc) = open_service(service_name, SERVICE_CHANGE_CONFIG)?.ok_or_else(|| {
-        Error::ServiceControl(format!("Service does not exist: {}", service_name))
+        Error::win32(
+            format!("service '{service_name}' does not exist"),
+            crate::error::win32::SERVICE_DOES_NOT_EXIST,
+        )
     })?;
 
     log::info!(
@@ -236,11 +230,10 @@ pub fn set_service_startup(
             ptr::null(),
         );
         if ok == 0 {
-            return Err(Error::ServiceControl(format!(
-                "Failed to set service '{}' startup: {}",
-                service_name,
-                GetLastError()
-            )));
+            return Err(Error::win32(
+                format!("failed to set service '{service_name}' startup"),
+                GetLastError(),
+            ));
         }
     }
 
