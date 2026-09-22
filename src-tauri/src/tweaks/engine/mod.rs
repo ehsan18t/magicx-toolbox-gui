@@ -25,7 +25,7 @@ use crate::tweaks::kinds::{
     registry::{self, RegistryKind},
     service::{self, ServiceKind},
     task::{self, TaskKind},
-    BatchFailure, EffectKind, Error as KindError, ExecCx,
+    BatchFailure, BatchItem, EffectKind, Error as KindError, ExecCx,
 };
 use crate::tweaks::model::{ActionDef, EffectId, Level, Setting, Value};
 use crate::tweaks::shared_claims::{ClaimsError, ClaimsStore};
@@ -39,50 +39,65 @@ use std::sync::Mutex;
 /// Stateless, so it is trivially `Send + Sync` and cheap to construct per call.
 pub struct AllKinds;
 
-impl AllKinds {
-    /// The typed ops one elevated Setting drive becomes, including the existence pre-check.
-    ///
-    /// Split out of `drive` so `drive_batch` can translate a whole run before spawning anything,
-    /// and so both paths perform the pre-check identically.
-    ///
-    /// The pre-check mirrors what `drive_service`/`drive_task` do in-process (invariant 12). The
-    /// broker translations are deliberately pure, and without this an absent service or task
-    /// reaches the child, fails there, and returns as an opaque `OpFailed` -> `ElevatedOpFailed`.
-    /// That is the wrong shape twice over: apply's `optional`/`if_missing` no-op guard matches only
-    /// `ResourceMissing`, so an `optional` effect whose resource is absent on this build would
-    /// abort the tweak and roll it back instead of reading as the verified no-op detect already
-    /// advertises. Reads never escalate, so this costs the same in-process read detect just
-    /// performed, and it means an absent resource never spawns a child at all.
-    fn broker_ops_for(
-        &self,
-        s: &Setting,
-        target: &Value,
-        cx: &ExecCx,
-    ) -> Result<Vec<BrokerOp>, KindError> {
-        let level = cx.level();
-        if !matches!(target, Value::Missing)
-            && matches!(s, Setting::Service(_) | Setting::Task(_))
-            && self.read(s, cx)? == Value::Missing
-        {
-            return Err(KindError::ResourceMissing(match s {
-                Setting::Service(addr) => format!("service '{}' does not exist", addr.name),
-                Setting::Task(addr) => format!("scheduled task '{}' does not exist", addr.path),
-                _ => unreachable!("guarded by the matches! above"),
-            }));
-        }
-
-        match s {
-            Setting::Registry(_) | Setting::RegistryKey(_) => {
-                Ok(vec![registry::to_broker_op(s, target, level)?])
-            }
-            Setting::Service(_) => service::to_broker_ops(s, target),
-            Setting::Task(_) => task::to_broker_ops(s, target),
-            // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical translation
-            // list does not cover them). The in-process kinds refuse System/Ti themselves, so this
-            // is the same refusal, raised one layer earlier.
-            Setting::Hosts(_) | Setting::Firewall(_) => Err(KindError::UnsupportedLevel(level)),
-        }
+/// The typed ops one elevated Setting drive becomes, after an existence pre-check mirroring the
+/// in-process kinds (invariant 12): without it an absent resource fails in the child as opaque
+/// `ElevatedOpFailed`, which apply's `optional` guard (matching only `ResourceMissing`) misses.
+fn broker_ops_for(
+    kinds: &dyn EffectKind,
+    s: &Setting,
+    target: &Value,
+    seen_present: bool,
+    cx: &ExecCx,
+) -> Result<Vec<BrokerOp>, KindError> {
+    let level = cx.level();
+    if !seen_present
+        && !matches!(target, Value::Missing)
+        && matches!(s, Setting::Service(_) | Setting::Task(_))
+        && kinds.read(s, cx)? == Value::Missing
+    {
+        return Err(KindError::ResourceMissing(match s {
+            Setting::Service(addr) => format!("service '{}' does not exist", addr.name),
+            Setting::Task(addr) => format!("scheduled task '{}' does not exist", addr.path),
+            _ => unreachable!("guarded by the matches! above"),
+        }));
     }
+
+    match s {
+        Setting::Registry(_) | Setting::RegistryKey(_) => {
+            Ok(vec![registry::to_broker_op(s, target, level)?])
+        }
+        Setting::Service(_) => service::to_broker_ops(s, target),
+        Setting::Task(_) => task::to_broker_ops(s, target),
+        // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical translation
+        // list does not cover them). The in-process kinds refuse System/Ti themselves, so this
+        // is the same refusal, raised one layer earlier.
+        Setting::Hosts(_) | Setting::Firewall(_) => Err(KindError::UnsupportedLevel(level)),
+    }
+}
+
+/// A whole run's ops, keeping each item's op span so a failure the child reports by op index can
+/// be attributed back to the effect that produced it. Refuses before anything is spawned.
+pub(crate) fn translate_batch(
+    kinds: &dyn EffectKind,
+    items: &[BatchItem],
+    cx: &ExecCx,
+) -> Result<(Vec<BrokerOp>, Vec<std::ops::Range<usize>>), BatchFailure> {
+    let mut ops: Vec<BrokerOp> = Vec::new();
+    let mut spans = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let start = ops.len();
+        let mut translated =
+            broker_ops_for(kinds, item.setting, item.target, item.seen_present, cx).map_err(
+                |error| BatchFailure {
+                    index,
+                    error,
+                    completed: 0,
+                },
+            )?;
+        ops.append(&mut translated);
+        spans.push(start..ops.len());
+    }
+    Ok((ops, spans))
 }
 
 impl EffectKind for AllKinds {
@@ -106,7 +121,9 @@ impl EffectKind for AllKinds {
                 Setting::Hosts(_) => HostsKind.drive(s, target, cx),
                 Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
             },
-            level @ Level::Ti => drive_via_broker(level, self.broker_ops_for(s, target, cx)?),
+            level @ Level::Ti => {
+                drive_via_broker(level, broker_ops_for(self, s, target, false, cx)?)
+            }
         }
     }
 
@@ -120,10 +137,10 @@ impl EffectKind for AllKinds {
     /// reason not to repeat it.
     ///
     /// Below `Ti`, and for a run of one, this defers to the trait default: the per-effect loop.
-    fn drive_batch(&self, items: &[(&Setting, &Value)], cx: &ExecCx) -> Result<(), BatchFailure> {
+    fn drive_batch(&self, items: &[BatchItem], cx: &ExecCx) -> Result<(), BatchFailure> {
         if cx.level() != Level::Ti || items.len() < 2 {
-            for (index, (setting, target)) in items.iter().enumerate() {
-                self.drive(setting, target, cx)
+            for (index, item) in items.iter().enumerate() {
+                self.drive(item.setting, item.target, cx)
                     .map_err(|error| BatchFailure {
                         index,
                         error,
@@ -133,28 +150,7 @@ impl EffectKind for AllKinds {
             return Ok(());
         }
 
-        // Translate first, keeping each effect's op span, so a failure the child reports by op
-        // index can be attributed back to the effect that produced it. Translation performs the
-        // same existence pre-check `drive` does, so an absent resource still refuses before
-        // anything is spawned.
-        let mut ops: Vec<BrokerOp> = Vec::new();
-        let mut spans: Vec<std::ops::Range<usize>> = Vec::with_capacity(items.len());
-        for (index, (setting, target)) in items.iter().enumerate() {
-            let start = ops.len();
-            match self.broker_ops_for(setting, target, cx) {
-                Ok(mut translated) => ops.append(&mut translated),
-                Err(error) => {
-                    // Translation refuses before anything is spawned, so no earlier item ran either.
-                    return Err(BatchFailure {
-                        index,
-                        error,
-                        completed: 0,
-                    });
-                }
-            }
-            spans.push(start..ops.len());
-        }
-
+        let (ops, spans) = translate_batch(self, items, cx)?;
         if ops.is_empty() {
             return Ok(());
         }
@@ -1032,8 +1028,13 @@ mod tests {
             name: NO_SUCH_SERVICE.to_string(),
         });
         let (missing, manual) = (Value::Missing, Value::Startup(StartupType::Manual));
+        let item = |target| BatchItem {
+            setting: &svc,
+            target,
+            seen_present: false,
+        };
         let failure = AllKinds
-            .drive_batch(&[(&svc, &missing), (&svc, &manual)], &cx)
+            .drive_batch(&[item(&missing), item(&manual)], &cx)
             .expect_err("an absent service must refuse the batch");
 
         assert_eq!(failure.index, 1, "the item that refused is the one charged");

@@ -156,9 +156,9 @@ pub trait EffectKind: Send + Sync {
     /// the previous behaviour byte for byte -- which is what lets every mock stay a `drive` mock.
     /// [`crate::tweaks::engine::AllKinds`] overrides it to put a whole run of TrustedInstaller
     /// steps through ONE elevated child instead of one child per effect.
-    fn drive_batch(&self, items: &[(&Setting, &Value)], cx: &ExecCx) -> Result<(), BatchFailure> {
-        for (index, (setting, target)) in items.iter().enumerate() {
-            self.drive(setting, target, cx)
+    fn drive_batch(&self, items: &[BatchItem], cx: &ExecCx) -> Result<(), BatchFailure> {
+        for (index, item) in items.iter().enumerate() {
+            self.drive(item.setting, item.target, cx)
                 .map_err(|error| BatchFailure {
                     index,
                     error,
@@ -167,6 +167,14 @@ pub trait EffectKind: Send + Sync {
         }
         Ok(())
     }
+}
+
+/// One Setting of an [`EffectKind::drive_batch`] run.
+pub struct BatchItem<'a> {
+    pub setting: &'a Setting,
+    pub target: &'a Value,
+    /// A read in this same drive, with nothing driven since, saw the resource present.
+    pub seen_present: bool,
 }
 
 /// Which item of a [`EffectKind::drive_batch`] slice failed, and why.

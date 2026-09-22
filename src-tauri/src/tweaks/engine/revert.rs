@@ -571,7 +571,7 @@ fn list_invalid(tweak_id: &str, corpus: &Corpus, deps: &Deps) -> Vec<EntrySummar
 mod tests {
     use super::*;
     use crate::tweaks::engine::{ActionRunner, ProbeCache, ProbeSource};
-    use crate::tweaks::kinds::{BatchFailure, EffectKind, Error as KindError, ExecCx};
+    use crate::tweaks::kinds::{BatchFailure, BatchItem, EffectKind, Error as KindError, ExecCx};
     use crate::tweaks::model::{
         Level, OptValue as ModelOptValue, Probe, RiskLevel, ScopedValue, Script, Setting,
         SharedDef, SharedId, Shell, StartupType, SvcAddr, Value,
@@ -745,15 +745,11 @@ mod tests {
         /// Records the run size, then behaves like the trait default unless a test scripted a
         /// [`BatchVerdict`], so an unscripted batched call stays indistinguishable from the
         /// per-effect one to every other assertion.
-        fn drive_batch(
-            &self,
-            items: &[(&Setting, &Value)],
-            cx: &ExecCx,
-        ) -> Result<(), BatchFailure> {
+        fn drive_batch(&self, items: &[BatchItem], cx: &ExecCx) -> Result<(), BatchFailure> {
             self.batches.lock().unwrap().push(items.len());
             if let Some(verdict) = self.take_verdict() {
-                for (setting, target) in &items[..verdict.completed.min(items.len())] {
-                    self.drive(setting, target, cx)
+                for item in &items[..verdict.completed.min(items.len())] {
+                    self.drive(item.setting, item.target, cx)
                         .expect("a scripted completed drive must pass");
                 }
                 return Err(BatchFailure {
@@ -762,8 +758,8 @@ mod tests {
                     completed: verdict.completed,
                 });
             }
-            for (index, (setting, target)) in items.iter().enumerate() {
-                self.drive(setting, target, cx)
+            for (index, item) in items.iter().enumerate() {
+                self.drive(item.setting, item.target, cx)
                     .map_err(|error| BatchFailure {
                         index,
                         error,

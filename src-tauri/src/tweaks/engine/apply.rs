@@ -44,7 +44,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::tweaks::kinds::{BatchFailure, Error as KindError, ExecCx};
+use crate::tweaks::kinds::{BatchFailure, BatchItem, Error as KindError, ExecCx};
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, Level, Opt, OptLabel, OptValue, ScopedValue,
     Setting, SharedDef, SharedId, Tweak, Value,
@@ -1290,7 +1290,15 @@ fn drive_back_run(run: &[Restorable<'_>], deps: &Deps, failures: &mut Vec<Engine
         drive_and_verify(first, deps, failures);
         return;
     }
-    let items: Vec<(&Setting, &Value)> = run.iter().map(|i| (i.setting, i.value)).collect();
+    // The absent-optional reads ran before earlier items drove, so they prove nothing here.
+    let items: Vec<BatchItem> = run
+        .iter()
+        .map(|i| BatchItem {
+            setting: i.setting,
+            target: i.value,
+            seen_present: false,
+        })
+        .collect();
     let Err(failed) = deps.kinds.drive_batch(&items, &first.cx) else {
         for item in run {
             verify_restored(item, deps, failures);
@@ -1390,11 +1398,9 @@ fn drive_setting_run(
     run: &[&EffectDef],
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    // Resolve absent optionals first. In the per-effect path an absent `optional` resource is a
-    // verified no-op and the loop moves on; inside a batch the same effect would abort the whole
-    // run, so it must never enter one. Reads never escalate, so this is the same in-process read
-    // the translation would have done anyway.
-    let mut batched: Vec<(&EffectDef, &ScopedValue)> = Vec::with_capacity(run.len());
+    // Drop absent optionals first: inside a batch one would abort the whole run. Nothing drives
+    // before the batch translates, so a present read here stands in for its existence pre-check.
+    let mut batched: Vec<(&EffectDef, &ScopedValue, bool)> = Vec::with_capacity(run.len());
     for effect in run {
         let Some(scoped) = setting_target(ctx, effect)? else {
             continue;
@@ -1403,41 +1409,43 @@ fn drive_setting_run(
             continue;
         };
         let cx = context::route(effect, ctx.tweak, ctx.corpus);
-        let absent_optional = effect.optional
-            && effect.if_missing.as_ref() == Some(&scoped.value)
-            && matches!(ctx.deps.kinds.read(setting, &cx), Ok(Value::Missing));
-        if absent_optional {
+        let live = (effect.optional && effect.if_missing.as_ref() == Some(&scoped.value))
+            .then(|| ctx.deps.kinds.read(setting, &cx));
+        if matches!(live, Some(Ok(Value::Missing))) {
             state.effect_results.push(EffectResult {
                 effect: effect.id.clone(),
                 kind: EffectResultKind::NoOp,
             });
             continue;
         }
-        batched.push((effect, scoped));
+        batched.push((effect, scoped, matches!(live, Some(Ok(_)))));
     }
 
-    let Some((first, _)) = batched.first() else {
+    let Some((first, ..)) = batched.first() else {
         return Ok(());
     };
     let cx = context::route(first, ctx.tweak, ctx.corpus);
 
-    let items: Vec<(&Setting, &Value)> = batched
+    let items: Vec<BatchItem> = batched
         .iter()
-        .map(|(effect, scoped)| match &effect.kind {
-            Effect::Setting(setting) => (setting, &scoped.value),
+        .map(|(effect, scoped, seen_present)| match &effect.kind {
+            Effect::Setting(setting) => BatchItem {
+                setting,
+                target: &scoped.value,
+                seen_present: *seen_present,
+            },
             _ => unreachable!("brokerable_run admits only Setting effects"),
         })
-        .map(|(setting, value): (&Setting, &Value)| (setting, value))
         .collect();
 
     if let Err(BatchFailure { index, error, .. }) = ctx.deps.kinds.drive_batch(&items, &cx) {
         let effect = batched
             .get(index)
-            .map_or(&batched[batched.len() - 1].0.id, |(e, _)| &e.id);
+            .map_or(&batched[batched.len() - 1].0.id, |(e, ..)| &e.id);
         return Err(map_drive_err(effect, error));
     }
 
-    for (effect, scoped) in &batched {
+    for (effect, scoped, _) in &batched {
         let Effect::Setting(setting) = &effect.kind else {
             continue;
         };
@@ -1535,6 +1543,8 @@ mod tests {
         /// The `ExecCx::level()` each drive received, so a test can prove which level a reversal
         /// actually ran at.
         levels: Mutex<Vec<(String, Level)>>,
+        /// Runs each batch through the production translation, existence pre-check included.
+        translate_batches: Mutex<bool>,
     }
 
     impl MockKind {
@@ -1572,6 +1582,10 @@ mod tests {
         }
         fn batches(&self) -> Vec<usize> {
             self.batches.lock().unwrap().clone()
+        }
+        fn translate_batches(&self) -> &Self {
+            *self.translate_batches.lock().unwrap() = true;
+            self
         }
         /// Every drive level recorded for `name`, in order: a test pins both THAT a drive happened
         /// and which level ran it, so a vanished reversal fails as loudly as a mis-routed one.
@@ -1635,14 +1649,13 @@ mod tests {
 
         /// Records the run size, then behaves exactly like the trait default, so a batched call
         /// stays indistinguishable from the per-effect one to every other assertion.
-        fn drive_batch(
-            &self,
-            items: &[(&Setting, &Value)],
-            cx: &ExecCx,
-        ) -> Result<(), BatchFailure> {
+        fn drive_batch(&self, items: &[BatchItem], cx: &ExecCx) -> Result<(), BatchFailure> {
             self.batches.lock().unwrap().push(items.len());
-            for (index, (setting, target)) in items.iter().enumerate() {
-                self.drive(setting, target, cx)
+            if *self.translate_batches.lock().unwrap() {
+                crate::tweaks::engine::translate_batch(self, items, cx)?;
+            }
+            for (index, item) in items.iter().enumerate() {
+                self.drive(item.setting, item.target, cx)
                     .map_err(|error| BatchFailure {
                         index,
                         error,
@@ -3482,6 +3495,99 @@ mod tests {
         assert!(matches!(*original, EngineError::ResourceMissing(_)));
     }
 
+    /// A TrustedInstaller run with an `optional` effect (`t2`) behind a required one (`t1`), both
+    /// asked for Disabled with `t2`'s `if_missing` set to that value.
+    fn elevated_run_with_optional(if_missing: Value) -> (Tweak, Corpus) {
+        use crate::tweaks::model::StartupType;
+        let mut optional = ti_svc_effect("t2");
+        optional.optional = true;
+        optional.if_missing = Some(if_missing);
+        let disabled = || set(Value::Startup(StartupType::Disabled));
+        let t = tweak(
+            "demo",
+            vec![ti_svc_effect("t1"), optional],
+            vec![opt("A", vec![("t1", disabled()), ("t2", disabled())])],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        (t, c)
+    }
+
+    fn reads_before_first_drive(log: &[Op], key: &str) -> usize {
+        log.iter()
+            .take_while(|op| !matches!(op, Op::Drive(_)))
+            .filter(|op| matches!(op, Op::Read(k) if k == key))
+            .count()
+    }
+
+    /// The drive-time read that decides a present `optional` effect stays in the run is also the
+    /// batch's existence proof, so it costs no more reads than a required peer.
+    #[test]
+    fn a_present_optional_in_an_elevated_run_is_read_once_at_drive_time() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.translate_batches();
+        for id in ["t1", "t2"] {
+            h.kind.seed(id, Value::Startup(StartupType::Manual));
+        }
+        let (t, c) = elevated_run_with_optional(Value::Startup(StartupType::Disabled));
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("both drive");
+        assert_eq!(h.kind.batches(), vec![2]);
+        assert!(outcome
+            .effects
+            .iter()
+            .all(|e| matches!(e.kind, EffectResultKind::Driven { .. })));
+        let log = h.log();
+        assert_eq!(
+            reads_before_first_drive(&log, "t2"),
+            reads_before_first_drive(&log, "t1"),
+            "{log:?}"
+        );
+    }
+
+    /// An absent `optional` effect at its `if_missing` value never enters the run.
+    #[test]
+    fn an_absent_optional_is_dropped_from_an_elevated_run() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.translate_batches();
+        h.kind.seed("t1", Value::Startup(StartupType::Manual));
+        h.kind.seed("t2", Value::Missing);
+        let (t, c) = elevated_run_with_optional(Value::Startup(StartupType::Disabled));
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("t2 is a no-op");
+        assert_eq!(h.kind.batches(), vec![1]);
+        let kind_of = |id: &str| {
+            let effect = outcome.effects.iter().find(|e| e.effect.0 == id);
+            effect
+                .map(|e| e.kind.clone())
+                .expect("every effect reports")
+        };
+        assert!(matches!(kind_of("t1"), EffectResultKind::Driven { .. }));
+        assert_eq!(kind_of("t2"), EffectResultKind::NoOp);
+    }
+
+    /// An `optional` effect wanting something other than its `if_missing` is not probed at drive
+    /// time, so the batch's own existence pre-check still refuses it.
+    #[test]
+    fn an_unprobed_absent_effect_is_still_refused_by_the_batch_pre_check() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.translate_batches();
+        h.kind.seed("t1", Value::Startup(StartupType::Manual));
+        h.kind.seed("t2", Value::Missing);
+        let (t, c) = elevated_run_with_optional(Value::Startup(StartupType::Manual));
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("t2 is absent");
+        let EngineError::RollbackReport { original, .. } = err else {
+            panic!("expected RollbackReport");
+        };
+        assert!(
+            matches!(*original, EngineError::ResourceMissing(_)),
+            "{original:?}"
+        );
+    }
+
     /// Beyond the 15 named scenarios: a shared claim taken earlier in a failed apply must be
     /// reversed by rollback (the captured entry excludes shared effects entirely, spec §8.1 step
     /// 1, so nothing else would ever undo it) -- pins the `ProcessedEffect::SharedClaim` path.
@@ -3688,14 +3794,10 @@ mod tests {
 
         /// Records the run size, then behaves exactly like the trait default so the rest of the
         /// fixture is unchanged.
-        fn drive_batch(
-            &self,
-            items: &[(&Setting, &Value)],
-            cx: &ExecCx,
-        ) -> Result<(), BatchFailure> {
+        fn drive_batch(&self, items: &[BatchItem], cx: &ExecCx) -> Result<(), BatchFailure> {
             self.batches.lock().unwrap().push(items.len());
-            for (index, (setting, target)) in items.iter().enumerate() {
-                self.drive(setting, target, cx)
+            for (index, item) in items.iter().enumerate() {
+                self.drive(item.setting, item.target, cx)
                     .map_err(|error| BatchFailure {
                         index,
                         error,
