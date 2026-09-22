@@ -355,21 +355,40 @@ enum ProcessedEffect {
     SharedRelease(Box<SharedDef>, Level),
 }
 
-/// Whether a drive pass should durably mark completed actions into an on-disk WAL entry, or skip
-/// that bookkeeping entirely (spec invariant 5 vs. Task 13's restore review fix). Apply's own WAL
-/// discipline is unchanged (`To(seq)`, exactly the seq it just pushed); restore's re-apply of an
-/// OptionRef target needs `None` -- the entry being restored is never consumed until the WHOLE
-/// restore verifies, so a crash mid-re-apply just leaves that entry on disk and the caller retries
-/// the whole restore. Fabricating a throwaway entry purely to satisfy a hardcoded `mark_completed`
-/// call was a reviewed CRITICAL (an unconsumed, un-deduped phantom could outlive/mask the real
-/// return-point on a crash or a failed discard) -- this makes the bookkeeping itself optional
-/// instead of routing around it.
+/// Where a drive pass records its action steps. Restore marks them in the entry it restores, not in
+/// a throwaway entry, which could outlive and mask the real return point after a crash.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Journaling {
-    /// Mark completed actions into the entry at this seq (spec §8.1 step 3, invariant 5).
+    /// Mark completed actions into the journal rows apply pushed at this seq (spec §8.1, inv. 5).
     To(Seq),
-    /// Skip completion marking -- no on-disk journal exists for this drive pass.
-    None,
+    /// Mark each step in flight in the entry at this seq until it finishes and verifies.
+    InFlight(Seq),
+}
+
+fn begin_step(ctx: &DriveCtx, effect: &EffectDef) -> Result<(), EngineError> {
+    let Journaling::InFlight(seq) = ctx.journal else {
+        return Ok(());
+    };
+    ctx.deps
+        .snapshots
+        .begin_action(&ctx.tweak.id, seq, &effect.id)
+        .map_err(|e| EngineError::JournalMark {
+            effect: effect.id.clone(),
+            source: e,
+        })
+}
+
+fn end_step(ctx: &DriveCtx, effect: &EffectDef) -> Result<(), EngineError> {
+    let Journaling::InFlight(seq) = ctx.journal else {
+        return Ok(());
+    };
+    ctx.deps
+        .snapshots
+        .end_action(&ctx.tweak.id, seq, &effect.id)
+        .map_err(|e| EngineError::JournalMark {
+            effect: effect.id.clone(),
+            source: e,
+        })
 }
 
 /// Bundles what every Step-3 helper needs, purely to keep argument lists short (clippy).
@@ -409,17 +428,118 @@ impl DriveState {
     }
 }
 
-/// Marks the journal rows a verified outcome accounted for, before its record is cleared: a crash
-/// between the two leaves a stale mark the next clear releases, never a resolved tweak the next
-/// crash scan marks again. A store failure only leaves residue that scan raises, so it is logged.
-pub(crate) fn resolve_accounted(deps: &Deps, tweak_id: &str, accounted: &BTreeSet<EffectId>) {
-    if let Err(e) = deps
+/// Which drive marks an outcome settles. Only a verified apply or restore re-establishes the whole
+/// surface, and it must settle older marks too, or a crash mark re-raises at every launch.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Settle {
+    All,
+    Own(Seq),
+}
+
+/// How a verified outcome's bookkeeping ended up.
+pub(crate) enum Settled {
+    Clean,
+    /// A record now names what is still unsettled, so the status and the next launch agree.
+    Recorded,
+    /// Nothing could be recorded: the caller must report this attention itself.
+    Unrecorded(Attention, SnapshotError),
+}
+
+/// The one sink for a verified outcome's bookkeeping: resolves the rows and steps it `accounted`
+/// for, settles its drive marks, then clears the record only when nothing is left unsettled. A
+/// whole-surface outcome records whatever remains (another entry's unfinished step) instead of a
+/// clean status; any store failure is recorded as what it is, never only logged.
+pub(crate) fn settle_verified(
+    deps: &Deps,
+    tweak_id: &str,
+    scope: Settle,
+    accounted: &BTreeSet<EffectId>,
+) -> Settled {
+    let guid = deps.machine_guid;
+    let stored = deps
         .snapshots
-        .resolve_journal_rows(tweak_id, accounted, deps.machine_guid)
+        .resolve_journal_rows(tweak_id, accounted, guid)
+        .and_then(|_| match scope {
+            Settle::All => deps.snapshots.close_drives(tweak_id, guid),
+            Settle::Own(seq) => deps.snapshots.close_drive(tweak_id, seq),
+        });
+    let e = match (stored, scope) {
+        (Ok(()), Settle::Own(_)) => return Settled::Clean,
+        (Ok(()), Settle::All) => match deps.snapshots.unresolved_entries(tweak_id, guid) {
+            Ok(entries) => {
+                let Some(left) = lifecycle::scan_for_crash_residue(&entries) else {
+                    if let Err(e) = deps.snapshots.clear_attention(tweak_id, guid) {
+                        log::warn!("tweak '{tweak_id}': could not clear Needs Attention: {e}");
+                    }
+                    return Settled::Clean;
+                };
+                return record_settled(deps, tweak_id, left);
+            }
+            Err(e) => e,
+        },
+        (Err(e), _) => e,
+    };
+    log::error!(
+        "tweak '{tweak_id}': the outcome verified, but its marks could not be settled: {e}"
+    );
+    let item = AttentionItem {
+        effect: None,
+        kind: AttentionKind::Unrecorded,
+        message: format!(
+            "the last operation on this tweak ended in a verified state, but the app could not \
+             record that in its snapshot history: {e}"
+        ),
+    };
+    let existing = match (scope, deps.snapshots.attention(tweak_id, deps.machine_guid)) {
+        (Settle::Own(_), Ok(Some(existing)))
+            if existing.reason != AttentionReason::RecordUnreadable =>
+        {
+            Some(existing)
+        }
+        _ => None,
+    };
+    let attention = match existing {
+        Some(mut existing) => {
+            existing.items.push(item);
+            existing
+        }
+        None => Attention {
+            reason: AttentionReason::OutcomeUnrecorded,
+            items: vec![item],
+        },
+    };
+    record_settled(deps, tweak_id, attention)
+}
+
+fn record_settled(deps: &Deps, tweak_id: &str, attention: Attention) -> Settled {
+    match deps
+        .snapshots
+        .set_attention(tweak_id, deps.machine_guid, attention.clone())
     {
-        log::warn!(
-            "tweak '{tweak_id}': could not resolve the journal rows this run accounted for: {e}"
-        );
+        Ok(()) => Settled::Recorded,
+        Err(e) => {
+            log::error!("tweak '{tweak_id}': could not record what is still unsettled: {e}");
+            Settled::Unrecorded(attention, e)
+        }
+    }
+}
+
+/// What an operation left on its entry before it started: marks an earlier crash left, which only
+/// a verified outcome or an operation driving the same action may settle.
+pub(crate) struct Inherited {
+    pub(crate) drive_open: bool,
+    pub(crate) steps: BTreeSet<EffectId>,
+}
+
+/// Settles the marks this operation added once its failure is recorded, since the record now
+/// names each failed step; an earlier crash's marks stay. A mark left open here only adds an
+/// unfinished item to the record at the next launch.
+pub(crate) fn settle_recorded(deps: &Deps, tweak_id: &str, seq: Seq, inherited: &Inherited) {
+    if let Err(e) =
+        deps.snapshots
+            .settle_own(tweak_id, seq, !inherited.drive_open, &inherited.steps)
+    {
+        log::warn!("tweak '{tweak_id}': could not settle the marks under its record: {e}");
     }
 }
 
@@ -516,6 +636,8 @@ pub(crate) fn do_apply(
 
     let mut action_plan: Vec<(EffectId, ActionPlan)> = Vec::new();
     let mut residues: Vec<EffectId> = Vec::new();
+    // The probe is the same check that verifies an undo, so an absent omitted action is accounted.
+    let mut proven_absent: BTreeSet<EffectId> = BTreeSet::new();
     for effect in &drive_surface {
         let Effect::Action(action_def) = &effect.kind else {
             continue;
@@ -555,6 +677,8 @@ pub(crate) fn do_apply(
                 } else {
                     residues.push(effect.id.clone()); // no-undo -- disclosed, left in place
                 }
+            } else {
+                proven_absent.insert(effect.id.clone());
             }
         }
     }
@@ -594,6 +718,10 @@ pub(crate) fn do_apply(
             milestone.build,
         )
         .map_err(EngineError::SnapshotWrite)?;
+    // Settings and Shared blocks journal no row, so this mark is all a crash mid-drive leaves.
+    deps.snapshots
+        .open_drive(&tweak.id, seq)
+        .map_err(EngineError::SnapshotWrite)?;
 
     // Steps 3/4: drive forward in declaration order (invariant 18), verifying as we go.
     let ctx = DriveCtx {
@@ -613,10 +741,12 @@ pub(crate) fn do_apply(
             // A fully verified apply is one of the three clears (ADR-0002), and it accounts for
             // the actions it drove -- never for a row it left alone. A failed clear keeps the
             // record, so the status below still reports it rather than dropping it silently.
-            resolve_accounted(deps, &tweak.id, &state.driven_actions());
-            if let Err(e) = deps.snapshots.clear_attention(&tweak.id, deps.machine_guid) {
-                log::warn!("tweak '{}': could not clear Needs Attention: {e}", tweak.id);
-            }
+            let mut accounted = state.driven_actions();
+            accounted.extend(proven_absent);
+            let unrecorded = match settle_verified(deps, &tweak.id, Settle::All, &accounted) {
+                Settled::Unrecorded(attention, _) => Some(attention),
+                Settled::Clean | Settled::Recorded => None,
+            };
             Ok(ApplyOutcome {
                 effects: state.effect_results,
                 status: TweakStatus {
@@ -624,7 +754,7 @@ pub(crate) fn do_apply(
                     unavailable: pre_status.unavailable,
                     residues,
                     has_history: true,
-                    attention: detect::attention(&tweak.id, deps),
+                    attention: unrecorded.or_else(|| detect::attention(&tweak.id, deps)),
                     held_shared: state.held_shared,
                     observed: Vec::new(),
                 },
@@ -632,7 +762,7 @@ pub(crate) fn do_apply(
         }
         Err(original) => {
             // Atomic rollback (ADR-0001): never `let _ =` this result.
-            let rollback_failures = rollback(tweak, corpus, &captured, &state.processed, deps);
+            let rollback_failures = rollback(tweak, corpus, &captured, &state.processed, seq, deps);
             deps.probe_cache.invalidate(&tweak.id);
             let outcome_unknown = outcome_is_unknown(&original);
             let mut store = Vec::new();
@@ -640,8 +770,15 @@ pub(crate) fn do_apply(
                 // Verified full restore: the machine now matches the just-captured entry, so
                 // consume it (ADR-0002). A failed consume leaves the entry on disk, the safe
                 // failure mode, and is named as itself instead of as an unrecovered resource.
+                // The rollback re-established only the captured state, so it settles its own mark,
+                // which a successful consume takes with the entry.
                 if let Err(e) = deps.snapshots.consume(&tweak.id, seq) {
                     store.push(EngineError::EntryCleanup(e));
+                    if let Settled::Unrecorded(_, e) =
+                        settle_verified(deps, &tweak.id, Settle::Own(seq), &BTreeSet::new())
+                    {
+                        store.push(EngineError::AttentionWrite(e));
+                    }
                 }
             } else {
                 let attention = Attention {
@@ -651,11 +788,18 @@ pub(crate) fn do_apply(
                         .map(|e| attention_item(Phase::Apply, e))
                         .collect(),
                 };
-                if let Err(e) =
-                    deps.snapshots
-                        .set_attention(&tweak.id, deps.machine_guid, attention)
+                match deps
+                    .snapshots
+                    .set_attention(&tweak.id, deps.machine_guid, attention)
                 {
-                    store.push(EngineError::AttentionWrite(e));
+                    Ok(()) => {
+                        let fresh = Inherited {
+                            drive_open: false,
+                            steps: BTreeSet::new(),
+                        };
+                        settle_recorded(deps, &tweak.id, seq, &fresh);
+                    }
+                    Err(e) => store.push(EngineError::AttentionWrite(e)),
                 }
             }
             Err(EngineError::RollbackReport {
@@ -869,6 +1013,10 @@ fn drive_action(
     let Some((_, plan)) = action_plan.iter().find(|(id, _)| id == &effect.id) else {
         return Ok(()); // not in the plan: scoped out, or genuinely nothing to do
     };
+    let tracked = !is_ephemeral(action_def);
+    if tracked {
+        begin_step(ctx, effect)?;
+    }
     match plan {
         ActionPlan::Apply => {
             ctx.deps
@@ -959,6 +1107,9 @@ fn drive_action(
             });
         }
     }
+    if tracked {
+        end_step(ctx, effect)?;
+    }
     Ok(())
 }
 
@@ -970,11 +1121,30 @@ fn rollback(
     corpus: &Corpus,
     captured: &Captured,
     processed: &[ProcessedEffect],
+    seq: Seq,
     deps: &Deps,
 ) -> Vec<EngineError> {
     let mut failures = Vec::new();
 
     for item in processed.iter().rev() {
+        // A reversal a crash interrupts is marked in flight until it verifies: no Settings verify
+        // can re-establish an action, so the drive mark cannot stand in for it.
+        let step = match item {
+            ProcessedEffect::Action(id, _) => find_action(tweak, id)
+                .filter(|(_, a)| !is_ephemeral(a) && has_reversal(item, a))
+                .map(|_| id),
+            _ => None,
+        };
+        if let Some(id) = step {
+            if let Err(e) = deps.snapshots.begin_action(&tweak.id, seq, id) {
+                failures.push(EngineError::JournalMark {
+                    effect: id.clone(),
+                    source: e,
+                });
+                continue;
+            }
+        }
+        let before = failures.len();
         match item {
             ProcessedEffect::Action(effect_id, ActionPlan::Apply) => {
                 let Some((effect, action_def)) = find_action(tweak, effect_id) else {
@@ -1075,6 +1245,14 @@ fn rollback(
                 }
             }
         }
+        if let (Some(id), true) = (step, failures.len() == before) {
+            if let Err(e) = deps.snapshots.end_action(&tweak.id, seq, id) {
+                failures.push(EngineError::JournalMark {
+                    effect: id.clone(),
+                    source: e,
+                });
+            }
+        }
     }
 
     if let Err(errs) = drive_to_captured(captured, &tweak.id, corpus, deps) {
@@ -1127,6 +1305,12 @@ fn find_action<'a>(
             Effect::Action(a) => Some((e, a)),
             _ => None,
         })
+}
+
+/// Whether rollback runs anything for this processed action: an Apply needs an `undo`, while an
+/// UndoBack is reversed by `apply`, which every action has.
+fn has_reversal(item: &ProcessedEffect, action: &ActionDef) -> bool {
+    matches!(item, ProcessedEffect::Action(_, ActionPlan::UndoBack)) || has_undo(action)
 }
 
 fn has_undo(action: &ActionDef) -> bool {
@@ -1525,6 +1709,8 @@ mod tests {
         ResourceMissing,
         /// Drives the value, then reports an unknown elevated outcome; later drives succeed.
         OutcomeUnknownOnce,
+        /// The process dies mid-drive: nothing after this point runs.
+        Crash,
     }
 
     #[derive(Default)]
@@ -1641,6 +1827,7 @@ mod tests {
                     Err(KindError::ResourceMissing("mock resource missing".into()))
                 }
                 Some(DrivePlan::NoOp) => Ok(()), // deliberately does not update `live`
+                Some(DrivePlan::Crash) => panic!("simulated crash driving {key}"),
                 None => {
                     self.live.lock().unwrap().insert(key, target.clone());
                     Ok(())
@@ -1714,6 +1901,8 @@ mod tests {
         levels: Mutex<Vec<(String, Level)>>,
         fail_apply: Mutex<HashSet<String>>,
         fail_undo: Mutex<HashSet<String>>,
+        /// The process dies mid-undo: nothing after this point runs.
+        crash_undo: Mutex<HashSet<String>>,
         /// Simulates a buggy/racy `undo` that exits 0 (`Ok`) without actually reverting the
         /// resource -- presence is deliberately left untouched, so a probe taken right after
         /// still reads present. Models exactly the gap invariant 19 guards against.
@@ -1765,6 +1954,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((format!("{key}:undo"), cx.level()));
+            if self.crash_undo.lock().unwrap().contains(&key) {
+                panic!("simulated crash undoing {key}");
+            }
             if self.fail_undo.lock().unwrap().contains(&key) {
                 return Err(KindError::ActionFailed(1));
             }
@@ -3062,6 +3254,479 @@ mod tests {
                 .len()
                 >= 2,
             "and nothing was deleted to achieve it (ADR-0002)"
+        );
+    }
+
+    fn open_drives(h: &Harness) -> usize {
+        h.snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .iter()
+            .filter(|e| e.drive_open)
+            .count()
+    }
+
+    fn crash_reason(h: &Harness) -> Option<crate::tweaks::snapshot::AttentionReason> {
+        crate::tweaks::engine::lifecycle::record_crash_residue(
+            &h.snapshots,
+            "demo",
+            Some("test-guid"),
+        );
+        h.snapshots
+            .attention("demo", Some("test-guid"))
+            .unwrap()
+            .map(|a| a.reason)
+    }
+
+    /// Runs the apply up to a [`DrivePlan::Crash`]: whatever it wrote before the panic is on disk,
+    /// and nothing after it ran.
+    fn crash_apply(t: &Tweak, c: &Corpus, target: &str, h: &Harness) {
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_apply(t, c, &OptLabel(target.into()), &h.deps())
+        }));
+        assert!(unwound.is_err(), "the drive must crash");
+    }
+
+    fn two_settings_tweak() -> Tweak {
+        use crate::tweaks::model::StartupType;
+        tweak(
+            "demo",
+            vec![svc_effect("s1", false), svc_effect("s2", false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("s2", set(Value::Startup(StartupType::Disabled))),
+                ],
+            )],
+        )
+    }
+
+    /// A Settings-only tweak journals no action, so only the drive mark can carry the crash.
+    #[test]
+    fn a_crash_mid_settings_drive_surfaces_as_needs_attention() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::Crash);
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+
+        crash_apply(&t, &c, "A", &h);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        let items = h
+            .snapshots
+            .attention("demo", Some("test-guid"))
+            .unwrap()
+            .unwrap()
+            .items;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].effect, None);
+    }
+
+    #[test]
+    fn a_crash_mid_shared_drive_surfaces_as_needs_attention() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![shared_effect("sh_eff", "sh_a")],
+            vec![opt("A", vec![("sh_eff", OptValue::Claim(None))])],
+        );
+        let shared = SharedDef {
+            id: SharedId("sh_a".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_a_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        h.kind
+            .seed("sh_a_addr", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("sh_a_addr", DrivePlan::Crash);
+        let c = corpus(vec![t.clone()], vec![shared]);
+
+        crash_apply(&t, &c, "A", &h);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+    }
+
+    /// A drive mark outliving a settled apply would re-raise Needs Attention at every launch.
+    #[test]
+    fn a_verified_apply_leaves_no_open_drive() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("verifies");
+        assert_eq!(open_drives(&h), 0);
+        assert_eq!(crash_reason(&h), None);
+    }
+
+    /// An entry an earlier crash left mid-drive, older than anything the test applies.
+    fn older_open_entry(h: &Harness, c: &Corpus) -> Seq {
+        let older = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.snapshots.open_drive("demo", older).unwrap();
+        older
+    }
+
+    fn open_seqs(h: &Harness) -> Vec<Seq> {
+        h.snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .into_iter()
+            .filter(|e| e.drive_open)
+            .map(|e| e.seq)
+            .collect()
+    }
+
+    /// A rollback re-establishes only the captured state, so an older crash stays unresolved: its
+    /// own mark goes with its consumed entry, and the older one is still raised.
+    #[test]
+    fn a_verified_rollback_settles_only_its_own_drive() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::NoOp);
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+        let older = older_open_entry(&h, &c);
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s2 never verifies");
+        assert_eq!(open_seqs(&h), vec![older]);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+    }
+
+    /// The record now carries this failure, so its own mark has done its job; an older crash's
+    /// mark is not this apply's to settle.
+    #[test]
+    fn a_kept_rollback_that_recorded_attention_settles_only_its_own_drive() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::Err);
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+        let older = older_open_entry(&h, &c);
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s2 cannot be driven");
+        assert_eq!(open_seqs(&h), vec![older]);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::ApplyFailed));
+    }
+
+    /// A rollback's undo of `act1` (undo, no probe) is interrupted after its row was completed: only
+    /// the in-flight step records it, and a verified apply that never drives `act1` must keep it.
+    #[test]
+    fn a_crash_mid_rollback_undo_stays_raised_past_a_settings_only_apply() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::Err);
+        h.actions
+            .crash_undo
+            .lock()
+            .unwrap()
+            .insert("act1_apply".into());
+        let t = tweak(
+            "demo",
+            vec![
+                svc_effect("s1", false),
+                action_effect("act1", true, false),
+                svc_effect("s2", false),
+            ],
+            vec![
+                opt(
+                    "A",
+                    vec![
+                        ("s1", set(Value::Startup(StartupType::Disabled))),
+                        ("act1", OptValue::Run(None)),
+                        ("s2", set(Value::Startup(StartupType::Disabled))),
+                    ],
+                ),
+                opt(
+                    "B",
+                    vec![
+                        ("s1", set(Value::Startup(StartupType::Automatic))),
+                        ("s2", set(Value::Startup(StartupType::Automatic))),
+                    ],
+                ),
+            ],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        crash_apply(&t, &c, "A", &h);
+        let raised = |h: &Harness| -> Vec<Option<EffectId>> {
+            h.snapshots
+                .attention("demo", Some("test-guid"))
+                .unwrap()
+                .map(|a| a.items.into_iter().map(|i| i.effect).collect())
+                .unwrap_or_default()
+        };
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        assert!(raised(&h).contains(&Some(EffectId("act1".into()))));
+
+        h.kind.drive_plan.lock().unwrap().remove("s2");
+        let outcome =
+            run_apply(&t, &c, &OptLabel("B".into()), &h.deps()).expect("B verifies its Settings");
+        let shown: Vec<_> = outcome
+            .status
+            .attention
+            .expect("an unfinished step is never a clean status")
+            .items
+            .into_iter()
+            .map(|i| i.effect)
+            .collect();
+        assert_eq!(shown, vec![Some(EffectId("act1".into()))]);
+        assert_eq!(open_drives(&h), 0);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        assert_eq!(raised(&h), vec![Some(EffectId("act1".into()))]);
+    }
+
+    /// Resolving another entry's step fails on a locked file: recorded as unrecorded, never only
+    /// logged and left to read as an unfinished change.
+    #[test]
+    fn a_verified_apply_whose_resolve_fails_records_it() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", true, false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("x", OptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        let older = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.snapshots
+            .begin_action("demo", older, &EffectId("x".into()))
+            .unwrap();
+        let path = h
+            ._tmp
+            .path()
+            .join("demo")
+            .join(format!("{:020}.json", older.0));
+        let held: Arc<Mutex<Option<std::fs::File>>> = Arc::default();
+        let holder = held.clone();
+        h.kind.on_drive(move || {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ)
+                .open(&path)
+                .unwrap();
+            holder.lock().unwrap().get_or_insert(file);
+        });
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("verifies");
+        assert_eq!(
+            outcome.status.attention.map(|a| a.reason),
+            Some(AttentionReason::OutcomeUnrecorded)
+        );
+        held.lock().unwrap().take();
+    }
+
+    /// Neither the mark nor the record can be written: the verified apply still reports it.
+    #[test]
+    fn a_verified_apply_that_can_record_nothing_still_reports_attention() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+        let theirs = crate::tweaks::snapshot::Attention {
+            reason: AttentionReason::ApplyFailed,
+            items: Vec::new(),
+        };
+        h.snapshots
+            .set_attention("demo", Some("another-guid"), theirs)
+            .unwrap();
+        let dir = h._tmp.path().join("demo");
+        let held: Arc<Mutex<Vec<std::fs::File>>> = Arc::default();
+        let holder = held.clone();
+        h.kind.on_drive(move || {
+            let mut files = holder.lock().unwrap();
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if files.is_empty() && !path.file_name().unwrap().to_string_lossy().starts_with('_')
+                {
+                    files.push(
+                        std::fs::OpenOptions::new()
+                            .read(true)
+                            .share_mode(FILE_SHARE_READ)
+                            .open(path)
+                            .unwrap(),
+                    );
+                }
+            }
+        });
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("verifies");
+        let attention = outcome
+            .status
+            .attention
+            .expect("never a clean-looking status");
+        assert_eq!(attention.reason, AttentionReason::OutcomeUnrecorded);
+        assert!(attention.items[0]
+            .message
+            .contains("ended in a verified state"));
+        held.lock().unwrap().clear();
+    }
+
+    /// An entry that cannot be rewritten keeps its mark, so the failure is recorded as what it is
+    /// now, and the next launch never reports a crash that did not happen.
+    #[test]
+    fn a_verified_apply_whose_mark_cannot_settle_is_recorded_not_reported_as_a_crash() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+        // Taken mid-drive, once the mark is written: a scanner holding the entry open.
+        let dir = h._tmp.path().join("demo");
+        let held: Arc<Mutex<Vec<std::fs::File>>> = Arc::default();
+        let holder = held.clone();
+        h.kind.on_drive(move || {
+            let mut files = holder.lock().unwrap();
+            if !files.is_empty() {
+                return;
+            }
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if !path.file_name().unwrap().to_string_lossy().starts_with('_') {
+                    let file = std::fs::OpenOptions::new()
+                        .read(true)
+                        .share_mode(FILE_SHARE_READ)
+                        .open(path)
+                        .unwrap();
+                    files.push(file);
+                }
+            }
+        });
+
+        let outcome = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("verifies");
+        assert_eq!(
+            outcome.status.attention.map(|a| a.reason),
+            Some(AttentionReason::OutcomeUnrecorded)
+        );
+        assert_eq!(open_drives(&h), 1, "the locked entry kept its mark");
+        assert_eq!(
+            crash_reason(&h),
+            Some(AttentionReason::OutcomeUnrecorded),
+            "the next launch must not call it a crash"
+        );
+
+        held.lock().unwrap().clear();
+        *h.kind.assert_before_drive.lock().unwrap() = None;
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect("a no-op now: the surface already reads A");
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("verifies");
+        assert_eq!(open_drives(&h), 0);
+        assert_eq!(crash_reason(&h), None);
+    }
+
+    /// With no record written, the open mark is the only durable trace of the failure.
+    #[test]
+    fn an_unrecorded_failure_keeps_the_drive_open() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::Err);
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+        let theirs = crate::tweaks::snapshot::Attention {
+            reason: crate::tweaks::snapshot::AttentionReason::ApplyFailed,
+            items: Vec::new(),
+        };
+        h.snapshots
+            .set_attention("demo", Some("another-guid"), theirs)
+            .unwrap();
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("fails");
+        assert!(
+            matches!(&err, EngineError::RollbackReport { store, .. } if !store.is_empty()),
+            "the record write must have failed: {err:?}"
+        );
+        assert_eq!(open_drives(&h), 1);
+    }
+
+    /// The re-apply verified the whole surface, so the crashed entry's mark is settled with it.
+    #[test]
+    fn a_verified_apply_settles_the_drive_a_crash_left_open() {
+        use crate::tweaks::model::StartupType;
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::Crash);
+        let t = two_settings_tweak();
+        let c = corpus(vec![t.clone()], vec![]);
+        crash_apply(&t, &c, "A", &h);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+
+        h.kind.drive_plan.lock().unwrap().remove("s2");
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("the re-apply verifies");
+        assert_eq!(open_drives(&h), 0);
+        for _ in 0..2 {
+            assert_eq!(crash_reason(&h), None, "no false alarm on a later launch");
+        }
+        assert!(
+            h.snapshots
+                .list("demo", &c, Some("test-guid"), 19045)
+                .unwrap()
+                .len()
+                >= 2,
+            "the crashed entry is still a return point (ADR-0002)"
         );
     }
 

@@ -67,6 +67,9 @@ pub enum AttentionReason {
     ApplyFailed,
     RestoreFailed,
     CrashResidue,
+    /// The operation finished and verified, but its drive mark could not be settled; left open,
+    /// the next launch would report a crash that never happened.
+    OutcomeUnrecorded,
     /// The record itself could not be read, so whatever it holds is still unresolved. Never
     /// persisted: synthesized by the reader so an I/O failure cannot read as a clean tweak.
     RecordUnreadable,
@@ -85,6 +88,8 @@ pub enum AttentionKind {
     Claim,
     Store,
     CrashResidue,
+    /// An outcome that finished but could not be recorded; it explains an open drive mark.
+    Unrecorded,
     Other,
 }
 
@@ -168,6 +173,15 @@ pub struct Entry {
     /// Display metadata only — never used for ordering or comparison (spec §8.2: clocks skew).
     pub timestamp: String,
     pub captured: Captured,
+    /// Set before an apply or restore drives anything, cleared once its outcome is verified or
+    /// recorded as Needs Attention. Covers Settings and Shared blocks only, which a later verified
+    /// drive re-establishes; absent reads as settled, since no earlier build wrote one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub drive_open: bool,
+    /// Actions a rollback or restore started to undo or re-run and never saw finish. Resolved only
+    /// by an operation that drove the same action, like a journal row: no Settings verify covers it.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub actions_in_flight: BTreeSet<EffectId>,
     pub journal: Vec<JournalRow>,
 }
 
@@ -320,11 +334,11 @@ impl SnapshotStore {
                 if validity != EntryValidity::Valid {
                     continue;
                 }
-                // An outstanding row is the whole durable mark for work a probe-less action left
-                // undetectable, so it outlives dedup: superseding the entry would delete it.
-                if existing.journal.iter().any(is_outstanding) {
+                // An open drive or outstanding row is the whole durable mark of an interrupted
+                // apply, so it outlives dedup: superseding the entry would delete it.
+                if is_unsettled(&existing) {
                     log::warn!(
-                        "tweak '{tweak_id}': entry {:?} kept by dedup -- its journal is still outstanding",
+                        "tweak '{tweak_id}': entry {:?} kept by dedup -- it still marks an interrupted drive",
                         raw.seq
                     );
                     continue;
@@ -343,6 +357,8 @@ impl SnapshotStore {
             seq,
             timestamp: chrono::Local::now().to_rfc3339(),
             captured: new_entry.captured,
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: new_entry.journal,
         };
         // The new return point is durable before the superseded one goes (ADR-0002): a failed write
@@ -454,11 +470,25 @@ impl SnapshotStore {
         Ok(out)
     }
 
-    /// Removes the entry after a verified restore (caller-enforced, ADR-0002). Mechanically
-    /// identical to `discard`; kept as a separate method because the two release paths carry
-    /// different caller obligations the store itself cannot check.
-    pub fn consume(&self, tweak_id: &str, seq: Seq) -> Result<(), SnapshotError> {
-        remove_entry(&self.tweak_dir(tweak_id), tweak_id, seq)
+    /// Removes the entry after a verified restore (caller-enforced, ADR-0002), except one still
+    /// holding an action step no operation settled: it is the only evidence of that step, so it is
+    /// kept and `false` returned. `discard` is consent's release and takes it regardless.
+    pub fn consume(&self, tweak_id: &str, seq: Seq) -> Result<bool, SnapshotError> {
+        let dir = self.tweak_dir(tweak_id);
+        let bytes =
+            fs::read(entry_path(&dir, seq)).map_err(|e| io_to_not_found(e, tweak_id, seq))?;
+        let entry: Entry = serde_json::from_slice(&bytes).map_err(|_| SnapshotError::Corrupt {
+            tweak_id: tweak_id.to_string(),
+            seq,
+        })?;
+        if !entry.actions_in_flight.is_empty() {
+            log::warn!(
+                "tweak '{tweak_id}': entry {seq:?} kept -- it holds unfinished action step(s)"
+            );
+            return Ok(false);
+        }
+        remove_entry(&dir, tweak_id, seq)?;
+        Ok(true)
     }
 
     /// Removes the entry on explicit user consent (ADR-0002) — the only release for an entry
@@ -476,8 +506,9 @@ impl SnapshotStore {
         seq: Seq,
         action_id: &EffectId,
     ) -> Result<(), SnapshotError> {
-        update_journal(&self.tweak_dir(tweak_id), tweak_id, seq, |journal| {
-            let row = journal
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            let row = entry
+                .journal
                 .iter_mut()
                 .find(|r| r.action_id == *action_id)
                 .ok_or_else(|| SnapshotError::UnknownJournalAction {
@@ -492,10 +523,11 @@ impl SnapshotStore {
         Ok(())
     }
 
-    /// Marks every outstanding row naming an action in `accounted` resolved, in the entry that
-    /// holds it, so the crash scan stops raising it. `accounted` is what the calling operation
-    /// actually drove and verified: a row it never probed or undid stays outstanding. Only a fully
-    /// verified apply or restore may call it (ADR-0002), never a failure path.
+    /// Marks every outstanding row and interrupted step naming an action in `accounted` resolved,
+    /// in the entry that holds it, so the crash scan stops raising it. `accounted` is what the
+    /// calling operation actually drove and verified: a row it never probed or undid stays
+    /// outstanding. Only a fully verified apply or restore may call it (ADR-0002), never a failure
+    /// path.
     pub fn resolve_journal_rows(
         &self,
         tweak_id: &str,
@@ -514,23 +546,133 @@ impl SnapshotStore {
                 .filter(|r| is_outstanding(r) && accounted.contains(&r.action_id))
                 .map(|r| r.action_id.clone())
                 .collect();
-            if rows.is_empty() {
+            let steps = entry.actions_in_flight.intersection(accounted).count();
+            if rows.is_empty() && steps == 0 {
                 continue;
             }
-            update_journal(&dir, tweak_id, entry.seq, |journal| {
-                for row in journal.iter_mut().filter(|r| rows.contains(&r.action_id)) {
+            update_entry(&dir, tweak_id, entry.seq, |held| {
+                for row in held
+                    .journal
+                    .iter_mut()
+                    .filter(|r| rows.contains(&r.action_id))
+                {
                     row.resolved = true;
                 }
+                held.actions_in_flight.retain(|id| !accounted.contains(id));
                 Ok(())
             })?;
             log::info!(
-                "tweak '{tweak_id}': resolved {} journal row(s) at seq {:?}",
+                "tweak '{tweak_id}': resolved {} journal row(s) and {steps} interrupted step(s) at seq {:?}",
                 rows.len(),
                 entry.seq
             );
-            resolved += rows.len();
+            resolved += rows.len() + steps;
         }
         Ok(resolved)
+    }
+
+    /// Durably marks a drive from the entry at `seq` as started, before anything is driven.
+    /// `false` when the mark was already open: an earlier crash's, which this drive does not own.
+    pub fn open_drive(&self, tweak_id: &str, seq: Seq) -> Result<bool, SnapshotError> {
+        let mut opened = false;
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            opened = !entry.drive_open;
+            entry.drive_open = true;
+            Ok(())
+        })?;
+        Ok(opened)
+    }
+
+    /// Durably marks an action undo or re-run as started, in the entry the operation works from.
+    pub fn begin_action(
+        &self,
+        tweak_id: &str,
+        seq: Seq,
+        action_id: &EffectId,
+    ) -> Result<(), SnapshotError> {
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            entry.actions_in_flight.insert(action_id.clone());
+            Ok(())
+        })
+    }
+
+    /// Settles a step [`Self::begin_action`] marked, once it finished and verified.
+    pub fn end_action(
+        &self,
+        tweak_id: &str,
+        seq: Seq,
+        action_id: &EffectId,
+    ) -> Result<(), SnapshotError> {
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            entry.actions_in_flight.remove(action_id);
+            Ok(())
+        })
+    }
+
+    /// Settles the mark on the entry at `seq` alone, for an outcome that settles only its own drive.
+    pub fn close_drive(&self, tweak_id: &str, seq: Seq) -> Result<(), SnapshotError> {
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            entry.drive_open = false;
+            Ok(())
+        })
+    }
+
+    /// Settles the marks one operation added to the entry at `seq`: its drive mark when `drive`,
+    /// and every step not in `keep`, which holds what an earlier crash left.
+    pub fn settle_own(
+        &self,
+        tweak_id: &str,
+        seq: Seq,
+        drive: bool,
+        keep: &BTreeSet<EffectId>,
+    ) -> Result<(), SnapshotError> {
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            if drive {
+                entry.drive_open = false;
+            }
+            entry.actions_in_flight.retain(|id| keep.contains(id));
+            Ok(())
+        })
+    }
+
+    /// Settles every open drive in the tweak's history, for an outcome that re-established the whole
+    /// surface. A mark closed on uncertainty hides a crash from the scan.
+    pub fn close_drives(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+    ) -> Result<(), SnapshotError> {
+        let dir = self.tweak_dir(tweak_id);
+        for entry in self.unresolved_entries(tweak_id, machine_guid)? {
+            if entry.drive_open {
+                update_entry(&dir, tweak_id, entry.seq, |held| {
+                    held.drive_open = false;
+                    Ok(())
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Consent's settle (ADR-0002): the user accepts the machine as it is, so every open drive and
+    /// unfinished step goes before the record does. Outstanding journal rows are not resolved, so
+    /// a failed discard can still re-raise them.
+    pub fn settle_consented(
+        &self,
+        tweak_id: &str,
+        machine_guid: Option<&str>,
+    ) -> Result<(), SnapshotError> {
+        let dir = self.tweak_dir(tweak_id);
+        for entry in self.unresolved_entries(tweak_id, machine_guid)? {
+            if entry.drive_open || !entry.actions_in_flight.is_empty() {
+                update_entry(&dir, tweak_id, entry.seq, |held| {
+                    held.drive_open = false;
+                    held.actions_in_flight.clear();
+                    Ok(())
+                })?;
+            }
+        }
+        Ok(())
     }
 
     /// This tweak's Needs Attention record (ADR-0001/0002), or `None` only when there is no record
@@ -643,6 +785,13 @@ impl SnapshotStore {
     fn attention_path(&self, tweak_id: &str) -> PathBuf {
         self.tweak_dir(tweak_id).join(ATTENTION_FILE)
     }
+}
+
+/// Anything on the entry the crash scan would still raise, which dedup must not delete.
+fn is_unsettled(entry: &Entry) -> bool {
+    entry.drive_open
+        || !entry.actions_in_flight.is_empty()
+        || entry.journal.iter().any(is_outstanding)
 }
 
 /// A row a crash could have left half-done: planned, never confirmed complete, and not since
@@ -850,26 +999,26 @@ fn write_entry_create_new(dir: &Path, entry: &Entry) -> Result<(), SnapshotError
     Ok(())
 }
 
-/// The one read-modify-rewrite path for a journal: `seq` (the filename) is the only trusted write
+/// The one read-modify-rewrite path for an entry: `seq` (the filename) is the only trusted write
 /// target, and the content's own `seq` is overwritten to match, so content never picks which file is
 /// written. An `edit` that fails writes nothing.
-fn update_journal(
+fn update_entry(
     dir: &Path,
     tweak_id: &str,
     seq: Seq,
-    edit: impl FnOnce(&mut Vec<JournalRow>) -> Result<(), SnapshotError>,
+    edit: impl FnOnce(&mut Entry) -> Result<(), SnapshotError>,
 ) -> Result<(), SnapshotError> {
     let bytes = fs::read(entry_path(dir, seq)).map_err(|e| io_to_not_found(e, tweak_id, seq))?;
     let mut entry: Entry = serde_json::from_slice(&bytes).map_err(|_| SnapshotError::Corrupt {
         tweak_id: tweak_id.to_string(),
         seq,
     })?;
-    edit(&mut entry.journal)?;
+    edit(&mut entry)?;
     entry.seq = seq;
     rewrite_entry(dir, seq, &entry)
 }
 
-/// Atomic in-place rewrite at the caller-trusted `seq`, never `entry.seq` (see `update_journal`).
+/// Atomic in-place rewrite at the caller-trusted `seq`, never `entry.seq` (see `update_entry`).
 fn rewrite_entry(dir: &Path, seq: Seq, entry: &Entry) -> Result<(), SnapshotError> {
     let json = serde_json::to_vec_pretty(entry).expect("Entry always serializes");
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
@@ -1013,6 +1162,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t1".into(),
             captured: Captured::Values(BTreeMap::new()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         write_entry_create_new(&dir, &entry_a).expect("first write succeeds");
@@ -1083,6 +1234,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t0".into(),
             captured: Captured::OptionRef("A".into()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         write_entry_create_new(&dir, &foreign).unwrap();
@@ -1439,6 +1592,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t".into(),
             captured: Captured::Values(BTreeMap::new()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         write_entry_create_new(&dir, &foreign).unwrap();
@@ -1566,6 +1721,72 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dedup_keeps_an_entry_whose_drive_is_still_open() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let first = s
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        s.open_drive("demo", first).unwrap();
+
+        s.push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        assert!(read_entry_direct(&tmp.path().join("demo"), first).drive_open);
+    }
+
+    /// The mark survives a reopen, and closing it settles every entry of the tweak and deletes none.
+    #[test]
+    fn a_drive_mark_is_durable_and_closes_across_the_history() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        let s = store(tmp.path());
+        let older = s
+            .push("demo", values_entry(), &empty_corpus(), Some(GUID), 0)
+            .unwrap();
+        let newer = s
+            .push("demo", values_entry(), &empty_corpus(), Some(GUID), 0)
+            .unwrap();
+        assert!(
+            !read_entry_direct(&dir, older).drive_open,
+            "push opens nothing"
+        );
+        s.open_drive("demo", older).unwrap();
+        s.open_drive("demo", newer).unwrap();
+        assert!(read_entry_direct(&dir, older).drive_open);
+
+        store(tmp.path()).close_drives("demo", Some(GUID)).unwrap();
+        assert!(!read_entry_direct(&dir, older).drive_open);
+        assert!(!read_entry_direct(&dir, newer).drive_open);
+        assert_eq!(read_raw_entries(&dir).unwrap().len(), 2);
+    }
+
+    /// Entries written before the mark existed still load, as settled; a settled entry is written
+    /// without the field, so its bytes match what those builds wrote.
+    #[test]
+    fn an_entry_without_the_drive_mark_loads_as_settled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        let json = format!(
+            r#"{{"schema_version":{SCHEMA_VERSION},"machine_guid":"{GUID}","tweak_id":"demo","seq":3,"timestamp":"t","captured":{{"OptionRef":"A"}},"journal":[]}}"#
+        );
+        fs::write(entry_path(&dir, Seq(3)), json).unwrap();
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+
+        let s = store(tmp.path());
+        let head = s
+            .head("demo", &c, Some(GUID), 19045)
+            .unwrap()
+            .expect("the older entry is still valid");
+        assert!(!head.drive_open);
+        let written = serde_json::to_string(&head).unwrap();
+        assert!(!written.contains("drive_open"), "{written}");
+        s.open_drive("demo", Seq(3)).unwrap();
+        assert!(read_entry_direct(&dir, Seq(3)).drive_open);
+    }
+
     /// An older or unstamped record stays this build's to read, replace and clear. Refusing it as
     /// another build's would strand it: permanently unreadable, unwritable and unclearable.
     #[test]
@@ -1668,6 +1889,8 @@ mod tests {
             seq: Seq(0),
             timestamp: "sentinel".into(),
             captured: Captured::Values(BTreeMap::new()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         write_entry_create_new(&dir, &sentinel).unwrap();
@@ -1680,6 +1903,8 @@ mod tests {
             seq: Seq(5),
             timestamp: "t5".into(),
             captured: Captured::Values(BTreeMap::new()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: vec![JournalRow {
                 action_id: action.clone(),
                 intended: true,
@@ -1718,6 +1943,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t".into(),
             captured: Captured::OptionRef("A".into()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
 
@@ -1823,6 +2050,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t".into(),
             captured: Captured::OptionRef("A".into()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         let raw = RawEntry {
@@ -1892,6 +2121,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t".into(),
             captured: Captured::OptionRef("A".into()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         let raw = RawEntry {
@@ -1921,6 +2152,8 @@ mod tests {
             seq: Seq(1),
             timestamp: "t1".into(),
             captured: Captured::OptionRef("A".into()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal: Vec::new(),
         };
         write_entry_create_new(&dir, &valid).unwrap();

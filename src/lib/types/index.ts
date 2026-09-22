@@ -286,7 +286,16 @@ export type TweakStateView =
 
 /** What kind of step could not be verified, so the UI never parses a message to find out. */
 export type AttentionKind =
-  "drive" | "verify" | "outcome_unknown" | "action" | "no_undo" | "claim" | "store" | "crash_residue" | "other";
+  | "drive"
+  | "verify"
+  | "outcome_unknown"
+  | "action"
+  | "no_undo"
+  | "claim"
+  | "store"
+  | "crash_residue"
+  | "unrecorded"
+  | "other";
 
 /** One step the failed operation could not verify. */
 export interface AttentionItem {
@@ -301,7 +310,7 @@ export interface AttentionItem {
  * user discards the snapshot.
  */
 export interface Attention {
-  reason: "apply_failed" | "restore_failed" | "crash_residue" | "record_unreadable";
+  reason: "apply_failed" | "restore_failed" | "crash_residue" | "outcome_unrecorded" | "record_unreadable";
   items: AttentionItem[];
 }
 
@@ -309,7 +318,8 @@ export interface Attention {
 export const ATTENTION_CAUSE: Record<Attention["reason"], string> = {
   apply_failed: "The last apply couldn't be fully verified",
   restore_failed: "The last restore didn't fully complete",
-  crash_residue: "The app stopped during an apply, so part of it was never confirmed",
+  crash_residue: "A change to this tweak was never recorded as finished, so part of it is unconfirmed",
+  outcome_unrecorded: "The last operation ended in a verified state, but the app couldn't record that",
   record_unreadable: "This tweak's Needs Attention record couldn't be read, so whatever it holds is unresolved",
 };
 

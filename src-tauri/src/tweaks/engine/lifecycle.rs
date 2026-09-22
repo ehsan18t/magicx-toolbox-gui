@@ -2,13 +2,15 @@
 //!
 //! One process-wide [`ApplyGate`] holds the locks and the exit state under a single mutex, so a
 //! committed exit refuses every later lock and no exit commits while a lock is held.
-//! [`scan_for_crash_residue`] flags journal rows a crash mid-apply left `intended && !completed`.
+//! [`scan_for_crash_residue`] flags the open drive, unfinished steps and outstanding rows a crash
+//! left.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
+use crate::tweaks::model::EffectId;
 use crate::tweaks::snapshot::{
     is_outstanding, Attention, AttentionItem, AttentionKind, AttentionReason, Entry, SnapshotStore,
 };
@@ -149,11 +151,33 @@ impl Drop for ExitLatch<'_> {
     }
 }
 
-/// Flags every still-outstanding row across a tweak's whole history (spec §8.1, invariant 5). The
-/// row is written before the action is driven, so it proves only that the action was planned and
-/// never confirmed complete -- never that it ran.
+/// Flags an open drive, every interrupted action step and every still-outstanding row across a
+/// tweak's whole history (spec §8.1, invariant 5). All are written before the work starts, so they
+/// prove only that it was started and never settled -- never that it ran.
 pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
-    let items: Vec<AttentionItem> = entries
+    let open_drive = entries
+        .iter()
+        .any(|entry| entry.drive_open)
+        .then(|| AttentionItem {
+            effect: None,
+            kind: AttentionKind::CrashResidue,
+            message: "a change to this tweak was never recorded as finished, so its settings may \
+                      be only partly changed; the app may have stopped mid-change"
+                .to_string(),
+        });
+    let steps: BTreeSet<&EffectId> = entries
+        .iter()
+        .flat_map(|entry| entry.actions_in_flight.iter())
+        .collect();
+    let steps = steps.into_iter().map(|id| AttentionItem {
+        effect: Some(id.clone()),
+        kind: AttentionKind::CrashResidue,
+        message: format!(
+            "undoing or re-running action '{id}' was never recorded as finished, so it may be \
+             only partly done"
+        ),
+    });
+    let rows = entries
         .iter()
         .flat_map(|entry| entry.journal.iter())
         .filter(|row| is_outstanding(row))
@@ -165,17 +189,17 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
                  run: the app stopped mid-apply",
                 row.action_id
             ),
-        })
-        .collect();
+        });
+    let items: Vec<AttentionItem> = open_drive.into_iter().chain(steps).chain(rows).collect();
     (!items.is_empty()).then_some(Attention {
         reason: AttentionReason::CrashResidue,
         items,
     })
 }
 
-/// One tweak's share of the startup carry-forward (spec §8.1, invariant 5), so a crash mid-apply
-/// reaches the UI like any other kept failure (ADR-0001) instead of living only in the log. Rows a
-/// verified apply or restore already accounted for carry their own mark, so they are not raised.
+/// One tweak's share of the startup carry-forward (spec §8.1, invariant 5), so a crash reaches the
+/// UI like any other kept failure (ADR-0001) instead of living only in the log. An existing record
+/// of this build's gains the items it lacks, so a crash during a retry is not hidden behind it.
 pub(crate) fn record_crash_residue(snapshots: &SnapshotStore, tweak_id: &str, guid: Option<&str>) {
     let entries = match snapshots.unresolved_entries(tweak_id, guid) {
         Ok(entries) => entries,
@@ -184,20 +208,38 @@ pub(crate) fn record_crash_residue(snapshots: &SnapshotStore, tweak_id: &str, gu
             return;
         }
     };
-    let Some(attention) = scan_for_crash_residue(&entries) else {
+    let Some(found) = scan_for_crash_residue(&entries) else {
         return;
     };
-    // An existing record describes a failure this scan cannot see, so it wins.
-    match snapshots.attention(tweak_id, guid) {
-        Ok(None) => {}
-        Ok(Some(_)) => return,
+    let attention = match snapshots.attention(tweak_id, guid) {
+        Ok(None) => found,
+        // Never written over: it is another build's or machine's, or unparseable.
+        Ok(Some(existing)) if existing.reason == AttentionReason::RecordUnreadable => return,
+        Ok(Some(mut existing)) => {
+            // An `Unrecorded` item already says why the drive mark is still open.
+            let explained = existing
+                .items
+                .iter()
+                .any(|i| i.kind == AttentionKind::Unrecorded);
+            let before = existing.items.len();
+            for item in found.items {
+                let drive_mark = item.effect.is_none();
+                if !(drive_mark && explained) && !existing.items.contains(&item) {
+                    existing.items.push(item);
+                }
+            }
+            if existing.items.len() == before {
+                return;
+            }
+            existing
+        }
         Err(e) => {
             log::warn!("tweak '{tweak_id}': attention record unreadable: {e}");
             return;
         }
-    }
+    };
     log::error!(
-        "tweak '{tweak_id}' needs attention after a crash-interrupted apply ({} unconfirmed action(s))",
+        "tweak '{tweak_id}' needs attention after a crash-interrupted change ({} item(s))",
         attention.items.len()
     );
     if let Err(e) = snapshots.set_attention(tweak_id, guid, attention) {
@@ -222,6 +264,8 @@ mod tests {
             seq: Seq(7),
             timestamp: "t".into(),
             captured: Captured::Values(BTreeMap::new()),
+            drive_open: false,
+            actions_in_flight: Default::default(),
             journal,
         }
     }
@@ -273,6 +317,119 @@ mod tests {
             resolved: true,
         }]);
         assert!(scan_for_crash_residue(&[entry]).is_none());
+    }
+
+    #[test]
+    fn an_open_drive_is_crash_residue_with_no_effect_named() {
+        let entry = Entry {
+            drive_open: true,
+            ..entry_with_journal(Vec::new())
+        };
+        let flagged = scan_for_crash_residue(&[entry]).expect("an open drive must be flagged");
+        assert_eq!(flagged.reason, AttentionReason::CrashResidue);
+        assert_eq!(flagged.items.len(), 1);
+        assert_eq!(flagged.items[0].effect, None);
+        assert_eq!(flagged.items[0].kind, AttentionKind::CrashResidue);
+    }
+
+    /// Two interrupted drives say one thing; each outstanding row still names its own action.
+    #[test]
+    fn open_drives_raise_one_item_beside_the_action_rows() {
+        let row = JournalRow {
+            action_id: EffectId("act1".into()),
+            intended: true,
+            completed: false,
+            resolved: false,
+        };
+        let open = |journal| Entry {
+            drive_open: true,
+            ..entry_with_journal(journal)
+        };
+        let flagged = scan_for_crash_residue(&[open(vec![row]), open(Vec::new())])
+            .expect("both kinds flagged");
+        let effects: Vec<_> = flagged.items.iter().map(|i| i.effect.clone()).collect();
+        assert_eq!(effects, vec![None, Some(EffectId("act1".into()))]);
+    }
+
+    fn crashed_store(tmp: &std::path::Path) -> SnapshotStore {
+        use crate::tweaks::model::Corpus;
+        use crate::tweaks::snapshot::NewEntry;
+        let store = SnapshotStore::open(tmp.to_path_buf());
+        let empty = Corpus {
+            categories: Vec::new(),
+            tweaks: Vec::new(),
+            shared: Vec::new(),
+        };
+        let new_entry = NewEntry {
+            captured: Captured::Values(BTreeMap::new()),
+            journal: Vec::new(),
+        };
+        let seq = store.push("demo", new_entry, &empty, Some("g"), 0).unwrap();
+        store.open_drive("demo", seq).unwrap();
+        store
+    }
+
+    fn apply_failed() -> Attention {
+        Attention {
+            reason: AttentionReason::ApplyFailed,
+            items: vec![AttentionItem {
+                effect: Some(EffectId("s1".into())),
+                kind: AttentionKind::Drive,
+                message: "s1 could not be driven".into(),
+            }],
+        }
+    }
+
+    /// A crash during a retry joins the earlier failure's record instead of hiding behind it, and
+    /// a second launch adds nothing more.
+    #[test]
+    fn a_crash_joins_an_existing_record_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crashed_store(tmp.path());
+        store
+            .set_attention("demo", Some("g"), apply_failed())
+            .unwrap();
+
+        record_crash_residue(&store, "demo", Some("g"));
+        record_crash_residue(&store, "demo", Some("g"));
+        let record = store.attention("demo", Some("g")).unwrap().unwrap();
+        assert_eq!(record.reason, AttentionReason::ApplyFailed);
+        let effects: Vec<_> = record.items.iter().map(|i| i.effect.clone()).collect();
+        assert_eq!(effects, vec![Some(EffectId("s1".into())), None]);
+    }
+
+    #[test]
+    fn another_machines_record_is_never_joined() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crashed_store(tmp.path());
+        store
+            .set_attention("demo", Some("other"), apply_failed())
+            .unwrap();
+
+        record_crash_residue(&store, "demo", Some("g"));
+        let theirs = store.attention("demo", Some("other")).unwrap().unwrap();
+        assert_eq!(theirs, apply_failed());
+    }
+
+    /// An `Unrecorded` item already explains why the mark is open, so no crash is claimed for it.
+    #[test]
+    fn an_unrecorded_outcome_explains_the_open_mark() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crashed_store(tmp.path());
+        let explained = Attention {
+            reason: AttentionReason::OutcomeUnrecorded,
+            items: vec![AttentionItem {
+                effect: None,
+                kind: AttentionKind::Unrecorded,
+                message: "could not record it".into(),
+            }],
+        };
+        store
+            .set_attention("demo", Some("g"), explained.clone())
+            .unwrap();
+
+        record_crash_residue(&store, "demo", Some("g"));
+        assert_eq!(store.attention("demo", Some("g")).unwrap(), Some(explained));
     }
 
     #[test]

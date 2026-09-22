@@ -19,10 +19,8 @@
 //!    - `Captured::OptionRef` -- [`apply::drive_to_captured`] drives its Settings (it re-derives
 //!      internally too); a small declaration-order-preserving surface (Shared + Action effects,
 //!      ephemerals included) is then driven via [`apply::drive_forward`] verbatim, exactly like a
-//!      fresh apply of that option minus its own snapshot capture. Driven with `DriveCtx { journal:
-//!      Journaling::None, .. }` -- no on-disk WAL entry is pushed for this drive pass (review fix,
-//!      §Fix 1 below): the entry being restored is never consumed until step 4 verifies the WHOLE
-//!      restore, so a crash mid-re-apply just leaves that entry on disk and the caller retries.
+//!      fresh apply of that option minus its own snapshot capture. Driven with
+//!      `Journaling::InFlight` on the entry being restored, never a new entry (§Fix 1 below).
 //!    - `Captured::Values` -- `drive_to_captured` for Settings, plus [`release_shared_claims`] for
 //!      any Shared effect this tweak currently holds (review fix, see below); scripts cannot be
 //!      re-run from a dump, so the outcome carries `reboot_advisory: true`.
@@ -45,20 +43,10 @@
 //! [`release_shared_claims`] from the Shared effect it is releasing. Probes stay on
 //! `context::read_route`, since reads never escalate (invariant 24).
 //!
-//! ## Fix 1 (post-review): no throwaway snapshot entry
-//! An earlier revision pushed a throwaway `Captured::Values({})` entry purely to give
-//! `drive_action`'s hardcoded `mark_completed(tweak_id, seq, ..)` call somewhere durable to write,
-//! then discarded it right after driving. That was a reviewed CRITICAL: the throwaway always took
-//! the *next* monotonic seq (above the real entry still on disk), so a crash between push and
-//! discard -- or a failed discard, previously only `log::warn!`ed and never surfaced as a failure --
-//! would let the phantom win `head()` on the next call. Its journal carried the target option's own
-//! action rows, so a later restore would undo actions that were legitimately applied and "restore"
-//! to an empty map; a completed action with no `undo` among them would then keep the phantom
-//! forever (consume is correctly gated on empty failures), permanently masking the real
-//! return-point -- an ADR-0002 stranding. The fix makes the WAL bookkeeping itself optional
-//! ([`apply::Journaling`]) instead of routing around it: restore's re-apply genuinely does not need
-//! per-action crash journaling (see step 2 above), so it now drives with `Journaling::None` and
-//! pushes nothing at all. `option_ref_reapply_pushes_no_extra_entry` pins this directly.
+//! ## Fix 1: no throwaway snapshot entry
+//! Restore pushes nothing: an extra entry takes the next seq, so a crash or failed discard lets it
+//! win `head()` and mask the real return point (ADR-0002). Its action steps are marked in flight on
+//! the entry being restored instead. `option_ref_reapply_pushes_no_extra_entry` pins this.
 //!
 //! ## Fix 2 (Task 15, E2E-discovered): a Values-dump restore now also releases held shared claims
 //! `Captured::Values` only ever arises when the pre-apply state matched no authored option, and
@@ -82,7 +70,7 @@ use crate::tweaks::model::{
 };
 use crate::tweaks::shared_claims::ReleaseOutcome;
 use crate::tweaks::snapshot::{
-    Attention, AttentionReason, Captured, EntrySummary, EntryValidity, JournalRow, Seq,
+    Attention, AttentionReason, Captured, Entry, EntrySummary, EntryValidity, Seq,
 };
 use crate::tweaks::validate::{applicable_surface, option_unavailable, Milestone};
 use crate::tweaks::winver::WinVer;
@@ -101,7 +89,7 @@ use super::{context, lifecycle, Deps, Phase};
 pub struct RestoreOutcome {
     pub status: TweakStatus,
     /// `Some(seq)` iff a valid entry existed and was restored + consumed; `None` means there was
-    /// nothing to restore (ADR-0003: the surface already reads System Default).
+    /// nothing to restore (ADR-0003), or the entry was kept for an action step still unfinished.
     pub consumed: Option<Seq>,
     /// `true` only for a consumed `Captured::Values` (dump) restore -- scripts hold no state to
     /// re-run, so a reboot/logoff may be needed for full effect (spec §8.5).
@@ -161,10 +149,19 @@ pub(crate) fn do_restore(
         )));
     };
 
+    // A crash mid-restore otherwise leaves only a restorable entry, never Needs Attention. An
+    // already-open mark is an earlier crash's, which only a verified outcome may settle.
+    let inherited = apply::Inherited {
+        drive_open: !deps
+            .snapshots
+            .open_drive(&current_tweak.id, entry.seq)
+            .map_err(EngineError::SnapshotWrite)?,
+        steps: entry.actions_in_flight.clone(),
+    };
     let mut failures: Vec<EngineError> = Vec::new();
 
     // Step 1: undo the entry's completed journal actions, in reverse order.
-    let mut accounted = undo_journal(current_tweak, corpus, &entry.journal, deps, &mut failures);
+    let mut accounted = undo_journal(current_tweak, corpus, &entry, deps, &mut failures);
 
     // Step 2 (+ step 3, folded in via `drive_forward`'s own Shared handling): re-apply the target.
     let mut reboot_advisory = false;
@@ -172,7 +169,14 @@ pub(crate) fn do_restore(
     let mut residues: Vec<EffectId> = Vec::new();
     let restored_label = match &entry.captured {
         Captured::OptionRef(label) => {
-            let result = reapply_option_ref(current_tweak, corpus, label, milestone, &winver, deps);
+            let result = reapply_option_ref(
+                current_tweak,
+                corpus,
+                label,
+                (milestone, &winver),
+                entry.seq,
+                deps,
+            );
             failures.extend(result.failures);
             held_shared = result.held_shared;
             residues = result.residues;
@@ -211,33 +215,34 @@ pub(crate) fn do_restore(
                 .collect(),
         };
         let mut store = Vec::new();
-        if let Err(e) =
-            deps.snapshots
-                .set_attention(&current_tweak.id, deps.machine_guid, attention)
+        match deps
+            .snapshots
+            .set_attention(&current_tweak.id, deps.machine_guid, attention)
         {
-            store.push(EngineError::AttentionWrite(e));
+            Ok(()) => apply::settle_recorded(deps, &current_tweak.id, entry.seq, &inherited),
+            Err(e) => store.push(EngineError::AttentionWrite(e)),
         }
         return Err(EngineError::RestoreFailed { failures, store });
     }
-    // A verified restore accounts for the actions it undid and re-drove, and for no other row: a
-    // `Values` head carries no re-drive, so residue it never probed stays for the next crash scan.
-    apply::resolve_accounted(deps, &current_tweak.id, &accounted);
-    if let Err(e) = deps
-        .snapshots
-        .clear_attention(&current_tweak.id, deps.machine_guid)
-    {
-        log::warn!(
-            "tweak '{}': could not clear Needs Attention: {e}",
-            current_tweak.id
-        );
-    }
-    if let Err(e) = deps.snapshots.consume(&current_tweak.id, entry.seq) {
+    // Accounts only for actions it undid, re-drove or probed absent; either head kind drives every
+    // Setting captured, so it settles every drive mark, and any other residue is recorded.
+    let unrecorded =
+        match apply::settle_verified(deps, &current_tweak.id, apply::Settle::All, &accounted) {
+            apply::Settled::Unrecorded(attention, _) => Some(attention),
+            apply::Settled::Clean | apply::Settled::Recorded => None,
+        };
+    // `consume` keeps an entry still holding a step this restore never drove, which the settle
+    // above has already recorded.
+    let consumed = match deps.snapshots.consume(&current_tweak.id, entry.seq) {
+        Ok(true) => Some(entry.seq),
+        Ok(false) => None,
         // Every effect verified, so this is not a failed restore and nothing needs attention: the
         // machine is restored and only the spent return point outlived it.
-        return Err(EngineError::EntryCleanup(e));
-    }
+        Err(e) => return Err(EngineError::EntryCleanup(e)),
+    };
 
-    let (has_history, attention) = detect::history(&current_tweak.id, corpus, deps);
+    let (has_history, recorded) = detect::history(&current_tweak.id, corpus, deps);
+    let attention = unrecorded.or(recorded);
     let status = TweakStatus {
         state: restored_label.map_or(TweakState::SystemDefault, TweakState::Active),
         unavailable: unavailable_options(current_tweak, &milestone),
@@ -251,7 +256,7 @@ pub(crate) fn do_restore(
     };
     Ok(RestoreOutcome {
         status,
-        consumed: Some(entry.seq),
+        consumed,
         reboot_advisory,
         skipped_invalid,
     })
@@ -265,12 +270,12 @@ pub(crate) fn do_restore(
 fn undo_journal(
     tweak: &Tweak,
     corpus: &Corpus,
-    journal: &[JournalRow],
+    entry: &Entry,
     deps: &Deps,
     failures: &mut Vec<EngineError>,
 ) -> BTreeSet<EffectId> {
     let mut undone = BTreeSet::new();
-    for row in journal.iter().rev().filter(|r| r.completed) {
+    for row in entry.journal.iter().rev().filter(|r| r.completed) {
         let Some((effect, action_def)) = find_action(tweak, &row.action_id) else {
             failures.push(EngineError::Invalid(format!(
                 "completed action '{}' vanished from the surface during restore",
@@ -293,13 +298,35 @@ fn undo_journal(
             failures.push(EngineError::NoUndo(row.action_id.clone()));
             continue;
         }
+        // Marked in flight until verified: the drive mark cannot stand in for an action.
+        if let Err(e) = deps
+            .snapshots
+            .begin_action(&tweak.id, entry.seq, &row.action_id)
+        {
+            failures.push(EngineError::JournalMark {
+                effect: row.action_id.clone(),
+                source: e,
+            });
+            continue;
+        }
         let cx = context::route(effect, tweak, corpus);
         match deps.actions.undo(action_def, &cx) {
             Ok(()) => {
                 let before = failures.len();
                 apply::verify_reversed_probe(action_def, effect, false, corpus, deps, failures);
                 if failures.len() == before {
-                    undone.insert(row.action_id.clone());
+                    match deps
+                        .snapshots
+                        .end_action(&tweak.id, entry.seq, &row.action_id)
+                    {
+                        Ok(()) => {
+                            undone.insert(row.action_id.clone());
+                        }
+                        Err(e) => failures.push(EngineError::JournalMark {
+                            effect: row.action_id.clone(),
+                            source: e,
+                        }),
+                    }
                 }
             }
             Err(e) => failures.push(EngineError::ActionFailed {
@@ -329,8 +356,8 @@ fn reapply_option_ref(
     tweak: &Tweak,
     corpus: &Corpus,
     label: &str,
-    milestone: Milestone,
-    winver: &WinVer,
+    (milestone, winver): (Milestone, &WinVer),
+    seq: Seq,
     deps: &Deps,
 ) -> OptionRefResult {
     let mut failures = Vec::new();
@@ -378,6 +405,7 @@ fn reapply_option_ref(
     // Mirrors apply.rs's own Step-1 action-plan construction (probe once, decide, never touched
     // again) so `drive_forward`/`drive_action` see the exact same shape a fresh apply would build.
     let mut action_plan: Vec<(EffectId, ActionPlan)> = Vec::new();
+    let mut proven_absent: BTreeSet<EffectId> = BTreeSet::new();
     let mut plan_failed = false;
     for effect in &surface {
         let Effect::Action(action_def) = &effect.kind else {
@@ -407,7 +435,10 @@ fn reapply_option_ref(
                     action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
                 }
                 Ok(true) => residues.push(effect.id.clone()),
-                Ok(false) => {}
+                // The same check that verifies an undo, so absent accounts for an unfinished one.
+                Ok(false) => {
+                    proven_absent.insert(effect.id.clone());
+                }
                 Err(e) => {
                     failures.push(EngineError::CaptureFailed {
                         effect: effect.id.clone(),
@@ -428,29 +459,21 @@ fn reapply_option_ref(
         };
     }
 
-    // No on-disk WAL entry is pushed for this drive pass (review fix, was a CRITICAL): the entry
-    // being restored is never consumed until the WHOLE restore verifies (Step 4), so a crash
-    // mid-re-apply just leaves that entry on disk and the caller retries the entire restore -- the
-    // throwaway `Values({})` entry this used to fabricate purely to satisfy `drive_action`'s
-    // hardcoded completion-mark call was itself an ADR-0002 stranding risk: it always took the NEXT
-    // monotonic seq (above the real entry still on disk), so a crash between push and discard, or a
-    // failed discard (previously only `log::warn!`ed, never surfaced), would let the phantom win
-    // `head()` -- undoing legitimately-applied actions and, if any lacked `undo`, staying kept
-    // forever, permanently masking the real return-point. `Journaling::None` removes the need for
-    // any entry at all.
+    // Steps are marked in the entry being restored, never a new one (module docs, Fix 1).
     let ctx = DriveCtx {
         tweak,
         corpus,
         target_opt,
         milestone,
         deps,
-        journal: apply::Journaling::None,
+        journal: apply::Journaling::InFlight(seq),
     };
     let mut state = DriveState::default();
     if let Err(e) = apply::drive_forward(&ctx, &surface, &action_plan, &mut state) {
         failures.push(e);
     }
-    let driven_actions = state.driven_actions();
+    let mut driven_actions = state.driven_actions();
+    driven_actions.extend(proven_absent);
     held_shared.extend(state.held_shared);
 
     OptionRefResult {
@@ -582,7 +605,9 @@ mod tests {
         SharedDef, SharedId, Shell, StartupType, SvcAddr, Value,
     };
     use crate::tweaks::shared_claims::ClaimsStore;
-    use crate::tweaks::snapshot::{is_outstanding, InvalidReason, NewEntry, SnapshotStore};
+    use crate::tweaks::snapshot::{
+        is_outstanding, InvalidReason, JournalRow, NewEntry, SnapshotStore,
+    };
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
@@ -614,8 +639,11 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
     enum DrivePlan {
         Err,
+        /// The process dies mid-drive: nothing after this point runs.
+        Crash,
         /// The resource is absent, so a drive to a real value refuses where `AllKinds`'s pre-check
         /// refuses it: during translation, before any child is spawned.
         ResourceMissing,
@@ -661,6 +689,7 @@ mod tests {
         /// The `ExecCx::level()` each drive received, so a test can prove which level an undo
         /// actually ran at.
         levels: Mutex<Vec<(String, Level)>>,
+        on_drive: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
     }
 
     impl MockKind {
@@ -733,10 +762,15 @@ mod tests {
 
         fn drive(&self, s: &Setting, target: &Value, cx: &ExecCx) -> Result<(), KindError> {
             let key = setting_key(s);
+            if let Some(f) = &*self.on_drive.lock().unwrap() {
+                f();
+            }
             self.log.lock().unwrap().push(Op::Drive(key.clone()));
             self.levels.lock().unwrap().push((key.clone(), cx.level()));
-            match self.drive_plan.lock().unwrap().get(&key) {
+            let plan = self.drive_plan.lock().unwrap().get(&key).copied();
+            match plan {
                 Some(DrivePlan::Err) => Err(KindError::Backend("mock drive failure".into())),
+                Some(DrivePlan::Crash) => panic!("simulated crash driving {key}"),
                 Some(DrivePlan::ResourceMissing) => {
                     Err(KindError::ResourceMissing(format!("mock: {key} is absent")))
                 }
@@ -798,6 +832,9 @@ mod tests {
         log: Log,
         presence: Presence,
         fail_undo: Mutex<HashSet<String>>,
+        /// The process dies mid-undo: nothing after this point runs.
+        crash_undo: Mutex<HashSet<String>>,
+        crash_apply: Mutex<HashSet<String>>,
         /// The `ExecCx::level()` each call received, keyed `"<action>:apply"` / `"<action>:undo"`.
         levels: Mutex<Vec<(String, Level)>>,
     }
@@ -826,6 +863,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((format!("{key}:apply"), cx.level()));
+            if self.crash_apply.lock().unwrap().contains(&key) {
+                panic!("simulated crash running {key}");
+            }
             self.presence.lock().unwrap().insert(key, true);
             Ok(())
         }
@@ -836,6 +876,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((format!("{key}:undo"), cx.level()));
+            if self.crash_undo.lock().unwrap().contains(&key) {
+                panic!("simulated crash undoing {key}");
+            }
             if self.fail_undo.lock().unwrap().contains(&key) {
                 return Err(KindError::ActionFailed(1));
             }
@@ -1033,6 +1076,366 @@ mod tests {
         deps: &Deps,
     ) -> Result<RestoreOutcome, EngineError> {
         futures_block_on(restore(tweak, corpus, deps))
+    }
+
+    /// A `Values` entry holding `s1 = Manual`, with the live surface moved to `Disabled`.
+    fn values_restore_setup(h: &Harness) -> (Tweak, Corpus, Seq) {
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        let seq = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::from([(
+                        EffectId("s1".into()),
+                        Value::Startup(StartupType::Manual),
+                    )])),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        (t, c, seq)
+    }
+
+    fn open_drives(h: &Harness) -> usize {
+        h.snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .iter()
+            .filter(|e| e.drive_open)
+            .count()
+    }
+
+    fn crash_reason(h: &Harness) -> Option<AttentionReason> {
+        crate::tweaks::engine::lifecycle::record_crash_residue(
+            &h.snapshots,
+            "demo",
+            Some("test-guid"),
+        );
+        h.snapshots
+            .attention("demo", Some("test-guid"))
+            .unwrap()
+            .map(|a| a.reason)
+    }
+
+    fn raised_effects(h: &Harness) -> Vec<Option<EffectId>> {
+        h.snapshots
+            .attention("demo", Some("test-guid"))
+            .unwrap()
+            .map(|a| a.items.into_iter().map(|i| i.effect).collect())
+            .unwrap_or_default()
+    }
+
+    /// Option A runs `x` (undo, no probe) beside `s1`; option B omits `x`. The head entry holds the
+    /// state before A, with `x` journaled completed.
+    fn unprobed_undo_setup(h: &Harness) -> (Tweak, Corpus) {
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", true, false)],
+            vec![
+                opt(
+                    "A",
+                    vec![
+                        ("s1", set(Value::Startup(StartupType::Disabled))),
+                        ("x", ModelOptValue::Run(None)),
+                    ],
+                ),
+                opt("B", vec![("s1", set(Value::Startup(StartupType::Manual)))]),
+            ],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("B".into()),
+                    journal: vec![JournalRow {
+                        action_id: EffectId("x".into()),
+                        intended: true,
+                        completed: true,
+                        resolved: false,
+                    }],
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        (t, c)
+    }
+
+    /// `x`'s row is already completed, so only the in-flight step records the interrupted undo; a
+    /// verified apply that never touches `x` must not settle it with the Settings.
+    #[test]
+    fn a_crash_mid_undo_stays_raised_until_an_operation_drives_that_action() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        h.actions
+            .crash_undo
+            .lock()
+            .unwrap()
+            .insert("x_apply".into());
+
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err(), "the undo must crash");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        assert!(raised_effects(&h).contains(&Some(EffectId("x".into()))));
+
+        futures_block_on(apply::apply(&t, &c, &OptLabel("B".into()), &h.deps()))
+            .expect("B verifies its Settings");
+        assert_eq!(open_drives(&h), 0, "the Settings are re-established");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        assert_eq!(raised_effects(&h), vec![Some(EffectId("x".into()))]);
+    }
+
+    /// A retried restore that undoes `x` and verifies accounts for the interrupted step.
+    #[test]
+    fn a_retried_restore_resolves_the_undo_a_crash_interrupted() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        h.actions
+            .crash_undo
+            .lock()
+            .unwrap()
+            .insert("x_apply".into());
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err());
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+
+        h.actions.crash_undo.lock().unwrap().clear();
+        run_restore(&t, &c, &h.deps()).expect("the retry verifies");
+        assert_eq!(crash_reason(&h), None);
+    }
+
+    /// An apply that runs `x` and verifies accounts for the step another operation left unfinished.
+    #[test]
+    fn an_apply_that_drives_the_action_resolves_its_unfinished_step() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        h.actions
+            .crash_undo
+            .lock()
+            .unwrap()
+            .insert("x_apply".into());
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err());
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        futures_block_on(apply::apply(&t, &c, &OptLabel("A".into()), &h.deps()))
+            .expect("A runs x and verifies");
+        assert_eq!(crash_reason(&h), None);
+    }
+
+    /// Restore re-runs `x` for option A with no journal row of its own, so only the step marks a
+    /// crash mid-run.
+    #[test]
+    fn a_crash_mid_reapply_run_is_raised_by_its_step() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("A".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.actions
+            .crash_apply
+            .lock()
+            .unwrap()
+            .insert("x_apply".into());
+
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err(), "the run must crash");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        assert!(raised_effects(&h).contains(&Some(EffectId("x".into()))));
+    }
+
+    /// `x`'s unfinished step sits on the head, and the restore target never drives or probes `x`
+    /// (as when it is scoped out after an update): the entry is the only evidence, so it is kept.
+    #[test]
+    fn a_verified_restore_keeps_an_entry_holding_a_step_it_never_drove() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        let head = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("B".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.snapshots
+            .begin_action("demo", head, &EffectId("x".into()))
+            .unwrap();
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("B verifies");
+        assert_eq!(outcome.consumed, None);
+        assert!(h
+            .snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .iter()
+            .any(|e| e.seq == head && !e.actions_in_flight.is_empty()));
+        let reason = outcome.status.attention.map(|a| a.reason);
+        assert_eq!(reason, Some(AttentionReason::CrashResidue));
+    }
+
+    /// A probeable `x` that reads absent is exactly what a verified undo leaves, so the retry's
+    /// probe settles the step and the entry is consumed.
+    #[test]
+    fn a_probe_reading_absent_settles_an_unfinished_undo() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", true, true)],
+            vec![opt(
+                "B",
+                vec![("s1", set(Value::Startup(StartupType::Manual)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        let head = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("B".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.snapshots
+            .begin_action("demo", head, &EffectId("x".into()))
+            .unwrap();
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("verifies");
+        assert_eq!(outcome.consumed, Some(head));
+        assert_eq!(outcome.status.attention, None);
+    }
+
+    /// A failed undo is named by the record, so its step is settled with it and never reads as an
+    /// unfinished change at a later launch.
+    #[test]
+    fn a_failed_undo_is_named_by_its_record_not_left_unfinished() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        h.actions.fail_undo.lock().unwrap().insert("x_apply".into());
+
+        run_restore(&t, &c, &h.deps()).expect_err("x cannot be undone");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::RestoreFailed));
+        let entries = h
+            .snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap();
+        assert!(entries
+            .iter()
+            .all(|e| e.actions_in_flight.is_empty() && !e.drive_open));
+    }
+
+    /// The head's mark was an earlier crash's: a failed restore records its own failure and must
+    /// leave that mark, whose crash the next scan still adds to the record.
+    #[test]
+    fn a_failed_restore_leaves_a_mark_an_earlier_crash_left_on_its_head() {
+        let h = Harness::new();
+        let (t, c, head) = values_restore_setup(&h);
+        assert!(h.snapshots.open_drive("demo", head).unwrap());
+        h.kind.drive_plan("s1", DrivePlan::Err);
+
+        run_restore(&t, &c, &h.deps()).expect_err("s1 cannot be driven");
+        assert_eq!(open_drives(&h), 1);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::RestoreFailed));
+        assert!(
+            raised_effects(&h).contains(&None),
+            "the earlier crash joins the record"
+        );
+    }
+
+    /// The entry stays restorable after the crash; only the mark tells the scan it was mid-drive.
+    #[test]
+    fn a_crash_mid_restore_surfaces_as_needs_attention() {
+        let h = Harness::new();
+        let (t, c, _) = values_restore_setup(&h);
+        h.kind.drive_plan("s1", DrivePlan::Crash);
+
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err(), "the drive must crash");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+    }
+
+    /// The record carries this failure, so the restore settles its own mark and no other.
+    #[test]
+    fn a_failed_restore_that_recorded_attention_settles_only_its_own_drive() {
+        let h = Harness::new();
+        let (t, c, older) = values_restore_setup(&h);
+        h.snapshots.open_drive("demo", older).unwrap();
+        values_restore_setup(&h);
+        h.kind.drive_plan("s1", DrivePlan::Err);
+
+        run_restore(&t, &c, &h.deps()).expect_err("s1 cannot be driven");
+        let open: Vec<Seq> = h
+            .snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .into_iter()
+            .filter(|e| e.drive_open)
+            .map(|e| e.seq)
+            .collect();
+        assert_eq!(open, vec![older]);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::RestoreFailed));
+    }
+
+    /// A verified restore settles the whole history, so a mark an earlier crash left on an older
+    /// entry cannot re-raise Needs Attention at the next launch.
+    #[test]
+    fn a_verified_restore_leaves_no_open_drive() {
+        let h = Harness::new();
+        let (t, c, older) = values_restore_setup(&h);
+        h.snapshots.open_drive("demo", older).unwrap();
+        let (_, _, head) = values_restore_setup(&h);
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("verifies");
+        assert_eq!(outcome.consumed, Some(head));
+        assert_eq!(open_drives(&h), 0);
+        assert_eq!(crash_reason(&h), None);
     }
 
     // --- the 12 named scenarios + the crown-jewel property test --------------------------------
@@ -1883,7 +2286,8 @@ mod tests {
             )
             .unwrap();
 
-        // A handle sharing read but not delete: `consume` fails with a sharing violation.
+        // A handle sharing read but not delete, taken mid-drive once the drive mark is written:
+        // `consume` fails with a sharing violation.
         use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
         let path = h
@@ -1891,18 +2295,41 @@ mod tests {
             .path()
             .join("demo")
             .join(format!("{:020}.json", seq.0));
-        let held = std::fs::OpenOptions::new()
-            .read(true)
-            .share_mode(FILE_SHARE_READ)
-            .open(&path)
-            .unwrap();
+        let held: Arc<Mutex<Option<std::fs::File>>> = Arc::default();
+        let (hold_path, holder) = (path.clone(), held.clone());
+        *h.kind.on_drive.lock().unwrap() = Some(Box::new(move || {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ)
+                .open(&hold_path)
+                .unwrap();
+            holder.lock().unwrap().get_or_insert(file);
+        }));
 
         let err = run_restore(&t, &c, &h.deps()).expect_err("the entry cannot be removed");
         assert!(matches!(err, EngineError::EntryCleanup(_)), "{err}");
         assert!(!err.to_string().contains("restore failed"), "{err}");
-        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
         assert!(path.exists(), "the entry is kept, never silently lost");
-        drop(held);
+        assert!(held.lock().unwrap().take().is_some(), "the drive ran");
+        // The locked entry kept its mark, so the verified outcome is recorded now, as itself.
+        assert_eq!(open_drives(&h), 1);
+        let reason = |h: &Harness| {
+            detect::detect(&t, &c, &h.deps())
+                .attention
+                .map(|a| a.reason)
+        };
+        assert_eq!(reason(&h), Some(AttentionReason::OutcomeUnrecorded));
+        assert_eq!(
+            crash_reason(&h),
+            Some(AttentionReason::OutcomeUnrecorded),
+            "the next launch must not call it a crash"
+        );
+
+        *h.kind.on_drive.lock().unwrap() = None;
+        let outcome = run_restore(&t, &c, &h.deps()).expect("unlocked, the retry settles");
+        assert_eq!(outcome.consumed, Some(seq));
+        assert_eq!(open_drives(&h), 0);
+        assert_eq!(crash_reason(&h), None);
     }
 
     #[test]

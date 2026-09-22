@@ -57,8 +57,8 @@ impl TweakEngineState {
     }
 
     /// Startup carry-forward (spec §8.1 invariant 5): records Needs Attention for every tweak whose
-    /// history still holds a crash-interrupted `intended && !completed` row, so a crash mid-apply
-    /// reaches the UI like any other kept failure (ADR-0001) instead of living only in the log.
+    /// history still holds an open drive, an interrupted action step or an outstanding journal row,
+    /// so a crash mid-apply or mid-restore reaches the UI like any other kept failure (ADR-0001).
     pub fn scan_startup_crash_residue(&self) {
         let corpus = compiled_corpus();
         for tweak in &corpus.tweaks {
@@ -1269,8 +1269,8 @@ pub async fn discard_snapshot_entry(app: AppHandle, tweak_id: String, seq: Seq) 
 }
 
 /// Explicit consent (ADR-0002), factored out of [`keep_current_state`] so a test can drive it over a
-/// temp store. The record is released FIRST, regardless of what is left or which machine stamped it:
-/// otherwise it is unreleasable, the "no legitimate way to release" ADR-0002 forbids.
+/// temp store. Marks are settled first, so a discard that fails cannot raise a crash; then the
+/// record goes, whichever machine stamped it, or it would be unreleasable, which ADR-0002 forbids.
 fn release_snapshot(
     snapshots: &SnapshotStore,
     tweak_id: &str,
@@ -1278,6 +1278,9 @@ fn release_snapshot(
     guid: Option<&str>,
     build: u32,
 ) -> Result<u32> {
+    snapshots
+        .settle_consented(tweak_id, guid)
+        .map_err(|e| Error::Tweak(e.to_string()))?;
     snapshots
         .clear_attention_consented(tweak_id, guid)
         .map_err(|e| Error::Tweak(e.to_string()))?;
@@ -1653,6 +1656,56 @@ mod tests {
         let discarded = release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045)
             .expect("consent must release a record with nothing left to discard");
         assert_eq!(discarded, 0);
+        assert_eq!(
+            snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+    }
+
+    /// A marked entry that cannot be settled would outlive a cleared record and raise a crash at
+    /// the next launch, so consent stops before the record and says so.
+    #[test]
+    fn keeping_the_current_state_settles_marks_before_the_record() {
+        use crate::tweaks::snapshot::{Attention, AttentionReason, NewEntry};
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshots = SnapshotStore::open(tmp.path().to_path_buf());
+        let c = corpus(vec![tweak("demo", vec![opt("A", StartupType::Manual)])]);
+        let seq = snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: crate::tweaks::snapshot::Captured::Values(Default::default()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        snapshots.open_drive("demo", seq).unwrap();
+        let record = Attention {
+            reason: AttentionReason::CrashResidue,
+            items: Vec::new(),
+        };
+        snapshots
+            .set_attention("demo", Some("test-guid"), record.clone())
+            .unwrap();
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(tmp.path().join("demo").join(format!("{:020}.json", seq.0)))
+            .unwrap();
+
+        release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045)
+            .expect_err("the mark cannot be settled");
+        assert_eq!(
+            snapshots.attention("demo", Some("test-guid")).unwrap(),
+            Some(record)
+        );
+        drop(held);
+        release_snapshot(&snapshots, "demo", &c, Some("test-guid"), 19045).expect("released");
         assert_eq!(
             snapshots.attention("demo", Some("test-guid")).unwrap(),
             None
