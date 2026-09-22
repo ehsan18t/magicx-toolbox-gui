@@ -59,7 +59,7 @@ use crate::tweaks::winver::WinVer;
 
 use super::context;
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnknownReason};
-use super::{lifecycle, user_facing_failure, Deps, Phase};
+use super::{failure_class, lifecycle, user_facing_failure, Deps, Phase};
 
 /// Every way this pipeline can fail (spec §8.1). Each abort point names exactly what stage it
 /// happened in, so a caller (and this file's own tests) can tell "aborted before touching
@@ -259,6 +259,7 @@ pub(super) fn attention_item(phase: Phase, error: &EngineError) -> AttentionItem
     AttentionItem {
         effect: effect.cloned(),
         kind,
+        class: failure_class(error),
         message: user_facing_failure(phase, error),
     }
 }
@@ -485,6 +486,7 @@ pub(crate) fn settle_verified(
     let item = AttentionItem {
         effect: None,
         kind: AttentionKind::Unrecorded,
+        class: None,
         message: format!(
             "the last operation on this tweak ended in a verified state, but the app could not \
              record that in its snapshot history: {e}"

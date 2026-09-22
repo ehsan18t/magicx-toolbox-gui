@@ -20,8 +20,8 @@ use crate::tweaks::engine::detect::{
 };
 use crate::tweaks::engine::revert::{self, RestoreOutcome};
 use crate::tweaks::engine::{
-    apply, lifecycle, log_elevated_failure, user_facing_failure, AllKinds, Deps, Phase, ProbeCache,
-    RealActions, RealProbe,
+    apply, failure_code, lifecycle, log_elevated_failure, user_facing_failure, AllKinds, Deps,
+    Phase, ProbeCache, RealActions, RealProbe,
 };
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol, Hive, Level,
@@ -286,10 +286,10 @@ fn map_engine_err(tweak_id: &str, phase: Phase, e: EngineError) -> Error {
     if !log_elevated_failure(tweak_id, &e) {
         log::error!("{phase} '{tweak_id}' failed: {e}");
     }
-    Error::Tweak(format!(
-        "{phase} failed: {}",
-        user_facing_failure(phase, &e)
-    ))
+    Error::TweakFailed {
+        code: failure_code(&e),
+        message: format!("{phase} failed: {}", user_facing_failure(phase, &e)),
+    }
 }
 
 /// The IPC boundary for the snapshot store: the log keeps its own text, which names the tweak, the
@@ -1542,6 +1542,101 @@ mod tests {
         }
     }
 
+    /// The frontend picks its advice from the code, so each class needs its own, while the message
+    /// stays exactly what it was.
+    #[test]
+    fn each_failure_class_serializes_its_own_code_beside_the_unchanged_message() {
+        use crate::services::elevation::{AcquireReason, OpFailureClass};
+        let drive = |source| EngineError::DriveFailed {
+            effect: EffectId("wu_sih".to_string()),
+            source,
+        };
+        let unknown = || KindError::ElevatedOutcomeUnknown(Level::Ti, "timed out".into());
+        let cases = [
+            (
+                drive(KindError::AccessDenied("k".into())),
+                "TWEAK_ACCESS_DENIED",
+            ),
+            (
+                drive(KindError::ElevatedOpFailed(
+                    Level::Ti,
+                    OpFailureClass::AccessDenied,
+                )),
+                "TWEAK_ACCESS_DENIED",
+            ),
+            (drive(KindError::NotFound("k".into())), "TWEAK_NOT_FOUND"),
+            (
+                EngineError::ResourceMissing(EffectId("wu_sih".into())),
+                "TWEAK_NOT_FOUND",
+            ),
+            (
+                drive(KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::Busy)),
+                "TWEAK_BUSY",
+            ),
+            (
+                drive(KindError::CouldNotAcquireElevation(
+                    Level::Ti,
+                    AcquireReason::TiServiceDisabled,
+                    "d".into(),
+                )),
+                "TWEAK_ELEVATION_UNAVAILABLE",
+            ),
+            (drive(unknown()), "TWEAK_OUTCOME_UNKNOWN"),
+            (
+                EngineError::VerifyMismatch {
+                    effect: EffectId("wu_sih".into()),
+                    expected: Value::Present(true),
+                    actual: Value::Present(false),
+                },
+                "TWEAK_VERIFY_MISMATCH",
+            ),
+            (
+                drive(KindError::ElevatedOpFailed(
+                    Level::Ti,
+                    OpFailureClass::InvalidData,
+                )),
+                "TWEAK_ENGINE_ERROR",
+            ),
+            (EngineError::Invalid("x".into()), "TWEAK_ENGINE_ERROR"),
+            // A rollback whose own step has an unknown outcome outranks the original's class.
+            (
+                EngineError::RollbackReport {
+                    original: Box::new(drive(KindError::AccessDenied("k".into()))),
+                    rollback_failures: vec![drive(unknown())],
+                    outcome_unknown: false,
+                    store: Vec::new(),
+                },
+                "TWEAK_OUTCOME_UNKNOWN",
+            ),
+            (
+                EngineError::RollbackReport {
+                    original: Box::new(drive(KindError::AccessDenied("k".into()))),
+                    rollback_failures: Vec::new(),
+                    outcome_unknown: false,
+                    store: Vec::new(),
+                },
+                "TWEAK_ACCESS_DENIED",
+            ),
+            (
+                EngineError::RestoreFailed {
+                    failures: vec![drive(KindError::ElevatedOpFailed(
+                        Level::Ti,
+                        OpFailureClass::NotFound,
+                    ))],
+                    store: Vec::new(),
+                },
+                "TWEAK_NOT_FOUND",
+            ),
+        ];
+        for (e, code) in cases {
+            let message = format!("apply failed: {}", user_facing_failure(Phase::Apply, &e));
+            let shown = serde_json::to_value(map_engine_err("wu_block", Phase::Apply, e))
+                .expect("this is what crosses the IPC boundary");
+            assert_eq!(shown["code"], code, "{shown}");
+            assert_eq!(shown["message"], message.as_str(), "{shown}");
+        }
+    }
+
     /// The snapshot store's own text names the tweak, the seq and the action; none of it crosses.
     #[test]
     fn a_snapshot_failure_reaches_the_frontend_without_the_text_behind_it() {
@@ -1643,6 +1738,7 @@ mod tests {
                     items: vec![AttentionItem {
                         effect: None,
                         kind: AttentionKind::Store,
+                        class: None,
                         message: "the clear failed, then the last entry was consumed".into(),
                     }],
                 },

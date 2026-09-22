@@ -17,6 +17,7 @@ mod level;
 mod ti_elevation;
 
 pub use broker::{
-    malformed_argv_exit_code, run_broker, run_ops, BrokerOp, BrokerOpError, OpFailureClass,
+    malformed_argv_exit_code, run_broker, run_ops, AcquireReason, BrokerOp, BrokerOpError,
+    OpFailureClass,
 };
 pub use level::Elevation;

@@ -12,6 +12,7 @@
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import {
+    elevationStore,
     keepCurrentState,
     pendingChangesStore,
     refreshTweakStatus,
@@ -20,7 +21,7 @@
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
   import { errorMessage, isAppExiting } from "$lib/utils/error";
-  import type { EntrySummary, TweakEffectOption } from "$lib/types";
+  import type { AttentionItem, EntrySummary, TweakEffectOption } from "$lib/types";
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
 
   const isOpen = $derived(tweakDetailsModalStore.isOpen);
@@ -99,6 +100,13 @@
       cancelled = true;
     };
   });
+
+  function attentionHint(item: AttentionItem): string {
+    if (item.kind === "no_undo") return "(this one cannot be retried)";
+    if (item.class === "busy") return "(retrying later may succeed)";
+    if (item.class === "access_denied" && elevationStore.level === "User") return "(restart as administrator to retry)";
+    return "";
+  }
 
   function entryValidity(entry: EntrySummary): string {
     return entry.validity === "Valid" ? "Valid" : `Invalid · ${entry.validity.Invalid}`;
@@ -306,7 +314,7 @@
                     <span>
                       {#if item.effect}<span class="font-mono text-foreground">{item.effect}</span>:{/if}
                       {item.message}
-                      {#if item.kind === "no_undo"}(this one cannot be retried){/if}
+                      {attentionHint(item)}
                     </span>
                   </li>
                 {/each}

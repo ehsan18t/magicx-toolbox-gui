@@ -161,6 +161,7 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
         .then(|| AttentionItem {
             effect: None,
             kind: AttentionKind::CrashResidue,
+            class: None,
             message: "a change to this tweak was never recorded as finished, so its settings may \
                       be only partly changed; the app may have stopped mid-change"
                 .to_string(),
@@ -172,6 +173,7 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
     let steps = steps.into_iter().map(|id| AttentionItem {
         effect: Some(id.clone()),
         kind: AttentionKind::CrashResidue,
+        class: None,
         message: format!(
             "undoing or re-running action '{id}' was never recorded as finished, so it may be \
              only partly done"
@@ -184,6 +186,7 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
         .map(|row| AttentionItem {
             effect: Some(row.action_id.clone()),
             kind: AttentionKind::CrashResidue,
+            class: None,
             message: format!(
                 "action '{}' was planned but never confirmed complete, so it may or may not have \
                  run: the app stopped mid-apply",
@@ -375,6 +378,7 @@ mod tests {
             items: vec![AttentionItem {
                 effect: Some(EffectId("s1".into())),
                 kind: AttentionKind::Drive,
+                class: None,
                 message: "s1 could not be driven".into(),
             }],
         }
@@ -421,6 +425,7 @@ mod tests {
             items: vec![AttentionItem {
                 effect: None,
                 kind: AttentionKind::Unrecorded,
+                class: None,
                 message: "could not record it".into(),
             }],
         };

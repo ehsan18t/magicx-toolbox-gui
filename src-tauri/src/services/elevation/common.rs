@@ -4,6 +4,7 @@
 //! overwrites the thread's last-error, so reading it afterwards reports the close, not the call
 //! that actually failed.
 
+use super::broker::AcquireReason;
 use crate::error::Error;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
@@ -37,7 +38,7 @@ const WAIT_TIMEOUT: u32 = 0x0000_0102;
 #[derive(Debug)]
 pub(super) enum SpawnError {
     /// Failed before `CreateProcessW` created a child: nothing ran.
-    NoChild(Error),
+    NoChild(AcquireReason, Error),
     /// A child was created, so ops may have run.
     ChildRan(Error),
 }
@@ -69,7 +70,7 @@ pub(super) fn empty_process_info() -> PROCESS_INFORMATION {
 
 /// Enable `SeDebugPrivilege` for the current process. Required to open winlogon (for its SYSTEM
 /// token) and the TrustedInstaller service process (to spoof it as a parent).
-pub(super) fn enable_debug_privilege() -> Result<(), Error> {
+pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
     // SAFETY: standard OpenProcessToken/LookupPrivilegeValueW/AdjustTokenPrivileges sequence; the
     // token handle is closed on every path and `tp` is fully initialized before use.
     unsafe {
@@ -80,13 +81,16 @@ pub(super) fn enable_debug_privilege() -> Result<(), Error> {
             &mut token,
         ) == FALSE
         {
-            return Err(win_err("OpenProcessToken"));
+            return Err(spawn_failed(win_err("OpenProcessToken")));
         }
 
         let privilege_name = to_wide_string("SeDebugPrivilege");
         let mut luid: LUID = std::mem::zeroed();
         if LookupPrivilegeValueW(ptr::null(), privilege_name.as_ptr(), &mut luid) == FALSE {
-            return Err(close_then(token, win_err("LookupPrivilegeValue")));
+            return Err(spawn_failed(close_then(
+                token,
+                win_err("LookupPrivilegeValue"),
+            )));
         }
 
         let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
@@ -97,21 +101,29 @@ pub(super) fn enable_debug_privilege() -> Result<(), Error> {
         };
 
         if AdjustTokenPrivileges(token, FALSE, &tp, 0, ptr::null_mut(), ptr::null_mut()) == FALSE {
-            return Err(close_then(token, win_err("AdjustTokenPrivileges")));
+            return Err(spawn_failed(close_then(
+                token,
+                win_err("AdjustTokenPrivileges"),
+            )));
         }
 
         // AdjustTokenPrivileges succeeds even when it granted nothing; only the last-error says so.
         let partial = GetLastError() == ERROR_NOT_ALL_ASSIGNED;
         CloseHandle(token);
         if partial {
-            return Err(Error::WindowsApi(
-                "SeDebugPrivilege not available, admin rights required".to_string(),
+            return Err(SpawnError::NoChild(
+                AcquireReason::DebugPrivilegeStripped,
+                Error::WindowsApi("SeDebugPrivilege not available, admin rights required".into()),
             ));
         }
 
         log::trace!("Enabled SeDebugPrivilege");
         Ok(())
     }
+}
+
+pub(super) fn spawn_failed(e: Error) -> SpawnError {
+    SpawnError::NoChild(AcquireReason::SpawnFailed, e)
 }
 
 /// Wrap the current thread's last Win32 error. Call this BEFORE any `CloseHandle`.

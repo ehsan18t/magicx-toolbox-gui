@@ -21,9 +21,10 @@ use windows_sys::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTUPINFOEXW,
 };
 
+use super::broker::AcquireReason;
 use super::common::{
-    empty_process_info, enable_debug_privilege, hidden_startup_info, to_wide_string, wait_and_reap,
-    SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
+    empty_process_info, enable_debug_privilege, hidden_startup_info, spawn_failed, to_wide_string,
+    wait_and_reap, SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
 };
 
 /// dwCurrentState values we distinguish while waiting for the service.
@@ -32,13 +33,14 @@ const SERVICE_START_PENDING: u32 = 2;
 const SERVICE_RUNNING: u32 = 4;
 
 const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
+const ERROR_SERVICE_DISABLED: u32 = 1058;
 
 /// Turn the Win32 codes this path actually produces into something a support engineer can act on.
 /// Anything else keeps its bare number, which is still better than nothing.
 fn describe_win32(code: u32) -> String {
     let name = match code {
         5 => "ERROR_ACCESS_DENIED",
-        1058 => "ERROR_SERVICE_DISABLED",
+        ERROR_SERVICE_DISABLED => "ERROR_SERVICE_DISABLED",
         1060 => "ERROR_SERVICE_DOES_NOT_EXIST",
         1061 => "ERROR_SERVICE_CANNOT_ACCEPT_CTRL",
         1062 => "ERROR_SERVICE_NOT_ACTIVE",
@@ -136,10 +138,13 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             if err != ERROR_SERVICE_ALREADY_RUNNING {
                 CloseServiceHandle(service);
                 CloseServiceHandle(scm);
-                return Err(Error::ServiceControl(format!(
-                    "Failed to start the TrustedInstaller service: {}",
-                    describe_win32(err)
-                )));
+                return Err(Error::win32(
+                    format!(
+                        "Failed to start the TrustedInstaller service: {}",
+                        describe_win32(err)
+                    ),
+                    err,
+                ));
             }
         }
 
@@ -192,6 +197,21 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             "The TrustedInstaller service did not start within 10s ({detail})"
         )))
     }
+}
+
+fn ti_service_failure(e: Error) -> SpawnError {
+    let reason = match e {
+        Error::Win32 {
+            code: ERROR_SERVICE_DISABLED,
+            ..
+        } => AcquireReason::TiServiceDisabled,
+        _ => AcquireReason::TiServiceNotStarted,
+    };
+    SpawnError::NoChild(reason, e)
+}
+
+fn unverified(e: Error) -> SpawnError {
+    SpawnError::NoChild(AcquireReason::TiProcessUnverified, e)
 }
 
 /// The image path of an open process handle, for identity verification.
@@ -268,10 +288,11 @@ fn foreign_image(image: &str, windows_dir: &str) -> String {
 /// Open TrustedInstaller with `PROCESS_CREATE_PROCESS` for the parent spoof; the caller owns the
 /// handle. The SCM's pid can be recycled by now (the service stops when idle), so once the open
 /// handle pins it, its image must match and the SCM must still report that pid running.
-fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
+fn get_trusted_installer_handle() -> Result<HANDLE, SpawnError> {
     enable_debug_privilege()?;
-    let windows_dir =
-        String::from_utf16_lossy(&system_folder(GetSystemWindowsDirectoryW, "Windows")?);
+    let windows_dir = String::from_utf16_lossy(
+        &system_folder(GetSystemWindowsDirectoryW, "Windows").map_err(spawn_failed)?,
+    );
     let windows_dir = unprefixed(&windows_dir).trim_end_matches('\\');
     let ti_image = ti_image_path(windows_dir);
     // An idle-stop and restart between the start and the check moves the pid: retry once.
@@ -279,7 +300,8 @@ fn get_trusted_installer_handle() -> Result<HANDLE, Error> {
         Ok(handle) => Ok(handle),
         Err(mismatch) => {
             log::warn!("{mismatch}; retrying once");
-            open_trusted_installer(&ti_image, windows_dir)?.map_err(Error::ServiceControl)
+            open_trusted_installer(&ti_image, windows_dir)?
+                .map_err(|mismatch| unverified(Error::ServiceControl(mismatch)))
         }
     }
 }
@@ -342,8 +364,8 @@ fn service_pid_mismatch(pinned: u32, state: u32, current: u32) -> Option<String>
 fn open_trusted_installer(
     ti_image: &str,
     windows_dir: &str,
-) -> Result<Result<HANDLE, String>, Error> {
-    let pid = start_trusted_installer_service()?;
+) -> Result<Result<HANDLE, String>, SpawnError> {
+    let pid = start_trusted_installer_service().map_err(ti_service_failure)?;
 
     // SAFETY: `pid` may be stale: the open handle pins it, and its identity is verified through
     // that same handle before it is returned. Closed on every failure path, else the caller's.
@@ -354,10 +376,10 @@ fn open_trusted_installer(
             pid,
         );
         if handle.is_null() {
-            return Err(Error::ServiceControl(format!(
+            return Err(unverified(Error::ServiceControl(format!(
                 "Failed to open the TrustedInstaller process (pid {pid}): {}",
                 describe_win32(GetLastError())
-            )));
+            ))));
         }
 
         match process_image_path(handle) {
@@ -366,18 +388,18 @@ fn open_trusted_installer(
                 CloseHandle(handle);
                 let image = foreign_image(&path, windows_dir);
                 log::warn!("The pid the SCM reported for TrustedInstaller ({pid}) runs {image}");
-                return Err(Error::ServiceControl(format!(
+                return Err(unverified(Error::ServiceControl(format!(
                     "pid {pid} runs {image}, not TrustedInstaller: the service stopped and its \
                      pid was reused, or it runs from a non-default path"
-                )));
+                ))));
             }
             None => {
                 let err = GetLastError();
                 CloseHandle(handle);
-                return Err(Error::ServiceControl(format!(
+                return Err(unverified(Error::ServiceControl(format!(
                     "Could not verify that pid {pid} is TrustedInstaller: {}",
                     describe_win32(err)
-                )));
+                ))));
             }
         }
 
@@ -391,7 +413,7 @@ fn open_trusted_installer(
             }
             Err(e) => {
                 CloseHandle(handle);
-                Err(e)
+                Err(unverified(e))
             }
         }
     }
@@ -401,14 +423,9 @@ fn open_trusted_installer(
 /// wait for it. The broker's TI launcher; the command line is built by
 /// `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, SpawnError> {
-    // Not the command line: it holds the request and response temp paths, and the response path
-    // is guarded only by being unguessable; anyone who can read the log directory reads the log.
-    log::info!("Spawning the broker as TrustedInstaller");
-
-    let mut work_dir =
-        system_folder(GetSystemDirectoryW, "System32").map_err(SpawnError::NoChild)?;
+    let mut work_dir = system_folder(GetSystemDirectoryW, "System32").map_err(spawn_failed)?;
     work_dir.push(0);
-    let ti_handle = get_trusted_installer_handle().map_err(SpawnError::NoChild)?;
+    let ti_handle = get_trusted_installer_handle()?;
     let mut command_wide = to_wide_string(command_line);
 
     // SAFETY: `ti_handle` closes on every path once `create` returns. The usize-aligned list
@@ -493,7 +510,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
 
         let created = create();
         CloseHandle(ti_handle);
-        let process_info = created.map_err(SpawnError::NoChild)?;
+        let process_info = created.map_err(spawn_failed)?;
         wait_and_reap(
             &process_info,
             "TrustedInstaller command",

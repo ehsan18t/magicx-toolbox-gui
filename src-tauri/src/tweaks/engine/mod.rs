@@ -17,7 +17,9 @@ pub mod revert;
 use apply::EngineError;
 
 use crate::services::appx_index::AppxIndex;
-use crate::services::elevation::{self, BrokerOp, BrokerOpError, Elevation, OpFailureClass};
+use crate::services::elevation::{
+    self, AcquireReason, BrokerOp, BrokerOpError, Elevation, OpFailureClass,
+};
 use crate::tweaks::kinds::{
     action::ActionKind,
     firewall::FirewallKind,
@@ -158,9 +160,9 @@ impl EffectKind for AllKinds {
             // Acquisition failed, so no op ran. Attributing it to the first item is the truthful
             // choice: it is where the batch stopped, and the error type still says plainly that
             // nothing was attempted.
-            BrokerOpError::CouldNotAcquire(err) => BatchFailure {
+            BrokerOpError::CouldNotAcquire(reason, err) => BatchFailure {
                 index: 0,
-                error: KindError::CouldNotAcquireElevation(Level::Ti, err.to_string()),
+                error: KindError::CouldNotAcquireElevation(Level::Ti, reason, err.to_string()),
                 completed: 0,
             },
             ref failed @ BrokerOpError::OpFailed { ref class, .. } => {
@@ -202,8 +204,8 @@ fn drive_via_broker(level: Level, ops: Vec<BrokerOp>) -> Result<(), KindError> {
         return Ok(());
     }
     elevation::run_ops(to_elevation(level), ops).map_err(|e| match e {
-        BrokerOpError::CouldNotAcquire(err) => {
-            KindError::CouldNotAcquireElevation(level, err.to_string())
+        BrokerOpError::CouldNotAcquire(reason, err) => {
+            KindError::CouldNotAcquireElevation(level, reason, err.to_string())
         }
         BrokerOpError::OpFailed { class, .. } => KindError::ElevatedOpFailed(level, class),
         BrokerOpError::Indeterminate(err) => {
@@ -269,9 +271,9 @@ fn collect_elevated_failures(tweak_id: &str, e: &EngineError, during: &str, out:
 /// case carries its class, which is the parent's own value and names no resource.
 fn elevated_failure(e: &KindError) -> Option<(Level, String)> {
     match e {
-        KindError::CouldNotAcquireElevation(level, _) => Some((
+        KindError::CouldNotAcquireElevation(level, reason, _) => Some((
             *level,
-            "could not acquire the elevated child, so nothing ran".to_owned(),
+            format!("could not acquire the elevated child ({reason}), so nothing ran"),
         )),
         KindError::ElevatedOpFailed(level, class) => Some((
             *level,
@@ -387,11 +389,23 @@ pub fn user_facing_failure(phase: Phase, e: &EngineError) -> String {
                 Phase::Apply => "the tweak was rolled back",
                 Phase::Restore => "the restore was undone",
             };
+            let unrecorded = store
+                .iter()
+                .any(|f| matches!(f, EngineError::AttentionWrite(_)));
             let mut after = if !rollback_failures.is_empty() {
-                format!(
+                let mut after = format!(
                     "{undone}, but {}",
                     needing_attention(rollback_failures.len())
-                )
+                );
+                // No record holds the items, so the error is the only place they can be named.
+                if unrecorded {
+                    let named: Vec<String> = rollback_failures
+                        .iter()
+                        .map(|f| user_facing_failure(phase, f))
+                        .collect();
+                    after.push_str(&format!(" ({})", named.join("; ")));
+                }
+                after
             } else if *outcome_unknown {
                 format!("{undone}, but an elevated step's outcome cannot be proven either way")
             } else {
@@ -404,6 +418,129 @@ pub fn user_facing_failure(phase: Phase, e: &EngineError) -> String {
                 after.push_str(&user_facing_failure(phase, failure));
             }
             format!("{}; {after}", user_facing_failure(phase, original))
+        }
+    }
+}
+
+/// Why `e` failed, when a class applies: what a Needs Attention item names beside its kind.
+pub(crate) fn failure_class(e: &EngineError) -> Option<OpFailureClass> {
+    match e {
+        EngineError::ResourceMissing(_) | EngineError::CaptureMissingRequired(_) => {
+            Some(OpFailureClass::NotFound)
+        }
+        _ => kind_source(e).and_then(kind_class),
+    }
+}
+
+/// The kind failure behind `e`, for every shape that wraps one.
+fn kind_source(e: &EngineError) -> Option<&KindError> {
+    match e {
+        EngineError::CaptureFailed { source, .. }
+        | EngineError::DriveFailed { source, .. }
+        | EngineError::ActionFailed { source, .. }
+        | EngineError::Claim {
+            source: ClaimsError::Kind(source),
+            ..
+        } => Some(source),
+        _ => None,
+    }
+}
+
+fn kind_class(e: &KindError) -> Option<OpFailureClass> {
+    match e {
+        KindError::AccessDenied(_) => Some(OpFailureClass::AccessDenied),
+        KindError::NotFound(_) | KindError::ResourceMissing(_) => Some(OpFailureClass::NotFound),
+        KindError::ElevatedOpFailed(_, class) => Some(*class),
+        _ => None,
+    }
+}
+
+/// What the user can do about a failed apply or restore, serialized as the IPC error's `code` so
+/// the frontend picks its advice without parsing the message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureCode {
+    AccessDenied,
+    NotFound,
+    Busy,
+    ElevationUnavailable,
+    OutcomeUnknown,
+    VerifyMismatch,
+    Other,
+}
+
+impl FailureCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AccessDenied => "TWEAK_ACCESS_DENIED",
+            Self::NotFound => "TWEAK_NOT_FOUND",
+            Self::Busy => "TWEAK_BUSY",
+            Self::ElevationUnavailable => "TWEAK_ELEVATION_UNAVAILABLE",
+            Self::OutcomeUnknown => "TWEAK_OUTCOME_UNKNOWN",
+            Self::VerifyMismatch => "TWEAK_VERIFY_MISMATCH",
+            Self::Other => "TWEAK_ENGINE_ERROR",
+        }
+    }
+}
+
+/// An unknown outcome anywhere in a report outranks its original: the machine may have changed.
+pub fn failure_code(e: &EngineError) -> FailureCode {
+    let first_of = |errors: &mut dyn Iterator<Item = &EngineError>| {
+        let codes: Vec<FailureCode> = errors.map(failure_code).collect();
+        if codes.contains(&FailureCode::OutcomeUnknown) {
+            FailureCode::OutcomeUnknown
+        } else {
+            codes.first().copied().unwrap_or(FailureCode::Other)
+        }
+    };
+    match e {
+        EngineError::RollbackReport {
+            original,
+            rollback_failures,
+            ..
+        } => first_of(&mut std::iter::once(original.as_ref()).chain(rollback_failures)),
+        EngineError::RestoreFailed { failures, .. } => first_of(&mut failures.iter()),
+        EngineError::VerifyMismatch { .. }
+        | EngineError::ActionVerifyMismatch { .. }
+        | EngineError::Claim {
+            source: ClaimsError::VerifyMismatch { .. },
+            ..
+        } => FailureCode::VerifyMismatch,
+        _ => match kind_source(e) {
+            Some(KindError::CouldNotAcquireElevation(..)) => FailureCode::ElevationUnavailable,
+            Some(KindError::ElevatedOutcomeUnknown(..)) => FailureCode::OutcomeUnknown,
+            _ => match failure_class(e) {
+                Some(OpFailureClass::AccessDenied) => FailureCode::AccessDenied,
+                Some(OpFailureClass::NotFound) => FailureCode::NotFound,
+                Some(OpFailureClass::Busy) => FailureCode::Busy,
+                Some(OpFailureClass::InvalidData | OpFailureClass::Failed) | None => {
+                    FailureCode::Other
+                }
+            },
+        },
+    }
+}
+
+/// One plain sentence per acquisition failure, for the user rather than the log.
+fn acquire_failure(reason: AcquireReason) -> &'static str {
+    match reason {
+        AcquireReason::DebugPrivilegeStripped => {
+            "a policy on this PC removes a privilege that TrustedInstaller changes need"
+        }
+        AcquireReason::TiServiceDisabled => {
+            "the Windows Modules Installer (TrustedInstaller) service is disabled on this PC"
+        }
+        AcquireReason::TiServiceNotStarted => {
+            "the Windows Modules Installer (TrustedInstaller) service would not start"
+        }
+        AcquireReason::TiProcessUnverified => {
+            "the TrustedInstaller process could not be verified, so it was not used"
+        }
+        AcquireReason::SpawnFailed => "Windows refused to start the TrustedInstaller helper",
+        AcquireReason::RequestNotDelivered => {
+            "the app could not hand its request to the TrustedInstaller helper"
+        }
+        AcquireReason::DifferentBuild => {
+            "the TrustedInstaller helper is a different build of the app; restart the app and try again"
         }
     }
 }
@@ -421,9 +558,10 @@ fn kind_failure(e: &KindError) -> String {
         KindError::UnsupportedLevel(level) => {
             format!("{level} elevation is not routed by this build")
         }
-        KindError::CouldNotAcquireElevation(level, _) => {
-            format!("could not acquire {level} elevation, so nothing ran")
-        }
+        KindError::CouldNotAcquireElevation(level, reason, _) => format!(
+            "could not acquire {level} elevation, so nothing ran ({})",
+            acquire_failure(*reason)
+        ),
         KindError::ElevatedOpFailed(level, class) => {
             format!("refused at {level} elevation: {class}")
         }
@@ -602,7 +740,11 @@ mod tests {
     fn every_elevated_drive_failure_is_named_by_tweak_effect_level_and_classification() {
         for (source, classification) in [
             (
-                KindError::CouldNotAcquireElevation(Level::Ti, HOSTILE_DETAIL.into()),
+                KindError::CouldNotAcquireElevation(
+                    Level::Ti,
+                    AcquireReason::SpawnFailed,
+                    HOSTILE_DETAIL.into(),
+                ),
                 "nothing ran",
             ),
             (
@@ -629,6 +771,61 @@ mod tests {
             assert!(line.contains("Ti"), "{line}");
             assert!(line.contains(classification), "{line}");
             assert_no_detail(line);
+        }
+    }
+
+    /// Each way acquisition fails reaches the log and the user as itself, and still as "nothing ran".
+    #[test]
+    fn each_acquisition_reason_is_named_in_the_log_line_and_the_user_text() {
+        use AcquireReason as R;
+        for (reason, logged, shown_says) in [
+            (
+                R::DebugPrivilegeStripped,
+                "SeDebugPrivilege",
+                "a policy on this PC removes a privilege that TrustedInstaller changes need",
+            ),
+            (
+                R::TiServiceDisabled,
+                "service is disabled",
+                "service is disabled on this PC",
+            ),
+            (
+                R::TiServiceNotStarted,
+                "service could not be started",
+                "service would not start",
+            ),
+            (
+                R::TiProcessUnverified,
+                "could not be verified",
+                "could not be verified",
+            ),
+            (R::SpawnFailed, "could not be started", "Windows refused"),
+            (
+                R::RequestNotDelivered,
+                "request could not be handed",
+                "could not hand its request",
+            ),
+            (R::DifferentBuild, "different build", "restart the app"),
+        ] {
+            let e = EngineError::DriveFailed {
+                effect: EffectId("wu_sih".into()),
+                source: KindError::CouldNotAcquireElevation(
+                    Level::Ti,
+                    reason,
+                    HOSTILE_DETAIL.into(),
+                ),
+            };
+            let lines = elevated_failure_lines("wu_block", &e);
+            let [line] = &lines[..] else {
+                panic!("one line per failure, got {lines:?}");
+            };
+            assert!(line.contains(logged), "{line}");
+            assert!(line.contains("nothing ran"), "{line}");
+            assert_no_detail(line);
+            let shown = user_facing_failure(Phase::Apply, &e);
+            assert!(shown.contains(shown_says), "{shown}");
+            assert!(shown.contains("nothing ran"), "{shown}");
+            assert_no_detail(&shown);
         }
     }
 
@@ -860,6 +1057,78 @@ mod tests {
         }
     }
 
+    /// With no record written, the error is the only place the rollback's own failures can reach
+    /// the user, so each is named there.
+    #[test]
+    fn an_unrecorded_rollback_names_each_failure_in_the_error() {
+        let drive = |effect: &str, source| EngineError::DriveFailed {
+            effect: EffectId(effect.into()),
+            source,
+        };
+        let report = |store| EngineError::RollbackReport {
+            original: Box::new(drive(
+                "wu_sih",
+                KindError::AccessDenied(HOSTILE_DETAIL.into()),
+            )),
+            rollback_failures: vec![drive(
+                "wu_orch",
+                KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::Busy),
+            )],
+            outcome_unknown: false,
+            store,
+        };
+        let unrecorded = user_facing_failure(
+            Phase::Apply,
+            &report(vec![EngineError::AttentionWrite(
+                crate::tweaks::snapshot::SnapshotError::ExeDir,
+            )]),
+        );
+        assert!(unrecorded.contains("wu_sih"), "{unrecorded}");
+        assert!(unrecorded.contains("wu_orch"), "{unrecorded}");
+        assert!(unrecorded.contains("busy or pending"), "{unrecorded}");
+        assert_no_detail(&unrecorded);
+
+        let recorded = user_facing_failure(Phase::Apply, &report(Vec::new()));
+        assert!(!recorded.contains("wu_orch"), "{recorded}");
+    }
+
+    /// The kind says which step; the class says why, so the item can read access denied or busy.
+    #[test]
+    fn an_attention_item_carries_the_class_of_the_failure() {
+        use crate::tweaks::snapshot::AttentionKind;
+        let elevated = |c| KindError::ElevatedOpFailed(Level::Ti, c);
+        for (source, class) in [
+            (elevated(OpFailureClass::Busy), Some(OpFailureClass::Busy)),
+            (
+                elevated(OpFailureClass::AccessDenied),
+                Some(OpFailureClass::AccessDenied),
+            ),
+            (
+                elevated(OpFailureClass::NotFound),
+                Some(OpFailureClass::NotFound),
+            ),
+            (
+                KindError::AccessDenied(HOSTILE_DETAIL.into()),
+                Some(OpFailureClass::AccessDenied),
+            ),
+            (
+                KindError::NotFound(HOSTILE_DETAIL.into()),
+                Some(OpFailureClass::NotFound),
+            ),
+            (KindError::ActionFailed(1), None),
+        ] {
+            let item = apply::attention_item(
+                Phase::Apply,
+                &EngineError::DriveFailed {
+                    effect: EffectId("wu_sih".into()),
+                    source,
+                },
+            );
+            assert_eq!(item.kind, AttentionKind::Drive);
+            assert_eq!(item.class, class, "{}", item.message);
+        }
+    }
+
     /// A restore has no rollback phase, so it never borrows apply's word for one, and neither
     /// phase counts "item(s)" at the user.
     #[test]
@@ -904,7 +1173,11 @@ mod tests {
     fn user_copy_never_prints_the_internal_level_name() {
         for source in [
             KindError::ElevatedOpFailed(Level::Ti, OpFailureClass::Busy),
-            KindError::CouldNotAcquireElevation(Level::Ti, HOSTILE_DETAIL.into()),
+            KindError::CouldNotAcquireElevation(
+                Level::Ti,
+                AcquireReason::SpawnFailed,
+                HOSTILE_DETAIL.into(),
+            ),
             KindError::ElevatedOutcomeUnknown(Level::Ti, HOSTILE_DETAIL.into()),
             KindError::UnsupportedLevel(Level::Ti),
         ] {

@@ -671,9 +671,11 @@ mod tests {
                 BatchFail::OpFailed => {
                     KindError::Backend("mock: an op inside the child failed".into())
                 }
-                BatchFail::CouldNotAcquire => {
-                    KindError::CouldNotAcquireElevation(Level::Ti, "mock: TI unavailable".into())
-                }
+                BatchFail::CouldNotAcquire => KindError::CouldNotAcquireElevation(
+                    Level::Ti,
+                    crate::services::elevation::AcquireReason::TiServiceNotStarted,
+                    "mock: TI unavailable".into(),
+                ),
             }
         }
     }
@@ -1928,7 +1930,7 @@ mod tests {
                 only,
                 EngineError::DriveFailed {
                     effect,
-                    source: KindError::CouldNotAcquireElevation(Level::Ti, _),
+                    source: KindError::CouldNotAcquireElevation(Level::Ti, ..),
                 } if effect.0 == "m1"
             ),
             "got {only:?}"

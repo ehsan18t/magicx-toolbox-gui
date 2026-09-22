@@ -8,9 +8,9 @@
 
 import * as api from "$lib/api/tweaks";
 import type { PendingChange } from "$lib/types";
-import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { errorMessage, isAppExiting, tweakFailureAdvice } from "$lib/utils/error";
 import { toastStore } from "./toast.svelte";
-import { tweaksStore } from "./tweaksData.svelte";
+import { elevationStore, tweaksStore } from "./tweaksData.svelte";
 import { errorStore, loadingStore } from "./tweaksLoading.svelte";
 import { pendingChangesStore, pendingRebootStore } from "./tweaksPending.svelte";
 
@@ -83,6 +83,13 @@ export async function refreshTweakStatus(tweakId: string): Promise<StatusRead> {
   }
 }
 
+/** The backend's message, plus what to do about it when its code calls for more. */
+function failureText(error: unknown): string {
+  const message = errorMessage(error);
+  const advice = tweakFailureAdvice(error, elevationStore.level);
+  return advice ? `${message}. ${advice}` : message;
+}
+
 /**
  * Apply a tweak's option by LABEL. The command returns the fresh post-op status,
  * which we adopt directly (no re-fetch / no re-scan).
@@ -116,7 +123,7 @@ async function applyTweakResult(
     }
     return { status: "ok" };
   } catch (error) {
-    const message = errorMessage(error);
+    const message = failureText(error);
     // An exit refusal touched nothing, so the tweak's status and error are left as they were.
     if (isAppExiting(error)) {
       if (showToast) toastStore.warning(message, { tweakName });
@@ -181,7 +188,7 @@ async function revertTweakResult(
     }
     return { status: "ok" };
   } catch (error) {
-    const message = errorMessage(error);
+    const message = failureText(error);
     // An exit refusal touched nothing: not a failed rollback, so no Needs Attention.
     if (isAppExiting(error)) {
       if (showToast) toastStore.warning(message, { tweakName });

@@ -56,6 +56,13 @@ pub enum Error {
     #[error("{0}")]
     Tweak(String),
 
+    /// A failed apply or restore, with a code per class so the frontend never parses the message.
+    #[error("{message}")]
+    TweakFailed {
+        code: crate::tweaks::engine::FailureCode,
+        message: String,
+    },
+
     /// `apply_tweak`/`restore_tweak` refused a tweak that is unavailable for the current app
     /// elevation level or SID state (spec §9) -- a typed refusal, never a silent no-op.
     #[error("tweak unavailable: {0}")]
@@ -123,6 +130,7 @@ impl Error {
             Error::ValidationError(_) => "VALIDATION_FAILED",
             Error::Win32 { .. } => "WINDOWS_API_ERROR",
             Error::Tweak(_) => "TWEAK_ENGINE_ERROR",
+            Error::TweakFailed { code, .. } => code.as_str(),
             Error::TweakUnavailable(_) => "TWEAK_UNAVAILABLE",
             Error::AppExiting(_) => "APP_EXITING",
         }

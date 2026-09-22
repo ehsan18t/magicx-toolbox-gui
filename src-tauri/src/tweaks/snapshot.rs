@@ -6,6 +6,7 @@
 //! entry that holds it, by the operation that accounted for that row.
 //! Nothing here deletes an invalid entry, or a record this machine and build do not own.
 
+use crate::services::elevation::OpFailureClass;
 use crate::tweaks::model::{Corpus, EffectId, Value};
 use crate::tweaks::validate::{option_unavailable, Milestone};
 use serde::{Deserialize, Serialize};
@@ -98,6 +99,9 @@ pub struct AttentionItem {
     #[serde(default)]
     pub effect: Option<EffectId>,
     pub kind: AttentionKind,
+    /// Why the step failed, when the failure was classified. Absent in records from older builds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<OpFailureClass>,
     pub message: String,
 }
 
@@ -806,6 +810,7 @@ fn unusable_record(message: &str) -> Attention {
         items: vec![AttentionItem {
             effect: None,
             kind: AttentionKind::Store,
+            class: None,
             message: message.to_string(),
         }],
     }
@@ -1373,6 +1378,7 @@ mod tests {
             items: vec![AttentionItem {
                 effect: Some(EffectId("eff1".into())),
                 kind: AttentionKind::OutcomeUnknown,
+                class: None,
                 message: "the elevated step's outcome is unknown".into(),
             }],
         }
@@ -1398,6 +1404,28 @@ mod tests {
             .expect("the older entry is still valid");
         assert_eq!(head.seq, Seq(3));
         assert_eq!(s.attention("demo", Some(GUID)).unwrap(), None);
+    }
+
+    /// A record written before items carried a class still loads, as classless; a class survives
+    /// a round trip.
+    #[test]
+    fn a_record_without_a_failure_class_still_loads() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        fs::create_dir_all(&dir).unwrap();
+        let json = format!(
+            r#"{{"schema_version":{SCHEMA_VERSION},"machine_guid":"{GUID}","tweak_id":"demo","timestamp":"t","attention":{{"reason":"apply_failed","items":[{{"effect":"eff1","kind":"drive","message":"m"}}]}}}}"#
+        );
+        fs::write(dir.join(ATTENTION_FILE), json).unwrap();
+        let s = store(tmp.path());
+        let loaded = s.attention("demo", Some(GUID)).unwrap().expect("loads");
+        assert_eq!(loaded.items[0].class, None);
+
+        let mut classed = attention();
+        classed.items[0].class = Some(OpFailureClass::Busy);
+        s.set_attention("demo", Some(GUID), classed.clone())
+            .unwrap();
+        assert_eq!(s.attention("demo", Some(GUID)).unwrap(), Some(classed));
     }
 
     /// ADR-0002: every entry release deletes a file the mark must outlive.

@@ -297,12 +297,27 @@ export type AttentionKind =
   | "unrecorded"
   | "other";
 
+/** Why a step failed (serde: `OpFailureClass`). */
+export type FailureClass = "access_denied" | "not_found" | "invalid_data" | "busy" | "failed";
+
 /** One step the failed operation could not verify. */
 export interface AttentionItem {
   effect: string | null;
   kind: AttentionKind;
+  /** Absent when the failure was not classified, or the record predates classes. */
+  class?: FailureClass;
   message: string;
 }
+
+/** `code` of a failed apply or restore (`Error::TweakFailed`), beside its unchanged `message`. */
+export type TweakFailureCode =
+  | "TWEAK_ACCESS_DENIED"
+  | "TWEAK_NOT_FOUND"
+  | "TWEAK_BUSY"
+  | "TWEAK_ELEVATION_UNAVAILABLE"
+  | "TWEAK_OUTCOME_UNKNOWN"
+  | "TWEAK_VERIFY_MISMATCH"
+  | "TWEAK_ENGINE_ERROR";
 
 /**
  * A tweak's Needs Attention record (ADR-0001/0002). Kept per tweak rather than per snapshot entry,

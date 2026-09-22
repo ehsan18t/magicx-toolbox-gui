@@ -274,9 +274,9 @@ fn parse_wire<T: DeserializeOwned>(
 const DIFFERENT_BUILD: &str =
     "the elevated helper is a different build of the app; restart the app and try again";
 
-// Transport-failure exit codes, the child's only channel; `describe_broker_exit` names each.
-// A nothing-ran code must be a whole 32-bit value no kill or crash picks: `TerminateProcess` takes
-// any code and CRT `abort()` exits 3. Pinned with the wire format (`WIRE_VERSION`).
+// The child's only channel. `serve_request` returns the three `0x204D_58xx` codes before any op
+// runs, which the parent's "nothing ran" rests on; no kill or crash picks them (`TerminateProcess`
+// takes any code, CRT `abort()` exits 3). Pinned with `WIRE_VERSION`.
 const EXIT_UNREADABLE_REQUEST: i32 = 0x204D_5801;
 const EXIT_UNPARSEABLE_REQUEST: i32 = 0x204D_5802;
 const EXIT_WIRE_VERSION_MISMATCH: i32 = 0x204D_5803;
@@ -367,8 +367,11 @@ fn write_response(resp_path: &str, out: &[u8]) -> std::io::Result<()> {
 /// code, a kill included, may have run ops.
 fn classify_exit(code: i32, detail: Error) -> BrokerOpError {
     match code {
-        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST | EXIT_WIRE_VERSION_MISMATCH => {
-            BrokerOpError::CouldNotAcquire(detail)
+        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST => {
+            BrokerOpError::CouldNotAcquire(AcquireReason::RequestNotDelivered, detail)
+        }
+        EXIT_WIRE_VERSION_MISMATCH => {
+            BrokerOpError::CouldNotAcquire(AcquireReason::DifferentBuild, detail)
         }
         _ => BrokerOpError::Indeterminate(detail),
     }
@@ -376,7 +379,7 @@ fn classify_exit(code: i32, detail: Error) -> BrokerOpError {
 
 fn classify_spawn(e: SpawnError) -> BrokerOpError {
     match e {
-        SpawnError::NoChild(e) => BrokerOpError::CouldNotAcquire(e),
+        SpawnError::NoChild(reason, e) => BrokerOpError::CouldNotAcquire(reason, e),
         SpawnError::ChildRan(e) => BrokerOpError::Indeterminate(e),
     }
 }
@@ -471,34 +474,28 @@ fn run_elevated_broker(
         return Ok(execute_request(&BrokerRequest::new(ops)));
     }
 
-    let exe = std::env::current_exe().map_err(|e| {
-        BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!("current_exe failed: {e}")))
-    })?;
+    let undelivered = |what: String| {
+        BrokerOpError::CouldNotAcquire(
+            AcquireReason::RequestNotDelivered,
+            Error::ServiceControl(what),
+        )
+    };
+    let exe =
+        std::env::current_exe().map_err(|e| undelivered(format!("current_exe failed: {e}")))?;
 
     let nonce = next_nonce();
     let wire = BrokerRequest {
         nonce,
         ..BrokerRequest::new(ops)
     };
-    let req_json = serde_json::to_vec(&wire).map_err(|e| {
-        BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
-            "serialize broker request: {e}"
-        )))
-    })?;
+    let req_json = serde_json::to_vec(&wire)
+        .map_err(|e| undelivered(format!("serialize broker request: {e}")))?;
 
     let req_file =
         ExclusiveTempFile::create("magicx-broker", "req.json", "broker request", &req_json)
-            .map_err(|e| {
-                BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
-                    "write broker request: {e}"
-                )))
-            })?;
-    let resp_path =
-        exclusive_temp::unique_temp_path("magicx-broker", "resp.json").map_err(|e| {
-            BrokerOpError::CouldNotAcquire(Error::ServiceControl(format!(
-                "reserve broker response path: {e}"
-            )))
-        })?;
+            .map_err(|e| undelivered(format!("write broker request: {e}")))?;
+    let resp_path = exclusive_temp::unique_temp_path("magicx-broker", "resp.json")
+        .map_err(|e| undelivered(format!("reserve broker response path: {e}")))?;
     let resp_guard = exclusive_temp::TempPathGuard::new(resp_path, "broker response");
 
     // Spawn "<exe>" --broker "<req>" "<resp>" directly (no cmd.exe wrapper). Paths are quoted; the
@@ -546,8 +543,8 @@ pub enum BrokerOpError {
     /// Nothing ran: the TrustedInstaller service would not start, `SeDebugPrivilege` was denied, no
     /// child was created, or it refused its request (unreadable, unparseable, or from a different
     /// build) before any op. The machine is unchanged.
-    #[error("could not acquire the elevated child: {0}")]
-    CouldNotAcquire(#[source] Error),
+    #[error("could not acquire the elevated child ({0}): {1}")]
+    CouldNotAcquire(AcquireReason, #[source] Error),
     /// The child ran and an operation inside it failed.
     ///
     /// `index` is the failing op's position in the slice handed to [`run_ops`], carried
@@ -565,6 +562,35 @@ pub enum BrokerOpError {
     Indeterminate(#[source] Error),
 }
 
+/// Which acquisition step failed. Every reason means nothing ran.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcquireReason {
+    /// `AdjustTokenPrivileges` granted nothing: a policy strips the privilege from administrators.
+    DebugPrivilegeStripped,
+    TiServiceDisabled,
+    TiServiceNotStarted,
+    /// The pid the SCM reported could not be opened, or is not TrustedInstaller.
+    TiProcessUnverified,
+    SpawnFailed,
+    /// The request never reached the child, or the child could not read it.
+    RequestNotDelivered,
+    DifferentBuild,
+}
+
+impl std::fmt::Display for AcquireReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::DebugPrivilegeStripped => "SeDebugPrivilege is not available to this process",
+            Self::TiServiceDisabled => "the TrustedInstaller service is disabled",
+            Self::TiServiceNotStarted => "the TrustedInstaller service could not be started",
+            Self::TiProcessUnverified => "the TrustedInstaller process could not be verified",
+            Self::SpawnFailed => "the elevated child could not be started",
+            Self::RequestNotDelivered => "the request could not be handed to the elevated child",
+            Self::DifferentBuild => "the elevated child is a different build of the app",
+        })
+    }
+}
+
 fn op_label(index: &Option<usize>) -> String {
     index.map_or_else(|| "an op".to_owned(), |i| format!("op {i}"))
 }
@@ -574,7 +600,7 @@ impl BrokerOpError {
     pub fn failed_op_index(&self) -> Option<usize> {
         match self {
             BrokerOpError::OpFailed { index, .. } => *index,
-            BrokerOpError::CouldNotAcquire(_) | BrokerOpError::Indeterminate(_) => None,
+            BrokerOpError::CouldNotAcquire(..) | BrokerOpError::Indeterminate(_) => None,
         }
     }
 }
@@ -592,10 +618,19 @@ fn run_ops_with(
     spawn: impl FnOnce(&str) -> Result<i32, SpawnError>,
 ) -> Result<(), BrokerOpError> {
     let sent = ops.len();
+    if level.is_elevated() {
+        log::info!("{level:?} broker batch started: {sent} ops");
+    }
+    let started = std::time::Instant::now();
     let outcome =
         run_elevated_broker(level, ops, spawn).and_then(|response| check_response(sent, &response));
-    if let Err(e) = &outcome {
-        log_failure(level, e);
+    let elapsed_ms = started.elapsed().as_millis();
+    match &outcome {
+        Ok(()) if level.is_elevated() => {
+            log::info!("{level:?} broker batch finished: {sent} ops in {elapsed_ms} ms");
+        }
+        Ok(()) => {}
+        Err(e) => log_failure(level, e, elapsed_ms),
     }
     outcome
 }
@@ -605,8 +640,8 @@ fn run_ops_with(
 /// path, a nonce, or the registry key an op wrote, so none of it crosses into a log line.
 fn failure_summary(level: Elevation, e: &BrokerOpError) -> String {
     let what = match e {
-        BrokerOpError::CouldNotAcquire(_) => {
-            "could not acquire the child, so nothing ran".to_owned()
+        BrokerOpError::CouldNotAcquire(reason, _) => {
+            format!("could not acquire the child ({reason}), so nothing ran")
         }
         BrokerOpError::OpFailed {
             index: Some(index),
@@ -634,9 +669,9 @@ fn failure_log_level(level: Elevation, e: &BrokerOpError) -> Option<log::Level> 
     })
 }
 
-fn log_failure(level: Elevation, e: &BrokerOpError) {
+fn log_failure(level: Elevation, e: &BrokerOpError, elapsed_ms: u128) {
     if let Some(at) = failure_log_level(level, e) {
-        log::log!(at, "{}", failure_summary(level, e));
+        log::log!(at, "{} after {elapsed_ms} ms", failure_summary(level, e));
     }
 }
 
@@ -1217,7 +1252,7 @@ mod tests {
         assert!(
             matches!(
                 classify_exit(code, Error::ServiceControl("detail".into())),
-                BrokerOpError::CouldNotAcquire(_)
+                BrokerOpError::CouldNotAcquire(..)
             ),
             "{case}: exit {code} must classify as nothing-ran"
         );
@@ -1566,7 +1601,7 @@ mod tests {
         ] {
             let got = run_with_child(scratch_ops(&scratch.key), |_, _| Ok(code));
             assert!(
-                matches!(got, Err(BrokerOpError::CouldNotAcquire(_))),
+                matches!(got, Err(BrokerOpError::CouldNotAcquire(..))),
                 "exit {code:#x}: {got:?}"
             );
         }
@@ -1601,10 +1636,13 @@ mod tests {
         let detail = |msg: &str| Error::ServiceControl(msg.into());
 
         let got = run_with_child(scratch_ops(&scratch.key), |_, _| {
-            Err(SpawnError::NoChild(detail("CreateProcessW failed")))
+            Err(SpawnError::NoChild(
+                AcquireReason::SpawnFailed,
+                detail("CreateProcessW failed"),
+            ))
         });
         assert!(
-            matches!(got, Err(BrokerOpError::CouldNotAcquire(_))),
+            matches!(got, Err(BrokerOpError::CouldNotAcquire(..))),
             "{got:?}"
         );
 
@@ -1657,12 +1695,48 @@ mod tests {
         }
     }
 
+    /// Which acquisition step failed survives classification and reaches the log line.
+    #[test]
+    fn an_acquisition_failure_carries_its_reason_into_the_log_line() {
+        let detail = || Error::ServiceControl(HOSTILE_DETAIL.to_owned());
+        let reason_of = |e: BrokerOpError| match e {
+            BrokerOpError::CouldNotAcquire(reason, _) => reason,
+            other => panic!("nothing ran, so this must be CouldNotAcquire: {other:?}"),
+        };
+        assert_eq!(
+            reason_of(classify_exit(EXIT_WIRE_VERSION_MISMATCH, detail())),
+            AcquireReason::DifferentBuild
+        );
+        for code in [EXIT_UNREADABLE_REQUEST, EXIT_UNPARSEABLE_REQUEST] {
+            assert_eq!(
+                reason_of(classify_exit(code, detail())),
+                AcquireReason::RequestNotDelivered
+            );
+        }
+        assert_eq!(
+            reason_of(classify_spawn(SpawnError::NoChild(
+                AcquireReason::DebugPrivilegeStripped,
+                detail()
+            ))),
+            AcquireReason::DebugPrivilegeStripped
+        );
+        let summary = hostile_summary(BrokerOpError::CouldNotAcquire(
+            AcquireReason::DebugPrivilegeStripped,
+            detail(),
+        ));
+        assert!(summary.contains("SeDebugPrivilege"), "{summary}");
+        assert!(summary.contains("nothing ran"), "{summary}");
+    }
+
     /// Each classification reads as itself, and none of them echoes the detail it carries.
     #[test]
     fn no_classification_echoes_the_detail_behind_it() {
         let detail = || Error::ServiceControl(HOSTILE_DETAIL.to_owned());
 
-        let acquire = hostile_summary(BrokerOpError::CouldNotAcquire(detail()));
+        let acquire = hostile_summary(BrokerOpError::CouldNotAcquire(
+            AcquireReason::TiServiceDisabled,
+            detail(),
+        ));
         assert!(acquire.contains("nothing ran"), "{acquire}");
 
         let unknown = hostile_summary(BrokerOpError::Indeterminate(detail()));
@@ -1702,7 +1776,7 @@ mod tests {
         assert_eq!(
             at(
                 Elevation::TrustedInstaller,
-                BrokerOpError::CouldNotAcquire(detail())
+                BrokerOpError::CouldNotAcquire(AcquireReason::SpawnFailed, detail())
             ),
             Some(log::Level::Warn)
         );
@@ -1907,7 +1981,7 @@ mod tests {
             assert!(
                 matches!(
                     classify_exit(code, detail()),
-                    BrokerOpError::CouldNotAcquire(_)
+                    BrokerOpError::CouldNotAcquire(..)
                 ),
                 "exit {code} happens before any op runs"
             );
@@ -1916,7 +1990,7 @@ mod tests {
         assert!(
             matches!(
                 classify_exit(malformed_argv_exit_code(), detail()),
-                BrokerOpError::CouldNotAcquire(_)
+                BrokerOpError::CouldNotAcquire(..)
             ),
             "a malformed --broker argv exits before any op runs"
         );
@@ -1991,11 +2065,12 @@ mod tests {
             pi
         }
 
-        let no_child = classify_spawn(SpawnError::NoChild(Error::ServiceControl(
-            "CreateProcessW failed".into(),
-        )));
+        let no_child = classify_spawn(SpawnError::NoChild(
+            AcquireReason::SpawnFailed,
+            Error::ServiceControl("CreateProcessW failed".into()),
+        ));
         assert!(
-            matches!(no_child, BrokerOpError::CouldNotAcquire(_)),
+            matches!(no_child, BrokerOpError::CouldNotAcquire(..)),
             "{no_child:?}"
         );
 

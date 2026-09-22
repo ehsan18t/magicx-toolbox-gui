@@ -25,7 +25,7 @@ pub mod service;
 pub mod task;
 
 use crate::error::Error as BackendError;
-use crate::services::elevation::OpFailureClass;
+use crate::services::elevation::{AcquireReason, OpFailureClass};
 use crate::tweaks::model::{Level, RegType, Setting, Value};
 use crate::tweaks::parse::ParseError;
 
@@ -74,8 +74,8 @@ pub enum Error {
     /// Nothing ran: the TI service would not start, `SeDebugPrivilege` was denied, the child was
     /// never created, or it refused its request (unreadable, unparseable, or a different build).
     /// Unlike [`Error::AccessDenied`], where the child ran and an operation was refused.
-    #[error("could not acquire {0:?} elevation: {1}")]
-    CouldNotAcquireElevation(Level, String),
+    #[error("could not acquire {0:?} elevation ({1}): {2}")]
+    CouldNotAcquireElevation(Level, AcquireReason, String),
 
     /// The elevated child may have run ops: it timed out, its wait or exit-code query failed, it
     /// panicked, or its response was lost or invalid. Rolls back like its neighbours, but the
@@ -227,6 +227,7 @@ mod tests {
     fn insufficient_elevation_two_distinct_errors() {
         let could_not_acquire = Error::CouldNotAcquireElevation(
             Level::Ti,
+            AcquireReason::TiServiceNotStarted,
             "TrustedInstaller service would not start".into(),
         );
         let acquired_but_denied =
