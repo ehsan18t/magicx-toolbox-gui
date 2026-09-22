@@ -1,9 +1,9 @@
 /**
  * Tweaks Data Store - Svelte 5 Runes
  *
- * Manages core data for the redesigned engine: system info, the tweak model
+ * Manages core data for the tweak engine: system info, the tweak model
  * (`get_tweaks`), categories (derived from the model), and live per-tweak statuses
- * filled in INCREMENTALLY from the `tweak-status` event stream (spec §8.4 grill Q1/Q5).
+ * filled in INCREMENTALLY from the `tweak-status` event stream (spec §8.4).
  * System hardware info is cached in localStorage since it rarely changes.
  */
 
@@ -436,7 +436,7 @@ export const loadingStateStore = {
   },
 };
 
-// === Status event stream (incremental, spec §8.4 grill Q1/Q5) ===
+// === Status event stream (incremental, spec §8.4) ===
 
 let statusStreamStarted = false;
 let unlistenStatus: UnlistenFn | null = null;

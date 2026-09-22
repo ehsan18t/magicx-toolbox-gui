@@ -8,13 +8,13 @@
 // ============================================================================
 // TEMPORARILY DISABLED
 // ============================================================================
-// The v1 profile backend was deleted in the 2026-07 cleanup and is being
-// rebuilt from scratch. See docs/spec/profile-v1.md and docs/TWEAK_SYSTEM_PLAN.md.
+// The profile backend does not exist; a rebuild is planned. See
+// docs/spec/profile-v1.md.
 //
 // The UI is deliberately kept rather than removed, so the feature reads as
 // "coming back" rather than "gone". Every backend call is neutralized here at a
 // single choke point: the type definitions below have no backend dependency and
-// still compile, and no `invoke()` reaches a command that no longer exists.
+// still compile, and no `invoke()` reaches a command the backend does not register.
 //
 // To restore: reinstate the Tauri commands, then replace `profileBackendUnavailable()`
 // with the original `invoke(...)` bodies (see git history for this file).

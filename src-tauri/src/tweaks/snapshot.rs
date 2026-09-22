@@ -307,9 +307,8 @@ impl SnapshotStore {
     /// take (spec §8.3, ADR-0002): dedup only ever removes an existing entry that `classify`s
     /// `Valid` for *this* machine/build/corpus — a foreign-machine, dangling, or otherwise-invalid
     /// entry that happens to parse and share the label is left on disk untouched, exactly like any
-    /// other invalid entry, released only by `discard`. `machine_guid` also stamps the new entry
-    /// (the store no longer reads the OS registry itself — the caller reads it once and passes the
-    /// same value everywhere, matching `head`/`list`/`classify`'s own contract).
+    /// other invalid entry, released only by `discard`. `machine_guid` also stamps the new entry;
+    /// the store never reads the OS registry itself.
     pub fn push(
         &self,
         tweak_id: &str,
@@ -1058,7 +1057,7 @@ mod tests {
     };
 
     /// A stand-in for the engine's real machine guid — tests just need *a* consistent value across
-    /// calls in the same test, never the real OS registry (see `push`'s doc: it no longer reads it).
+    /// calls in the same test, never the real OS registry.
     const GUID: &str = "test-guid";
 
     fn store(dir: &Path) -> SnapshotStore {
@@ -1899,11 +1898,8 @@ mod tests {
 
     #[test]
     fn mark_completed_refuses_an_entry_missing_seq_and_never_writes_seq_zero() {
-        // Fix B regression: `seq` must be mandatory. A blanket `#[serde(default)]` on `Entry`
-        // previously let a `seq`-less file deserialize as `Seq(0)`, and `rewrite_entry` trusted
-        // that content-derived value as the write path — silently overwriting whatever lived at
-        // seq 0. `seq` must now come only from the trusted caller parameter/filename, never from
-        // content, and a missing `seq` field must refuse to parse at all.
+        // `seq` is mandatory and comes from the filename, never content: a defaulted `Seq(0)` would
+        // make `rewrite_entry` overwrite whatever lives at seq 0.
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("demo");
         fs::create_dir_all(&dir).unwrap();
@@ -2057,7 +2053,7 @@ mod tests {
 
     #[test]
     fn target_unavailable_reaches_option_level_scope_not_just_tweak_level() {
-        // Fix 2: the tweak itself carries no `windows` restriction (would classify Valid under a
+        // The tweak itself carries no `windows` restriction (would classify Valid under a
         // tweak-level-only check), but this specific option's own per-value scope excludes the
         // running build — `classify` must still call it `TargetUnavailable`.
         let restrictive = opt_scoped(
@@ -2096,12 +2092,8 @@ mod tests {
 
     #[test]
     fn option_available_if_any_covered_effect_survives_even_if_another_is_scoped_out() {
-        // Fix A regression: unavailable means NO covered effect survives, not "any covered effect
-        // is scoped out". An option driving two effects — one unconditional, one option-scoped to
-        // a single build — must still classify Valid on a build where only the second is excluded;
-        // the engine just skips the inapplicable one. The earlier (buggy) predicate used `.any()`
-        // over "is scoped out", which a single-effect option can't distinguish from the correct
-        // "none survive" — this test needs two effects to tell them apart.
+        // Unavailable means NO covered effect survives, not "any is scoped out"; it takes two
+        // effects (one unconditional, one scoped out here) to tell those predicates apart.
         let mut values = BTreeMap::new();
         values.insert(
             EffectId("eff1".into()),

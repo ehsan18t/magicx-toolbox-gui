@@ -158,7 +158,7 @@ fn drive_service(addr: &SvcAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
-/// Translates a System/TI-level service drive into the broker's typed ops (spec §9), mirroring
+/// Translates a TI-level service drive into the broker's typed ops (spec §9), mirroring
 /// `drive_service`: `SvcSetStartup` plus the same unconditional `DelayedAutostart` companion
 /// write. Driving to `Missing` yields an empty op list, so the caller never spawns a child for it.
 ///
@@ -201,8 +201,7 @@ mod tests {
         ExecCx::new(Level::User)
     }
 
-    /// A name that certainly does not exist -- no elevation, no real resource needed (controller
-    /// decision 4).
+    /// A name that certainly does not exist: no elevation, no real resource needed.
     const NO_SUCH_SERVICE: &str = "MagicXNoSuchService_5F3F1D2E-6A4B-4C9E-9B0A-6B6E6C7D8E9F";
 
     #[test]
@@ -303,7 +302,7 @@ mod tests {
         );
     }
 
-    /// System/Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
+    /// Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
     /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
     /// the kind never escalates on its own.
     #[test]
@@ -315,7 +314,7 @@ mod tests {
         let cx = ExecCx::new(level);
         let err = ServiceKind
             .drive(&setting, &Value::Startup(StartupType::Manual), &cx)
-            .expect_err("the in-process kind must still reject System/Ti directly");
+            .expect_err("the in-process kind must still reject Ti directly");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 

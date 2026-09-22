@@ -37,7 +37,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Production `Setting → EffectKind` dispatcher: delegates by `Setting` variant at `User`/`Admin`,
-/// and routes through the elevation broker at `System`/`Ti` (spec §9, see [`drive_via_broker`]).
+/// and routes through the elevation broker at `Ti` (spec §9, see [`drive_via_broker`]).
 /// Stateless, so it is trivially `Send + Sync` and cheap to construct per call.
 pub struct AllKinds;
 
@@ -71,7 +71,7 @@ fn broker_ops_for(
         Setting::Service(_) => service::to_broker_ops(s, target),
         Setting::Task(_) => task::to_broker_ops(s, target),
         // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical translation
-        // list does not cover them). The in-process kinds refuse System/Ti themselves, so this
+        // list does not cover them). The in-process kinds refuse Ti themselves, so this
         // is the same refusal, raised one layer earlier.
         Setting::Hosts(_) | Setting::Firewall(_) => Err(KindError::UnsupportedLevel(level)),
     }
@@ -591,12 +591,12 @@ fn claims_failure(e: &ClaimsError) -> String {
 }
 
 /// Maps a tweak's declared [`Level`] to the broker's [`Elevation`]. Only ever called for
-/// `System`/`Ti`; `User`/`Admin` run in-process and never reach the broker.
+/// `Ti`; `User`/`Admin` run in-process and never reach the broker.
 fn to_elevation(level: Level) -> Elevation {
     match level {
         Level::Ti => Elevation::TrustedInstaller,
         Level::User | Level::Admin => {
-            unreachable!("drive_via_broker is only ever reached for System/Ti")
+            unreachable!("drive_via_broker is only ever reached for Ti")
         }
     }
 }

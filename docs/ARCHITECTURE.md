@@ -148,10 +148,9 @@ src/lib/components/
 - **Per-tweak history**: one atomically-written entry per capture, ordered by a monotonic sequence.
   Authored-option captures are stored as references (re-applied from the current corpus); unauthored
   states are value dumps.
-- **WAL action journal** makes "an action ran but nothing recorded it" impossible to lose silently — it
+- **WAL action journal** makes "an action ran but nothing recorded it" impossible to lose silently: it
   surfaces as **Needs Attention**.
-- **A snapshot is deleted only** by a verified restore, the verified startup stale-cleanup, or explicit
-  user consent — never on a failure path (ADR-0002).
+- **A snapshot is deleted only** by a verified restore, a verified rollback of the entry just pushed, a dedup that supersedes a settled entry, or explicit user consent, never on a failure path (ADR-0002). No startup stale-cleanup is implemented.
 
 #### 4. Configuration Profile System
 - **Profile export**: Export applied tweaks as shareable `.mgx` archives
@@ -165,7 +164,7 @@ src/lib/components/
 - **Three declared levels**: `user` / `admin` / `ti`, author-declared, never inferred. A tweak
   declares a **floor**; an effect may escalate (`effective = max(floor, step)`), never lower.
 - **User-provided**: the app ships unelevated; Admin comes from launching as admin or the in-app
-  **Elevate** relaunch — never silently acquired. Privileged tweaks are disabled until the user elevates.
+  **Elevate** relaunch, never silently acquired. Privileged tweaks are disabled until the user elevates.
 - **HKCU exception**: a user-hive effect always runs in-process as the interactive user, and a
   token-SID/session-SID mismatch disables User-level tweaks (over-the-shoulder guard).
 - **Reads run at the current level**: TI-protected resources deny reads and report **Unknown** with a
@@ -186,8 +185,8 @@ risk_levels:
 
 The tweak schema is **effect-centric** and defined by the compiled model in
 `src-tauri/src/tweaks/model.rs`. A tweak declares its managed surface once (`effects:`) and each option
-is a flat value-map over it. The full schema — every effect kind, value literal, presence/shared/version
-semantics, and the build guards — is documented in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**; the
+is a flat value-map over it. The full schema (every effect kind, value literal, presence/shared/version
+semantics, and the build guards) is documented in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**; the
 one-representation model and lifecycle in **[TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md)**.
 
 ```yaml
@@ -228,7 +227,7 @@ struct SnapshotEntry {
 }
 ```
 
-Shared-referenced effects appear in no per-tweak entry — their return path is the `shared_claims.json`
+Shared-referenced effects appear in no per-tweak entry; their return path is the `shared_claims.json`
 record (ADR-0006).
 
 ## Tweak Format Examples
@@ -357,13 +356,13 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 ### `build.rs` - Compile-Time Processing
 1. Loads every `*.yaml` in the `tweaks/` directory (`schema::load_corpus`)
-2. Runs the structural and semantic guards (spec §10) over each milestone of the support matrix —
+2. Runs the structural and semantic guards (spec §10) over each milestone of the support matrix:
    ownership, coverage, detectability, distinctness, reversibility honesty, path syntax, typed literals
 3. Embeds the validated corpus as JSON (`OUT_DIR/corpus.json`)
 4. A YAML mistake or a failed guard is a **compile error**; no runtime file I/O for tweak definitions
 
 `build.rs` `#[path]`-includes the runtime's own `model`/`parse`/`schema`/`validate` modules, so
-build-time and runtime validation are the same code — schema drift is a compile error.
+build-time and runtime validation are the same code, so schema drift is a compile error.
 
 ### Generated Output
 - The validated corpus embedded as JSON, deserialized once via `tweaks::compiled_corpus()`

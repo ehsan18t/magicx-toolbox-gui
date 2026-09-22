@@ -68,8 +68,8 @@ pub(super) fn empty_process_info() -> PROCESS_INFORMATION {
     unsafe { std::mem::zeroed() }
 }
 
-/// Enable `SeDebugPrivilege` for the current process. Required to open winlogon (for its SYSTEM
-/// token) and the TrustedInstaller service process (to spoof it as a parent).
+/// Enable `SeDebugPrivilege` for the current process. Required to open the TrustedInstaller service
+/// process (to spoof it as a parent).
 pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
     // SAFETY: standard OpenProcessToken/LookupPrivilegeValueW/AdjustTokenPrivileges sequence; the
     // token handle is closed on every path and `tp` is fully initialized before use.

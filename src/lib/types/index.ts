@@ -423,7 +423,7 @@ export interface TweakDefinition {
   id: string;
   name: string;
   description: string;
-  /** The engine's category string (kept under the old name view components read). */
+  /** The engine's category string, under the field name view components read. */
   category_id: string;
   /** Lowercased from the engine's PascalCase risk, for the existing UI maps. */
   risk_level: RiskLevel;

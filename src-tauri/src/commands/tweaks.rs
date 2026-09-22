@@ -32,8 +32,6 @@ use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{Attention, EntrySummary, Seq, SnapshotError, SnapshotStore};
 use crate::tweaks::winver::{running_winver, WinVer};
 
-// --- managed state (controller decision 2) -----------------------------------------------------
-
 /// App-lifetime singletons the engine needs across every tweak command: managed once via Tauri
 /// state (`TweakEngineState::new` in `setup.rs`), never re-opened per call. A fresh
 /// `SnapshotStore`/`ClaimsStore` per command would still be correct (both are pure on-disk stores
@@ -95,8 +93,6 @@ impl TweakEngineState {
     }
 }
 
-// --- Deps construction (controller decision 3) -------------------------------------------------
-
 // Zero-sized, stateless dispatchers (see their own docs: "trivially Send + Sync and cheap to
 // construct per call") -- `static` rather than constructed fresh per command purely so `build_deps`
 // can hand back references with no lifetime tied to the calling command's stack frame.
@@ -104,7 +100,7 @@ static KINDS: AllKinds = AllKinds;
 static PROBES: RealProbe = RealProbe;
 static ACTIONS: RealActions = RealActions;
 
-/// The one place that builds `Deps` for a command (controller decision 3): the real dispatcher/
+/// The one place that builds `Deps` for a command: the real dispatcher/
 /// probe/action sources, the three managed app-lifetime stores, and the app's current elevation
 /// ceiling + running Windows build.
 fn build_deps(state: &TweakEngineState) -> Deps<'_> {
@@ -121,8 +117,8 @@ fn build_deps(state: &TweakEngineState) -> Deps<'_> {
     }
 }
 
-/// The app's current elevation ceiling (controller decision 3): `User` if not running elevated,
-/// else `Admin` -- never `System`/`Ti` itself (the whole PROCESS never runs at those levels; only
+/// The app's current elevation ceiling: `User` if not running elevated,
+/// else `Admin` -- never `Ti` itself (the whole PROCESS never runs at that level; only
 /// individual effects escalate there per-op through the broker, spec §9).
 fn current_app_level() -> Level {
     if system_info_service::is_running_as_admin() {
@@ -131,8 +127,6 @@ fn current_app_level() -> Level {
         Level::User
     }
 }
-
-// --- availability + SID gating (controller decision 5) ------------------------------------------
 
 /// Whether the current app elevation/SID state permits applying/restoring a tweak right now (spec
 /// §9). Detection itself never consults this -- only `apply_tweak`/`restore_tweak` refuse on it.
@@ -278,7 +272,7 @@ fn find_tweak<'a>(corpus: &'a Corpus, tweak_id: &str) -> Result<&'a Tweak> {
 
 /// One log line per failed apply or restore, and the IPC boundary for it: an elevated failure is
 /// named by level and class with the broker's own text left out, anything else keeps the engine's
-/// text, which names the key or the value the frontend is no longer handed.
+/// text, which names the key or the value the frontend is never handed.
 fn map_engine_err(tweak_id: &str, phase: Phase, e: EngineError) -> Error {
     if let EngineError::AppExiting(refused) = e {
         return Error::AppExiting(refused);
@@ -313,7 +307,7 @@ fn map_snapshot_err(what: &str, e: SnapshotError) -> Error {
 
 // --- view/event DTOs (IPC-safe projections of the engine's own result types) ---------------------
 
-/// The compiled tweak model for the UI (controller decision 4): identity/display metadata plus
+/// The compiled tweak model for the UI: identity/display metadata plus
 /// this moment's [`Availability`] -- everything the frontend needs to render a tweak before any
 /// status has arrived from `get_statuses_stream`.
 #[derive(Debug, Clone, Serialize)]
@@ -684,7 +678,7 @@ pub struct ElevationState {
     pub sid_mismatch: bool,
 }
 
-/// `tweak-status`'s event payload (spec §8.4 grill Q1/Q5): one tweak's freshly detected status,
+/// `tweak-status`'s event payload (spec §8.4): one tweak's freshly detected status,
 /// emitted per-tweak by [`scan_and_emit`] -- never batched into one final blob.
 #[derive(Debug, Clone, Serialize)]
 pub struct TweakStatusEvent {
@@ -977,8 +971,6 @@ impl RestoreOutcomeView {
     }
 }
 
-// --- scan/emit + apply, factored into plain functions for testing (brief's own testing note) -----
-
 /// Publication order for one tweak's status. A sweep event that read the machine before an apply
 /// recorded Needs Attention must not land on the card after the apply's own status and undo it,
 /// so every status is stamped when its reads BEGIN and the frontend drops the older one.
@@ -1001,10 +993,8 @@ fn scan_one(tweak: &Tweak, corpus: &Corpus, deps: &Deps<'_>) -> TweakStatusEvent
     }
 }
 
-/// Runs `detect` for every tweak in `corpus`, invoking `emit` once per tweak (spec §8.4 grill
-/// Q1/Q5: incremental arrival, never one final blob) -- factored out of
-/// `get_statuses_stream`/`rescan_after_elevation` so `statuses_emit_incrementally` can prove the
-/// one-event-per-tweak property with an injectable emitter and zero Tauri runtime.
+/// Runs `detect` for every tweak in `corpus`, invoking `emit` once per tweak (spec §8.4:
+/// incremental, never one final blob). Takes an injectable emitter so tests need no Tauri runtime.
 ///
 /// Detection is a pure read, so tweaks are independent and run on a rayon pool. That is worth real
 /// wall-clock: a handful of Action probes each spawn a process, and serially those dominate the
@@ -1040,10 +1030,9 @@ fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakSta
     });
 }
 
-/// Spawns the corpus-wide detect sweep on a plain OS thread (never the UI thread, controller
-/// decision 7) and emits one `tweak-status` event per tweak as [`scan_and_emit`] produces it --
-/// shared by `get_statuses_stream` (the initial background-progressive scan) and
-/// `rescan_after_elevation` (the same full re-scan, replayed after Elevate).
+/// Spawns the corpus-wide detect sweep on a plain OS thread (never the UI thread), emitting one
+/// `tweak-status` event per tweak as [`scan_and_emit`] produces it. Shared by
+/// `get_statuses_stream` and `rescan_after_elevation`.
 fn spawn_full_scan(app: AppHandle) {
     std::thread::spawn(move || {
         let state = app.state::<TweakEngineState>();
@@ -1156,7 +1145,7 @@ pub async fn get_categories() -> Result<Vec<CategoryView>> {
         .collect())
 }
 
-/// Kicks the background-progressive full scan (spec §8.4 grill Q1) and returns immediately -- the
+/// Kicks the background-progressive full scan (spec §8.4) and returns immediately -- the
 /// scan itself runs on a separate OS thread and streams results back via `tweak-status` events.
 #[tauri::command]
 pub async fn get_statuses_stream(app: AppHandle) -> Result<()> {
@@ -1165,7 +1154,7 @@ pub async fn get_statuses_stream(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// The full re-scan run after the user Elevates (spec §8.4 grill Q1: the moment Unknowns become
+/// The full re-scan run after the user Elevates (spec §8.4: the moment Unknowns become
 /// readable) -- reuses the exact same scan path as `get_statuses_stream`.
 #[tauri::command]
 pub async fn rescan_after_elevation(app: AppHandle) -> Result<()> {
@@ -2102,10 +2091,8 @@ mod tests {
 
     #[test]
     fn confirmed_same_user_never_blocks_hkcu() {
-        // The regression this whole change exists to prevent: with the SID guard answering
-        // SameUser, a user-floor HKCU tweak must be applyable at BOTH app levels. It was blocked at
-        // both, because the old probe used WTSQueryUserToken (SE_TCB_NAME, LocalSystem only) and
-        // the guard read its guaranteed failure as a mismatch.
+        // SameUser -> a user-floor HKCU tweak is applyable at BOTH app levels. A WTSQueryUserToken
+        // probe (SE_TCB_NAME, LocalSystem only) always fails here and would read as a mismatch.
         for level in [Level::User, Level::Admin] {
             assert_eq!(
                 compute_availability(true, Level::User, level, SidCheck::SameUser, None),
@@ -2117,7 +2104,7 @@ mod tests {
 
     #[test]
     fn elevation_floor_above_app_level_is_needs_elevation() {
-        // App level User + an Admin/System/Ti-floor tweak -> disabled, needs elevation.
+        // App level User + an Admin/Ti-floor tweak -> disabled, needs elevation.
         for floor in [Level::Admin, Level::Ti] {
             let avail = compute_availability(false, floor, Level::User, SidCheck::SameUser, None);
             assert!(
@@ -2126,8 +2113,8 @@ mod tests {
             );
         }
 
-        // App level Admin + any floor (including System/Ti) -> available: Admin is the one
-        // ceiling that reaches System/TrustedInstaller via the broker too (controller decision 3).
+        // App level Admin + any floor (including Ti) -> available: Admin is the one
+        // ceiling that reaches TrustedInstaller via the broker too.
         for floor in [Level::User, Level::Admin, Level::Ti] {
             assert_eq!(
                 compute_availability(false, floor, Level::Admin, SidCheck::SameUser, None),
@@ -2234,9 +2221,7 @@ mod tests {
         assert!(view.commands.is_empty());
     }
 
-    // --- the brief's two named tests -----------------------------------------------------------
-
-    /// One event per tweak, never one final blob (grill Q1/Q5), and every tweak covered exactly
+    /// One event per tweak, never one final blob, and every tweak covered exactly
     /// once. Deliberately asserts the SET of ids rather than their positions: the sweep runs in
     /// parallel, so events arrive in completion order and position carries no meaning. Comparing
     /// sets is also the stronger check, since it catches a duplicate or a dropped tweak, which
@@ -2258,7 +2243,7 @@ mod tests {
         assert_eq!(
             events.len(),
             ids.len(),
-            "one event per tweak, never one final blob (grill Q1/Q5)"
+            "one event per tweak, never one final blob"
         );
         let mut got: Vec<&str> = events.iter().map(|e| e.tweak_id.as_str()).collect();
         got.sort_unstable();

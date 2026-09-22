@@ -1,15 +1,7 @@
-//! Real-machine end-to-end proof of the compiled engine (spec §11; Task 15 brief): the real
-//! `AllKinds`/`RealProbe`/`RealActions` dispatcher, a real `SnapshotStore`/`ClaimsStore` rooted in
-//! a temp dir, and genuine HKCU registry addresses under a unique
-//! `HKCU\Software\MagicXToolboxE2E\...` scratch subtree — never mocks (unlike the engine's own
-//! per-module unit tests in `engine::apply`/`engine::revert`, which substitute
-//! `MockKind`/`MockProbes`/`MockActions`). These three tests prove invariants 1-26 hold together
-//! end-to-end on a real machine, not just per module in isolation.
-//!
-//! Default-run, HKCU-only, no admin needed: every test cleans its own scratch registry key(s) via
-//! a Drop guard, even on panic/assertion failure (mirrors `kinds::registry`'s own `Scratch`), so a
-//! failed run never leaves residue behind or collides with a later run. Residue is additionally
-//! confirmed from *outside* this process (PowerShell) after the suite runs — see the task report.
+//! Real-machine end-to-end tests of the compiled engine (spec §11): real `AllKinds`/`RealProbe`/
+//! `RealActions`, real `SnapshotStore`/`ClaimsStore` in a temp dir, and real registry values under
+//! a unique `HKCU\Software\MagicXToolboxE2E\...` scratch subtree; no mocks. HKCU-only, no admin
+//! needed; each test's `Scratch` Drop guard removes its keys even on panic.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -172,10 +164,8 @@ fn corpus(tweaks: Vec<Tweak>, shared: Vec<SharedDef>) -> Corpus {
     }
 }
 
-// --- the three brief-mandated scenarios ---------------------------------------------------------
-
 /// `detect SD -> apply A -> Active(A) -> apply B -> Active(B) -> restore -> Active(A) -> restore
-/// -> SD`, asserting snapshots are consumed exactly per the walk (brief's `registry_tweak_full_lifecycle`).
+/// -> SD`, asserting snapshots are consumed exactly per the walk.
 #[tokio::test]
 async fn registry_tweak_full_lifecycle() {
     let scratch = Scratch::new("registry_lifecycle");
@@ -275,11 +265,8 @@ async fn registry_tweak_full_lifecycle() {
 }
 
 /// `apply both -> both Active, revert one -> other still Active, revert last -> original
-/// restored` (brief's `shared_pair_lifecycle`) — two independent tweaks, each with its own private
-/// marker Setting plus a Shared reference to the SAME corpus-level shared setting. This is also
-/// the real-machine proof of the Task 15 revert.rs fix: without it, the *second* claimant's revert
-/// (always a `Captured::Values` dump — see `engine::revert`'s module docs, Fix 2) would never
-/// release its shared claim, permanently stranding the shared value away from its true original.
+/// restored`: two tweaks sharing one setting. The second claimant's revert is a `Captured::Values`
+/// dump, which must still release its shared claim or the value never returns to its original.
 #[tokio::test]
 async fn shared_pair_lifecycle() {
     let scratch_shared = Scratch::new("shared_pair_shared");
@@ -433,8 +420,7 @@ async fn shared_pair_lifecycle() {
 }
 
 /// Hand-seeds an unknown field alongside the addressed one, runs a full apply + restore cycle,
-/// and asserts the unknown field survives untouched throughout (brief's `packed_field_lifecycle`,
-/// spec §5.2).
+/// and asserts the unknown field survives untouched throughout (spec §5.2).
 #[tokio::test]
 async fn packed_field_lifecycle() {
     let scratch = Scratch::new("packed_lifecycle");

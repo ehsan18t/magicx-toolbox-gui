@@ -8,12 +8,12 @@
 //! protocol has no read op, because a read never needs a fresh child. So a kind's `read` must
 //! never gate on `cx.level()`.
 //!
-//! The System/Ti routing itself is NOT here. `engine::AllKinds::drive` owns it: at `User`/`Admin`
-//! it delegates to the kind's own `drive` below, and at `System`/`Ti` it never calls that `drive`
+//! The Ti routing itself is NOT here. `engine::AllKinds::drive` owns it: at `User`/`Admin`
+//! it delegates to the kind's own `drive` below, and at `Ti` it never calls that `drive`
 //! at all, translating the `Setting`/`Value` into `BrokerOp`s (`to_broker_op`/`to_broker_ops` in
 //! `registry.rs`/`service.rs`/`task.rs`) and submitting them through `elevation::run_ops` in one
 //! child. Translation sits beside the address shape it understands; dispatch sits above every
-//! kind. Each `drive` here still rejects `System`/`Ti` itself, so a kind called directly can never
+//! kind. Each `drive` here still rejects `Ti` itself, so a kind called directly can never
 //! silently escalate. Hosts/Firewall have no `BrokerOp`, so they reach that rejection at those
 //! levels.
 
@@ -67,7 +67,7 @@ pub enum Error {
     },
 
     /// `cx`'s level has no routing for this `Setting`: a field-addressed registry write, or a
-    /// Hosts/Firewall effect, at `System`/`Ti`, neither of which the broker translation covers.
+    /// Hosts/Firewall effect, at `Ti`, neither of which the broker translation covers.
     #[error("{0:?} elevation is not yet routed by this build")]
     UnsupportedLevel(Level),
 
@@ -194,7 +194,7 @@ pub struct BatchFailure {
 
 // --- helpers shared by the service and task kinds ------------------------------------------------
 
-/// `User`/`Admin` run in-process; `System`/`Ti` are routed to the broker one layer up, so reaching
+/// `User`/`Admin` run in-process; `Ti` is routed to the broker one layer up, so reaching
 /// this kind's own `drive` at those levels means the routing was bypassed (see the module docs).
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
@@ -231,7 +231,7 @@ mod tests {
             "TrustedInstaller service would not start".into(),
         );
         let acquired_but_denied =
-            Error::AccessDenied("policy denies this key even as SYSTEM".into());
+            Error::AccessDenied("policy denies this key even as TrustedInstaller".into());
 
         assert!(matches!(
             could_not_acquire,

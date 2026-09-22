@@ -1,13 +1,12 @@
-//! Authoring-surface parsers: turn authored text into the typed model (spec §5.1 registry
-//! paths, §5.2 packed-value fields, §6.2 value literals, §6.6 windows-version grammar). Pure
-//! logic, no Windows API calls. The YAML binding layer (`schema.rs`) lands in Task 3 and maps
-//! `serde_yaml_bw` nodes onto [`LiteralInput`] before calling these functions — that is also why
-//! this module depends on nothing but `model` and std (`build.rs` includes it directly by path).
+//! Authoring-surface parsers: authored text to the typed model (spec §5.1 registry paths, §5.2
+//! packed fields, §6.2 value literals, §6.6 windows-version grammar). `schema.rs` maps YAML nodes
+//! onto [`LiteralInput`]; this module depends only on `model` and std, since `build.rs` includes
+//! it by path.
 
 use super::model::{BuildExpr, Hive, PackedFormat, RegType, TypedRegValue, Value, WindowsScope};
 
 /// Every rejection a tweak author can hit while authoring paths, literals, the `windows:` grammar,
-/// or a packed value. Each message names the fix, since later tasks surface it verbatim.
+/// or a packed value. Each message names the fix, since build errors surface it verbatim.
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error("registry path {path:?} {reason}")]
@@ -48,10 +47,9 @@ pub enum ParseError {
     MalformedPacked { raw: String },
 }
 
-/// YAML-agnostic input to [`parse_value_literal`] (spec §6.2). Task 3 maps a `serde_yaml_bw` node
-/// onto one of these variants by inspecting its *shape* before any string content is interpreted —
-/// that is what keeps a bare reserved word and its `{ literal: ... }` escape distinguishable all
-/// the way to this function.
+/// YAML-agnostic input to [`parse_value_literal`] (spec §6.2). `schema.rs` picks the variant from
+/// a node's *shape* before reading any string, which keeps a bare reserved word and its
+/// `{ literal: ... }` escape distinguishable.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LiteralInput {
     /// An ordinary scalar string.
@@ -256,8 +254,7 @@ pub fn parse_build_expr(raw: &str) -> Result<BuildExpr, ParseError> {
 }
 
 /// The one cross-field rule for `windows:` (spec §6.6): `revision` only makes sense pinned to a
-/// single exact `build`, since the revision/UBR counter resets per build line. Assembling the rest
-/// of the `windows:` block from YAML is Task 3's job.
+/// single exact `build`, since the revision/UBR counter resets per build line.
 pub fn validate_windows_scope(scope: &WindowsScope) -> Result<(), ParseError> {
     if scope.revision.is_some() && !matches!(scope.build, Some(BuildExpr::Exact(_))) {
         return Err(ParseError::RevisionWithoutExactBuild);
@@ -547,7 +544,7 @@ mod tests {
         assert_eq!(value, Value::Reg(TypedRegValue::Sz("absent".to_string())));
     }
 
-    /// Spec §6.2 / ADR-0004 (amended 2026-07-22, corrected): a bare `absent` is *always* the
+    /// Spec §6.2 / ADR-0004: a bare `absent` is *always* the
     /// reserved keyword, for every value type including `REG_SZ`/`REG_EXPAND_SZ` — a type class
     /// with no deletion spelling would be a hole, not a safeguard (invariant 13). The
     /// `{ literal: absent }` escape is how an author gets the literal string instead; see

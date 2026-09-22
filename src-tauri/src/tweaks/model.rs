@@ -1,9 +1,9 @@
-//! Core typed model for the redesigned tweak engine — Effect/Setting/Value and the compiled
+//! Core typed model for the tweak engine: Effect/Setting/Value and the compiled
 //! Tweak shape. See spec §5 (the Effect abstraction) and §6 (data model) at
 //! docs/superpowers/specs/2026-07-21-tweak-system-redesign-design.md.
 //!
 //! This module is the compiled-model representation only: no parsing, validation, or engine
-//! behavior lives here (later tasks add those). `Value`'s `#[derive(PartialEq)]` is the whole
+//! behavior lives here. `Value`'s `#[derive(PartialEq)]` is the whole
 //! implementation of invariant 1 ("one comparison per kind") — different variants are never
 //! equal, so e.g. `Absent` and `Present(false)` cannot be confused by construction.
 
@@ -154,14 +154,9 @@ pub enum FwProtocol {
     Icmpv6,
 }
 
-/// A firewall rule address: named rule + the full definition needed to (re)create it (spec §5.1).
-/// Settled by Task 7 (Hosts and Firewall kinds): the field set is exactly what
-/// `services::firewall_service::create_firewall_rule` (via its `FirewallChange` parameter) can
-/// act on — no netsh/Windows Firewall capability this app does not already use. `direction` and
-/// `action` are required (not `Option`, unlike the legacy `FirewallChange`) because this address
-/// is never used for a delete-only operation — the create/delete decision is carried entirely by
-/// `Value::Present(bool)`, so whenever driven to `Present(true)` the address must already describe
-/// a complete, creatable rule.
+/// A firewall rule address: named rule + everything `firewall_service::create_firewall_rule` needs
+/// to (re)create it (spec §5.1). `direction`/`action` are required (unlike in `FirewallChange`):
+/// create vs. delete is `Value::Present(bool)`, so the address must always be a creatable rule.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleAddr {
     pub name: String,
@@ -210,8 +205,7 @@ pub enum StartupType {
 }
 
 /// The one value domain shared by capture, apply, detect, and restore (spec §5, invariant 1).
-/// `Missing` is capture-only (spec §5.4) — that rule is enforced by the parser/validator
-/// (Tasks 2-3), not by this type; here it is an ordinary variant.
+/// `Missing` is capture-only (spec §5.4); the parser/validator enforce that, not this type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Value {
     Absent,
@@ -293,7 +287,7 @@ pub struct SharedId(pub String);
 pub struct OptLabel(pub String);
 
 // `Display` (not just `Debug`) on all three id newtypes: build-time `ValidationError` messages
-// (Task 3) print these verbatim in author-facing text, where `EffectId("foo")` would be noise.
+// print these verbatim in author-facing text, where `EffectId("foo")` would be noise.
 impl std::fmt::Display for EffectId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -403,9 +397,8 @@ pub struct Tweak {
     pub windows: Option<WindowsScope>,
 }
 
-/// A corpus file's `category:` header (spec §6 shows the shape; the id/name/icon/description
-/// fields match today's `src-tauri/tweaks/*.yaml`). Stamped onto every `Tweak` loaded from that
-/// file — authors never repeat it per-tweak (Task 3, schema.rs).
+/// A corpus file's `category:` header (spec §6), stamped onto every `Tweak` loaded from that file;
+/// authors never repeat it per-tweak.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CategoryDef {
     pub id: String,
@@ -414,11 +407,9 @@ pub struct CategoryDef {
     pub description: String,
 }
 
-/// The fully loaded, corpus-wide result of `schema::load_corpus` (Task 3): every category header,
-/// every tweak (already stamped with its file's category), and every merged `shared:` declaration.
-/// `shared` is corpus-wide (spec §6.5) — a single flat list regardless of which file declared each
-/// entry — which is exactly why duplicate `shared` ids must be checked across the whole `Corpus`,
-/// not per-file.
+/// The corpus-wide result of `schema::load_corpus`: category headers, tweaks, and merged `shared:`
+/// declarations. `shared` is one flat corpus-wide list (spec §6.5), so duplicate ids are checked
+/// across the whole `Corpus`, not per file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Corpus {
     pub categories: Vec<CategoryDef>,

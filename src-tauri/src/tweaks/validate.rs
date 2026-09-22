@@ -1,8 +1,8 @@
 //! Build-time guards (spec §10). Two parts:
-//! - **Structural** (Task 3): ownership/duplicate address, kind canonicalization, option coverage,
+//! - **Structural**: ownership/duplicate address, kind canonicalization, option coverage,
 //!   path/literal validity (via `ValidationError` variants that wrap `parse::ParseError`),
-//!   reversibility honesty, TI self-availability, and `if_missing` requiring `optional` (Task 4).
-//! - **Semantic** (Task 4, [`validate_semantic`]): per-milestone quantification over each tweak's
+//!   reversibility honesty, TI self-availability, and `if_missing` requiring `optional`.
+//! - **Semantic** ([`validate_semantic`]): per-milestone quantification over each tweak's
 //!   applicable projection — detectability, and distinctness (byte, detectable-projection,
 //!   non-shared, and the Residue rule).
 //!
@@ -254,8 +254,8 @@ pub enum ValidationError {
     },
 }
 
-/// Runs every structural guard in scope for this task (spec §10) over an already-loaded corpus.
-/// Detectability, distinctness, and per-milestone quantification are Task 4's job.
+/// Runs every structural guard (spec §10) over an already-loaded corpus. Detectability,
+/// distinctness, and per-milestone quantification are [`validate_semantic`]'s.
 pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     check_duplicate_shared_ids(corpus, &mut errors);
@@ -609,11 +609,6 @@ fn check_action_never_ti(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
         });
     }
 }
-
-// -------------------------------------------------------------------------------------------
-// Semantic guards (spec §10, Task 4): per-milestone quantification over each tweak's applicable
-// projection — detectability, and three-way distinctness plus the Residue rule.
-// -------------------------------------------------------------------------------------------
 
 /// One supported Windows build (spec §10/§14). Milestones are build-only: `revision`/UBR is a
 /// finer runtime axis than the build-time guards quantify over (see `scope_admits`).
@@ -984,7 +979,7 @@ mod tests {
         assert!(address.contains("DirectXUserGlobalSettings"), "{address}");
     }
 
-    /// Review fix: with 3 colliding owners the whole-value branch must report every one of them,
+    /// With 3 colliding owners the whole-value branch must report every one of them,
     /// not just the first two (a silently-unreported owner would defeat ADR-0006's guarantee).
     #[test]
     fn dup_address_three_tweaks_reports_every_colliding_owner() {
@@ -1034,10 +1029,8 @@ mod tests {
         );
     }
 
-    /// Task 7: confirms the ownership guard treats a firewall rule name as a first-class address
-    /// (already wired via `coarse_key_and_field`'s `Setting::Firewall` arm, ahead of `RuleAddr`
-    /// being settled) — keyed on the rule name alone, so two effects with the *same name* but
-    /// different definitions still collide.
+    /// The ownership guard keys a firewall rule on its name alone (`coarse_key_and_field`), so two
+    /// effects with the *same name* but different definitions still collide.
     #[test]
     fn dup_address_firewall_rule_is_rejected() {
         let errors = errors_for("dup_address_firewall_rule.yaml");
@@ -1212,7 +1205,7 @@ mod tests {
         assert_eq!(effect.0, "flush_dns");
     }
 
-    /// Fix 4b: `ephemeral_with_undo_is_rejected` above only exercises the `undo` half of the
+    /// `ephemeral_with_undo_is_rejected` above only exercises the `undo` half of the
     /// guard's `undo.is_some() || probe.is_some()` condition -- this pins the `probe` half too.
     #[test]
     fn ephemeral_with_probe_is_rejected() {
@@ -1289,8 +1282,6 @@ mod tests {
         assert_eq!(effect.0, "some_effect");
     }
 
-    // --- Task 4 semantic guards (spec §10) ----------------------------------------------------
-
     /// Loads one `bad/` fixture and runs the semantic guards over the declared support matrix.
     /// Panics (via `errors_for`'s `Err` arm-equivalent) would hide a structural problem as a
     /// semantic one, so each test also asserts `validate_structural` is clean first.
@@ -1342,7 +1333,7 @@ mod tests {
         assert_eq!(option.0, "Enabled");
     }
 
-    /// Fix 1 (code review): a single-option tweak whose only effect is a shared reference left
+    /// A single-option tweak whose only effect is a shared reference left
     /// `unclaimed` has zero detectable signal (spec §8.6) — no pairwise guard can catch this,
     /// since there is no second option to compare against.
     #[test]
@@ -1461,7 +1452,7 @@ mod tests {
         );
     }
 
-    /// Fix 3 (code review): the empty-applicable-surface skip (spec §6.6) driven end-to-end, not
+    /// The empty-applicable-surface skip (spec §6.6) driven end-to-end, not
     /// just at the `scope_admits` primitive — a tweak-level `windows:` scope that excludes most of
     /// the support matrix must load clean, proving a build-specific tweak can ship at all.
     #[test]

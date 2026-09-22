@@ -69,7 +69,7 @@ mod tests {
     }
 
     /// `.invalid` is IANA-reserved (RFC 2606) and guaranteed never to resolve or appear in a real
-    /// hosts file (Task 7 controller decision 4) -- safe even though `read` touches the real file.
+    /// hosts file, so this is safe even though `read` touches the real file.
     const NO_SUCH_DOMAIN: &str = "magicx-toolbox-test-does-not-exist-5f3f1d2e.invalid";
 
     fn addr(domain: &str) -> HostsAddr {
@@ -83,7 +83,7 @@ mod tests {
     fn missing_hosts_entry_reads_present_false() {
         // Reads the real hosts file (harmless, no admin needed) but the domain certainly is not in
         // it, so this runs by default and carries the primary coverage for the not-found path
-        // (controller decision 4) without any write.
+        // without any write.
         let cx = user_cx();
         let setting = Setting::Hosts(addr(NO_SUCH_DOMAIN));
         assert_eq!(
@@ -100,7 +100,7 @@ mod tests {
         let cx = ExecCx::new(level);
         let err = HostsKind
             .drive(&setting, &Value::Present(true), &cx)
-            .expect_err("this build cannot yet route System/Ti through the broker");
+            .expect_err("this build cannot yet route Ti through the broker");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
@@ -130,7 +130,7 @@ mod tests {
     }
 
     /// Removes a hosts entry on drop, even on panic, so a failed assertion never leaves the real
-    /// hosts file mutated (controller decision 4).
+    /// hosts file mutated.
     struct RemoveHostsEntry {
         ip: String,
         domain: String,

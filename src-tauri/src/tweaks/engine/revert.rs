@@ -1,6 +1,6 @@
 //! Restore Snapshot (spec §8.5, +§8.6; ADR-0002/0003/0007). Thin by design: this module owns only
 //! the controller sequencing -- undo the head entry's completed actions in reverse, then re-apply
-//! its target -- and composes [`apply`]'s already-reviewed drive/verify primitives for every actual
+//! its target -- and composes [`apply`]'s drive/verify primitives for every actual
 //! mutation. No new drive/verify logic is written here.
 //!
 //! ## The steps (spec §8.5), mirrored from `apply.rs`'s own numbering
@@ -20,9 +20,9 @@
 //!      internally too); a small declaration-order-preserving surface (Shared + Action effects,
 //!      ephemerals included) is then driven via [`apply::drive_forward`] verbatim, exactly like a
 //!      fresh apply of that option minus its own snapshot capture. Driven with
-//!      `Journaling::InFlight` on the entry being restored, never a new entry (§Fix 1 below).
+//!      `Journaling::InFlight` on the entry being restored, never a new entry (see below).
 //!    - `Captured::Values` -- `drive_to_captured` for Settings, plus [`release_shared_claims`] for
-//!      any Shared effect this tweak currently holds (review fix, see below); scripts cannot be
+//!      any Shared effect this tweak currently holds (see below); scripts cannot be
 //!      re-run from a dump, so the outcome carries `reboot_advisory: true`.
 //! 3. **Shared claims recompute like an ordinary apply** (spec §8.6) -- a side effect of routing
 //!    Shared effects through `drive_forward` in step 2, never special-cased here.
@@ -43,24 +43,15 @@
 //! [`release_shared_claims`] from the Shared effect it is releasing. Probes stay on
 //! `context::read_route`, since reads never escalate (invariant 24).
 //!
-//! ## Fix 1: no throwaway snapshot entry
+//! ## No throwaway snapshot entry
 //! Restore pushes nothing: an extra entry takes the next seq, so a crash or failed discard lets it
 //! win `head()` and mask the real return point (ADR-0002). Its action steps are marked in flight on
 //! the entry being restored instead. `option_ref_reapply_pushes_no_extra_entry` pins this.
 //!
-//! ## Fix 2 (Task 15, E2E-discovered): a Values-dump restore now also releases held shared claims
-//! `Captured::Values` only ever arises when the pre-apply state matched no authored option, and
-//! claiming a shared setting only ever happens by standing on a `Claim`-valued option -- so at the
-//! moment this dump was captured, this tweak could not yet have been a claimant of any Shared
-//! effect on its surface. Reverting to that moment must therefore give up whatever claim the
-//! tweak took since (spec §8.5: "restore recomputes shared claims exactly as an ordinary apply of
-//! the target state would," §8.6). Before this fix, the Values branch drove Settings back but left
-//! Shared effects completely untouched (only the `Captured::OptionRef` branch's `drive_forward`
-//! call ever reached them) -- a real, permanently-leaked claim (and a shared value that never
-//! returns to its true original) for the — common — case of a tweak whose very first apply claims
-//! a shared setting straight from a never-touched machine. [`release_shared_claims`] closes this:
-//! it releases every Shared effect this tweak currently holds, mirroring `apply::drive_shared`'s
-//! own `Unclaimed`-release logic minus the option lookup (there is no option to consult here).
+//! ## A Values-dump restore releases held shared claims
+//! A `Captured::Values` dump means the pre-apply state matched no option, so the tweak held no
+//! shared claim then; restoring it must release any claim taken since (spec §8.5/§8.6), via
+//! [`release_shared_claims`]. Otherwise the shared value never returns to its original.
 
 use std::collections::BTreeSet;
 
@@ -79,12 +70,9 @@ use super::apply::{self, ActionPlan, DriveCtx, DriveState, EngineError};
 use super::detect::{self, HeldInfo, TweakState, TweakStatus, UnavailableOpt};
 use super::{context, lifecycle, Deps, Phase};
 
-/// `restore`'s result (controller decision 3): a fresh [`TweakStatus`] computed from this
-/// operation's own verify reads (grill Q1 -- no re-scan), which entry (if any) this restore
-/// consumed, the reboot advisory for a Values-dump restore, and every invalid/dangling entry `head`
-/// bypassed (surfaced, never silently dropped -- ADR-0002). `status.has_history`/`status.held_shared`
-/// already carry the "further entry remains" / "held by" notices, mirroring `ApplyOutcome`'s own
-/// shape rather than duplicating them at the top level.
+/// `restore`'s result: a [`TweakStatus`] from this operation's own verify reads (no re-scan), the
+/// consumed entry if any, the Values-dump reboot advisory, and every invalid/dangling entry `head`
+/// bypassed (surfaced, never silently dropped: ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestoreOutcome {
     pub status: TweakStatus,
@@ -284,10 +272,8 @@ fn undo_journal(
             continue;
         };
         if is_ephemeral(action_def) {
-            // Belt-and-suspenders (review fix): apply's Step 2 no longer journals an ephemeral
-            // action at all, so this row should be unreachable in practice -- but an ephemeral is
-            // exempt from ALL reversibility bookkeeping (spec §7, invariant 10): skip it, never
-            // report it un-undoable and strand the entry.
+            // Apply never journals an ephemeral, but one here must be skipped, never reported
+            // un-undoable, or the entry is stranded (spec §7, invariant 10).
             continue;
         }
         if !has_undo(action_def) {
@@ -459,7 +445,7 @@ fn reapply_option_ref(
         };
     }
 
-    // Steps are marked in the entry being restored, never a new one (module docs, Fix 1).
+    // Steps are marked in the entry being restored, never a new one (module docs).
     let ctx = DriveCtx {
         tweak,
         corpus,
@@ -484,13 +470,9 @@ fn reapply_option_ref(
     }
 }
 
-/// Releases every Shared effect on `tweak`'s applicable surface that `tweak` currently holds a
-/// claim on (Fix 2, see this file's module docs) -- the `Captured::Values` restore path's
-/// equivalent of what `apply::drive_shared`'s `Unclaimed` arm does for an ordinary apply, minus the
-/// option lookup: a Values dump carries no target answer for a Shared effect at all, and the only
-/// sound interpretation of "the state before this apply" for one is "not claiming," since claiming
-/// only ever happens by standing on an authored `Claim` option. A tweak that never held a
-/// particular shared id is left untouched (nothing to release).
+/// Releases every Shared effect on `tweak`'s applicable surface that it currently claims: the
+/// Values-restore counterpart of `apply::drive_shared`'s `Unclaimed` arm (see the module docs).
+/// Unheld shared ids are left untouched.
 fn release_shared_claims(
     tweak: &Tweak,
     corpus: &Corpus,
@@ -547,9 +529,8 @@ fn has_undo(action: &ActionDef) -> bool {
     }
 }
 
-/// Mirrors `apply::is_ephemeral` (private there too -- duplicated here for the same reason
-/// `find_action`/`has_undo` are: a pure lookup, not the drive/verify logic this task reuses
-/// verbatim). Exempt from ALL reversibility bookkeeping (spec §7, invariant 10).
+/// Mirrors the private `apply::is_ephemeral`; keep in sync. Exempt from ALL reversibility
+/// bookkeeping (spec §7, invariant 10).
 fn is_ephemeral(action: &ActionDef) -> bool {
     matches!(
         action,
@@ -561,7 +542,7 @@ fn is_ephemeral(action: &ActionDef) -> bool {
 }
 
 /// A simplified, version-scope-only unavailable check for the restore's own constructed status
-/// (grill Q1: no fresh `detect` re-scan) -- the fuller "authors a real value against a live Missing
+/// (no fresh `detect` re-scan); the fuller "authors a real value against a live Missing
 /// resource" check `detect` also does would need extra reads restore's own verify pass has no
 /// reason to take.
 fn unavailable_options(tweak: &Tweak, milestone: &Milestone) -> Vec<UnavailableOpt> {
@@ -1576,10 +1557,8 @@ mod tests {
         assert!(log.contains(&Op::RunApply("eph_apply".into())));
     }
 
-    /// Fix 1 regression (reviewed CRITICAL): an OptionRef restore that runs an action must push
-    /// NO snapshot entry of its own -- no throwaway `Values({})` WAL vehicle, nothing left behind
-    /// beyond consuming the entry it restored. A decoy entry proves the store's total count only
-    /// ever shrinks by exactly the consumed entry, never grows.
+    /// An OptionRef restore that runs an action pushes NO snapshot entry of its own. A decoy entry
+    /// proves the store only ever shrinks by exactly the consumed entry.
     #[test]
     fn option_ref_reapply_pushes_no_extra_entry() {
         let h = Harness::new();
@@ -1663,10 +1642,8 @@ mod tests {
         );
     }
 
-    /// Fix 2 regression: an entry whose journal was populated by a REAL apply that ran an
-    /// ephemeral action (not a hand-fabricated `journal: Vec::new()` entry, which is exactly why
-    /// the earlier ephemeral tests missed this) must not be stranded on restore -- the ephemeral is
-    /// excluded from the journal at the source, so `undo_journal` never even sees a row for it.
+    /// An entry journaled by a REAL apply that ran an ephemeral (not a hand-built empty journal,
+    /// which hides the defect) is not stranded on restore: the ephemeral never reaches the journal.
     #[test]
     fn restore_through_a_state_that_ran_an_ephemeral_is_not_stranded() {
         let h = Harness::new();
@@ -2462,12 +2439,9 @@ mod tests {
         );
     }
 
-    /// Fix 2 (Task 15, E2E-discovered): unlike `claims_recomputed_like_apply` above (which pushes
-    /// a `Captured::OptionRef` entry directly), this pins the `Captured::Values` dump path -- the
-    /// shape every tweak's very first-ever apply produces on a never-touched machine. Before the
-    /// fix, restoring a Values dump drove Settings back but left a held Shared claim completely
-    /// untouched (only the OptionRef branch's `drive_forward` call ever reached Shared effects),
-    /// permanently leaking the claim and stranding the shared value away from its true original.
+    /// The `Captured::Values` path (a first apply on an untouched machine) must release a held
+    /// Shared claim, or the shared value never returns to its original. The OptionRef path is
+    /// `claims_recomputed_like_apply`.
     #[test]
     fn values_dump_restore_also_releases_a_held_shared_claim() {
         let h = Harness::new();

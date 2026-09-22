@@ -3,7 +3,7 @@
 //! The broker is nothing more than the effect services running in an elevated process. Instead of
 //! composing `cmd.exe /c <string>` command lines and escaping values (the source of the injection
 //! and REG_SZ-corruption classes), the main app serializes a list of **typed** operations, spawns
-//! this broker with a SYSTEM or TrustedInstaller token, and the broker runs the very same effect
+//! this broker with a TrustedInstaller token, and the broker runs the very same effect
 //! functions the unelevated path uses, now succeeding on protected resources because the process
 //! holds the elevated token.
 //!
@@ -54,7 +54,7 @@ pub enum BrokerOp {
         name: String,
         startup: ServiceStartupType,
     },
-    /// Enable / disable / delete a scheduled task.
+    /// Enable / disable a scheduled task.
     Scheduler {
         task_path: String,
         task_name: String,
@@ -437,7 +437,7 @@ fn validate_response(
 ///
 /// ## The request file is the thing an attacker would want
 ///
-/// The child reads it as SYSTEM or TrustedInstaller, so whoever controls its bytes controls what
+/// The child reads it as TrustedInstaller, so whoever controls its bytes controls what
 /// runs at that level. `%TEMP%` is writable by every process running as this user, and the spawn
 /// window is long (acquiring the TI token alone can take seconds), so "write it and hope" is not a
 /// defence. It goes through [`ExclusiveTempFile`], which keeps a `FILE_SHARE_READ`-only write

@@ -5,7 +5,7 @@
 //! Hosts (and unlike Service/Task), there is no `Missing` state: a rule is never "not installed",
 //! so driving `Present(true)` is itself the creation the engine performs.
 //!
-//! **Restore-fidelity limit (Task 7 controller decision 3).** Recreating a rule reproduces exactly
+//! **Restore-fidelity limit.** Recreating a rule reproduces exactly
 //! the fields `RuleAddr` carries — it is NOT guaranteed byte-identical to a pre-existing rule that
 //! was deleted, because `firewall_service`/`netsh` expose rule properties this address does not
 //! model (rule groups, interface types, edge traversal, security/authentication requirements,
@@ -94,8 +94,8 @@ fn old_protocol(p: FwProtocol) -> FirewallProtocol {
     }
 }
 
-/// `RuleAddr` -> the legacy `FirewallChange` shape `firewall_service` still speaks (same
-/// translation technique `RegistryKind`/`ServiceKind` use for their own legacy primitives).
+/// `RuleAddr` -> the `FirewallChange` shape the `firewall_service` primitive speaks (same
+/// translation `RegistryKind`/`ServiceKind` do for their primitives).
 /// Always `FirewallOperation::Create`: `Value::Present(bool)` alone carries the create/delete
 /// decision (see `drive_firewall`), so a `RuleAddr` only ever needs converting on the create path.
 fn to_firewall_change(addr: &RuleAddr) -> FirewallChange {
@@ -124,8 +124,7 @@ mod tests {
         ExecCx::new(Level::User)
     }
 
-    /// A name that certainly does not exist -- no elevation, no real resource needed (controller
-    /// decision 4, same convention as `service.rs`/`task.rs`).
+    /// A name that certainly does not exist: no elevation, no real resource needed.
     const NO_SUCH_RULE: &str = "MagicXNoSuchFirewallRule_5F3F1D2E-6A4B-4C9E-9B0A-6B6E6C7D8E9F";
 
     fn rule_addr(name: &str) -> RuleAddr {
@@ -163,7 +162,7 @@ mod tests {
         let cx = ExecCx::new(level);
         let err = FirewallKind
             .drive(&setting, &Value::Present(true), &cx)
-            .expect_err("this build cannot yet route System/Ti through the broker");
+            .expect_err("this build cannot yet route Ti through the broker");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
@@ -229,7 +228,7 @@ mod tests {
     }
 
     /// Deletes a firewall rule on drop, even on panic, so a failed assertion never leaves a real
-    /// rule behind (controller decision 4).
+    /// rule behind.
     struct DeleteFirewallRule {
         name: String,
     }

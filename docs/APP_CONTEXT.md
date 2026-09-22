@@ -21,35 +21,38 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 
 ## Tweak System
 
-Tweaks live in `src-tauri/tweaks/*.yaml` and are compiled at build time by `src-tauri/build.rs`. Each tweak has at least two options. Each option is a complete target state and can include:
+Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One authored option renders as a toggle; two or more render as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option (ADR-0003).
 
-- Registry changes: set/delete/create key, typed values including `REG_DWORD`, `REG_QWORD`, `REG_SZ`, `REG_EXPAND_SZ`, `REG_BINARY`, and `REG_MULTI_SZ`.
-- Windows service changes: startup type plus optional start/stop.
-- Task Scheduler changes: exact task names or regex patterns.
-- Hosts file changes.
-- Firewall rules via `netsh`.
-- Shell and PowerShell pre/post hooks.
+Effect kinds:
+
+- `registry`: one registry value (optionally one field of a packed value), typed as `REG_DWORD`, `REG_QWORD`, `REG_SZ`, `REG_EXPAND_SZ`, `REG_MULTI_SZ` or `REG_BINARY`; `absent` deletes it.
+- `registry_key`: registry key presence.
+- `service`: a service's startup type.
+- `task`: a scheduled task's enabled state, by exact task path.
+- `hosts`: a hosts-file entry's presence.
+- `firewall`: a firewall rule's presence, with its full definition.
+- `shared`: a reference to a corpus-level shared setting, refcounted across the tweaks that claim it (ADR-0006).
+- `action`: a `cmd`/`powershell` script for changes no declarative kind can express, with optional `undo` and `probe`.
 
 See `docs/TWEAK_AUTHORING.md` for the authoring contract.
 
 ## Apply And Safety Model
 
-Manual tweak apply is handled by `src-tauri/src/commands/tweaks/apply.rs` and `helpers.rs`.
+The Tauri commands in `src-tauri/src/commands/tweaks.rs` are a thin layer over the engine in `src-tauri/src/tweaks/engine/` (`apply.rs`, `revert.rs`, `detect.rs`).
 
-- First apply captures an internal snapshot in a portable `snapshots/` folder next to the executable (written atomically: temp file + rename).
-- Switching options captures the current state for failure rollback, then updates snapshot metadata on success.
-- Core changes apply in order: registry, services, scheduler, hosts, firewall. Each phase is atomic *in intent*; a failed phase rolls the whole tweak back from the snapshot.
-- Revert restores all five phases and collects failures; the snapshot is released only on a fully verified restore. A partial revert enters "Needs Attention" — the snapshot is kept and the user can retry or explicitly "keep current state" (ADR-0001 / ADR-0002).
-- Pre-command and pre-PowerShell failures abort before core changes; post-hook failures are logged and do not roll back successful core changes.
-- A tweak's `elevation:` level (`user` / `admin` / `ti`) determines elevation; `ti` operations run through the typed broker (no shell strings) and a failed privileged op surfaces as an error.
+- Apply captures every applicable effect's live value before any mutation and persists it as a snapshot entry (with a write-ahead journal of the actions it will run) in a portable `snapshots/` folder next to the executable, written atomically (temp file + rename).
+- Effects are then driven and verified one by one, in the order the tweak declares them. There is no fixed per-kind phase order. Adjacent settings that route to TrustedInstaller are batched into one elevated child, on both the forward and the rollback path.
+- Apply is atomic *in intent*: any drive or verify failure undoes the completed actions in reverse and drives the whole captured state back. A rollback that cannot fully complete surfaces as "Needs Attention" (ADR-0001).
+- Revert undoes the snapshot entry's completed actions in reverse, then restores the captured surface. The entry is consumed only on a fully verified restore; a partial revert keeps it and enters "Needs Attention", where the user can retry or explicitly "keep current state" (ADR-0002).
+- A tweak's `elevation:` level (`user` / `admin` / `ti`) is its floor; each effect drives at the higher of the floor and its own requirement, and HKCU effects always run in-process as the interactive user. `ti` operations run through the typed broker (no shell strings), and a failed privileged op surfaces as an error.
 
 Do not duplicate system-change application logic. New profile/batch paths should reuse the same apply engine or shared helpers.
 
 ## Snapshot System
 
-Snapshots are one JSON file per tweak in a `snapshots/` directory next to the executable (portable). They record registry values, service states, scheduled task states, hosts entries, and firewall rules, plus a schema version, the capturing machine's `MachineGuid` (a load-time mismatch warns), and a Needs-Attention marker with the unrestorable-resource list. Writes are atomic (temp file + rename); the metadata read-modify-write path takes an exclusive `std::fs::File::lock`.
+Snapshots live in a portable `snapshots/` directory next to the executable (`src-tauri/src/tweaks/snapshot.rs`). Each tweak has its own subdirectory, `snapshots/<tweak-id>/`, holding one JSON file per history entry (named by a monotonic sequence number), a `_seq.json` sequence hint, and, when a restore or rollback could not complete, an `_attention.json` Needs Attention record. Each entry is stamped with a schema version and the capturing machine's `MachineGuid`, and records either the option that was active or a dump of the captured values, plus the write-ahead journal of its actions. Writes are atomic (temp file + rename).
 
-On startup, stale snapshot validation removes a snapshot only when every captured resource is verifiably back at the original state. If a resource cannot be checked safely, the snapshot is preserved.
+An entry with the wrong schema version, from another machine, or naming an option the corpus no longer defines is treated as invalid: it is skipped and surfaced, never deleted. An entry is deleted only by a verified restore or rollback, by dedup when the same option is captured again (a settled entry only), or by an explicit user decision ("keep current state" or discarding an entry) (ADR-0002). On startup, a crash-residue scan flags any drive or action a crash left unfinished as Needs Attention. Shared settings are tracked separately in `snapshots/shared_claims.json` (ADR-0006).
 
 ## Profile System
 
@@ -59,8 +62,11 @@ The profile system (`.mgx` export/import) was removed in the current build and i
 
 - `src-tauri/src/models/`: shared Rust data models.
 - `src-tauri/src/commands/`: Tauri command handlers.
-- `src-tauri/src/commands/tweaks/`: tweak query/apply/batch commands.
-- `src-tauri/src/services/backup/`: snapshot capture, restore (all-phase), storage (atomic), detection, inspection.
+- `src-tauri/src/commands/tweaks.rs`: tweak query/apply/revert commands.
+- `src-tauri/src/tweaks/engine/`: detect, apply, revert, and per-effect execution-context routing.
+- `src-tauri/src/tweaks/kinds/`: six modules covering seven of the eight effect kinds (`registry.rs` handles both `registry` and `registry_key`; `service`, `task`, `hosts`, `firewall`, `action`). `shared` references are handled by `tweaks/shared_claims.rs`.
+- `src-tauri/src/tweaks/snapshot.rs`: per-tweak snapshot store (atomic writes, Needs Attention record).
+- `src-tauri/src/tweaks/shared_claims.rs`: refcounted claims on shared blocks (ADR-0006).
 - `src-tauri/src/services/registry_value.rs`: canonical registry JSON parsing, writing, and comparison.
 - `src-tauri/src/services/elevation/`: TrustedInstaller execution through the typed broker.
 - `src-tauri/src/services/system_info_service.rs`: lightweight runtime context and full WMI-backed system information.

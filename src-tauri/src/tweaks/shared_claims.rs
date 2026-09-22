@@ -68,8 +68,7 @@ fn lock_claims() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Distinguishes a genuinely new capture from a verified no-op (controller decision: the engine
-/// needs to tell these apart, e.g. to decide whether to log "now enforced" vs "already enforced").
+/// A genuinely new capture vs. a verified no-op (e.g. to log "now enforced" vs "already enforced").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaimOutcome {
     /// This was the first claimant: the live original was captured and the address driven.
@@ -194,11 +193,8 @@ impl ClaimsStore {
         Ok(file.records)
     }
 
-    /// Atomic whole-file rewrite (temp file in the same directory, fsynced, then renamed onto the
-    /// final path) — mirrors the pattern in [`super::snapshot`]; kept as a private copy here rather
-    /// than reaching into that module's private helpers, per this task's instruction not to touch
-    /// snapshot.rs. A consolidation carry-forward: the two atomic-write bodies are now duplicated
-    /// across `snapshot.rs` and this file.
+    /// Atomic whole-file rewrite (same-directory temp file, fsynced, renamed onto the final path).
+    /// A private copy of [`super::snapshot`]'s pattern; keep the two in sync.
     fn save(&self, records: BTreeMap<String, ClaimRecord>) -> Result<(), ClaimsError> {
         fs::create_dir_all(&self.root)?;
         let file = ClaimsFile {
@@ -401,8 +397,7 @@ mod tests {
         Value::Reg(TypedRegValue::Dword(1))
     }
 
-    /// In-memory `EffectKind` mock (brief requirement: the claim/release drive/read side goes
-    /// through an injected mock, never a real kind). Tracks drive-call count and can be told to
+    /// In-memory `EffectKind` mock, never a real kind. Tracks drive-call count and can be told to
     /// fail every subsequent drive, for the failed-restore test.
     struct MockKind {
         current: Mutex<Value>,
@@ -537,7 +532,7 @@ mod tests {
 
         s.claim(&shared, "tweak_a", &mock, &cx()).unwrap();
         // Simulate external drift after the claim -- the release must overwrite this, not
-        // read-and-skip on it (grill Q4).
+        // read-and-skip on it.
         *mock.current.lock().unwrap() = Value::Reg(TypedRegValue::Dword(999));
 
         let outcome = s.release(&shared.id, "tweak_a", &mock, &cx()).unwrap();
@@ -693,7 +688,7 @@ mod tests {
         assert_eq!(s.holders(&shared.id), vec!["tweak_a".to_string()]);
     }
 
-    /// The crown-jewel property test (brief): for every legal claim/release interleaving among N
+    /// The crown-jewel property test: for every legal claim/release interleaving among N
     /// claimants sharing one address, the captured original is restored exactly once, at the true
     /// last release, and the live value tracks `shared.value` throughout the claimed window.
     ///

@@ -3,7 +3,7 @@
 //! because Actions are not `Setting`s (see `kinds/mod.rs` on the `Effect`/`Setting`/`Action` split).
 //!
 //! ## Level gating mirrors every other kind's read/drive split
-//! `run_apply`/`run_undo` mutate state, so they [`guard_level`] and reject `System`/`Ti`: no
+//! `run_apply`/`run_undo` mutate state, so they [`guard_level`] and reject `Ti`: no
 //! `BrokerOp` carries a script, so there is nothing to route them to. `run_probe` only observes
 //! state (spec §7: "state-based, never history-based"), so like every `read` it never gates on
 //! `cx.level()` and always runs in-process.
@@ -41,8 +41,7 @@
 //! so the lock covers the whole execution.
 //!
 //! ## Encoding
-//! [`base64_encode`] is local to this file. The broker had an identical copy until its only caller,
-//! a PowerShell op with no producer, was removed; this is now the single one.
+//! [`base64_encode`] is local to this file and the only copy.
 
 use std::io::Read;
 use std::os::windows::io::AsRawHandle;
@@ -90,7 +89,7 @@ impl ActionKind {
                 run_and_require_zero(*shell, &apply.0)
             }
             ActionDef::DeleteTree { key, .. } => {
-                // `RegistryKind::drive` runs its own `guard_level`, rejecting System/Ti exactly as
+                // `RegistryKind::drive` runs its own `guard_level`, rejecting Ti exactly as
                 // a raw `RegistryKey` effect would -- not duplicated here.
                 RegistryKind.drive(
                     &Setting::RegistryKey(key.clone()),
@@ -446,7 +445,7 @@ mod tests {
         assert!(!ActionKind.run_probe(&absent, &cx).unwrap());
     }
 
-    /// The brief's suggested probe shape: presence of a temp-file marker.
+    /// Probe shape: presence of a temp-file marker.
     #[test]
     fn probe_polarity_against_a_temp_file_marker() {
         let path = std::env::temp_dir().join(format!(
@@ -575,18 +574,18 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
         let cx = ExecCx::new(level);
         let err = ActionKind
             .run_apply(&action, &cx)
-            .expect_err("this build cannot yet route System/Ti through the broker");
+            .expect_err("this build cannot yet route Ti through the broker");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
         let err = ActionKind
             .run_undo(&action, &cx)
-            .expect_err("this build cannot yet route System/Ti through the broker");
+            .expect_err("this build cannot yet route Ti through the broker");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
     #[test]
     fn probe_never_gates_on_level() {
         // Mirrors registry.rs's `read_runs_in_process_regardless_of_declared_level`: probe is a
-        // read, so (unlike apply/undo) it must not reject System/Ti.
+        // read, so (unlike apply/undo) it must not reject Ti.
         let action = script_action("exit 0", None, Some("exit 0"), false, Shell::PowerShell);
         for level in [Level::User, Level::Admin, Level::Ti] {
             let cx = ExecCx::new(level);
@@ -698,7 +697,7 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
     }
 
     /// The `DeleteTree` counterpart of `drive_rejects_system_and_ti_for_script_actions`: apply (via
-    /// `RegistryKind::drive`) and undo both reject System/Ti.
+    /// `RegistryKind::drive`) and undo both reject Ti.
     #[test]
     fn delete_tree_rejects_system_and_ti_levels() {
         let scratch = Scratch::new("level_gate");
@@ -717,14 +716,14 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
 
         let level = Level::Ti;
         let cx = ExecCx::new(level);
-        let err = ActionKind.run_apply(&apply_action, &cx).expect_err(
-            "delete-tree apply must reject System/Ti exactly like a raw RegistryKey effect",
-        );
+        let err = ActionKind
+            .run_apply(&apply_action, &cx)
+            .expect_err("delete-tree apply must reject Ti exactly like a raw RegistryKey effect");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
 
         let err = ActionKind
             .run_undo(&undo_action, &cx)
-            .expect_err("delete-tree undo must reject System/Ti");
+            .expect_err("delete-tree undo must reject Ti");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 

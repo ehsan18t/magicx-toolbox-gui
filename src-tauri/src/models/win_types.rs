@@ -1,14 +1,7 @@
-//! Shared low-level Windows types (Task 15 pre-work): the primitive-facing hive/value/startup/
-//! action types that `services::{registry_service, registry_value, service_control,
-//! scheduler_service, hosts_service, firewall_service}` and the elevation broker speak, extracted
-//! verbatim from the deleted option-centric `models::tweak_schema`/`models::tweak` so those
-//! primitives (spec §11: "the trusted low-level primitives are reused") keep compiling once the
-//! rest of the old YAML schema is gone. This file is deliberately NOT the new engine's own model
-//! (`tweaks::model`) — `RegistryHive`/`RegistryValueType`/etc. here are what the OS-facing
-//! primitives and the broker wire protocol use; `tweaks::model::{Hive, RegType, ...}` is the
-//! compiled-corpus representation the kinds translate to/from (see e.g. `tweaks/kinds/registry.rs`'s
-//! `old_hive`/`old_type` conversions). Kept separate on purpose, same reasoning `tweaks/model.rs`'s
-//! own module docs already give for `Hive`/`RegType` vs. these.
+//! Primitive-facing Windows types (hive, value, startup, action) spoken by the `services`
+//! primitives and the elevation broker wire protocol. Kept separate from `tweaks::model`
+//! (`Hive`/`RegType`, the compiled-corpus form); the kinds translate between the two (e.g.
+//! `tweaks/kinds/registry.rs`'s `old_hive`/`old_type`).
 
 use serde::{Deserialize, Serialize};
 

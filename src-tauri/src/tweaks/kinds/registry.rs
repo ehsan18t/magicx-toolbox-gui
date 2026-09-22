@@ -1,8 +1,7 @@
 //! `EffectKind` for `Setting::Registry` (one value, optionally one packed field) and
 //! `Setting::RegistryKey` (key existence) — spec §5.1/§5.2. Wraps the low-level
-//! `services::registry_service` primitive, translating between the new typed model
-//! (`Hive`/`RegType`/`TypedRegValue`) and the old (`RegistryHive`/`RegistryValueType`) that
-//! primitive still speaks.
+//! `services::registry_service` primitive, translating between the typed corpus model
+//! (`Hive`/`RegType`/`TypedRegValue`) and the primitive's (`RegistryHive`/`RegistryValueType`).
 
 use std::sync::Mutex;
 
@@ -50,7 +49,7 @@ impl EffectKind for RegistryKind {
     }
 }
 
-/// `User`/`Admin` run in-process; `System`/`Ti` are routed to the broker one layer up, so reaching
+/// `User`/`Admin` run in-process; `Ti` is routed to the broker one layer up, so reaching
 /// this kind's own `drive` at those levels means the routing was bypassed (see [`to_broker_op`]).
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
@@ -58,8 +57,6 @@ fn guard_level(cx: &ExecCx) -> Result<(), Error> {
         other => Err(Error::UnsupportedLevel(other)),
     }
 }
-
-// --- hive / type conversions between the new typed model and the old primitive's types --------
 
 fn old_hive(hive: Hive) -> RegistryHive {
     match hive {
@@ -237,10 +234,10 @@ fn delete_ok(result: Result<(), BackendError>) -> Result<(), BackendError> {
     }
 }
 
-// --- System/TI routing: Setting + Value -> BrokerOp (called by `engine::AllKinds::drive`, never
+// --- TI routing: Setting + Value -> BrokerOp (called by `engine::AllKinds::drive`, never
 // by this file's own `drive`) ---------------------------------------------------------------------
 
-/// Translates a System/TI-level registry drive into the broker's typed op (spec §9).
+/// Translates a TI-level registry drive into the broker's typed op (spec §9).
 ///
 /// Two things do not translate, both deliberately:
 ///
@@ -250,9 +247,9 @@ fn delete_ok(result: Result<(), BackendError>) -> Result<(), BackendError> {
 ///
 /// An **HKCU address** is rejected outright. `context::route` already pins every HKCU setting to
 /// `Level::User`, so the engine cannot reach here with one, but that is a convention and
-/// conventions do not survive refactors. Inside the broker child `HKEY_CURRENT_USER` is SYSTEM's
-/// or TrustedInstaller's own profile: the write would land in a hive no user ever sees, and the
-/// read-back would happily confirm it. A typed error beats a silent wrong-green.
+/// conventions do not survive refactors. Inside the broker child `HKEY_CURRENT_USER` is the
+/// LocalSystem profile (the TI token's user): the write would land in a hive no user ever sees,
+/// and the read-back would happily confirm it. A typed error beats a silent wrong-green.
 pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<BrokerOp, Error> {
     if let Setting::Registry(RegAddr {
         hive: Hive::Hkcu, ..
@@ -622,7 +619,7 @@ mod tests {
         assert_eq!(unchanged, "no-separators==;;");
     }
 
-    /// System/Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
+    /// Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
     /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
     /// the kind never escalates on its own.
     #[test]
@@ -634,16 +631,16 @@ mod tests {
         let cx = ExecCx::new(level);
         let err = RegistryKind
             .drive(&setting, &Value::Reg(TypedRegValue::Dword(1)), &cx)
-            .expect_err("the in-process kind must still reject System/Ti directly");
+            .expect_err("the in-process kind must still reject Ti directly");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 
-    /// `to_broker_op` is what `engine::AllKinds::drive` calls for System/Ti. Pure translation, so
+    /// `to_broker_op` is what `engine::AllKinds::drive` calls for Ti. Pure translation, so
     /// no real elevation or broker spawn is involved.
     #[test]
     fn system_and_ti_registry_drives_translate_to_broker_ops() {
         // HKLM, not `Scratch::reg_addr`'s HKCU: an HKCU address is rejected outright (see
-        // `hkcu_never_translates_to_a_broker_op`), and System/Ti translation is an HKLM concern
+        // `hkcu_never_translates_to_a_broker_op`), and Ti translation is an HKLM concern
         // anyway. Translation writes nothing, so no scratch key is needed.
         let scratch = Scratch::new("broker_translate");
         let value_addr = Setting::Registry(RegAddr {
@@ -700,8 +697,8 @@ mod tests {
     /// An HKCU address must never become a broker op, at any level and for either Setting variant.
     /// `context::route` already pins HKCU to `Level::User` so the engine cannot get here, but that
     /// is a convention; this makes it a typed guarantee. Inside the broker child
-    /// `HKEY_CURRENT_USER` is SYSTEM's or TrustedInstaller's own profile, so the write would land
-    /// in a hive no user ever sees and the read-back would happily confirm it.
+    /// `HKEY_CURRENT_USER` is the LocalSystem profile (the TI token's user), so the write would
+    /// land in a hive no user ever sees and the read-back would happily confirm it.
     #[test]
     fn hkcu_never_translates_to_a_broker_op() {
         let scratch = Scratch::new("broker_hkcu_reject");
@@ -731,7 +728,7 @@ mod tests {
         }
     }
 
-    /// The one narrowed gap the translation does not cover (spec §9's brief): a field-addressed
+    /// The one gap the translation does not cover (spec §9): a field-addressed
     /// packed write stays `UnsupportedLevel`, since its read-modify-write cycle needs a read at the
     /// SAME elevated level the broker protocol has no op for.
     #[test]
@@ -759,7 +756,7 @@ mod tests {
     #[test]
     fn read_runs_in_process_regardless_of_declared_level() {
         // Spec invariant 24: reads run at the current level; there is no elevated read op to
-        // route, so `read` must not reject System/Ti the way `drive` does.
+        // route, so `read` must not reject Ti the way `drive` does.
         let scratch = Scratch::new("level_read");
         registry_service::set_dword(&RegistryHive::Hkcu, &scratch.path, "Flag", 5).unwrap();
         let setting = Setting::Registry(scratch.reg_addr("Flag", RegType::Dword));

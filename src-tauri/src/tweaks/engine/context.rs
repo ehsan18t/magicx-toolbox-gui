@@ -1,6 +1,6 @@
 //! Execution-context routing (spec §9, ADR-0005 as amended; invariant 24): effective-level
 //! computation (max, escalate-only), the HKCU always-in-process-as-user exception, grouping
-//! consecutive System/TI steps into one child, and the over-the-shoulder SID guard. Pure logic —
+//! consecutive TI steps into one child, and the over-the-shoulder SID guard. Pure logic:
 //! the one seam that touches the OS (the SID lookups) sits behind an injectable [`SidProbe`], so
 //! everything else here runs with zero OS contact by default.
 
@@ -21,17 +21,14 @@ fn is_hkcu(s: &Setting) -> bool {
 
 /// Whether `effect` drives a user-hive (HKCU) `Setting` -- the single HKCU determination, shared by
 /// [`route`] (drives), [`read_route`] (reads) and [`tweak_touches_hkcu`] (the availability guard),
-/// so none of them can drift apart. That drift is not hypothetical: the guard used to key on the
-/// tweak's `elevation:` floor while routing keyed on the hive, and the two disagreed about 85 of the
-/// 203 tweaks in the corpus.
+/// so none of them can drift apart. Key on the hive, never the `elevation:` floor: the two disagree
+/// for many corpus tweaks.
 ///
 /// Three shapes can name a hive, and all three are inspected:
 ///
 /// - `Effect::Setting` directly, via its `RegAddr`/`KeyAddr`.
-/// - `Effect::Shared`, resolved through `corpus.shared` to the block's own `Setting`. This matters
-///   even though today's corpus declares zero shared blocks: without it, a shared HKCU setting would
-///   be routed by the tweak's floor and driven inside a System/TI child, against that child's own
-///   hive. An unresolvable `SharedId` cannot occur in a compiled corpus (the build rejects it).
+/// - `Effect::Shared`, resolved via `corpus.shared` to its `Setting`; otherwise a shared HKCU setting
+///   routes by the floor into a TI child's own hive. An unresolvable `SharedId` cannot compile.
 /// - `Effect::Action(ActionDef::DeleteTree)`, which carries a `KeyAddr` and therefore a hive. A
 ///   `Script` action carries no address and is never HKCU by this check. Missing the `DeleteTree`
 ///   case would leave an HKCU *subtree deletion* routed by the floor, i.e. the single most
@@ -79,7 +76,7 @@ pub fn route(effect: &EffectDef, tweak: &Tweak, corpus: &Corpus) -> ExecCx {
 /// (HKCU) `Setting` must still be read in-process as the interactive user regardless of
 /// `current_level` -- reading "the current level"'s own hive would read the WRONG account's HKCU
 /// the moment `current_level` is ever anything but `User` (e.g. a batch's ceiling reported as
-/// `Admin`/`System`/`Ti` for gating purposes elsewhere).
+/// `Admin`/`Ti` for gating purposes elsewhere).
 pub fn read_route(effect: &EffectDef, current_level: Level, corpus: &Corpus) -> ExecCx {
     if effect_is_hkcu(effect, corpus) {
         return ExecCx::new(Level::User);
@@ -105,9 +102,8 @@ pub trait SidProbe {
     /// Resolving the session owner's SID goes through `LookupAccountNameW`, which for a domain
     /// account is a directory lookup: on a domain-joined machine with an unreachable DC, or an
     /// Entra-joined machine whose name provider does not answer, it fails. Without a fallback that
-    /// yields `Undetermined`, which blocks every HKCU tweak -- the very failure this guard was
-    /// rewritten to stop causing. These two names need no directory: one comes from the process's
-    /// own token, the other from the session WTS already tracks.
+    /// yields `Undetermined`, which blocks every HKCU tweak. These two names need no directory:
+    /// one comes from the process's own token, the other from the session WTS already tracks.
     ///
     /// Defaulted so test fakes need not implement them.
     fn process_account_name(&self) -> Option<String> {
@@ -781,7 +777,7 @@ mod tests {
         // Pinned deliberately, not incidentally. Proceeding on an unanswered question can write
         // another account's hive, and that write is unrecoverable: the snapshot store is keyed to
         // the machine while the hive is keyed to the account, and apply's read-back verifies the
-        // same hive it just wrote. Refusing mutates nothing. See ADR-0005's 2026-07 amendment.
+        // same hive it just wrote. Refusing mutates nothing. See ADR-0005 (amendment).
         assert!(SidCheck::Undetermined.blocks_hkcu());
         assert!(SidCheck::DifferentUser.blocks_hkcu());
         assert!(!SidCheck::SameUser.blocks_hkcu());
@@ -813,8 +809,8 @@ mod tests {
         hkcu_tweak.surface = vec![registry_effect(Hive::Hkcu)];
         assert!(tweak_touches_hkcu(&hkcu_tweak, &corpus));
 
-        // The case the old floor-keyed guard missed entirely: an Admin-floor tweak whose surface
-        // still reaches into the user's own hive. 31 of these exist in the shipped corpus.
+        // The case a floor-keyed guard misses: an Admin-floor tweak whose surface still reaches
+        // into the user's own hive.
         let mut admin_floor_hkcu = tweak_with_floor(Level::Admin);
         admin_floor_hkcu.surface = vec![registry_effect(Hive::Hklm), registry_effect(Hive::Hkcu)];
         assert!(
@@ -844,7 +840,7 @@ mod tests {
     fn route_and_the_guard_agree_on_shared_effects() {
         // The original defect was two answers to "is this HKCU" drifting apart. `route` and
         // `tweak_touches_hkcu` must resolve a Shared effect the same way, or a shared HKCU setting
-        // would be flagged by the guard yet still driven inside a System/TI child.
+        // would be flagged by the guard yet still driven inside a TI child.
         let shared_corpus = corpus_with_shared(Hive::Hkcu);
         let mut tweak = tweak_with_floor(Level::Ti);
         tweak.surface = vec![shared_effect("s1")];

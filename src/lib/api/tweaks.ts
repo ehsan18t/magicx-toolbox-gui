@@ -1,4 +1,4 @@
-// API for the redesigned tweak engine (Task 16 command + event contract).
+// API for the tweak engine commands and events.
 // Every function here maps 1:1 to a command registered in src-tauri/src/lib.rs's
 // generate_handler! — nothing else. Tauri maps camelCase JS args to snake_case Rust
 // params (e.g. `tweakId` -> `tweak_id`) and serializes Rust snake_case fields back.

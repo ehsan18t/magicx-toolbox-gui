@@ -31,10 +31,8 @@
 //! just-captured entry; any unverified restore keeps it and reports every unrecoverable item
 //! (ADR-0001/0002, invariant 20); never `let _ =` on a rollback outcome.
 //!
-//! ## Deviation from the brief (flagged per the task's own instruction)
-//! The brief's `apply` signature omits `corpus`; both `detect` (already reviewed, Task 11) and
-//! resolving a captured `OptionRef`'s current definition (ADR-0007) need it, so it is added here:
-//! `apply(tweak, corpus, target, deps)`.
+//! `apply` takes `corpus`: `detect` and resolving a captured `OptionRef`'s current definition
+//! (ADR-0007) both need it.
 //!
 //! ## Per-effect routing (spec §9, ADR-0005; invariant 24)
 //! DRIVES use [`context::route`] per effect (`max(floor, step)`; HKCU always in-process as the
@@ -290,7 +288,6 @@ fn map_drive_err(effect: &EffectId, e: KindError) -> EngineError {
     }
 }
 
-/// One effect's outcome (brief's Interfaces section: "reports per-effect results").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectResult {
     pub effect: EffectId,
@@ -309,13 +306,13 @@ pub enum EffectResultKind {
     Released,
     /// An Action's `apply` ran and verified.
     Ran,
-    /// An omitted undo-carrying Action's `undo` was driven back and verified (grill Q3).
+    /// An omitted undo-carrying Action's `undo` was driven back and verified.
     UndoDrivenBack,
     /// Nothing needed doing (e.g. target authors `Unclaimed` and this tweak never held it).
     NoOp,
 }
 
-/// `apply`'s result (grill Q1): per-effect results, plus a status computed from this operation's
+/// `apply`'s result: per-effect results, plus a status computed from this operation's
 /// OWN verify reads -- never a fresh `detect` re-scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyOutcome {
@@ -323,28 +320,20 @@ pub struct ApplyOutcome {
     pub status: TweakStatus,
 }
 
-/// Which direction an Action ran in during Step 3 -- decided once during Step 1 (a pure read-time
-/// decision) and reused unchanged at drive time and, on failure, at rollback time, so all three
-/// phases agree on what actually happened.
-/// `pub(crate)`: Task 13's restore reuses [`drive_forward`] verbatim to run an OptionRef target's
-/// actions/ephemerals in declaration order (which dispatches to `drive_action` internally -- that
-/// helper itself stays private, only reachable through `drive_forward`), so restore must be able to
-/// name this plan's variants too (visibility-only -- see this file's module docs).
+/// Which direction an Action runs in Step 3: decided once in Step 1 and reused at drive and
+/// rollback time, so all three agree. `pub(crate)` for restore, which calls [`drive_forward`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActionPlan {
     /// The target option runs this action's `apply`.
     Apply,
     /// The target omits an undo-carrying probeable action whose probe currently reads present --
-    /// its `undo` is driven back instead (grill Q3, spec §8.1 step 3 / §8.4).
+    /// its `undo` is driven back instead (spec §8.1 step 3 / §8.4).
     UndoBack,
 }
 
-/// One effect Step 3 actually changed, in the order it happened -- rollback walks this in reverse.
-/// Settings need no entry here: their pre-apply state is captured wholesale in Step 1, and
-/// drive-to-value is absolute, so restoring the captured dump covers every Setting regardless of
-/// how far Step 3 got (the brief's own callout: "partial apply progress needs no per-step
-/// tracking"). Shared effects DO need tracking -- the captured entry excludes them entirely (their
-/// lifecycle is the claims record, spec §8.6), so nothing else remembers what this attempt did.
+/// One non-Setting effect Step 3 changed, in order; rollback walks these in reverse. Settings need
+/// no entry (drive-to-value is absolute); Shared effects do, since the captured entry excludes them
+/// (spec §8.6).
 #[derive(Debug, Clone)]
 enum ProcessedEffect {
     Action(EffectId, ActionPlan),
@@ -392,10 +381,8 @@ fn end_step(ctx: &DriveCtx, effect: &EffectDef) -> Result<(), EngineError> {
         })
 }
 
-/// Bundles what every Step-3 helper needs, purely to keep argument lists short (clippy).
-///
-/// `pub(crate)`: Task 13's restore constructs one of these to reuse [`drive_forward`] verbatim for
-/// an OptionRef target's re-apply (visibility-only -- see this file's module docs).
+/// Bundles what every Step-3 helper needs. `pub(crate)`: restore builds one to reuse
+/// [`drive_forward`] for an OptionRef re-apply.
 pub(crate) struct DriveCtx<'a> {
     pub(crate) tweak: &'a Tweak,
     pub(crate) corpus: &'a Corpus,
@@ -405,9 +392,8 @@ pub(crate) struct DriveCtx<'a> {
     pub(crate) journal: Journaling,
 }
 
-/// `pub(crate)`/`effect_results`/`held_shared` only: Task 13's restore reads these back after
-/// calling [`drive_forward`] to build its own outcome, but never touches `processed` (that field's
-/// type stays module-private -- see this file's module docs).
+/// `pub(crate)` for `effect_results`/`held_shared` only: restore reads them after
+/// [`drive_forward`]; `processed` stays module-private.
 #[derive(Default)]
 pub(crate) struct DriveState {
     processed: Vec<ProcessedEffect>,
@@ -547,8 +533,7 @@ pub(crate) fn settle_recorded(deps: &Deps, tweak_id: &str, seq: Seq, inherited: 
 
 /// Applies `target` to `tweak` (spec §8.1). Async only to hold the per-tweak lock across the whole
 /// synchronous step0→4 sequence (spec §8.7) -- every injected effect operation itself is a plain
-/// sync call (System/Ti broker routing is Task 14; today `ExecCx`'s `UnsupportedLevel` propagates
-/// as an ordinary typed `Err`, not a special case here).
+/// sync call, a Ti drive's broker spawn included.
 pub async fn apply(
     tweak: &Tweak,
     corpus: &Corpus,
@@ -579,12 +564,9 @@ pub(crate) fn do_apply(
     let winver = deps.running;
     let milestone = winver.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
-    // Distinct from `surface` in exactly one respect (review fix): ephemeral actions are INCLUDED
-    // here. `applicable_surface` is a detection concept (spec §6.4/§8.4) and correctly excludes
-    // them there -- an ephemeral leaves no persistent state for detection, capture, or reversal to
-    // observe -- but a declared `run` ephemeral action still needs to physically RUN on apply (spec
-    // §7). Only the action-plan-building loop and the driving pass below use this; Step 1's Setting
-    // capture loop keeps using `surface` (moot either way -- it already ignores non-Setting kinds).
+    // `surface` plus ephemeral actions: detection excludes them (no persistent state), but a
+    // declared `run` ephemeral must still RUN on apply (spec §7). Used by the action plan and the
+    // driving pass only.
     let drive_surface = driving_surface(tweak, &winver);
 
     // Step 0: detect current status (the lock is already held by `apply`).
@@ -690,13 +672,9 @@ pub(crate) fn do_apply(
         _ => Captured::Values(captured_values),
     };
 
-    // Step 2: persist the WAL entry BEFORE mutating (invariant 5) -- the journal is exactly the
-    // actions Step 1 already decided will run, MINUS ephemeral ones (review fix): an ephemeral
-    // changes no persistent state, so a crash after it ran needs no recovery -- journaling it would
-    // make the crash-window scan spuriously flag Needs Attention, and (were it ever undone) rollback/
-    // restore would find it un-undoable. `ephemeral: true` is exempt from ALL reversibility
-    // bookkeeping (spec §7, invariant 10), enforced here at the source rather than by exempting every
-    // downstream consumer.
+    // Step 2: persist the WAL entry BEFORE mutating (invariant 5): Step 1's actions MINUS
+    // ephemerals, which change no persistent state; journaling one makes the crash scan flag a
+    // spurious Needs Attention (spec §7, invariant 10).
     let journal: Vec<JournalRow> = action_plan
         .iter()
         .filter(|(id, _)| !find_action(tweak, id).is_some_and(|(_, a)| is_ephemeral(a)))
@@ -828,9 +806,8 @@ pub(crate) fn driving_surface<'a>(tweak: &'a Tweak, winver: &WinVer) -> Vec<&'a 
         .collect()
 }
 
-/// `pub(crate)`: Task 13's restore reuses this verbatim (not duplicated) to drive an OptionRef
-/// target's Shared/Action effects in declaration order (visibility-only -- see this file's module
-/// docs; the body below is byte-identical to Task 12's).
+/// `pub(crate)`: restore reuses this to drive an OptionRef target's Shared/Action effects in
+/// declaration order.
 pub(crate) fn drive_forward(
     ctx: &DriveCtx,
     surface: &[&EffectDef],
@@ -839,9 +816,8 @@ pub(crate) fn drive_forward(
 ) -> Result<(), EngineError> {
     let mut index = 0;
     while index < surface.len() {
-        // A run of consecutive same-level elevated Settings shares ONE child (spec §9's grouped
-        // execution, invariant 18). Acquiring TrustedInstaller is entirely a per-spawn cost, so a
-        // tweak with twenty such effects used to pay it twenty times.
+        // A run of consecutive same-level elevated Settings shares ONE child (spec §9, invariant
+        // 18): acquiring TrustedInstaller is a per-spawn cost, paid once per run, not per effect.
         let run = brokerable_run(ctx, surface, index);
         if run >= 2 {
             drive_setting_run(ctx, &surface[index..index + run], state)?;
@@ -1322,10 +1298,8 @@ fn has_undo(action: &ActionDef) -> bool {
     }
 }
 
-/// Whether `action` is ephemeral (spec §7): exempt from ALL reversibility bookkeeping -- never
-/// journaled (Step 2), never added to `state.processed` (`drive_action`), and (defensively, in case
-/// a future path ever surfaces one anyway) never treated as an un-undoable failure by `rollback` or
-/// Task 13's `revert::undo_journal`.
+/// Ephemeral (spec §7): never journaled, never in `state.processed`, and never an un-undoable
+/// failure in `rollback` or `revert::undo_journal`.
 fn is_ephemeral(action: &ActionDef) -> bool {
     matches!(
         action,
@@ -1336,12 +1310,9 @@ fn is_ephemeral(action: &ActionDef) -> bool {
     )
 }
 
-/// Drives every captured Setting back to its pre-apply value (spec §8.1/§8.5, ADR-0007) -- the
-/// primitive Task 13's restore reuses verbatim, since a Restore's re-apply-target step and a
-/// rollback's captured-state-back step are the same drive-to-value operation. Re-derives the
-/// tweak from the CURRENT corpus by id (never trusts a possibly-stale `&Tweak`), matching
-/// ADR-0007's "restore re-derives from the current corpus." Returns every drive/verify failure;
-/// empty means every captured Setting was restored and verified.
+/// Drives every captured Setting back (spec §8.1/§8.5); shared by rollback and restore.
+/// Re-derives the tweak from the CURRENT corpus by id, never a possibly-stale `&Tweak`
+/// (ADR-0007). Returns every drive/verify failure; empty means all restored and verified.
 pub(crate) fn drive_to_captured(
     captured: &Captured,
     tweak_id: &str,
@@ -2515,12 +2486,8 @@ mod tests {
         );
     }
 
-    /// Fix 2 regression (a CRITICAL Fix 2 itself exposed by making ephemerals run): an ephemeral
-    /// action running earlier in declaration order must never make a later, unrelated failure
-    /// spuriously un-rollback-able. Mirrors `verify_mismatch_rolls_back`'s `DrivePlan::NoOp` trick
-    /// (the ORIGINAL failure is a genuine `VerifyMismatch`; the rollback's drive-back to the
-    /// never-actually-changed captured value trivially re-verifies), with a declared-earlier
-    /// ephemeral action added to the surface.
+    /// An earlier ephemeral action must not make a later, unrelated failure un-rollback-able.
+    /// Uses `verify_mismatch_rolls_back`'s `DrivePlan::NoOp` trick plus an earlier ephemeral.
     #[test]
     fn apply_with_ephemeral_then_failure_rolls_back_cleanly() {
         let h = Harness::new();
@@ -2617,12 +2584,9 @@ mod tests {
         );
     }
 
-    /// Regression for the reviewed CRITICAL: a probeable, undo-carrying action's `undo` exits 0
-    /// (a lying/buggy script -- never surfaced as a non-zero exit) but does NOT actually revert
-    /// the resource. Every OTHER effect in this scenario restores cleanly, so under the buggy
-    /// code (exit-code-only reversal verification) `rollback_failures` would be empty and
-    /// `snapshots.consume` would delete the only return-point while the machine still carries the
-    /// un-reverted action -- exactly the consume-on-uncertain-rollback ADR-0002 forbids.
+    /// An action's `undo` exits 0 but does not revert: with exit-code-only verification the
+    /// snapshot would be consumed while the action is still in effect (ADR-0002). The probe must
+    /// catch it.
     #[test]
     fn rollback_probe_verifies_action_reversal_never_consumes_on_a_lying_undo() {
         let h = Harness::new();
@@ -3884,10 +3848,8 @@ mod tests {
         assert!(!log.contains(&Op::RunUndo("act_undo".into())));
     }
 
-    /// Fix 2 regression (review): apply and restore must agree on what applying an option does.
-    /// `validate::applicable_surface` (a detection concept) correctly excludes ephemeral actions,
-    /// but a declared `run` ephemeral action must still physically execute on apply (spec §7) --
-    /// restore's `reapply_option_ref` already did this; `do_apply` did not, until this fix.
+    /// Apply and restore agree: a declared `run` ephemeral executes on apply (spec §7), though
+    /// `validate::applicable_surface` excludes it.
     #[test]
     fn apply_runs_a_declared_ephemeral_action() {
         let h = Harness::new();
@@ -3946,9 +3908,8 @@ mod tests {
         }
     }
 
-    /// Fix 2 regression: an ephemeral action must never appear in the persisted WAL journal at all
-    /// (spec §7, invariant 10) -- a real undo-carrying/probeable action declared alongside it must
-    /// still be journaled and marked completed normally.
+    /// An ephemeral action never appears in the WAL journal (spec §7, invariant 10); an
+    /// undo-carrying action beside it is still journaled and marked completed.
     #[test]
     fn ephemeral_action_is_not_journaled() {
         let h = Harness::new();
@@ -4405,22 +4366,9 @@ mod tests {
         );
     }
 
-    // --- CRITICAL 2 safety test: per-effect execution-context routing is actually wired ----------
-    //
-    // Before this fix, EVERY effect's drive built its `ExecCx` from the flat `Deps.level` ceiling,
-    // so the HKCU-always-in-process-as-User exception (`context::route`) was correct code that no
-    // production drive call ever consulted -- an HKCU effect under a System/TI floor would have
-    // driven at that ceiling, hitting the elevated child's own HKCU instead of the interactive
-    // user's (the exact over-the-shoulder failure ADR-0005 exists to prevent). This test fixture
-    // records the `ExecCx::level()` each `drive` call actually receives; against the OLD code it
-    // would show `Ti` for both effects below (failing this test) -- against the fix, only the
-    // HKLM effect does.
-    //
-    // A recorded `Level::User` is a sufficient proxy for "did not route to the broker": it is
-    // exactly the value `engine::AllKinds::drive` (production, not this mock) branches on --
-    // `Level::User | Level::Admin` never reaches the broker translation at all (see
-    // `tweaks/engine/mod.rs`). A full end-to-end run through the real broker would need actual
-    // elevation, out of place for a pure-mock engine test.
+    // Per-effect routing is wired: an HKCU effect under a TI floor drives at `User`, not in the
+    // elevated child's own HKCU (ADR-0005). `Level::User` is a sufficient proxy for "not
+    // brokered": `AllKinds::drive` never brokers `User`/`Admin`.
 
     /// Records the `ExecCx::level()` each `drive` call actually received, keyed by the registry
     /// value name driven.

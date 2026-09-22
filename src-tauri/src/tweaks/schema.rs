@@ -1,14 +1,7 @@
 //! YAML → compiled-model loader (spec §6). `#[cfg(test)]`-only (see `tweaks/mod.rs`): the shipped
 //! binary never links `serde_yaml_bw`. Maps `serde_yaml_bw` nodes onto `parse::LiteralInput` and
-//! calls the Task 2 parsers — path/literal/scope logic is never reimplemented here.
-//!
-//! Scope note: Registry, RegistryKey, Service, Task, Hosts, Firewall, Shared-reference, and
-//! Action(Script) authoring surfaces are wired up, along with tweak/effect/option-value `windows:`
-//! scoping and per-effect `optional`/`if_missing`/`elevation` (Task 4). `Firewall`'s `RuleAddr` was
-//! settled by Task 7 against the real `firewall_service` primitive (see `tweaks/model.rs`); `shared:`
-//! does not offer a Firewall variant — nothing in spec §6.5 asks for one, and adding it is deferred
-//! until an author actually needs it. `ActionDef::DeleteTree` has no YAML mapping yet — deferred to
-//! whichever task first needs to author it.
+//! calls the `parse` functions; path/literal/scope logic is never reimplemented here. Not
+//! authorable: a Firewall `shared:` variant and `ActionDef::DeleteTree`.
 
 use super::model::{
     ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr, FwAction, FwDirection,
@@ -85,7 +78,7 @@ struct WindowsRaw {
     revision: Option<String>,
 }
 
-/// Converts one `windows:` block via the Task 2 grammar (spec §6.6) — never reimplemented here.
+/// Converts one `windows:` block via the `parse` grammar (spec §6.6), never reimplemented here.
 /// `products` are validated with [`expand_product`] but stored raw: the compiled model keeps the
 /// authored ids (`WindowsScope::products: Option<Vec<u8>>`); expansion is a guard/runtime concern.
 fn convert_windows_scope(raw: &WindowsRaw) -> Result<WindowsScope, ParseError> {
@@ -1261,7 +1254,7 @@ mod tests {
         assert_eq!(claimed, Some(OptValue::Claim(None)));
     }
 
-    /// Review fix: proves the RegistryKey and Hosts presence kinds actually load, resolving
+    /// Proves the RegistryKey and Hosts presence kinds actually load, resolving
     /// `present`/`absent` to `Value::Present(true)`/`Value::Present(false)`.
     #[test]
     fn good_corpus_loads_registry_key_and_hosts_presence_kinds() {
@@ -1335,7 +1328,7 @@ mod tests {
         );
     }
 
-    /// Task 7: the `firewall:` effect authoring surface — full `RuleAddr` definition round-trips
+    /// The `firewall:` effect authoring surface: full `RuleAddr` definition round-trips
     /// from YAML, and `present`/`absent` resolve to `Value::Present(bool)` like the other presence
     /// kinds.
     #[test]
@@ -1394,7 +1387,7 @@ mod tests {
         );
     }
 
-    /// Task 4 Half A: tweak/effect/option-value `windows:` scoping, per-effect `optional` +
+    /// Tweak/effect/option-value `windows:` scoping, per-effect `optional` +
     /// `if_missing`, and per-effect `elevation` all round-trip from YAML into the compiled model.
     #[test]
     fn good_corpus_loads_windows_scoping_and_presence() {
@@ -1459,7 +1452,7 @@ mod tests {
             }))
         );
 
-        // Fix 2 (code review): per-option-value `windows:` scoping is not restricted to Settings —
+        // Per-option-value `windows:` scoping is not restricted to Settings:
         // `notify_action` (an Action) carries the same third-level scope on the `On` option.
         let notify_action = tweak
             .surface

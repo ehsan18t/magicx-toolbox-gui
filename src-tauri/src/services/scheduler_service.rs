@@ -1,11 +1,7 @@
 //! Windows Task Scheduler service for managing scheduled tasks.
 //!
-//! Uses the Task Scheduler 2.0 COM API (via the `windows` crate) rather than parsing
-//! `schtasks.exe` text output. `IRegisteredTask::State()` returns a numeric `TASK_STATE`, which is
-//! the actual fix for the locale class: the old code parsed the localized "Status:" line, so it
-//! silently misread state on non-English Windows.
-//!
-//! Supports both exact task names and regex patterns for matching multiple tasks.
+//! Task Scheduler 2.0 COM API, not `schtasks.exe` text: `IRegisteredTask::State()` is a numeric
+//! `TASK_STATE`, while the "Status:" text is localized and misreads on non-English Windows.
 
 use crate::error::Error;
 use crate::models::win_types::SchedulerAction;

@@ -5,7 +5,7 @@
 //! names on another process's command line is reachable by an attacker in the window between our
 //! write and that process's read. Who reads it decides how bad that is: for an Action's `.cmd` it
 //! is code execution at the app's own level; for the elevation broker's request it is code
-//! execution as SYSTEM or TrustedInstaller, which turns same-user code into a full escalation.
+//! execution as TrustedInstaller, which turns same-user code into a full escalation.
 //!
 //! [`ExclusiveTempFile`] closes that window with three guards, all of which are needed:
 //!

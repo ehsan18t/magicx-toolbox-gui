@@ -6,7 +6,7 @@
 //! ## Reconciling `WinVer` with `validate::Milestone`
 //! `validate::Milestone { build: u32 }` is build-only by design: `build.rs`'s guards (spec §10)
 //! quantify over the declared support matrix, an explicit list of *builds* -- revision/UBR is a
-//! finer runtime axis those guards never see, and `validate.rs` stays untouched by this task. At
+//! finer runtime axis those guards never see. At
 //! runtime, though, a live machine has a real revision, and `windows: { revision: ... }` must be
 //! honored (invariant 22) -- so `WinVer::applies` implements the FULL grammar (products/build AND
 //! revision), and callers that only need the build-only shape (`validate::applicable_surface` and
@@ -208,9 +208,8 @@ mod tests {
         );
     }
 
-    /// Read-only, no elevation -- the one live check this file needs (winver's own gate, spec
-    /// brief): the real running build on the dev machine must be a plausible modern Windows 10/11
-    /// build, proving `RtlGetVersion` (not the `GetVersionEx` compat-shim value) is really wired.
+    /// Read-only, no elevation: the real running build must be a plausible Windows 10/11 build,
+    /// proving `RtlGetVersion` (not the `GetVersionEx` compat-shim value) is really wired.
     #[test]
     #[ignore = "reads the real running Windows version -- machine-dependent, run explicitly"]
     fn real_running_winver_is_plausible() {

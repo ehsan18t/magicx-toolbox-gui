@@ -42,10 +42,9 @@ pub enum UnknownCause {
     Malformed,
     /// A non-optional effect read `Value::Missing` (spec §5.4) — typed error, not a guess.
     MissingRequired,
-    /// Any other read/probe failure — never implies elevation would help (controller decision 5:
-    /// under-reporting `needs_elevation` is safe, over-reporting is a defect). Also covers the
-    /// (build-guard-prevented, invariant 9) case of more than one option matching at once: logged
-    /// loudly by `detect` and surfaced here rather than silently picking a winner.
+    /// Any other read/probe failure; never implies elevation would help (under-reporting
+    /// `needs_elevation` is safe, over-reporting is a defect). Also covers several options matching
+    /// at once (build-guard-prevented, invariant 9) rather than silently picking a winner.
     Other,
 }
 
@@ -76,15 +75,9 @@ pub struct HeldInfo {
     pub holders: Vec<String>,
 }
 
-/// A tweak's detected state (spec §8.4/§6.1, ADR-0003).
-///
-/// `Unavailable` is a controller-decided 4th variant beyond the brief's literal three
-/// (`Active`/`SystemDefault`/`Unknown`): spec §6.6 requires "a tweak whose applicable surface is
-/// empty on the running build is shown unavailable, with the reason" — distinct from `Unknown`
-/// (surface exists but is unreadable) and from `SystemDefault` (surface exists and reads as none of
-/// the authored options). Folding an out-of-scope tweak into either would blur a real distinction
-/// the frontend needs to render (there is nothing to detect at all, vs. something we tried and
-/// failed to read, vs. something we read cleanly that just isn't any authored option).
+/// A tweak's detected state (spec §8.4/§6.1, ADR-0003). `Unavailable` (spec §6.6): no applicable
+/// surface on the running build; distinct from `Unknown` (surface unreadable) and `SystemDefault`
+/// (surface reads as no authored option).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TweakState {
     Active(OptLabel),
@@ -324,7 +317,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
         }
         n => {
             // Guaranteed unreachable by the build-time distinctness guard (spec §10, invariant 9) —
-            // surfaced loudly rather than silently picking a winner (controller decision 3).
+            // surfaced loudly rather than silently picking a winner.
             let labels: Vec<_> = matched.iter().map(|(o, _)| o.label.to_string()).collect();
             log::error!(
                 "detect '{}': {n} options matched simultaneously ({labels:?}) -- distinctness guard violated",
@@ -397,9 +390,8 @@ fn classify_setting_read(
 }
 
 /// Whether `action` can ever contribute a detection signal (spec §6.4): a probe-less Action
-/// (`Script` with no `probe`, or `DeleteTree`, which has no `probe` field at all) never can. Local
-/// equivalent of `validate::is_detectable_dimension` (private there, and this task's boundary
-/// excludes touching `validate.rs` beyond the two reused helpers) — kept in sync by hand.
+/// (`Script` with no `probe`, or `DeleteTree`) never can. Must stay in sync by hand with the
+/// private `validate::is_detectable_dimension`.
 fn contributes_to_detection(action: &ActionDef) -> bool {
     matches!(action, ActionDef::Script { probe: Some(_), .. })
 }

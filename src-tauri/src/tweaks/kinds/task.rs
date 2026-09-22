@@ -118,7 +118,7 @@ fn drive_task(addr: &TaskAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
-/// Translates a System/TI-level task drive into the broker's typed op (spec §9), mirroring
+/// Translates a TI-level task drive into the broker's typed op (spec §9), mirroring
 /// `drive_task`. Driving to `Missing` yields an empty op list, the same no-op it always is.
 ///
 /// As in `service.rs`, this stays a pure translation and does not repeat the existence pre-check.
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn missing_task_reads_missing() {
-        // Pure: no real COM activation (controller decision 4 -- no elevation, no real resource).
+        // Pure: no real COM activation, no elevation, no real resource.
         let missing = map_task_state(Ok(TaskState::NotFound));
         assert!(matches!(missing, Ok(Value::Missing)), "got {missing:?}");
     }
@@ -252,7 +252,7 @@ mod tests {
         assert!(missing.is_empty(), "Missing is a no-op -- no ops to run");
     }
 
-    /// System/Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
+    /// Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
     /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
     /// the kind never escalates on its own.
     #[test]
@@ -265,7 +265,7 @@ mod tests {
         let cx = ExecCx::new(level);
         let err = TaskKind
             .drive(&setting, &Value::TaskEnabled(true), &cx)
-            .expect_err("the in-process kind must still reject System/Ti directly");
+            .expect_err("the in-process kind must still reject Ti directly");
         assert!(matches!(err, Error::UnsupportedLevel(_)), "got {err:?}");
     }
 

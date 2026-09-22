@@ -1,4 +1,4 @@
-# Tweak System — Technical Architecture
+# Tweak System: Technical Architecture
 
 > Architecture reference for the redesigned tweak engine.
 > For the YAML authoring guide, see [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md).
@@ -18,8 +18,8 @@ enforced by types and the build-time validator, not by convention.
 
 ### One-representation model
 
-The old system split one change into four representations — a YAML change, a captured snapshot, a
-restore op, and a detection comparison — spread across separate services that drifted. The redesign
+The old system split one change into four representations (a YAML change, a captured snapshot, a
+restore op, and a detection comparison) spread across separate services that drifted. The redesign
 collapses them. An `Effect` is one atomic unit of change; a `Value` is the one domain shared by capture,
 apply, detect, and restore (`src-tauri/src/tweaks/model.rs`):
 
@@ -43,7 +43,7 @@ Value   = Absent | Missing | Reg(TypedRegValue) | Startup | TaskEnabled(bool) | 
 YAML corpus + shared block
         │  build.rs: schema::load_corpus → validate_structural → validate_semantic (per support milestone)
         ▼
-Compiled Tweak model  (surface: Vec<EffectDef>, options = flat value-maps)  — embedded as JSON
+Compiled Tweak model  (surface: Vec<EffectDef>, options = flat value-maps), embedded as JSON
         │
         ▼
 Engine (src-tauri/src/tweaks/engine/)
@@ -62,7 +62,7 @@ Elevation broker (src-tauri/src/services/elevation/)
 ```
 
 - The **build script** is the gatekeeper: `build.rs` `#[path]`-includes the runtime's own
-  `model`/`parse`/`schema`/`validate` modules, so build-time and runtime validation are the *same code* —
+  `model`/`parse`/`schema`/`validate` modules, so build-time and runtime validation are the *same code*;
   drift is a compile error. It loads every `*.yaml` in `tweaks/`, runs the structural and semantic guards
   (spec §10) over each milestone of the support matrix (`19045`, `22621`, `22631`, `26100`), and embeds
   the validated corpus as JSON.
@@ -78,7 +78,7 @@ Elevation broker (src-tauri/src/services/elevation/)
 
 A tweak is in exactly one state at a time; options are mutually exclusive (spec §8).
 
-**Apply(option)** — acquire the per-tweak lock and detect current status (applying the active option is
+**Apply(option):** acquire the per-tweak lock and detect current status (applying the active option is
 a verified no-op). Capture the pre-apply `Value` of every applicable non-shared Setting; a read that
 cannot read is `Err` and aborts *before touching anything*. Persist the snapshot entry atomically before
 mutating, including the **WAL action journal** (the target's intended action list, unmarked). Drive each
@@ -88,23 +88,23 @@ after it runs, and a row left planned but never confirmed complete surfaces as *
 The journal proves the action was planned, never that it ran; the scan covers a tweak's whole history rather than only its newest entry, and a row carries its own resolution mark, written by the same path that marks a row completed, so a verified apply or restore takes the rows it drove and verified out of the scan while leaving every row it never accounted for in it.
 
 **Atomic rollback (ADR-0001).** Any failure restores the just-captured entry via the same path as a user
-Restore — undo the journal's completed actions in reverse, then drive the captured state back. The
+Restore: undo the journal's completed actions in reverse, then drive the captured state back. The
 returned error carries both the original failure and any rollback failures. A verified full restore
 consumes the entry; a rollback that cannot fully complete, or an elevated step whose outcome is unknown, keeps it and surfaces **Needs Attention** (ADR-0002, ADR-0005). "Atomic" means *attempted atomically, with failure surfaced*, not a guaranteed all-or-nothing.
 
 **Needs Attention is a per-tweak record**, `snapshots/<tweak-id>/_attention.json`, written atomically and stamped with the schema version and machine guid exactly like an entry. It is deliberately not a field on an entry: dedup, a later verified rollback's `consume`, and an entry turning invalid all delete or disqualify entries, and the mark has to outlive every one of them. It is **set** by an apply that fails and keeps its snapshot, by a restore that does not fully verify, and by the startup crash-residue scan; it is **cleared** only by a fully verified apply or restore of that tweak, or by the user's own decision to keep the current state. That decision is a single backend operation which releases the record whether or not any entry is left and discards the ones that are, so a record can never outlive the last entry with no way to release it (ADR-0002). Unresolved state is durable in three more places the startup crash scan reads. An apply or restore sets `drive_open` on the entry it drives from before its first change; it covers Settings and Shared blocks only. A verified apply or restore settles it on every entry, as it clears the record, because it re-established the whole surface; a verified rollback settles only its own, and a recorded failure only the marks it added, never one an earlier crash left. Each action a rollback or restore undoes or re-runs is held in the entry's `actions_in_flight` until it finishes and verifies, and is otherwise resolved only by an operation that drives that action, exactly like a journal row, so settling the Settings never hides a half-undone script. When a verified outcome's `drive_open` cannot be rewritten (the entry file held open elsewhere), `settle_verified` tries to record `outcome_unrecorded` at once, with an `unrecorded` item the scan reads as the explanation for that mark; if even that write fails, the returned status carries the attention and the next launch may report the change as unfinished. The scan adds its items to an existing record of this build's rather than skipping it, and never writes over a foreign or unreadable one. `settle_verified` is the one sink for a verified outcome's bookkeeping: it resolves what the outcome drove or probed absent, settles drive marks, and clears the record only when the scan finds nothing left, otherwise recording what remains; any store failure on the way is recorded as `outcome_unrecorded`. `consume` refuses to delete an entry that still holds an unfinished step, so the entry survives as that step's evidence. The last place is the journal rows a crash left planned and unconfirmed, so a verified apply or restore also **resolves those rows before it clears the record**, per row and in the entry that holds the row, through the same atomic rewrite that marks a row completed. It resolves exactly the rows whose action it drove and verified, so a restore of a captured value dump never retires an action it neither probed nor undid, and the user's own decision needs nothing extra because it discards every entry and takes their rows with them. Ordering the row marks before the record is what makes a crash between them safe: the worst case is a stale record the next clear releases, never a resolved tweak the next scan marks again. Nothing else clears the record, discarding the last entry by hand included, and a record that cannot be written is reported as itself rather than counted as an unrecovered resource. A record that cannot be *read* or *parsed* is surfaced as Needs Attention in its own right, since reporting it as "nothing to attend to" would hide a real mark behind a log line. A record stamped for another machine or another schema is never overwritten and never deleted, exactly like an entry across the same boundary; one that names no owner at all is this build's to replace and to release, or it would badge the tweak with nothing able to lift the badge. Each recorded item carries the effect id and a kind (drive, verify, outcome_unknown, action, no_undo, claim, store, crash_residue, other), so the UI can tell a retryable step from a one-way one, and, when the failure was classified, a class (access denied, not found, invalid data, busy, failed) saying why.
 
-**Detect** — read each applicable, detectable, non-shared Setting once; `optional` effects map `Missing`
+**Detect:** read each applicable, detectable, non-shared Setting once; `optional` effects map `Missing`
 through `if_missing`; probeable Actions contribute their session-cached present/absent; claimed shared
 settings count as matching while any claim holds. A matching option wins; at most one can match
-(distinctness guard); no match ⇒ **System Default** (a computed status, never authored — ADR-0003). A
+(distinctness guard); no match ⇒ **System Default** (a computed status, never authored; ADR-0003). A
 read that fails ⇒ **Unknown**, with a needs-elevation hint when that is the cause. Options needing an
 unsatisfiable value on this machine are flagged **unavailable**. A full scan runs in the background at
 launch; statuses stream in; an Elevate triggers a full re-scan. There is no drift-refresh in v1.
 
-**Restore Snapshot** — the only restore action (ADR-0003). Consume the head entry: run its journal's
+**Restore Snapshot:** the only restore action (ADR-0003). Consume the head entry: run its journal's
 undos in reverse, then re-apply the target. An **option reference** is re-applied *as currently defined*
-(its Settings, actions, ephemerals — ADR-0007); a **value dump** is driven back verbatim. Verify;
+(its Settings, actions, ephemerals; ADR-0007); a **value dump** is driven back verbatim. Verify;
 success consumes the entry, the next becomes head, and exhausting the history simply reads as System
 Default. Failure keeps the entry; an incomplete restore ⇒ Needs Attention.
 
@@ -120,13 +120,13 @@ and the machine's `MachineGuid`.
 
 - **Authored-option captures store a reference** (`OptionRef(label)`), re-derived from the current corpus
   on restore; **unauthored states** (System Default, drift) store a full value dump. Both carry the WAL
-  journal. Shared-referenced effects appear in **neither** — their return path is the claims record
+  journal. Shared-referenced effects appear in **neither**; their return path is the claims record
   (ADR-0006/0007).
 - **Dedup moves to head:** at most one entry per authored option (re-capture vacates the old position);
   unauthored captures are all kept (spec §8.2).
 - An entry that is corrupt, wrong-schema, wrong-machine, or **dangling** (its option/tweak no longer
   exists, or the target is unavailable here) is **invalid**: kept on disk, excluded from the walk, and
-  released only by explicit user consent (`discard_snapshot_entry`) — never guessed at (ADR-0002).
+  released only by explicit user consent (`discard_snapshot_entry`), never guessed at (ADR-0002).
 - **Shared claims** live in one engine-level `shared_claims.json` under the snapshots root: `{ shared_id → { original, restore_level, claimants } }` (schema version 2). First claim captures the live original once and drives the value; further claims are verified no-ops; the last release restores the captured original, unconditionally and verified (external drift is overwritten by the return). `restore_level` is the highest level any claimant routed at, raised as claims arrive; the restore drives at the higher of it and the last releaser's current route (ADR-0007), so a Ti capture is never driven back at Admin. A last release that its apply then rolls back re-claims at the level it restored at, so the recorded level never drops. A version 1 file loads with `restore_level` absent: that restore falls back to the releaser's route (logged), and the next write stamps the file as version 2. A higher version is Corrupt and never rewritten. Detection counts a claimed setting as matching for every claimant while any claim holds (spec §8.6).
 
 ---
@@ -150,7 +150,7 @@ never silently escalates.
 | ADR | Decision |
 |---|---|
 | [0001](./adr/0001-rollback-failure-is-a-first-class-state.md) | Rollback failure is a first-class, retryable **Needs Attention** state; rollback never aborts early. |
-| [0002](./adr/0002-snapshot-deletion-requires-verification-or-consent.md) | A snapshot is deleted only by a verified restore, the verified startup stale-cleanup, or explicit consent — never on a failure path or uncertainty. |
+| [0002](./adr/0002-snapshot-deletion-requires-verification-or-consent.md) | A snapshot is deleted only by a verified restore, a verified rollback of the entry just pushed, a dedup that supersedes a settled entry, or explicit consent; never on a failure path or uncertainty. No startup stale-cleanup is implemented. |
 | [0003](./adr/0003-system-default-is-a-computed-status.md) | System Default is a computed **status**, not a restore target; Restore Snapshot walks the history. |
 | [0004](./adr/0004-value-null-is-not-a-delete-spelling.md) | `absent` is the only absence spelling; a forgotten/`null`/omitted value is a build error, never a silent delete. |
 | [0005](./adr/0005-elevation-is-per-tweak-and-never-silently-escalated.md) | Elevation is declared per tweak (refinable per effect), escalate-only, never inferred or silently escalated. |
@@ -179,7 +179,7 @@ src-tauri/build.rs                 load + validate + compile the corpus at build
 **Command surface** (`commands/tweaks.rs`): `get_tweaks`, `get_statuses_stream` (background scan,
 streamed), `rescan_after_elevation`, `apply_tweak`, `restore_tweak`, `list_snapshot_entries`,
 `discard_snapshot_entry`, `keep_current_state`, `get_tweak_status`, `get_elevation_state`. The `*View` types translate engine results into the
-frontend model — per-tweak state (Active option / System Default / Unknown / Unavailable), per-option
+frontend model: per-tweak state (Active option / System Default / Unknown / Unavailable), per-option
 unavailable reasons, held-by info, and apply/restore outcomes with per-effect results.
 
 ---

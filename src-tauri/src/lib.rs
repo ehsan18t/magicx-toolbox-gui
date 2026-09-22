@@ -146,7 +146,6 @@ pub fn run() {
             commands::general::show_main_window,
             commands::system::get_system_info,
             commands::debug::set_debug_mode,
-            // Tweak commands (spec §12, Task 16): a thin layer over the redesigned engine.
             commands::tweaks::get_tweaks,
             commands::tweaks::get_categories,
             commands::tweaks::get_statuses_stream,

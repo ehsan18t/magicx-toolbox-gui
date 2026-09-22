@@ -31,8 +31,7 @@
     }
 
     // Sanitize ranges: Sort and merge overlapping intervals
-    // uFuzzy usually returns sorted non-overlapping ranges, but for robustness
-    // (and to satisfy code review), we normalize them here.
+    // uFuzzy usually returns sorted non-overlapping ranges; normalize for robustness.
     const sortedRanges: Array<{ start: number; end: number }> = [];
 
     // 1. Convert flat array to objects

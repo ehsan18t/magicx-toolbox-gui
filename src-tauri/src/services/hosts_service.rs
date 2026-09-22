@@ -27,16 +27,9 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-/// Bounded retry for `ReplaceFileW` against a transient sharing/lock violation — empirically
-/// confirmed against the real hosts file during Task 7 hardening: a filter driver (commonly AV
-/// real-time protection watching this specific, classic-malware-target file) can hold it open for
-/// a moment, failing the very next replace attempt with `ERROR_SHARING_VIOLATION`, yet an
-/// immediate retry succeeds. `REPLACE_RETRY_ATTEMPTS` short, fixed-delay attempts (well under a
-/// second total) absorb that without turning a routine, momentary AV scan into a user-facing
-/// failure; any other error, or the retries running out, still surfaces as a typed `Err`. This
-/// entire window is *before* the swap (see `replace_hosts_file_atomically`): the replacement file
-/// already carries the correct content and security by the time the first attempt runs, so a
-/// retry can only ever repeat the one, whole, already-correct swap — never double-apply anything.
+/// AV real-time protection briefly holds `hosts` open, failing `ReplaceFileW` with
+/// `ERROR_SHARING_VIOLATION`; an immediate retry succeeds. Safe to repeat: the replacement is
+/// complete and correct before the first attempt.
 const REPLACE_RETRY_ATTEMPTS: u32 = 5;
 const REPLACE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
 
@@ -77,23 +70,9 @@ fn unique_tmp_name() -> String {
     )
 }
 
-/// The hosts file's owner + DACL, captured up front so the *replacement* file can be made correct
-/// before it ever becomes `hosts` — never restored on the real file after the fact (code review
-/// Fix 2: a post-swap fix-up leaves a window where either a capture failure or a restore failure
-/// strands the real file mis-owned, permanently and silently).
-///
-/// `ReplaceFileW` preserves *some* of the original security descriptor on its own, but Task 7
-/// hardening empirically found it does NOT preserve the owner: a fresh temp file (owned by
-/// whichever elevated account is running) would carry that ownership through the swap — silently
-/// handing this file to that specific admin account instead of leaving it owned by
-/// `BUILTIN\Administrators` — and owner-driven ACL inheritance can then graft extra ACEs on top.
-/// Applying the captured security to the replacement *before* the swap (`apply_security`, called
-/// from `replace_hosts_file_atomically` before `ReplaceFileW`) closes that gap by construction:
-/// whatever `ReplaceFileW` does or doesn't carry over stops mattering, because the file it swaps
-/// in already has the right answer.
-///
-/// `sd` is the security-descriptor buffer Windows allocated for this; `owner`/`dacl` point
-/// *inside* it, so neither may outlive `sd`, which is freed via `LocalFree` on drop.
+/// `hosts`' owner + DACL, applied to the replacement *before* the swap: `ReplaceFileW` does not
+/// preserve the owner, and a post-swap fix-up can strand the real file mis-owned.
+/// `owner`/`dacl` point inside `sd` (freed via `LocalFree` on drop); neither may outlive it.
 struct SecurityCapture {
     sd: PSECURITY_DESCRIPTOR,
     owner: PSID,
@@ -146,8 +125,7 @@ fn capture_security(path: &Path) -> Option<SecurityCapture> {
 /// the token already belongs to — it has worked without this on this machine only because the
 /// captured owner happens to be the freely-assignable `BUILTIN\Administrators`, which is not
 /// guaranteed on every machine. Not enabling it here is never itself a failure:
-/// `apply_security`'s own `SetNamedSecurityInfoW` call afterward is the real, typed pass/fail gate
-/// (code review: "proceed only if the assignment succeeds anyway — otherwise the typed error").
+/// `apply_security`'s own `SetNamedSecurityInfoW` call afterward is the real, typed pass/fail gate.
 fn try_enable_restore_privilege() {
     // SAFETY: standard token-privilege-adjustment sequence; the token handle is closed before
     // returning, on every path.
@@ -306,22 +284,9 @@ fn verify_security(path: &Path, expected: &SecurityCapture) -> Result<(), Error>
     )))
 }
 
-/// Replaces the hosts file's entire content atomically, with its owner/DACL already correct by
-/// construction — never fixed up after the fact.
-///
-/// Critical section: `hosts` is a real system file (`C:\Windows\System32\drivers\etc\hosts`) that
-/// networking depends on, so a crash, full disk, or an AV product locking the file mid-write must
-/// never leave it truncated, and a permission mistake here must never be silent (code review Fix
-/// 2). The sequence: capture the original owner/DACL *first* — failing closed if that fails, never
-/// touching the real file; write the new content to a temp file; apply the captured security to
-/// *that temp file*; only then swap it in via `ReplaceFileW`. Every step before the swap can fail
-/// without consequence (the real file is untouched until the swap), and the swap itself only ever
-/// installs an already-correct file, so there is no window where the real file exists with the
-/// wrong owner for `ReplaceFileW`'s retries (or anything else) to observe. A plain
-/// temp-file-then-rename (`MoveFileExW`/`fs::rename`, what this codebase's own snapshot writer
-/// uses in `backup/storage.rs`) would be worse still — it hands the *source* file's ACL to the
-/// destination entirely, not merely the owner — which is exactly why this primitive needs its own
-/// path instead of reusing `tempfile::NamedTempFile::persist`.
+/// Capture owner/DACL (fail closed), write a temp file, apply that security to it, then
+/// `ReplaceFileW`: `hosts` is never truncated or mis-owned. Not `fs::rename`/`persist`: a rename
+/// carries the temp file's whole ACL onto `hosts`.
 fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
     let hosts_path = get_hosts_path();
 
@@ -736,8 +701,8 @@ mod tests {
         assert!(e.is_empty(), "an IP with no hostname is not an entry");
     }
 
-    /// Code review Fix 2 item 3: process id alone collides across threads in one process; the
-    /// counter must make every call distinct regardless.
+    /// Process id alone collides across threads in one process; the counter makes every call
+    /// distinct.
     #[test]
     fn unique_tmp_name_differs_across_calls() {
         let a = unique_tmp_name();

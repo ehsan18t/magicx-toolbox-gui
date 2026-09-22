@@ -993,15 +993,9 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
     })
 }
 
-/// Whether this process holds an elevated token, asked directly of the token.
-///
-/// This used to probe `HKLM\SYSTEM\CurrentControlSet\Control` with `KEY_WRITE` and call `.is_ok()`,
-/// which collapsed every error kind into "not admin": a transient `ERROR_NOT_ENOUGH_MEMORY` or a
-/// missing key was indistinguishable from `ERROR_ACCESS_DENIED`. A false negative there tells the
-/// user to "restart as administrator" while the app already is administrator, for every admin-floor
-/// tweak at once, and independently makes `registry_service::require_write_access` refuse every
-/// HKLM write. `TokenElevation` answers the actual question and cannot be confounded by the state
-/// of any one key.
+/// Whether this process holds an elevated token, via `TokenElevation`. Not a `KEY_WRITE` probe of
+/// an HKLM key: any error there (low memory, missing key) reads as "not admin", falsely gating
+/// every admin-floor tweak and every HKLM write.
 pub fn is_running_as_admin() -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
     use windows_sys::Win32::Security::{
