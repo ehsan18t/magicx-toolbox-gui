@@ -76,6 +76,8 @@ Unresolved state has four durable forms. Needs Attention lives in `snapshots/<tw
 
 **The way out already exists in the UI:** Keep current state is a single backend operation that releases the record whether or not any entry is left and discards the ones that are, which takes every row with them, and a fully verified apply or restore under this build resolves the rows it accounted for.
 
+**The shared-claims record is stricter.** `snapshots/shared_claims.json` is written as schema version 2 (each record carries the level its original must be restored at), and a build that knows only version 1 reads any other version as corrupt. It never guesses past that, because treating the file as empty would let a first claim capture the already-driven value as a fabricated original. So under that older build, every apply or restore of a tweak with a shared block fails with a shared-claims error and rolls back, and a tweak that holds a claim detects as if nothing claimed the block (its claiming option no longer matches). Nothing is deleted or rewritten: the older build returns the error before any write, so the file and its captured originals are intact and this build picks them up again unchanged. This build reads a version 1 file (the missing level falls back to the releasing tweak's own route, with a log line) and stamps it as version 2 on its next write.
+
 **The fix.** Nothing in any mark: this resolves when the older build is gone, and downgrades are not a supported flow. Cross-build agreement would need the marks to live somewhere an older build already parses, and for the record that is exactly the entry field this design moved away from, because entry releases kept dropping it.
 
 ## 5. Atomic writes are not flushed through a power loss

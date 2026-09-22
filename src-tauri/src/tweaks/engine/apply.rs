@@ -351,8 +351,8 @@ enum ProcessedEffect {
     /// The `Level` is the routed level the claim was taken at: one surface may reference a shared
     /// id from several effects at different steps, so the id alone cannot name the level back.
     SharedClaim(SharedId, Level),
-    /// Boxed: `SharedDef` (needed to re-`claim` on rollback) is far larger than the other
-    /// variants, and this list is built one push at a time, never densely packed.
+    /// Boxed: `SharedDef` is far larger than the other variants. `Level`: the release's restore
+    /// level when it was the last, else its route; the rollback re-claims at it.
     SharedRelease(Box<SharedDef>, Level),
 }
 
@@ -965,16 +965,20 @@ fn drive_shared(
                         shared: shared_id.clone(),
                         source: e,
                     })?;
+                // A last release dropped the record; its restore level must survive a rollback.
+                let (level, kind) = match outcome {
+                    ReleaseOutcome::StillHeld(holders) => {
+                        (cx.level(), EffectResultKind::StillHeld(holders))
+                    }
+                    ReleaseOutcome::RestoredOriginal(level) => (level, EffectResultKind::Released),
+                };
                 state.processed.push(ProcessedEffect::SharedRelease(
                     Box::new(shared_def.clone()),
-                    cx.level(),
+                    level,
                 ));
                 state.effect_results.push(EffectResult {
                     effect: effect.id.clone(),
-                    kind: match outcome {
-                        ReleaseOutcome::StillHeld(holders) => EffectResultKind::StillHeld(holders),
-                        ReleaseOutcome::RestoredOriginal => EffectResultKind::Released,
-                    },
+                    kind,
                 });
             } else {
                 state.effect_results.push(EffectResult {
@@ -1234,11 +1238,8 @@ fn rollback(
             }
             ProcessedEffect::SharedRelease(shared_def, level) => {
                 let cx = ExecCx::new(*level);
-                // Re-`claim`s rather than restoring the historical "original" directly: this
-                // re-captures a fresh original from the live value at THIS moment. That is
-                // equivalent here, not a shortcut -- `release`'s own read-back verification
-                // (shared_claims.rs) already guarantees the live value equals the true original
-                // by the time this reversal runs, so re-capturing it changes nothing.
+                // Re-capturing is lossless: `release` verified the live value equals the original,
+                // and `level` is the release's restore level, so `restore_level` never drops.
                 if let Err(e) = deps.claims.claim(shared_def, &tweak.id, deps.kinds, &cx) {
                     failures.push(EngineError::Claim {
                         shared: shared_def.id.clone(),
@@ -4735,6 +4736,69 @@ mod tests {
             h.kind.drive_levels("sh_addr"),
             vec![Level::Ti, Level::Ti],
             "the claim drives at Ti, and the rollback's release must drive it back at Ti"
+        );
+    }
+
+    /// Another tweak captured at Ti; this admin tweak's last release is rolled back. The re-claim
+    /// must keep the Ti restore level, or the next final release is denied on a Ti-protected resource.
+    #[test]
+    fn a_rolled_back_last_release_keeps_the_restore_level() {
+        let h = Harness::new();
+        h.kind.seed(
+            "s1",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        h.kind.seed(
+            "sh_addr",
+            Value::Startup(crate::tweaks::model::StartupType::Manual),
+        );
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(crate::tweaks::model::StartupType::Disabled),
+        };
+        h.claims
+            .claim(&shared, "ti_tweak", &h.kind, &ExecCx::new(Level::Ti))
+            .unwrap();
+        h.claims
+            .claim(&shared, "demo", &h.kind, &ExecCx::new(Level::Admin))
+            .unwrap();
+        h.claims
+            .release(&shared.id, "ti_tweak", &h.kind, &ExecCx::new(Level::Ti))
+            .unwrap();
+        h.kind.drive_plan("s1", DrivePlan::Err);
+        let mut t = tweak(
+            "demo",
+            vec![shared_effect("sh_eff", "sh"), svc_effect("s1", false)],
+            vec![opt(
+                "U",
+                vec![
+                    ("sh_eff", OptValue::Unclaimed(None)),
+                    (
+                        "s1",
+                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
+                    ),
+                ],
+            )],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![shared.clone()]);
+        let deps = Deps {
+            level: Level::Admin,
+            ..h.deps()
+        };
+
+        run_apply(&t, &c, &OptLabel("U".into()), &deps).expect_err("the later effect fails");
+        h.claims
+            .release(&shared.id, "demo", &h.kind, &ExecCx::new(Level::Admin))
+            .unwrap();
+
+        assert_eq!(
+            h.kind.drive_levels("sh_addr"),
+            vec![Level::Ti, Level::Ti, Level::Ti, Level::Ti],
+            "capture, last release, rollback re-claim and final release all need Ti"
         );
     }
 }

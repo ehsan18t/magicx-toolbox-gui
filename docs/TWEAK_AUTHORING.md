@@ -1027,17 +1027,12 @@ options:
 
 ### 9.3 The claim/release lifecycle (runtime)
 
-There is one engine-level, machine-stamped, atomically-written **claims record** in the snapshots
-directory: `{ shared_id → { original: Value, claimants: [tweak_id] } }` (spec §8.6, ADR-0006):
+There is one engine-level, machine-stamped, atomically-written **claims record** in the snapshots directory: `{ shared_id → { original: Value, restore_level: Level, claimants: [tweak_id] } }` (spec §8.6, ADR-0006):
 
-- **First claim** (corpus-wide): capture the live original value **once**, drive to the declared shared
-  value, record the claimant.
-- **Further claims:** verified no-op; the claimant is added.
-- **Release** (any transition whose target does not claim): the claimant is removed; while other
-  claimants remain, the value is left alone and the releasing tweak reports _"held by \<tweaks\>"_ as
-  info, not failure.
-- **Last release:** drive the value back to the captured original, verify, and release the record: a
-  verified restore (ADR-0002).
+- **First claim** (corpus-wide): capture the live original value **once**, drive to the declared shared value, record the claimant and the level the drive routed at as `restore_level`.
+- **Further claims:** verified no-op; the claimant is added, and `restore_level` is raised if this claimant routes higher (it never drops).
+- **Release** (any transition whose target does not claim): the claimant is removed; while other claimants remain, the value is left alone and the releasing tweak reports _"held by \<tweaks\>"_ as info, not failure.
+- **Last release:** drive the value back to the captured original, verify, and release the record: a verified restore (ADR-0002). The drive runs at the higher of `restore_level` and the releasing tweak's own route under the current corpus, through the normal route (the broker for `ti`). So a block one tweak claimed at `ti` goes back at `ti` even when an `admin`-floor tweak releases last, and a corpus update that routes the block higher is honoured too.
 
 Shared-referenced effects appear in **no per-tweak snapshot**: their return path is exclusively the
 claims record, so two tweaks' snapshots can never fight over one address.

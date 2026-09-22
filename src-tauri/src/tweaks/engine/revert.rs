@@ -512,7 +512,7 @@ fn release_shared_claims(
                 shared: shared_id.clone(),
                 holders,
             }),
-            Ok(ReleaseOutcome::RestoredOriginal) => {}
+            Ok(ReleaseOutcome::RestoredOriginal(_)) => {}
             Err(e) => failures.push(EngineError::Claim {
                 shared: shared_id.clone(),
                 source: e,
@@ -2635,6 +2635,58 @@ mod tests {
             h.kind.drive_levels("sh_addr"),
             vec![Level::Admin, Level::Ti],
             "the setup claim drives at Admin; the release must then drive it back at Ti"
+        );
+    }
+
+    /// Another tweak captured the original at Ti; this admin-floor tweak releases last, and the
+    /// original must still go back at Ti, not at this tweak's own route.
+    #[test]
+    fn a_last_release_drives_the_original_at_the_level_it_was_captured_at() {
+        let h = Harness::new();
+        h.kind.seed("sh_addr", Value::Startup(StartupType::Manual));
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        h.claims
+            .claim(&shared, "ti_tweak", &h.kind, &ExecCx::new(Level::Ti))
+            .unwrap();
+        h.claims
+            .claim(&shared, "demo", &h.kind, &ExecCx::new(Level::Admin))
+            .unwrap();
+        h.claims
+            .release(&shared.id, "ti_tweak", &h.kind, &ExecCx::new(Level::Ti))
+            .unwrap();
+
+        let mut t = tweak(
+            "demo",
+            vec![shared_effect("sh_eff", "sh")],
+            vec![opt("A", vec![("sh_eff", ModelOptValue::Claim(None))])],
+        );
+        t.elevation = Level::Admin;
+        let c = corpus(vec![t.clone()], vec![shared]);
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        run_restore(&t, &c, &h.deps()).expect("restore succeeds");
+
+        assert_eq!(
+            h.kind.drive_levels("sh_addr"),
+            vec![Level::Ti, Level::Ti],
+            "the capture drove at Ti; the admin releaser must still drive the original back at Ti"
         );
     }
 

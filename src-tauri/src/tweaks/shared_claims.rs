@@ -34,7 +34,7 @@
 //! case where two claimants of one address interleave.
 
 use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
-use crate::tweaks::model::{Setting, SharedDef, SharedId, Value};
+use crate::tweaks::model::{effective_level, Level, Setting, SharedDef, SharedId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -42,7 +42,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
-const SCHEMA_VERSION: u32 = 1;
+// v1 records carry no `restore_level`; they load with it absent. Any higher version is Corrupt.
+const SCHEMA_VERSION: u32 = 2;
 const CLAIMS_FILE: &str = "shared_claims.json";
 
 /// Serializes every claim-record operation in this process.
@@ -83,8 +84,8 @@ pub enum ClaimOutcome {
 pub enum ReleaseOutcome {
     /// Other claimants remain; the address was left alone.
     StillHeld(Vec<String>),
-    /// This was the last claimant: the captured original was driven back, verified.
-    RestoredOriginal,
+    /// This was the last claimant: the captured original was driven back, verified, at this level.
+    RestoredOriginal(Level),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -118,15 +119,14 @@ pub enum ClaimsError {
     NotHeld { shared_id: String, claimant: String },
 }
 
-/// One shared address's persisted claim state (spec §8.6): the captured original, the address
-/// itself (so `release` — which takes only a [`SharedId`], never a [`SharedDef`] — can still drive
-/// back to it), and the current claimant set. `claimants` preserves claim order (a `Vec`, not a
-/// set) purely for a stable, readable "held by" message; membership is checked linearly, which is
-/// fine at the tiny N a shared address realistically has.
+/// `setting` is stored because `release` gets only a [`SharedId`]; `claimants` is in claim order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ClaimRecord {
     setting: Setting,
     original: Value,
+    /// Highest level any claimant routed at; the restore never drives below it. `None`: a v1 record.
+    #[serde(default)]
+    restore_level: Option<Level>,
     claimants: Vec<String>,
 }
 
@@ -168,11 +168,8 @@ impl ClaimsStore {
         self.root.join(CLAIMS_FILE)
     }
 
-    /// Loads the current record map. Missing file = no claims yet (`Ok(empty)`); a
-    /// machine-mismatched file is treated the same way (see module docs); a file that exists but
-    /// fails to parse, or carries a schema version this build does not know, is a hard
-    /// [`ClaimsError::Corrupt`] — never silently treated as "no claims" (that would risk a
-    /// first-claim re-capturing drifted state as a fabricated original).
+    /// Missing or other-machine file: no claims. Unparseable or unknown schema: [`ClaimsError::Corrupt`],
+    /// never "no claims" (a first claim would re-capture drifted state as a fabricated original).
     fn load(&self) -> Result<BTreeMap<String, ClaimRecord>, ClaimsError> {
         let path = self.file_path();
         if !path.exists() {
@@ -180,7 +177,7 @@ impl ClaimsStore {
         }
         let bytes = fs::read(&path)?;
         let file: ClaimsFile = serde_json::from_slice(&bytes).map_err(|_| ClaimsError::Corrupt)?;
-        if file.schema_version != SCHEMA_VERSION {
+        if !(1..=SCHEMA_VERSION).contains(&file.schema_version) {
             return Err(ClaimsError::Corrupt);
         }
         if let (Some(file_guid), Some(current)) =
@@ -218,17 +215,9 @@ impl ClaimsStore {
         Ok(())
     }
 
-    /// Claims `shared` on behalf of `claimant` (spec §8.6).
-    ///
-    /// First claimant: reads the live value through `kinds` (the captured original), persists it
-    /// with the claimant *before* driving (so a crash between persist and drive leaves a correct,
-    /// recoverable record — see below), drives to `shared.value`, then verifies the read-back. A
-    /// failed drive/verify here still leaves the just-persisted record in place: the true original
-    /// is the valuable, hard-to-recover data, and rolling it back on failure would force a retry to
-    /// re-read a system that may now be in a partially-mutated state, capturing the wrong "original".
-    ///
-    /// Later claimants: a verified no-op — the address is already driven, so this never drives
-    /// again; it only confirms the value still holds and adds the claimant.
+    /// First claim persists the original before driving and keeps it on a failed drive (a retry would
+    /// capture half-mutated state). Later claims verify only, never drive; every claim raises
+    /// `restore_level` to its own route.
     pub fn claim(
         &self,
         shared: &SharedDef,
@@ -248,6 +237,7 @@ impl ClaimsStore {
                     ClaimRecord {
                         setting: shared.setting.clone(),
                         original,
+                        restore_level: Some(cx.level()),
                         claimants: vec![claimant.to_string()],
                     },
                 );
@@ -267,8 +257,18 @@ impl ClaimsStore {
             }
             Some(record) => {
                 let already = record.claimants.iter().any(|c| c == claimant);
-                if !already {
-                    record.claimants.push(claimant.to_string());
+                if record.restore_level.is_none() {
+                    log::warn!(
+                        "shared '{key}': v1 record has no restore level; stamping the claimant's level {:?}",
+                        cx.level()
+                    );
+                }
+                let raised = Some(effective_level(cx.level(), record.restore_level));
+                if !already || record.restore_level != raised {
+                    if !already {
+                        record.claimants.push(claimant.to_string());
+                    }
+                    record.restore_level = raised;
                     self.save(records)?;
                 }
 
@@ -286,14 +286,9 @@ impl ClaimsStore {
         }
     }
 
-    /// Releases `claimant`'s hold on `shared_id` (spec §8.6). Removes the claimant; if others
-    /// remain, the address is left alone and this reports `StillHeld` — info, not failure. If this
-    /// was the last claimant, drives back to the captured original **unconditionally** (grill Q4:
-    /// a revert means "give me the captured state back," so any external drift is overwritten, not
-    /// read-and-skipped), verifies, and only then removes the record. A failed restore here returns
-    /// before any save, so the on-disk record — original and claimant list both — is left exactly
-    /// as it was before this call: nothing is lost, and a retry (by the same claimant) behaves
-    /// identically (ADR-0002-consistent: never delete on an unverified restore).
+    /// Last release drives the original back unconditionally, verifies, then drops the record; a failed
+    /// restore saves nothing (ADR-0002). Runs at `max(restore_level, cx)`: `cx` alone is too low after
+    /// a Ti capture, and it counts because the current corpus may route the block higher (ADR-0007).
     pub fn release(
         &self,
         shared_id: &SharedId,
@@ -332,6 +327,13 @@ impl ClaimsStore {
         // calling `self.save`, so the durable file still shows the pre-release state untouched.
         let setting = record.setting.clone();
         let original = record.original.clone();
+        if record.restore_level.is_none() {
+            log::warn!(
+                "shared '{key}': v1 record has no restore level; restoring at the releaser's level {:?}",
+                cx.level()
+            );
+        }
+        let cx = &ExecCx::new(effective_level(cx.level(), record.restore_level));
         kinds.drive(&setting, &original, cx)?;
         let after = kinds.read(&setting, cx)?;
         if after != original {
@@ -345,7 +347,7 @@ impl ClaimsStore {
         records.remove(&key);
         self.save(records)?;
         log::info!("shared '{key}': last release by '{claimant}' restored the captured original");
-        Ok(ReleaseOutcome::RestoredOriginal)
+        Ok(ReleaseOutcome::RestoredOriginal(cx.level()))
     }
 
     /// Current claimants of `shared_id`, in claim order; empty if unclaimed. Read-only and
@@ -405,6 +407,7 @@ mod tests {
     struct MockKind {
         current: Mutex<Value>,
         drive_calls: AtomicU32,
+        drive_levels: Mutex<Vec<Level>>,
         fail_drives: AtomicBool,
     }
 
@@ -413,6 +416,7 @@ mod tests {
             Self {
                 current: Mutex::new(initial),
                 drive_calls: AtomicU32::new(0),
+                drive_levels: Mutex::new(Vec::new()),
                 fail_drives: AtomicBool::new(false),
             }
         }
@@ -439,9 +443,10 @@ mod tests {
             &self,
             _s: &crate::tweaks::model::Setting,
             target: &Value,
-            _cx: &ExecCx,
+            cx: &ExecCx,
         ) -> Result<(), KindError> {
             self.drive_calls.fetch_add(1, Ordering::SeqCst);
+            self.drive_levels.lock().unwrap().push(cx.level());
             if self.fail_drives.load(Ordering::SeqCst) {
                 return Err(KindError::Backend("mock drive failure".into()));
             }
@@ -537,7 +542,7 @@ mod tests {
 
         let outcome = s.release(&shared.id, "tweak_a", &mock, &cx()).unwrap();
 
-        assert_eq!(outcome, ReleaseOutcome::RestoredOriginal);
+        assert!(matches!(outcome, ReleaseOutcome::RestoredOriginal(_)));
         assert_eq!(
             mock.live(),
             original_value(),
@@ -615,6 +620,7 @@ mod tests {
             ClaimRecord {
                 setting: shared.setting.clone(),
                 original: Value::Reg(TypedRegValue::Dword(777)), // the foreign "original"
+                restore_level: Some(Level::Admin),
                 claimants: vec!["foreign_tweak".to_string()],
             },
         );
@@ -786,7 +792,7 @@ mod tests {
                         if held_count == 0 {
                             assert_eq!(
                                 outcome,
-                                ReleaseOutcome::RestoredOriginal,
+                                ReleaseOutcome::RestoredOriginal(Level::User),
                                 "sequence {seq:?}"
                             );
                             restores += 1;
@@ -884,5 +890,127 @@ mod tests {
             original_value(),
             "the captured original must be restored"
         );
+    }
+
+    fn at(level: Level) -> ExecCx {
+        ExecCx::new(level)
+    }
+
+    fn write_raw(dir: &Path, json: &serde_json::Value) {
+        std::fs::write(
+            dir.join(CLAIMS_FILE),
+            serde_json::to_vec_pretty(json).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// A Ti-protected original captured at Ti must go back at Ti even when an admin-floor claimant
+    /// releases last: at Admin the drive is access-denied on every retry.
+    #[test]
+    fn last_release_drives_at_the_recorded_level_not_the_releasers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+
+        s.claim(&shared, "tweak_a", &mock, &at(Level::Ti)).unwrap();
+        s.claim(&shared, "tweak_b", &mock, &at(Level::Admin))
+            .unwrap();
+        s.release(&shared.id, "tweak_a", &mock, &at(Level::Ti))
+            .unwrap();
+        let outcome = s
+            .release(&shared.id, "tweak_b", &mock, &at(Level::Admin))
+            .unwrap();
+
+        assert_eq!(outcome, ReleaseOutcome::RestoredOriginal(Level::Ti));
+        assert_eq!(
+            *mock.drive_levels.lock().unwrap(),
+            vec![Level::Ti, Level::Ti]
+        );
+    }
+
+    #[test]
+    fn a_higher_later_claim_raises_the_recorded_level() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+
+        s.claim(&shared, "tweak_a", &mock, &at(Level::Admin))
+            .unwrap();
+        s.claim(&shared, "tweak_b", &mock, &at(Level::Ti)).unwrap();
+        s.release(&shared.id, "tweak_b", &mock, &at(Level::Ti))
+            .unwrap();
+        s.release(&shared.id, "tweak_a", &mock, &at(Level::Admin))
+            .unwrap();
+
+        assert_eq!(
+            *mock.drive_levels.lock().unwrap(),
+            vec![Level::Admin, Level::Ti],
+            "the claim drove at Admin; the restore must use the highest level any claimant routed"
+        );
+    }
+
+    /// A v1 record carries no level: it loads, restores at the releaser's level, and the next write
+    /// stamps the file as the current schema.
+    #[test]
+    fn a_v1_file_loads_and_is_rewritten_as_current() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = shared_def();
+        write_raw(
+            tmp.path(),
+            &serde_json::json!({
+                "schema_version": 1,
+                "machine_guid": "test-guid",
+                "records": { "telemetry_off": {
+                    "setting": shared.setting,
+                    "original": original_value(),
+                    "claimants": ["tweak_a", "tweak_b"],
+                }},
+            }),
+        );
+        let s = store(tmp.path());
+        let mock = MockKind::new(shared.value.clone());
+
+        s.release(&shared.id, "tweak_a", &mock, &at(Level::Admin))
+            .unwrap();
+        let rewritten: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(tmp.path().join(CLAIMS_FILE)).unwrap()).unwrap();
+        assert_eq!(rewritten["schema_version"], SCHEMA_VERSION);
+        assert_eq!(SCHEMA_VERSION, 2);
+        assert_eq!(s.holders(&shared.id), vec!["tweak_b".to_string()]);
+
+        let outcome = s
+            .release(&shared.id, "tweak_b", &mock, &at(Level::Admin))
+            .unwrap();
+        assert!(matches!(outcome, ReleaseOutcome::RestoredOriginal(_)));
+        assert_eq!(mock.live(), original_value());
+        assert_eq!(*mock.drive_levels.lock().unwrap(), vec![Level::Admin]);
+    }
+
+    /// A file from a newer build is refused, and above all never overwritten with this schema.
+    #[test]
+    fn a_newer_schema_file_is_refused_and_never_rewritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = shared_def();
+        write_raw(
+            tmp.path(),
+            &serde_json::json!({
+                "schema_version": SCHEMA_VERSION + 1,
+                "machine_guid": "test-guid",
+                "records": {},
+            }),
+        );
+        let before = std::fs::read(tmp.path().join(CLAIMS_FILE)).unwrap();
+        let s = store(tmp.path());
+        let mock = MockKind::new(original_value());
+
+        let claim_err = s.claim(&shared, "tweak_a", &mock, &cx()).unwrap_err();
+        assert!(matches!(claim_err, ClaimsError::Corrupt));
+        let release_err = s.release(&shared.id, "tweak_a", &mock, &cx()).unwrap_err();
+        assert!(matches!(release_err, ClaimsError::Corrupt));
+
+        assert_eq!(std::fs::read(tmp.path().join(CLAIMS_FILE)).unwrap(), before);
+        assert_eq!(mock.drive_calls.load(Ordering::SeqCst), 0);
     }
 }
