@@ -59,6 +59,10 @@ pub struct JournalRow {
     /// scan must not raise it again. Set only by `resolve_journal_rows`, never by driving.
     #[serde(default)]
     pub resolved: bool,
+    /// The apply drove this action's `undo` (its target omits it while it read present), so
+    /// reversing the row re-runs `apply`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub undo_back: bool,
 }
 
 /// Which operation left the tweak in a state the user has to resolve (ADR-0001/0002).
@@ -183,7 +187,8 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub drive_open: bool,
     /// Actions a rollback or restore started to undo or re-run and never saw finish. Resolved only
-    /// by an operation that drove the same action, like a journal row: no Settings verify covers it.
+    /// by an operation that drove and verified, or probed, the same action: no Settings verify
+    /// covers it.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub actions_in_flight: BTreeSet<EffectId>,
     pub journal: Vec<JournalRow>,
@@ -474,7 +479,7 @@ impl SnapshotStore {
     }
 
     /// Removes the entry after a verified restore (caller-enforced, ADR-0002), except one still
-    /// holding an action step no operation settled: it is the only evidence of that step, so it is
+    /// holding a mark the operation's settle left: it is the only evidence of that mark, so it is
     /// kept and `false` returned. `discard` is consent's release and takes it regardless.
     pub fn consume(&self, tweak_id: &str, seq: Seq) -> Result<bool, SnapshotError> {
         let dir = self.tweak_dir(tweak_id);
@@ -484,10 +489,8 @@ impl SnapshotStore {
             tweak_id: tweak_id.to_string(),
             seq,
         })?;
-        if !entry.actions_in_flight.is_empty() {
-            log::warn!(
-                "tweak '{tweak_id}': entry {seq:?} kept -- it holds unfinished action step(s)"
-            );
+        if is_unsettled(&entry) {
+            log::warn!("tweak '{tweak_id}': entry {seq:?} kept -- it holds an unsettled mark");
             return Ok(false);
         }
         remove_entry(&dir, tweak_id, seq)?;
@@ -528,7 +531,7 @@ impl SnapshotStore {
 
     /// Marks every outstanding row and interrupted step naming an action in `accounted` resolved,
     /// in the entry that holds it, so the crash scan stops raising it. `accounted` is what the
-    /// calling operation actually drove and verified: a row it never probed or undid stays
+    /// calling operation actually drove and verified or probed: a row it never touched stays
     /// outstanding. Only a fully verified apply or restore may call it (ADR-0002), never a failure
     /// path.
     pub fn resolve_journal_rows(
@@ -608,6 +611,28 @@ impl SnapshotStore {
     ) -> Result<(), SnapshotError> {
         update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
             entry.actions_in_flight.remove(action_id);
+            Ok(())
+        })
+    }
+
+    /// A verified rollback's settle of the entry its own apply pushed: closes its drive and resolves
+    /// the rows whose action failed or was never reached. A row in `ran` may have changed the
+    /// machine even though its completion mark failed, so it stays outstanding.
+    pub fn settle_rolled_back(
+        &self,
+        tweak_id: &str,
+        seq: Seq,
+        ran: &BTreeSet<EffectId>,
+    ) -> Result<(), SnapshotError> {
+        update_entry(&self.tweak_dir(tweak_id), tweak_id, seq, |entry| {
+            entry.drive_open = false;
+            for row in entry
+                .journal
+                .iter_mut()
+                .filter(|r| is_outstanding(r) && !ran.contains(&r.action_id))
+            {
+                row.resolved = true;
+            }
             Ok(())
         })
     }
@@ -1339,6 +1364,7 @@ mod tests {
                         intended: true,
                         completed: false,
                         resolved: false,
+                        undo_back: false,
                     }],
                 },
                 &empty_corpus(),
@@ -1636,6 +1662,7 @@ mod tests {
                 intended: true,
                 completed: false,
                 resolved: false,
+                undo_back: false,
             }],
         }
     }
@@ -1730,6 +1757,7 @@ mod tests {
                 intended: true,
                 completed: false,
                 resolved: false,
+                undo_back: false,
             }],
         };
         let first = s.push("demo", crashed, &c, Some(GUID), 19045).unwrap();
@@ -1934,6 +1962,7 @@ mod tests {
                 intended: true,
                 completed: false,
                 resolved: false,
+                undo_back: false,
             }],
         };
         let mut json = serde_json::to_value(&target).unwrap();

@@ -9,7 +9,7 @@
 //!    invalid/dangling entries (ADR-0002) -- if none remain, the surface simply reads as System
 //!    Default (ADR-0003): nothing to restore, nothing consumed. Every entry `head` skipped as
 //!    invalid is still surfaced (via `list`) as `skipped_invalid`, never silently dropped.
-//! 1. **Undo the entry's completed journal actions, in reverse order** -- these are exactly the
+//! 1. **Reverse the entry's completed journal actions, in reverse order** -- these are exactly the
 //!    actions that ran when the user *left* the state this entry captured (ADR-0007). Reuses
 //!    [`apply::verify_reversed_probe`] verbatim for the same did-it-work discipline apply's own
 //!    rollback uses; a completed no-undo action is reported un-undoable (incomplete), never fatal to
@@ -250,11 +250,11 @@ pub(crate) fn do_restore(
     })
 }
 
-/// Step 1 (spec §8.5): undoes `journal`'s completed rows in reverse declaration order -- the
-/// actions that ran when the user left the state now being restored to (ADR-0007). Reuses
-/// [`apply::verify_reversed_probe`] verbatim for the did-it-work check; a completed action with no
-/// `undo` is reported un-undoable (incomplete), never fatal to the rest of the walk. Returns the
-/// rows it drove back and verified, which is what a verified restore may resolve.
+/// Step 1 (spec §8.5): reverses `journal`'s completed rows in reverse declaration order -- the
+/// actions that ran when the user left the state now being restored to (ADR-0007): an applied row
+/// by its `undo`, an undo-back row by re-running `apply`, each verified by its probe. A completed
+/// action with no `undo` is reported un-undoable, never fatal to the rest of the walk. Returns the
+/// steps it drove and verified, which is what a verified restore may resolve.
 fn undo_journal(
     tweak: &Tweak,
     corpus: &Corpus,
@@ -276,7 +276,8 @@ fn undo_journal(
             // un-undoable, or the entry is stranded (spec §7, invariant 10).
             continue;
         }
-        if !has_undo(action_def) {
+        let rerun = row.undo_back;
+        if !rerun && !has_undo(action_def) {
             log::warn!(
                 "tweak '{}': completed action '{}' has no undo -- reported un-undoable, restore incomplete",
                 tweak.id, row.action_id
@@ -296,10 +297,15 @@ fn undo_journal(
             continue;
         }
         let cx = context::route(effect, tweak, corpus);
-        match deps.actions.undo(action_def, &cx) {
+        let ran = if rerun {
+            deps.actions.apply(action_def, &cx)
+        } else {
+            deps.actions.undo(action_def, &cx)
+        };
+        match ran {
             Ok(()) => {
                 let before = failures.len();
-                apply::verify_reversed_probe(action_def, effect, false, corpus, deps, failures);
+                apply::verify_reversed_probe(action_def, effect, rerun, corpus, deps, failures);
                 if failures.len() == before {
                     match deps
                         .snapshots
@@ -391,7 +397,7 @@ fn reapply_option_ref(
     // Mirrors apply.rs's own Step-1 action-plan construction (probe once, decide, never touched
     // again) so `drive_forward`/`drive_action` see the exact same shape a fresh apply would build.
     let mut action_plan: Vec<(EffectId, ActionPlan)> = Vec::new();
-    let mut proven_absent: BTreeSet<EffectId> = BTreeSet::new();
+    let mut probed: BTreeSet<EffectId> = BTreeSet::new();
     let mut plan_failed = false;
     for effect in &surface {
         let Effect::Action(action_def) = &effect.kind else {
@@ -417,13 +423,14 @@ fn reapply_option_ref(
                 .probes
                 .probe(action_def, &context::read_route(effect, deps.level, corpus))
             {
-                Ok(true) if undo.is_some() => {
-                    action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
-                }
-                Ok(true) => residues.push(effect.id.clone()),
-                // The same check that verifies an undo, so absent accounts for an unfinished one.
-                Ok(false) => {
-                    proven_absent.insert(effect.id.clone());
+                // A verified read of the action's state, so it accounts for it whatever it reads.
+                Ok(present) => {
+                    probed.insert(effect.id.clone());
+                    if present && undo.is_some() {
+                        action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
+                    } else if present {
+                        residues.push(effect.id.clone());
+                    }
                 }
                 Err(e) => {
                     failures.push(EngineError::CaptureFailed {
@@ -459,7 +466,7 @@ fn reapply_option_ref(
         failures.push(e);
     }
     let mut driven_actions = state.driven_actions();
-    driven_actions.extend(proven_absent);
+    driven_actions.extend(probed);
     held_shared.extend(state.held_shared);
 
     OptionRefResult {
@@ -1150,6 +1157,7 @@ mod tests {
                         intended: true,
                         completed: true,
                         resolved: false,
+                        undo_back: false,
                     }],
                 },
                 &c,
@@ -1296,6 +1304,183 @@ mod tests {
         assert_eq!(reason, Some(AttentionReason::CrashResidue));
     }
 
+    /// `x`'s row was planned and never confirmed, and a Values restore neither undoes nor probes it:
+    /// the entry outlives the restore and a later apply that never drives `x`, until one does.
+    #[test]
+    fn a_verified_restore_keeps_an_entry_holding_a_row_it_never_accounted_for() {
+        let h = Harness::new();
+        let (t, c) = unprobed_undo_setup(&h);
+        let head = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::from([(
+                        EffectId("s1".into()),
+                        Value::Startup(StartupType::Manual),
+                    )])),
+                    journal: vec![JournalRow {
+                        action_id: EffectId("x".into()),
+                        intended: true,
+                        completed: false,
+                        resolved: false,
+                        undo_back: false,
+                    }],
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("the Settings verify");
+        assert_eq!(outcome.consumed, None);
+        assert!(h
+            .snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .iter()
+            .any(|e| e.seq == head && e.journal.iter().any(is_outstanding)));
+        let reason = outcome.status.attention.map(|a| a.reason);
+        assert_eq!(reason, Some(AttentionReason::CrashResidue));
+
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        futures_block_on(apply::apply(&t, &c, &OptLabel("B".into()), &h.deps()))
+            .expect("B verifies without driving x");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        assert!(raised_effects(&h).contains(&Some(EffectId("x".into()))));
+
+        futures_block_on(apply::apply(&t, &c, &OptLabel("A".into()), &h.deps()))
+            .expect("A runs x and verifies");
+        assert_eq!(crash_reason(&h), None);
+    }
+
+    /// Q omits `x` while it reads present, so Q's apply drove `x`'s undo; its rollback crashed while
+    /// re-running `x`. Restoring that entry returns to `x` present, so it runs `x`, never undoes it.
+    #[test]
+    fn a_restore_re_runs_an_action_the_apply_drove_back_rather_than_undoing_it() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![action_effect("x", true, true), svc_effect("s1", false)],
+            vec![
+                opt(
+                    "P",
+                    vec![
+                        ("s1", set(Value::Startup(StartupType::Manual))),
+                        ("x", ModelOptValue::Run(None)),
+                    ],
+                ),
+                opt(
+                    "Q",
+                    vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+                ),
+            ],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Automatic));
+        h.probes
+            .presence
+            .lock()
+            .unwrap()
+            .insert("x_apply".into(), true);
+        h.kind.drive_plan("s1", DrivePlan::Err);
+        h.actions
+            .crash_apply
+            .lock()
+            .unwrap()
+            .insert("x_apply".into());
+
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            apply::do_apply(&t, &c, &OptLabel("Q".into()), &h.deps())
+        }));
+        assert!(unwound.is_err(), "the rollback's re-run must crash");
+        assert_eq!(
+            h.probes.presence.lock().unwrap().get("x_apply"),
+            Some(&false)
+        );
+
+        h.actions.crash_apply.lock().unwrap().clear();
+        h.kind.drive_plan.lock().unwrap().clear();
+        let outcome = run_restore(&t, &c, &h.deps()).expect("the restore verifies");
+        assert!(outcome.consumed.is_some());
+        assert_eq!(
+            h.probes.presence.lock().unwrap().get("x_apply"),
+            Some(&true)
+        );
+        assert_eq!(crash_reason(&h), None);
+    }
+
+    /// A crashed re-apply left `x`'s re-run unfinished on the head. The retry's verified undo of `x`
+    /// leaves `x` in a known state, so only the retry's own crash on `y` is raised.
+    #[test]
+    fn a_verified_undo_settles_an_unfinished_re_run_of_the_same_action() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![
+                svc_effect("s1", false),
+                action_effect("y", true, false),
+                action_effect("x", true, false),
+            ],
+            vec![
+                opt(
+                    "P",
+                    vec![
+                        ("s1", set(Value::Startup(StartupType::Manual))),
+                        ("y", ModelOptValue::Run(None)),
+                        ("x", ModelOptValue::Run(None)),
+                    ],
+                ),
+                opt(
+                    "B",
+                    vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+                ),
+            ],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        h.snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("P".into()),
+                    journal: vec![JournalRow {
+                        action_id: EffectId("x".into()),
+                        intended: true,
+                        completed: true,
+                        resolved: false,
+                        undo_back: false,
+                    }],
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        let crash_running = |key: &str| {
+            let mut crash = h.actions.crash_apply.lock().unwrap();
+            crash.clear();
+            crash.insert(key.to_string());
+        };
+
+        crash_running("x_apply");
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err(), "the re-run of x must crash");
+
+        crash_running("y_apply");
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_restore(&t, &c, &h.deps())
+        }));
+        assert!(unwound.is_err(), "the retry must crash before re-running x");
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+        let raised = raised_effects(&h);
+        assert!(raised.contains(&Some(EffectId("y".into()))));
+        assert!(!raised.contains(&Some(EffectId("x".into()))));
+    }
+
     /// A probeable `x` that reads absent is exactly what a verified undo leaves, so the retry's
     /// probe settles the step and the entry is consumed.
     #[test]
@@ -1311,6 +1496,48 @@ mod tests {
         );
         let c = corpus(vec![t.clone()], vec![]);
         h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        let head = h
+            .snapshots
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::OptionRef("B".into()),
+                    journal: Vec::new(),
+                },
+                &c,
+                Some("test-guid"),
+                19045,
+            )
+            .unwrap();
+        h.snapshots
+            .begin_action("demo", head, &EffectId("x".into()))
+            .unwrap();
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("verifies");
+        assert_eq!(outcome.consumed, Some(head));
+        assert_eq!(outcome.status.attention, None);
+    }
+
+    /// A probe reading present is as much a verified read of `x` as one reading absent, so it
+    /// settles the step too; `x` has no undo, so it stays as a disclosed residue.
+    #[test]
+    fn a_probe_reading_present_settles_an_unfinished_step() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", false, true)],
+            vec![opt(
+                "B",
+                vec![("s1", set(Value::Startup(StartupType::Manual)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Disabled));
+        h.probes
+            .presence
+            .lock()
+            .unwrap()
+            .insert("x_apply".into(), true);
         let head = h
             .snapshots
             .push(
@@ -1446,12 +1673,14 @@ mod tests {
                             intended: true,
                             completed: true,
                             resolved: false,
+                            undo_back: false,
                         },
                         JournalRow {
                             action_id: EffectId("b".into()),
                             intended: true,
                             completed: true,
                             resolved: false,
+                            undo_back: false,
                         },
                     ],
                 },
@@ -2072,6 +2301,7 @@ mod tests {
             intended: true,
             completed: false,
             resolved: false,
+            undo_back: false,
         };
         h.snapshots
             .push(
@@ -2129,6 +2359,7 @@ mod tests {
                         intended: true,
                         completed: true,
                         resolved: false,
+                        undo_back: false,
                     }],
                 },
                 &c,
@@ -2237,7 +2468,7 @@ mod tests {
     }
 
     /// ADR-0002: a restore that verified every effect is not a failed restore just because the
-    /// store could not release the spent entry. The machine is restored, so nothing is marked.
+    /// store could not settle the spent entry; the entry is kept and the outcome recorded as itself.
     #[test]
     fn a_verified_restore_whose_entry_cannot_be_removed_is_not_a_failed_restore() {
         let h = Harness::new();
@@ -2285,9 +2516,15 @@ mod tests {
             holder.lock().unwrap().get_or_insert(file);
         }));
 
-        let err = run_restore(&t, &c, &h.deps()).expect_err("the entry cannot be removed");
-        assert!(matches!(err, EngineError::EntryCleanup(_)), "{err}");
-        assert!(!err.to_string().contains("restore failed"), "{err}");
+        let outcome = run_restore(&t, &c, &h.deps()).expect("every effect verified");
+        assert_eq!(
+            outcome.consumed, None,
+            "its drive mark could not be settled"
+        );
+        assert_eq!(
+            outcome.status.attention.map(|a| a.reason),
+            Some(AttentionReason::OutcomeUnrecorded)
+        );
         assert!(path.exists(), "the entry is kept, never silently lost");
         assert!(held.lock().unwrap().take().is_some(), "the drive ran");
         // The locked entry kept its mark, so the verified outcome is recorded now, as itself.
@@ -2547,6 +2784,7 @@ mod tests {
                         intended: true,
                         completed: true,
                         resolved: false,
+                        undo_back: false,
                     }],
                 },
                 &c,

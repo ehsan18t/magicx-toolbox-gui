@@ -620,8 +620,8 @@ pub(crate) fn do_apply(
 
     let mut action_plan: Vec<(EffectId, ActionPlan)> = Vec::new();
     let mut residues: Vec<EffectId> = Vec::new();
-    // The probe is the same check that verifies an undo, so an absent omitted action is accounted.
-    let mut proven_absent: BTreeSet<EffectId> = BTreeSet::new();
+    // A probe is a verified read of the action's state, so it accounts for it whatever it reads.
+    let mut probed: BTreeSet<EffectId> = BTreeSet::new();
     for effect in &drive_surface {
         let Effect::Action(action_def) = &effect.kind else {
             continue;
@@ -655,14 +655,13 @@ pub(crate) fn do_apply(
                         effect: effect.id.clone(),
                         source: e,
                     })?;
+            probed.insert(effect.id.clone());
             if present {
                 if undo.is_some() {
                     action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
                 } else {
                     residues.push(effect.id.clone()); // no-undo -- disclosed, left in place
                 }
-            } else {
-                proven_absent.insert(effect.id.clone());
             }
         }
     }
@@ -678,11 +677,12 @@ pub(crate) fn do_apply(
     let journal: Vec<JournalRow> = action_plan
         .iter()
         .filter(|(id, _)| !find_action(tweak, id).is_some_and(|(_, a)| is_ephemeral(a)))
-        .map(|(id, _)| JournalRow {
+        .map(|(id, plan)| JournalRow {
             action_id: id.clone(),
             intended: true,
             completed: false,
             resolved: false,
+            undo_back: *plan == ActionPlan::UndoBack,
         })
         .collect();
     let seq = deps
@@ -722,7 +722,7 @@ pub(crate) fn do_apply(
             // the actions it drove -- never for a row it left alone. A failed clear keeps the
             // record, so the status below still reports it rather than dropping it silently.
             let mut accounted = state.driven_actions();
-            accounted.extend(proven_absent);
+            accounted.extend(probed);
             let unrecorded = match settle_verified(deps, &tweak.id, Settle::All, &accounted) {
                 Settled::Unrecorded(attention, _) => Some(attention),
                 Settled::Clean | Settled::Recorded => None,
@@ -743,6 +743,7 @@ pub(crate) fn do_apply(
         Err(original) => {
             // Atomic rollback (ADR-0001): never `let _ =` this result.
             let rollback_failures = rollback(tweak, corpus, &captured, &state.processed, seq, deps);
+            let ran = state.driven_actions();
             deps.probe_cache.invalidate(&tweak.id);
             let outcome_unknown = outcome_is_unknown(&original);
             let mut store = Vec::new();
@@ -750,14 +751,29 @@ pub(crate) fn do_apply(
                 // Verified full restore: the machine now matches the just-captured entry, so
                 // consume it (ADR-0002). A failed consume leaves the entry on disk, the safe
                 // failure mode, and is named as itself instead of as an unrecovered resource.
-                // The rollback re-established only the captured state, so it settles its own mark,
-                // which a successful consume takes with the entry.
-                if let Err(e) = deps.snapshots.consume(&tweak.id, seq) {
-                    store.push(EngineError::EntryCleanup(e));
-                    if let Settled::Unrecorded(_, e) =
-                        settle_verified(deps, &tweak.id, Settle::Own(seq), &BTreeSet::new())
-                    {
-                        store.push(EngineError::AttentionWrite(e));
+                // The rollback settles only its own entry's marks; `consume` keeps any other.
+                let consumed = deps
+                    .snapshots
+                    .settle_rolled_back(&tweak.id, seq, &ran)
+                    .and_then(|()| deps.snapshots.consume(&tweak.id, seq));
+                match consumed {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        if let Err(e) = lifecycle::try_record_crash_residue(
+                            deps.snapshots,
+                            &tweak.id,
+                            deps.machine_guid,
+                        ) {
+                            store.push(EngineError::AttentionWrite(e));
+                        }
+                    }
+                    Err(e) => {
+                        store.push(EngineError::EntryCleanup(e));
+                        if let Settled::Unrecorded(_, e) =
+                            settle_verified(deps, &tweak.id, Settle::Own(seq), &BTreeSet::new())
+                        {
+                            store.push(EngineError::AttentionWrite(e));
+                        }
                     }
                 }
             } else {
@@ -1013,6 +1029,11 @@ fn drive_action(
             // journaled it in the first place -- nothing to mark), no `state.processed` entry (so
             // rollback can never encounter it and mistake it for un-undoable).
             if !is_ephemeral(action_def) {
+                // Recorded before the mark: a run whose mark fails still ran, so rollback reverses it.
+                state.processed.push(ProcessedEffect::Action(
+                    effect.id.clone(),
+                    ActionPlan::Apply,
+                ));
                 if let Journaling::To(seq) = ctx.journal {
                     ctx.deps
                         .snapshots
@@ -1022,10 +1043,6 @@ fn drive_action(
                             source: e,
                         })?;
                 }
-                state.processed.push(ProcessedEffect::Action(
-                    effect.id.clone(),
-                    ActionPlan::Apply,
-                ));
             }
             if let ActionDef::Script { probe: Some(_), .. } = action_def {
                 let present = ctx.deps.probes.probe(action_def, &cx).map_err(|e| {
@@ -1055,6 +1072,10 @@ fn drive_action(
                     effect: effect.id.clone(),
                     source: e,
                 })?;
+            state.processed.push(ProcessedEffect::Action(
+                effect.id.clone(),
+                ActionPlan::UndoBack,
+            ));
             if let Journaling::To(seq) = ctx.journal {
                 ctx.deps
                     .snapshots
@@ -1064,10 +1085,6 @@ fn drive_action(
                         source: e,
                     })?;
             }
-            state.processed.push(ProcessedEffect::Action(
-                effect.id.clone(),
-                ActionPlan::UndoBack,
-            ));
             let present =
                 ctx.deps
                     .probes
@@ -1881,6 +1898,7 @@ mod tests {
         /// resource -- presence is deliberately left untouched, so a probe taken right after
         /// still reads present. Models exactly the gap invariant 19 guards against.
         lie_on_undo: Mutex<HashSet<String>>,
+        on_apply: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
     }
     impl MockActions {
         fn new(log: Log, presence: Presence) -> Self {
@@ -1917,6 +1935,9 @@ mod tests {
                 .push((format!("{key}:apply"), cx.level()));
             if self.fail_apply.lock().unwrap().contains(&key) {
                 return Err(KindError::ActionFailed(1));
+            }
+            if let Some(f) = &*self.on_apply.lock().unwrap() {
+                f();
             }
             self.presence.lock().unwrap().insert(key, true);
             Ok(())
@@ -3184,6 +3205,7 @@ mod tests {
                         intended: true,
                         completed: false,
                         resolved: false,
+                        undo_back: false,
                     }],
                 },
                 &c,
@@ -3252,6 +3274,115 @@ mod tests {
             do_apply(t, c, &OptLabel(target.into()), &h.deps())
         }));
         assert!(unwound.is_err(), "the drive must crash");
+    }
+
+    /// Renames `from`'s journal row in every entry under `dir`, so `mark_completed` cannot find it.
+    fn rename_row(dir: &std::path::Path, from: &str, to: &str) {
+        for file in std::fs::read_dir(dir).unwrap() {
+            let path = file.unwrap().path();
+            let Ok(mut entry) = serde_json::from_slice::<serde_json::Value>(
+                &std::fs::read(&path).unwrap_or_default(),
+            ) else {
+                continue;
+            };
+            let Some(rows) = entry.get_mut("journal").and_then(|j| j.as_array_mut()) else {
+                continue;
+            };
+            for row in rows.iter_mut().filter(|r| r["action_id"] == from) {
+                row["action_id"] = to.into();
+            }
+            std::fs::write(&path, serde_json::to_vec(&entry).unwrap()).unwrap();
+        }
+    }
+
+    /// `x` runs, then its completion mark fails; `s1`'s drive during the rollback restores the row.
+    fn unmarked_run_setup(h: &Harness, undo: bool) -> (Tweak, Corpus) {
+        use crate::tweaks::model::StartupType;
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![action_effect("x", undo, false), svc_effect("s1", false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("x", OptValue::Run(None)),
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                ],
+            )],
+        );
+        let dir = h._tmp.path().join("demo");
+        let hide = dir.clone();
+        *h.actions.on_apply.lock().unwrap() = Some(Box::new(move || rename_row(&hide, "x", "x#")));
+        h.kind.on_drive(move || rename_row(&dir, "x#", "x"));
+        let c = corpus(vec![t.clone()], vec![]);
+        (t, c)
+    }
+
+    fn outstanding_rows(h: &Harness) -> Vec<EffectId> {
+        h.snapshots
+            .unresolved_entries("demo", Some("test-guid"))
+            .unwrap()
+            .iter()
+            .flat_map(|e| e.journal.iter())
+            .filter(|r| crate::tweaks::snapshot::is_outstanding(r))
+            .map(|r| r.action_id.clone())
+            .collect()
+    }
+
+    /// `x` ran but was never marked complete: the rollback undoes it as possibly run, and its row
+    /// is never resolved as an action that never ran.
+    #[test]
+    fn a_run_whose_completion_mark_failed_is_undone_and_stays_outstanding() {
+        use crate::tweaks::snapshot::AttentionReason;
+        let h = Harness::new();
+        let (t, c) = unmarked_run_setup(&h, true);
+
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x's mark fails");
+        assert!(h.log().contains(&Op::RunUndo("x_apply".into())));
+        assert_eq!(outstanding_rows(&h), vec![EffectId("x".into())]);
+        assert_eq!(crash_reason(&h), Some(AttentionReason::CrashResidue));
+    }
+
+    /// The kept entry's residue cannot be recorded (the record path is a directory, so reading it
+    /// fails): the rollback must name that store failure, never report a clean verified rollback.
+    #[test]
+    fn a_kept_rollback_entry_whose_residue_cannot_be_recorded_reports_it() {
+        let h = Harness::new();
+        let (t, c) = unmarked_run_setup(&h, true);
+        std::fs::create_dir_all(h._tmp.path().join("demo").join("_attention.json")).unwrap();
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x's mark fails");
+        let EngineError::RollbackReport {
+            rollback_failures,
+            store,
+            ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(rollback_failures.is_empty(), "{rollback_failures:?}");
+        assert_eq!(outstanding_rows(&h), vec![EffectId("x".into())]);
+        assert!(
+            matches!(store.as_slice(), [EngineError::AttentionWrite(_)]),
+            "{store:?}"
+        );
+    }
+
+    /// With no `undo`, the rollback cannot reverse `x`, so it is incomplete, never verified.
+    #[test]
+    fn a_run_whose_completion_mark_failed_without_undo_fails_the_rollback() {
+        let h = Harness::new();
+        let (t, c) = unmarked_run_setup(&h, false);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x's mark fails");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(!rollback_failures.is_empty());
+        assert_eq!(outstanding_rows(&h), vec![EffectId("x".into())]);
     }
 
     fn two_settings_tweak() -> Tweak {

@@ -12,7 +12,8 @@ use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 use crate::tweaks::model::EffectId;
 use crate::tweaks::snapshot::{
-    is_outstanding, Attention, AttentionItem, AttentionKind, AttentionReason, Entry, SnapshotStore,
+    is_outstanding, Attention, AttentionItem, AttentionKind, AttentionReason, Entry, SnapshotError,
+    SnapshotStore,
 };
 
 /// Refused before anything was touched; a pending exit can still be called off, a final one cannot.
@@ -189,7 +190,7 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
             class: None,
             message: format!(
                 "action '{}' was planned but never confirmed complete, so it may or may not have \
-                 run: the app stopped mid-apply",
+                 run",
                 row.action_id
             ),
         });
@@ -204,21 +205,26 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
 /// UI like any other kept failure (ADR-0001) instead of living only in the log. An existing record
 /// of this build's gains the items it lacks, so a crash during a retry is not hidden behind it.
 pub(crate) fn record_crash_residue(snapshots: &SnapshotStore, tweak_id: &str, guid: Option<&str>) {
-    let entries = match snapshots.unresolved_entries(tweak_id, guid) {
-        Ok(entries) => entries,
-        Err(e) => {
-            log::warn!("tweak '{tweak_id}': snapshot history unreadable in the crash scan: {e}");
-            return;
-        }
-    };
+    if let Err(e) = try_record_crash_residue(snapshots, tweak_id, guid) {
+        log::error!("tweak '{tweak_id}': could not record its crash residue: {e}");
+    }
+}
+
+/// [`record_crash_residue`] for a caller that must report a store failure, not only log it.
+pub(crate) fn try_record_crash_residue(
+    snapshots: &SnapshotStore,
+    tweak_id: &str,
+    guid: Option<&str>,
+) -> Result<(), SnapshotError> {
+    let entries = snapshots.unresolved_entries(tweak_id, guid)?;
     let Some(found) = scan_for_crash_residue(&entries) else {
-        return;
+        return Ok(());
     };
-    let attention = match snapshots.attention(tweak_id, guid) {
-        Ok(None) => found,
+    let attention = match snapshots.attention(tweak_id, guid)? {
+        None => found,
         // Never written over: it is another build's or machine's, or unparseable.
-        Ok(Some(existing)) if existing.reason == AttentionReason::RecordUnreadable => return,
-        Ok(Some(mut existing)) => {
+        Some(existing) if existing.reason == AttentionReason::RecordUnreadable => return Ok(()),
+        Some(mut existing) => {
             // An `Unrecorded` item already says why the drive mark is still open.
             let explained = existing
                 .items
@@ -232,22 +238,16 @@ pub(crate) fn record_crash_residue(snapshots: &SnapshotStore, tweak_id: &str, gu
                 }
             }
             if existing.items.len() == before {
-                return;
+                return Ok(());
             }
             existing
-        }
-        Err(e) => {
-            log::warn!("tweak '{tweak_id}': attention record unreadable: {e}");
-            return;
         }
     };
     log::error!(
         "tweak '{tweak_id}' needs attention after a crash-interrupted change ({} item(s))",
         attention.items.len()
     );
-    if let Err(e) = snapshots.set_attention(tweak_id, guid, attention) {
-        log::error!("tweak '{tweak_id}': could not record Needs Attention: {e}");
-    }
+    snapshots.set_attention(tweak_id, guid, attention)
 }
 
 #[cfg(test)]
@@ -283,6 +283,7 @@ mod tests {
             intended: true,
             completed: false,
             resolved: false,
+            undo_back: false,
         }]);
 
         let flagged = scan_for_crash_residue(&[entry]).expect("must flag crash residue");
@@ -305,6 +306,7 @@ mod tests {
             intended: true,
             completed: true,
             resolved: false,
+            undo_back: false,
         }]);
         assert!(scan_for_crash_residue(&[entry]).is_none());
     }
@@ -318,6 +320,7 @@ mod tests {
             intended: true,
             completed: false,
             resolved: true,
+            undo_back: false,
         }]);
         assert!(scan_for_crash_residue(&[entry]).is_none());
     }
@@ -343,6 +346,7 @@ mod tests {
             intended: true,
             completed: false,
             resolved: false,
+            undo_back: false,
         };
         let open = |journal| Entry {
             drive_open: true,
@@ -451,12 +455,14 @@ mod tests {
             intended: true,
             completed: true,
             resolved: false,
+            undo_back: false,
         }]);
         let superseded = entry_with_journal(vec![JournalRow {
             action_id: EffectId("stale".into()),
             intended: true,
             completed: false,
             resolved: false,
+            undo_back: false,
         }]);
         let flagged =
             scan_for_crash_residue(&[newest, superseded]).expect("the older row still counts");

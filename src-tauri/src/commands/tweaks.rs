@@ -1888,6 +1888,7 @@ mod tests {
                             intended: true,
                             completed,
                             resolved: false,
+                            undo_back: false,
                         }],
                     },
                     &c,
