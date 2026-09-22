@@ -6,7 +6,7 @@
 
 use rayon::prelude::*;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::error::{Error, Result};
 use crate::services::system_info_service;
@@ -1063,16 +1063,53 @@ fn spawn_full_scan(app: AppHandle) {
 /// `apply_tweak`'s engine call + view conversion, factored out so `apply_returns_fresh_status_no_rescan`
 /// can prove the returned status is the engine outcome's own (never a second, fresh `detect` call)
 /// without needing a live Tauri runtime.
-async fn apply_tweak_logic(
+fn apply_tweak_logic(
     tweak: &Tweak,
     corpus: &Corpus,
     target: &OptLabel,
     deps: &Deps<'_>,
     stamp: u64,
 ) -> std::result::Result<ApplyOutcomeView, EngineError> {
-    apply::apply(tweak, corpus, target, deps)
+    apply::do_apply(tweak, corpus, target, deps).map(|o| ApplyOutcomeView::stamped(o, stamp))
+}
+
+/// Refuses unless available, then stamps before the engine reads, so a later sweep outranks it.
+async fn gate_and_stamp(tweak: &'static Tweak) -> Result<u64> {
+    blocking(move || {
+        let corpus = compiled_corpus();
+        refuse_if_unavailable(
+            tweak,
+            corpus,
+            current_app_level(),
+            context::sid_check(&RealSidProbe),
+        )?;
+        Ok(next_status_stamp())
+    })
+    .await
+}
+
+/// Registry, SCM, COM, snapshot I/O and the broker's 30 s child wait all block, so none may run on
+/// an async worker. A `JoinError` maps to `Err`, never a value; release builds abort on panic.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(work).await?
+}
+
+/// [`blocking`] under `tweak_id`'s lifecycle lock, taken on the async side and held until `work`
+/// ends. A refused lock is the same `APP_EXITING` error an engine refusal maps to.
+async fn run_locked<T: Send + 'static>(
+    tweak_id: &str,
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    let held = lifecycle::lock_tweak(tweak_id)
         .await
-        .map(|o| ApplyOutcomeView::stamped(o, stamp))
+        .map_err(Error::AppExiting)?;
+    blocking(move || {
+        let _held = held;
+        work()
+    })
+    .await
 }
 
 // --- commands -------------------------------------------------------------------------------------
@@ -1080,15 +1117,18 @@ async fn apply_tweak_logic(
 #[tauri::command]
 pub async fn get_tweaks() -> Result<Vec<TweakView>> {
     log::info!("get_tweaks: building the compiled tweak view for the UI");
-    let corpus = compiled_corpus();
-    let level = current_app_level();
-    let sid_check = context::sid_check(&RealSidProbe);
-    let winver = running_winver();
-    Ok(corpus
-        .tweaks
-        .iter()
-        .map(|t| tweak_view(t, corpus, &winver, level, sid_check))
-        .collect())
+    blocking(|| {
+        let corpus = compiled_corpus();
+        let level = current_app_level();
+        let sid_check = context::sid_check(&RealSidProbe);
+        let winver = running_winver();
+        Ok(corpus
+            .tweaks
+            .iter()
+            .map(|t| tweak_view(t, corpus, &winver, level, sid_check))
+            .collect())
+    })
+    .await
 }
 
 /// Corpus category metadata (id + display name + icon + description) for the sidebar. The compiled
@@ -1136,104 +1176,96 @@ pub async fn rescan_after_elevation(app: AppHandle) -> Result<()> {
 
 #[tauri::command]
 pub async fn apply_tweak(
-    state: State<'_, TweakEngineState>,
+    app: AppHandle,
     tweak_id: String,
     option_label: String,
 ) -> Result<ApplyOutcomeView> {
     log::info!("apply_tweak: '{tweak_id}' -> '{option_label}'");
-    let corpus = compiled_corpus();
-    let tweak = find_tweak(corpus, &tweak_id)?;
-
-    let level = current_app_level();
-    let sid_check = context::sid_check(&RealSidProbe);
-    refuse_if_unavailable(tweak, corpus, level, sid_check)?;
-
-    // Taken before the engine reads anything, so a sweep that reads later always outranks it.
-    let stamp = next_status_stamp();
-    let deps = build_deps(state.inner());
-    let target = OptLabel(option_label);
-    apply_tweak_logic(tweak, corpus, &target, &deps, stamp)
-        .await
-        .map_err(|e| map_engine_err(&tweak_id, Phase::Apply, e))
+    let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
+    let stamp = gate_and_stamp(tweak).await?;
+    run_locked(&tweak_id, move || {
+        let state = app.state::<TweakEngineState>();
+        let target = OptLabel(option_label);
+        apply_tweak_logic(
+            tweak,
+            compiled_corpus(),
+            &target,
+            &build_deps(state.inner()),
+            stamp,
+        )
+        .map_err(|e| map_engine_err(&tweak.id, Phase::Apply, e))
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn restore_tweak(
-    state: State<'_, TweakEngineState>,
-    tweak_id: String,
-) -> Result<RestoreOutcomeView> {
+pub async fn restore_tweak(app: AppHandle, tweak_id: String) -> Result<RestoreOutcomeView> {
     log::info!("restore_tweak: '{tweak_id}'");
-    let corpus = compiled_corpus();
-    let tweak = find_tweak(corpus, &tweak_id)?;
-
-    let level = current_app_level();
-    let sid_check = context::sid_check(&RealSidProbe);
-    refuse_if_unavailable(tweak, corpus, level, sid_check)?;
-
-    // Taken before the engine reads anything, so a sweep that reads later always outranks it.
-    let stamp = next_status_stamp();
-    let deps = build_deps(state.inner());
-    revert::restore(tweak, corpus, &deps)
-        .await
-        .map(|o| RestoreOutcomeView::stamped(o, stamp))
-        .map_err(|e| map_engine_err(&tweak_id, Phase::Restore, e))
+    let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
+    let stamp = gate_and_stamp(tweak).await?;
+    run_locked(&tweak_id, move || {
+        let state = app.state::<TweakEngineState>();
+        revert::do_restore(tweak, compiled_corpus(), &build_deps(state.inner()))
+            .map(|o| RestoreOutcomeView::stamped(o, stamp))
+            .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
+    })
+    .await
 }
 
 /// One tweak's fresh status, so a failed apply or restore shows the Needs Attention it left.
 #[tauri::command]
-pub async fn get_tweak_status(
-    state: State<'_, TweakEngineState>,
-    tweak_id: String,
-) -> Result<TweakStatusView> {
+pub async fn get_tweak_status(app: AppHandle, tweak_id: String) -> Result<TweakStatusView> {
     log::info!("get_tweak_status: '{tweak_id}'");
     let corpus = compiled_corpus();
     let tweak = find_tweak(corpus, &tweak_id)?;
-    // A pure read never enters the lock map: holding it would count as an apply in flight and could
-    // refuse a restart or update exit, and a long TrustedInstaller apply would block it with no
-    // timeout. Same non-blocking filter the sweep uses; the apply in flight publishes its own status.
-    if lifecycle::is_locked(&tweak_id) {
-        return Err(Error::ApplyInFlight("check its state again"));
-    }
-    Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
+    blocking(move || {
+        let state = app.state::<TweakEngineState>();
+        let deps = build_deps(state.inner());
+        // A pure read never enters the lock map: holding it would count as an apply in flight and
+        // could refuse an exit, and a long TrustedInstaller apply would block it with no timeout.
+        // The sweep's non-blocking filter, checked just before the read to keep the race gap small.
+        if lifecycle::is_locked(&tweak.id) {
+            return Err(Error::ApplyInFlight("check its state again"));
+        }
+        Ok(scan_one(tweak, corpus, &deps).status)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn list_snapshot_entries(
-    state: State<'_, TweakEngineState>,
-    tweak_id: String,
-) -> Result<Vec<EntrySummary>> {
+pub async fn list_snapshot_entries(app: AppHandle, tweak_id: String) -> Result<Vec<EntrySummary>> {
     log::info!("list_snapshot_entries: '{tweak_id}'");
-    let corpus = compiled_corpus();
-    state
-        .snapshots
-        .list(
-            &tweak_id,
-            corpus,
-            state.machine_guid.as_deref(),
-            running_winver().build,
-        )
-        .map_err(|e| map_snapshot_err("listing this tweak's snapshots", e))
+    blocking(move || {
+        let state = app.state::<TweakEngineState>();
+        state
+            .snapshots
+            .list(
+                &tweak_id,
+                compiled_corpus(),
+                state.machine_guid.as_deref(),
+                running_winver().build,
+            )
+            .map_err(|e| map_snapshot_err("listing this tweak's snapshots", e))
+    })
+    .await
 }
 
 /// The explicit-consent snapshot release (ADR-0002) -- `SnapshotStore::discard` never runs on a
 /// failure path, only here, on a direct user decision.
 #[tauri::command]
-pub async fn discard_snapshot_entry(
-    state: State<'_, TweakEngineState>,
-    tweak_id: String,
-    seq: Seq,
-) -> Result<()> {
+pub async fn discard_snapshot_entry(app: AppHandle, tweak_id: String, seq: Seq) -> Result<()> {
     log::info!("discard_snapshot_entry: '{tweak_id}' seq {seq:?}");
     // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
-    let _guard = lifecycle::lock_tweak(&tweak_id)
-        .await
-        .map_err(Error::AppExiting)?;
-    // Releases the entry and nothing else: Needs Attention has exactly three clears (ADR-0002) and
-    // [`keep_current_state`] is the consented one, reachable whenever a record exists.
-    state
-        .snapshots
-        .discard(&tweak_id, seq)
-        .map_err(|e| map_snapshot_err("discarding this snapshot", e))
+    let id = tweak_id.clone();
+    run_locked(&tweak_id, move || {
+        // Releases the entry and nothing else: Needs Attention has exactly three clears (ADR-0002)
+        // and [`keep_current_state`] is the consented one, reachable whenever a record exists.
+        app.state::<TweakEngineState>()
+            .snapshots
+            .discard(&id, seq)
+            .map_err(|e| map_snapshot_err("discarding this snapshot", e))
+    })
+    .await
 }
 
 /// Explicit consent (ADR-0002), factored out of [`keep_current_state`] so a test can drive it over a
@@ -1267,34 +1299,35 @@ fn release_snapshot(
 /// fresh status so the card never patches the record away locally and an in-flight sweep event
 /// cannot put the badge back.
 #[tauri::command]
-pub async fn keep_current_state(
-    state: State<'_, TweakEngineState>,
-    tweak_id: String,
-) -> Result<TweakStatusView> {
+pub async fn keep_current_state(app: AppHandle, tweak_id: String) -> Result<TweakStatusView> {
     log::info!("keep_current_state: '{tweak_id}'");
     let corpus = compiled_corpus();
     let tweak = find_tweak(corpus, &tweak_id)?;
     // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
-    let _guard = lifecycle::lock_tweak(&tweak_id)
-        .await
-        .map_err(Error::AppExiting)?;
-    release_snapshot(
-        &state.snapshots,
-        &tweak_id,
-        corpus,
-        state.machine_guid.as_deref(),
-        running_winver().build,
-    )?;
-    Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
+    run_locked(&tweak_id, move || {
+        let state = app.state::<TweakEngineState>();
+        release_snapshot(
+            &state.snapshots,
+            &tweak.id,
+            corpus,
+            state.machine_guid.as_deref(),
+            running_winver().build,
+        )?;
+        Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_elevation_state() -> Result<ElevationState> {
     log::info!("get_elevation_state");
-    Ok(ElevationState {
-        level: current_app_level(),
-        sid_mismatch: context::sid_check(&RealSidProbe).blocks_hkcu(),
+    blocking(|| {
+        Ok(ElevationState {
+            level: current_app_level(),
+            sid_mismatch: context::sid_check(&RealSidProbe).blocks_hkcu(),
+        })
     })
+    .await
 }
 
 // --- tests ------------------------------------------------------------------------------------
@@ -1458,29 +1491,6 @@ mod tests {
                     build: 19045,
                     revision: 0,
                 },
-            }
-        }
-    }
-
-    /// Blocks on an async call without pulling in a full async-test harness: mirrors
-    /// `engine::apply`/`engine::revert`'s own minimal single-poll executor -- the only await point
-    /// anywhere in this call chain is an uncontended per-tweak lock acquire, which resolves on the
-    /// first poll.
-    fn futures_block_on<F: std::future::Future>(mut fut: F) -> F::Output {
-        use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-        fn noop(_: *const ()) {}
-        fn clone(_: *const ()) -> RawWaker {
-            RawWaker::new(std::ptr::null(), &VTABLE)
-        }
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, noop, noop, noop);
-        let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
-        let mut cx = Context::from_waker(&waker);
-        // SAFETY: `fut` is a local, never moved after this point.
-        let mut fut = unsafe { std::pin::Pin::new_unchecked(&mut fut) };
-        loop {
-            match fut.as_mut().poll(&mut cx) {
-                Poll::Ready(v) => return v,
-                Poll::Pending => std::thread::yield_now(),
             }
         }
     }
@@ -2106,6 +2116,37 @@ mod tests {
         assert_eq!(got, ids, "every tweak reported exactly once");
     }
 
+    // Deadlocks (then times out) if the work runs on the calling async worker: the sender below
+    // shares that current-thread runtime and only runs while the command is parked.
+    #[tokio::test]
+    async fn locked_work_runs_off_the_async_worker_under_the_tweak_lock() {
+        let id = "offload-probe";
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sender = tokio::spawn(async move { tx.send(()).expect("receiver alive") });
+        let seen = run_locked(id, move || {
+            let held = lifecycle::is_locked(id);
+            rx.recv_timeout(std::time::Duration::from_secs(5))
+                .map_err(|_| Error::Tweak("work blocked the async worker".into()))?;
+            Ok(held)
+        })
+        .await
+        .expect("work completes");
+        sender.await.unwrap();
+        assert!(seen, "the tweak lock is held for the whole blocking run");
+        assert!(!lifecycle::is_locked(id), "released once the work ends");
+    }
+
+    // Unwind-only (test profile); release aborts on panic.
+    #[tokio::test]
+    async fn a_join_error_in_locked_work_maps_to_err_under_unwind() {
+        let id = "offload-panic";
+        let out: Result<()> = run_locked(id, || panic!("engine blew up")).await;
+        assert!(out.is_err(), "a JoinError must never read as success");
+        assert!(!lifecycle::is_locked(id));
+        let out: Result<()> = blocking(|| panic!("detect blew up")).await;
+        assert!(out.is_err());
+    }
+
     #[test]
     fn apply_returns_fresh_status_no_rescan() {
         let h = Harness::new(Value::Startup(StartupType::Manual)); // starts at "Off"
@@ -2120,14 +2161,8 @@ mod tests {
         let deps = h.deps();
 
         // A real transition: mutates the mock live value to "On".
-        let first = futures_block_on(apply_tweak_logic(
-            &t,
-            &c,
-            &OptLabel("On".into()),
-            &deps,
-            next_status_stamp(),
-        ))
-        .expect("apply succeeds");
+        let first = apply_tweak_logic(&t, &c, &OptLabel("On".into()), &deps, next_status_stamp())
+            .expect("apply succeeds");
         assert_eq!(
             first.status.state,
             TweakStateView::Active {
@@ -2142,14 +2177,8 @@ mod tests {
         // exactly ONE read (the pre-status detect), nothing driven. If this command layer ever
         // performed its own extra `detect` before/after handing back the outcome, this would read
         // more than once.
-        let second = futures_block_on(apply_tweak_logic(
-            &t,
-            &c,
-            &OptLabel("On".into()),
-            &deps,
-            next_status_stamp(),
-        ))
-        .expect("no-op apply succeeds");
+        let second = apply_tweak_logic(&t, &c, &OptLabel("On".into()), &deps, next_status_stamp())
+            .expect("no-op apply succeeds");
         assert_eq!(
             h.kind.reads.load(Ordering::SeqCst),
             1,

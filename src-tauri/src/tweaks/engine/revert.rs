@@ -122,7 +122,12 @@ pub async fn restore(
     do_restore(tweak, corpus, deps)
 }
 
-fn do_restore(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> Result<RestoreOutcome, EngineError> {
+/// [`restore`] for a caller already holding [`lifecycle::lock_tweak`] for `tweak.id`.
+pub(crate) fn do_restore(
+    tweak: &Tweak,
+    corpus: &Corpus,
+    deps: &Deps,
+) -> Result<RestoreOutcome, EngineError> {
     // `validate.rs`'s Milestone-shaped helpers below stay build-only (see `winver.rs`'s module
     // docs); `winver` is threaded through to `reapply_option_ref` for its direct runtime scope
     // check, which must honor `revision` too.

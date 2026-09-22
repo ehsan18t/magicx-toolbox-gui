@@ -437,7 +437,8 @@ pub async fn apply(
     do_apply(tweak, corpus, target, deps)
 }
 
-fn do_apply(
+/// [`apply`] for a caller already holding [`lifecycle::lock_tweak`] for `tweak.id`.
+pub(crate) fn do_apply(
     tweak: &Tweak,
     corpus: &Corpus,
     target: &OptLabel,
