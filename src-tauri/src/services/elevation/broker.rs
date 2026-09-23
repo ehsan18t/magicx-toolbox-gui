@@ -18,7 +18,9 @@ use crate::services::exclusive_temp::{self, ExclusiveTempFile};
 use crate::services::{registry_service, registry_value, scheduler_service, service_control};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
-use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ};
+use windows_sys::Win32::Storage::FileSystem::{
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
+};
 
 use super::common::SpawnError;
 use super::Elevation;
@@ -64,7 +66,7 @@ pub enum BrokerOp {
 
 /// Bump on any change to the wire types or exit codes (`the_wire_format_is_pinned`): after an
 /// update, parent and child are separate builds.
-const WIRE_VERSION: u32 = 2;
+const WIRE_VERSION: u32 = 3;
 
 /// A batch of operations for one broker invocation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -274,12 +276,13 @@ fn parse_wire<T: DeserializeOwned>(
 const DIFFERENT_BUILD: &str =
     "the elevated helper is a different build of the app; restart the app and try again";
 
-// The child's only channel. `serve_request` returns the three `0x204D_58xx` codes before any op
+// The child's only channel. `serve_request` returns the four `0x204D_58xx` codes before any op
 // runs, which the parent's "nothing ran" rests on; no kill or crash picks them (`TerminateProcess`
 // takes any code, CRT `abort()` exits 3). Pinned with `WIRE_VERSION`.
 const EXIT_UNREADABLE_REQUEST: i32 = 0x204D_5801;
 const EXIT_UNPARSEABLE_REQUEST: i32 = 0x204D_5802;
 const EXIT_WIRE_VERSION_MISMATCH: i32 = 0x204D_5803;
+const EXIT_FOREIGN_REQUEST: i32 = 0x204D_5804;
 const EXIT_UNSERIALIZABLE_RESPONSE: i32 = 4;
 const EXIT_UNWRITABLE_RESPONSE: i32 = 5;
 /// A panic inside the child. Distinct from the catch-all so a bug in our own executor is never
@@ -294,6 +297,7 @@ fn describe_broker_exit(code: i32) -> &'static str {
         }
         EXIT_UNPARSEABLE_REQUEST => "request file was not a valid request",
         EXIT_WIRE_VERSION_MISMATCH => DIFFERENT_BUILD,
+        EXIT_FOREIGN_REQUEST => "refused a request file that is not the one the app wrote",
         EXIT_UNSERIALIZABLE_RESPONSE => "could not serialize the response",
         EXIT_UNWRITABLE_RESPONSE => "could not write the response file",
         EXIT_PANICKED => "panicked while executing the batch",
@@ -306,16 +310,17 @@ pub fn malformed_argv_exit_code() -> i32 {
 }
 
 /// The real child's entrypoint. The panic hook is process-wide, so tests call [`serve_request`].
-pub fn run_broker(req_path: &str, resp_path: &str) -> i32 {
+pub fn run_broker(req_path: &str, resp_path: &str, req_identity: &str) -> i32 {
     install_panic_exit_hook();
-    serve_request(req_path, resp_path)
+    serve_request(req_path, resp_path, req_identity)
 }
 
 /// Read a request file, execute it, write a response file. 0 means the batch ran and a response
 /// was written; non-zero is a transport failure, distinct from op failures inside the response.
-fn serve_request(req_path: &str, resp_path: &str) -> i32 {
-    let Ok(bytes) = std::fs::read(req_path) else {
-        return EXIT_UNREADABLE_REQUEST;
+fn serve_request(req_path: &str, resp_path: &str, req_identity: &str) -> i32 {
+    let bytes = match read_own_request(req_path, req_identity) {
+        Ok(bytes) => bytes,
+        Err(code) => return code,
     };
     let request = match parse_wire(&bytes, |r: &BrokerRequest| r.version) {
         Ok(request) => request,
@@ -329,6 +334,29 @@ fn serve_request(req_path: &str, resp_path: &str) -> i32 {
         return EXIT_UNWRITABLE_RESPONSE;
     }
     0
+}
+
+/// The request path resolves through the user's `%TEMP%`, so it proves nothing on its own: the file
+/// counts only if its identity is the one the parent put on the command line, and it is then read
+/// through that same handle. Shares write because the parent still holds its write handle.
+fn read_own_request(req_path: &str, req_identity: &str) -> Result<Vec<u8>, i32> {
+    use std::io::Read;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .open(req_path)
+        .map_err(|_| EXIT_UNREADABLE_REQUEST)?;
+    match exclusive_temp::file_identity(&file) {
+        Ok(identity) if identity == req_identity => {}
+        Ok(_) => return Err(EXIT_FOREIGN_REQUEST),
+        Err(_) => return Err(EXIT_UNREADABLE_REQUEST),
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|_| EXIT_UNREADABLE_REQUEST)?;
+    Ok(bytes)
 }
 
 /// Under release `panic = "abort"` a child panic otherwise reads as the catch-all exit, like an
@@ -367,7 +395,7 @@ fn write_response(resp_path: &str, out: &[u8]) -> std::io::Result<()> {
 /// code, a kill included, may have run ops.
 fn classify_exit(code: i32, detail: Error) -> BrokerOpError {
     match code {
-        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST => {
+        EXIT_UNREADABLE_REQUEST | EXIT_UNPARSEABLE_REQUEST | EXIT_FOREIGN_REQUEST => {
             BrokerOpError::CouldNotAcquire(AcquireReason::RequestNotDelivered, detail)
         }
         EXIT_WIRE_VERSION_MISMATCH => {
@@ -429,42 +457,9 @@ fn validate_response(
     Ok(resp)
 }
 
-/// Run a batch of typed operations at the given elevation.
-///
-/// `Elevation::None` runs them in-process. `TrustedInstaller` writes the request to a temp file,
-/// spawns `<this exe> --broker <req> <resp>` under that token, and reads the typed response back. No shell parses anything, and the request *data* never reaches a command line;
-/// only our own generated paths do.
-///
-/// ## The request file is the thing an attacker would want
-///
-/// The child reads it as TrustedInstaller, so whoever controls its bytes controls what
-/// runs at that level. `%TEMP%` is writable by every process running as this user, and the spawn
-/// window is long (acquiring the TI token alone can take seconds), so "write it and hope" is not a
-/// defence. It goes through [`ExclusiveTempFile`], which keeps a `FILE_SHARE_READ`-only write
-/// handle open across the whole spawn: the child can read it, nothing else can rewrite it.
-///
-/// ## The response file is guarded, but not equally
-///
-/// The child creates it, so the parent cannot hold it open across the spawn the way it holds the
-/// request. What does guard it: the parent only ever reserves an unguessable name, the child
-/// creates it with `CREATE_NEW` plus `FILE_FLAG_OPEN_REPARSE_POINT` (so a pre-planted file,
-/// junction or symlink is a hard failure rather than an arbitrary write as TrustedInstaller), the
-/// child's exit code gates reading it at all, and the nonce must match the one sent.
-///
-/// What remains open, stated precisely: a same-user process that learns the path can overwrite the
-/// response in the window between the child's exit and the parent's read, and forge a success. The
-/// nonce does not stop that and was never meant to; it is a staleness guard. It is not even a
-/// secret from such an attacker, since the request file is deliberately `FILE_SHARE_READ` so the
-/// child can read it, and it carries both the nonce and the op count.
-///
-/// That is bounded, not unbounded. Every driven effect is verified by an in-process read-back the
-/// forger cannot touch (`engine::apply`), so a forged success degrades into a verify mismatch and a
-/// rollback, never silently-wrong machine state. The cost is a false failure, not a false success.
-///
-/// An inherited pipe would close it, and cannot be built here: the TrustedInstaller spawn sets
-/// `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`, under which handle inheritance is sourced from the
-/// attribute parent rather than from us. A named pipe with a random name and a restrictive DACL is
-/// the shape that would work, and it is a larger change than this comment once implied.
+/// `None` runs in-process; otherwise a TrustedInstaller child runs the request file only if its file
+/// identity matches the command line's. A response forged after the child exits (KNOWN_ISSUES #2)
+/// fails the in-process read-back, so it can cost a false failure, never a false success.
 fn run_elevated_broker(
     level: Elevation,
     ops: Vec<BrokerOp>,
@@ -513,11 +508,14 @@ fn run_elevated_broker(
     }
     .map_err(|e| undelivered(format!("reserve broker response path: {e}")))?;
     let resp_guard = exclusive_temp::TempPathGuard::new(resp_path, "broker response");
+    let req_identity = req_file
+        .identity()
+        .map_err(|e| undelivered(format!("read the broker request's identity: {e}")))?;
 
-    // Spawn "<exe>" --broker "<req>" "<resp>" directly (no cmd.exe wrapper). Paths are quoted; the
-    // values are our own generated temp names, never untrusted data.
+    // Spawn "<exe>" --broker "<req>" "<resp>" <identity> directly (no cmd.exe wrapper). The command
+    // line is the one channel the same-user side cannot touch, so it carries the request's identity.
     let cmdline = format!(
-        "\"{}\" --broker \"{}\" \"{}\"",
+        "\"{}\" --broker \"{}\" \"{}\" {req_identity}",
         exe.display(),
         req_file.path().display(),
         resp_guard.path().display()
@@ -1027,7 +1025,11 @@ mod tests {
         };
         std::fs::write(&req_path, serde_json::to_vec(&req).unwrap()).unwrap();
 
-        let code = serve_request(req_path.to_str().unwrap(), resp_path.to_str().unwrap());
+        let code = serve_request(
+            req_path.to_str().unwrap(),
+            resp_path.to_str().unwrap(),
+            &identity_of(&req_path),
+        );
         assert_eq!(code, 0);
 
         let resp: BrokerResponse =
@@ -1253,7 +1255,11 @@ mod tests {
     fn run_broker_on(request: &[u8]) -> (i32, bool) {
         let (req_path, resp_path) = (temp_path("req"), temp_path("resp"));
         std::fs::write(&req_path, request).unwrap();
-        let code = serve_request(req_path.to_str().unwrap(), resp_path.to_str().unwrap());
+        let code = serve_request(
+            req_path.to_str().unwrap(),
+            resp_path.to_str().unwrap(),
+            &identity_of(&req_path),
+        );
         let responded = resp_path.exists();
         let _ = std::fs::remove_file(&req_path);
         let _ = std::fs::remove_file(&resp_path);
@@ -1323,7 +1329,11 @@ mod tests {
     #[test]
     fn an_unreadable_request_file_is_refused_before_any_op() {
         let (missing, resp_path) = (temp_path("missing"), temp_path("resp"));
-        let code = serve_request(missing.to_str().unwrap(), resp_path.to_str().unwrap());
+        let code = serve_request(
+            missing.to_str().unwrap(),
+            resp_path.to_str().unwrap(),
+            "0-0",
+        );
         assert_eq!(code, EXIT_UNREADABLE_REQUEST);
         assert!(!resp_path.exists());
     }
@@ -1412,6 +1422,7 @@ mod tests {
             EXIT_UNREADABLE_REQUEST,
             EXIT_UNPARSEABLE_REQUEST,
             EXIT_WIRE_VERSION_MISMATCH,
+            EXIT_FOREIGN_REQUEST,
             malformed_argv_exit_code(),
         ] {
             assert_eq!(code as u32 >> 16, 0x204D, "{code:#x}");
@@ -1421,9 +1432,9 @@ mod tests {
     #[test]
     fn the_wire_format_is_pinned() {
         // Changing any byte below, or any exit code, needs a WIRE_VERSION bump.
-        const REQUEST: &str = r#"{"version":2,"nonce":7,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
-        const RESPONSE: &str = r#"{"version":2,"nonce":7,"attempted":2,"failure":{"index":1,"class":"access_denied"}}"#;
-        assert_eq!(WIRE_VERSION, 2);
+        const REQUEST: &str = r#"{"version":3,"nonce":7,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
+        const RESPONSE: &str = r#"{"version":3,"nonce":7,"attempted":2,"failure":{"index":1,"class":"access_denied"}}"#;
+        assert_eq!(WIRE_VERSION, 3);
         // Every class name is on the wire too: renaming one needs the same bump.
         for (class, name) in [
             (OpFailureClass::AccessDenied, r#""access_denied""#),
@@ -1439,11 +1450,12 @@ mod tests {
                 EXIT_UNREADABLE_REQUEST,
                 EXIT_UNPARSEABLE_REQUEST,
                 EXIT_WIRE_VERSION_MISMATCH,
+                EXIT_FOREIGN_REQUEST,
                 EXIT_UNSERIALIZABLE_RESPONSE,
                 EXIT_UNWRITABLE_RESPONSE,
                 EXIT_PANICKED,
             ],
-            [0x204D_5801, 0x204D_5802, 0x204D_5803, 4, 5, 6]
+            [0x204D_5801, 0x204D_5802, 0x204D_5803, 0x204D_5804, 4, 5, 6]
         );
 
         let (hive, key, value_name) = (RegistryHive::Hkcu, "K".to_owned(), "V".to_owned());
@@ -1501,7 +1513,8 @@ mod tests {
 
     // The fake child covers the parent side only: the real child cannot run under `cargo test`, where
     // `current_exe()` is the libtest harness and rejects `--broker`. Verify it with the built exe:
-    // `magicx-toolbox.exe --broker <req> <resp>` from an elevated shell, then check the machine state.
+    // `magicx-toolbox.exe --broker <req> <resp> <identity>` from an elevated shell, `<identity>` being
+    // `exclusive_temp::file_identity` of `<req>`, then check the machine state.
 
     /// The argv the child sees for `cmdline`.
     fn child_argv(cmdline: &str) -> Vec<std::ffi::OsString> {
@@ -1532,7 +1545,7 @@ mod tests {
     /// TrustedInstaller spawn, then asserts the request and response files are gone.
     fn run_with_child(
         ops: Vec<BrokerOp>,
-        child: impl FnOnce(&str, &str) -> Result<i32, SpawnError>,
+        child: impl FnOnce(&str, &str, &str) -> Result<i32, SpawnError>,
     ) -> Result<(), BrokerOpError> {
         run_with_child_paths(ops, child).0
     }
@@ -1540,7 +1553,7 @@ mod tests {
     /// [`run_with_child`], also handing back the two temp paths the child was given.
     fn run_with_child_paths(
         ops: Vec<BrokerOp>,
-        child: impl FnOnce(&str, &str) -> Result<i32, SpawnError>,
+        child: impl FnOnce(&str, &str, &str) -> Result<i32, SpawnError>,
     ) -> (Result<(), BrokerOpError>, [String; 2]) {
         let mut handed = None;
         let result = run_ops_with(Elevation::TrustedInstaller, ops, |cmdline| {
@@ -1549,11 +1562,16 @@ mod tests {
                 std::path::Path::new(&argv[0]),
                 std::env::current_exe().unwrap()
             );
-            let crate::Launch::Broker { req, resp } = crate::classify_launch(&argv) else {
+            let crate::Launch::Broker {
+                req,
+                resp,
+                identity,
+            } = crate::classify_launch(&argv)
+            else {
                 panic!("the child would not start as the broker: {cmdline}");
             };
             handed = Some([req.to_owned(), resp.to_owned()]);
-            child(req, resp)
+            child(req, resp, identity)
         });
         let handed = handed.expect("the elevated arm must spawn a child");
         for path in &handed {
@@ -1562,16 +1580,20 @@ mod tests {
         (result, handed)
     }
 
-    fn serve(req: &str, resp: &str) -> Result<i32, SpawnError> {
-        Ok(serve_request(req, resp))
+    fn identity_of(path: &std::path::Path) -> String {
+        exclusive_temp::file_identity(&std::fs::File::open(path).unwrap()).unwrap()
+    }
+
+    fn serve(req: &str, resp: &str, identity: &str) -> Result<i32, SpawnError> {
+        Ok(serve_request(req, resp, identity))
     }
 
     /// Parses the request as the real child does, then writes a success response, edited by
     /// `edit`, without running any op.
     fn respond_with(
         edit: impl FnOnce(&BrokerRequest, &mut serde_json::Value),
-    ) -> impl FnOnce(&str, &str) -> Result<i32, SpawnError> {
-        move |req, resp| {
+    ) -> impl FnOnce(&str, &str, &str) -> Result<i32, SpawnError> {
+        move |req, resp, _| {
             let bytes = std::fs::read(req).unwrap();
             let Ok(request) = parse_wire(&bytes, |r: &BrokerRequest| r.version) else {
                 panic!("the child refused the request");
@@ -1610,6 +1632,43 @@ mod tests {
         );
     }
 
+    /// A request the path resolves to that is not the file the parent wrote is refused before any op
+    /// runs, and the parent reads that as "nothing ran".
+    #[test]
+    fn a_substituted_request_file_is_refused_before_any_op() {
+        let scratch = Scratch::new();
+        let forged = ExclusiveTempFile::create(
+            "magicx-brokertest",
+            "req.json",
+            "test request",
+            &serde_json::to_vec(&BrokerRequest::new(scratch_ops(&scratch.key))).unwrap(),
+        )
+        .unwrap();
+        let got = run_with_child(vec![], |_, resp, identity| {
+            let code = serve_request(forged.path().to_str().unwrap(), resp, identity);
+            assert_eq!(code, EXIT_FOREIGN_REQUEST);
+            assert!(
+                !std::path::Path::new(resp).exists(),
+                "no response is written"
+            );
+            Ok(code)
+        });
+        assert!(
+            matches!(
+                got,
+                Err(BrokerOpError::CouldNotAcquire(
+                    AcquireReason::RequestNotDelivered,
+                    _
+                ))
+            ),
+            "{got:?}"
+        );
+        assert!(
+            !registry_service::key_exists(&RegistryHive::Hkcu, &scratch.key).unwrap(),
+            "none of the forged ops ran"
+        );
+    }
+
     #[test]
     fn a_child_that_exits_before_any_op_is_could_not_acquire() {
         let scratch = Scratch::new();
@@ -1617,9 +1676,10 @@ mod tests {
             EXIT_UNREADABLE_REQUEST,
             EXIT_UNPARSEABLE_REQUEST,
             EXIT_WIRE_VERSION_MISMATCH,
+            EXIT_FOREIGN_REQUEST,
             malformed_argv_exit_code(),
         ] {
-            let got = run_with_child(scratch_ops(&scratch.key), |_, _| Ok(code));
+            let got = run_with_child(scratch_ops(&scratch.key), |_, _, _| Ok(code));
             assert!(
                 matches!(got, Err(BrokerOpError::CouldNotAcquire(..))),
                 "exit {code:#x}: {got:?}"
@@ -1639,8 +1699,8 @@ mod tests {
             3,
             0xC000_0409_u32 as i32,
         ] {
-            let got = run_with_child(scratch_ops(&scratch.key), |req, resp| {
-                assert_eq!(serve_request(req, resp), 0);
+            let got = run_with_child(scratch_ops(&scratch.key), |req, resp, identity| {
+                assert_eq!(serve_request(req, resp, identity), 0);
                 Ok(code)
             });
             assert!(
@@ -1655,7 +1715,7 @@ mod tests {
         let scratch = Scratch::new();
         let detail = |msg: &str| Error::ServiceControl(msg.into());
 
-        let got = run_with_child(scratch_ops(&scratch.key), |_, _| {
+        let got = run_with_child(scratch_ops(&scratch.key), |_, _, _| {
             Err(SpawnError::NoChild(
                 AcquireReason::SpawnFailed,
                 detail("CreateProcessW failed"),
@@ -1666,8 +1726,8 @@ mod tests {
             "{got:?}"
         );
 
-        let got = run_with_child(scratch_ops(&scratch.key), |req, resp| {
-            assert_eq!(serve_request(req, resp), 0);
+        let got = run_with_child(scratch_ops(&scratch.key), |req, resp, identity| {
+            assert_eq!(serve_request(req, resp, identity), 0);
             Err(SpawnError::ChildRan(detail("timed out")))
         });
         assert!(
@@ -1702,7 +1762,7 @@ mod tests {
     #[test]
     fn a_failed_elevated_batch_is_summarised_without_any_path() {
         let scratch = Scratch::new();
-        let (got, handed) = run_with_child_paths(scratch_ops(&scratch.key), |_, _| {
+        let (got, handed) = run_with_child_paths(scratch_ops(&scratch.key), |_, _, _| {
             Ok(EXIT_UNREADABLE_REQUEST)
         });
         let err = got.expect_err("a nothing-ran exit fails the batch");
@@ -1814,13 +1874,13 @@ mod tests {
 
     #[test]
     fn a_response_the_parent_cannot_trust_is_outcome_unknown() {
-        type Child = Box<dyn FnOnce(&str, &str) -> Result<i32, SpawnError>>;
+        type Child = Box<dyn FnOnce(&str, &str, &str) -> Result<i32, SpawnError>>;
         let scratch = Scratch::new();
         let cases: [(&str, Child); 5] = [
-            ("missing", Box::new(|_: &str, _: &str| Ok(0))),
+            ("missing", Box::new(|_: &str, _: &str, _: &str| Ok(0))),
             (
                 "garbage",
-                Box::new(|_: &str, resp: &str| {
+                Box::new(|_: &str, resp: &str, _: &str| {
                     write_response(resp, b"\x00 not a response").unwrap();
                     Ok(0)
                 }),
@@ -1997,6 +2057,7 @@ mod tests {
             EXIT_UNREADABLE_REQUEST,
             EXIT_UNPARSEABLE_REQUEST,
             EXIT_WIRE_VERSION_MISMATCH,
+            EXIT_FOREIGN_REQUEST,
         ] {
             assert!(
                 matches!(

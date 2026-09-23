@@ -23,7 +23,11 @@ use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 #[derive(Debug, PartialEq)]
 enum Launch<'a> {
     Gui,
-    Broker { req: &'a str, resp: &'a str },
+    Broker {
+        req: &'a str,
+        resp: &'a str,
+        identity: &'a str,
+    },
     MalformedBroker,
 }
 
@@ -31,8 +35,12 @@ enum Launch<'a> {
 fn classify_launch(args: &[std::ffi::OsString]) -> Launch<'_> {
     match args {
         [_, flag, rest @ ..] if flag == "--broker" => match rest {
-            [req, resp] => match (req.to_str(), resp.to_str()) {
-                (Some(req), Some(resp)) => Launch::Broker { req, resp },
+            [req, resp, identity] => match (req.to_str(), resp.to_str(), identity.to_str()) {
+                (Some(req), Some(resp), Some(identity)) => Launch::Broker {
+                    req,
+                    resp,
+                    identity,
+                },
                 _ => Launch::MalformedBroker,
             },
             _ => Launch::MalformedBroker,
@@ -46,7 +54,11 @@ pub fn run_broker_if_requested() -> Option<i32> {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     match classify_launch(&args) {
         Launch::Gui => None,
-        Launch::Broker { req, resp } => Some(services::elevation::run_broker(req, resp)),
+        Launch::Broker {
+            req,
+            resp,
+            identity,
+        } => Some(services::elevation::run_broker(req, resp, identity)),
         Launch::MalformedBroker => Some(services::elevation::malformed_argv_exit_code()),
     }
 }
@@ -202,14 +214,17 @@ mod tests {
     #[test]
     fn broker_mode_is_entered_only_from_argv1() {
         assert_eq!(
-            classify_launch(&argv(&["app.exe", "--broker", "r.json", "s.json"])),
+            classify_launch(&argv(&["app.exe", "--broker", "r.json", "s.json", "id"])),
             Launch::Broker {
                 req: "r.json",
-                resp: "s.json"
+                resp: "s.json",
+                identity: "id"
             }
         );
         assert_eq!(
-            classify_launch(&argv(&["app.exe", "x", "--broker", "r.json", "s.json"])),
+            classify_launch(&argv(&[
+                "app.exe", "x", "--broker", "r.json", "s.json", "id"
+            ])),
             Launch::Gui
         );
     }
@@ -226,7 +241,8 @@ mod tests {
         for args in [
             &["app.exe", "--broker"][..],
             &["app.exe", "--broker", "r.json"],
-            &["app.exe", "--broker", "r.json", "s.json", "extra"],
+            &["app.exe", "--broker", "r.json", "s.json"],
+            &["app.exe", "--broker", "r.json", "s.json", "id", "extra"],
         ] {
             assert_eq!(
                 classify_launch(&argv(args)),
@@ -245,6 +261,7 @@ mod tests {
             OsString::from("--broker"),
             lone_surrogate,
             OsString::from("s.json"),
+            OsString::from("id"),
         ];
         assert_eq!(classify_launch(&args), Launch::MalformedBroker);
     }

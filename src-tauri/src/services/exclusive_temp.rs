@@ -26,7 +26,9 @@ use std::path::{Path, PathBuf};
 use windows_sys::Win32::Security::Cryptography::{
     BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
 };
-use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+use windows_sys::Win32::Storage::FileSystem::{
+    FileIdInfo, GetFileInformationByHandleEx, FILE_ID_INFO, FILE_SHARE_READ,
+};
 
 /// 128 bits of CSPRNG output, hex-encoded.
 ///
@@ -101,6 +103,36 @@ impl ExclusiveTempFile {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    pub fn identity(&self) -> io::Result<String> {
+        file_identity(self.handle.as_ref().expect("the handle is held until drop"))
+    }
+}
+
+/// Volume serial plus the 128-bit file id. Survives any path the file is reached through, so a
+/// reader can prove it opened the very file the writer holds.
+pub fn file_identity(file: &File) -> io::Result<String> {
+    use std::os::windows::io::AsRawHandle;
+    let mut info = FILE_ID_INFO::default();
+    // SAFETY: `info` is a writable FILE_ID_INFO and the size passed is exactly its size.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileIdInfo,
+            (&mut info as *mut FILE_ID_INFO).cast(),
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let id: String = info
+        .FileId
+        .Identifier
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    Ok(format!("{:016x}-{id}", info.VolumeSerialNumber))
 }
 
 impl Drop for ExclusiveTempFile {
