@@ -635,6 +635,7 @@ pub(crate) fn attention(tweak_id: &str, deps: &Deps) -> Option<Attention> {
                     effect: None,
                     kind: AttentionKind::Store,
                     class: None,
+                    entries: Default::default(),
                     message: format!(
                         "the Needs Attention record could not be read, so anything it holds is still unresolved: {e}"
                     ),

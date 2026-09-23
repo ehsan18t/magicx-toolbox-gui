@@ -228,6 +228,7 @@ pub(super) fn attention_item(phase: Phase, error: &EngineError) -> AttentionItem
         effect: effect.cloned(),
         kind,
         class: failure_class(error),
+        entries: Default::default(),
         message: user_facing_failure(phase, error),
     }
 }
@@ -451,10 +452,23 @@ pub(crate) fn settle_verified(
     log::error!(
         "tweak '{tweak_id}': the outcome verified, but its marks could not be settled: {e}"
     );
+    // Unreadable here means no entry is claimed as explained, so the scan still reports each one.
+    let still_open = deps
+        .snapshots
+        .unresolved_entries(tweak_id, deps.machine_guid)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter(|e| e.drive_open)
+                .map(|e| e.seq)
+                .collect()
+        })
+        .unwrap_or_default();
     let item = AttentionItem {
         effect: None,
         kind: AttentionKind::Unrecorded,
         class: None,
+        entries: still_open,
         message: format!(
             "the last operation on this tweak ended in a verified state, but the app could not \
              record that in its snapshot history: {e}"

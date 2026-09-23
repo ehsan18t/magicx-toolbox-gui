@@ -1758,6 +1758,7 @@ mod tests {
                         effect: None,
                         kind: AttentionKind::Store,
                         class: None,
+                        entries: Default::default(),
                         message: "the clear failed, then the last entry was consumed".into(),
                     }],
                 },

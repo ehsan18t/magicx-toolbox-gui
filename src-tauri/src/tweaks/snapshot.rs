@@ -108,6 +108,9 @@ pub struct AttentionItem {
     /// Why the step failed, when the failure was classified. Absent in records from older builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<OpFailureClass>,
+    /// The entries whose open drive mark this item accounts for (a drive-mark or `Unrecorded` item).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub entries: BTreeSet<Seq>,
     pub message: String,
 }
 
@@ -748,9 +751,9 @@ impl SnapshotStore {
         Ok(())
     }
 
-    /// Consent's settle (ADR-0002): the user accepts the machine as it is, so every open drive and
-    /// unfinished step goes before the record does. Outstanding journal rows are not resolved, so
-    /// a failed discard can still re-raise them.
+    /// Consent's settle (ADR-0002): the user accepts the machine as it is, so every open drive,
+    /// unfinished step and outstanding row is settled before the record goes, and a discard that
+    /// then fails cannot re-raise what was accepted.
     pub fn settle_consented(
         &self,
         tweak_id: &str,
@@ -758,10 +761,13 @@ impl SnapshotStore {
     ) -> Result<(), SnapshotError> {
         let dir = self.tweak_dir(tweak_id);
         for entry in self.unresolved_entries(tweak_id, machine_guid)? {
-            if entry.drive_open || !entry.actions_in_flight.is_empty() {
+            if is_unsettled(&entry) {
                 update_entry(&dir, tweak_id, entry.seq, |held| {
                     held.drive_open = false;
                     held.actions_in_flight.clear();
+                    for row in held.journal.iter_mut().filter(|r| is_outstanding(r)) {
+                        row.resolved = true;
+                    }
                     Ok(())
                 })?;
             }
@@ -908,6 +914,7 @@ fn unusable_record(message: &str) -> Attention {
             effect: None,
             kind: AttentionKind::Store,
             class: None,
+            entries: Default::default(),
             message: message.to_string(),
         }],
     }
@@ -1693,6 +1700,7 @@ mod tests {
                 effect: Some(EffectId("eff1".into())),
                 kind: AttentionKind::OutcomeUnknown,
                 class: None,
+                entries: Default::default(),
                 message: "the elevated step's outcome is unknown".into(),
             }],
         }

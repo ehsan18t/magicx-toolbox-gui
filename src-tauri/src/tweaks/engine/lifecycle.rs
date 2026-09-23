@@ -12,8 +12,8 @@ use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 use crate::tweaks::model::EffectId;
 use crate::tweaks::snapshot::{
-    is_outstanding, Attention, AttentionItem, AttentionKind, AttentionReason, Entry, SnapshotError,
-    SnapshotStore,
+    is_outstanding, Attention, AttentionItem, AttentionKind, AttentionReason, Entry, Seq,
+    SnapshotError, SnapshotStore,
 };
 
 /// Refused before anything was touched; a pending exit can still be called off, a final one cannot.
@@ -156,17 +156,20 @@ impl Drop for ExitLatch<'_> {
 /// tweak's whole history (spec §8.1, invariant 5). All are written before the work starts, so they
 /// prove only that it was started and never settled -- never that it ran.
 pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
-    let open_drive = entries
+    let open: BTreeSet<Seq> = entries
         .iter()
-        .any(|entry| entry.drive_open)
-        .then(|| AttentionItem {
-            effect: None,
-            kind: AttentionKind::CrashResidue,
-            class: None,
-            message: "a change to this tweak was never recorded as finished, so its settings may \
+        .filter(|entry| entry.drive_open)
+        .map(|entry| entry.seq)
+        .collect();
+    let open_drive = (!open.is_empty()).then(|| AttentionItem {
+        effect: None,
+        kind: AttentionKind::CrashResidue,
+        class: None,
+        entries: open,
+        message: "a change to this tweak was never recorded as finished, so its settings may \
                       be only partly changed; the app may have stopped mid-change"
-                .to_string(),
-        });
+            .to_string(),
+    });
     let steps: BTreeSet<&EffectId> = entries
         .iter()
         .flat_map(|entry| entry.actions_in_flight.iter())
@@ -175,6 +178,7 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
         effect: Some(id.clone()),
         kind: AttentionKind::CrashResidue,
         class: None,
+        entries: Default::default(),
         message: format!(
             "undoing or re-running action '{id}' was never recorded as finished, so it may be \
              only partly done"
@@ -188,6 +192,7 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
             effect: Some(row.action_id.clone()),
             kind: AttentionKind::CrashResidue,
             class: None,
+            entries: Default::default(),
             message: format!(
                 "action '{}' was planned but never confirmed complete, so it may or may not have \
                  run",
@@ -225,15 +230,18 @@ pub(crate) fn try_record_crash_residue(
         // Never written over: it is another build's or machine's, or unparseable.
         Some(existing) if existing.reason == AttentionReason::RecordUnreadable => return Ok(()),
         Some(mut existing) => {
-            // An `Unrecorded` item already says why the drive mark is still open.
-            let explained = existing
+            // An `Unrecorded` item explains only the drive marks it names; a later crash's is new.
+            let explained: BTreeSet<Seq> = existing
                 .items
                 .iter()
-                .any(|i| i.kind == AttentionKind::Unrecorded);
+                .filter(|i| i.kind == AttentionKind::Unrecorded)
+                .flat_map(|i| i.entries.iter().copied())
+                .collect();
             let before = existing.items.len();
             for item in found.items {
                 let drive_mark = item.effect.is_none();
-                if !(drive_mark && explained) && !existing.items.contains(&item) {
+                let covered = drive_mark && item.entries.is_subset(&explained);
+                if !covered && !existing.items.contains(&item) {
                     existing.items.push(item);
                 }
             }
@@ -254,7 +262,7 @@ pub(crate) fn try_record_crash_residue(
 mod tests {
     use super::*;
     use crate::tweaks::model::EffectId;
-    use crate::tweaks::snapshot::{Captured, JournalRow, Seq};
+    use crate::tweaks::snapshot::{Captured, JournalRow};
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::Duration;
@@ -384,6 +392,7 @@ mod tests {
                 effect: Some(EffectId("s1".into())),
                 kind: AttentionKind::Drive,
                 class: None,
+                entries: Default::default(),
                 message: "s1 could not be driven".into(),
             }],
         }
@@ -420,26 +429,116 @@ mod tests {
         assert_eq!(theirs, apply_failed());
     }
 
-    /// An `Unrecorded` item already explains why the mark is open, so no crash is claimed for it.
-    #[test]
-    fn an_unrecorded_outcome_explains_the_open_mark() {
-        let tmp = tempfile::tempdir().unwrap();
-        let store = crashed_store(tmp.path());
-        let explained = Attention {
+    fn open_marks(store: &SnapshotStore) -> BTreeSet<Seq> {
+        store
+            .unresolved_entries("demo", Some("g"))
+            .unwrap()
+            .iter()
+            .filter(|e| e.drive_open)
+            .map(|e| e.seq)
+            .collect()
+    }
+
+    fn unrecorded(entries: BTreeSet<Seq>) -> Attention {
+        Attention {
             reason: AttentionReason::OutcomeUnrecorded,
             items: vec![AttentionItem {
                 effect: None,
                 kind: AttentionKind::Unrecorded,
                 class: None,
+                entries,
                 message: "could not record it".into(),
             }],
-        };
+        }
+    }
+
+    /// An `Unrecorded` item already explains why the mark is open, so no crash is claimed for it.
+    #[test]
+    fn an_unrecorded_outcome_explains_the_open_mark() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crashed_store(tmp.path());
+        let explained = unrecorded(open_marks(&store));
         store
             .set_attention("demo", Some("g"), explained.clone())
             .unwrap();
 
         record_crash_residue(&store, "demo", Some("g"));
         assert_eq!(store.attention("demo", Some("g")).unwrap(), Some(explained));
+    }
+
+    /// The explanation covers only the marks it names: a later operation's crash is still raised.
+    #[test]
+    fn a_later_crash_is_not_hidden_behind_an_unrecorded_outcome() {
+        use crate::tweaks::model::Corpus;
+        use crate::tweaks::snapshot::NewEntry;
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crashed_store(tmp.path());
+        store
+            .set_attention("demo", Some("g"), unrecorded(open_marks(&store)))
+            .unwrap();
+        let empty = Corpus {
+            categories: Vec::new(),
+            tweaks: Vec::new(),
+            shared: Vec::new(),
+        };
+        let later = store
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: Vec::new(),
+                },
+                &empty,
+                Some("g"),
+                0,
+            )
+            .unwrap();
+        store.open_drive("demo", later).unwrap();
+
+        record_crash_residue(&store, "demo", Some("g"));
+        let items = store.attention("demo", Some("g")).unwrap().unwrap().items;
+        assert!(
+            items
+                .iter()
+                .any(|i| i.kind == AttentionKind::CrashResidue && i.entries.contains(&later)),
+            "{items:?}"
+        );
+    }
+
+    /// Keep current state accepts the machine as it is, so an outstanding row cannot come back.
+    #[test]
+    fn consent_settles_outstanding_rows_too() {
+        use crate::tweaks::model::Corpus;
+        use crate::tweaks::snapshot::NewEntry;
+        let tmp = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(tmp.path().to_path_buf());
+        let empty = Corpus {
+            categories: Vec::new(),
+            tweaks: Vec::new(),
+            shared: Vec::new(),
+        };
+        store
+            .push(
+                "demo",
+                NewEntry {
+                    captured: Captured::Values(BTreeMap::new()),
+                    journal: vec![JournalRow {
+                        action_id: EffectId("x".into()),
+                        intended: true,
+                        completed: false,
+                        resolved: false,
+                        undo_back: false,
+                    }],
+                },
+                &empty,
+                Some("g"),
+                0,
+            )
+            .unwrap();
+
+        store.settle_consented("demo", Some("g")).unwrap();
+        let entries = store.unresolved_entries("demo", Some("g")).unwrap();
+        assert!(scan_for_crash_residue(&entries).is_none());
     }
 
     #[test]

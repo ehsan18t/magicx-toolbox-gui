@@ -306,6 +306,8 @@ export interface AttentionItem {
   kind: AttentionKind;
   /** Absent when the failure was not classified, or the record predates classes. */
   class?: FailureClass;
+  /** Snapshot entry seqs whose open drive mark this item accounts for. */
+  entries?: number[];
   message: string;
 }
 
