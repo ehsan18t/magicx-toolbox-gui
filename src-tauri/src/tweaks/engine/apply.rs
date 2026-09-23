@@ -1402,8 +1402,13 @@ pub(crate) fn drive_to_captured(
                 if *value == Value::Missing {
                     continue; // driving to Missing is a defined no-op (spec §5.4)
                 }
-                let Some(effect) = surface.iter().copied().find(|e| e.id == *effect_id) else {
-                    continue; // no longer on the applicable surface here -- nothing to drive
+                // A dump is literal prior state: it goes back even where an OS upgrade has since
+                // scoped the effect out, and an effect the corpus dropped cannot silently vanish.
+                let Some(effect) = tweak.surface.iter().find(|e| e.id == *effect_id) else {
+                    failures.push(EngineError::Invalid(format!(
+                        "captured effect '{effect_id}' no longer exists on tweak '{tweak_id}'"
+                    )));
+                    continue;
                 };
                 let Effect::Setting(setting) = &effect.kind else {
                     continue;

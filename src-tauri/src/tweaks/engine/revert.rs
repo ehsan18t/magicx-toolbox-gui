@@ -1590,6 +1590,48 @@ mod tests {
         );
     }
 
+    /// An OS upgrade that scopes the effect out must not turn the restore into a verified no-op
+    /// that deletes the only record of the prior value.
+    #[test]
+    fn a_values_restore_drives_an_effect_an_upgrade_scoped_out() {
+        use crate::tweaks::model::{BuildExpr, WindowsScope};
+        let h = Harness::new();
+        let (mut t, _, _) = values_restore_setup(&h);
+        t.surface[0].windows = Some(WindowsScope {
+            products: None,
+            build: Some(BuildExpr::Max(19044)),
+            revision: None,
+        });
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("the captured value goes back");
+        assert_eq!(h.kind.live_value("s1"), Value::Startup(StartupType::Manual));
+        assert!(outcome.consumed.is_some());
+    }
+
+    #[test]
+    fn a_values_restore_of_an_effect_the_corpus_dropped_keeps_the_entry() {
+        let h = Harness::new();
+        values_restore_setup(&h);
+        let t = tweak(
+            "demo",
+            vec![svc_effect("other", false)],
+            vec![opt(
+                "A",
+                vec![("other", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("other", Value::Startup(StartupType::Manual));
+
+        run_restore(&t, &c, &h.deps()).expect_err("s1 can no longer be driven");
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_some());
+    }
+
     /// The entry stays restorable after the crash; only the mark tells the scan it was mid-drive.
     #[test]
     fn a_crash_mid_restore_surfaces_as_needs_attention() {
