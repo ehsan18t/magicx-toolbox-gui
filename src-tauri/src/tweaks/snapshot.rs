@@ -616,8 +616,8 @@ impl SnapshotStore {
     }
 
     /// A verified rollback's settle of the entry its own apply pushed: closes its drive and resolves
-    /// the rows whose action failed or was never reached. A row in `ran` may have changed the
-    /// machine even though its completion mark failed, so it stays outstanding.
+    /// every outstanding row not in `ran`. A row in `ran` may have changed the machine even though
+    /// its completion mark failed, so it stays outstanding.
     pub fn settle_rolled_back(
         &self,
         tweak_id: &str,

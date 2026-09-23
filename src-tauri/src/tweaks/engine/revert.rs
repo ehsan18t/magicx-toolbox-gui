@@ -419,10 +419,11 @@ fn reapply_option_ref(
             ..
         } = action_def
         {
-            match deps
-                .probes
-                .probe(action_def, &context::read_route(effect, deps.level, corpus))
-            {
+            match detect::probe_live(
+                deps,
+                action_def,
+                &context::read_route(effect, deps.level, corpus),
+            ) {
                 // A verified read of the action's state, so it accounts for it whatever it reads.
                 Ok(present) => {
                     probed.insert(effect.id.clone());

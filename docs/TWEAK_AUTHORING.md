@@ -1388,7 +1388,7 @@ the ephemeral rule, §12.3).
 
 Results are the **exit code**, locale-independent, never parsed text (spec §7/§14):
 
-- `apply` / `undo`: **`0` = success**, non-zero = failure (a typed `ActionFailed(code)` error).
+- `apply` / `undo`: **`0` = success**, non-zero = failure (a typed `ActionFailed(code)` error). A failure after the script started counts as a partial run, which the rollback reverses (§14.3).
 - `probe`: **`0` = present**, non-zero = absent. A probe that **cannot be run** (spawn failure, timeout)
   is `Err`: "we could not tell" must **never** read as "absent".
 
@@ -1759,6 +1759,8 @@ still reverts**: only the genuinely one-way action cannot, and it surfaces as **
 (ADR-0001). "Partial" never means "nothing reverts."
 
 **Five runtime outcomes set it**, all of them a state the app cannot verify or could not record: a rollback that cannot fully complete (a locked service, access denied), an elevated step whose outcome cannot be proven either way, a restore that does not fully verify, an app that stopped mid-apply, mid-rollback or mid-restore, and an operation that ended in a verified state but whose snapshot entry the app could not update afterwards (another program holding the file open, say), which is recorded then and there so the next launch does not mistake it for an unfinished change. In every case the snapshot is kept, never hidden.
+
+**A script that fails partway counts as having run.** An `apply` that starts and then exits non-zero, times out, or cannot be waited on may have made part of its change, so the rollback reverses it like any action that ran: it runs the action's `undo` and, when the action has a `probe`, checks that the state now reads absent. An `undo` that apply drives back, because the target option omits a present probeable action (§12.7), and that fails partway is reversed the same way, by re-running `apply` and checking the probe reads present. A failed script is always reversed, even when it failed before changing anything: a probe cannot see partial progress (one of two packages removed still reads as not removed). So **write every `undo` to succeed on an untouched or a partly changed machine**: it must tolerate a half-made change, pieces that are already gone, and a change that never happened (a `winget install` must accept an already-installed package), and still exit `0` once the state is removed. An `undo` that cannot succeed (a `winget install` while offline) surfaces as Needs Attention. Only when that reversal verifies is the snapshot released. An action **without `undo`** that fails partway cannot be reversed: the rollback reports it as incomplete, the tweak shows **Needs Attention** (an item of kind `no_undo` naming that action), and the snapshot is kept. An action that never started, because it was refused before its script was spawned or an earlier effect failed first, counts as not having run. The same rule covers `delete_tree`: a recursive delete that fails may have removed part of the key.
 
 **It belongs to the tweak, not to one snapshot entry.** The engine keeps a per-tweak record beside that tweak's entries, so releasing an entry (a re-capture of the same option, a later rollback consuming its own entry, an entry that no longer matches the corpus) cannot drop it. The record names each unverified step with its effect id and a kind, so the UI can say which effect is involved and whether retrying can help: a one-way action never can.
 

@@ -422,7 +422,20 @@ fn probe_cached(
     if let Some(cached) = deps.probe_cache.get(tweak_id, effect_id) {
         return Ok(cached);
     }
-    let present = match action {
+    let present = answer_probe(deps, action, cx)?;
+    deps.probe_cache.insert(tweak_id, effect_id, present);
+    Ok(present)
+}
+
+/// An uncached probe for apply, rollback and restore, which read around their own mutations.
+/// Never `deps.probes` directly: `RealProbe` refuses the native forms.
+pub(crate) fn probe_live(deps: &Deps, action: &ActionDef, cx: &ExecCx) -> Result<bool, KindError> {
+    deps.probe_cache.appx().invalidate();
+    answer_probe(deps, action, cx)
+}
+
+fn answer_probe(deps: &Deps, action: &ActionDef, cx: &ExecCx) -> Result<bool, KindError> {
+    Ok(match action {
         ActionDef::Script {
             probe:
                 Some(Probe::Registry {
@@ -432,7 +445,7 @@ fn probe_cached(
                     equals,
                 }),
             ..
-        } => registry_probe(*hive, path, name, *equals),
+        } => registry_probe(*hive, path, name, *equals)?,
         ActionDef::Script {
             probe: Some(Probe::AppxAbsent { packages }),
             ..
@@ -442,24 +455,29 @@ fn probe_cached(
             .any_installed(packages)
             .map_err(|e| KindError::Backend(e.to_string()))?,
         _ => deps.probes.probe(action, cx)?,
-    };
-    deps.probe_cache.insert(tweak_id, effect_id, present);
-    Ok(present)
+    })
 }
 
 /// A registry probe reads present/absent, so an absent value, an absent key, and a value stored as
 /// something other than a DWORD all mean "not present" rather than an error. That is the whole
 /// question a probe answers; there is no third state to report. An unreadable key (access denied)
 /// does propagate, since that genuinely means "cannot tell" (invariant 2).
-fn registry_probe(hive: Hive, path: &str, name: &str, equals: u32) -> bool {
+fn registry_probe(hive: Hive, path: &str, name: &str, equals: u32) -> Result<bool, KindError> {
+    // winreg reports a value of another type as ERROR_BAD_FILE_TYPE.
+    const BAD_FILE_TYPE: u32 = 222;
     let hive = match hive {
         Hive::Hklm => RegistryHive::Hklm,
         Hive::Hkcu => RegistryHive::Hkcu,
     };
-    matches!(
-        registry_service::read_dword(&hive, path, name),
-        Ok(Some(v)) if v == equals
-    )
+    match registry_service::read_dword(&hive, path, name) {
+        Ok(v) => Ok(v == Some(equals)),
+        Err(crate::error::Error::RegistryKeyNotFound(_))
+        | Err(crate::error::Error::Win32 {
+            code: BAD_FILE_TYPE,
+            ..
+        }) => Ok(false),
+        Err(e) => Err(crate::tweaks::kinds::map_backend_error(e)),
+    }
 }
 
 /// `Some(effect_id)` when `opt` authors a real value for an effect whose live resource actually
@@ -849,6 +867,44 @@ mod tests {
                 },
             }
         }
+    }
+
+    fn registry_probe_action(hive: Hive, path: &str) -> ActionDef {
+        ActionDef::Script {
+            apply: Script("exit 0".into()),
+            undo: None,
+            probe: Some(Probe::Registry {
+                hive,
+                path: path.into(),
+                name: "Marker".into(),
+                equals: 1,
+            }),
+            ephemeral: false,
+            shell: Shell::PowerShell,
+        }
+    }
+
+    /// `HKLM\SECURITY` is readable only by SYSTEM, so the read is denied: never "absent".
+    #[test]
+    fn a_denied_registry_probe_read_is_an_error_not_absent() {
+        let h = Harness::new(MockKind::default(), MockProbes::default());
+        let cx = ExecCx::new(Level::User);
+        let denied = registry_probe_action(Hive::Hklm, "SECURITY");
+        let err = probe_live(&h.deps(), &denied, &cx).expect_err("a denied read cannot tell");
+        assert!(matches!(err, KindError::AccessDenied(_)), "{err:?}");
+
+        let missing =
+            registry_probe_action(Hive::Hkcu, r"Software\MagicXToolbox-test-never-created");
+        assert!(
+            !probe_live(&h.deps(), &missing, &cx).unwrap(),
+            "a missing key is absent"
+        );
+
+        let path = format!(r"Software\MagicXToolbox-test-probe-{}", std::process::id());
+        registry_service::set_string(&RegistryHive::Hkcu, &path, "Marker", "1").unwrap();
+        let typed = probe_live(&h.deps(), &registry_probe_action(Hive::Hkcu, &path), &cx);
+        registry_service::delete_key(&RegistryHive::Hkcu, &path).unwrap();
+        assert!(!typed.unwrap(), "a non-DWORD value is absent");
     }
 
     // --- the 14 scenarios ----------------------------------------------------------------------

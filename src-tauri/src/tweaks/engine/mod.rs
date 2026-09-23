@@ -367,6 +367,10 @@ pub fn user_facing_failure(phase: Phase, e: &EngineError) -> String {
         EngineError::NoUndo(effect) => {
             format!("action '{effect}' ran and declares no undo, so it cannot be reversed")
         }
+        EngineError::PartialNoUndo(effect) => format!(
+            "action '{effect}' failed partway and declares no undo, so what it changed cannot be \
+             reversed"
+        ),
         EngineError::EntryCleanup(_) => {
             "the machine was restored, but its spent snapshot could not be released".to_owned()
         }
@@ -572,7 +576,8 @@ fn kind_failure(e: &KindError) -> String {
         KindError::Invalid(what) => (*what).to_owned(),
         KindError::Backend(_) => OpFailureClass::Failed.to_string(),
         KindError::ActionFailed(code) => format!("its script exited with code {code}"),
-        KindError::ActionExecFailed(_) => "its script could not be run".to_owned(),
+        KindError::ActionExecFailed(_) => "its script started but did not finish".to_owned(),
+        KindError::ActionNotStarted(_) => "its script could not be started".to_owned(),
     }
 }
 
@@ -960,6 +965,10 @@ mod tests {
             EngineError::ActionFailed {
                 effect: effect(),
                 source: KindError::ActionExecFailed(HOSTILE_DETAIL.into()),
+            },
+            EngineError::ActionFailed {
+                effect: effect(),
+                source: KindError::ActionNotStarted(HOSTILE_DETAIL.into()),
             },
             EngineError::DriveFailed {
                 effect: effect(),

@@ -169,7 +169,7 @@ fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<i32, Error>
         Shell::Cmd => {
             let file =
                 ExclusiveTempFile::create("magicx-action", "cmd", "action script", body.as_bytes())
-                    .map_err(|e| Error::ActionExecFailed(format!("temp script: {e}")))?;
+                    .map_err(|e| Error::ActionNotStarted(format!("temp script: {e}")))?;
             wait_with_timeout(spawn_cmd(file.path())?, timeout)
             // `file` drops here, after the child has fully exited: the share-mode lock holds for
             // the whole execution and the temp `.cmd` is deleted only once cmd.exe is done.
@@ -207,7 +207,7 @@ fn spawn_cmd(script_path: &Path) -> Result<Child, Error> {
 fn spawn_command(tool: SystemTool, args: &[&str]) -> Result<Child, Error> {
     let cmd = tool
         .command()
-        .map_err(|e| Error::ActionExecFailed(e.to_string()))?;
+        .map_err(|e| Error::ActionNotStarted(e.to_string()))?;
     spawn(cmd, args)
 }
 
@@ -219,7 +219,7 @@ fn spawn(mut cmd: Command, args: &[&str]) -> Result<Child, Error> {
         .stderr(Stdio::piped());
     cmd.spawn().map_err(|e| {
         let program = cmd.get_program().to_string_lossy();
-        Error::ActionExecFailed(format!("failed to spawn {program}: {e}"))
+        Error::ActionNotStarted(format!("failed to spawn {program}: {e}"))
     })
 }
 
@@ -524,7 +524,7 @@ mod tests {
     fn spawn_failure_is_err_never_ok() {
         let missing = std::env::temp_dir().join("definitely-not-a-real-executable-98213.exe");
         let err = spawn(Command::new(missing), &[]).expect_err("a nonexistent program must fail");
-        assert!(matches!(err, Error::ActionExecFailed(_)), "got {err:?}");
+        assert!(matches!(err, Error::ActionNotStarted(_)), "got {err:?}");
     }
 
     #[test]

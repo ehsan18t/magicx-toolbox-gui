@@ -20,8 +20,9 @@
 //!    did-it-work check (invariant 2) triggers rollback the instant it fails.
 //!
 //! ## Rollback (ADR-0001)
-//! On any Step 3/4 failure: undo the journal's completed actions in reverse order (a completed
-//! no-undo action is reported un-undoable, never fatal to the rest); then drive the *whole*
+//! On any Step 3/4 failure: undo, in reverse order, the journal's completed actions and one whose
+//! script started then failed, which may have partly run (a no-undo one is reported un-undoable,
+//! never fatal to the rest); then drive the *whole*
 //! captured pre-apply state back via [`drive_to_captured`]: drive-to-value is absolute, so partial
 //! forward progress on Settings needs no per-step tracking. Shared claims taken/released during the
 //! failed attempt are reversed too (claim ↔ release), tracked via [`ProcessedEffect`] alongside
@@ -159,6 +160,10 @@ pub enum EngineError {
     )]
     NoUndo(EffectId),
 
+    /// Rollback: an action failed after it started and declares no `undo`.
+    #[error("action '{0}' failed partway and declares no undo, so the rollback is incomplete")]
+    PartialNoUndo(EffectId),
+
     /// Atomic rollback's result (ADR-0001, invariant 20): the original failure, plus every failure
     /// the rollback itself hit.
     #[error("apply failed ({original}); {}", rollback_summary(rollback_failures, *outcome_unknown, store))]
@@ -242,7 +247,9 @@ pub(super) fn attention_item(phase: Phase, error: &EngineError) -> AttentionItem
         EngineError::VerifyMismatch { effect, .. }
         | EngineError::ActionVerifyMismatch { effect, .. } => (Some(effect), AttentionKind::Verify),
         EngineError::ActionFailed { effect, .. } => (Some(effect), AttentionKind::Action),
-        EngineError::NoUndo(effect) => (Some(effect), AttentionKind::NoUndo),
+        EngineError::NoUndo(effect) | EngineError::PartialNoUndo(effect) => {
+            (Some(effect), AttentionKind::NoUndo)
+        }
         EngineError::JournalMark { effect, .. } => (Some(effect), AttentionKind::Store),
         EngineError::Claim {
             source: ClaimsError::Kind(KindError::ElevatedOutcomeUnknown(..)),
@@ -397,6 +404,8 @@ pub(crate) struct DriveCtx<'a> {
 #[derive(Default)]
 pub(crate) struct DriveState {
     processed: Vec<ProcessedEffect>,
+    /// The action whose script started and then failed; it is also in `processed`.
+    failed_partway: Option<EffectId>,
     pub(crate) effect_results: Vec<EffectResult>,
     pub(crate) held_shared: Vec<HeldInfo>,
 }
@@ -413,6 +422,18 @@ impl DriveState {
             })
             .collect()
     }
+}
+
+/// Whether an action that returned `e` may have changed the machine. Only these refusals come
+/// before any script is spawned or any key deleted; every other failure may have partly run.
+fn may_have_run(e: &KindError) -> bool {
+    !matches!(
+        e,
+        KindError::UnsupportedLevel(_)
+            | KindError::Invalid(_)
+            | KindError::CouldNotAcquireElevation(..)
+            | KindError::ActionNotStarted(_)
+    )
 }
 
 /// Which drive marks an outcome settles. Only a verified apply or restore re-establishes the whole
@@ -648,13 +669,12 @@ pub(crate) fn do_apply(
         } = action_def
         {
             let cx = context::read_route(effect, deps.level, corpus);
-            let present =
-                deps.probes
-                    .probe(action_def, &cx)
-                    .map_err(|e| EngineError::CaptureFailed {
-                        effect: effect.id.clone(),
-                        source: e,
-                    })?;
+            let present = detect::probe_live(deps, action_def, &cx).map_err(|e| {
+                EngineError::CaptureFailed {
+                    effect: effect.id.clone(),
+                    source: e,
+                }
+            })?;
             probed.insert(effect.id.clone());
             if present {
                 if undo.is_some() {
@@ -742,8 +762,12 @@ pub(crate) fn do_apply(
         }
         Err(original) => {
             // Atomic rollback (ADR-0001): never `let _ =` this result.
-            let rollback_failures = rollback(tweak, corpus, &captured, &state.processed, seq, deps);
-            let ran = state.driven_actions();
+            let rollback_failures = rollback(tweak, corpus, &captured, &state, seq, deps);
+            // Read only when every reversal verified, so the partial run's row may resolve.
+            let mut ran = state.driven_actions();
+            if let Some(id) = &state.failed_partway {
+                ran.remove(id);
+            }
             deps.probe_cache.invalidate(&tweak.id);
             let outcome_unknown = outcome_is_unknown(&original);
             let mut store = Vec::new();
@@ -1015,15 +1039,24 @@ fn drive_action(
     if tracked {
         begin_step(ctx, effect)?;
     }
+    // A script that started and failed may have partly run, so rollback reverses it too.
+    let failed = |state: &mut DriveState, e: KindError| {
+        if tracked && may_have_run(&e) {
+            state
+                .processed
+                .push(ProcessedEffect::Action(effect.id.clone(), *plan));
+            state.failed_partway = Some(effect.id.clone());
+        }
+        EngineError::ActionFailed {
+            effect: effect.id.clone(),
+            source: e,
+        }
+    };
     match plan {
         ActionPlan::Apply => {
-            ctx.deps
-                .actions
-                .apply(action_def, &cx)
-                .map_err(|e| EngineError::ActionFailed {
-                    effect: effect.id.clone(),
-                    source: e,
-                })?;
+            if let Err(e) = ctx.deps.actions.apply(action_def, &cx) {
+                return Err(failed(state, e));
+            }
             // Ephemeral actions run unconditionally (just above) but participate in NO
             // reversibility bookkeeping (spec §7, invariant 10): no completion mark (Step 2 never
             // journaled it in the first place -- nothing to mark), no `state.processed` entry (so
@@ -1045,7 +1078,7 @@ fn drive_action(
                 }
             }
             if let ActionDef::Script { probe: Some(_), .. } = action_def {
-                let present = ctx.deps.probes.probe(action_def, &cx).map_err(|e| {
+                let present = detect::probe_live(ctx.deps, action_def, &cx).map_err(|e| {
                     EngineError::ActionFailed {
                         effect: effect.id.clone(),
                         source: e,
@@ -1065,13 +1098,9 @@ fn drive_action(
             });
         }
         ActionPlan::UndoBack => {
-            ctx.deps
-                .actions
-                .undo(action_def, &cx)
-                .map_err(|e| EngineError::ActionFailed {
-                    effect: effect.id.clone(),
-                    source: e,
-                })?;
+            if let Err(e) = ctx.deps.actions.undo(action_def, &cx) {
+                return Err(failed(state, e));
+            }
             state.processed.push(ProcessedEffect::Action(
                 effect.id.clone(),
                 ActionPlan::UndoBack,
@@ -1085,14 +1114,12 @@ fn drive_action(
                         source: e,
                     })?;
             }
-            let present =
-                ctx.deps
-                    .probes
-                    .probe(action_def, &cx)
-                    .map_err(|e| EngineError::ActionFailed {
-                        effect: effect.id.clone(),
-                        source: e,
-                    })?;
+            let present = detect::probe_live(ctx.deps, action_def, &cx).map_err(|e| {
+                EngineError::ActionFailed {
+                    effect: effect.id.clone(),
+                    source: e,
+                }
+            })?;
             if present {
                 return Err(EngineError::ActionVerifyMismatch {
                     effect: effect.id.clone(),
@@ -1119,13 +1146,13 @@ fn rollback(
     tweak: &Tweak,
     corpus: &Corpus,
     captured: &Captured,
-    processed: &[ProcessedEffect],
+    state: &DriveState,
     seq: Seq,
     deps: &Deps,
 ) -> Vec<EngineError> {
     let mut failures = Vec::new();
 
-    for item in processed.iter().rev() {
+    for item in state.processed.iter().rev() {
         // A reversal a crash interrupts is marked in flight until it verifies: no Settings verify
         // can re-establish an action, so the drive mark cannot stand in for it.
         let step = match item {
@@ -1185,9 +1212,13 @@ fn rollback(
                         "tweak '{}': completed action '{effect_id}' has no undo -- reported un-undoable, rollback incomplete",
                         tweak.id
                     );
-                    failures.push(EngineError::Invalid(format!(
-                        "action '{effect_id}' ran and cannot be undone (no undo script) -- rollback is incomplete"
-                    )));
+                    failures.push(if state.failed_partway.as_ref() == Some(effect_id) {
+                        EngineError::PartialNoUndo(effect_id.clone())
+                    } else {
+                        EngineError::Invalid(format!(
+                            "action '{effect_id}' ran and cannot be undone (no undo script) -- rollback is incomplete"
+                        ))
+                    });
                 }
             }
             ProcessedEffect::Action(effect_id, ActionPlan::UndoBack) => {
@@ -1273,7 +1304,7 @@ pub(crate) fn verify_reversed_probe(
         return;
     };
     let cx = context::read_route(effect, deps.level, corpus);
-    match deps.probes.probe(action_def, &cx) {
+    match detect::probe_live(deps, action_def, &cx) {
         Ok(present) if present == expected_present => {}
         Ok(actual) => failures.push(EngineError::ActionVerifyMismatch {
             effect: effect.id.clone(),
@@ -1890,7 +1921,11 @@ mod tests {
         presence: Presence,
         /// The `ExecCx::level()` each call received, keyed `"<action>:apply"` / `"<action>:undo"`.
         levels: Mutex<Vec<(String, Level)>>,
+        /// The script starts, leaves its state behind, then exits non-zero.
         fail_apply: Mutex<HashSet<String>>,
+        /// Refused before any script starts.
+        refuse_apply: Mutex<HashSet<String>>,
+        /// The undo starts, removes its state, then exits non-zero.
         fail_undo: Mutex<HashSet<String>>,
         /// The process dies mid-undo: nothing after this point runs.
         crash_undo: Mutex<HashSet<String>>,
@@ -1910,6 +1945,14 @@ mod tests {
         }
         fn fail_apply(&self, key: &str) -> &Self {
             self.fail_apply.lock().unwrap().insert(key.into());
+            self
+        }
+        fn refuse_apply(&self, key: &str) -> &Self {
+            self.refuse_apply.lock().unwrap().insert(key.into());
+            self
+        }
+        fn fail_undo(&self, key: &str) -> &Self {
+            self.fail_undo.lock().unwrap().insert(key.into());
             self
         }
         fn lie_on_undo(&self, key: &str) -> &Self {
@@ -1933,7 +1976,11 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((format!("{key}:apply"), cx.level()));
+            if self.refuse_apply.lock().unwrap().contains(&key) {
+                return Err(KindError::UnsupportedLevel(Level::Ti));
+            }
             if self.fail_apply.lock().unwrap().contains(&key) {
+                self.presence.lock().unwrap().insert(key, true);
                 return Err(KindError::ActionFailed(1));
             }
             if let Some(f) = &*self.on_apply.lock().unwrap() {
@@ -1953,6 +2000,7 @@ mod tests {
                 panic!("simulated crash undoing {key}");
             }
             if self.fail_undo.lock().unwrap().contains(&key) {
+                self.presence.lock().unwrap().insert(key, false);
                 return Err(KindError::ActionFailed(1));
             }
             if !self.lie_on_undo.lock().unwrap().contains(&key) {
@@ -2352,8 +2400,8 @@ mod tests {
             "anchor",
             Value::Startup(crate::tweaks::model::StartupType::Manual),
         );
-        // act1 is one-way (no undo) so a forced rollback (act2 fails) cannot fully verify --
-        // the entry stays on disk, letting us inspect the journal afterward.
+        // Neither action has an undo, so the rollback after act2 fails partway cannot verify and
+        // the entry stays on disk for inspection.
         let t = tweak(
             "demo",
             vec![
@@ -2396,8 +2444,8 @@ mod tests {
             "act1 succeeded and must have been marked completed immediately, independent of act2's later failure"
         );
         assert!(
-            !row("act2").completed,
-            "act2 never succeeded -- never marked"
+            !row("act2").completed && !row("act2").resolved,
+            "act2 failed partway: never marked, and still outstanding"
         );
     }
 
@@ -2668,31 +2716,33 @@ mod tests {
         );
     }
 
+    /// No script failed midway: `a1` ran whole and its undo verifies, then `s2` fails its verify.
     #[test]
     fn verified_rollback_consumes_entry() {
+        use crate::tweaks::model::StartupType;
         let h = Harness::new();
-        h.kind.seed(
-            "s1",
-            Value::Startup(crate::tweaks::model::StartupType::Manual),
-        );
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s2", DrivePlan::NoOp);
         let t = tweak(
             "demo",
-            vec![svc_effect("s1", false), action_effect("a1", false, false)],
+            vec![
+                svc_effect("s1", false),
+                action_effect("a1", true, true),
+                svc_effect("s2", false),
+            ],
             vec![opt(
                 "A",
                 vec![
-                    (
-                        "s1",
-                        set(Value::Startup(crate::tweaks::model::StartupType::Disabled)),
-                    ),
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
                     ("a1", OptValue::Run(None)),
+                    ("s2", set(Value::Startup(StartupType::Disabled))),
                 ],
             )],
         );
         let c = corpus(vec![t.clone()], vec![]);
-        h.actions.fail_apply("a1_apply"); // s1 drives fine; a1 fails -> rollback
 
-        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("a1 fails");
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s2 mismatches");
         let EngineError::RollbackReport {
             rollback_failures, ..
         } = err
@@ -2701,12 +2751,10 @@ mod tests {
         };
         assert!(
             rollback_failures.is_empty(),
-            "s1's restore has no failure configured, so this rollback fully verifies: {rollback_failures:?}"
+            "a1's undo and s1's restore both verify: {rollback_failures:?}"
         );
-        assert_eq!(
-            h.kind.live_value("s1"),
-            Value::Startup(crate::tweaks::model::StartupType::Manual)
-        );
+        assert!(h.log().contains(&Op::RunUndo("a1_apply".into())));
+        assert_eq!(h.kind.live_value("s1"), Value::Startup(StartupType::Manual));
         assert!(
             h.snapshots
                 .head("demo", &c, Some("test-guid"), 19045)
@@ -2714,6 +2762,210 @@ mod tests {
                 .is_none(),
             "a verified rollback must consume the entry"
         );
+    }
+
+    /// `s1` drives, then `x`'s script starts and fails.
+    fn failed_script_setup(h: &Harness, undo: bool, probe: bool) -> (Tweak, Corpus) {
+        use crate::tweaks::model::StartupType;
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", undo, probe)],
+            vec![opt(
+                "A",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("x", OptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        (t, c)
+    }
+
+    fn rollback_failures_of(err: EngineError) -> Vec<EngineError> {
+        match err {
+            EngineError::RollbackReport {
+                rollback_failures, ..
+            } => rollback_failures,
+            other => panic!("expected RollbackReport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_script_that_failed_partway_is_undone_and_its_entry_consumed_once_the_undo_verifies() {
+        let h = Harness::new();
+        let (t, c) = failed_script_setup(&h, true, true);
+        h.actions.fail_apply("x_apply");
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x fails");
+        let failures = rollback_failures_of(err);
+        assert!(failures.is_empty(), "{failures:?}");
+        assert!(
+            h.log().contains(&Op::RunUndo("x_apply".into())),
+            "a script that started may have partly run, so the rollback undoes it"
+        );
+        assert_eq!(
+            h.probes.presence.lock().unwrap().get("x_apply"),
+            Some(&false)
+        );
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            h.snapshots.attention("demo", Some("test-guid")).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_script_that_failed_partway_whose_undo_does_not_verify_keeps_its_entry_and_row() {
+        let h = Harness::new();
+        let (t, c) = failed_script_setup(&h, true, true);
+        h.actions.fail_apply("x_apply").lie_on_undo("x_apply");
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x fails");
+        let failures = rollback_failures_of(err);
+        assert!(
+            failures.iter().any(
+                |e| matches!(e, EngineError::ActionVerifyMismatch { effect, .. } if effect.0 == "x")
+            ),
+            "{failures:?}"
+        );
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_some());
+        assert_eq!(outstanding_rows(&h), vec![EffectId("x".into())]);
+    }
+
+    #[test]
+    fn a_script_without_undo_that_failed_partway_needs_attention_and_keeps_its_entry() {
+        let h = Harness::new();
+        let (t, c) = failed_script_setup(&h, false, false);
+        h.actions.fail_apply("x_apply");
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x fails");
+        let failures = rollback_failures_of(err);
+        let [only] = &failures[..] else {
+            panic!("x alone is unrecoverable: {failures:?}");
+        };
+        let item = attention_item(Phase::Apply, only);
+        assert_eq!(item.kind, AttentionKind::NoUndo);
+        assert_eq!(item.effect, Some(EffectId("x".into())));
+        assert!(item.message.contains("partway"), "{}", item.message);
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_some());
+        assert_eq!(outstanding_rows(&h), vec![EffectId("x".into())]);
+        let attention = h
+            .snapshots
+            .attention("demo", Some("test-guid"))
+            .unwrap()
+            .expect("recorded");
+        assert_eq!(attention.reason, AttentionReason::ApplyFailed);
+    }
+
+    /// `failed_script_setup` with `x` probed by a registry value no test ever creates.
+    fn native_probe_setup(h: &Harness) -> (Tweak, Corpus) {
+        let (mut t, _) = failed_script_setup(h, true, true);
+        if let Effect::Action(ActionDef::Script { probe, .. }) = &mut t.surface[1].kind {
+            *probe = Some(Probe::Registry {
+                hive: Hive::Hkcu,
+                path: r"Software\MagicXToolbox-test-never-created".into(),
+                name: "Marker".into(),
+                equals: 1,
+            });
+        }
+        let c = corpus(vec![t.clone()], vec![]);
+        (t, c)
+    }
+
+    /// The mock claims `x` present after its run; the native read says absent, and apply trusts it.
+    #[test]
+    fn apply_verifies_a_native_probe_by_the_native_read() {
+        let h = Harness::new();
+        let (t, c) = native_probe_setup(&h);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x unverified");
+        let EngineError::RollbackReport { original, .. } = err else {
+            panic!("expected RollbackReport");
+        };
+        assert!(
+            matches!(*original, EngineError::ActionVerifyMismatch { .. }),
+            "{original:?}"
+        );
+    }
+
+    #[test]
+    fn only_a_script_that_was_spawned_may_have_run() {
+        assert!(!may_have_run(&KindError::ActionNotStarted("spawn".into())));
+        assert!(!may_have_run(&KindError::UnsupportedLevel(Level::Ti)));
+        assert!(may_have_run(&KindError::ActionExecFailed("timeout".into())));
+        assert!(may_have_run(&KindError::ActionFailed(1)));
+    }
+
+    #[test]
+    fn a_script_refused_before_it_started_stays_never_ran() {
+        let h = Harness::new();
+        let (t, c) = failed_script_setup(&h, false, false);
+        h.actions.refuse_apply("x_apply");
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x refused");
+        let failures = rollback_failures_of(err);
+        assert!(failures.is_empty(), "{failures:?}");
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_none());
+        assert!(outstanding_rows(&h).is_empty());
+    }
+
+    /// `x` is present and the target omits it, so apply drives its undo back, which fails partway.
+    #[test]
+    fn a_drive_back_undo_that_failed_partway_is_re_run_forward_by_the_rollback() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.set_present("x_apply", true);
+        h.actions.fail_undo("x_apply");
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", true, true)],
+            vec![opt(
+                "A",
+                vec![("s1", set(Value::Startup(StartupType::Disabled)))],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("x's undo fails");
+        let failures = rollback_failures_of(err);
+        assert!(failures.is_empty(), "{failures:?}");
+        let log = h.log();
+        let undo = log
+            .iter()
+            .position(|op| op == &Op::RunUndo("x_apply".into()))
+            .expect("x was driven back");
+        assert!(
+            log[undo..].contains(&Op::RunApply("x_apply".into())),
+            "the rollback re-runs x forward: {log:?}"
+        );
+        assert_eq!(
+            h.probes.presence.lock().unwrap().get("x_apply"),
+            Some(&true)
+        );
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_none());
     }
 
     /// The undo side of grouped execution: a rollback puts each run of consecutive elevated effects
@@ -2726,7 +2978,7 @@ mod tests {
         for id in ["t1", "t2", "t3", "t4", "a5"] {
             h.kind.seed(id, Value::Startup(StartupType::Manual));
         }
-        // Every Setting drives forward; the action declared last is what rolls the tweak back.
+        // Every Setting drives forward; the action declared last fails and its undo reverses it.
         h.actions.fail_apply("z_act_apply");
         let mut t = tweak(
             "demo",
@@ -2736,7 +2988,7 @@ mod tests {
                 svc_effect("a5", false),
                 ti_svc_effect("t3"),
                 ti_svc_effect("t4"),
-                action_effect("z_act", false, false),
+                action_effect("z_act", true, false),
             ],
             vec![opt(
                 "A",
@@ -2764,6 +3016,7 @@ mod tests {
             rollback_failures.is_empty(),
             "nothing is configured to fail the restore: {rollback_failures:?}"
         );
+        assert!(h.log().contains(&Op::RunUndo("z_act_apply".into())));
 
         assert_eq!(
             h.kind.batches(),
@@ -2886,13 +3139,13 @@ mod tests {
             h.kind.seed(id, Value::Startup(StartupType::Manual));
         }
         // The failing action is declared first, so no Setting drives forward and t9's single
-        // unknown outcome lands inside the rollback's batch.
+        // unknown outcome lands inside the rollback's batch; act's undo reverses its partial run.
         h.actions.fail_apply("act_apply");
         h.kind.drive_plan("t9", DrivePlan::OutcomeUnknownOnce);
         let mut t = tweak(
             "demo",
             vec![
-                action_effect("act", false, false),
+                action_effect("act", true, false),
                 ti_svc_effect("t1"),
                 ti_svc_effect("t2"),
                 ti_svc_effect("t9"),
@@ -3828,8 +4081,8 @@ mod tests {
         );
     }
 
-    /// The record is for uncertainty, not for every failure: a drive that fails with a known
-    /// outcome and a rollback that fully verifies consumes its entry and records nothing.
+    /// The record is for uncertainty, not for every failure: a script that fails partway and whose
+    /// undo verifies leaves a rollback that consumes its entry and records nothing.
     #[test]
     fn a_failed_apply_whose_rollback_verifies_records_nothing() {
         use crate::tweaks::model::StartupType;
@@ -3854,6 +4107,7 @@ mod tests {
 
         run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("act1's apply fails");
 
+        assert!(h.log().contains(&Op::RunUndo("act1_apply".into())));
         assert_eq!(
             h.snapshots.attention("demo", Some("test-guid")).unwrap(),
             None,
@@ -4363,7 +4617,7 @@ mod tests {
             "s2",
             Value::Startup(crate::tweaks::model::StartupType::Manual),
         );
-        h.actions.fail_apply("a1_apply"); // fails AFTER the shared claim already succeeded
+        h.actions.fail_apply("a1_apply"); // fails partway AFTER the shared claim succeeded
         let shared = SharedDef {
             id: SharedId("sh".into()),
             setting: Setting::Service(SvcAddr {
@@ -4375,7 +4629,7 @@ mod tests {
             "demo",
             vec![
                 shared_effect("sh_eff", "sh"),
-                action_effect("a1", false, false),
+                action_effect("a1", true, false),
             ],
             vec![opt(
                 "A",
@@ -4388,7 +4642,8 @@ mod tests {
         let c = corpus(vec![t.clone()], vec![shared]);
 
         let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("a1 fails");
-        assert!(matches!(err, EngineError::RollbackReport { .. }));
+        let failures = rollback_failures_of(err);
+        assert!(failures.is_empty(), "{failures:?}");
         assert!(
             !h.claims.is_claimed(&SharedId("sh".into())),
             "the claim taken before the later failure must be released by rollback"
@@ -4401,14 +4656,9 @@ mod tests {
 
     #[test]
     fn crash_window_simulation_via_apply_journal() {
-        // A companion to lifecycle's own `crash_window_simulation` (which pins the pure scan
-        // primitive directly): here the SAME on-disk shape arises end-to-end from an ordinary
-        // failed apply. act2's row ends up `intended: true, completed: false` -- and that is
-        // genuinely indistinguishable, from the journal alone, between "act2's own apply call
-        // failed before mark_completed ever ran" and "act2 ran, and the process crashed before
-        // the mark reached disk" (an arbitrary script's exit code says nothing about what side
-        // effects it had). The scanner correctly treats both the same way: flagged, never
-        // silently trusted as safe.
+        // The on-disk shape of lifecycle's `crash_window_simulation`, reached by an ordinary failed
+        // apply: act2 started and failed with no undo, so it may have partly run and its row stays
+        // intended but unmarked, which the scan flags exactly like a crash before the mark.
         let h = Harness::new();
         h.kind.seed(
             "anchor",

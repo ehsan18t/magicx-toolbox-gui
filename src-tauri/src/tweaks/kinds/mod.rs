@@ -115,12 +115,14 @@ pub enum Error {
     #[error("action exited with code {0}")]
     ActionFailed(i32),
 
-    /// An Action's script process could not be spawned, or was killed after exceeding its bounded
-    /// timeout (spec §14). Distinct from [`Error::ActionFailed`]: this means "we could not learn
-    /// the answer," which must never present as a benign `Ok(false)`/success (invariant 2) --
-    /// exactly the same principle `ActionFailed` vs. this variant draws for `probe`.
+    /// An Action's script process was spawned but its exit code is unknown: killed at its bounded
+    /// timeout (spec §14), or its wait or job binding failed. It may have partly run.
     #[error("{0}")]
     ActionExecFailed(String),
+
+    /// An Action's script process was never spawned, so nothing of it ran.
+    #[error("{0}")]
+    ActionNotStarted(String),
 }
 
 /// Execution context an [`EffectKind`] runs under. See the module docs for where the elevation
