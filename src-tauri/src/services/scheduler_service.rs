@@ -136,7 +136,19 @@ fn set_task_enabled(task_path: &str, task_name: &str, enabled: bool) -> Result<(
     with_task_service(|service| unsafe {
         let folder = service.GetFolder(&BSTR::from(task_path)).map_err(com_err)?;
         let task = folder.GetTask(&BSTR::from(task_name)).map_err(com_err)?;
-        task.SetEnabled(flag).map_err(com_err)?;
+        // SetEnabled can flip the flag and then fail re-arming a trigger with not-found (an
+        // UpdateOrchestrator WNF-triggered task on 26100). The stored flag, re-read, decides.
+        if let Err(e) = task.SetEnabled(flag) {
+            let stored = folder
+                .GetTask(&BSTR::from(task_name))
+                .and_then(|fresh| fresh.Enabled());
+            if !(is_not_found(&e) && stored.is_ok_and(|now| now == flag)) {
+                return Err(com_err(e));
+            }
+            log::warn!(
+                "Task Scheduler reported not-found toggling {task_path}\\{task_name}, but the change is in place"
+            );
+        }
         Ok(())
     })
 }
