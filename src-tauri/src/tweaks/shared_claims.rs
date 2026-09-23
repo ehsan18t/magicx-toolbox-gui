@@ -1,59 +1,24 @@
-//! Shared-claims record: the runtime realization of ADR-0006 (spec §8.6). Several tweaks may
-//! legitimately drive one address to one corpus-declared value (spec §6.5's `shared` block); this
-//! module refcounts that sharing so the address is captured once, driven once, and restored once —
-//! exactly at the true last release — no matter how many tweaks claim and release it in what order.
-//!
-//! **Persistence**: one engine-level, atomically-written, machine-stamped JSON file
-//! (`shared_claims.json`) directly under the snapshots root — a single `shared_id -> record` map,
-//! per spec §8.6's literal shape, not one-file-per-entry like [`super::snapshot`]. A claims record
-//! is only ever useful as a whole (the engine needs "is anything claimed right now" cheaply), and
-//! unlike a snapshot history there is nothing to keep once a shared id's last release verifies —
-//! the entry is removed outright, so one small file is the natural fit.
-//!
-//! **Corrupt/wrong-schema is a hard error, not a skip.** [`super::snapshot`]'s `classify` treats an
-//! unreadable *history* entry as merely unavailable as a restore target — there are always other
-//! entries, and nothing is lost by ignoring one. Here there is exactly one copy of each captured
-//! original; silently treating a corrupt file as "no claims" would let a first-claim re-capture
-//! whatever the live value has drifted to as a fabricated "original," permanently losing the real
-//! one (invariant 2, invariant 17). So parse failure or a schema mismatch surfaces as
-//! [`ClaimsError::Corrupt`] and every operation refuses rather than guesses.
-//!
-//! **Wrong machine is different and safe to treat as empty**: mirrors the snapshot store's stance
-//! (a copied-elsewhere `snapshots/` directory). A record stamped for another machine describes
-//! claims that were never actually driven *here*, so there is no real original to protect — this
-//! machine's live value has never been touched by any claim, and reading it fresh for a first claim
-//! is correct, not a guess. A subsequent write on this machine naturally replaces the foreign
-//! content; there is nothing on this machine's actual system state that record could ever have
-//! restored.
-//!
-//! **Lock (spec §8.7: "claim ops serialized behind the claims-record lock")**: every public method
-//! does its own read-modify-write of the whole file with no cached in-memory state between calls,
-//! and [`CLAIMS_LOCK`] serializes those operations process-wide. The lock lives here rather than in
-//! the callers because there is no caller that can hold it correctly: `lifecycle` serializes per
-//! tweak id and deliberately lets two different tweaks apply concurrently, which is exactly the
-//! case where two claimants of one address interleave.
+//! Shared-claims record (ADR-0006): refcounts a shared address so it is captured once and restored
+//! at the true last release. One atomically written file per machine, `shared_claims.<guid>.json`,
+//! so a portable `snapshots/` folder never overwrites another machine's originals.
+//! Unreadable or unknown-schema is [`ClaimsError::Corrupt`], never "no claims": each original
+//! exists once, and a first claim would re-capture drifted state as a fabricated original.
 
 use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
 use crate::tweaks::model::{effective_level, Level, Setting, SharedDef, SharedId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 // v1 records carry no `restore_level`; they load with it absent. Any higher version is Corrupt.
 const SCHEMA_VERSION: u32 = 2;
-const CLAIMS_FILE: &str = "shared_claims.json";
+const LEGACY_CLAIMS_FILE: &str = "shared_claims.json";
 
-/// Serializes every claim-record operation in this process.
-///
-/// `shared_claims.json` is one machine-wide file and each operation is a full read-modify-write of
-/// it. The engine's only other serialization is `lifecycle::lock_tweak`, which is keyed by tweak id
-/// and whose own test asserts that different tweaks run concurrently. Two tweaks sharing an address
-/// would therefore interleave, and the loser's update is dropped: at best a leaked refcount that
-/// never restores, at worst a lost captured original, which this module's header explains is
-/// unrecoverable because exactly one copy of it exists.
+/// Serializes each whole-file read-modify-write. `lifecycle::lock_tweak` is per tweak, so two
+/// claimants of one address would otherwise interleave and drop an update or a captured original.
 static CLAIMS_LOCK: Mutex<()> = Mutex::new(());
 
 /// Takes [`CLAIMS_LOCK`], recovering from poisoning.
@@ -136,8 +101,6 @@ struct ClaimsFile {
     records: BTreeMap<String, ClaimRecord>,
 }
 
-/// Refcounted claims store (spec §8.6, ADR-0006). See the module docs for persistence shape, the
-/// corrupt-vs-wrong-machine distinction, and the caller-held-lock assumption.
 #[derive(Debug, Clone)]
 pub struct ClaimsStore {
     root: PathBuf,
@@ -164,33 +127,57 @@ impl ClaimsStore {
     }
 
     fn file_path(&self) -> PathBuf {
-        self.root.join(CLAIMS_FILE)
+        match &self.machine_guid {
+            Some(guid) => self.root.join(format!("shared_claims.{guid}.json")),
+            None => self.root.join(LEGACY_CLAIMS_FILE),
+        }
     }
 
-    /// Missing or other-machine file: no claims. Unparseable or unknown schema: [`ClaimsError::Corrupt`],
-    /// never "no claims" (a first claim would re-capture drifted state as a fabricated original).
-    fn load(&self) -> Result<BTreeMap<String, ClaimRecord>, ClaimsError> {
-        let path = self.file_path();
-        if !path.exists() {
-            return Ok(BTreeMap::new());
-        }
-        let bytes = fs::read(&path)?;
+    /// The unsuffixed file, read only while this machine has no file of its own.
+    fn legacy_path(&self) -> Option<PathBuf> {
+        self.machine_guid
+            .as_ref()
+            .map(|_| self.root.join(LEGACY_CLAIMS_FILE))
+    }
+
+    fn read_file(path: &Path) -> Result<Option<ClaimsFile>, ClaimsError> {
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
         let file: ClaimsFile = serde_json::from_slice(&bytes).map_err(|_| ClaimsError::Corrupt)?;
         if !(1..=SCHEMA_VERSION).contains(&file.schema_version) {
             return Err(ClaimsError::Corrupt);
         }
-        if let (Some(file_guid), Some(current)) =
-            (file.machine_guid.as_deref(), self.machine_guid.as_deref())
-        {
-            if file_guid != current {
-                log::warn!(
-                    "shared-claims record was captured on a different machine (MachineGuid {file_guid} != {current}); \
-                     ignoring its content rather than restoring a foreign original onto this machine"
-                );
-                return Ok(BTreeMap::new());
-            }
+        Ok(Some(file))
+    }
+
+    fn is_ours(&self, file: &ClaimsFile) -> bool {
+        match (file.machine_guid.as_deref(), self.machine_guid.as_deref()) {
+            (Some(stamped), Some(current)) => stamped == current,
+            _ => true,
         }
-        Ok(file.records)
+    }
+
+    fn load(&self) -> Result<BTreeMap<String, ClaimRecord>, ClaimsError> {
+        if let Some(file) = Self::read_file(&self.file_path())? {
+            if !self.is_ours(&file) {
+                return Err(ClaimsError::Corrupt);
+            }
+            return Ok(file.records);
+        }
+        let Some(legacy) = self.legacy_path() else {
+            return Ok(BTreeMap::new());
+        };
+        match Self::read_file(&legacy)? {
+            Some(file) if self.is_ours(&file) => Ok(file.records),
+            Some(_) => {
+                log::info!("shared-claims: ignoring another machine's legacy claims file");
+                Ok(BTreeMap::new())
+            }
+            None => Ok(BTreeMap::new()),
+        }
     }
 
     /// Atomic whole-file rewrite (same-directory temp file, fsynced, renamed onto the final path).
@@ -208,6 +195,15 @@ impl ClaimsStore {
         tmp.as_file().sync_all()?;
         tmp.persist(self.file_path())
             .map_err(|e| ClaimsError::Io(e.error))?;
+        // This machine's legacy file is now folded in; a failed delete is harmless because the
+        // per-machine file shadows it from here on.
+        if let Some(legacy) = self.legacy_path() {
+            if matches!(Self::read_file(&legacy), Ok(Some(ref f)) if self.is_ours(f)) {
+                if let Err(e) = fs::remove_file(&legacy) {
+                    log::warn!("shared-claims: could not remove the migrated legacy file: {e}");
+                }
+            }
+        }
         Ok(())
     }
 
@@ -346,28 +342,20 @@ impl ClaimsStore {
         Ok(ReleaseOutcome::RestoredOriginal(cx.level()))
     }
 
-    /// Current claimants of `shared_id`, in claim order; empty if unclaimed. Read-only and
-    /// best-effort: an unreadable/corrupt record conservatively reports "no holders" (logged) rather
-    /// than propagating an error this method's signature has no room for — the safety-critical
-    /// paths are `claim`/`release`, which do return `Result`.
-    pub fn holders(&self, shared_id: &SharedId) -> Vec<String> {
+    /// Current claimants of `shared_id`, in claim order. An unreadable record is an error, never
+    /// "no holders": callers decide whether to release from this answer.
+    pub fn holders(&self, shared_id: &SharedId) -> Result<Vec<String>, ClaimsError> {
         let _guard = lock_claims();
-        match self.load() {
-            Ok(records) => records
-                .get(&shared_id.0)
-                .map(|r| r.claimants.clone())
-                .unwrap_or_default(),
-            Err(e) => {
-                log::warn!("shared-claims record unreadable while querying holders: {e}");
-                Vec::new()
-            }
-        }
+        Ok(self
+            .load()?
+            .get(&shared_id.0)
+            .map(|r| r.claimants.clone())
+            .unwrap_or_default())
     }
 
-    /// Whether any claimant currently holds `shared_id`. Delegates to [`Self::holders`], which is
-    /// what takes [`CLAIMS_LOCK`]: taking it here too would deadlock on the non-reentrant mutex.
-    pub fn is_claimed(&self, shared_id: &SharedId) -> bool {
-        !self.holders(shared_id).is_empty()
+    // Takes no lock itself: `holders` does, and the mutex is not reentrant.
+    pub fn is_claimed(&self, shared_id: &SharedId) -> Result<bool, ClaimsError> {
+        Ok(!self.holders(shared_id)?.is_empty())
     }
 }
 
@@ -474,8 +462,8 @@ mod tests {
             "first claim must drive to the shared value"
         );
         assert_eq!(mock.drive_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(s.holders(&shared.id), vec!["tweak_a".to_string()]);
-        assert!(s.is_claimed(&shared.id));
+        assert_eq!(s.holders(&shared.id).unwrap(), vec!["tweak_a".to_string()]);
+        assert!(s.is_claimed(&shared.id).unwrap());
     }
 
     #[test]
@@ -494,7 +482,7 @@ mod tests {
             1,
             "a later claim must verify, never drive again"
         );
-        let mut holders = s.holders(&shared.id);
+        let mut holders = s.holders(&shared.id).unwrap();
         holders.sort();
         assert_eq!(holders, vec!["tweak_a".to_string(), "tweak_b".to_string()]);
     }
@@ -520,7 +508,7 @@ mod tests {
             shared.value,
             "the value must be left alone while a claimant remains"
         );
-        assert!(s.is_claimed(&shared.id));
+        assert!(s.is_claimed(&shared.id).unwrap());
     }
 
     #[test]
@@ -550,8 +538,8 @@ mod tests {
              asserting only the end state would also pass a buggy 'skip drive if current already \
              looks fine' implementation"
         );
-        assert!(!s.is_claimed(&shared.id));
-        assert!(s.holders(&shared.id).is_empty());
+        assert!(!s.is_claimed(&shared.id).unwrap());
+        assert!(s.holders(&shared.id).unwrap().is_empty());
     }
 
     #[test]
@@ -568,10 +556,10 @@ mod tests {
 
         assert!(matches!(err, ClaimsError::Kind(_)));
         assert!(
-            s.is_claimed(&shared.id),
+            s.is_claimed(&shared.id).unwrap(),
             "the record must be kept, not deleted, on a failed restore"
         );
-        assert_eq!(s.holders(&shared.id), vec!["tweak_a".to_string()]);
+        assert_eq!(s.holders(&shared.id).unwrap(), vec!["tweak_a".to_string()]);
     }
 
     /// A corrupt/unparseable claims file must never fall through to "no claims" -- doing so would
@@ -580,7 +568,7 @@ mod tests {
     #[test]
     fn corrupt_claims_file_is_hard_error() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join(CLAIMS_FILE), b"{ not valid json").unwrap();
+        std::fs::write(tmp.path().join(LEGACY_CLAIMS_FILE), b"{ not valid json").unwrap();
 
         let s = store(tmp.path());
         let shared = shared_def();
@@ -599,9 +587,7 @@ mod tests {
         );
     }
 
-    /// A record stamped for a different machine must be treated as no record at all (mirrors
-    /// `SnapshotStore`'s WrongMachine stance) -- this machine must never drive a foreign record's
-    /// captured "original" onto its own live value.
+    /// Another machine's record is invisible here, never driven here, and never overwritten.
     #[test]
     fn foreign_machine_guid_treated_as_no_record() {
         let tmp = tempfile::tempdir().unwrap();
@@ -625,7 +611,7 @@ mod tests {
             records,
         };
         std::fs::write(
-            tmp.path().join(CLAIMS_FILE),
+            tmp.path().join(LEGACY_CLAIMS_FILE),
             serde_json::to_vec_pretty(&foreign).unwrap(),
         )
         .unwrap();
@@ -634,10 +620,10 @@ mod tests {
         let mock = MockKind::new(original_value()); // this machine's real live value, never 777
 
         assert!(
-            s.holders(&shared.id).is_empty(),
+            s.holders(&shared.id).unwrap().is_empty(),
             "a foreign-machine record must not surface its claimant on this machine"
         );
-        assert!(!s.is_claimed(&shared.id));
+        assert!(!s.is_claimed(&shared.id).unwrap());
 
         // A release "by" the foreign claimant must find no record here, and above all must never
         // drive the foreign original (777) onto this machine's live value.
@@ -657,7 +643,55 @@ mod tests {
         let outcome = s.claim(&shared, "tweak_here", &mock, &cx()).unwrap();
         assert_eq!(outcome, ClaimOutcome::Captured);
         assert_eq!(mock.live(), shared.value);
-        assert_eq!(s.holders(&shared.id), vec!["tweak_here".to_string()]);
+        assert_eq!(
+            s.holders(&shared.id).unwrap(),
+            vec!["tweak_here".to_string()]
+        );
+
+        // ADR-0006: the other machine's originals survive this machine's writes.
+        let kept: ClaimsFile =
+            serde_json::from_slice(&std::fs::read(tmp.path().join(LEGACY_CLAIMS_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(kept.machine_guid.as_deref(), Some("foreign-machine"));
+        assert_eq!(kept.records[&shared.id.0].claimants, vec!["foreign_tweak"]);
+        let back_home = ClaimsStore::open(tmp.path().to_path_buf(), Some("foreign-machine".into()));
+        assert_eq!(
+            back_home.holders(&shared.id).unwrap(),
+            vec!["foreign_tweak".to_string()]
+        );
+    }
+
+    #[test]
+    fn machines_sharing_a_folder_keep_separate_records() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = shared_def();
+        let a = ClaimsStore::open(tmp.path().to_path_buf(), Some("machine-a".into()));
+        let b = ClaimsStore::open(tmp.path().to_path_buf(), Some("machine-b".into()));
+        let mock_a = MockKind::new(original_value());
+        let mock_b = MockKind::new(original_value());
+
+        a.claim(&shared, "tweak_a", &mock_a, &cx()).unwrap();
+        b.claim(&shared, "tweak_b", &mock_b, &cx()).unwrap();
+
+        assert_eq!(a.holders(&shared.id).unwrap(), vec!["tweak_a".to_string()]);
+        let outcome = a.release(&shared.id, "tweak_a", &mock_a, &cx()).unwrap();
+        assert!(matches!(outcome, ReleaseOutcome::RestoredOriginal(_)));
+        assert_eq!(mock_a.live(), original_value());
+        assert_eq!(b.holders(&shared.id).unwrap(), vec!["tweak_b".to_string()]);
+    }
+
+    /// A file that cannot be read is an error to every caller, never an empty holder list.
+    #[test]
+    fn holders_of_a_corrupt_record_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        std::fs::write(s.file_path(), b"{ not valid json").unwrap();
+
+        assert!(matches!(
+            s.holders(&shared_def().id),
+            Err(ClaimsError::Corrupt)
+        ));
+        assert!(s.is_claimed(&shared_def().id).is_err());
     }
 
     /// `release` must refuse -- never drive, never treat as a benign no-op -- both when the shared
@@ -682,10 +716,10 @@ mod tests {
             "neither NotHeld case may drive -- only the earlier legitimate claim's single drive"
         );
         assert!(
-            s.is_claimed(&shared.id),
+            s.is_claimed(&shared.id).unwrap(),
             "the real holder's claim must be untouched by either failed release attempt"
         );
-        assert_eq!(s.holders(&shared.id), vec!["tweak_a".to_string()]);
+        assert_eq!(s.holders(&shared.id).unwrap(), vec!["tweak_a".to_string()]);
     }
 
     /// The crown-jewel property test: for every legal claim/release interleaving among N
@@ -837,7 +871,7 @@ mod tests {
             }
         });
 
-        let holders = s.holders(&shared.id);
+        let holders = s.holders(&shared.id).unwrap();
         assert_eq!(
             holders.len(),
             CLAIMANTS,
@@ -877,7 +911,7 @@ mod tests {
         });
 
         assert!(
-            !s.is_claimed(&shared.id),
+            !s.is_claimed(&shared.id).unwrap(),
             "the last release must remove the record"
         );
         assert_eq!(
@@ -893,7 +927,7 @@ mod tests {
 
     fn write_raw(dir: &Path, json: &serde_json::Value) {
         std::fs::write(
-            dir.join(CLAIMS_FILE),
+            dir.join(LEGACY_CLAIMS_FILE),
             serde_json::to_vec_pretty(json).unwrap(),
         )
         .unwrap();
@@ -970,10 +1004,14 @@ mod tests {
         s.release(&shared.id, "tweak_a", &mock, &at(Level::Admin))
             .unwrap();
         let rewritten: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(tmp.path().join(CLAIMS_FILE)).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(s.file_path()).unwrap()).unwrap();
         assert_eq!(rewritten["schema_version"], SCHEMA_VERSION);
+        assert!(
+            !tmp.path().join(LEGACY_CLAIMS_FILE).exists(),
+            "this machine's legacy file is folded into its own file"
+        );
         assert_eq!(SCHEMA_VERSION, 2);
-        assert_eq!(s.holders(&shared.id), vec!["tweak_b".to_string()]);
+        assert_eq!(s.holders(&shared.id).unwrap(), vec!["tweak_b".to_string()]);
 
         let outcome = s
             .release(&shared.id, "tweak_b", &mock, &at(Level::Admin))
@@ -996,7 +1034,7 @@ mod tests {
                 "records": {},
             }),
         );
-        let before = std::fs::read(tmp.path().join(CLAIMS_FILE)).unwrap();
+        let before = std::fs::read(tmp.path().join(LEGACY_CLAIMS_FILE)).unwrap();
         let s = store(tmp.path());
         let mock = MockKind::new(original_value());
 
@@ -1005,7 +1043,10 @@ mod tests {
         let release_err = s.release(&shared.id, "tweak_a", &mock, &cx()).unwrap_err();
         assert!(matches!(release_err, ClaimsError::Corrupt));
 
-        assert_eq!(std::fs::read(tmp.path().join(CLAIMS_FILE)).unwrap(), before);
+        assert_eq!(
+            std::fs::read(tmp.path().join(LEGACY_CLAIMS_FILE)).unwrap(),
+            before
+        );
         assert_eq!(mock.drive_calls.load(Ordering::SeqCst), 0);
     }
 }

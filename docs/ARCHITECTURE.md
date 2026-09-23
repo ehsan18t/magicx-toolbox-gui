@@ -227,8 +227,8 @@ struct SnapshotEntry {
 }
 ```
 
-Shared-referenced effects appear in no per-tweak entry; their return path is the `shared_claims.json`
-record (ADR-0006).
+Shared-referenced effects appear in no per-tweak entry; their return path is the per-machine
+`shared_claims.<MachineGuid>.json` record (ADR-0006).
 
 ## Tweak Format Examples
 
@@ -271,8 +271,8 @@ per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_
   the executable** (one subdirectory per tweak-id, one atomically-written file per entry)
 - Entries are references (authored options) or value dumps (unauthored states), each carrying the WAL
   action journal; invalid/dangling entries are kept, excluded, and released only by user consent
-- `shared_claims.json` (under the snapshots root) - the refcounted claims record: capture-once,
-  last-release restores the captured original (ADR-0006)
+- `shared_claims.<MachineGuid>.json` (under the snapshots root, one per machine) - the refcounted
+  claims record: capture-once, last-release restores the captured original (ADR-0006)
 
 ### 6. `profile` - Configuration Profile Export/Import
 - `export_profile()` - Export applied tweaks to .mgx archive
@@ -378,7 +378,7 @@ build-time and runtime validation are the same code, so schema drift is a compil
 | `src-tauri/src/commands/tweaks.rs`      | Tauri command surface for tweaks                      |
 | `src-tauri/src/services/`               | Reused low-level primitives + the elevation broker    |
 | `src-tauri/src/models/`                 | Data structures                                       |
-| `snapshots/` (next to the executable)   | Per-tweak snapshot history + `shared_claims.json`     |
+| `snapshots/` (next to the executable)   | Per-tweak snapshot history + per-machine claims files |
 
 ### Tweak Engine Module Structure
 

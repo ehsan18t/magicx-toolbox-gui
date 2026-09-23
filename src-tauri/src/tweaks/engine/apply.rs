@@ -948,31 +948,34 @@ fn drive_shared(
             EngineError::Invalid(format!("shared '{shared_id}' not declared in corpus"))
         })?;
 
+    let claim_err = |e| EngineError::Claim {
+        shared: shared_id.clone(),
+        source: e,
+    };
     match opt_value {
         OptValue::Claim(_) => {
-            ctx.deps
+            let held_before = holds(ctx.deps, shared_id, &ctx.tweak.id)?;
+            let claimed = ctx
+                .deps
                 .claims
-                .claim(shared_def, &ctx.tweak.id, ctx.deps.kinds, &cx)
-                .map_err(|e| EngineError::Claim {
-                    shared: shared_id.clone(),
-                    source: e,
-                })?;
-            state
-                .processed
-                .push(ProcessedEffect::SharedClaim(shared_id.clone(), cx.level()));
+                .claim(shared_def, &ctx.tweak.id, ctx.deps.kinds, &cx);
+            // `claim` records the holder before it drives, so a failed claim can still need a
+            // release; a hold from before this apply must never be released by its rollback.
+            let recorded = !held_before
+                && (claimed.is_ok() || holds(ctx.deps, shared_id, &ctx.tweak.id).unwrap_or(true));
+            if recorded {
+                state
+                    .processed
+                    .push(ProcessedEffect::SharedClaim(shared_id.clone(), cx.level()));
+            }
+            claimed.map_err(claim_err)?;
             state.effect_results.push(EffectResult {
                 effect: effect.id.clone(),
                 kind: EffectResultKind::Claimed,
             });
         }
         OptValue::Unclaimed(_) => {
-            let already_held = ctx
-                .deps
-                .claims
-                .holders(shared_id)
-                .iter()
-                .any(|h| h == &ctx.tweak.id);
-            if already_held {
+            if holds(ctx.deps, shared_id, &ctx.tweak.id)? {
                 let outcome = ctx
                     .deps
                     .claims
@@ -1011,7 +1014,7 @@ fn drive_shared(
         }
     }
 
-    let holders = ctx.deps.claims.holders(shared_id);
+    let holders = ctx.deps.claims.holders(shared_id).map_err(claim_err)?;
     if !holders.is_empty() {
         state.held_shared.push(HeldInfo {
             shared: shared_id.clone(),
@@ -1019,6 +1022,20 @@ fn drive_shared(
         });
     }
     Ok(())
+}
+
+pub(crate) fn holds(
+    deps: &Deps,
+    shared_id: &SharedId,
+    tweak_id: &str,
+) -> Result<bool, EngineError> {
+    deps.claims
+        .holders(shared_id)
+        .map(|holders| holders.iter().any(|h| h == tweak_id))
+        .map_err(|e| EngineError::Claim {
+            shared: shared_id.clone(),
+            source: e,
+        })
 }
 
 fn drive_action(
@@ -3296,6 +3313,88 @@ mod tests {
         );
     }
 
+    fn claim_fixture(h: &Harness, effects: Vec<EffectDef>, options: Vec<Opt>) -> (Tweak, Corpus) {
+        use crate::tweaks::model::StartupType;
+        h.kind.seed("sh_addr", Value::Startup(StartupType::Manual));
+        let shared = SharedDef {
+            id: SharedId("sh".into()),
+            setting: Setting::Service(SvcAddr {
+                name: "sh_addr".into(),
+            }),
+            value: Value::Startup(StartupType::Disabled),
+        };
+        let t = tweak("demo", effects, options);
+        let c = corpus(vec![t.clone()], vec![shared]);
+        (t, c)
+    }
+
+    /// `claim` records the holder before it drives, so a claim that fails its own verify is still
+    /// on record and the rollback must release it.
+    #[test]
+    fn a_first_claim_that_fails_to_verify_is_released_by_the_rollback() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        let (t, c) = claim_fixture(
+            &h,
+            vec![shared_effect("sh_eff", "sh")],
+            vec![opt("A", vec![("sh_eff", OptValue::Claim(None))])],
+        );
+        h.kind.drive_plan("sh_addr", DrivePlan::NoOp);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps())
+            .expect_err("the shared value never takes");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(rollback_failures.is_empty(), "{rollback_failures:?}");
+        assert!(!h.claims.is_claimed(&SharedId("sh".into())).unwrap());
+        assert_eq!(
+            h.kind.live_value("sh_addr"),
+            Value::Startup(StartupType::Manual)
+        );
+    }
+
+    /// Switching between two claiming options leaves the hold from before the switch in place when
+    /// a later effect fails.
+    #[test]
+    fn a_rollback_never_releases_a_hold_from_before_the_apply() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        let (t, c) = claim_fixture(
+            &h,
+            vec![shared_effect("sh_eff", "sh"), svc_effect("s2", false)],
+            vec![
+                opt(
+                    "A",
+                    vec![
+                        ("sh_eff", OptValue::Claim(None)),
+                        ("s2", set(Value::Startup(StartupType::Disabled))),
+                    ],
+                ),
+                opt(
+                    "B",
+                    vec![
+                        ("sh_eff", OptValue::Claim(None)),
+                        ("s2", set(Value::Startup(StartupType::Automatic))),
+                    ],
+                ),
+            ],
+        );
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("A applies");
+        h.kind.drive_plan("s2", DrivePlan::NoOp);
+
+        run_apply(&t, &c, &OptLabel("B".into()), &h.deps()).expect_err("s2 never takes");
+        assert!(h.claims.is_claimed(&SharedId("sh".into())).unwrap());
+        assert_eq!(
+            h.kind.live_value("sh_addr"),
+            Value::Startup(StartupType::Disabled)
+        );
+    }
+
     /// One failing tweak whose single Setting reaches `plan`, at `Manual`, with option "A" driving
     /// it to `Disabled`.
     fn attention_fixture(h: &Harness, plan: DrivePlan) -> (Tweak, Corpus) {
@@ -4394,8 +4493,8 @@ mod tests {
 
         run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("apply succeeds");
 
-        assert!(h.claims.is_claimed(&SharedId("sh_a".into())));
-        assert!(!h.claims.is_claimed(&SharedId("sh_b".into())));
+        assert!(h.claims.is_claimed(&SharedId("sh_a".into())).unwrap());
+        assert!(!h.claims.is_claimed(&SharedId("sh_b".into())).unwrap());
 
         let log = h.log();
         let first_a = log
@@ -4645,7 +4744,7 @@ mod tests {
         let failures = rollback_failures_of(err);
         assert!(failures.is_empty(), "{failures:?}");
         assert!(
-            !h.claims.is_claimed(&SharedId("sh".into())),
+            !h.claims.is_claimed(&SharedId("sh".into())).unwrap(),
             "the claim taken before the later failure must be released by rollback"
         );
         assert_eq!(

@@ -22,7 +22,6 @@ use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, EffectId, Hive, Opt, OptLabel, OptValue, Probe, SharedId,
     Tweak, Value,
 };
-use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{Attention, AttentionItem, AttentionKind, AttentionReason};
 use crate::tweaks::validate::{
     applicable_surface, applicable_value, option_unavailable, Milestone,
@@ -211,14 +210,24 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
                     &mut unknown,
                 );
             }
-            Effect::Shared(shared_id) => {
-                if deps.claims.is_claimed(shared_id) {
-                    held_shared.push(HeldInfo {
-                        shared: shared_id.clone(),
-                        holders: deps.claims.holders(shared_id),
+            Effect::Shared(shared_id) => match deps.claims.holders(shared_id) {
+                Ok(holders) if holders.is_empty() => {}
+                Ok(holders) => held_shared.push(HeldInfo {
+                    shared: shared_id.clone(),
+                    holders,
+                }),
+                Err(e) => {
+                    log::warn!(
+                        "detect '{}': claims for '{shared_id}' unreadable: {e}",
+                        tweak.id
+                    );
+                    unknown.push(UnknownReason {
+                        effect: effect.id.clone(),
+                        cause: UnknownCause::Other,
+                        needs_elevation: false,
                     });
                 }
-            }
+            },
             Effect::Action(action_def) => {
                 if !contributes_to_detection(action_def) {
                     continue; // probe-less action -- never read, never compared (spec §6.4)
@@ -286,7 +295,7 @@ pub fn detect(tweak: &Tweak, corpus: &Corpus, deps: &Deps) -> TweakStatus {
             &winver,
             &readings,
             &probe_present,
-            deps.claims,
+            &held_shared,
         ) {
             matched.push((opt, residues));
         }
@@ -521,7 +530,7 @@ fn option_matches(
     winver: &WinVer,
     readings: &Readings,
     probe_present: &HashMap<EffectId, bool>,
-    claims: &ClaimsStore,
+    held_shared: &[HeldInfo],
 ) -> Option<Vec<EffectId>> {
     let mut residues = Vec::new();
     for effect in surface {
@@ -546,7 +555,7 @@ fn option_matches(
                 let Some(opt_value) = applicable_value(opt, &effect.id, milestone) else {
                     continue;
                 };
-                let claimed = claims.is_claimed(shared_id);
+                let claimed = held_shared.iter().any(|h| &h.shared == shared_id);
                 match opt_value {
                     OptValue::Claim(_) if claimed => {}
                     OptValue::Unclaimed(_) if !claimed => {}
@@ -643,6 +652,7 @@ mod tests {
         RiskLevel, ScopedValue, Script, Setting, SharedDef, Shell, StartupType, SvcAddr, Tweak,
         TypedRegValue, Value, WindowsScope,
     };
+    use crate::tweaks::shared_claims::ClaimsStore;
     use crate::tweaks::snapshot::SnapshotStore;
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU32, Ordering};

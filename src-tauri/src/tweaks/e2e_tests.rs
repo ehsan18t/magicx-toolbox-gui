@@ -340,7 +340,7 @@ async fn shared_pair_lifecycle() {
         .expect("X claims first");
     assert_eq!(ox.status.state, TweakState::Active(OptLabel("On".into())));
     assert_eq!(
-        h.claims.holders(&shared_key),
+        h.claims.holders(&shared_key).unwrap(),
         vec!["e2e_shared_x".to_string()]
     );
     assert_eq!(
@@ -354,7 +354,7 @@ async fn shared_pair_lifecycle() {
         .expect("Y claims second (a verified no-op drive, still added as a claimant)");
     assert_eq!(oy.status.state, TweakState::Active(OptLabel("On".into())));
     assert_eq!(
-        h.claims.holders(&shared_key),
+        h.claims.holders(&shared_key).unwrap(),
         vec!["e2e_shared_x".to_string(), "e2e_shared_y".to_string()]
     );
     assert_eq!(
@@ -372,7 +372,7 @@ async fn shared_pair_lifecycle() {
         .expect("revert X must succeed");
     assert!(rx.consumed.is_some());
     assert_eq!(
-        h.claims.holders(&shared_key),
+        h.claims.holders(&shared_key).unwrap(),
         vec!["e2e_shared_y".to_string()],
         "X's release must leave Y's claim intact"
     );
@@ -397,7 +397,7 @@ async fn shared_pair_lifecycle() {
         .expect("revert Y must succeed");
     assert!(ry.consumed.is_some());
     assert!(
-        !h.claims.is_claimed(&shared_key),
+        !h.claims.is_claimed(&shared_key).unwrap(),
         "the last release must clear the claim entirely"
     );
     assert_eq!(

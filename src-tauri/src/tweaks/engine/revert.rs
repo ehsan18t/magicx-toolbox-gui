@@ -57,13 +57,13 @@ use std::collections::BTreeSet;
 
 use super::apply::attention_item;
 use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, SharedId, Tweak,
+    ActionDef, Corpus, Effect, EffectDef, EffectId, OptLabel, OptValue, Tweak,
 };
 use crate::tweaks::shared_claims::ReleaseOutcome;
 use crate::tweaks::snapshot::{
     Attention, AttentionReason, Captured, Entry, EntrySummary, EntryValidity, Seq,
 };
-use crate::tweaks::validate::{applicable_surface, option_unavailable, Milestone};
+use crate::tweaks::validate::{option_unavailable, Milestone};
 use crate::tweaks::winver::WinVer;
 
 use super::apply::{self, ActionPlan, DriveCtx, DriveState, EngineError};
@@ -178,14 +178,7 @@ pub(crate) fn do_restore(
             {
                 failures.extend(errs);
             }
-            release_shared_claims(
-                current_tweak,
-                corpus,
-                &milestone,
-                deps,
-                &mut held_shared,
-                &mut failures,
-            );
+            release_shared_claims(current_tweak, corpus, deps, &mut held_shared, &mut failures);
             None
         }
     };
@@ -478,23 +471,26 @@ fn reapply_option_ref(
     }
 }
 
-/// Releases every Shared effect on `tweak`'s applicable surface that it currently claims: the
-/// Values-restore counterpart of `apply::drive_shared`'s `Unclaimed` arm (see the module docs).
-/// Unheld shared ids are left untouched.
+/// The Values-restore counterpart of `apply::drive_shared`'s `Unclaimed` arm. Walks the whole
+/// surface: a claim taken before an OS upgrade scoped its effect out must still be released.
 fn release_shared_claims(
     tweak: &Tweak,
     corpus: &Corpus,
-    milestone: &Milestone,
     deps: &Deps,
     held_shared: &mut Vec<HeldInfo>,
     failures: &mut Vec<EngineError>,
 ) {
-    for effect in applicable_surface(tweak, milestone) {
+    for effect in &tweak.surface {
         let Effect::Shared(shared_id) = &effect.kind else {
             continue;
         };
-        if !currently_holds(deps, shared_id, &tweak.id) {
-            continue;
+        match apply::holds(deps, shared_id, &tweak.id) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(e) => {
+                failures.push(e);
+                continue;
+            }
         }
         let cx = context::route(effect, tweak, corpus);
         match deps.claims.release(shared_id, &tweak.id, deps.kinds, &cx) {
@@ -509,10 +505,6 @@ fn release_shared_claims(
             }),
         }
     }
-}
-
-fn currently_holds(deps: &Deps, shared_id: &SharedId, tweak_id: &str) -> bool {
-    deps.claims.holders(shared_id).iter().any(|h| h == tweak_id)
 }
 
 /// The effect is returned alongside its `ActionDef` because undoing one must route it, and only
@@ -2667,7 +2659,7 @@ mod tests {
         run_restore(&t, &c, &h.deps()).expect("restore succeeds");
 
         assert!(
-            !h.claims.is_claimed(&SharedId("sh".into())),
+            !h.claims.is_claimed(&SharedId("sh".into())).unwrap(),
             "restoring to an unclaiming target must release the shared setting"
         );
         assert_eq!(
@@ -2719,7 +2711,7 @@ mod tests {
         run_restore(&t, &c, &h.deps()).expect("restore succeeds");
 
         assert!(
-            !h.claims.is_claimed(&SharedId("sh".into())),
+            !h.claims.is_claimed(&SharedId("sh".into())).unwrap(),
             "restoring a Values-dump snapshot must still release a shared claim this tweak holds"
         );
         assert_eq!(
@@ -2763,7 +2755,7 @@ mod tests {
             .unwrap();
 
         run_restore(&t, &c, &h.deps()).expect("restore succeeds");
-        assert!(!h.claims.is_claimed(&SharedId("sh".into())));
+        assert!(!h.claims.is_claimed(&SharedId("sh".into())).unwrap());
     }
 
     /// A journaled Action's undo routes from the tweak's floor, never from what the app currently
