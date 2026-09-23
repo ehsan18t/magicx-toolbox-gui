@@ -569,7 +569,7 @@ impl SnapshotStore {
     /// Tweak ids whose directory holds a Needs Attention record, so one the corpus no longer defines
     /// can be named rather than left with no card to badge and no way to release it.
     pub fn recorded_tweaks(&self) -> Result<Vec<String>, SnapshotError> {
-        if !self.root.exists() {
+        if is_missing(&self.root)? {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
@@ -1089,10 +1089,20 @@ fn entry_path(dir: &Path, seq: Seq) -> PathBuf {
     dir.join(format!("{:020}.json", seq.0))
 }
 
+/// Only `NotFound` means no history: `exists()` is false on any error, which would read an
+/// unreadable folder as empty.
+fn is_missing(path: &Path) -> Result<bool, SnapshotError> {
+    match fs::metadata(path) {
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(e) => Err(SnapshotError::Io(e)),
+    }
+}
+
 /// Filenames only — never reads content, so one unrelated unreadable file can never block
 /// allocating the next seq (spec §8.2: robust to a partially-written history).
 fn scan_max_seq(dir: &Path) -> Result<u64, SnapshotError> {
-    if !dir.exists() {
+    if is_missing(dir)? {
         return Ok(0);
     }
     let mut max = 0u64;
@@ -1189,7 +1199,7 @@ fn next_seq(dir: &Path) -> Result<Seq, SnapshotError> {
 /// "no history") and must propagate — a read that cannot distinguish corrupt-vs-IO-failure must
 /// not silently treat an IO failure as "no snapshot".
 fn read_raw_entries(dir: &Path) -> Result<Vec<RawEntry>, SnapshotError> {
-    if !dir.exists() {
+    if is_missing(dir)? {
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
