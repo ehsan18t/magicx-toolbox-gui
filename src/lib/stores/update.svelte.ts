@@ -75,9 +75,11 @@ export const updateStore = {
     lastCheckWasSilent = silent;
 
     try {
+      const { source, flags } = APP_CONFIG.update.assetPattern;
       const config = {
         releasesApiUrl: APP_CONFIG.update.releasesApiUrl,
-        assetPattern: APP_CONFIG.update.assetPattern.source,
+        // `source` drops the flags; regex_lite reads case-insensitivity inline.
+        assetPattern: (flags.includes("i") ? "(?i)" : "") + source,
       };
 
       const result = await invoke<UpdateInfo>("check_for_update", { config });

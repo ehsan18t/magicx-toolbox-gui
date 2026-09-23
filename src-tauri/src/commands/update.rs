@@ -603,6 +603,13 @@ mod tests {
     }
 
     #[test]
+    fn the_frontends_inline_case_flag_matches_any_case() {
+        let pattern = regex_lite::Regex::new(r"(?i)MagicX[-_]Toolbox.*x64.*\.(exe|msi)$").unwrap();
+        assert!(pattern.is_match("magicx-toolbox_3.1.0_X64-setup.EXE"));
+        assert!(!pattern.is_match("MagicX-Toolbox_3.1.0_arm64.msi"));
+    }
+
+    #[test]
     fn a_staged_installer_cannot_be_rewritten_while_held() {
         const ERROR_SHARING_VIOLATION: i32 = 32;
         let (path, held) = stage_installer(b"payload", "x.exe").unwrap();
