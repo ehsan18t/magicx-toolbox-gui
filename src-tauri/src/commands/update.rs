@@ -101,26 +101,37 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
     let current_version = app.package_info().version.to_string();
     log::debug!("Current version: {}", current_version);
 
-    // Fetch latest release from GitHub API. ureq surfaces a non-2xx status as `Err(Status(..))`,
-    // so the rate-limit (403) and no-releases (404) cases are handled in the error arm.
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(30))
-        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(30)))
+        .http_status_as_error(false)
+        .build()
+        .into();
 
-    let response = match agent
+    let mut response = agent
         .get(&config.releases_api_url)
-        .set("User-Agent", "MagicX-Toolbox-Updater")
+        .header("User-Agent", "MagicX-Toolbox-Updater")
         .call()
-    {
-        Ok(resp) => resp,
-        Err(ureq::Error::Status(403, resp)) => {
-            let remaining = resp.header("x-ratelimit-remaining").unwrap_or("unknown");
+        .map_err(|e| {
+            log::error!("Failed to fetch releases: {}", e);
+            Error::Update(
+                "Failed to fetch update info. Please check your internet connection.".into(),
+            )
+        })?;
+
+    match response.status().as_u16() {
+        200..=299 => {}
+        403 => {
+            let remaining = response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("unknown");
             log::warn!("GitHub API rate limit. Remaining: {}", remaining);
             return Err(Error::Update(
                 "GitHub API rate limit exceeded. Please try again later.".into(),
             ));
         }
-        Err(ureq::Error::Status(404, _)) => {
+        404 => {
             log::warn!("No releases found");
             return Ok(UpdateInfo {
                 available: false,
@@ -134,21 +145,15 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
                 asset_digest: None,
             });
         }
-        Err(ureq::Error::Status(code, _)) => {
+        code => {
             return Err(Error::Update(format!(
                 "GitHub API returned status: {}",
                 code
             )));
         }
-        Err(ureq::Error::Transport(t)) => {
-            log::error!("Failed to fetch releases: {}", t);
-            return Err(Error::Update(
-                "Failed to fetch update info. Please check your internet connection.".into(),
-            ));
-        }
-    };
+    }
 
-    let release: GitHubRelease = response.into_json().map_err(|e| {
+    let release: GitHubRelease = response.body_mut().read_json().map_err(|e| {
         log::error!("Failed to parse release JSON: {}", e);
         Error::Update("Failed to parse update information".into())
     })?;
@@ -418,13 +423,14 @@ fn install_update_in(
     };
 
     // Download the file. ureq returns Err on a non-2xx status, so a failed download is caught here.
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(300)) // 5 minute timeout for downloads
-        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(300)))
+        .build()
+        .into();
 
     let response = agent
         .get(&download_url)
-        .set("User-Agent", "MagicX-Toolbox-Updater")
+        .header("User-Agent", "MagicX-Toolbox-Updater")
         .call()
         .map_err(|e| {
             log::error!("Failed to download update: {}", e);
@@ -432,7 +438,9 @@ fn install_update_in(
         })?;
 
     let mut bytes = Vec::new();
+    // `into_reader` is unbounded; `read_to_vec` would cap an installer at 10 MB.
     response
+        .into_body()
         .into_reader()
         .read_to_end(&mut bytes)
         .map_err(|e| {

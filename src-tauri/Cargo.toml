@@ -48,7 +48,7 @@ tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-t
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-log = "2"
-tauri-plugin-prevent-default = "4"
+tauri-plugin-prevent-default = "5"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
@@ -67,7 +67,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 # HTTP client for update checking (blocking; the update commands are sync). ureq pulls a fraction
 # of reqwest's dependency tree (no tokio/hyper stack) while keeping rustls TLS.
-ureq = { version = "2", features = ["json"] }
+ureq = { version = "3", features = ["json"] }
 regex-lite = "0.1"
 
 # Atomic snapshot writes (write to a temp file, then atomically rename over the target).
@@ -84,7 +84,7 @@ rayon = "1"
 
 # Windows-specific (only for Windows builds)
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 wmi = "0.18"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

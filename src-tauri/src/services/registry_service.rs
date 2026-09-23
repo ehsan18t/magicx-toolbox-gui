@@ -124,7 +124,7 @@ pub fn read_binary(
     );
     let reg_key = open_read_key(hive, key_path, value_name)?;
     match reg_key.get_raw_value(value_name) {
-        Ok(v) => Ok(Some(v.bytes)),
+        Ok(v) => Ok(Some(v.bytes.into_owned())),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(Error::from_io(
             format!("failed to read Binary {value_name}"),
@@ -237,7 +237,10 @@ fn set_raw(
         value_name
     );
     let reg_key = open_write_key(hive, key_path)?;
-    let reg_value = RegValue { vtype, bytes };
+    let reg_value = RegValue {
+        vtype,
+        bytes: bytes.into(),
+    };
     reg_key
         .set_raw_value(value_name, &reg_value)
         .map_err(|e| Error::from_io(format!("failed to set {type_label} {value_name}"), &e))?;
