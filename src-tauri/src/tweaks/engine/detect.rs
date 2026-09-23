@@ -613,9 +613,10 @@ pub(crate) fn history(tweak_id: &str, corpus: &Corpus, deps: &Deps) -> (bool, Op
             .head(tweak_id, corpus, deps.machine_guid, deps.running.build)
         {
             Ok(entry) => entry.is_some(),
+            // Offered anyway: Restore then reports the read error instead of the button vanishing.
             Err(e) => {
                 log::warn!("detect '{tweak_id}': snapshot history unreadable: {e}");
-                false
+                true
             }
         };
     (has_history, attention(tweak_id, deps))
@@ -900,6 +901,15 @@ mod tests {
     }
 
     /// `HKLM\SECURITY` is readable only by SYSTEM, so the read is denied: never "absent".
+    /// A history that cannot be read still offers Restore, which then reports why.
+    #[test]
+    fn an_unreadable_history_still_offers_restore() {
+        let h = Harness::new(MockKind::default(), MockProbes::default());
+        std::fs::write(h._tmp.path().join("demo"), b"not a folder").unwrap();
+        let (has_history, _) = history("demo", &corpus(Vec::new()), &h.deps());
+        assert!(has_history);
+    }
+
     #[test]
     fn a_denied_registry_probe_read_is_an_error_not_absent() {
         let h = Harness::new(MockKind::default(), MockProbes::default());
