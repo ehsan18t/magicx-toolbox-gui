@@ -7,6 +7,7 @@ pub mod registry_service;
 pub mod registry_value;
 pub mod scheduler_service;
 pub mod service_control;
+pub mod single_instance;
 pub mod system32;
 pub mod system_info_service;
 pub mod ti_probe;

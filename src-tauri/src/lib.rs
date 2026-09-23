@@ -53,6 +53,17 @@ pub fn run_broker_if_requested() -> Option<i32> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use services::single_instance::{self, Instance};
+    let after_restart = std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == single_instance::AFTER_RESTART_ARG);
+    let _instance = match single_instance::acquire(after_restart) {
+        Instance::First(guard) => guard,
+        Instance::AlreadyRunning => {
+            single_instance::focus_running_instance("MagicX Toolbox");
+            return;
+        }
+    };
     tauri::Builder::default()
         // Closing mid-apply kills the process while an elevated child may still be driving, and
         // leaves the snapshot entry that was written before the first drive with nothing to undo
