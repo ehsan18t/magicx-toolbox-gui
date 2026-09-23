@@ -88,7 +88,9 @@ after it runs, and a row left planned but never confirmed complete surfaces as *
 The journal proves the action was planned, never that it ran; the scan covers a tweak's whole history rather than only its newest entry, and a row carries its own resolution mark, written by the same path that marks a row completed, so a verified apply or restore takes the rows it drove and verified out of the scan while leaving every row it never accounted for in it.
 
 **Atomic rollback (ADR-0001).** Any failure restores the just-captured entry via the same path as a user
-Restore: undo the journal's completed actions in reverse, then drive the captured state back. The
+Restore: undo the journal's completed actions in reverse, then drive the captured state back. A
+captured Setting that already reads as its captured value is verified by that read and not re-driven, so
+an effect the failed drive never moved (a task Windows refuses to toggle) cannot fail the rollback. The
 returned error carries both the original failure and any rollback failures.
 
 An action whose script started and then failed (non-zero exit, timeout, failed wait) may have partly run, and a probe cannot see partial progress, so the rollback always reverses it like one that ran, even on an untouched machine: its `undo` runs (or, for a drive-back, its `apply` re-runs), verified by its probe when it has one, and only a verified reversal lets its journal row resolve. An action with no `undo` that failed partway leaves the rollback incomplete, reported as a `no_undo` item. Only an action refused before its script was spawned (`ActionNotStarted`, an unrouted level, an elevation never acquired) or never reached counts as not having run. Restore has no such gap: any undo, re-run or re-apply that fails leaves the restore unverified, so its entry is kept and Needs Attention is recorded. A verified full restore

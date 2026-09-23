@@ -1408,7 +1408,7 @@ pub(crate) fn drive_to_captured(
     // An `optional` effect whose resource is absent already sits at its `if_missing` value (spec
     // §5.4), which is where this would drive it. The forward path drops it from a run for the same
     // reason: inside a batch, its refusal to translate would abort every item behind it.
-    plan.retain(|item| !absent_optional(item, deps));
+    plan.retain(|item| !absent_optional(item, deps) && !already_there(item, deps));
 
     drive_back(&plan, deps, &mut failures);
 
@@ -1426,6 +1426,12 @@ struct Restorable<'a> {
     setting: &'a Setting,
     value: &'a Value,
     cx: ExecCx,
+}
+
+/// An effect the failed drive never moved reads back as its captured value, which is the verify;
+/// re-driving it can only fail again (a task Windows refuses to toggle) and fake a lost rollback.
+fn already_there(item: &Restorable<'_>, deps: &Deps) -> bool {
+    matches!(deps.kinds.read(item.setting, &item.cx), Ok(live) if &live == item.value)
 }
 
 fn absent_optional(item: &Restorable<'_>, deps: &Deps) -> bool {
@@ -1693,6 +1699,10 @@ mod tests {
         /// (honest) read-back to reveal a mismatch, without needing a lying read.
         NoOp,
         Err,
+        /// Moves the value, then errors, and refuses every later drive: changed, but stuck there.
+        Stuck,
+        /// Drives normally once; the next drive changes the value but reports an unknown outcome.
+        UnknownOnReturn,
         ResourceMissing,
         /// Drives the value, then reports an unknown elevated outcome; later drives succeed.
         OutcomeUnknownOnce,
@@ -1802,6 +1812,22 @@ mod tests {
             let plan = self.drive_plan.lock().unwrap().get(&key).cloned();
             match plan {
                 Some(DrivePlan::Err) => Err(KindError::Backend("mock drive failure".into())),
+                Some(DrivePlan::Stuck) => {
+                    self.drive_plan
+                        .lock()
+                        .unwrap()
+                        .insert(key.clone(), DrivePlan::Err);
+                    self.live.lock().unwrap().insert(key, target.clone());
+                    Err(KindError::Backend("mock drive failure".into()))
+                }
+                Some(DrivePlan::UnknownOnReturn) => {
+                    self.drive_plan
+                        .lock()
+                        .unwrap()
+                        .insert(key.clone(), DrivePlan::OutcomeUnknownOnce);
+                    self.live.lock().unwrap().insert(key, target.clone());
+                    Ok(())
+                }
                 Some(DrivePlan::OutcomeUnknownOnce) => {
                     self.drive_plan.lock().unwrap().remove(&key);
                     self.live.lock().unwrap().insert(key, target.clone());
@@ -2585,7 +2611,7 @@ mod tests {
             "s1",
             Value::Startup(crate::tweaks::model::StartupType::Manual),
         );
-        h.kind.drive_plan("s1", DrivePlan::Err); // fails both forward AND during rollback
+        h.kind.drive_plan("s1", DrivePlan::Stuck); // fails both forward AND during rollback
         let t = tweak(
             "demo",
             vec![svc_effect("s1", false)],
@@ -3021,15 +3047,16 @@ mod tests {
     fn a_failure_inside_a_batched_rollback_names_its_effect_and_still_attempts_the_rest() {
         use crate::tweaks::model::StartupType;
         let h = Harness::new();
-        for id in ["t1", "t2", "t3", "t4", "a5"] {
+        for id in ["t1", "t2", "t3", "t4", "a5", "t9"] {
             h.kind.seed(id, Value::Startup(StartupType::Manual));
         }
-        h.kind.drive_plan("t3", DrivePlan::Err); // fails forward AND inside the rollback's batch
+        h.kind.drive_plan("t3", DrivePlan::Stuck); // fails forward AND inside the rollback's batch
         let mut t = tweak(
             "demo",
             vec![
                 ti_svc_effect("t2"),
                 ti_svc_effect("t1"),
+                ti_svc_effect("t9"),
                 svc_effect("a5", false),
                 ti_svc_effect("t3"),
                 ti_svc_effect("t4"),
@@ -3039,6 +3066,7 @@ mod tests {
                 vec![
                     ("t2", set(Value::Startup(StartupType::Disabled))),
                     ("t1", set(Value::Startup(StartupType::Disabled))),
+                    ("t9", set(Value::Startup(StartupType::Disabled))),
                     ("a5", set(Value::Startup(StartupType::Disabled))),
                     ("t3", set(Value::Startup(StartupType::Disabled))),
                     ("t4", set(Value::Startup(StartupType::Disabled))),
@@ -3073,10 +3101,14 @@ mod tests {
             .collect();
         let count = |id: &str| drives.iter().filter(|k| k.as_str() == id).count();
         assert_eq!(
+            count("t9"),
+            2,
+            "t9 moved forward and follows t3 in the rollback, so t3's failure must not stop it: {drives:?}"
+        );
+        assert_eq!(
             count("t4"),
-            1,
-            "t4 never ran forward -- the batch stopped at t3 -- and must still be driven back: \
-             {drives:?}"
+            0,
+            "t4 never ran forward and still reads as captured, so it is not driven back: {drives:?}"
         );
         assert_eq!(
             count("t1"),
@@ -3084,7 +3116,7 @@ mod tests {
             "once forward, once back: an item the child proved it drove is verified, never driven \
              a second time: {drives:?}"
         );
-        assert_eq!(h.kind.batches(), vec![2, 2, 4]);
+        assert_eq!(h.kind.live_value("t9"), Value::Startup(StartupType::Manual));
         assert_eq!(h.kind.live_value("t4"), Value::Startup(StartupType::Manual));
         assert!(
             h.snapshots
@@ -3105,17 +3137,17 @@ mod tests {
         for id in ["t1", "t2", "t9"] {
             h.kind.seed(id, Value::Startup(StartupType::Manual));
         }
-        // The failing action is declared first, so no Setting drives forward and t9's single
-        // unknown outcome lands inside the rollback's batch; act's undo reverses its partial run.
+        // The Settings drive forward, then the action fails; t9's unknown outcome comes on its way
+        // back, inside the rollback's batch, and act's undo reverses its partial run.
         h.actions.fail_apply("act_apply");
-        h.kind.drive_plan("t9", DrivePlan::OutcomeUnknownOnce);
+        h.kind.drive_plan("t9", DrivePlan::UnknownOnReturn);
         let mut t = tweak(
             "demo",
             vec![
-                action_effect("act", true, false),
                 ti_svc_effect("t1"),
                 ti_svc_effect("t2"),
                 ti_svc_effect("t9"),
+                action_effect("act", true, false),
             ],
             vec![opt(
                 "A",
@@ -3156,8 +3188,8 @@ mod tests {
         );
         assert_eq!(
             h.kind.batches(),
-            vec![3],
-            "nothing drove forward; the rollback's three elevated effects share one child"
+            vec![3, 3],
+            "the three elevated effects share one child forward and one on the way back"
         );
         assert!(
             h.snapshots
@@ -3364,6 +3396,37 @@ mod tests {
         (t, c)
     }
 
+    /// An effect Windows refuses to change (a task whose toggle fails every time) never moved, so
+    /// the rollback has nothing to undo: it verifies and leaves no Needs Attention behind.
+    #[test]
+    fn an_effect_that_never_moved_does_not_fail_the_rollback() {
+        let h = Harness::new();
+        let (t, c) = attention_fixture(&h, DrivePlan::Err);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s1 refuses");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(rollback_failures.is_empty(), "{rollback_failures:?}");
+        assert_eq!(
+            h.log()
+                .iter()
+                .filter(|op| matches!(op, Op::Drive(k) if k == "s1"))
+                .count(),
+            1,
+            "only the failed forward drive; the rollback reads s1 back instead"
+        );
+        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
+        assert!(h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .is_none());
+    }
+
     /// ADR-0005 amendment: a kept snapshot surfaces as Needs Attention on a rescan and after a
     /// restart (a fresh store over the same directory).
     #[test]
@@ -3404,7 +3467,7 @@ mod tests {
     #[test]
     fn an_incomplete_rollback_records_needs_attention_and_keeps_its_entry() {
         let h = Harness::new();
-        let (t, c) = attention_fixture(&h, DrivePlan::Err);
+        let (t, c) = attention_fixture(&h, DrivePlan::Stuck);
 
         let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("drive fails");
         assert!(err.to_string().contains("unrecoverable"), "{err}");
@@ -3603,7 +3666,7 @@ mod tests {
         h.kind.seed("s1", Value::Startup(StartupType::Manual));
         let t = tweak(
             "demo",
-            vec![action_effect("x", undo, false), svc_effect("s1", false)],
+            vec![svc_effect("s1", false), action_effect("x", undo, false)],
             vec![opt(
                 "A",
                 vec![
@@ -3824,7 +3887,7 @@ mod tests {
         let h = Harness::new();
         h.kind.seed("s1", Value::Startup(StartupType::Manual));
         h.kind.seed("s2", Value::Startup(StartupType::Manual));
-        h.kind.drive_plan("s2", DrivePlan::Err);
+        h.kind.drive_plan("s2", DrivePlan::Stuck);
         let t = two_settings_tweak();
         let c = corpus(vec![t.clone()], vec![]);
         let older = older_open_entry(&h, &c);
@@ -4081,7 +4144,7 @@ mod tests {
         let h = Harness::new();
         h.kind.seed("s1", Value::Startup(StartupType::Manual));
         h.kind.seed("s2", Value::Startup(StartupType::Manual));
-        h.kind.drive_plan("s2", DrivePlan::Err);
+        h.kind.drive_plan("s2", DrivePlan::Stuck);
         let t = two_settings_tweak();
         let c = corpus(vec![t.clone()], vec![]);
         let theirs = crate::tweaks::snapshot::Attention {
