@@ -16,7 +16,7 @@ The **only** restore action is **Restore Snapshot**, which drives the system to 
 
 ## Consequences
 
-Detection is decoupled from the snapshot count: status is purely live-surface-vs-options, so leftover return-points never turn a clean System-Default machine into Needs Attention. `is_applied` means only "there is a history to restore from." A snapshot is released the moment the live system matches the state it holds (via a verified restore or the startup stale-cleanup, which compares **checkable Settings** only, never scripts), so the history self-prunes without ever dropping a state the user is not currently standing on.
+Detection is decoupled from the snapshot count: status is purely live-surface-vs-options, so leftover return-points never turn a clean System-Default machine into Needs Attention. `is_applied` means only "there is a history to restore from." A snapshot is released only by a verified restore or the user's consent (ADR-0002); one whose state the live system already matches stays until then, and still offers Restore.
 
 ## Amended 2026-07-22 (tweak-system redesign, spec rev 2)
 

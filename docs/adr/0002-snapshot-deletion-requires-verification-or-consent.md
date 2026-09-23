@@ -10,15 +10,17 @@ This was violated in practice: a failed first apply discarded the rollback resul
 
 ## Consequences
 
-- Startup stale-snapshot cleanup stays, but only because it already satisfies the rule: it deletes only when every captured resource verifiably matches the Original State, and preserves the Snapshot whenever a resource cannot be checked. A cleanup that deleted on *uncertainty* would violate this ADR.
+- There is no startup stale-snapshot cleanup. A snapshot whose held state already matches the live system (another tool reverted the change) stays until the user restores it (a verified no-op restore consumes it) or consents to release it. Any future cleanup must delete only on a verified match, never on *uncertainty*.
 - Any code path that deletes a Snapshot must first inspect a restore result. Discarding that result (`let _ = restore(...)`) is a bug by definition, not a style choice.
 - "Keep current state" exists in the UI specifically to give consent a place to live. Without it, users stuck in Needs Attention would have no legitimate way to release a Snapshot.
-- Snapshots form a per-tweak **history** of return-points, not a single file; each is released independently under the same rule. A restore, and the startup stale-cleanup, match a held state against the live system using only **checkable Settings** (registry, service, task, hosts, firewall), never cmd/powershell Actions, which have no reliable state to diff (a System-Default capture holds no scripts anyway). Restoring the most-recent snapshot is the only restore action, and a verified match consumes it (see ADR-0003).
+- Snapshots form a per-tweak **history** of return-points, not a single file; each is released independently under the same rule. Restoring the most-recent snapshot is the only restore action, and a verified match consumes it (see ADR-0003).
 
 ## Amended 2026-07-22 (tweak-system redesign, spec rev 2)
 
 - **Invalid entries are released only by consent.** An entry that is corrupt, wrong-schema, wrong-machine, or **dangling** (it references an option or tweak the current corpus no longer defines, or a target unavailable on this machine/build) is treated as *no valid snapshot* for restore purposes, but it is **kept on disk, excluded from the walk, and surfaced in the UI with an explicit discard affordance**. Deleting it silently would be deletion on uncertainty, which this ADR forbids.
 - **The shared-claims record follows the same rule.** The original value captured at the first claim of a shared setting (ADR-0006) is restored, verified, and only then released, on the *last* claim's release. An unverifiable restore keeps the record and surfaces Needs Attention, exactly like a per-tweak snapshot.
-- **The checkable-Settings-only match above is scoped to the startup stale-cleanup.** A *restore* of an authored-option reference is now a full re-apply (ADR-0007), so its verification legitimately includes Action probes (state-based PowerShell checks), not Settings alone. The cleanup keeps the stricter Settings-only comparison because it deletes without a user action in flight.
+- **A restore's verification follows what it restores.** A *restore* of an authored-option reference is a full re-apply (ADR-0007), so its verification includes Action probes (state-based PowerShell checks), not Settings alone.
 
-No startup stale-cleanup is implemented: an entry is deleted only by a verified restore, a verified rollback of the entry the same apply just pushed, a dedup that supersedes a settled entry of the same option, or the user's consent (`keep_current_state`, `discard_snapshot_entry`).
+## Amended 2026-09-23
+
+The startup stale-cleanup this ADR once kept was never implemented and is dropped by decision. An entry is deleted only by a verified restore, a verified rollback of the entry the same apply just pushed, a dedup that supersedes a settled entry of the same option, or the user's consent (`keep_current_state`, `discard_snapshot_entry`).
