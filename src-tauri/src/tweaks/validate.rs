@@ -12,7 +12,8 @@
 
 use super::model::{
     effective_level, ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Level, Opt,
-    OptLabel, OptValue, RegType, Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
+    OptLabel, OptValue, RegType, ScopedValue, Setting, SharedId, StartupType, Tweak, Value,
+    WindowsScope,
 };
 use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
@@ -148,6 +149,16 @@ pub enum ValidationError {
         "tweak `{tweak}` {context} sets `revision`, which is not supported: apply would honour it but detection scopes by build only, so scope by `build` alone"
     )]
     RevisionUnsupported { tweak: String, context: String },
+
+    /// `refuse_if_holds_values` never deletes a key holding a value, so driving it absent fails.
+    #[error(
+        "tweak `{tweak}` can drive registry key effect `{key}` absent while owning value effect `{value}` beneath it: a key still holding a value is never deleted, so that option always fails; drop the value effect or never drive the key absent"
+    )]
+    ValueBeneathOwnDeletableKey {
+        tweak: String,
+        key: EffectId,
+        value: EffectId,
+    },
 
     /// A `windows:` block (tweak, effect, or option-value level, spec §6.6) failed to parse —
     /// a bad build/revision expression, an unknown product, or `revision` without a pinned build.
@@ -598,7 +609,8 @@ fn check_ownership(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
 }
 
 /// A `registry_key` driven absent deletes its subtree, so anything another tweak (or a `shared:`
-/// entry) owns beneath it collides. Effects of one tweak may nest.
+/// entry) owns beneath it collides. Effects of one tweak may nest, except a value beneath a key the
+/// tweak can drive absent.
 fn check_key_subtrees(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
     let settings = owned_settings(corpus);
     for (key_setting, key_owner) in &settings {
@@ -615,7 +627,25 @@ fn check_key_subtrees(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
             };
             let beneath =
                 hive == key.hive && (path.starts_with(&prefix) || (is_value && path == key_path));
-            if beneath && !same_tweak(key_owner, owner) {
+            if !beneath {
+                continue;
+            }
+            if same_tweak(key_owner, owner) {
+                if let (
+                    true,
+                    AddressOwner::Effect { tweak, effect: key },
+                    AddressOwner::Effect { effect: value, .. },
+                ) = (is_value, key_owner, owner)
+                {
+                    if drives_key_absent(corpus, tweak, key) {
+                        errors.push(ValidationError::ValueBeneathOwnDeletableKey {
+                            tweak: tweak.clone(),
+                            key: key.clone(),
+                            value: value.clone(),
+                        });
+                    }
+                }
+            } else {
                 errors.push(ValidationError::DuplicateAddress {
                     address: format!(
                         "{} (inside registry key {:?}\\{})",
@@ -629,6 +659,23 @@ fn check_key_subtrees(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
             }
         }
     }
+}
+
+fn drives_key_absent(corpus: &Corpus, tweak: &str, key: &EffectId) -> bool {
+    corpus
+        .tweaks
+        .iter()
+        .filter(|t| t.id == tweak)
+        .flat_map(|t| &t.options)
+        .any(|opt| {
+            matches!(
+                opt.values.get(key),
+                Some(OptValue::Set(ScopedValue {
+                    value: Value::Present(false),
+                    ..
+                }))
+            )
+        })
 }
 
 fn same_tweak(a: &AddressOwner, b: &AddressOwner) -> bool {
@@ -1518,6 +1565,19 @@ mod tests {
                 "effect `flag` `windows:`",
                 "option `On` value for `flag`"
             ]
+        );
+    }
+
+    #[test]
+    fn value_beneath_own_deletable_key_is_rejected() {
+        let errors = errors_for("value_beneath_own_deletable_key.yaml");
+        assert!(
+            matches!(
+                errors.as_slice(),
+                [ValidationError::ValueBeneathOwnDeletableKey { tweak, key, value }]
+                    if tweak == "deletes_own_key" && key.0 == "the_key" && value.0 == "own_value"
+            ),
+            "{errors:?}"
         );
     }
 

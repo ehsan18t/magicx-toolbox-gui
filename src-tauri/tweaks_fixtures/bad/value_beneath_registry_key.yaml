@@ -7,24 +7,20 @@ category:
 tweaks:
   - id: key_owner
     name: "Key Owner"
-    description: "Owns the Feature key; a value of its own beneath it is fine."
+    description: "Owns the Feature key and can drive it absent, deleting its subtree."
     risk_level: low
     elevation: user
     reversible: true
     effects:
       - id: feature_key
         registry_key: { key: 'HKCU\Software\ExampleCo\Feature' }
-      - id: own_value
-        registry: { key: 'HKCU\Software\ExampleCo\Feature', name: Own, type: REG_DWORD }
     options:
       - label: "Present"
         values:
           feature_key: present
-          own_value: 1
       - label: "Absent"
         values:
           feature_key: absent
-          own_value: absent
 
   - id: value_owner
     name: "Value Owner"
