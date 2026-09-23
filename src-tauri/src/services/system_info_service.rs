@@ -1041,6 +1041,7 @@ pub fn machine_guid() -> Option<String> {
     RegKey::predef(HKEY_LOCAL_MACHINE)
         .open_subkey_with_flags("SOFTWARE\\Microsoft\\Cryptography", KEY_READ)
         .and_then(|key| key.get_value::<String, _>("MachineGuid"))
+        .inspect_err(|e| log::warn!("could not read MachineGuid: {e}"))
         .ok()
 }
 
