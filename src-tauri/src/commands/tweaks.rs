@@ -215,12 +215,29 @@ fn needs_elevation(required: Level, current_level: Level) -> bool {
 fn required_level(tweak: &Tweak, corpus: &Corpus, winver: &WinVer) -> Level {
     // An `optional` effect still counts: whether its resource exists is only known once the apply
     // runs, and over-stating the level beats a refusal from a card that promised it would work.
-    apply::driving_surface(tweak, winver)
+    let routed = apply::driving_surface(tweak, winver)
         .into_iter()
         .map(|e| context::route(e, tweak, corpus).level())
         .fold(tweak.elevation, |max, l| {
             context::effective_level(max, Some(l))
+        });
+    // A last release drives the captured original back at the level it was captured at.
+    tweak
+        .surface
+        .iter()
+        .filter_map(|e| match &e.kind {
+            Effect::Shared(id) => claims_restore_level(id),
+            _ => None,
         })
+        .fold(routed, |max, l| context::effective_level(max, Some(l)))
+}
+
+fn claims_restore_level(id: &SharedId) -> Option<Level> {
+    static CLAIMS: std::sync::OnceLock<Option<ClaimsStore>> = std::sync::OnceLock::new();
+    let store = CLAIMS
+        .get_or_init(|| ClaimsStore::open_default().ok())
+        .as_ref()?;
+    store.restore_level(id).ok().flatten()
 }
 
 /// `ti_blocked` is `ti_probe`'s answer, a parameter so tests can inject it.

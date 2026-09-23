@@ -347,6 +347,12 @@ impl ClaimsStore {
             .unwrap_or_default())
     }
 
+    /// The level `shared_id`'s original goes back at on its last release, if it is claimed.
+    pub fn restore_level(&self, shared_id: &SharedId) -> Result<Option<Level>, ClaimsError> {
+        let _guard = lock_claims();
+        Ok(self.load()?.get(&shared_id.0).and_then(|r| r.restore_level))
+    }
+
     // Takes no lock itself: `holders` does, and the mutex is not reentrant.
     pub fn is_claimed(&self, shared_id: &SharedId) -> Result<bool, ClaimsError> {
         Ok(!self.holders(shared_id)?.is_empty())
@@ -950,6 +956,18 @@ mod tests {
             *mock.drive_levels.lock().unwrap(),
             vec![Level::Ti, Level::Ti]
         );
+    }
+
+    #[test]
+    fn the_recorded_restore_level_is_readable_while_claimed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store(tmp.path());
+        let shared = shared_def();
+        let mock = MockKind::new(original_value());
+        assert_eq!(s.restore_level(&shared.id).unwrap(), None);
+
+        s.claim(&shared, "tweak_a", &mock, &at(Level::Ti)).unwrap();
+        assert_eq!(s.restore_level(&shared.id).unwrap(), Some(Level::Ti));
     }
 
     #[test]
