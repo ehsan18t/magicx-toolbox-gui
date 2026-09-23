@@ -13,20 +13,18 @@ the ADR and delete the entry.
 
 | #   | Issue                                           | Bites today?                                 | Found      |
 | --- | ----------------------------------------------- | -------------------------------------------- | ---------- |
-| 2   | Broker response is written to user TEMP         | only as a forced false failure, never silent | 2026-09-12 |
+| 2   | Broker transport falls back to user TEMP where SystemTemp is missing | only there, and only as a forced false failure | 2026-09-12 |
 | 3   | Nothing inside the broker child is observable   | only as thin support detail after a failure  | 2026-09-12 |
 
 ---
 
-## 2. Broker response is written to user TEMP
+## 2. Broker transport falls back to user TEMP where SystemTemp is missing
 
-**What is already guarded.** The request cannot be substituted. `run_elevated_broker` (`services/elevation/broker.rs`) puts the request file's identity (volume serial plus 128-bit file id, `exclusive_temp::file_identity`) on the TrustedInstaller child's command line, and `read_own_request` runs the request only when the file it opened has that identity, reading it through the same handle. The parent holds its `FILE_SHARE_READ`-only write handle for the whole spawn, so a matching identity means exactly the bytes the parent wrote. Anything else exits `EXIT_FOREIGN_REQUEST` before any op runs.
+**What is already guarded.** The request cannot be substituted anywhere: `run_elevated_broker` (`services/elevation/broker.rs`) passes the request file's identity on the TrustedInstaller child's command line, and `read_own_request` runs only the file with that identity, read through the same handle (`EXIT_FOREIGN_REQUEST` otherwise). The request and response are exchanged through `%SystemRoot%\SystemTemp` (`system_temp`), which grants only SYSTEM and Administrators, so the unelevated side of the account can neither read nor replace the response. `a_real_trusted_installer_child_serves_only_the_request_it_was_given` (ignored; needs an elevated run after `cargo build`) drives the real TrustedInstaller child through that folder, and passes on Windows 11 24H2 (build 26100).
 
-**The residual.** The child still creates its response in the parent's `%TEMP%`, a directory the unelevated side of the same account owns (and can redirect through `HKCU\Environment`). `CREATE_NEW` plus `FILE_FLAG_OPEN_REPARSE_POINT` guard only the last path component, so the unguessable name carries the rest. A same-user process that learns the path can overwrite the response between the child's exit and the parent's read. The in-process read-back turns a forged success into a verify mismatch and a rollback, so the cost is a false failure, never a false success.
+**The residual.** Where `SystemTemp` is missing, or refuses the request file, the transport falls back to the parent's `%TEMP%` and logs that it did. There the response is created in a directory the unelevated side owns, so a same-user process that learns its path can overwrite it between the child's exit and the parent's read. The in-process read-back turns a forged success into a verify mismatch and a rollback, so the cost is a false failure, never a false success. The request stays bound by its identity either way.
 
-**Candidate fix.** Exchange the response (and the request with it) through `%SystemRoot%\SystemTemp`. A medium-integrity process of the admin user holds `Administrators` only as a deny-only SID, so an ACL that grants nothing to `Users` or the user's own SID keeps it out, and because it does not own that directory it has no `FILE_DELETE_CHILD` there to rename or replace files. On the development machine (Windows 11 24H2, build 10.0.26100) the directory exists and `icacls` reports exactly `NT AUTHORITY\SYSTEM:(OI)(CI)(F)` and `BUILTIN\Administrators:(OI)(CI)(F)`. Its presence and ACL on 19045, 22621 and 22631 are unverified.
-
-**Why it is deferred.** Getting it wrong breaks every elevated apply, and two things need a real elevated run: that the TrustedInstaller child can read and write there, and that the directory exists with that ACL on every supported Windows version (a fallback to `%TEMP%` would reopen this gap). A per-run directory under `%TEMP%` with a restrictive DACL does not work: the user owns `%TEMP%`, so `FILE_DELETE_CHILD` lets it rename or delete that directory regardless of its DACL.
+**What is unknown.** Whether `SystemTemp` exists with the same ACL on 19045, 22621 and 22631. The Manual Tests case F62 checks exactly that on a real machine; run it once per supported build. If a build lacks it, the options are to create it with the same ACL at install time, or to accept the fallback there.
 
 ## 3. Nothing inside the broker child is observable
 

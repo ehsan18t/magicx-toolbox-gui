@@ -457,9 +457,18 @@ fn validate_response(
     Ok(resp)
 }
 
+/// `%SystemRoot%\SystemTemp` grants only SYSTEM and Administrators, so the unelevated side of this
+/// account cannot rewrite a response there as it can in its own `%TEMP%` (KNOWN_ISSUES #2).
+fn system_temp() -> Option<std::path::PathBuf> {
+    super::ti_elevation::windows_dir()
+        .ok()
+        .map(|windows| windows.join("SystemTemp"))
+        .filter(|dir| dir.is_dir())
+}
+
 /// `None` runs in-process; otherwise a TrustedInstaller child runs the request file only if its file
-/// identity matches the command line's. A response forged after the child exits (KNOWN_ISSUES #2)
-/// fails the in-process read-back, so it can cost a false failure, never a false success.
+/// identity matches the command line's. Only where the transport falls back to `%TEMP%` can a
+/// response be forged, and the in-process read-back turns that into a false failure (KNOWN_ISSUES #2).
 fn run_elevated_broker(
     level: Elevation,
     ops: Vec<BrokerOp>,
@@ -491,22 +500,31 @@ fn run_elevated_broker(
     #[cfg(not(feature = "test-build"))]
     let transport_dir: Option<std::path::PathBuf> = None;
 
-    let req_file = match &transport_dir {
-        Some(dir) => ExclusiveTempFile::create_in(
+    let create = |dir: &std::path::Path| {
+        ExclusiveTempFile::create_in(
             dir,
             "magicx-broker",
             "req.json",
             "broker request",
             &req_json,
-        ),
-        None => ExclusiveTempFile::create("magicx-broker", "req.json", "broker request", &req_json),
-    }
-    .map_err(|e| undelivered(format!("write broker request: {e}")))?;
-    let resp_path = match &transport_dir {
-        Some(dir) => exclusive_temp::unique_temp_path_in(dir, "magicx-broker", "resp.json"),
-        None => exclusive_temp::unique_temp_path("magicx-broker", "resp.json"),
-    }
-    .map_err(|e| undelivered(format!("reserve broker response path: {e}")))?;
+        )
+    };
+    let (req_file, dir) = match transport_dir {
+        Some(dir) => (create(&dir), dir),
+        None => match system_temp().map(|dir| (create(&dir), dir)) {
+            Some((Ok(file), dir)) => (Ok(file), dir),
+            other => {
+                if let Some((Err(e), _)) = other {
+                    log::warn!("broker transport falls back to %TEMP%: SystemTemp refused the request ({})", e.kind());
+                }
+                let temp = std::env::temp_dir();
+                (create(&temp), temp)
+            }
+        },
+    };
+    let req_file = req_file.map_err(|e| undelivered(format!("write broker request: {e}")))?;
+    let resp_path = exclusive_temp::unique_temp_path_in(&dir, "magicx-broker", "resp.json")
+        .map_err(|e| undelivered(format!("reserve broker response path: {e}")))?;
     let resp_guard = exclusive_temp::TempPathGuard::new(resp_path, "broker response");
     let req_identity = req_file
         .identity()
@@ -622,7 +640,11 @@ impl BrokerOpError {
 /// Runs a whole batch of operations in ONE elevated child (spec §9's grouped execution). The only
 /// entry point into the broker.
 pub fn run_ops(level: Elevation, ops: Vec<BrokerOp>) -> Result<(), BrokerOpError> {
-    run_ops_with(level, ops, super::ti_elevation::spawn_as_trusted_installer)
+    run_ops_with(
+        level,
+        ops,
+        crate::services::elevation::ti_elevation::spawn_as_trusted_installer,
+    )
 }
 
 /// `spawn` runs the child's command line: the TrustedInstaller launch, or a test's fake child.
@@ -1629,6 +1651,59 @@ mod tests {
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "Flag").unwrap(),
             Some(9)
+        );
+    }
+
+    /// The real transport under a real TrustedInstaller token, with the built app exe as the child and
+    /// an empty batch, so nothing on the machine changes.
+    #[test]
+    #[ignore = "spawns a real TrustedInstaller child; run elevated after `cargo build`, with --ignored"]
+    fn a_real_trusted_installer_child_serves_only_the_request_it_was_given() {
+        let harness = std::env::current_exe().unwrap();
+        let app = harness
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("magicx-toolbox.exe");
+        assert!(app.exists(), "build the app first: {}", app.display());
+        let as_app = |cmdline: &str| {
+            let patched = cmdline.replacen(
+                &format!("\"{}\"", harness.display()),
+                &format!("\"{}\"", app.display()),
+                1,
+            );
+            assert_ne!(patched, cmdline, "the child must be the app exe");
+            patched
+        };
+
+        let served = run_elevated_broker(Elevation::TrustedInstaller, vec![], |cmdline| {
+            if system_temp().is_some() {
+                assert!(
+                    cmdline.contains("SystemTemp"),
+                    "elevated, the transport is SystemTemp"
+                );
+            }
+            crate::services::elevation::ti_elevation::spawn_as_trusted_installer(&as_app(cmdline))
+        })
+        .expect("the real child serves its own request");
+        assert_eq!(served.attempted, 0);
+
+        let refused = run_elevated_broker(Elevation::TrustedInstaller, vec![], |cmdline| {
+            let (head, _identity) = cmdline.rsplit_once(' ').unwrap();
+            crate::services::elevation::ti_elevation::spawn_as_trusted_installer(&as_app(&format!(
+                "{head} 0-0"
+            )))
+        });
+        assert!(
+            matches!(
+                refused,
+                Err(BrokerOpError::CouldNotAcquire(
+                    AcquireReason::RequestNotDelivered,
+                    _
+                ))
+            ),
+            "{refused:?}"
         );
     }
 

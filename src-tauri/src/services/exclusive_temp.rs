@@ -181,13 +181,8 @@ fn cleanup_failure(result: io::Result<()>) -> Option<io::ErrorKind> {
     }
 }
 
-/// An unpredictable path in `%TEMP%`. Split out because a file another process *creates* (rather
-/// than reads) cannot be opened exclusively here, but still benefits from being unguessable.
-pub fn unique_temp_path(prefix: &str, ext: &str) -> io::Result<PathBuf> {
-    unique_temp_path_in(&std::env::temp_dir(), prefix, ext)
-}
-
-/// As [`unique_temp_path`], but under `dir`.
+/// An unpredictable path under `dir`, for a file another process *creates* (rather than reads),
+/// which cannot be opened exclusively here but still benefits from being unguessable.
 pub fn unique_temp_path_in(dir: &Path, prefix: &str, ext: &str) -> io::Result<PathBuf> {
     let token = random_hex_token()?;
     Ok(dir.join(format!("{prefix}-{}-{token}.{ext}", std::process::id())))
@@ -267,7 +262,7 @@ mod tests {
 
     #[test]
     fn temp_path_guard_removes_the_reserved_path_on_drop() {
-        let path = unique_temp_path("magicx-test", "tmp").unwrap();
+        let path = unique_temp_path_in(&std::env::temp_dir(), "magicx-test", "tmp").unwrap();
         std::fs::write(&path, b"resp").unwrap();
         {
             let _guard = TempPathGuard::new(path.clone(), "magicx-test");
@@ -280,7 +275,7 @@ mod tests {
 
     #[test]
     fn temp_path_guard_on_a_never_created_path_is_a_noop() {
-        let path = unique_temp_path("magicx-test", "tmp").unwrap();
+        let path = unique_temp_path_in(&std::env::temp_dir(), "magicx-test", "tmp").unwrap();
         drop(TempPathGuard::new(path.clone(), "magicx-test"));
         assert!(!path.exists());
     }

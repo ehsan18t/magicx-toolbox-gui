@@ -95,6 +95,11 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # The real TrustedInstaller transport test runs the built app exe as its child.
+      - name: Build the app exe
+        working-directory: src-tauri
+        run: cargo build
+
       - name: Rust tests (ignored)
         working-directory: src-tauri
         run: cargo test --all-targets -- --ignored --test-threads=1

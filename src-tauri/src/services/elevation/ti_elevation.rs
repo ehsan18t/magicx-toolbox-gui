@@ -453,7 +453,6 @@ fn system_env_block() -> Result<Vec<u16>, Error> {
     }
 }
 
-#[cfg(feature = "test-build")]
 pub(crate) fn windows_dir() -> Result<std::path::PathBuf, Error> {
     use std::os::windows::ffi::OsStringExt;
     system_folder(GetSystemWindowsDirectoryW, "Windows")
