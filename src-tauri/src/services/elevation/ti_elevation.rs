@@ -199,6 +199,31 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
     }
 }
 
+/// Enable `SeDebugPrivilege` before opening the TrustedInstaller process. In a test build a probe
+/// can ask for it to be left disabled instead, to measure whether the open needs it (review A3.4).
+#[cfg(not(feature = "test-build"))]
+fn acquire_debug_privilege() -> Result<(), SpawnError> {
+    enable_debug_privilege()
+}
+
+#[cfg(feature = "test-build")]
+fn acquire_debug_privilege() -> Result<(), SpawnError> {
+    if crate::manual_tests::probe::disable_debug_privilege() {
+        super::common::disable_debug_privilege()
+    } else {
+        enable_debug_privilege()
+    }
+}
+
+/// test-build: re-enable `SeDebugPrivilege` after the A3.4 probe disabled it, leaving the process
+/// token as it was found. Best-effort; the next real spawn re-enables it regardless.
+#[cfg(feature = "test-build")]
+pub(crate) fn restore_debug_privilege() {
+    if let Err(e) = enable_debug_privilege() {
+        log::warn!("could not re-enable SeDebugPrivilege after the A3.4 probe: {e:?}");
+    }
+}
+
 fn ti_service_failure(e: Error) -> SpawnError {
     let reason = match e {
         Error::Win32 {
@@ -289,7 +314,7 @@ fn foreign_image(image: &str, windows_dir: &str) -> String {
 /// handle. The SCM's pid can be recycled by now (the service stops when idle), so once the open
 /// handle pins it, its image must match and the SCM must still report that pid running.
 fn get_trusted_installer_handle() -> Result<HANDLE, SpawnError> {
-    enable_debug_privilege()?;
+    acquire_debug_privilege()?;
     let windows_dir = String::from_utf16_lossy(
         &system_folder(GetSystemWindowsDirectoryW, "Windows").map_err(spawn_failed)?,
     );
@@ -419,14 +444,61 @@ fn open_trusted_installer(
     }
 }
 
+/// test-build (C5): the system-only environment block a probe asks the child to launch with, or
+/// `None` when the probe is not armed.
+#[cfg(feature = "test-build")]
+fn test_build_env_block() -> Result<Option<Vec<u16>>, SpawnError> {
+    if !crate::manual_tests::probe::system_only_env() {
+        return Ok(None);
+    }
+    let system32 = String::from_utf16_lossy(
+        &system_folder(GetSystemDirectoryW, "System32").map_err(spawn_failed)?,
+    );
+    let windows = String::from_utf16_lossy(
+        &system_folder(GetSystemWindowsDirectoryW, "Windows").map_err(spawn_failed)?,
+    );
+    Ok(Some(crate::manual_tests::probe::system_env_block(
+        &system32, &windows,
+    )))
+}
+
+/// test-build (F60): when a probe asked for it, record whether the freshly spawned child sits in a
+/// job object, read from the parent's own handle to it before `wait_and_reap` closes it.
+#[cfg(feature = "test-build")]
+fn capture_child_job(pi: &PROCESS_INFORMATION) {
+    use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+    if !crate::manual_tests::probe::capture_job() {
+        return;
+    }
+    let mut in_job: i32 = FALSE;
+    // SAFETY: `pi.hProcess` is a live child handle from a successful CreateProcessW.
+    let ok = unsafe { IsProcessInJob(pi.hProcess, ptr::null_mut(), &mut in_job) } != FALSE;
+    // SAFETY: GetLastError only reads thread-local state.
+    let query_error = (!ok).then(|| unsafe { GetLastError() });
+    crate::manual_tests::probe::record_job(in_job != FALSE, query_error);
+}
+
 /// Spawn `command_line` with TrustedInstaller.exe as its parent, so it inherits the TI token, and
 /// wait for it. The broker's TI launcher; the command line is built by
 /// `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, SpawnError> {
     let mut work_dir = system_folder(GetSystemDirectoryW, "System32").map_err(spawn_failed)?;
     work_dir.push(0);
-    let ti_handle = get_trusted_installer_handle()?;
     let mut command_wide = to_wide_string(command_line);
+
+    // test-build (C5): a probe can hand the child a system-only environment instead of ours. Built
+    // before the TI handle opens, so a fallible build here cannot leak it.
+    #[cfg(feature = "test-build")]
+    let env_block: Option<Vec<u16>> = test_build_env_block()?;
+    #[cfg(not(feature = "test-build"))]
+    let env_block: Option<Vec<u16>> = None;
+    let env_ptr = env_block
+        .as_ref()
+        .map_or(ptr::null::<core::ffi::c_void>(), |b| {
+            b.as_ptr() as *const core::ffi::c_void
+        });
+
+    let ti_handle = get_trusted_installer_handle()?;
 
     // SAFETY: `ti_handle` closes on every path once `create` returns. The usize-aligned list
     // buffer is sized by the sizing call and outlives DeleteProcThreadAttributeList. `command_wide`
@@ -483,7 +555,8 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
             startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
             let mut process_info = empty_process_info();
 
-            // Null lpEnvironment: the child inherits this app's (the admin user's) environment.
+            // lpEnvironment is null in production, so the child inherits this app's (the admin
+            // user's) environment; `env_ptr` overrides it only under a test-build probe (C5).
             let created = CreateProcessW(
                 ptr::null(),
                 command_wide.as_mut_ptr(),
@@ -491,7 +564,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
                 ptr::null(),
                 FALSE,
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-                ptr::null(),
+                env_ptr,
                 work_dir.as_ptr(),
                 &startup_info.StartupInfo,
                 &mut process_info,
@@ -511,6 +584,8 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
         let created = create();
         CloseHandle(ti_handle);
         let process_info = created.map_err(spawn_failed)?;
+        #[cfg(feature = "test-build")]
+        capture_child_job(&process_info); // F60: while the child is still alive
         wait_and_reap(
             &process_info,
             "TrustedInstaller command",

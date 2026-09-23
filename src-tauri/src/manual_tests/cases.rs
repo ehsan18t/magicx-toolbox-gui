@@ -1,11 +1,14 @@
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use super::errors;
 use super::runner::{arm_batches, take_batches, BatchRecord, Ctx, Verdict};
+use super::{errors, probe};
 use crate::commands::tweaks::{build_deps, find_tweak};
 use crate::error::{win32, Error};
+use crate::services::elevation::{run_ops, AcquireReason, BrokerOpError, Elevation};
+use crate::services::exclusive_temp::ExclusiveTempFile;
 use crate::services::{scheduler_service, system_info_service};
 use crate::tweaks::compiled_corpus;
 use crate::tweaks::engine::{context, detect, lifecycle, user_facing_failure, Phase};
@@ -588,6 +591,196 @@ pub fn waasmedic_task_read(cx: &Ctx) -> Verdict {
     }
 }
 
+fn require_elevated(cx: &Ctx) -> Option<Verdict> {
+    let elevated = system_info_service::is_running_as_admin();
+    cx.info(format!("elevated = {elevated}"));
+    (!elevated)
+        .then(|| Verdict::fail("Refused: the app is not elevated; restart it as administrator."))
+}
+
+/// `%SystemRoot%\SystemTemp`, the candidate transport directory only SYSTEM and Administrators own.
+fn systemtemp_dir() -> Option<PathBuf> {
+    std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("SystemTemp"))
+}
+
+fn probe_admin_can_write(dir: &Path) -> std::io::Result<()> {
+    ExclusiveTempFile::create_in(dir, "magicx-f62", "probe", "f62 probe", b"probe").map(|_| ())
+}
+
+/// A3.4 verdict from a no-op spawn made with `SeDebugPrivilege` disabled. Only a failure to open the
+/// TrustedInstaller process (`TiProcessUnverified`) points at the privilege; other failures do not.
+fn interpret_debug_privilege(outcome: &Result<(), BrokerOpError>) -> Verdict {
+    match outcome {
+        Ok(()) => Verdict::info(
+            "SeDebugPrivilege was NOT needed: the TrustedInstaller child spawned with it disabled. The enabling call and its failure reason could be removed.",
+        ),
+        Err(BrokerOpError::CouldNotAcquire(AcquireReason::TiProcessUnverified, e)) => {
+            // TiProcessUnverified is access-denied on the open (privilege needed) OR a pid/image
+            // mismatch (unrelated); the two are not typed apart, so present the detail and both.
+            Verdict::info(format!(
+                "Opening the TrustedInstaller process failed with SeDebugPrivilege disabled: {}. Access denied here means the privilege is required, so keep the enabling call; a pid or image mismatch is unrelated, so re-run the card.",
+                errors::app(e)
+            ))
+        }
+        Err(BrokerOpError::CouldNotAcquire(reason, e)) => Verdict::fail(format!(
+            "Inconclusive: the no-op spawn could not acquire the child for another reason ({reason}: {}).",
+            errors::app(e)
+        )),
+        Err(e) => Verdict::fail(format!("Inconclusive: the no-op batch failed unexpectedly ({e}).")),
+    }
+}
+
+pub fn debug_privilege_needed(cx: &Ctx) -> Verdict {
+    if let Some(v) = require_elevated(cx) {
+        return v;
+    }
+    cx.info("spawning a no-op TrustedInstaller batch with SeDebugPrivilege disabled");
+    let outcome = {
+        let _probe = probe::arm_disable_debug_privilege();
+        run_ops(Elevation::TrustedInstaller, Vec::new())
+    };
+    crate::services::elevation::restore_debug_privilege(); // leave the token as we found it
+    match &outcome {
+        Ok(()) => cx.info("no-op spawn returned Ok: the child ran with the privilege disabled"),
+        Err(e) => cx.error(format!("no-op spawn returned: {e}")),
+    }
+    interpret_debug_privilege(&outcome)
+}
+
+pub fn child_job_object(cx: &Ctx) -> Verdict {
+    if let Some(v) = require_elevated(cx) {
+        return v;
+    }
+    cx.info("spawning a no-op TrustedInstaller batch to inspect its job membership");
+    let (outcome, job) = {
+        let _probe = probe::arm_capture_job();
+        let outcome = run_ops(Elevation::TrustedInstaller, Vec::new());
+        (outcome, probe::observed_job())
+    };
+    if let Err(e) = &outcome {
+        cx.error(format!("no-op spawn returned: {e}"));
+    }
+    // The observation is taken before the child is reaped, so it stands even if the batch later
+    // errored; only fall back to the spawn error when there is no observation to report.
+    let Some(o) = job else {
+        return match &outcome {
+            Err(e) => Verdict::fail(format!(
+                "Could not spawn the elevated child to inspect it: {e}"
+            )),
+            Ok(()) => {
+                Verdict::fail("The spawn reported no job membership; the capture hook did not run.")
+            }
+        };
+    };
+    if let Some(code) = o.query_error {
+        return Verdict::fail(format!("IsProcessInJob failed (Win32 {code})."));
+    }
+    let caveat = if outcome.is_err() {
+        " (the no-op batch itself did not complete cleanly; see the log)"
+    } else {
+        ""
+    };
+    if o.in_job {
+        Verdict::info(format!(
+            "The broker child IS in a job object. Check whether its limits (for example kill-on-close) could end a batch early before adding a job of our own; see review F60.{caveat}"
+        ))
+    } else {
+        Verdict::info(format!(
+            "The broker child is NOT in a job object; it does not inherit TrustedInstaller's job. F60 is settled.{caveat}"
+        ))
+    }
+}
+
+/// C5 and F62 share the apply/verify/restore body; only what is armed around the apply differs.
+fn applied_under_probe(cx: &Ctx, note: &str, armed: probe::ProbeGuard) -> Verdict {
+    let tweak = match target(cx) {
+        Ok(t) => t,
+        Err(v) => return v,
+    };
+    let baseline = match capture_baseline(cx, tweak) {
+        Ok(b) => b,
+        Err(v) => return v,
+    };
+    cx.info(note);
+    let applied = {
+        let _armed = armed;
+        apply(cx, tweak)
+    };
+    let applied = match applied {
+        Ok(a) => a,
+        Err(v) => return v,
+    };
+    if !applied.verified {
+        return apply_failed(cx, tweak, &baseline);
+    }
+    read_surface(cx, tweak, "applied");
+    let restored = restore(cx, tweak);
+    let diffs = compare_with_baseline(cx, tweak, &baseline, "after restore");
+    if !restored || !diffs.is_empty() {
+        return restore_failed(restored, &diffs, Vec::new());
+    }
+    let details: Vec<String> = applied
+        .batches
+        .iter()
+        .enumerate()
+        .map(|(i, b)| batch_line(i, b))
+        .collect();
+    Verdict::pass(format!(
+        "Apply and restore verified, every effect matches the baseline. {} elevated batch(es) on apply, whole apply {} ms.",
+        applied.batches.len(),
+        applied.wall_ms
+    ))
+    .with_details(details)
+}
+
+pub fn system_only_environment(cx: &Ctx) -> Verdict {
+    let mut verdict = applied_under_probe(
+        cx,
+        "applying under a system-only environment block; the scheduler COM calls must still work",
+        probe::arm_system_only_env(),
+    );
+    if verdict.status == super::runner::Status::Pass {
+        verdict.summary = format!(
+            "{} The scheduler COM calls worked without the user's environment, so a system-only block is viable (C5).",
+            verdict.summary
+        );
+    }
+    verdict
+}
+
+pub fn systemtemp_transport(cx: &Ctx) -> Verdict {
+    if let Some(v) = require_elevated(cx) {
+        return v;
+    }
+    let Some(system_temp) = systemtemp_dir() else {
+        return Verdict::info("SystemRoot is not set, so SystemTemp cannot be located.");
+    };
+    cx.info(format!("SystemTemp = {}", system_temp.display()));
+    if !system_temp.exists() {
+        return Verdict::info(
+            "%SystemRoot%\\SystemTemp does not exist on this build, so the transport cannot move here. F62 stays open.",
+        );
+    }
+    if let Err(e) = probe_admin_can_write(&system_temp) {
+        return Verdict::fail(format!(
+            "This process could not create a file in SystemTemp ({e}); it needs administrator rights."
+        ));
+    }
+    cx.info("this process can create a file in SystemTemp; routing the apply's transport there");
+    let mut verdict = applied_under_probe(
+        cx,
+        "applying with the broker request and response routed through SystemTemp",
+        probe::arm_transport_dir(system_temp),
+    );
+    if verdict.status == super::runner::Status::Pass {
+        verdict.summary = format!(
+            "{} The TrustedInstaller child read and wrote in SystemTemp, so the transport can move there (F62).",
+            verdict.summary
+        );
+    }
+    verdict
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -658,5 +851,40 @@ mod tests {
         assert!(is_access_denied(&Error::win32("x", 0x8007_0005)));
         assert!(is_access_denied(&Error::win32("x", win32::ACCESS_DENIED)));
         assert!(!is_access_denied(&Error::win32("x", 0x8007_0002)));
+    }
+
+    #[test]
+    fn a_spawn_with_the_privilege_disabled_that_works_reads_as_not_needed() {
+        let v = interpret_debug_privilege(&Ok(()));
+        assert!(v.summary.contains("NOT needed"), "{}", v.summary);
+    }
+
+    #[test]
+    fn a_failed_ti_open_with_the_privilege_disabled_explains_both_causes() {
+        let e = BrokerOpError::CouldNotAcquire(
+            AcquireReason::TiProcessUnverified,
+            Error::win32("open TrustedInstaller", win32::ACCESS_DENIED),
+        );
+        let summary = interpret_debug_privilege(&Err(e)).summary;
+        assert!(summary.contains("privilege is required"), "{summary}");
+        assert!(summary.contains("mismatch"), "{summary}");
+    }
+
+    #[test]
+    fn a_service_failure_with_the_privilege_disabled_is_inconclusive() {
+        let e = BrokerOpError::CouldNotAcquire(
+            AcquireReason::TiServiceDisabled,
+            Error::ServiceControl("disabled".into()),
+        );
+        assert!(interpret_debug_privilege(&Err(e))
+            .summary
+            .contains("Inconclusive"));
+    }
+
+    #[test]
+    fn systemtemp_sits_under_the_windows_folder_when_systemroot_is_set() {
+        if let Some(dir) = systemtemp_dir() {
+            assert!(dir.ends_with("SystemTemp"), "{}", dir.display());
+        }
     }
 }

@@ -309,6 +309,7 @@ pub async fn run(
 }
 
 fn execute(app: AppHandle, test: &'static ManualTest, minutes: Option<u32>) -> ManualTestReport {
+    super::probe::reset(); // no card inherits another's armed probe
     let minutes = minutes.or(test.minutes).unwrap_or(0).clamp(1, 24 * 60);
     let winver = running_winver();
     let header = [

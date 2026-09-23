@@ -4,6 +4,7 @@
 
 mod cases;
 mod errors;
+pub(crate) mod probe;
 mod runner;
 
 pub use runner::{cancel, record_batch, run, Ctx, ManualTestReport, Verdict};
@@ -59,6 +60,42 @@ pub const TESTS: &[ManualTest] = &[
         changes_system: false,
         minutes: None,
         run: cases::waasmedic_task_read,
+    },
+    ManualTest {
+        id: "debug_privilege_needed",
+        title: "SeDebugPrivilege needed?",
+        description: "Spawns a no-op TrustedInstaller child with SeDebugPrivilege disabled, to learn whether opening the TI process needs it (review A3.4).",
+        changes: "Nothing persistent. Starts the TrustedInstaller service and spawns a no-op elevated child.",
+        changes_system: false,
+        minutes: None,
+        run: cases::debug_privilege_needed,
+    },
+    ManualTest {
+        id: "child_job_object",
+        title: "Broker child job object",
+        description: "Spawns a no-op TrustedInstaller child and checks whether it inherits a job object via IsProcessInJob (review F60).",
+        changes: "Nothing persistent. Starts the TrustedInstaller service and spawns a no-op elevated child.",
+        changes_system: false,
+        minutes: None,
+        run: cases::child_job_object,
+    },
+    ManualTest {
+        id: "system_only_environment",
+        title: "System-only environment",
+        description: "Applies block_update_pipeline with the child launched under a minimal machine-only environment (review C5), verifies the scheduler COM calls still work, then restores.",
+        changes: "Blocks Windows Update for a few seconds under a system-only environment, then restores every effect from the snapshot.",
+        changes_system: true,
+        minutes: None,
+        run: cases::system_only_environment,
+    },
+    ManualTest {
+        id: "systemtemp_transport",
+        title: "SystemTemp transport",
+        description: "Applies block_update_pipeline with the broker request and response routed through %SystemRoot%\\SystemTemp (review F62), then restores.",
+        changes: "Blocks Windows Update for a few seconds using SystemTemp for the broker transport, then restores every effect from the snapshot.",
+        changes_system: true,
+        minutes: None,
+        run: cases::systemtemp_transport,
     },
 ];
 
@@ -116,9 +153,16 @@ mod tests {
 
     #[test]
     fn only_the_tests_that_change_the_system_ask_for_confirmation() {
+        // The tests that apply block_update_pipeline change the PC and must confirm first; the
+        // rest (baseline reads, task reads, the parent-side spawn probes) do not.
+        let applying = [
+            "ti_batch_timing",
+            "waasmedic_watch",
+            "system_only_environment",
+            "systemtemp_transport",
+        ];
         for t in TESTS {
-            let read_only = t.changes == "Nothing. Read-only.";
-            assert_eq!(t.changes_system, !read_only, "{}", t.id);
+            assert_eq!(t.changes_system, applying.contains(&t.id), "{}", t.id);
         }
     }
 }

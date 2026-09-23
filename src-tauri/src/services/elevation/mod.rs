@@ -21,3 +21,5 @@ pub use broker::{
     OpFailureClass,
 };
 pub use level::Elevation;
+#[cfg(feature = "test-build")]
+pub(crate) use ti_elevation::restore_debug_privilege;

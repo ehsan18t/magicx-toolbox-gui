@@ -122,6 +122,53 @@ pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
     }
 }
 
+/// test-build (review item A3.4): drop `SeDebugPrivilege` from this process so a probe can learn
+/// whether opening the TrustedInstaller process actually needs it. Mirrors `enable_debug_privilege`
+/// with `Attributes` 0; disabling an already-disabled privilege is not an error, so no partial check.
+#[cfg(feature = "test-build")]
+pub(super) fn disable_debug_privilege() -> Result<(), SpawnError> {
+    // SAFETY: as `enable_debug_privilege`; the token handle is closed on every path.
+    unsafe {
+        let mut token: HANDLE = ptr::null_mut();
+        if OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            &mut token,
+        ) == FALSE
+        {
+            return Err(spawn_failed(win_err("OpenProcessToken")));
+        }
+
+        let privilege_name = to_wide_string("SeDebugPrivilege");
+        let mut luid: LUID = std::mem::zeroed();
+        if LookupPrivilegeValueW(ptr::null(), privilege_name.as_ptr(), &mut luid) == FALSE {
+            return Err(spawn_failed(close_then(
+                token,
+                win_err("LookupPrivilegeValue"),
+            )));
+        }
+
+        let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
+        tp.PrivilegeCount = 1;
+        tp.Privileges[0] = LUID_AND_ATTRIBUTES {
+            Luid: luid,
+            Attributes: 0,
+        };
+
+        let adjusted =
+            AdjustTokenPrivileges(token, FALSE, &tp, 0, ptr::null_mut(), ptr::null_mut());
+        let err = (adjusted == FALSE).then(|| win_err("AdjustTokenPrivileges"));
+        CloseHandle(token);
+        match err {
+            Some(e) => Err(spawn_failed(e)),
+            None => {
+                log::trace!("Disabled SeDebugPrivilege");
+                Ok(())
+            }
+        }
+    }
+}
+
 pub(super) fn spawn_failed(e: Error) -> SpawnError {
     SpawnError::NoChild(AcquireReason::SpawnFailed, e)
 }

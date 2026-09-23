@@ -491,11 +491,29 @@ fn run_elevated_broker(
     let req_json = serde_json::to_vec(&wire)
         .map_err(|e| undelivered(format!("serialize broker request: {e}")))?;
 
-    let req_file =
-        ExclusiveTempFile::create("magicx-broker", "req.json", "broker request", &req_json)
-            .map_err(|e| undelivered(format!("write broker request: {e}")))?;
-    let resp_path = exclusive_temp::unique_temp_path("magicx-broker", "resp.json")
-        .map_err(|e| undelivered(format!("reserve broker response path: {e}")))?;
+    // test-build (F62): a probe can route the request/response through %SystemRoot%\SystemTemp
+    // instead of %TEMP%. `None` in production keeps the same %TEMP% transport.
+    #[cfg(feature = "test-build")]
+    let transport_dir = crate::manual_tests::probe::transport_dir();
+    #[cfg(not(feature = "test-build"))]
+    let transport_dir: Option<std::path::PathBuf> = None;
+
+    let req_file = match &transport_dir {
+        Some(dir) => ExclusiveTempFile::create_in(
+            dir,
+            "magicx-broker",
+            "req.json",
+            "broker request",
+            &req_json,
+        ),
+        None => ExclusiveTempFile::create("magicx-broker", "req.json", "broker request", &req_json),
+    }
+    .map_err(|e| undelivered(format!("write broker request: {e}")))?;
+    let resp_path = match &transport_dir {
+        Some(dir) => exclusive_temp::unique_temp_path_in(dir, "magicx-broker", "resp.json"),
+        None => exclusive_temp::unique_temp_path("magicx-broker", "resp.json"),
+    }
+    .map_err(|e| undelivered(format!("reserve broker response path: {e}")))?;
     let resp_guard = exclusive_temp::TempPathGuard::new(resp_path, "broker response");
 
     // Spawn "<exe>" --broker "<req>" "<resp>" directly (no cmd.exe wrapper). Paths are quoted; the

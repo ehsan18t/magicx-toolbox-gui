@@ -72,7 +72,19 @@ impl ExclusiveTempFile {
         kind: &'static str,
         contents: &[u8],
     ) -> io::Result<Self> {
-        let path = unique_temp_path(prefix, ext)?;
+        Self::create_in(&std::env::temp_dir(), prefix, ext, kind, contents)
+    }
+
+    /// As [`create`](Self::create), but under `dir` instead of `%TEMP%`. Splitting the directory out
+    /// lets a test route the transport through `%SystemRoot%\SystemTemp` (review item F62).
+    pub fn create_in(
+        dir: &Path,
+        prefix: &str,
+        ext: &str,
+        kind: &'static str,
+        contents: &[u8],
+    ) -> io::Result<Self> {
+        let path = unique_temp_path_in(dir, prefix, ext)?;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -141,8 +153,13 @@ fn cleanup_failure(result: io::Result<()>) -> Option<io::ErrorKind> {
 /// An unpredictable path in `%TEMP%`. Split out because a file another process *creates* (rather
 /// than reads) cannot be opened exclusively here, but still benefits from being unguessable.
 pub fn unique_temp_path(prefix: &str, ext: &str) -> io::Result<PathBuf> {
+    unique_temp_path_in(&std::env::temp_dir(), prefix, ext)
+}
+
+/// As [`unique_temp_path`], but under `dir`.
+pub fn unique_temp_path_in(dir: &Path, prefix: &str, ext: &str) -> io::Result<PathBuf> {
     let token = random_hex_token()?;
-    Ok(std::env::temp_dir().join(format!("{prefix}-{}-{token}.{ext}", std::process::id())))
+    Ok(dir.join(format!("{prefix}-{}-{token}.{ext}", std::process::id())))
 }
 
 #[cfg(test)]
