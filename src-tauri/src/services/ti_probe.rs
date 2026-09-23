@@ -81,15 +81,16 @@ fn probe() -> Unavailable {
             return None;
         }
 
-        let mut buf = vec![0u8; needed as usize];
+        // u64 elements: a byte buffer does not meet QUERY_SERVICE_CONFIGW's pointer alignment.
+        let mut buf = vec![0u64; (needed as usize).div_ceil(8)];
         let ok = QueryServiceConfigW(
             service,
-            buf.as_mut_ptr() as *mut QUERY_SERVICE_CONFIGW,
+            buf.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>(),
             needed,
             &mut needed,
         );
         let start_type =
-            (ok != 0).then(|| (*(buf.as_ptr() as *const QUERY_SERVICE_CONFIGW)).dwStartType);
+            (ok != 0).then(|| (*buf.as_ptr().cast::<QUERY_SERVICE_CONFIGW>()).dwStartType);
         CloseServiceHandle(service);
         CloseServiceHandle(scm);
 
@@ -101,5 +102,14 @@ fn probe() -> Unavailable {
             ),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "reads this machine's TrustedInstaller service config; expects a stock Manual start"]
+    fn a_stock_machine_can_reach_trusted_installer() {
+        assert_eq!(super::probe(), None);
     }
 }
