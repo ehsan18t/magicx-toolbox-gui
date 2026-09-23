@@ -373,6 +373,36 @@ pub fn delete_key(hive: &RegistryHive, key_path: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// Whether any value exists anywhere in the subtree at `key_path`; a missing key holds none.
+pub fn subtree_has_values(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
+    match open_read_key(hive, key_path, "") {
+        Ok(key) => has_values(&key, key_path),
+        Err(Error::RegistryKeyNotFound(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+fn has_values(key: &RegKey, path: &str) -> Result<bool, Error> {
+    let fail = |e: io::Error| Error::from_io(format!("failed to enumerate {path}"), &e);
+    if key
+        .enum_values()
+        .next()
+        .transpose()
+        .map_err(fail)?
+        .is_some()
+    {
+        return Ok(true);
+    }
+    for name in key.enum_keys() {
+        let name = name.map_err(fail)?;
+        let child = key.open_subkey_with_flags(&name, KEY_READ).map_err(fail)?;
+        if has_values(&child, &format!("{path}\\{name}"))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Check if a registry key exists
 pub fn key_exists(hive: &RegistryHive, key_path: &str) -> Result<bool, Error> {
     let hive_key = get_hive_key(hive)?;
@@ -563,6 +593,20 @@ mod tests {
         set_multi_string(&RegistryHive::Hkcu, &guard.path, "Multi", &[]).unwrap();
         let read = read_multi_string(&RegistryHive::Hkcu, &guard.path, "Multi").unwrap();
         assert_eq!(read, Some(Vec::new()));
+    }
+
+    #[test]
+    fn subtree_has_values_sees_values_at_any_depth() {
+        let guard = DeleteGuard::new("subtree_values");
+        let deep = format!("{}\\A\\B", guard.path);
+        assert!(!subtree_has_values(&RegistryHive::Hkcu, &guard.path).unwrap());
+
+        create_key(&RegistryHive::Hkcu, &deep).unwrap();
+        assert!(!subtree_has_values(&RegistryHive::Hkcu, &guard.path).unwrap());
+
+        set_dword(&RegistryHive::Hkcu, &deep, "Flag", 1).unwrap();
+        assert!(subtree_has_values(&RegistryHive::Hkcu, &guard.path).unwrap());
+        assert!(subtree_has_values(&RegistryHive::Hkcu, &deep).unwrap());
     }
 
     #[test]

@@ -271,6 +271,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     check_duplicate_shared_ids(corpus, &mut errors);
     check_shared_refs_resolve(corpus, &mut errors);
     check_ownership(corpus, &mut errors);
+    check_key_subtrees(corpus, &mut errors);
     check_canonicalization(corpus, &mut errors);
     check_field_types(corpus, &mut errors);
     for tweak in &corpus.tweaks {
@@ -473,6 +474,47 @@ fn check_ownership(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
             }
         }
     }
+}
+
+/// A `registry_key` driven absent deletes its subtree, so anything another tweak (or a `shared:`
+/// entry) owns beneath it collides. Effects of one tweak may nest.
+fn check_key_subtrees(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
+    let settings = owned_settings(corpus);
+    for (key_setting, key_owner) in &settings {
+        let Setting::RegistryKey(key) = key_setting else {
+            continue;
+        };
+        let key_path = key.path.to_lowercase();
+        let prefix = format!("{key_path}\\");
+        for (setting, owner) in &settings {
+            let (hive, path, is_value) = match setting {
+                Setting::Registry(addr) => (addr.hive, addr.path.to_lowercase(), true),
+                Setting::RegistryKey(addr) => (addr.hive, addr.path.to_lowercase(), false),
+                _ => continue,
+            };
+            let beneath =
+                hive == key.hive && (path.starts_with(&prefix) || (is_value && path == key_path));
+            if beneath && !same_tweak(key_owner, owner) {
+                errors.push(ValidationError::DuplicateAddress {
+                    address: format!(
+                        "{} (inside registry key {:?}\\{})",
+                        coarse_key_and_field(setting).2,
+                        key.hive,
+                        key.path
+                    ),
+                    first: key_owner.clone(),
+                    second: owner.clone(),
+                });
+            }
+        }
+    }
+}
+
+fn same_tweak(a: &AddressOwner, b: &AddressOwner) -> bool {
+    matches!(
+        (a, b),
+        (AddressOwner::Effect { tweak: x, .. }, AddressOwner::Effect { tweak: y, .. }) if x == y
+    )
 }
 
 /// A raw Registry effect must not address a value that a canonicalized kind (Service/Task) owns —
@@ -1341,6 +1383,23 @@ mod tests {
             matches!(&errors[..], [ValidationError::InvalidOptionValue { reason, .. }] if reason.contains("empty string")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn value_or_key_beneath_another_tweaks_registry_key_is_rejected() {
+        let errors = errors_for("value_beneath_registry_key.yaml");
+        let owners: Vec<String> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::DuplicateAddress { first, second, .. } => {
+                    format!("{first} / {second}")
+                }
+                other => panic!("expected DuplicateAddress, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(owners.len(), 2, "{owners:?}");
+        assert!(owners[0].contains("key_owner") && owners[0].contains("value_owner"));
+        assert!(owners[1].contains("key_owner") && owners[1].contains("subkey_owner"));
     }
 
     #[test]

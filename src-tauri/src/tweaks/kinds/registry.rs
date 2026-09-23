@@ -49,6 +49,14 @@ impl EffectKind for RegistryKind {
     }
 }
 
+impl RegistryKind {
+    /// `ActionDef::DeleteTree`: deletes the whole subtree, values included. Its `undo` owns the rest.
+    pub(crate) fn delete_tree(&self, addr: &KeyAddr, cx: &ExecCx) -> Result<(), Error> {
+        guard_level(cx)?;
+        delete_key_tree(addr)
+    }
+}
+
 /// `User`/`Admin` run in-process; `Ti` is routed to the broker one layer up, so reaching
 /// this kind's own `drive` at those levels means the routing was bypassed (see [`to_broker_op`]).
 fn guard_level(cx: &ExecCx) -> Result<(), Error> {
@@ -301,10 +309,13 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
                     hive,
                     key: addr.path.clone(),
                 }),
-                Value::Present(false) => Ok(BrokerOp::RegDeleteKey {
-                    hive,
-                    key: addr.path.clone(),
-                }),
+                Value::Present(false) => {
+                    refuse_if_holds_values(addr)?;
+                    Ok(BrokerOp::RegDeleteKey {
+                        hive,
+                        key: addr.path.clone(),
+                    })
+                }
                 _ => Err(Error::Invalid(
                     "a registry key can only be driven to Present(bool)",
                 )),
@@ -329,16 +340,41 @@ fn broker_reg_value(v: &TypedRegValue) -> serde_json::Value {
 }
 
 fn drive_key(addr: &KeyAddr, target: &Value) -> Result<(), Error> {
-    let hive = old_hive(addr.hive);
     match target {
-        Value::Present(true) => registry_service::create_key(&hive, &addr.path).map_err(backend),
+        Value::Present(true) => {
+            registry_service::create_key(&old_hive(addr.hive), &addr.path).map_err(backend)
+        }
         Value::Present(false) => {
-            delete_ok(registry_service::delete_key(&hive, &addr.path)).map_err(backend)
+            refuse_if_holds_values(addr)?;
+            delete_key_tree(addr)
         }
         _ => Err(Error::Invalid(
             "a registry key can only be driven to Present(bool)",
         )),
     }
+}
+
+fn delete_key_tree(addr: &KeyAddr) -> Result<(), Error> {
+    delete_ok(registry_service::delete_key(
+        &old_hive(addr.hive),
+        &addr.path,
+    ))
+    .map_err(backend)
+}
+
+/// Capture records only a key's presence, so a restore could not bring back values deleted with it.
+fn refuse_if_holds_values(addr: &KeyAddr) -> Result<(), Error> {
+    if registry_service::subtree_has_values(&old_hive(addr.hive), &addr.path).map_err(backend)? {
+        log::warn!(
+            "Refusing to delete {:?}\\{}: values exist beneath it",
+            addr.hive,
+            addr.path
+        );
+        return Err(Error::Invalid(
+            "the registry key still holds values, so it was left in place: deleting it would lose data a restore cannot recreate",
+        ));
+    }
+    Ok(())
 }
 
 /// Field writes are read-modify-write (spec §5.2): read the packed string, upsert/remove just the
@@ -671,6 +707,43 @@ mod tests {
             )
             .expect_err("a REG_SZ literal must not drive a REG_EXPAND_SZ field");
         assert!(matches!(err, Error::Invalid(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn key_holding_values_is_never_driven_absent() {
+        let scratch = Scratch::new("key_with_values");
+        let cx = user_cx();
+        let key = KeyAddr {
+            hive: Hive::Hkcu,
+            path: format!("{}\\Sub", scratch.path),
+        };
+        let setting = Setting::RegistryKey(key.clone());
+        let deep = format!("{}\\Deeper", key.path);
+        registry_service::set_dword(&RegistryHive::Hkcu, &deep, "Flag", 1).unwrap();
+
+        let err = RegistryKind
+            .drive(&setting, &Value::Present(false), &cx)
+            .expect_err("a key with values beneath it must not be deleted");
+        assert!(matches!(err, Error::Invalid(_)), "got {err:?}");
+        assert!(registry_service::key_exists(&RegistryHive::Hkcu, &deep).unwrap());
+
+        let hklm = Setting::RegistryKey(KeyAddr {
+            hive: Hive::Hklm,
+            path: key.path.clone(),
+        });
+        assert!(
+            to_broker_op(&hklm, &Value::Present(false), Level::Ti).is_ok(),
+            "an absent HKLM key holds no values"
+        );
+
+        registry_service::delete_value(&RegistryHive::Hkcu, &deep, "Flag").unwrap();
+        RegistryKind
+            .drive(&setting, &Value::Present(false), &cx)
+            .expect("a subtree of empty keys holds nothing a restore could lose");
+        assert_eq!(
+            RegistryKind.read(&setting, &cx).unwrap(),
+            Value::Present(false)
+        );
     }
 
     /// Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches

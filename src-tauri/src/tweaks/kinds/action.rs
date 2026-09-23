@@ -15,11 +15,9 @@
 //! must still never lie about having done something.
 //!
 //! ## `DeleteTree` reuses the hardened registry delete, verbatim
-//! `run_apply` on `DeleteTree` drives `Setting::RegistryKey(key)` to `Value::Present(false)`
-//! through [`RegistryKind`]'s own `drive`, guards included, rather than reimplementing a delete.
-//! Its `undo` has no `shell` field on the model, unlike `Script`, so it always runs as PowerShell,
-//! which can do `reg import` and anything `cmd` can via `cmd /c`. A fixed choice, stated here
-//! rather than left as a silent guess.
+//! `run_apply` on `DeleteTree` goes through [`RegistryKind::delete_tree`], guards included. Unlike a
+//! `registry_key` driven absent, it deletes a subtree that holds values: its `undo` owns restoring
+//! them. That `undo` has no `shell` field, so it always runs as PowerShell.
 //!
 //! ## Timeout, and the process tree it actually bounds
 //! Rust's std has no built-in process timeout, so [`wait_with_timeout`] hand-rolls one: poll
@@ -60,10 +58,10 @@ use windows_sys::Win32::System::JobObjects::{
 
 use crate::services::exclusive_temp::ExclusiveTempFile;
 use crate::services::system32::SystemTool;
-use crate::tweaks::model::{ActionDef, Probe, Setting, Shell, Value};
+use crate::tweaks::model::{ActionDef, Probe, Shell};
 
 use super::registry::RegistryKind;
-use super::{guard_level, EffectKind, Error, ExecCx};
+use super::{guard_level, Error, ExecCx};
 
 /// Bounded default for every script this kind runs (spec §14: "a bounded timeout"). Generous
 /// enough for a real tweak script (a service restart, `gpupdate /force`, a handful of registry
@@ -88,15 +86,7 @@ impl ActionKind {
                 guard_level(cx)?;
                 run_and_require_zero(*shell, &apply.0)
             }
-            ActionDef::DeleteTree { key, .. } => {
-                // `RegistryKind::drive` runs its own `guard_level`, rejecting Ti exactly as
-                // a raw `RegistryKey` effect would -- not duplicated here.
-                RegistryKind.drive(
-                    &Setting::RegistryKey(key.clone()),
-                    &Value::Present(false),
-                    cx,
-                )
-            }
+            ActionDef::DeleteTree { key, .. } => RegistryKind.delete_tree(key, cx),
         }
     }
 
@@ -395,7 +385,8 @@ mod tests {
     use super::*;
     use crate::models::RegistryHive;
     use crate::services::registry_service;
-    use crate::tweaks::model::{Hive, KeyAddr, Level, Probe, Script};
+    use crate::tweaks::kinds::EffectKind;
+    use crate::tweaks::model::{Hive, KeyAddr, Level, Probe, Script, Setting, Value};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static SCRATCH_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -623,8 +614,8 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
     #[test]
     fn delete_tree_apply_deletes_the_key_recursively() {
         let scratch = Scratch::new("apply");
-        registry_service::create_key(&RegistryHive::Hkcu, &format!("{}\\Child", scratch.path))
-            .unwrap();
+        let child = format!("{}\\Child", scratch.path);
+        registry_service::set_dword(&RegistryHive::Hkcu, &child, "Flag", 1).unwrap();
         let key = KeyAddr {
             hive: Hive::Hkcu,
             path: scratch.path.clone(),
@@ -697,7 +688,7 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
     }
 
     /// The `DeleteTree` counterpart of `drive_rejects_system_and_ti_for_script_actions`: apply (via
-    /// `RegistryKind::drive`) and undo both reject Ti.
+    /// `RegistryKind::delete_tree`) and undo both reject Ti.
     #[test]
     fn delete_tree_rejects_system_and_ti_levels() {
         let scratch = Scratch::new("level_gate");
