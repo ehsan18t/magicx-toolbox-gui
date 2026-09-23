@@ -170,10 +170,22 @@ fn read_value(addr: &RegAddr) -> Result<Value, Error> {
         Some(field) => {
             let live = packed_text(addr)?;
             let fields = parse_packed(addr, field, &live)?;
-            Ok(fields.get(&field.field).map_or(Value::Absent, |v| {
-                Value::Reg(TypedRegValue::Sz(v.to_string()))
-            }))
+            match fields.get(&field.field) {
+                None => Ok(Value::Absent),
+                Some(text) => typed_string(addr.ty, text.to_string()).map(Value::Reg),
+            }
         }
+    }
+}
+
+/// A packed field carries the string type its value address declares.
+fn typed_string(ty: RegType, text: String) -> Result<TypedRegValue, Error> {
+    match ty {
+        RegType::Sz => Ok(TypedRegValue::Sz(text)),
+        RegType::ExpandSz => Ok(TypedRegValue::ExpandSz(text)),
+        _ => Err(Error::Invalid(
+            "a packed field address must declare REG_SZ or REG_EXPAND_SZ",
+        )),
     }
 }
 
@@ -338,26 +350,20 @@ fn drive_field(addr: &RegAddr, field: &FieldAddr, target: &Value) -> Result<(), 
     let live = packed_text(addr)?;
     let mut fields = parse_packed(addr, field, &live)?;
 
-    match target {
-        Value::Absent => fields.remove(&field.field),
-        Value::Reg(TypedRegValue::Sz(text)) => fields.upsert(&field.field, text),
+    match (addr.ty, target) {
+        (_, Value::Absent) => fields.remove(&field.field),
+        (RegType::Sz, Value::Reg(TypedRegValue::Sz(text)))
+        | (RegType::ExpandSz, Value::Reg(TypedRegValue::ExpandSz(text))) => {
+            fields.upsert(&field.field, text)
+        }
         _ => {
             return Err(Error::Invalid(
-                "a packed field can only be driven to a plain string or Absent",
+                "a packed field can only be driven to a string of its value's type, or Absent",
             ));
         }
     }
 
-    let serialized = parse::serialize_packed(field.format, &fields);
-    let wrapped = match addr.ty {
-        RegType::Sz => TypedRegValue::Sz(serialized),
-        RegType::ExpandSz => TypedRegValue::ExpandSz(serialized),
-        _ => {
-            return Err(Error::Invalid(
-                "a packed field address must declare REG_SZ or REG_EXPAND_SZ",
-            ));
-        }
-    };
+    let wrapped = typed_string(addr.ty, parse::serialize_packed(field.format, &fields))?;
     write_typed(&old_hive(addr.hive), &addr.path, &addr.name, &wrapped)
 }
 
@@ -627,6 +633,44 @@ mod tests {
         let empty = Value::Reg(TypedRegValue::MultiSz(Vec::new()));
         RegistryKind.drive(&setting, &empty, &cx).unwrap();
         assert_eq!(RegistryKind.read(&setting, &cx).unwrap(), empty);
+    }
+
+    #[test]
+    fn field_of_an_expand_sz_value_keeps_its_type() {
+        let scratch = Scratch::new("field_expand");
+        let cx = user_cx();
+        registry_service::set_expand_string(&RegistryHive::Hkcu, &scratch.path, "Packed", "A=1;")
+            .unwrap();
+        let setting = Setting::Registry(RegAddr {
+            field: Some(FieldAddr {
+                field: "B".to_string(),
+                format: PackedFormat::KvSemicolon,
+            }),
+            ..scratch.reg_addr("Packed", RegType::ExpandSz)
+        });
+
+        let target = Value::Reg(TypedRegValue::ExpandSz("%TEMP%".to_string()));
+        RegistryKind.drive(&setting, &target, &cx).unwrap();
+        assert_eq!(RegistryKind.read(&setting, &cx).unwrap(), target);
+        let whole = RegistryKind
+            .read(
+                &Setting::Registry(scratch.reg_addr("Packed", RegType::ExpandSz)),
+                &cx,
+            )
+            .unwrap();
+        assert_eq!(
+            whole,
+            Value::Reg(TypedRegValue::ExpandSz("A=1;B=%TEMP%;".to_string()))
+        );
+
+        let err = RegistryKind
+            .drive(
+                &setting,
+                &Value::Reg(TypedRegValue::Sz("x".to_string())),
+                &cx,
+            )
+            .expect_err("a REG_SZ literal must not drive a REG_EXPAND_SZ field");
+        assert!(matches!(err, Error::Invalid(_)), "got {err:?}");
     }
 
     /// Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches

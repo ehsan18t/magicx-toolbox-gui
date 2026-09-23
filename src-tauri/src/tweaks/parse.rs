@@ -50,6 +50,9 @@ pub enum ParseError {
         "a REG_MULTI_SZ entry cannot be an empty string (the registry reads it as the end of the list); remove it, or write `[]` to clear the value"
     )]
     EmptyMultiSzEntry,
+
+    #[error("`format` only applies with `field`: add the `field` it packs, or drop `format`")]
+    FormatWithoutField,
 }
 
 /// YAML-agnostic input to [`parse_value_literal`] (spec §6.2). `schema.rs` picks the variant from

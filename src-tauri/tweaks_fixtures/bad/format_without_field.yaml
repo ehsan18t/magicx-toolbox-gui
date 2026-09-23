@@ -1,0 +1,20 @@
+category:
+  id: format_without_field
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A packing format with no field to address, which would otherwise be dropped silently."
+
+tweaks:
+  - id: format_only_tweak
+    name: "Format Without Field"
+    description: "Declares format but no field."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: packed
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Packed, type: REG_SZ, format: kv_semicolon }
+    options:
+      - label: "On"
+        values:
+          packed: "Flag=1;"

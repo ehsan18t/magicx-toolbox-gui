@@ -737,6 +737,9 @@ fn option_value_for(kind: &Effect, node: &YamlValue) -> Result<OptValue, String>
 
 fn convert_registry(raw: &RegistryRaw) -> Result<RegAddr, ParseError> {
     let (hive, path) = parse_reg_path(&raw.key)?;
+    if raw.format.is_some() && raw.field.is_none() {
+        return Err(ParseError::FormatWithoutField);
+    }
     let field = raw.field.as_ref().map(|field| FieldAddr {
         field: field.clone(),
         format: raw.format.unwrap_or(PackedFormatRaw::KvSemicolon).into(),

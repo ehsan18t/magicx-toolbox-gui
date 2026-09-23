@@ -12,7 +12,8 @@
 
 use super::model::{
     effective_level, ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Level, Opt,
-    OptLabel, OptValue, ScopedValue, Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
+    OptLabel, OptValue, RegType, ScopedValue, Setting, SharedId, StartupType, Tweak, Value,
+    WindowsScope,
 };
 use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
@@ -252,6 +253,15 @@ pub enum ValidationError {
         effect: EffectId,
         origin: &'static str,
     },
+
+    #[error(
+        "{owner} addresses field `{field}` of a {ty} value: a packed field lives only in a REG_SZ or REG_EXPAND_SZ value, so change the type or drop `field`"
+    )]
+    FieldOnNonStringType {
+        owner: AddressOwner,
+        field: String,
+        ty: &'static str,
+    },
 }
 
 /// Runs every structural guard (spec §10) over an already-loaded corpus. Detectability,
@@ -262,6 +272,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     check_shared_refs_resolve(corpus, &mut errors);
     check_ownership(corpus, &mut errors);
     check_canonicalization(corpus, &mut errors);
+    check_field_types(corpus, &mut errors);
     for tweak in &corpus.tweaks {
         check_coverage(tweak, &mut errors);
         check_reversibility(tweak, &mut errors);
@@ -271,6 +282,61 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_action_never_ti(tweak, &mut errors);
     }
     errors
+}
+
+/// Every Setting in the corpus with its owner: direct effects first, then `shared:` declarations.
+fn owned_settings(corpus: &Corpus) -> Vec<(&Setting, AddressOwner)> {
+    let direct = corpus.tweaks.iter().flat_map(|tweak| {
+        tweak
+            .surface
+            .iter()
+            .filter_map(move |effect| match &effect.kind {
+                Effect::Setting(setting) => Some((
+                    setting,
+                    AddressOwner::Effect {
+                        tweak: tweak.id.clone(),
+                        effect: effect.id.clone(),
+                    },
+                )),
+                _ => None,
+            })
+    });
+    let shared = corpus.shared.iter().map(|shared| {
+        (
+            &shared.setting,
+            AddressOwner::Shared {
+                id: shared.id.clone(),
+            },
+        )
+    });
+    direct.chain(shared).collect()
+}
+
+fn reg_type_name(ty: RegType) -> &'static str {
+    match ty {
+        RegType::Dword => "REG_DWORD",
+        RegType::Qword => "REG_QWORD",
+        RegType::Sz => "REG_SZ",
+        RegType::ExpandSz => "REG_EXPAND_SZ",
+        RegType::MultiSz => "REG_MULTI_SZ",
+        RegType::Binary => "REG_BINARY",
+    }
+}
+
+fn check_field_types(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
+    for (setting, owner) in owned_settings(corpus) {
+        let Setting::Registry(addr) = setting else {
+            continue;
+        };
+        let Some(field) = &addr.field else { continue };
+        if !matches!(addr.ty, RegType::Sz | RegType::ExpandSz) {
+            errors.push(ValidationError::FieldOnNonStringType {
+                owner,
+                field: field.field.clone(),
+                ty: reg_type_name(addr.ty),
+            });
+        }
+    }
 }
 
 fn check_duplicate_shared_ids(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
@@ -359,30 +425,12 @@ fn coarse_key_and_field(setting: &Setting) -> (CoarseKey, Option<String>, String
 /// together; a packed value is whole-owned xor field-addressed (spec §10, ADR-0006).
 fn check_ownership(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
     let mut groups: HashMap<CoarseKey, Vec<Claim>> = HashMap::new();
-
-    for tweak in &corpus.tweaks {
-        for effect in &tweak.surface {
-            if let Effect::Setting(setting) = &effect.kind {
-                let (key, field, display) = coarse_key_and_field(setting);
-                groups.entry(key).or_default().push(Claim {
-                    field,
-                    display,
-                    owner: AddressOwner::Effect {
-                        tweak: tweak.id.clone(),
-                        effect: effect.id.clone(),
-                    },
-                });
-            }
-        }
-    }
-    for shared in &corpus.shared {
-        let (key, field, display) = coarse_key_and_field(&shared.setting);
+    for (setting, owner) in owned_settings(corpus) {
+        let (key, field, display) = coarse_key_and_field(setting);
         groups.entry(key).or_default().push(Claim {
             field,
             display,
-            owner: AddressOwner::Shared {
-                id: shared.id.clone(),
-            },
+            owner,
         });
     }
 
@@ -1253,6 +1301,36 @@ mod tests {
                 "the effect's own `elevation: ti`"
             )),
             "the step-sourced one must be named: {named:?}"
+        );
+    }
+
+    #[test]
+    fn field_on_non_string_type_is_rejected() {
+        let errors = errors_for("field_on_non_string_type.yaml");
+        assert!(
+            matches!(
+                &errors[..],
+                [ValidationError::FieldOnNonStringType {
+                    ty: "REG_DWORD",
+                    ..
+                }]
+            ),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn format_without_field_is_rejected() {
+        let errors = errors_for("format_without_field.yaml");
+        assert!(
+            matches!(
+                &errors[..],
+                [ValidationError::InvalidAddress {
+                    source: ParseError::FormatWithoutField,
+                    ..
+                }]
+            ),
+            "{errors:?}"
         );
     }
 
