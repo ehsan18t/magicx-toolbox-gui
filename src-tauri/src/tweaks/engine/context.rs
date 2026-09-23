@@ -134,15 +134,9 @@ impl SidCheck {
     }
 }
 
-/// Compares the process token's user against the session owner's (spec §9, ADR-0005 amended).
-///
-/// An unreadable side yields [`SidCheck::Undetermined`], which still blocks. Failing closed is
-/// deliberate, and the reason is the *asymmetry of the two errors*, not caution for its own sake:
-/// refusing mutates nothing and tells the user what to do, whereas proceeding on an unanswered
-/// question can write another account's hive -- and that write is not recoverable, because the
-/// snapshot store is keyed to the machine (`snapshot.rs`'s `Entry` carries `machine_guid`, no user)
-/// while the hive is keyed to the account, and apply's read-back verification reads the same hive it
-/// just wrote, so it confirms itself. See `docs/plans/fix-hkcu-user-level-gate.md`.
+/// Process token user vs session owner (ADR-0005). An unreadable side is `Undetermined` and still
+/// blocks: refusing mutates nothing, while proceeding can write a hive the user never meant, and
+/// apply's read-back of that same hive would confirm it.
 pub fn sid_check(probe: &dyn SidProbe) -> SidCheck {
     if let (Some(process), Some(session)) = (probe.process_token_sid(), probe.session_user_sid()) {
         return if process == session {

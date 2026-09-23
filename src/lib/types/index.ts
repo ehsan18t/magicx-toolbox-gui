@@ -383,7 +383,8 @@ export interface ApplyOutcome {
 }
 
 /** Why one snapshot entry cannot be a restore target. */
-export type InvalidReason = "Corrupt" | "WrongSchema" | "WrongMachine" | "DanglingRef" | "TargetUnavailable";
+export type InvalidReason =
+  "Corrupt" | "WrongSchema" | "WrongMachine" | "WrongUser" | "DanglingRef" | "TargetUnavailable";
 
 /** Entry validity — "Valid" or an externally-tagged Invalid(reason). */
 export type EntryValidity = "Valid" | { Invalid: InvalidReason };

@@ -1637,9 +1637,8 @@ Two points that matter when you author:
   write one HKCU value is guarded exactly like an `elevation: user` one. You do not declare this and
   cannot opt out of it; it follows from the addresses you wrote.
 - **An unreadable SID blocks too, and that is deliberate.** Refusing changes nothing on disk and tells
-  the user what to do. Proceeding could write another account's hive, and that is not recoverable: the
-  snapshot store is keyed to the machine, not to the user, so the revert would be offered to, and
-  applied into, whichever account happens to run it.
+  the user what to do. Proceeding could write a hive the user never meant, and apply's read-back of
+  that same hive would confirm it, so nothing would flag the mistake.
 
 ### 13.4 Choosing a level
 

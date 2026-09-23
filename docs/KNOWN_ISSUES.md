@@ -13,7 +13,7 @@ the ADR and delete the entry.
 
 | #   | Issue                                           | Bites today?                                 | Found      |
 | --- | ----------------------------------------------- | -------------------------------------------- | ---------- |
-| 1   | Snapshots carry no user identity                | yes, on a multi-user machine                 | 2026-07-26 |
+| 1   | Needs Attention and crash marks are per tweak, not per account | only on a multi-user machine, as a wrong badge | 2026-07-26 |
 | 2   | Broker transport files live in the user's TEMP | yes, to a same-user process during a TI apply | 2026-09-12 |
 | 3   | Nothing inside the broker child is observable   | only as thin support detail after a failure  | 2026-09-12 |
 | 4   | An older build cannot read what this one resolved | only where two builds share one folder     | 2026-09-12 |
@@ -22,32 +22,19 @@ the ADR and delete the entry.
 
 ---
 
-## 1. Snapshots carry no user identity
+## 1. Needs Attention and crash marks are per tweak, not per account
 
-Found by the safety pass on the HKCU elevation-gate fix
-(`docs/plans/fix-hkcu-user-level-gate.md`). Not fixed there because the remedy is a snapshot schema
-change, which was out of that branch's scope.
+**What is already fixed.** Every snapshot entry carries the capturing process's user SID (`Entry::user_sid`, stamped by `SnapshotStore::push` from `SnapshotStore::with_user_sid`, which `open_default` fills from the process token). For a tweak that touches HKCU (`context::tweak_touches_hkcu`), `classify_and_parse` marks another account's entry `InvalidReason::WrongUser`, so `head` never restores it, push never deduplicates it away, and `release_snapshot` (Keep current state) leaves it on disk. An entry or a store whose SID could not be read skips the check, as `machine_guid` does.
 
-**The mismatch.** HKCU is keyed to the *account*. The snapshot store is keyed to the *machine* and
-lives in a portable `<exe>/snapshots/` directory that every account on the box shares
-(`snapshot.rs:189-193`). `Entry` carries `schema_version`, `machine_guid`, `tweak_id`, `seq`,
-`timestamp`, `captured`, `journal` (`snapshot.rs:78-92`) and no user field. `head()` selects on
-`tweak_id` + corpus + `machine_guid` + build (`snapshot.rs:268-285`), and the only identity-based
-`InvalidReason` is `WrongMachine` (`snapshot.rs:118`). There is no `WrongUser`.
+**What is not.** The rest of the store's durable state is keyed by tweak alone:
 
-**Reachable today, no elevation involved.** User A applies an HKCU-touching tweak, pushing `seq 1`.
-A logs off, B logs in and applies the same tweak under their own account, pushing `seq 2` into the
-same directory. A logs back in and reverts: `head()` returns `seq 2` (sorted `Reverse(seq)`,
-`snapshot.rs:277`), so **B's captured baseline is driven into A's hive** (`apply.rs:993`, `:1015`),
-the read-back verifies because it just wrote those values, and the entry is consumed
-(`revert.rs:197-201`). A's own return point is never consulted. If both captures are
-`Captured::OptionRef` under the same label, B's push instead dedups A's entry away outright
-(`snapshot.rs:199-210`).
+- The Needs Attention record is one `snapshots/<tweak-id>/_attention.json` per tweak, so a record written by user A's failed HKCU apply badges user B's card too, and B's Keep current state clears it.
+- `SnapshotStore::unresolved_entries` filters by machine only, so the startup crash scan (`lifecycle::try_record_crash_residue`) raises A's open drive mark or outstanding journal row as Needs Attention in B's session.
+- `apply::settle_verified` with `Settle::All` calls `close_drives` and `resolve_journal_rows` across every entry of the tweak, so B's verified apply settles the crash evidence on A's entries even though it re-established only B's hive. A's return point itself survives.
 
-**The fix.** Stamp `Entry` with the capturing token's SID and add `InvalidReason::WrongUser`, so
-`classify_and_parse` (`snapshot.rs:384-410`) marks a foreign-user entry `Invalid` for any
-HKCU-touching tweak. Per ADR-0002 it stays on disk with a discard affordance, never a silent delete.
-Costs a `schema_version` bump and a migration decision for snapshots already on disk.
+**Bites today?** Only on a multi-user machine sharing one portable install, and only as a badge in the wrong account or crash evidence settled by the wrong account. No path restores one account's values into another's hive any more.
+
+**The fix.** Those three store calls need to know whether the tweak touches HKCU, which the store cannot tell from a tweak id. Pass it in (or hand the store the corpus, as `head` and `list` already take it), then filter entries by `user_sid` for HKCU tweaks in `unresolved_entries`, `close_drives` and `resolve_journal_rows`, and key the Needs Attention record per account for those tweaks (for example `_attention.<sid>.json`), keeping the per-tweak record for machine-wide ones. The record file is unreleased, so no migration is needed.
 
 ## 2. Broker transport files live in the user's TEMP
 

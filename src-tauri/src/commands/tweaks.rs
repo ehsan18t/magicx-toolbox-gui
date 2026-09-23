@@ -29,7 +29,9 @@ use crate::tweaks::model::{
     TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
-use crate::tweaks::snapshot::{Attention, EntrySummary, Seq, SnapshotError, SnapshotStore};
+use crate::tweaks::snapshot::{
+    Attention, EntrySummary, EntryValidity, InvalidReason, Seq, SnapshotError, SnapshotStore,
+};
 use crate::tweaks::winver::{running_winver, WinVer};
 
 /// App-lifetime singletons the engine needs across every tweak command: managed once via Tauri
@@ -1301,7 +1303,11 @@ fn release_snapshot(
         .list(tweak_id, corpus, guid, build)
         .map_err(|e| Error::Tweak(e.to_string()))?;
     let mut discarded = 0;
-    for entry in entries {
+    // Another account's HKCU return point is not this user's to consent away.
+    for entry in entries
+        .into_iter()
+        .filter(|e| e.validity != EntryValidity::Invalid(InvalidReason::WrongUser))
+    {
         snapshots
             .discard(tweak_id, entry.seq)
             .map_err(|e| Error::Tweak(e.to_string()))?;
@@ -1891,6 +1897,36 @@ mod tests {
             snapshots.attention("demo", Some("test-guid")).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn keeping_the_current_state_leaves_another_accounts_hkcu_return_point() {
+        use crate::tweaks::snapshot::{Captured, NewEntry};
+        let tmp = tempfile::tempdir().unwrap();
+        let mut t = tweak("demo", vec![opt("A", StartupType::Manual)]);
+        t.surface[0].kind = hkcu_setting();
+        let c = corpus(vec![t]);
+        let as_user = |sid: &str| {
+            SnapshotStore::open(tmp.path().to_path_buf()).with_user_sid(Some(sid.to_string()))
+        };
+        let dump = || NewEntry {
+            captured: Captured::Values(BTreeMap::new()),
+            journal: Vec::new(),
+        };
+        let theirs = as_user("S-1-A")
+            .push("demo", dump(), &c, Some("test-guid"), 19045)
+            .unwrap();
+        let mine = as_user("S-1-B");
+        mine.push("demo", dump(), &c, Some("test-guid"), 19045)
+            .unwrap();
+
+        let discarded =
+            release_snapshot(&mine, "demo", &c, Some("test-guid"), 19045).expect("consent");
+        assert_eq!(discarded, 1);
+        let left = as_user("S-1-A")
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap();
+        assert_eq!(left.map(|e| e.seq), Some(theirs));
     }
 
     /// The scan must not invent a mark for a tweak that finished normally, and must not speak over

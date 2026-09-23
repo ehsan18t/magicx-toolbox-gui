@@ -263,6 +263,7 @@ mod tests {
         Entry {
             schema_version: 1,
             machine_guid: None,
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(7),
             timestamp: "t".into(),

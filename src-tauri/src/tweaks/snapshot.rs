@@ -7,6 +7,7 @@
 //! Nothing here deletes an invalid entry, or a record this machine and build do not own.
 
 use crate::services::elevation::OpFailureClass;
+use crate::tweaks::engine::context::{tweak_touches_hkcu, SidProbe};
 use crate::tweaks::model::{Corpus, EffectId, Value};
 use crate::tweaks::validate::{option_unavailable, Milestone};
 use serde::{Deserialize, Serialize};
@@ -176,6 +177,10 @@ pub struct Entry {
     /// "identity unknown, skip the check" handling in `services::backup::storage`).
     #[serde(default)]
     pub machine_guid: Option<String>,
+    /// The capturing process's user SID. HKCU is per account, so another account's capture is no
+    /// return point for this one; `None` (unreadable) skips the check, like `machine_guid`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_sid: Option<String>,
     pub tweak_id: String,
     pub seq: Seq,
     /// Display metadata only — never used for ordering or comparison (spec §8.2: clocks skew).
@@ -220,6 +225,9 @@ pub enum InvalidReason {
     WrongSchema,
     /// `machine_guid` doesn't match the running machine (only checked when both sides are known).
     WrongMachine,
+    /// Another account captured it and the tweak touches HKCU, so its values belong to that
+    /// account's hive (only checked when both SIDs are known).
+    WrongUser,
     /// The entry's tweak, or (for an `OptionRef`) its option label, is no longer in the corpus.
     DanglingRef,
     /// The referenced option's tweak is scoped out of the running Windows build.
@@ -279,6 +287,7 @@ pub enum SnapshotError {
 #[derive(Debug, Clone)]
 pub struct SnapshotStore {
     root: PathBuf,
+    user_sid: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -290,14 +299,26 @@ impl SnapshotStore {
     /// Opens a store rooted at `root` (created lazily, per-tweak, on first `push`). Tests always
     /// pass a temp dir here; production uses `open_default`.
     pub fn open(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            user_sid: None,
+        }
+    }
+
+    /// Stamps every pushed entry with `sid` and classifies other accounts' HKCU entries `WrongUser`.
+    pub fn with_user_sid(mut self, sid: Option<String>) -> Self {
+        self.user_sid = sid;
+        self
     }
 
     /// Production root: the portable `snapshots/` directory next to the executable (spec §11).
     pub fn open_default() -> Result<Self, SnapshotError> {
         let exe = std::env::current_exe()?;
         let dir = exe.parent().ok_or(SnapshotError::ExeDir)?;
-        Ok(Self::open(dir.join("snapshots")))
+        // The process token's user owns the HKCU this process writes; the SID guard keeps it
+        // equal to the session user for every HKCU apply.
+        let sid = crate::tweaks::engine::context::RealSidProbe.process_token_sid();
+        Ok(Self::open(dir.join("snapshots")).with_user_sid(sid))
     }
 
     fn tweak_dir(&self, tweak_id: &str) -> PathBuf {
@@ -334,8 +355,13 @@ impl SnapshotStore {
         let mut superseded: Vec<Seq> = Vec::new();
         if let Captured::OptionRef(label) = &new_entry.captured {
             for raw in read_raw_entries(&dir)? {
-                let (validity, parsed) =
-                    classify_and_parse(&raw, corpus, machine_guid, running_build);
+                let (validity, parsed) = classify_and_parse(
+                    &raw,
+                    corpus,
+                    machine_guid,
+                    self.user_sid.as_deref(),
+                    running_build,
+                );
                 let Some(existing) = parsed else {
                     continue; // Corrupt/WrongSchema: no well-typed entry to compare against
                 };
@@ -361,6 +387,7 @@ impl SnapshotStore {
         let entry = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: machine_guid.map(str::to_string),
+            user_sid: self.user_sid.clone(),
             tweak_id: tweak_id.to_string(),
             seq,
             timestamp: chrono::Local::now().to_rfc3339(),
@@ -401,7 +428,13 @@ impl SnapshotStore {
         let mut raws = read_raw_entries(&dir)?;
         raws.sort_by_key(|r| std::cmp::Reverse(r.seq));
         for raw in &raws {
-            let (validity, parsed) = classify_and_parse(raw, corpus, machine_guid, running_build);
+            let (validity, parsed) = classify_and_parse(
+                raw,
+                corpus,
+                machine_guid,
+                self.user_sid.as_deref(),
+                running_build,
+            );
             if validity == EntryValidity::Valid {
                 return Ok(parsed);
             }
@@ -423,8 +456,13 @@ impl SnapshotStore {
         Ok(raws
             .iter()
             .map(|raw| {
-                let (validity, parsed) =
-                    classify_and_parse(raw, corpus, machine_guid, running_build);
+                let (validity, parsed) = classify_and_parse(
+                    raw,
+                    corpus,
+                    machine_guid,
+                    self.user_sid.as_deref(),
+                    running_build,
+                );
                 EntrySummary {
                     seq: raw.seq,
                     validity,
@@ -847,9 +885,10 @@ pub fn classify(
     raw: &RawEntry,
     corpus: &Corpus,
     machine_guid: Option<&str>,
+    user_sid: Option<&str>,
     running_build: u32,
 ) -> EntryValidity {
-    classify_and_parse(raw, corpus, machine_guid, running_build).0
+    classify_and_parse(raw, corpus, machine_guid, user_sid, running_build).0
 }
 
 /// `classify`'s implementation, threading the parsed `Entry` through so `head`/`list` don't parse
@@ -858,6 +897,7 @@ fn classify_and_parse(
     raw: &RawEntry,
     corpus: &Corpus,
     machine_guid: Option<&str>,
+    user_sid: Option<&str>,
     running_build: u32,
 ) -> (EntryValidity, Option<Entry>) {
     let json: serde_json::Value = match serde_json::from_slice(&raw.bytes) {
@@ -894,6 +934,14 @@ fn classify_and_parse(
             Some(entry),
         );
     };
+    if let (Some(entry_sid), Some(current)) = (entry.user_sid.as_deref(), user_sid) {
+        if entry_sid != current && tweak_touches_hkcu(tweak, corpus) {
+            return (
+                EntryValidity::Invalid(InvalidReason::WrongUser),
+                Some(entry),
+            );
+        }
+    }
     if let Captured::OptionRef(label) = &entry.captured {
         let Some(matched) = tweak.options.iter().find(|o| &o.label.0 == label) else {
             return (
@@ -1187,6 +1235,7 @@ mod tests {
         let entry_a = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: None,
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t1".into(),
@@ -1259,6 +1308,7 @@ mod tests {
         let foreign = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("foreign-machine".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t0".into(),
@@ -1290,6 +1340,78 @@ mod tests {
         let new_entry = read_entry_direct(&dir, new_seq);
         assert_eq!(new_entry.captured, Captured::OptionRef("A".into()));
         assert_eq!(new_entry.machine_guid.as_deref(), Some("here-guid"));
+    }
+
+    fn user_store(dir: &Path, sid: &str) -> SnapshotStore {
+        store(dir).with_user_sid(Some(sid.to_string()))
+    }
+
+    /// Two accounts share one portable folder: each restore must find its own account's capture,
+    /// and neither push may dedup the other's entry away.
+    #[test]
+    fn an_hkcu_tweak_restores_only_its_own_accounts_capture() {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let (a, b) = (
+            user_store(tmp.path(), "S-1-A"),
+            user_store(tmp.path(), "S-1-B"),
+        );
+
+        let seq_a = a
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+        let seq_b = b
+            .push("demo", option_ref_entry("A"), &c, Some(GUID), 19045)
+            .unwrap();
+
+        let head = |s: &SnapshotStore| s.head("demo", &c, Some(GUID), 19045).unwrap().unwrap();
+        assert_eq!(head(&a).seq, seq_a, "A never restores B's capture");
+        assert_eq!(head(&b).seq, seq_b);
+        assert_eq!(
+            read_entry_direct(&tmp.path().join("demo"), seq_a)
+                .user_sid
+                .as_deref(),
+            Some("S-1-A")
+        );
+        let listed = a.list("demo", &c, Some(GUID), 19045).unwrap();
+        assert_eq!(
+            listed.iter().find(|e| e.seq == seq_b).unwrap().validity,
+            EntryValidity::Invalid(InvalidReason::WrongUser)
+        );
+    }
+
+    /// HKLM is machine-wide, so any account's capture is a valid return point for it.
+    #[test]
+    fn a_machine_wide_tweak_ignores_which_account_captured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut t = tweak("demo", None, vec![opt("A")]);
+        t.surface[0].kind = Effect::Setting(Setting::RegistryKey(KeyAddr {
+            hive: Hive::Hklm,
+            path: "Software\\MagicXTest".to_string(),
+        }));
+        let c = corpus(vec![t]);
+        let seq = user_store(tmp.path(), "S-1-A")
+            .push("demo", values_entry(), &c, Some(GUID), 19045)
+            .unwrap();
+
+        let head = user_store(tmp.path(), "S-1-B")
+            .head("demo", &c, Some(GUID), 19045)
+            .unwrap();
+        assert_eq!(head.map(|e| e.seq), Some(seq));
+    }
+
+    #[test]
+    fn an_unreadable_sid_on_either_side_never_invents_a_mismatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let seq = store(tmp.path())
+            .push("demo", values_entry(), &c, Some(GUID), 19045)
+            .unwrap();
+
+        let head = user_store(tmp.path(), "S-1-B")
+            .head("demo", &c, Some(GUID), 19045)
+            .unwrap();
+        assert_eq!(head.map(|e| e.seq), Some(seq));
     }
 
     #[test]
@@ -1641,6 +1763,7 @@ mod tests {
         let foreign = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("foreign-machine".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t".into(),
@@ -1937,6 +2060,7 @@ mod tests {
         let sentinel = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("g".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(0),
             timestamp: "sentinel".into(),
@@ -1951,6 +2075,7 @@ mod tests {
         let target = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("g".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(5),
             timestamp: "t5".into(),
@@ -1992,6 +2117,7 @@ mod tests {
         let valid_entry = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some(guid_here.into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t".into(),
@@ -2007,7 +2133,7 @@ mod tests {
             bytes: serde_json::to_vec(&valid_entry).unwrap(),
         };
         assert_eq!(
-            classify(&raw, &c, Some(guid_here), 10240),
+            classify(&raw, &c, Some(guid_here), None, 10240),
             EntryValidity::Valid
         );
 
@@ -2017,7 +2143,7 @@ mod tests {
             bytes: b"{ not json".to_vec(),
         };
         assert_eq!(
-            classify(&raw, &c, Some(guid_here), 10240),
+            classify(&raw, &c, Some(guid_here), None, 10240),
             EntryValidity::Invalid(InvalidReason::Corrupt)
         );
 
@@ -2029,7 +2155,7 @@ mod tests {
             bytes: serde_json::to_vec(&wrong_schema).unwrap(),
         };
         assert_eq!(
-            classify(&raw, &c, Some(guid_here), 10240),
+            classify(&raw, &c, Some(guid_here), None, 10240),
             EntryValidity::Invalid(InvalidReason::WrongSchema)
         );
 
@@ -2041,7 +2167,7 @@ mod tests {
             bytes: serde_json::to_vec(&foreign).unwrap(),
         };
         assert_eq!(
-            classify(&raw, &c, Some(guid_here), 10240),
+            classify(&raw, &c, Some(guid_here), None, 10240),
             EntryValidity::Invalid(InvalidReason::WrongMachine)
         );
 
@@ -2053,7 +2179,7 @@ mod tests {
             bytes: serde_json::to_vec(&dangling).unwrap(),
         };
         assert_eq!(
-            classify(&raw, &c, Some(guid_here), 10240),
+            classify(&raw, &c, Some(guid_here), None, 10240),
             EntryValidity::Invalid(InvalidReason::DanglingRef)
         );
 
@@ -2075,7 +2201,7 @@ mod tests {
             bytes: serde_json::to_vec(&unavailable).unwrap(),
         };
         assert_eq!(
-            classify(&raw, &c2, Some(guid_here), 19045),
+            classify(&raw, &c2, Some(guid_here), None, 19045),
             EntryValidity::Invalid(InvalidReason::TargetUnavailable)
         );
     }
@@ -2099,6 +2225,7 @@ mod tests {
         let entry = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("g".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t".into(),
@@ -2113,7 +2240,7 @@ mod tests {
         };
 
         assert_eq!(
-            classify(&raw, &c, Some("g"), 19045),
+            classify(&raw, &c, Some("g"), None, 19045),
             EntryValidity::Invalid(InvalidReason::TargetUnavailable),
             "an option's own per-value scope must be checked, not just the tweak's"
         );
@@ -2166,6 +2293,7 @@ mod tests {
         let entry = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("g".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t".into(),
@@ -2180,7 +2308,7 @@ mod tests {
         };
 
         assert_eq!(
-            classify(&raw, &c, Some("g"), 19045),
+            classify(&raw, &c, Some("g"), None, 19045),
             EntryValidity::Valid,
             "eff1 still survives on 19045 even though eff2 (option-scoped to 26100) does not"
         );
@@ -2197,6 +2325,7 @@ mod tests {
         let valid = Entry {
             schema_version: SCHEMA_VERSION,
             machine_guid: Some("g".into()),
+            user_sid: None,
             tweak_id: "demo".into(),
             seq: Seq(1),
             timestamp: "t1".into(),
