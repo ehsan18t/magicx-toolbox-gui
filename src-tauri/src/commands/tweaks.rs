@@ -1283,6 +1283,7 @@ pub async fn get_tweak_status(app: AppHandle, tweak_id: String) -> Result<TweakS
 #[tauri::command]
 pub async fn list_snapshot_entries(app: AppHandle, tweak_id: String) -> Result<Vec<EntrySummary>> {
     log::info!("list_snapshot_entries: '{tweak_id}'");
+    find_tweak(compiled_corpus(), &tweak_id)?;
     blocking(move || {
         let state = app.state::<TweakEngineState>();
         state
@@ -1303,12 +1304,32 @@ pub async fn list_snapshot_entries(app: AppHandle, tweak_id: String) -> Result<V
 #[tauri::command]
 pub async fn discard_snapshot_entry(app: AppHandle, tweak_id: String, seq: Seq) -> Result<()> {
     log::info!("discard_snapshot_entry: '{tweak_id}' seq {seq:?}");
+    find_tweak(compiled_corpus(), &tweak_id)?;
     // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
     let id = tweak_id.clone();
     run_locked(&tweak_id, move || {
+        let state = app.state::<TweakEngineState>();
+        let entries = state
+            .snapshots
+            .list(
+                &id,
+                compiled_corpus(),
+                state.machine_guid.as_deref(),
+                running_winver().build,
+            )
+            .map_err(|e| map_snapshot_err("listing this tweak's snapshots", e))?;
+        if entries
+            .iter()
+            .any(|e| e.seq == seq && e.validity == EntryValidity::Invalid(InvalidReason::WrongUser))
+        {
+            return Err(Error::Tweak(
+                "this snapshot belongs to another Windows account, so only that account can discard it"
+                    .into(),
+            ));
+        }
         // Releases the entry and nothing else: Needs Attention has exactly three clears (ADR-0002)
         // and [`keep_current_state`] is the consented one, reachable whenever a record exists.
-        app.state::<TweakEngineState>()
+        state
             .snapshots
             .discard(&id, seq)
             .map_err(|e| map_snapshot_err("discarding this snapshot", e))
@@ -1328,13 +1349,13 @@ fn release_snapshot(
 ) -> Result<u32> {
     snapshots
         .settle_consented(tweak_id, guid)
-        .map_err(|e| Error::Tweak(e.to_string()))?;
+        .map_err(|e| map_snapshot_err("keeping the current state", e))?;
     snapshots
         .clear_attention_consented(tweak_id, guid)
-        .map_err(|e| Error::Tweak(e.to_string()))?;
+        .map_err(|e| map_snapshot_err("keeping the current state", e))?;
     let entries = snapshots
         .list(tweak_id, corpus, guid, build)
-        .map_err(|e| Error::Tweak(e.to_string()))?;
+        .map_err(|e| map_snapshot_err("keeping the current state", e))?;
     let mut discarded = 0;
     // Another account's HKCU return point is not this user's to consent away.
     for entry in entries
@@ -1343,7 +1364,7 @@ fn release_snapshot(
     {
         snapshots
             .discard(tweak_id, entry.seq)
-            .map_err(|e| Error::Tweak(e.to_string()))?;
+            .map_err(|e| map_snapshot_err("keeping the current state", e))?;
         discarded += 1;
     }
     log::info!("tweak '{tweak_id}': current state kept, {discarded} snapshot entries released");
