@@ -86,18 +86,21 @@ impl ExclusiveTempFile {
         contents: &[u8],
     ) -> io::Result<Self> {
         let path = unique_temp_path_in(dir, prefix, ext)?;
-        let mut file = std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .share_mode(FILE_SHARE_READ)
             .open(&path)?;
-        file.write_all(contents)?;
-        file.flush()?;
-        Ok(Self {
+        let mut temp = Self {
             path,
             kind,
             handle: Some(file),
-        })
+        };
+        // Owned before the write, so a failed write drops `temp` and deletes the partial file.
+        let file = temp.handle.as_mut().expect("just set");
+        file.write_all(contents)?;
+        file.flush()?;
+        Ok(temp)
     }
 
     pub fn path(&self) -> &Path {
