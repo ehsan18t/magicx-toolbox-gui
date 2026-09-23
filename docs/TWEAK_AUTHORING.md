@@ -1437,7 +1437,8 @@ computes the truth and rejects the lie (`ReversibilityMismatch`, §14/§16).
 `probe` answers _"is the state this action produces currently present?"_: **state-based, never
 history-based.** The **same** probe is the apply-time did-it-work check and the detect-time
 present/absent contribution. Probe results are **cached per session** and refreshed after an
-apply/restore of that tweak (detection never re-spawns a shell per status poll). An action **without**
+apply/restore of that tweak (detection never re-spawns a shell per status poll). Apply itself never
+trusts the cache: it re-probes live before deciding whether anything needs to change. An action **without**
 `probe` does not contribute to detection at all.
 
 #### Pick the cheapest form that answers the question

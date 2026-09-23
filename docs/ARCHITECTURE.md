@@ -270,7 +270,9 @@ per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_
 - `SnapshotStore::open_default()` - per-tweak history in the portable `snapshots/` directory **next to
   the executable** (one subdirectory per tweak-id, one atomically-written file per entry)
 - Entries are references (authored options) or value dumps (unauthored states), each carrying the WAL
-  action journal; invalid/dangling entries are kept, excluded, and released only by user consent
+  action journal and stamped with the machine guid and the capturing user's SID; invalid entries
+  (another machine, another account's HKCU capture, dangling) are kept, excluded, and released only by
+  user consent
 - `shared_claims.<MachineGuid>.json` (under the snapshots root, one per machine) - the refcounted
   claims record: capture-once, last-release restores the captured original (ADR-0006)
 
