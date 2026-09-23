@@ -64,6 +64,11 @@ jobs:
         working-directory: src-tauri
         run: cargo test --all-targets
 
+      # The manual_tests module compiles only under test-build.
+      - name: Rust tests (test-build)
+        working-directory: src-tauri
+        run: cargo test --all-targets --features test-build
+
   elevated-tests:
     # The ignored tests never ran anywhere. `cargo test` skips them and no job passed
     # --ignored, so the suite reported green while the tests that touch the live Task
