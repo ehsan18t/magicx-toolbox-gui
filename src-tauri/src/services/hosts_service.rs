@@ -1,7 +1,6 @@
 //! Hosts file service for managing entries in the Windows hosts file.
 //!
-//! The hosts file is located at C:\Windows\System32\drivers\etc\hosts
-//! and requires administrator privileges to modify.
+//! The hosts file is `<System32>\drivers\etc\hosts` and requires administrator privileges to modify.
 
 use crate::error::Error;
 use std::fs;
@@ -9,6 +8,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
 
 use windows_sys::core::PWSTR;
 use windows_sys::Win32::Foundation::{
@@ -36,9 +36,13 @@ const REPLACE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_milli
 /// Marker comment to identify entries managed by MagicX Toolbox
 const MAGICX_MARKER: &str = "# MagicX Toolbox";
 
-/// Get the path to the Windows hosts file
-fn get_hosts_path() -> PathBuf {
-    PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+/// Held across every read-modify-replace: two concurrent edits would otherwise each drop the
+/// other's entry.
+static HOSTS_EDIT: Mutex<()> = Mutex::new(());
+
+/// Resolved via `GetSystemDirectoryW`: Windows is not always installed on `C:`.
+fn get_hosts_path() -> Result<PathBuf, Error> {
+    Ok(crate::services::system32::system_dir()?.join(r"drivers\etc\hosts"))
 }
 
 /// Null-terminated UTF-16 encoding of a path, for the `PCWSTR` params the file-replace APIs take.
@@ -288,7 +292,7 @@ fn verify_security(path: &Path, expected: &SecurityCapture) -> Result<(), Error>
 /// `ReplaceFileW`: `hosts` is never truncated or mis-owned. Not `fs::rename`/`persist`: a rename
 /// carries the temp file's whole ACL onto `hosts`.
 fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
-    let hosts_path = get_hosts_path();
+    let hosts_path = get_hosts_path()?;
 
     // A machine with no hosts file yet has nothing to preserve or lose: there is no pre-existing
     // security descriptor (or content) at risk, so this one case is intentionally a plain,
@@ -422,7 +426,7 @@ pub fn parse_hosts_lines(content: &str) -> Vec<HostsEntry> {
 
 /// Read and parse the hosts file
 pub fn read_hosts_file() -> Result<Vec<HostsEntry>, Error> {
-    let hosts_path = get_hosts_path();
+    let hosts_path = get_hosts_path()?;
 
     if !hosts_path.exists() {
         return Ok(Vec::new());
@@ -471,13 +475,13 @@ fn add_entry_to_hosts(content: &str, ip: &str, domain: &str, comment: Option<&st
 
 /// Add an entry to the hosts file
 pub fn add_hosts_entry(ip: &str, domain: &str, comment: Option<&str>) -> Result<(), Error> {
-    // First check if it already exists
+    let _edit = HOSTS_EDIT.lock().unwrap_or_else(|e| e.into_inner());
     if entry_exists(ip, domain)? {
         log::debug!("Hosts entry already exists: {} -> {}", domain, ip);
         return Ok(());
     }
 
-    let hosts_path = get_hosts_path();
+    let hosts_path = get_hosts_path()?;
     let existing_content = if hosts_path.exists() {
         fs::read_to_string(&hosts_path)
             .map_err(|e| Error::from_io("failed to read the hosts file", &e))?
@@ -602,7 +606,8 @@ pub fn remove_entry_from_hosts(content: &str, ip: &str, domain: &str) -> String 
 
 /// Remove an entry from the hosts file
 pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
-    let hosts_path = get_hosts_path();
+    let _edit = HOSTS_EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    let hosts_path = get_hosts_path()?;
 
     if !hosts_path.exists() {
         return Ok(());
@@ -622,6 +627,40 @@ pub fn remove_hosts_entry(ip: &str, domain: &str) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hosts_path_resolves_under_the_system_directory() {
+        let root = std::env::var_os("SystemRoot").expect("SystemRoot is set");
+        let expected = Path::new(&root).join(r"System32\drivers\etc\hosts");
+        let actual = get_hosts_path().expect("the system directory must resolve");
+        assert!(
+            actual
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&expected.to_string_lossy()),
+            "{actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    #[ignore = "edits the real hosts file; needs admin, run with `cargo test -- --ignored` while elevated"]
+    fn concurrent_edits_keep_every_entry() {
+        let domains: Vec<String> = (0..8)
+            .map(|i| format!("magicx-concurrency-{i}.invalid"))
+            .collect();
+        std::thread::scope(|s| {
+            for d in &domains {
+                s.spawn(move || add_hosts_entry("0.0.0.0", d, None).expect("add"));
+            }
+        });
+        let missing: Vec<&String> = domains
+            .iter()
+            .filter(|d| !entry_exists("0.0.0.0", d).expect("read"))
+            .collect();
+        for d in &domains {
+            remove_hosts_entry("0.0.0.0", d).expect("cleanup");
+        }
+        assert!(missing.is_empty(), "concurrent adds dropped {missing:?}");
+    }
 
     /// The parser must not care about line endings. Windows hosts files are CRLF,
     /// but a file touched by another tool can end up mixed.

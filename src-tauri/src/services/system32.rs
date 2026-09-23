@@ -40,7 +40,7 @@ impl SystemTool {
     }
 }
 
-fn system_dir() -> Result<PathBuf, Error> {
+pub(crate) fn system_dir() -> Result<PathBuf, Error> {
     let mut buf = [0u16; MAX_PATH as usize];
     // SAFETY: `buf` is writable for exactly the length passed.
     let len = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
