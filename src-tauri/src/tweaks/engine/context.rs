@@ -5,7 +5,9 @@
 //! everything else here runs with zero OS contact by default.
 
 use crate::tweaks::kinds::ExecCx;
-use crate::tweaks::model::{ActionDef, Corpus, Effect, EffectDef, Hive, Level, Setting, Tweak};
+use crate::tweaks::model::{
+    ActionDef, Corpus, Effect, EffectDef, Hive, Level, Probe, Setting, Tweak,
+};
 
 pub use crate::tweaks::model::effective_level;
 
@@ -46,14 +48,29 @@ fn effect_is_hkcu(effect: &EffectDef, corpus: &Corpus) -> bool {
     }
 }
 
-/// Whether any effect in `tweak`'s surface drives an HKCU setting -- the availability guard's input
-/// (see [`hkcu_disabled_by_sid_mismatch`]). Built on the same [`effect_is_hkcu`] that [`route`]
-/// uses, which is the point: one question, one answer, one place.
+/// Whether any effect in `tweak`'s surface drives an HKCU setting or detects through an HKCU
+/// probe -- the availability guard's input (see [`hkcu_disabled_by_sid_mismatch`]). Built on the
+/// same [`effect_is_hkcu`] that [`route`] uses, so the two cannot drift apart.
 pub fn tweak_touches_hkcu(tweak: &Tweak, corpus: &Corpus) -> bool {
     tweak
         .surface
         .iter()
-        .any(|effect| effect_is_hkcu(effect, corpus))
+        .any(|effect| effect_is_hkcu(effect, corpus) || probe_reads_hkcu(effect))
+}
+
+/// A probe runs in-process whatever the route, so under another user's token it reads the wrong
+/// hive: it counts for the guard but not for routing the script itself.
+pub(crate) fn probe_reads_hkcu(effect: &EffectDef) -> bool {
+    matches!(
+        &effect.kind,
+        Effect::Action(ActionDef::Script {
+            probe: Some(Probe::Registry {
+                hive: Hive::Hkcu,
+                ..
+            }),
+            ..
+        })
+    )
 }
 
 /// Routes one effect's DRIVE to its execution context (spec §9): effective level = `max(tweak's
@@ -828,6 +845,42 @@ mod tests {
             !tweak_touches_hkcu(&shared_tweak, &corpus_with_shared(Hive::Hklm)),
             "a shared HKLM setting is not"
         );
+    }
+
+    #[test]
+    fn an_hkcu_registry_probe_touches_hkcu_without_rerouting_the_script() {
+        use crate::tweaks::model::{Script, Shell};
+        let action = |hive| EffectDef {
+            id: EffectId("act".to_string()),
+            kind: Effect::Action(ActionDef::Script {
+                apply: Script("exit 0".to_string()),
+                undo: Some(Script("exit 0".to_string())),
+                probe: Some(Probe::Registry {
+                    hive,
+                    path: "Software\\Test".to_string(),
+                    name: "V".to_string(),
+                    equals: 1,
+                }),
+                ephemeral: false,
+                shell: Shell::PowerShell,
+                timeout: None,
+            }),
+            elevation: None,
+            optional: false,
+            if_missing: None,
+            windows: None,
+        };
+        let corpus = empty_corpus();
+        let mut tweak = tweak_with_floor(Level::Admin);
+        tweak.surface = vec![action(Hive::Hkcu)];
+        assert!(tweak_touches_hkcu(&tweak, &corpus));
+        assert_eq!(
+            route(&tweak.surface[0], &tweak, &corpus).level(),
+            Level::Admin
+        );
+
+        tweak.surface = vec![action(Hive::Hklm)];
+        assert!(!tweak_touches_hkcu(&tweak, &corpus));
     }
 
     #[test]

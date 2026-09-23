@@ -63,10 +63,10 @@ mod compiled_corpus_tests {
             // tweak with no HKCU effect (an `action:` script, say).
             let mut probe = tweak.clone();
             probe.elevation = Level::Ti;
-            let routing_says = probe
-                .surface
-                .iter()
-                .any(|e| context::route(e, &probe, corpus).level() == Level::User);
+            let routing_says = probe.surface.iter().any(|e| {
+                context::route(e, &probe, corpus).level() == Level::User
+                    || context::probe_reads_hkcu(e)
+            });
 
             assert_eq!(
                 guard_says, routing_says,
