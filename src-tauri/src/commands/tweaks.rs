@@ -103,7 +103,7 @@ static ACTIONS: RealActions = RealActions;
 /// The one place that builds `Deps` for a command: the real dispatcher/
 /// probe/action sources, the three managed app-lifetime stores, and the app's current elevation
 /// ceiling + running Windows build.
-fn build_deps(state: &TweakEngineState) -> Deps<'_> {
+pub(crate) fn build_deps(state: &TweakEngineState) -> Deps<'_> {
     Deps {
         kinds: &KINDS,
         probes: &PROBES,
@@ -120,7 +120,7 @@ fn build_deps(state: &TweakEngineState) -> Deps<'_> {
 /// The app's current elevation ceiling: `User` if not running elevated,
 /// else `Admin` -- never `Ti` itself (the whole PROCESS never runs at that level; only
 /// individual effects escalate there per-op through the broker, spec §9).
-fn current_app_level() -> Level {
+pub(crate) fn current_app_level() -> Level {
     if system_info_service::is_running_as_admin() {
         Level::Admin
     } else {
@@ -262,7 +262,7 @@ fn refuse_if_unavailable(
     }
 }
 
-fn find_tweak<'a>(corpus: &'a Corpus, tweak_id: &str) -> Result<&'a Tweak> {
+pub(crate) fn find_tweak<'a>(corpus: &'a Corpus, tweak_id: &str) -> Result<&'a Tweak> {
     corpus
         .tweaks
         .iter()
@@ -1163,6 +1163,44 @@ pub async fn rescan_after_elevation(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
+/// `apply_tweak`'s whole path (availability refusal, per-tweak lock, engine) with the engine's
+/// typed error left unmapped, so the test build's manual tests can log it.
+pub(crate) async fn apply_gated(
+    app: AppHandle,
+    tweak: &'static Tweak,
+    option_label: String,
+) -> Result<std::result::Result<ApplyOutcomeView, EngineError>> {
+    let stamp = gate_and_stamp(tweak).await?;
+    run_locked(&tweak.id, move || {
+        let state = app.state::<TweakEngineState>();
+        let target = OptLabel(option_label);
+        Ok(apply_tweak_logic(
+            tweak,
+            compiled_corpus(),
+            &target,
+            &build_deps(state.inner()),
+            stamp,
+        ))
+    })
+    .await
+}
+
+/// `restore_tweak`'s whole path, typed error unmapped, as [`apply_gated`].
+pub(crate) async fn restore_gated(
+    app: AppHandle,
+    tweak: &'static Tweak,
+) -> Result<std::result::Result<RestoreOutcomeView, EngineError>> {
+    let stamp = gate_and_stamp(tweak).await?;
+    run_locked(&tweak.id, move || {
+        let state = app.state::<TweakEngineState>();
+        Ok(
+            revert::do_restore(tweak, compiled_corpus(), &build_deps(state.inner()))
+                .map(|o| RestoreOutcomeView::stamped(o, stamp)),
+        )
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn apply_tweak(
     app: AppHandle,
@@ -1171,34 +1209,18 @@ pub async fn apply_tweak(
 ) -> Result<ApplyOutcomeView> {
     log::info!("apply_tweak: '{tweak_id}' -> '{option_label}'");
     let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
-    let stamp = gate_and_stamp(tweak).await?;
-    run_locked(&tweak_id, move || {
-        let state = app.state::<TweakEngineState>();
-        let target = OptLabel(option_label);
-        apply_tweak_logic(
-            tweak,
-            compiled_corpus(),
-            &target,
-            &build_deps(state.inner()),
-            stamp,
-        )
+    apply_gated(app, tweak, option_label)
+        .await?
         .map_err(|e| map_engine_err(&tweak.id, Phase::Apply, e))
-    })
-    .await
 }
 
 #[tauri::command]
 pub async fn restore_tweak(app: AppHandle, tweak_id: String) -> Result<RestoreOutcomeView> {
     log::info!("restore_tweak: '{tweak_id}'");
     let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
-    let stamp = gate_and_stamp(tweak).await?;
-    run_locked(&tweak_id, move || {
-        let state = app.state::<TweakEngineState>();
-        revert::do_restore(tweak, compiled_corpus(), &build_deps(state.inner()))
-            .map(|o| RestoreOutcomeView::stamped(o, stamp))
-            .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
-    })
-    .await
+    restore_gated(app, tweak)
+        .await?
+        .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
 }
 
 /// One tweak's fresh status, so a failed apply or restore shows the Needs Attention it left.

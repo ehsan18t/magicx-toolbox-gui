@@ -20,6 +20,10 @@ rust-version = "1.92.0"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# The Manual Tests view (`pnpm run build:test`); never enabled in a release build.
+test-build = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }

@@ -1,6 +1,8 @@
 mod commands;
 pub mod debug;
 mod error;
+#[cfg(feature = "test-build")]
+mod manual_tests;
 mod models;
 mod services;
 mod setup;
@@ -162,6 +164,13 @@ pub fn run() {
             // Update commands
             commands::update::check_for_update,
             commands::update::install_update,
+            commands::manual_tests::manual_tests_available,
+            #[cfg(feature = "test-build")]
+            commands::manual_tests::list_manual_tests,
+            #[cfg(feature = "test-build")]
+            commands::manual_tests::run_manual_test,
+            #[cfg(feature = "test-build")]
+            commands::manual_tests::cancel_manual_test,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

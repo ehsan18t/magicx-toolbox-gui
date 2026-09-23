@@ -5,6 +5,7 @@
  */
 
 import type { CategoryDefinition } from "$lib/types";
+import { manualTestsStore } from "./manualTests.svelte";
 import { categoriesStore } from "./tweaksData.svelte";
 
 /** Tab types - "overview", "search", "favorites", "snapshots", "profiles", or category ID */
@@ -70,6 +71,15 @@ const profilesTab: TabDefinition = {
   isPermanent: true,
 };
 
+// Manual Tests tab: listed only in a test build
+const manualTestsTab: TabDefinition = {
+  id: "manual-tests",
+  name: "Manual Tests",
+  icon: "mdi:flask-outline",
+  description: "Real-machine checks for this test build",
+  isPermanent: true,
+};
+
 // Derived: All tabs from categories
 const allTabs = $derived.by((): TabDefinition[] => {
   const categoryTabs: TabDefinition[] = categoriesStore.list.map((cat: CategoryDefinition) => ({
@@ -80,7 +90,9 @@ const allTabs = $derived.by((): TabDefinition[] => {
     isPermanent: false,
   }));
 
-  return [overviewTab, searchTab, favoritesTab, snapshotsTab, profilesTab, ...categoryTabs];
+  const fixed = [overviewTab, searchTab, favoritesTab, snapshotsTab, profilesTab];
+  if (manualTestsStore.available) fixed.push(manualTestsTab);
+  return [...fixed, ...categoryTabs];
 });
 
 // Derived: Fixed/permanent tabs (Overview, Search)
@@ -104,7 +116,8 @@ const isOnCategoryTab = $derived(
     activeTab !== "search" &&
     activeTab !== "favorites" &&
     activeTab !== "snapshots" &&
-    activeTab !== "profiles",
+    activeTab !== "profiles" &&
+    activeTab !== "manual-tests",
 );
 
 // Derived: Is on search tab

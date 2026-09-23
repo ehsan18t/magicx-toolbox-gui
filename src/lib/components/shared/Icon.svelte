@@ -35,6 +35,7 @@
   import MdiCogOutline from "~icons/mdi/cog-outline";
   import MdiCogs from "~icons/mdi/cogs";
   import MdiConsole from "~icons/mdi/console";
+  import MdiContentCopy from "~icons/mdi/content-copy";
   import MdiCpu64Bit from "~icons/mdi/cpu-64-bit";
   import MdiDatabase from "~icons/mdi/database";
   import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
@@ -53,6 +54,7 @@
   import MdiFileImport from "~icons/mdi/file-import";
   import MdiFileMultiple from "~icons/mdi/file-multiple";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
+  import MdiFlaskOutline from "~icons/mdi/flask-outline";
   import MdiFolder from "~icons/mdi/folder";
   import MdiFolderOpen from "~icons/mdi/folder-open";
   import MdiGamepadVariant from "~icons/mdi/gamepad-variant";
@@ -102,6 +104,7 @@
   import MdiStar from "~icons/mdi/star";
   import MdiStarOff from "~icons/mdi/star-off";
   import MdiStarOutline from "~icons/mdi/star-outline";
+  import MdiStop from "~icons/mdi/stop";
   import MdiTextSearch from "~icons/mdi/text-search";
   import MdiTimerOutline from "~icons/mdi/timer-outline";
   import MdiToggleSwitch from "~icons/mdi/toggle-switch";
@@ -294,6 +297,9 @@
     "mdi:file-multiple": MdiFileMultiple,
     "mdi:file-cog": MdiFileCog,
     "mdi:play": MdiPlay,
+    "mdi:stop": MdiStop,
+    "mdi:flask-outline": MdiFlaskOutline,
+    "mdi:content-copy": MdiContentCopy,
     "mdi:plus": MdiPlus,
     "mdi:delete": MdiDelete,
     "mdi:lightning-bolt": MdiLightningBolt,

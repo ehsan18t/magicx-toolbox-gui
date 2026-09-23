@@ -22,6 +22,8 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "build:debug": "tauri build --debug",
+    "build:test": "tauri build --features test-build",
+    "dev:test": "tauri dev --features test-build",
     "prepare": "svelte-kit sync || echo ''",
     "copy-icons": "cpy src-tauri/icons/Toolbox.ico static/icons --flat",
     "postinstall": "pnpm run copy-icons",

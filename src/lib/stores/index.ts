@@ -11,6 +11,9 @@ export { themeStore, type Theme } from "./theme.svelte";
 // Favorites
 export { favoritesStore } from "./favorites.svelte";
 
+// Manual Tests (test build only)
+export { manualTestsStore } from "./manualTests.svelte";
+
 // Modal state
 export {
   closeModal,

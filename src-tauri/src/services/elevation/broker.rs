@@ -632,6 +632,10 @@ fn run_ops_with(
         Ok(()) => {}
         Err(e) => log_failure(level, e, elapsed_ms),
     }
+    #[cfg(feature = "test-build")]
+    if level.is_elevated() {
+        crate::manual_tests::record_batch(level, sent, elapsed_ms, outcome.is_ok());
+    }
     outcome
 }
 

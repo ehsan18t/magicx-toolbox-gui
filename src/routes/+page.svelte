@@ -5,12 +5,14 @@
   import {
     CategoryView,
     FavoritesView,
+    ManualTestsView,
     OverviewView,
     ProfileManager,
     SearchView,
     SnapshotsView,
   } from "$lib/components/views";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
+  import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
@@ -18,6 +20,7 @@
   let error = $state<string | null>(null);
 
   onMount(async () => {
+    void manualTestsStore.init();
     try {
       // Categories are always loaded by +layout (it awaits initializeQuick)
       // No need for defensive checks - if categories failed to load, layout already errored
@@ -75,6 +78,8 @@
             <SnapshotsView />
           {:else if activeTab === "profiles"}
             <ProfileManager />
+          {:else if activeTab === "manual-tests"}
+            <ManualTestsView />
           {:else if currentCategoryTab}
             <CategoryView tab={currentCategoryTab} />
           {/if}
