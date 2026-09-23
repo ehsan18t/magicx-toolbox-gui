@@ -147,6 +147,12 @@ pub enum ValidationError {
     )]
     TrustedInstallerDisabled { tweak: String, effect: EffectId },
 
+    /// Apply honours `revision` but detection scopes by build only, so the two would disagree.
+    #[error(
+        "tweak `{tweak}` {context} sets `revision`, which is not supported: apply would honour it but detection scopes by build only, so scope by `build` alone"
+    )]
+    RevisionUnsupported { tweak: String, context: String },
+
     /// A `windows:` block (tweak, effect, or option-value level, spec §6.6) failed to parse —
     /// a bad build/revision expression, an unknown product, or `revision` without a pinned build.
     #[error("tweak `{tweak}` {context}: {source}")]
@@ -315,6 +321,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_action_timeouts(tweak, &mut errors);
         check_coverage(tweak, &mut errors);
         check_reversibility(tweak, &mut errors);
+        check_no_revision(tweak, &mut errors);
         check_ti_self_availability(tweak, &mut errors);
         check_if_missing_requires_optional(tweak, &mut errors);
         check_ephemeral_has_no_undo_probe(tweak, &mut errors);
@@ -761,6 +768,35 @@ fn check_ti_self_availability(tweak: &Tweak, errors: &mut Vec<ValidationError>) 
     }
 }
 
+/// Rejected until detection honours `revision`; see [`ValidationError::RevisionUnsupported`].
+fn check_no_revision(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    let has_revision = |w: Option<&WindowsScope>| w.is_some_and(|s| s.revision.is_some());
+    let mut contexts = Vec::new();
+    if has_revision(tweak.windows.as_ref()) {
+        contexts.push("`windows:`".to_string());
+    }
+    for effect in &tweak.surface {
+        if has_revision(effect.windows.as_ref()) {
+            contexts.push(format!("effect `{}` `windows:`", effect.id));
+        }
+    }
+    for opt in &tweak.options {
+        for (effect, value) in &opt.values {
+            if has_revision(value_scope(value)) {
+                contexts.push(format!("option `{}` value for `{effect}`", opt.label));
+            }
+        }
+    }
+    errors.extend(
+        contexts
+            .into_iter()
+            .map(|context| ValidationError::RevisionUnsupported {
+                tweak: tweak.id.clone(),
+                context,
+            }),
+    );
+}
+
 /// `if_missing:` only means something on an `optional` effect — a non-optional effect never reads
 /// `Missing` (it is a typed error instead, §5.4), so `if_missing` there would be dead authoring.
 fn check_if_missing_requires_optional(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
@@ -846,10 +882,9 @@ pub(crate) fn build_expr_contains(expr: BuildExpr, build: u32) -> bool {
 }
 
 /// Whether a `windows:` scope (tweak/effect/option-value level, spec §6.6) admits `milestone`.
-/// `revision` is intentionally ignored: milestones are build-only, and §6.6 already requires
-/// `revision` to pin a single exact `build`, so it adds nothing at this granularity. An invalid
-/// `products` entry can't occur here — schema.rs already rejected it at load time via the same
-/// `expand_product`; `is_ok_and` just avoids a panic path over an already-loaded corpus.
+/// `revision` is not read: `check_no_revision` rejects it at build, since apply would honour it.
+/// An invalid `products` entry can't occur here: schema.rs already rejected it at load time via
+/// the same `expand_product`; `is_ok_and` just avoids a panic path over an already-loaded corpus.
 ///
 /// `pub(crate)`: `tweaks::snapshot`'s `classify` reuses this verbatim for `TargetUnavailable`
 /// (spec §8.3) instead of reimplementing Windows-version admission.
@@ -1416,6 +1451,26 @@ mod tests {
         };
         assert_eq!(tweak, "disables_ti");
         assert_eq!(effect.0, "ti_service");
+    }
+
+    #[test]
+    fn revision_scope_is_rejected_at_every_level() {
+        let errors = errors_for("revision_scope.yaml");
+        let contexts: Vec<&str> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::RevisionUnsupported { context, .. } => context.as_str(),
+                other => panic!("expected RevisionUnsupported, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            contexts,
+            [
+                "`windows:`",
+                "effect `flag` `windows:`",
+                "option `On` value for `flag`"
+            ]
+        );
     }
 
     #[test]
