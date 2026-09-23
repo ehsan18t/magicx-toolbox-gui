@@ -257,10 +257,40 @@ fn verify_digest(expected: &str, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
+const STAGED_PREFIX: &str = "magicx-update-";
+
+/// Best effort: an installer still running from an earlier update holds its file open.
+fn remove_stale_installers(dir: &std::path::Path) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::warn!("could not list earlier update files: {}", e.kind());
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(STAGED_PREFIX)
+        {
+            discard_staged(&entry.path(), "earlier");
+        }
+    }
+}
+
+/// Logs `what`, never the path: a staged name is guarded only by being unguessable.
+fn discard_staged(path: &std::path::Path, what: &str) {
+    if let Err(e) = std::fs::remove_file(path) {
+        log::warn!("could not delete the {what} update file: {}", e.kind());
+    }
+}
+
 /// Written under an unguessable name, then re-opened read-only with writers and deleters denied and
 /// compared with the verified bytes. Holding that handle until the installer starts is what keeps
 /// the file that runs identical to the one checked.
 fn stage_installer(
+    dir: &std::path::Path,
     bytes: &[u8],
     asset_name: &str,
 ) -> Result<(std::path::PathBuf, std::fs::File), Error> {
@@ -272,16 +302,22 @@ fn stage_installer(
         log::error!("Failed to {what} the update file: {e}");
         Error::Update(format!("Failed to save update file: {e}"))
     };
+    remove_stale_installers(dir);
     let token =
         crate::services::exclusive_temp::random_hex_token().map_err(|e| io_err("name", e))?;
-    let path = std::env::temp_dir().join(format!("magicx-update-{token}-{asset_name}"));
-    std::fs::OpenOptions::new()
+    let path = dir.join(format!("{STAGED_PREFIX}{token}-{asset_name}"));
+    let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .share_mode(FILE_SHARE_READ)
         .open(&path)
-        .and_then(|mut file| file.write_all(bytes))
-        .map_err(|e| io_err("write", e))?;
+        .map_err(|e| io_err("create", e))?;
+    let written = file.write_all(bytes);
+    drop(file);
+    if let Err(e) = written {
+        discard_staged(&path, "partial");
+        return Err(io_err("write", e));
+    }
 
     let mut held = std::fs::OpenOptions::new()
         .read(true)
@@ -293,9 +329,7 @@ fn stage_installer(
         .map_err(|e| io_err("read back", e))?;
     if on_disk != bytes {
         drop(held);
-        if let Err(e) = std::fs::remove_file(&path) {
-            log::warn!("could not delete the altered update file: {}", e.kind());
-        }
+        discard_staged(&path, "altered");
         return Err(Error::Update(
             "The update file changed on disk before it could be run".into(),
         ));
@@ -407,7 +441,7 @@ fn install_update_in(
         })?;
 
     verify_digest(&asset_digest, &bytes)?;
-    let (download_path, _held) = stage_installer(&bytes, &asset_name)?;
+    let (download_path, held) = stage_installer(&std::env::temp_dir(), &bytes, &asset_name)?;
 
     log::info!("Download verified, launching installer...");
 
@@ -428,12 +462,17 @@ fn install_update_in(
                     .spawn()
             })
     } else {
-        Command::new(&download_path).spawn()
+        // A portable build is the app itself: without this it yields to this instance's mutex.
+        Command::new(&download_path)
+            .arg(crate::services::single_instance::AFTER_RESTART_ARG)
+            .spawn()
     };
 
     match result {
         Ok(_) => {
             log::info!("Installer launched successfully");
+            // msiexec opens the package after spawn returns; the OS closes this handle at exit.
+            std::mem::forget(held);
             latch.keep_until_exit();
             Ok(())
         }
@@ -612,7 +651,8 @@ mod tests {
     #[test]
     fn a_staged_installer_cannot_be_rewritten_while_held() {
         const ERROR_SHARING_VIOLATION: i32 = 32;
-        let (path, held) = stage_installer(b"payload", "x.exe").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let (path, held) = stage_installer(dir.path(), b"payload", "x.exe").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"payload");
         let err = std::fs::OpenOptions::new()
             .write(true)
@@ -620,7 +660,20 @@ mod tests {
             .expect_err("no writer while the installer is held");
         assert_eq!(err.raw_os_error(), Some(ERROR_SHARING_VIOLATION));
         drop(held);
-        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn staging_clears_earlier_installers_and_nothing_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let stale = dir.path().join(format!("{STAGED_PREFIX}0123-x.exe"));
+        let unrelated = dir.path().join("keep.exe");
+        std::fs::write(&stale, b"old").unwrap();
+        std::fs::write(&unrelated, b"other").unwrap();
+        let (path, held) = stage_installer(dir.path(), b"new", "x.exe").unwrap();
+        assert!(!stale.exists(), "an earlier installer was left behind");
+        assert!(unrelated.exists());
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        drop(held);
     }
 
     #[test]
