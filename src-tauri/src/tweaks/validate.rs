@@ -906,14 +906,31 @@ pub(crate) fn applicable_value<'a>(
     milestone: &Milestone,
 ) -> Option<&'a OptValue> {
     let value = opt.values.get(effect)?;
-    let windows = match value {
-        OptValue::Set(scoped) => scoped.windows.as_ref(),
-        OptValue::Run(w) | OptValue::Claim(w) | OptValue::Unclaimed(w) => w.as_ref(),
-    };
-    if !scope_admits(windows, milestone) {
+    if !scope_admits(value_scope(value), milestone) {
         return None;
     }
     Some(value)
+}
+
+fn value_scope(value: &OptValue) -> Option<&WindowsScope> {
+    match value {
+        OptValue::Set(scoped) => scoped.windows.as_ref(),
+        OptValue::Run(w) | OptValue::Claim(w) | OptValue::Unclaimed(w) => w.as_ref(),
+    }
+}
+
+/// What detection compares for one option value: the value or variant, never the `windows:` scope
+/// that admitted it. Two options differing only in scope detect identically.
+fn detected_as(
+    value: Option<&OptValue>,
+) -> Option<(std::mem::Discriminant<OptValue>, Option<&Value>)> {
+    value.map(|v| {
+        let set = match v {
+            OptValue::Set(scoped) => Some(&scoped.value),
+            OptValue::Run(_) | OptValue::Claim(_) | OptValue::Unclaimed(_) => None,
+        };
+        (std::mem::discriminant(v), set)
+    })
 }
 
 /// Whether `opt` is unavailable as a restore target on `milestone` (spec §8.3/§8.4) — reused by
@@ -988,7 +1005,10 @@ fn differing_effects<'a>(
 ) -> Vec<&'a EffectDef> {
     surface
         .iter()
-        .filter(|e| applicable_value(a, &e.id, milestone) != applicable_value(b, &e.id, milestone))
+        .filter(|e| {
+            detected_as(applicable_value(a, &e.id, milestone))
+                != detected_as(applicable_value(b, &e.id, milestone))
+        })
         .copied()
         .collect()
 }
@@ -1745,6 +1765,18 @@ mod tests {
         assert!(
             labels.contains("Run It") && labels.contains("Skip It"),
             "{labels}"
+        );
+    }
+
+    #[test]
+    fn options_differing_only_by_scope_are_byte_identical() {
+        let errors = semantic_errors_for("options_differ_only_by_scope.yaml");
+        assert!(
+            matches!(
+                errors.as_slice(),
+                [ValidationError::OptionsByteIdentical { build: 19045, .. }]
+            ),
+            "{errors:?}"
         );
     }
 
