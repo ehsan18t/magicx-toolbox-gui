@@ -1,0 +1,46 @@
+category:
+  id: dup_address_case_insensitive
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two tweaks own the same registry value, service and task, spelled with different case."
+
+tweaks:
+  - id: tweak_a
+    name: "Tweak A"
+    description: "Owns the addresses in one spelling."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: value
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+      - id: svc
+        service: { name: ExampleSvc }
+      - id: job
+        task: { path: '\ExampleCo\Nightly' }
+    options:
+      - label: "On"
+        values:
+          value: 1
+          svc: disabled
+          job: disabled
+
+  - id: tweak_b
+    name: "Tweak B"
+    description: "Owns the same addresses in another spelling; this is the violation."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: value
+        registry: { key: 'HKLM\Software\exampleco\WIDGET', name: enabled, type: REG_DWORD }
+      - id: svc
+        service: { name: examplesvc }
+      - id: job
+        task: { path: '\exampleco\NIGHTLY' }
+    options:
+      - label: "On"
+        values:
+          value: 1
+          svc: disabled
+          job: disabled

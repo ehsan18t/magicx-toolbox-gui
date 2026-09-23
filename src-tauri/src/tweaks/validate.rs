@@ -370,7 +370,7 @@ fn check_shared_refs_resolve(corpus: &Corpus, errors: &mut Vec<ValidationError>)
 
 /// The coarse grouping key for one-address-one-owner (spec §10, ADR-0006): registry values group
 /// by (hive, path, name) *ignoring* the field, so a whole-value claim and any field claim on the
-/// same value land in one group — exactly the whole-xor-field rule needs.
+/// same value land in one group. Registry, service and task names fold case, as Windows does.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum CoarseKey {
     Registry(Hive, String, String),
@@ -390,22 +390,26 @@ struct Claim {
 fn coarse_key_and_field(setting: &Setting) -> (CoarseKey, Option<String>, String) {
     match setting {
         Setting::Registry(addr) => (
-            CoarseKey::Registry(addr.hive, addr.path.clone(), addr.name.clone()),
+            CoarseKey::Registry(
+                addr.hive,
+                addr.path.to_lowercase(),
+                addr.name.to_lowercase(),
+            ),
             addr.field.as_ref().map(|f| f.field.clone()),
             format!("{:?}\\{}\\{}", addr.hive, addr.path, addr.name),
         ),
         Setting::RegistryKey(addr) => (
-            CoarseKey::RegistryKey(addr.hive, addr.path.clone()),
+            CoarseKey::RegistryKey(addr.hive, addr.path.to_lowercase()),
             None,
             format!("{:?}\\{}", addr.hive, addr.path),
         ),
         Setting::Service(addr) => (
-            CoarseKey::Service(addr.name.clone()),
+            CoarseKey::Service(addr.name.to_lowercase()),
             None,
             format!("service `{}`", addr.name),
         ),
         Setting::Task(addr) => (
-            CoarseKey::Task(addr.path.clone()),
+            CoarseKey::Task(addr.path.to_lowercase()),
             None,
             format!("task `{}`", addr.path),
         ),
@@ -1381,6 +1385,18 @@ mod tests {
         let errors = errors_for("multi_sz_empty_entry.yaml");
         assert!(
             matches!(&errors[..], [ValidationError::InvalidOptionValue { reason, .. }] if reason.contains("empty string")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn dup_address_ignores_case() {
+        let errors = errors_for("dup_address_case_insensitive.yaml");
+        assert_eq!(errors.len(), 3, "value, service and task: {errors:?}");
+        assert!(
+            errors
+                .iter()
+                .all(|e| matches!(e, ValidationError::DuplicateAddress { .. })),
             "{errors:?}"
         );
     }
