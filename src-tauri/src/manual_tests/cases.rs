@@ -379,10 +379,14 @@ fn restore_failed(restored: bool, diffs: &[Difference], extra: Vec<String>) -> V
         }
         (true, n) => format!("the restore verified but {n} effect(s) differ from the baseline"),
     };
+    snapshot_kept(format!("RESTORE FAILED: {why}"), diffs, extra)
+}
+
+fn snapshot_kept(headline: String, diffs: &[Difference], extra: Vec<String>) -> Verdict {
     let mut details: Vec<String> = diffs.iter().map(ToString::to_string).collect();
     details.push(RESTORE_HELP.into());
     details.extend(extra);
-    Verdict::fail(format!("RESTORE FAILED: {why}. {RESTORE_HELP}")).with_details(details)
+    Verdict::fail(format!("{headline}. {RESTORE_HELP}")).with_details(details)
 }
 
 /// The engine rolled a failed apply back itself; this checks what it left.
@@ -398,13 +402,17 @@ fn apply_failed(cx: &Ctx, tweak: &Tweak, baseline: &[Reading]) -> Verdict {
             "Apply failed; the engine rolled it back and every effect matches the baseline. The error chain is in the log.",
         );
     }
-    restore_failed(
-        false,
-        &diffs,
-        vec![
-            "The apply failed and its rollback did not return every effect to the baseline.".into(),
-        ],
-    )
+    rollback_failed(&diffs)
+}
+
+fn rollback_failed(diffs: &[Difference]) -> Verdict {
+    let why = match diffs.len() {
+        0 => "the apply failed and its rollback left the tweak needing attention".to_string(),
+        n => format!(
+            "the apply failed and its rollback left {n} effect(s) differing from the baseline"
+        ),
+    };
+    snapshot_kept(format!("APPLY ROLLBACK FAILED: {why}"), diffs, Vec::new())
 }
 
 pub fn baseline(cx: &Ctx) -> Verdict {
@@ -816,6 +824,23 @@ mod tests {
             .map(|d| d.effect)
             .collect();
         assert_eq!(effects, ["svc", "task", "gone", "extra"]);
+    }
+
+    #[test]
+    fn a_failed_apply_is_not_reported_as_a_failed_restore() {
+        let diffs = compare(
+            &[r("svc", Ok(Value::Absent))],
+            &[r("svc", Ok(Value::Missing))],
+        );
+        for summary in [
+            rollback_failed(&[]).summary,
+            rollback_failed(&diffs).summary,
+        ] {
+            assert!(
+                summary.starts_with("APPLY ROLLBACK FAILED: the apply failed"),
+                "{summary}"
+            );
+        }
     }
 
     #[test]

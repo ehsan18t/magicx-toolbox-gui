@@ -8,7 +8,8 @@ use tauri::{AppHandle, Emitter};
 
 use super::{ManualTest, TESTS};
 use crate::commands::tweaks::{
-    apply_gated, restore_gated, ApplyOutcomeView, RestoreOutcomeView, TweakEngineState,
+    apply_gated, get_tweak_status, restore_gated, ApplyOutcomeView, RestoreOutcomeView,
+    TweakEngineState, TweakStatusEvent,
 };
 use crate::error::{Error, Result};
 use crate::services::elevation::Elevation;
@@ -126,17 +127,40 @@ impl Host for AppHandle {
     }
 
     fn apply(&self, tweak: &'static Tweak, option: &str) -> Typed<ApplyOutcomeView> {
-        tauri::async_runtime::block_on(apply_gated(self.clone(), tweak, option.to_string()))
+        let outcome =
+            tauri::async_runtime::block_on(apply_gated(self.clone(), tweak, option.to_string()));
+        publish_status(self, tweak);
+        outcome
     }
 
     fn restore(&self, tweak: &'static Tweak) -> Typed<RestoreOutcomeView> {
-        tauri::async_runtime::block_on(restore_gated(self.clone(), tweak))
+        let outcome = tauri::async_runtime::block_on(restore_gated(self.clone(), tweak));
+        publish_status(self, tweak);
+        outcome
     }
 
     fn emit_line(&self, test_id: &str, line: &str) {
         if let Err(e) = self.emit("manual-test-log", LogEvent { test_id, line }) {
             log::warn!("[manual-test {test_id}] could not stream a log line: {e}");
         }
+    }
+}
+
+/// The tweak card updates only from a command's reply or a `tweak-status` event.
+fn publish_status(app: &AppHandle, tweak: &Tweak) {
+    let read = tauri::async_runtime::block_on(get_tweak_status(app.clone(), tweak.id.clone()));
+    let emitted = read.and_then(|status| {
+        let event = TweakStatusEvent {
+            tweak_id: tweak.id.clone(),
+            status,
+        };
+        Ok(app.emit("tweak-status", event)?)
+    });
+    if let Err(e) = emitted {
+        log::warn!(
+            "[manual-test] could not refresh the '{}' card: {e}",
+            tweak.id
+        );
     }
 }
 
