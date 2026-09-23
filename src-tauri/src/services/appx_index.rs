@@ -10,7 +10,11 @@
 //! provisioned together, is a single PowerShell run.
 
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::io::Read;
+use std::process::{Child, Stdio};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::error::Error;
 use crate::services::system32::SystemTool;
@@ -26,6 +30,12 @@ Get-AppxPackage -AllUsers | ForEach-Object { $_.Name }
 Get-AppxProvisionedPackage -Online | ForEach-Object { $_.DisplayName }
 "#;
 
+/// A normal run takes about 400ms; past this the spawn is treated as hung and killed.
+const ENUMERATE_TIMEOUT: Duration = Duration::from_secs(60);
+const POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+type Built = Result<HashSet<String>, String>;
+
 /// Lazily-built set of installed package names, lowercased for case-insensitive lookup.
 ///
 /// The build result is cached including its failure: a machine where the enumeration cannot run
@@ -33,16 +43,20 @@ Get-AppxProvisionedPackage -Online | ForEach-Object { $_.DisplayName }
 /// clears it so a later sweep re-observes, which is what makes a removal visible after an apply.
 #[derive(Default)]
 pub struct AppxIndex {
-    cached: Mutex<Option<Result<HashSet<String>, String>>>,
+    cache: Mutex<Cache>,
+}
+
+#[derive(Default)]
+struct Cache {
+    generation: u64,
+    built: Option<Arc<Built>>,
 }
 
 impl AppxIndex {
     /// Whether any of `packages` is installed. Names are compared case-insensitively, matching how
     /// Windows treats package names and how the corpus spells them.
     pub fn any_installed(&self, packages: &[String]) -> Result<bool, Error> {
-        let mut guard = self.cached.lock().unwrap_or_else(|e| e.into_inner());
-        let built = guard.get_or_insert_with(|| enumerate().map_err(|e| e.to_string()));
-        match built {
+        match &*self.built(enumerate) {
             Ok(names) => Ok(packages
                 .iter()
                 .any(|p| names.contains(&p.to_ascii_lowercase()))),
@@ -55,7 +69,31 @@ impl AppxIndex {
     /// Drops the cached enumeration so the next ask re-observes the machine. Called wherever the
     /// probe cache is invalidated, since removing an app is exactly what makes this stale.
     pub fn invalidate(&self) {
-        *self.cached.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        let mut cache = self.lock();
+        cache.generation += 1;
+        cache.built = None;
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Cache> {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Enumerates outside the lock so a slow spawn never blocks `invalidate`; a result that an
+    /// `invalidate` overtook is returned to its asker but not cached.
+    fn built(&self, enumerate: impl FnOnce() -> Result<HashSet<String>, Error>) -> Arc<Built> {
+        let generation = {
+            let cache = self.lock();
+            if let Some(built) = &cache.built {
+                return Arc::clone(built);
+            }
+            cache.generation
+        };
+        let built = Arc::new(enumerate().map_err(|e| e.to_string()));
+        let mut cache = self.lock();
+        if cache.generation == generation && cache.built.is_none() {
+            cache.built = Some(Arc::clone(&built));
+        }
+        built
     }
 }
 
@@ -68,7 +106,7 @@ fn enumerate() -> Result<HashSet<String>, Error> {
         .encode_utf16()
         .flat_map(u16::to_le_bytes)
         .collect();
-    let output = SystemTool::PowerShell
+    let child = SystemTool::PowerShell
         .command()?
         .args([
             "-NoProfile",
@@ -79,23 +117,67 @@ fn enumerate() -> Result<HashSet<String>, Error> {
             &base64(&utf16),
         ])
         .creation_flags(CREATE_NO_WINDOW)
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| Error::CommandExecution(format!("failed to spawn PowerShell: {e}")))?;
+    let (code, stdout, stderr) = output_within(child, ENUMERATE_TIMEOUT)?;
 
-    if !output.status.success() {
+    if code != 0 {
         return Err(Error::CommandExecution(format!(
-            "package enumeration exited with {}: {}",
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).trim()
+            "package enumeration exited with {code}: {}",
+            String::from_utf8_lossy(&stderr).trim()
         )));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout)
+    Ok(String::from_utf8_lossy(&stdout)
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .map(str::to_ascii_lowercase)
         .collect())
+}
+
+/// Exit code, stdout and stderr of `child`, or `Err` after killing it once `timeout` passes.
+/// Pipes drain on threads so a full pipe buffer cannot stall the child past the bound.
+fn output_within(mut child: Child, timeout: Duration) -> Result<(i32, Vec<u8>, Vec<u8>), Error> {
+    fn drain(pipe: Option<impl Read + Send + 'static>) -> thread::JoinHandle<Vec<u8>> {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    }
+    let out = drain(child.stdout.take());
+    let err = drain(child.stderr.take());
+
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if start.elapsed() < timeout => thread::sleep(POLL_INTERVAL),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error::CommandExecution(format!(
+                    "package enumeration exceeded {}s and was terminated",
+                    timeout.as_secs()
+                )));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error::CommandExecution(format!(
+                    "failed to wait on package enumeration: {e}"
+                )));
+            }
+        }
+    };
+    let joined = |t: thread::JoinHandle<Vec<u8>>| t.join().unwrap_or_default();
+    Ok((status.code().unwrap_or(-1), joined(out), joined(err)))
 }
 
 /// Standard base64 (RFC 4648), for `-EncodedCommand`'s UTF-16LE payload.
@@ -140,7 +222,7 @@ mod tests {
     #[test]
     fn an_enumeration_failure_is_an_error_not_an_empty_set() {
         let index = AppxIndex::default();
-        *index.cached.lock().unwrap() = Some(Err("winrt unavailable".to_string()));
+        index.lock().built = Some(Arc::new(Err("winrt unavailable".to_string())));
 
         let err = index
             .any_installed(&["Microsoft.GetHelp".to_string()])
@@ -151,7 +233,9 @@ mod tests {
     #[test]
     fn lookup_is_case_insensitive_and_invalidation_clears_the_cache() {
         let index = AppxIndex::default();
-        *index.cached.lock().unwrap() = Some(Ok(HashSet::from(["microsoft.gethelp".to_string()])));
+        index.lock().built = Some(Arc::new(Ok(HashSet::from([
+            "microsoft.gethelp".to_string()
+        ]))));
 
         assert!(index.any_installed(&["Microsoft.GetHelp".into()]).unwrap());
         assert!(!index.any_installed(&["Microsoft.Absent".into()]).unwrap());
@@ -164,8 +248,49 @@ mod tests {
 
         index.invalidate();
         assert!(
-            index.cached.lock().unwrap().is_none(),
+            index.lock().built.is_none(),
             "invalidate must drop the cached enumeration so the next ask re-observes"
         );
+    }
+
+    #[test]
+    fn enumeration_runs_unlocked_and_an_overtaken_result_is_not_cached() {
+        let index = AppxIndex::default();
+        let built = index.built(|| {
+            // Deadlocks if the cache lock were held across the enumeration.
+            index.invalidate();
+            Ok(HashSet::from(["stale".to_string()]))
+        });
+        assert!(matches!(&*built, Ok(names) if names.contains("stale")));
+        assert!(
+            index.lock().built.is_none(),
+            "a result an invalidate overtook must not be cached"
+        );
+
+        index.built(|| Ok(HashSet::new()));
+        assert!(index.lock().built.is_some());
+    }
+
+    #[test]
+    fn a_hung_spawn_times_out_as_an_error() {
+        use std::os::windows::process::CommandExt;
+        let child = SystemTool::PowerShell
+            .command()
+            .unwrap()
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep 30",
+            ])
+            .creation_flags(0x0800_0000)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("PowerShell must spawn");
+        let err = output_within(child, Duration::from_millis(200))
+            .expect_err("a spawn past its bound must be an error, never an empty output");
+        assert!(err.to_string().contains("terminated"), "got {err}");
     }
 }
