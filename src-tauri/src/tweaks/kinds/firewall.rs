@@ -143,9 +143,8 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "queries the live Windows Firewall service; run with `cargo test -- --ignored`"]
     fn missing_firewall_rule_reads_present_false() {
-        // `rule_exists` keys on netsh's exit status when querying -- no admin needed (confirmed by
-        // firewall_service's own default-run `a_nonexistent_rule_is_reported_absent_not_present`).
         let cx = user_cx();
         let setting = Setting::Firewall(rule_addr(NO_SUCH_RULE));
         assert_eq!(

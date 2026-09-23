@@ -121,10 +121,11 @@ windows-sys = { version = "0.61", features = [
     # LookupAccountNameW cannot resolve a SID (domain-joined with an unreachable DC, Entra-joined).
     "Win32_Security_Authentication_Identity",
 ] }
-# High-level COM wrappers (Task Scheduler). Coexists with windows-sys; the elevated broker (TI
+# High-level COM wrappers (Task Scheduler, Windows Firewall rule lookup). Coexists with windows-sys; the elevated broker (TI
 # stage) reuses this crate for Owned<HANDLE> cleanup.
 windows = { version = "0.62", features = [
     "Win32_Foundation",
+    "Win32_NetworkManagement_WindowsFirewall",
     "Win32_System_Com",
     "Win32_System_TaskScheduler",
     "Win32_System_Variant",

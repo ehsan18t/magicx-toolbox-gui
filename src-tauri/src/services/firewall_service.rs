@@ -1,28 +1,56 @@
-//! Firewall service for managing Windows Firewall rules.
-//!
-//! Uses netsh advfirewall commands to create, delete, and query firewall rules.
-//! Requires administrator privileges.
+//! Windows Firewall rules: created and deleted with `netsh advfirewall` (needs admin), queried
+//! through the firewall COM API (`INetFwPolicy2`).
+
+use std::cell::Cell;
 
 use crate::error::Error;
 use crate::models::win_types::{FirewallChange, FirewallProtocol, FirewallRuleAction};
 use crate::services::system32::SystemTool;
 
-/// Keys on netsh's exit status (0 = the rule exists), never its "No rules match" text: that text is
-/// localized, and matching it lets a genuine netsh failure read as "rule exists".
-pub fn rule_exists(name: &str) -> Result<bool, Error> {
-    let output = SystemTool::Netsh
-        .command()?
-        .args([
-            "advfirewall",
-            "firewall",
-            "show",
-            "rule",
-            &format!("name={}", name),
-        ])
-        .output()
-        .map_err(|e| Error::from_io("failed to query the firewall rule", &e))?;
+use windows::core::{BSTR, HRESULT};
+use windows::Win32::NetworkManagement::WindowsFirewall::{INetFwPolicy2, NetFwPolicy2};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+};
 
-    Ok(output.status.success())
+thread_local! {
+    static COM_READY: Cell<bool> = const { Cell::new(false) };
+}
+
+fn com_err(e: windows::core::Error) -> Error {
+    Error::win32(
+        format!("Windows Firewall COM error: {e}"),
+        e.code().0 as u32,
+    )
+}
+
+/// `INetFwRules::Item` answers a name no rule has with `HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)`.
+fn is_no_such_rule(code: HRESULT) -> bool {
+    code.0 as u32 == 0x8007_0002
+}
+
+/// COM, not `netsh show rule`: netsh exits non-zero both for "no such rule" and for a failed query
+/// (firewall service stopped), and its text is localized. A failed query is `Err`, never absent.
+pub fn rule_exists(name: &str) -> Result<bool, Error> {
+    // SAFETY: plain COM calls on this thread; COM is initialized (once per thread) before use and
+    // the interfaces are released on drop.
+    unsafe {
+        COM_READY.with(|ready| {
+            if !ready.get() {
+                // S_FALSE and RPC_E_CHANGED_MODE both leave COM usable; a real failure surfaces
+                // at CoCreateInstance.
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                ready.set(true);
+            }
+        });
+        let policy: INetFwPolicy2 =
+            CoCreateInstance(&NetFwPolicy2, None, CLSCTX_INPROC_SERVER).map_err(com_err)?;
+        match policy.Rules().map_err(com_err)?.Item(&BSTR::from(name)) {
+            Ok(_) => Ok(true),
+            Err(e) if is_no_such_rule(e.code()) => Ok(false),
+            Err(e) => Err(com_err(e)),
+        }
+    }
 }
 
 /// Create a new firewall rule
@@ -284,10 +312,16 @@ mod tests {
     }
 
     #[test]
+    fn only_file_not_found_means_no_such_rule() {
+        assert!(is_no_such_rule(HRESULT(0x8007_0002_u32 as i32)));
+        // EPT_S_NOT_REGISTERED: the firewall service is stopped, so nothing is known.
+        assert!(!is_no_such_rule(HRESULT(0x8007_06D9_u32 as i32)));
+        assert!(!is_no_such_rule(HRESULT(0x8007_0005_u32 as i32)));
+    }
+
+    #[test]
+    #[ignore = "queries the live Windows Firewall service; run with `cargo test -- --ignored`"]
     fn a_nonexistent_rule_is_reported_absent_not_present() {
-        // Locale-free: netsh exits non-zero for a name that matches no rule, so rule_exists must
-        // return Ok(false) — never Ok(true) (which would make create silently no-op) and never
-        // Err. This also empirically confirms the exit-code contract on the running machine.
         let exists = rule_exists("MagicXNoSuchFirewallRule_zzq").unwrap();
         assert!(!exists, "a non-existent rule must be reported as absent");
     }
