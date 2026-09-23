@@ -1,45 +1,8 @@
-//! Apply pipeline + atomic rollback (spec §8.1, +§8.6/§5.4; ADR-0001/0002; invariants 2, 4, 5, 10,
-//! 12, 13, 18, 20, 25). The highest-stakes module in the engine: a bug here can strand a machine
-//! half-modified, so every mutation is preceded by a durable, gap-free record of what it will do
-//! and what it must undo if it fails.
-//!
-//! ## The five steps (spec §8.1), each a named invariant this file's tests pin directly
-//! 0. **Lock + detect.** [`lifecycle::lock_tweak`] serializes the whole sequence per tweak id
-//!    (spec §8.7). Already-`Active(target)` is a verified no-op: no snapshot, nothing driven. An
-//!    `Unknown` surface aborts before touching anything: a partially-observed surface is never a
-//!    safe base for a decision (invariant 3).
-//! 1. **Capture, all reads before any mutation** (invariant 4). Every applicable non-shared
-//!    Setting is read once; every probeable Action the target *omits* is probed once, to decide
-//!    up front (never touched again after this point) whether it needs driving back. A read/probe
-//!    failure aborts here, having driven nothing.
-//! 2. **Persist the WAL entry before mutating** (invariant 5). The journal is exactly the actions
-//!    Step 1 already decided will run, built and pushed to disk before Step 3 drives a single
-//!    effect.
-//!
-//!    3/4. **Drive + verify, in declaration order** (invariant 18). Each effect kind's own
-//!    did-it-work check (invariant 2) triggers rollback the instant it fails.
-//!
-//! ## Rollback (ADR-0001)
-//! On any Step 3/4 failure: undo, in reverse order, the journal's completed actions and one whose
-//! script started then failed, which may have partly run (a no-undo one is reported un-undoable,
-//! never fatal to the rest); then drive the *whole*
-//! captured pre-apply state back via [`drive_to_captured`]: drive-to-value is absolute, so partial
-//! forward progress on Settings needs no per-step tracking. Shared claims taken/released during the
-//! failed attempt are reversed too (claim ↔ release), tracked via [`ProcessedEffect`] alongside
-//! completed actions, since the captured entry itself excludes shared effects (spec §8.1 step 1);
-//! without this, a claim taken just before a later effect failed would survive the rollback
-//! unreversed, leaving the claims record silently wrong. A verified full rollback consumes the
-//! just-captured entry; any unverified restore keeps it and reports every unrecoverable item
-//! (ADR-0001/0002, invariant 20); never `let _ =` on a rollback outcome.
-//!
-//! `apply` takes `corpus`: `detect` and resolving a captured `OptionRef`'s current definition
-//! (ADR-0007) both need it.
-//!
-//! ## Per-effect routing (spec §9, ADR-0005; invariant 24)
-//! DRIVES use [`context::route`] per effect (`max(floor, step)`; HKCU always in-process as the
-//! user). READS use [`context::read_route`] and never escalate, staying at `Deps.level`. Reversals
-//! route per effect too, re-derived from the CURRENT corpus (ADR-0007): [`rollback`],
-//! `revert::undo_journal`, `revert::release_shared_claims`; a claim releases at its recorded level.
+//! Apply + atomic rollback (ADR-0001/0002): lock and detect, capture every read before any mutation,
+//! persist the journal entry, then drive and verify in declaration order. Rollback undoes completed
+//! and partly-run actions in reverse, reverses shared claims via [`ProcessedEffect`] (the entry
+//! excludes them), then drives the whole captured state back; only a verified rollback consumes it.
+//! Drives route per effect ([`context::route`]); reads never escalate ([`context::read_route`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -453,10 +416,8 @@ pub(crate) enum Settled {
     Unrecorded(Attention, SnapshotError),
 }
 
-/// The one sink for a verified outcome's bookkeeping: resolves the rows and steps it `accounted`
-/// for, settles its drive marks, then clears the record only when nothing is left unsettled. A
-/// whole-surface outcome records whatever remains (another entry's unfinished step) instead of a
-/// clean status; any store failure is recorded as what it is, never only logged.
+/// The one sink for a verified outcome: resolves what it `accounted` for, settles drive marks, and
+/// clears the record only when nothing is left unsettled. A store failure is recorded, never only logged.
 pub(crate) fn settle_verified(
     deps: &Deps,
     tweak_id: &str,
@@ -578,10 +539,8 @@ pub(crate) fn do_apply(
         .find(|o| &o.label == target)
         .ok_or_else(|| EngineError::UnknownOption(target.clone()))?;
 
-    // `validate.rs`'s helpers below stay Milestone-shaped (build-only, see `winver.rs`'s module
-    // docs) -- `winver` is kept alongside for the runtime scope decisions that must honor
-    // `revision` too (`driving_surface`'s own tweak/effect-level check, and the per-option-value
-    // Action scope check below).
+    // The validate.rs helpers are build-only; `winver` also carries `revision`, which the driving
+    // surface and the per-option Action scope check must honor.
     let winver = deps.running;
     let milestone = winver.to_milestone();
     let surface = applicable_surface(tweak, &milestone);
@@ -610,11 +569,8 @@ pub(crate) fn do_apply(
         TweakState::Active(_) | TweakState::SystemDefault => {}
     }
 
-    // Step 1: capture pre-apply state + decide the action plan -- ALL reads, no mutation yet
-    // (invariant 4). A read/probe failure aborts here, having touched nothing. Reads never escalate
-    // (invariant 24): each effect's read runs at `context::read_route` -- `Deps.level` (the
-    // ceiling) for everything, except an HKCU Setting is still read in-process as the interactive
-    // user (see this file's module docs).
+    // Step 1: every read before any mutation (invariant 4); a failure here has touched nothing.
+    // Reads run at `context::read_route` and never escalate.
     let mut captured_values: BTreeMap<EffectId, Value> = BTreeMap::new();
     for effect in &surface {
         let Effect::Setting(setting) = &effect.kind else {
@@ -773,10 +729,8 @@ pub(crate) fn do_apply(
             let outcome_unknown = outcome_is_unknown(&original);
             let mut store = Vec::new();
             if rollback_failures.is_empty() && !outcome_unknown {
-                // Verified full restore: the machine now matches the just-captured entry, so
-                // consume it (ADR-0002). A failed consume leaves the entry on disk, the safe
-                // failure mode, and is named as itself instead of as an unrecovered resource.
-                // The rollback settles only its own entry's marks; `consume` keeps any other.
+                // Verified: consume the entry (ADR-0002). A failed consume leaves it on disk and is
+                // reported as a cleanup failure; `consume` keeps any other entry's marks.
                 let consumed = deps
                     .snapshots
                     .settle_rolled_back(&tweak.id, seq, &ran)
@@ -877,14 +831,8 @@ pub(crate) fn drive_forward(
                 // max(floor, step), EXCEPT an HKCU Setting always drives in-process as the
                 // interactive user regardless of the floor (see this file's module docs).
                 let cx = context::route(effect, ctx.tweak, ctx.corpus);
-                // An `optional` effect whose resource is absent already reads as its `if_missing`
-                // value (spec §5.4) -- that is exactly what `detect::classify_setting_read` does,
-                // which is why detect offers such an option as available and satisfied. Apply has
-                // to agree: when the option asks for precisely that value there is nothing to drive
-                // and nothing to verify, so this is a verified no-op. Without it, detect advertises
-                // an option that apply always aborts and rolls back on (a task absent on this
-                // Windows build, say), and `optional` would protect capture and detect but not the
-                // drive that actually needs it.
+                // An absent `optional` resource already reads as its `if_missing` value, as detect
+                // reports it, so asking for exactly that value is a verified no-op, not a failure.
                 if let Err(e) = ctx.deps.kinds.drive(setting, &scoped.value, &cx) {
                     if !(matches!(e, KindError::ResourceMissing(_))
                         && effect.optional
@@ -932,10 +880,8 @@ fn drive_shared(
     shared_id: &SharedId,
     state: &mut DriveState,
 ) -> Result<(), EngineError> {
-    // Per-effect execution context (spec §9). `route` resolves a Shared effect through the corpus
-    // to the block's own Setting, so a shared HKCU block gets the same in-process-as-the-user
-    // treatment as an inlined one; otherwise this is
-    // `effective_level(tweak.elevation, effect.elevation)`, replacing the flat `Deps.level` ceiling.
+    // `route` resolves the block's own Setting, so a shared HKCU block still drives in-process as
+    // the user, like an inlined one.
     let cx = context::route(effect, ctx.tweak, ctx.corpus);
     let Some(opt_value) = applicable_value(ctx.target_opt, &effect.id, &ctx.milestone) else {
         return Ok(());
@@ -1075,10 +1021,8 @@ fn drive_action(
             if let Err(e) = ctx.deps.actions.apply(action_def, &cx) {
                 return Err(failed(state, e));
             }
-            // Ephemeral actions run unconditionally (just above) but participate in NO
-            // reversibility bookkeeping (spec §7, invariant 10): no completion mark (Step 2 never
-            // journaled it in the first place -- nothing to mark), no `state.processed` entry (so
-            // rollback can never encounter it and mistake it for un-undoable).
+            // Ephemerals keep no reversibility bookkeeping (invariant 10): never journaled, and
+            // never in `processed`, where rollback would report them un-undoable.
             if !is_ephemeral(action_def) {
                 // Recorded before the mark: a run whose mark fails still ran, so rollback reverses it.
                 state.processed.push(ProcessedEffect::Action(
@@ -1205,12 +1149,8 @@ fn rollback(
                 } else if has_undo(action_def) {
                     match deps.actions.undo(action_def, &cx) {
                         Ok(()) => {
-                            // Did-it-work (invariant 19): probe/read-back must be checked
-                            // identically at apply AND rollback time. An `undo` script that
-                            // exits 0 without actually reverting the resource (a bug, a race, a
-                            // privilege issue that didn't surface as non-zero) must never let
-                            // this rollback silently appear complete -- reversing an Apply
-                            // expects the produced state to now read absent.
+                            // An undo that exits 0 without reverting must not pass: the probe
+                            // has to read absent again, exactly as at apply time.
                             verify_reversed_probe(
                                 action_def,
                                 effect,
@@ -1573,10 +1513,8 @@ fn verify_restored(item: &Restorable<'_>, deps: &Deps, failures: &mut Vec<Engine
     }
 }
 
-/// The scoped target for `effect` under the drive's option, if it applies here.
-///
-/// `None` means the option-value is scoped out on this build (spec §6.6) and there is nothing to
-/// drive; `Err` means the option named a non-Set value for a Setting, which is a corpus bug.
+/// `None`: the option-value is scoped out on this build. `Err`: a non-Set value on a Setting, a
+/// corpus bug.
 fn setting_target<'a>(
     ctx: &'a DriveCtx,
     effect: &EffectDef,
@@ -1591,13 +1529,8 @@ fn setting_target<'a>(
     }
 }
 
-/// How many effects starting at `from` can share one elevated child.
-///
-/// A run is consecutive Setting effects that all route to `Ti` and all have a brokerable address.
-/// Anything else -- an in-process Setting, a Shared, an Action, a scoped-out value, or a Hosts /
-/// Firewall address the broker has no op for -- ends the run, because it has to be driven by the
-/// existing per-effect path. Order is never changed; only adjacent equals are grouped
-/// (invariant 18).
+/// How many effects from `from` can share one elevated child: consecutive `Ti` Settings with a
+/// brokerable address. Only adjacent equals group, so order never changes (invariant 18).
 fn brokerable_run(ctx: &DriveCtx, surface: &[&EffectDef], from: usize) -> usize {
     surface[from..]
         .iter()
@@ -1616,13 +1549,8 @@ fn brokerable_run(ctx: &DriveCtx, surface: &[&EffectDef], from: usize) -> usize 
         .count()
 }
 
-/// Drive a run of same-level Setting effects through ONE elevated child, then verify each.
-///
-/// Semantics match the per-effect path exactly, with one deliberate difference: every drive in the
-/// run happens before any of the verifies, because they all cross into the child together. For the
-/// one tweak that reaches this path that is an improvement rather than a compromise -- its first
-/// effects disable the WaaSMedic tasks that would otherwise contend with the later ones, so a
-/// shorter window between the first drive and the last is strictly better.
+/// Drives a run through ONE elevated child, then verifies each. Unlike the per-effect path, every
+/// drive precedes every verify, since they cross into the child together.
 fn drive_setting_run(
     ctx: &DriveCtx,
     run: &[&EffectDef],
