@@ -370,6 +370,45 @@ impl SnapshotStore {
         machine_guid: Option<&str>,
         running_build: u32,
     ) -> Result<Seq, SnapshotError> {
+        self.push_entry(
+            tweak_id,
+            new_entry,
+            false,
+            corpus,
+            machine_guid,
+            running_build,
+        )
+    }
+
+    /// [`Self::push`] with the drive mark already open, in the same write: a separate mark write
+    /// that failed would leave an entry whose planned rows read as a crash.
+    pub fn push_driving(
+        &self,
+        tweak_id: &str,
+        new_entry: NewEntry,
+        corpus: &Corpus,
+        machine_guid: Option<&str>,
+        running_build: u32,
+    ) -> Result<Seq, SnapshotError> {
+        self.push_entry(
+            tweak_id,
+            new_entry,
+            true,
+            corpus,
+            machine_guid,
+            running_build,
+        )
+    }
+
+    fn push_entry(
+        &self,
+        tweak_id: &str,
+        new_entry: NewEntry,
+        drive_open: bool,
+        corpus: &Corpus,
+        machine_guid: Option<&str>,
+        running_build: u32,
+    ) -> Result<Seq, SnapshotError> {
         let dir = self.tweak_dir(tweak_id);
         fs::create_dir_all(&dir)?;
 
@@ -419,7 +458,7 @@ impl SnapshotStore {
             seq,
             timestamp: chrono::Local::now().to_rfc3339(),
             captured: new_entry.captured,
-            drive_open: false,
+            drive_open,
             actions_in_flight: Default::default(),
             journal: new_entry.journal,
         };
@@ -1308,6 +1347,15 @@ mod tests {
     fn read_entry_direct(dir: &Path, seq: Seq) -> Entry {
         let bytes = fs::read(entry_path(dir, seq)).expect("entry file exists");
         serde_json::from_slice(&bytes).expect("entry parses")
+    }
+
+    #[test]
+    fn a_driving_push_writes_its_drive_mark_with_the_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let seq = store(tmp.path())
+            .push_driving("demo", values_entry(), &empty_corpus(), None, 0)
+            .unwrap();
+        assert!(read_entry_direct(&tmp.path().join("demo"), seq).drive_open);
     }
 
     #[test]

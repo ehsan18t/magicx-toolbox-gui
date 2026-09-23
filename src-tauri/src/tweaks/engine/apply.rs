@@ -698,9 +698,11 @@ pub(crate) fn do_apply(
             undo_back: *plan == ActionPlan::UndoBack,
         })
         .collect();
+    // Settings and Shared blocks journal no row, so the drive mark written with the entry is all a
+    // crash mid-drive leaves.
     let seq = deps
         .snapshots
-        .push(
+        .push_driving(
             &tweak.id,
             NewEntry {
                 captured: captured.clone(),
@@ -710,10 +712,6 @@ pub(crate) fn do_apply(
             deps.machine_guid,
             milestone.build,
         )
-        .map_err(EngineError::SnapshotWrite)?;
-    // Settings and Shared blocks journal no row, so this mark is all a crash mid-drive leaves.
-    deps.snapshots
-        .open_drive(&tweak.id, seq)
         .map_err(EngineError::SnapshotWrite)?;
 
     // Steps 3/4: drive forward in declaration order (invariant 18), verifying as we go.
