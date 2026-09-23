@@ -619,6 +619,16 @@ mod tests {
         assert_eq!(unchanged, "no-separators==;;");
     }
 
+    #[test]
+    fn empty_multi_sz_verifies_as_empty() {
+        let scratch = Scratch::new("empty_multi_sz");
+        let cx = user_cx();
+        let setting = Setting::Registry(scratch.reg_addr("Multi", RegType::MultiSz));
+        let empty = Value::Reg(TypedRegValue::MultiSz(Vec::new()));
+        RegistryKind.drive(&setting, &empty, &cx).unwrap();
+        assert_eq!(RegistryKind.read(&setting, &cx).unwrap(), empty);
+    }
+
     /// Ti drives are routed to the broker by `engine::AllKinds::drive`, which never reaches
     /// this in-process `drive`. Called directly, bypassing that routing, it must still refuse:
     /// the kind never escalates on its own.

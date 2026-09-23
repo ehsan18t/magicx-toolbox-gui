@@ -45,6 +45,11 @@ pub enum ParseError {
 
     #[error("{raw:?} is not a valid kv_semicolon value — expected `Name=Value;` pairs")]
     MalformedPacked { raw: String },
+
+    #[error(
+        "a REG_MULTI_SZ entry cannot be an empty string (the registry reads it as the end of the list); remove it, or write `[]` to clear the value"
+    )]
+    EmptyMultiSzEntry,
 }
 
 /// YAML-agnostic input to [`parse_value_literal`] (spec §6.2). `schema.rs` picks the variant from
@@ -103,6 +108,9 @@ pub fn parse_value_literal(
         },
 
         LiteralInput::List(items) => match target {
+            LiteralTarget::Reg(RegType::MultiSz) if items.iter().any(String::is_empty) => {
+                Err(ParseError::EmptyMultiSzEntry)
+            }
             LiteralTarget::Reg(RegType::MultiSz) => Ok(Value::Reg(TypedRegValue::MultiSz(items))),
             LiteralTarget::Reg(ty) => Err(ParseError::WrongLiteralShape { shape: "list", ty }),
             LiteralTarget::Presence => Err(ParseError::InvalidPresenceLiteral),
@@ -474,6 +482,21 @@ mod tests {
         )
         .expect("empty list should parse");
         assert_eq!(value, Value::Reg(TypedRegValue::MultiSz(vec![])));
+    }
+
+    #[test]
+    fn multi_sz_rejects_an_empty_entry() {
+        for items in [vec![""], vec!["a", ""], vec!["", "b"]] {
+            let err = parse_value_literal(
+                LiteralInput::List(items.iter().map(|s| s.to_string()).collect()),
+                LiteralTarget::Reg(RegType::MultiSz),
+            )
+            .expect_err("an empty REG_MULTI_SZ entry must be rejected");
+            assert!(
+                matches!(err, ParseError::EmptyMultiSzEntry),
+                "{items:?}: {err}"
+            );
+        }
     }
 
     #[test]

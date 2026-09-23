@@ -1,0 +1,20 @@
+category:
+  id: multi_sz_empty_entry
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A REG_MULTI_SZ literal with an empty entry, which the registry cannot store."
+
+tweaks:
+  - id: empty_entry_tweak
+    name: "Empty Multi-String Entry"
+    description: "The second entry is an empty string."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: list
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: List, type: REG_MULTI_SZ }
+    options:
+      - label: "On"
+        values:
+          list: ["a", ""]

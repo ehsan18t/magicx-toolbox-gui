@@ -96,7 +96,9 @@ pub fn read_multi_string(
     key_path: &str,
     value_name: &str,
 ) -> Result<Option<Vec<String>>, Error> {
-    read_typed(hive, key_path, value_name, "MultiString")
+    let value: Option<Vec<String>> = read_typed(hive, key_path, value_name, "MultiString")?;
+    // winreg writes `[]` as a lone terminator and reads that back as `[""]`.
+    Ok(value.map(|v| if v == [""] { Vec::new() } else { v }))
 }
 
 /// Read a QWORD (u64) value from registry
@@ -553,6 +555,14 @@ mod tests {
             key_exists(&RegistryHive::Hkcu, &sibling).unwrap(),
             "a sibling of A must be untouched by a delete scoped to A\\B"
         );
+    }
+
+    #[test]
+    fn an_empty_multi_string_reads_back_empty() {
+        let guard = DeleteGuard::new("empty_multi");
+        set_multi_string(&RegistryHive::Hkcu, &guard.path, "Multi", &[]).unwrap();
+        let read = read_multi_string(&RegistryHive::Hkcu, &guard.path, "Multi").unwrap();
+        assert_eq!(read, Some(Vec::new()));
     }
 
     #[test]

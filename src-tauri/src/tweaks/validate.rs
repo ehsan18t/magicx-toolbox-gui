@@ -1257,6 +1257,15 @@ mod tests {
     }
 
     #[test]
+    fn multi_sz_empty_entry_is_rejected() {
+        let errors = errors_for("multi_sz_empty_entry.yaml");
+        assert!(
+            matches!(&errors[..], [ValidationError::InvalidOptionValue { reason, .. }] if reason.contains("empty string")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
     fn good_corpus_loads_and_validates_clean() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/good");
         let corpus = load_corpus(&dir).expect("the good fixture corpus must load");
