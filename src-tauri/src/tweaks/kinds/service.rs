@@ -57,13 +57,17 @@ fn service_key(name: &str) -> String {
     format!("System\\CurrentControlSet\\Services\\{name}")
 }
 
-/// `true` only when the value is exactly `1` — absent or `0` both mean "not delayed" (Windows'
-/// own default), so a merely-missing value never fabricates delayed-start.
-fn delayed_autostart(name: &str) -> bool {
-    matches!(
-        registry_service::read_dword(&RegistryHive::Hklm, &service_key(name), DELAYED_VALUE),
-        Ok(Some(1))
-    )
+fn delayed_autostart(name: &str) -> Result<bool, Error> {
+    is_delayed(registry_service::read_dword(
+        &RegistryHive::Hklm,
+        &service_key(name),
+        DELAYED_VALUE,
+    ))
+}
+
+/// Absent or `0` both mean "not delayed" (Windows' default); a failed read is never "not delayed".
+fn is_delayed(read: Result<Option<u32>, BackendError>) -> Result<bool, Error> {
+    Ok(read.map_err(map_backend_error)? == Some(1))
 }
 
 fn set_delayed_autostart(name: &str, delayed: bool) -> Result<(), Error> {
@@ -121,7 +125,7 @@ fn map_status(name: &str, result: Result<ServiceStatus, BackendError>) -> Result
 fn read_service(addr: &SvcAddr) -> Result<Value, Error> {
     let value = map_status(&addr.name, service_control::get_service_status(&addr.name))?;
     Ok(match value {
-        Value::Startup(StartupType::Automatic) if delayed_autostart(&addr.name) => {
+        Value::Startup(StartupType::Automatic) if delayed_autostart(&addr.name)? => {
             Value::Startup(StartupType::AutomaticDelayed)
         }
         other => other,
@@ -241,6 +245,23 @@ mod tests {
         assert!(
             matches!(denied, Err(Error::AccessDenied(_))),
             "got {denied:?}"
+        );
+    }
+
+    #[test]
+    fn delayed_read_failure_is_an_error_not_undelayed() {
+        assert!(matches!(is_delayed(Ok(Some(1))), Ok(true)));
+        assert!(matches!(is_delayed(Ok(Some(0))), Ok(false)));
+        assert!(matches!(is_delayed(Ok(None)), Ok(false)));
+        let denied = is_delayed(Err(BackendError::RegistryAccessDenied("k".into())));
+        assert!(
+            matches!(denied, Err(Error::AccessDenied(_))),
+            "got {denied:?}"
+        );
+        let mismatch = is_delayed(Err(BackendError::ValidationError("REG_SZ".into())));
+        assert!(
+            matches!(mismatch, Err(Error::Backend(_))),
+            "got {mismatch:?}"
         );
     }
 
