@@ -14,6 +14,7 @@
   import {
     elevationStore,
     keepCurrentState,
+    loadingStore,
     pendingChangesStore,
     refreshTweakStatus,
     revertTweak,
@@ -23,6 +24,7 @@
   import { errorMessage, isAppExiting } from "$lib/utils/error";
   import type { AttentionItem, EntrySummary, TweakEffectOption } from "$lib/types";
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
 
   const isOpen = $derived(tweakDetailsModalStore.isOpen);
 
@@ -42,6 +44,8 @@
   });
 
   const riskInfo = $derived(def ? RISK_INFO[def.risk_level] : null);
+  const isHighRisk = $derived(def?.risk_level === "high" || def?.risk_level === "critical");
+  const isLoading = $derived(def ? loadingStore.isLoading(def.id) : false);
   const permissionInfo = $derived(def ? permissionInfoFor(def.required_level) : null);
 
   // Drives the "not active on this Windows" dimming inside RegistryChangeItem for version-scoped effects.
@@ -69,6 +73,10 @@
   let entriesLoading = $state(false);
   let busySeq = $state<number | null>(null);
   let keeping = $state(false);
+  let discardSeq = $state<number | null>(null);
+  let showDiscardConfirmDialog = $state(false);
+  let showKeepStateConfirmDialog = $state(false);
+  let showRestoreConfirmDialog = $state(false);
 
   $effect(() => {
     const t = tweak;
@@ -143,7 +151,13 @@
     }
   }
 
-  async function handleKeepCurrentState() {
+  function executeDiscard() {
+    showDiscardConfirmDialog = false;
+    if (discardSeq !== null) void discardEntry(discardSeq);
+  }
+
+  async function executeKeepCurrentState() {
+    showKeepStateConfirmDialog = false;
     const t = tweak;
     if (!t) return;
     keeping = true;
@@ -162,9 +176,17 @@
     }
   }
 
-  async function handleRestore() {
+  function handleRestoreClick() {
+    if (isLoading) return;
+    if (isHighRisk) showRestoreConfirmDialog = true;
+    else void executeRestore();
+  }
+
+  async function executeRestore() {
+    showRestoreConfirmDialog = false;
     const t = tweak;
-    if (!t) return;
+    // A second restore while one is in flight would walk back to the next-older snapshot.
+    if (!t || loadingStore.isLoading(t.definition.id)) return;
     await revertTweak(t.definition.id, { showToast: true, tweakName: t.definition.name });
   }
 </script>
@@ -246,8 +268,8 @@
             <button
               type="button"
               class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
-              onclick={handleRestore}
-              disabled={def.availability.state !== "available"}
+              onclick={handleRestoreClick}
+              disabled={isLoading || def.availability.state !== "available"}
               aria-label="Restore to original state"
             >
               <Icon icon="mdi:history" width="16" />
@@ -324,8 +346,8 @@
             <button
               type="button"
               class="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-foreground-muted transition-colors hover:border-error/40 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
-              onclick={handleKeepCurrentState}
-              disabled={keeping}
+              onclick={() => (showKeepStateConfirmDialog = true)}
+              disabled={keeping || isLoading}
               aria-label="Keep the current state and release the snapshot"
             >
               <Icon icon={keeping ? "mdi:loading" : "mdi:check"} width="16" class={keeping ? "animate-spin" : ""} />
@@ -566,7 +588,10 @@
                   <button
                     type="button"
                     class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-colors hover:border-error/40 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
-                    onclick={() => discardEntry(entry.seq)}
+                    onclick={() => {
+                      discardSeq = entry.seq;
+                      showDiscardConfirmDialog = true;
+                    }}
                     disabled={busySeq === entry.seq}
                     aria-label="Discard snapshot entry {entry.seq}"
                   >
@@ -586,3 +611,33 @@
     </ModalBody>
   {/if}
 </Modal>
+
+<ConfirmDialog
+  open={showRestoreConfirmDialog}
+  title="Restore Snapshot?"
+  message="This will restore the original state from before the tweak was applied."
+  confirmText="Restore"
+  cancelText="Cancel"
+  onconfirm={executeRestore}
+  oncancel={() => (showRestoreConfirmDialog = false)}
+/>
+
+<ConfirmDialog
+  open={showKeepStateConfirmDialog}
+  title="Keep Current State?"
+  message="This accepts the current state as-is and releases any saved snapshot. The original state can no longer be restored for this tweak."
+  confirmText="Keep current state"
+  cancelText="Cancel"
+  onconfirm={executeKeepCurrentState}
+  oncancel={() => (showKeepStateConfirmDialog = false)}
+/>
+
+<ConfirmDialog
+  open={showDiscardConfirmDialog}
+  title="Discard Snapshot Entry?"
+  message="This deletes snapshot entry #{discardSeq}. The state it recorded can no longer be restored for this tweak."
+  confirmText="Discard"
+  cancelText="Cancel"
+  onconfirm={executeDiscard}
+  oncancel={() => (showDiscardConfirmDialog = false)}
+/>
