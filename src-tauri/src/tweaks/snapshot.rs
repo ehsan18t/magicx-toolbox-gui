@@ -23,6 +23,7 @@ const SCHEMA_VERSION: u32 = 1;
 const SEQ_CACHE_FILE: &str = "_seq.json";
 
 const ATTENTION_FILE: &str = "_attention.json";
+const ATTENTION_PREFIX: &str = "_attention";
 
 /// Monotonic per-tweak sequence number (spec §8.2) — never derived from wall-clock. Orders a
 /// tweak's history; `head`/`consume`/`discard`/`mark_completed` address entries by this alone.
@@ -288,6 +289,8 @@ pub enum SnapshotError {
 pub struct SnapshotStore {
     root: PathBuf,
     user_sid: Option<String>,
+    /// Tweaks that touch HKCU: their crash marks and Needs Attention record are per account.
+    per_account: BTreeSet<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -302,6 +305,7 @@ impl SnapshotStore {
         Self {
             root,
             user_sid: None,
+            per_account: BTreeSet::new(),
         }
     }
 
@@ -311,6 +315,18 @@ impl SnapshotStore {
         self
     }
 
+    pub fn with_per_account_tweaks(mut self, tweak_ids: impl IntoIterator<Item = String>) -> Self {
+        self.per_account = tweak_ids.into_iter().collect();
+        self
+    }
+
+    /// The account whose HKCU `tweak_id` writes; `None` for a machine-wide tweak or an unread SID.
+    fn account(&self, tweak_id: &str) -> Option<&str> {
+        self.user_sid
+            .as_deref()
+            .filter(|_| self.per_account.contains(tweak_id))
+    }
+
     /// Production root: the portable `snapshots/` directory next to the executable (spec §11).
     pub fn open_default() -> Result<Self, SnapshotError> {
         let exe = std::env::current_exe()?;
@@ -318,7 +334,15 @@ impl SnapshotStore {
         // The process token's user owns the HKCU this process writes; the SID guard keeps it
         // equal to the session user for every HKCU apply.
         let sid = crate::tweaks::engine::context::RealSidProbe.process_token_sid();
-        Ok(Self::open(dir.join("snapshots")).with_user_sid(sid))
+        let corpus = crate::tweaks::compiled_corpus();
+        let per_account = corpus
+            .tweaks
+            .iter()
+            .filter(|t| tweak_touches_hkcu(t, corpus))
+            .map(|t| t.id.clone());
+        Ok(Self::open(dir.join("snapshots"))
+            .with_user_sid(sid)
+            .with_per_account_tweaks(per_account))
     }
 
     fn tweak_dir(&self, tweak_id: &str) -> PathBuf {
@@ -473,8 +497,8 @@ impl SnapshotStore {
             .collect())
     }
 
-    /// Every entry whose journal is still the crash scan's business: this build's and machine's,
-    /// newest first. Residue can sit on a superseded entry or on one the corpus has since made
+    /// Every entry whose journal is still the crash scan's business: this build's and machine's, and
+    /// for an HKCU tweak this account's, newest first. Residue can sit on a superseded entry or on one the corpus has since made
     /// dangling, so `head`'s walk would miss it. Which *rows* are still outstanding is the reader's
     /// call, per row -- see [`JournalRow::resolved`].
     pub fn unresolved_entries(
@@ -493,6 +517,10 @@ impl SnapshotStore {
                 (Some(entry_guid), Some(current)) => entry_guid == current,
                 _ => true,
             })
+            .filter(|e| match (e.user_sid.as_deref(), self.account(tweak_id)) {
+                (Some(entry_sid), Some(current)) => entry_sid == current,
+                _ => true,
+            })
             .collect())
     }
 
@@ -505,7 +533,7 @@ impl SnapshotStore {
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.root)? {
             let entry = entry?;
-            if !entry.file_type()?.is_dir() || !entry.path().join(ATTENTION_FILE).exists() {
+            if !entry.file_type()?.is_dir() || !holds_a_record(&entry.path())? {
                 continue;
             }
             if let Some(name) = entry.file_name().to_str() {
@@ -796,7 +824,7 @@ impl SnapshotStore {
             attention,
         };
         let json = serde_json::to_vec_pretty(&record).expect("AttentionRecord always serializes");
-        write_atomic(&dir, ATTENTION_FILE, &json)?;
+        write_atomic(&dir, &self.attention_file(tweak_id), &json)?;
         log::warn!("tweak '{tweak_id}': recorded Needs Attention ({reason:?})");
         Ok(())
     }
@@ -848,8 +876,15 @@ impl SnapshotStore {
         }
     }
 
+    fn attention_file(&self, tweak_id: &str) -> String {
+        match self.account(tweak_id) {
+            Some(sid) => format!("{ATTENTION_PREFIX}.{sid}.json"),
+            None => ATTENTION_FILE.to_string(),
+        }
+    }
+
     fn attention_path(&self, tweak_id: &str) -> PathBuf {
-        self.tweak_dir(tweak_id).join(ATTENTION_FILE)
+        self.tweak_dir(tweak_id).join(self.attention_file(tweak_id))
     }
 }
 
@@ -964,6 +999,18 @@ fn classify_and_parse(
         }
     }
     (EntryValidity::Valid, Some(entry))
+}
+
+/// Any account's record counts, so a record for a tweak the corpus dropped is still found.
+fn holds_a_record(dir: &Path) -> Result<bool, SnapshotError> {
+    for file in fs::read_dir(dir)? {
+        let name = file?.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(ATTENTION_PREFIX) && name.ends_with(".json") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn entry_path(dir: &Path, seq: Seq) -> PathBuf {
@@ -1412,6 +1459,73 @@ mod tests {
             .head("demo", &c, Some(GUID), 19045)
             .unwrap();
         assert_eq!(head.map(|e| e.seq), Some(seq));
+    }
+
+    fn account_store(dir: &Path, sid: &str) -> SnapshotStore {
+        user_store(dir, sid).with_per_account_tweaks(["demo".to_string()])
+    }
+
+    fn failed(reason: AttentionReason) -> Attention {
+        Attention {
+            reason,
+            items: Vec::new(),
+        }
+    }
+
+    /// One account's interrupted HKCU apply is that account's residue: another account's scan never
+    /// raises it, and another account's verified apply never settles it.
+    #[test]
+    fn crash_residue_of_an_hkcu_tweak_stays_with_its_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let c = corpus(vec![tweak("demo", None, vec![opt("A")])]);
+        let (a, b) = (
+            account_store(tmp.path(), "S-1-A"),
+            account_store(tmp.path(), "S-1-B"),
+        );
+        let seq = a
+            .push("demo", values_entry(), &c, Some(GUID), 19045)
+            .unwrap();
+        a.open_drive("demo", seq).unwrap();
+
+        crate::tweaks::engine::lifecycle::try_record_crash_residue(&b, "demo", Some(GUID)).unwrap();
+        assert_eq!(b.attention("demo", Some(GUID)).unwrap(), None);
+        b.close_drives("demo", Some(GUID)).unwrap();
+        assert!(read_entry_direct(&tmp.path().join("demo"), seq).drive_open);
+
+        crate::tweaks::engine::lifecycle::try_record_crash_residue(&a, "demo", Some(GUID)).unwrap();
+        assert_eq!(
+            a.attention("demo", Some(GUID)).unwrap().map(|r| r.reason),
+            Some(AttentionReason::CrashResidue)
+        );
+    }
+
+    #[test]
+    fn an_hkcu_tweaks_record_is_per_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, b) = (
+            account_store(tmp.path(), "S-1-A"),
+            account_store(tmp.path(), "S-1-B"),
+        );
+        a.set_attention("demo", Some(GUID), failed(AttentionReason::ApplyFailed))
+            .unwrap();
+
+        assert_eq!(b.attention("demo", Some(GUID)).unwrap(), None);
+        b.clear_attention_consented("demo", Some(GUID)).unwrap();
+        assert!(a.attention("demo", Some(GUID)).unwrap().is_some());
+        assert_eq!(a.recorded_tweaks().unwrap(), vec!["demo".to_string()]);
+    }
+
+    #[test]
+    fn a_machine_wide_tweaks_record_is_shared_by_every_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, b) = (
+            user_store(tmp.path(), "S-1-A"),
+            user_store(tmp.path(), "S-1-B"),
+        );
+        a.set_attention("demo", Some(GUID), failed(AttentionReason::ApplyFailed))
+            .unwrap();
+
+        assert!(b.attention("demo", Some(GUID)).unwrap().is_some());
     }
 
     #[test]

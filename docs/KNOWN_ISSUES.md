@@ -13,7 +13,6 @@ the ADR and delete the entry.
 
 | #   | Issue                                           | Bites today?                                 | Found      |
 | --- | ----------------------------------------------- | -------------------------------------------- | ---------- |
-| 1   | Needs Attention and crash marks are per tweak, not per account | only on a multi-user machine, as a wrong badge | 2026-07-26 |
 | 2   | Broker transport files live in the user's TEMP | yes, to a same-user process during a TI apply | 2026-09-12 |
 | 3   | Nothing inside the broker child is observable   | only as thin support detail after a failure  | 2026-09-12 |
 | 4   | An older build cannot read what this one resolved | only where two builds share one folder     | 2026-09-12 |
@@ -21,20 +20,6 @@ the ADR and delete the entry.
 | 6   | Update installer is saved predictably and run unverified | yes, to a same-user process during an update | 2026-09-23 |
 
 ---
-
-## 1. Needs Attention and crash marks are per tweak, not per account
-
-**What is already fixed.** Every snapshot entry carries the capturing process's user SID (`Entry::user_sid`, stamped by `SnapshotStore::push` from `SnapshotStore::with_user_sid`, which `open_default` fills from the process token). For a tweak that touches HKCU (`context::tweak_touches_hkcu`), `classify_and_parse` marks another account's entry `InvalidReason::WrongUser`, so `head` never restores it, push never deduplicates it away, and `release_snapshot` (Keep current state) leaves it on disk. An entry or a store whose SID could not be read skips the check, as `machine_guid` does.
-
-**What is not.** The rest of the store's durable state is keyed by tweak alone:
-
-- The Needs Attention record is one `snapshots/<tweak-id>/_attention.json` per tweak, so a record written by user A's failed HKCU apply badges user B's card too, and B's Keep current state clears it.
-- `SnapshotStore::unresolved_entries` filters by machine only, so the startup crash scan (`lifecycle::try_record_crash_residue`) raises A's open drive mark or outstanding journal row as Needs Attention in B's session.
-- `apply::settle_verified` with `Settle::All` calls `close_drives` and `resolve_journal_rows` across every entry of the tweak, so B's verified apply settles the crash evidence on A's entries even though it re-established only B's hive. A's return point itself survives.
-
-**Bites today?** Only on a multi-user machine sharing one portable install, and only as a badge in the wrong account or crash evidence settled by the wrong account. No path restores one account's values into another's hive any more.
-
-**The fix.** Those three store calls need to know whether the tweak touches HKCU, which the store cannot tell from a tweak id. Pass it in (or hand the store the corpus, as `head` and `list` already take it), then filter entries by `user_sid` for HKCU tweaks in `unresolved_entries`, `close_drives` and `resolve_journal_rows`, and key the Needs Attention record per account for those tweaks (for example `_attention.<sid>.json`), keeping the per-tweak record for machine-wide ones. The record file is unreleased, so no migration is needed.
 
 ## 2. Broker transport files live in the user's TEMP
 
@@ -81,7 +66,7 @@ Option 1 now and option 2 later (for the response) is the cheapest order: option
 
 ## 4. An older build cannot read what this one resolved
 
-Unresolved state has four durable forms. Needs Attention lives in `snapshots/<tweak-id>/_attention.json`; a journal row an operation has accounted for carries `resolved: true` inside its own entry; an apply or restore a crash interrupted leaves `drive_open: true` on its entry; and an action undo or re-run it interrupted stays in the entry's `actions_in_flight` (`tweaks/snapshot.rs`). Builds before the record know none of them. The immediately previous build (the one that introduced the record, `resolved` and `record_unreadable`) knows the first two and not the last two. The snapshots directory is portable and sits next to the executable, so any build dropped into that folder drives the same history.
+Unresolved state has four durable forms. Needs Attention lives in `snapshots/<tweak-id>/_attention.json` (`_attention.<SID>.json` for a tweak that touches HKCU); a journal row an operation has accounted for carries `resolved: true` inside its own entry; an apply or restore a crash interrupted leaves `drive_open: true` on its entry; and an action undo or re-run it interrupted stays in the entry's `actions_in_flight` (`tweaks/snapshot.rs`). Builds before the record know none of them. The immediately previous build (the one that introduced the record, `resolved` and `record_unreadable`) knows the first two and not the last two. The snapshots directory is portable and sits next to the executable, so any build dropped into that folder drives the same history.
 
 **What happens then.** Nothing breaks, and apart from the dedup case below no snapshot entry is lost. The entry walk skips every file whose name is not a sequence number, so the record is invisible to the older build rather than corrupting it, and a record this build cannot use is surfaced as Needs Attention in its own right instead of reading as a clean tweak. A wrong-schema or foreign-machine record is never overwritten and never deleted: this build refuses to record over one and logs that it refused, so neither build can silently destroy the other's mark. The row mark is the softer case, because an unknown JSON field is simply ignored: the older build's crash scan raises a row this build already resolved, and any entry that build rewrites to mark an action completed drops the `resolved` flag on every row in that entry, so this build raises it again afterwards. The new marks fail the other way, and the immediately previous build shows all of it: its scan ignores `drive_open` and `actions_in_flight`, so an interruption this build marked raises nothing there; any entry it rewrites (marking an action completed, resolving a row) drops both fields; and its dedup, which keeps only an entry with an outstanding row, deletes a Settings-only entry whose drive a crash interrupted as soon as the same option is captured again, so that crash is lost for good. A record with the `outcome_unrecorded` reason or an `unrecorded` item does not parse there either, so that build surfaces it as an unreadable record. An item's `class` (access denied, not found, busy and the like) is the soft case: an older build ignores the unknown field, so the record still loads and the item reads by its message alone, and any record that build rewrites drops the field. What the user sees either way is a badge out of step with reality, in both directions: a tweak this build marked shows nothing under the older one, and a tweak the older one applies or restores successfully still shows Needs Attention the next time this build reads it.
 

@@ -130,7 +130,7 @@ verifies a write by reading back the same hive it just wrote, so a wrong-account
 self-confirming green with no return point. Refusing mutates nothing. See
 `docs/plans/fix-hkcu-user-level-gate.md`.
 
-**Related, since fixed for restores:** the same machine-keyed-store/account-keyed-hive mismatch was reachable without any elevation, on a multi-user machine sharing one portable install. Each snapshot entry now carries the capturing process's user SID, and for a tweak that touches HKCU another account's entry classifies `WrongUser`: it is never restored, never deduplicated away, and never released by another account's Keep current state. Needs Attention and crash marks are still per tweak rather than per account; that remainder is `docs/KNOWN_ISSUES.md` issue 1.
+**Related, since fixed:** the same machine-keyed-store/account-keyed-hive mismatch was reachable without any elevation, on a multi-user machine sharing one portable install. Each snapshot entry now carries the capturing process's user SID, and for a tweak that touches HKCU another account's entry classifies `WrongUser`: it is never restored, never deduplicated away, and never released by another account's Keep current state. For the same tweaks the Needs Attention record and the crash marks are per account too: each account has its own `_attention.<SID>.json`, and the crash scan and every settle read only that account's entries.
 
 ---
 
