@@ -68,10 +68,40 @@ pub(super) fn empty_process_info() -> PROCESS_INFORMATION {
     unsafe { std::mem::zeroed() }
 }
 
-/// Enable `SeDebugPrivilege` for the current process. Required to open the TrustedInstaller service
-/// process (to spoof it as a parent).
-pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
-    adjust_debug_privilege(true).map(|_| ())
+/// (holders, enabled by the first holder): concurrent TI spawns share one enable.
+static DEBUG_PRIVILEGE: std::sync::Mutex<(usize, bool)> = std::sync::Mutex::new((0, false));
+
+/// `SeDebugPrivilege`, enabled while held; required to open the TrustedInstaller process. Left
+/// enabled, every later child (action scripts, installers) inherits it.
+pub(super) struct DebugPrivilege(());
+
+impl DebugPrivilege {
+    pub(super) fn enable() -> Result<Self, SpawnError> {
+        let mut state = DEBUG_PRIVILEGE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.0 == 0 {
+            state.1 = adjust_debug_privilege(true)?;
+        }
+        state.0 += 1;
+        Ok(Self(()))
+    }
+}
+
+impl Drop for DebugPrivilege {
+    fn drop(&mut self) {
+        let mut state = DEBUG_PRIVILEGE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.0 -= 1;
+        if state.0 == 0 && std::mem::take(&mut state.1) {
+            if let Err(SpawnError::NoChild(_, e) | SpawnError::ChildRan(e)) =
+                adjust_debug_privilege(false)
+            {
+                log::warn!("could not disable SeDebugPrivilege again: {e}");
+            }
+        }
+    }
 }
 
 /// Sets `SeDebugPrivilege` on this process's token; `Ok(true)` when the call changed its state.
@@ -273,6 +303,26 @@ mod tests {
         assert!(
             message.ends_with("test child timed out and had already exited"),
             "{message}"
+        );
+    }
+
+    #[test]
+    #[ignore = "needs an elevated token holding SeDebugPrivilege; mutates this process's token"]
+    fn the_debug_privilege_is_off_again_once_the_last_holder_drops() {
+        let changed = |enable| {
+            adjust_debug_privilege(enable)
+                .map_err(|(SpawnError::NoChild(_, e) | SpawnError::ChildRan(e))| e)
+                .unwrap()
+        };
+        changed(false);
+        {
+            let _outer = DebugPrivilege::enable().unwrap();
+            drop(DebugPrivilege::enable().unwrap());
+            assert!(!changed(true), "a nested holder's drop disabled it");
+        }
+        assert!(
+            !changed(false),
+            "still enabled after the last holder dropped"
         );
     }
 }

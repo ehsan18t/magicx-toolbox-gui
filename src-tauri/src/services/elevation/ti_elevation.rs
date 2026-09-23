@@ -23,8 +23,8 @@ use windows_sys::Win32::System::Threading::{
 
 use super::broker::AcquireReason;
 use super::common::{
-    empty_process_info, enable_debug_privilege, hidden_startup_info, spawn_failed, to_wide_string,
-    wait_and_reap, SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
+    empty_process_info, hidden_startup_info, spawn_failed, to_wide_string, wait_and_reap,
+    DebugPrivilege, SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
 };
 
 /// dwCurrentState values we distinguish while waiting for the service.
@@ -199,13 +199,13 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
     }
 }
 
-fn acquire_debug_privilege() -> Result<(), SpawnError> {
+fn acquire_debug_privilege() -> Result<Option<DebugPrivilege>, SpawnError> {
     // A probe card disabled it itself, to learn whether the TI open still works without it.
     #[cfg(feature = "test-build")]
     if crate::manual_tests::probe::skip_debug_privilege() {
-        return Ok(());
+        return Ok(None);
     }
-    enable_debug_privilege()
+    DebugPrivilege::enable().map(Some)
 }
 
 fn ti_service_failure(e: Error) -> SpawnError {
@@ -298,7 +298,8 @@ fn foreign_image(image: &str, windows_dir: &str) -> String {
 /// handle. The SCM's pid can be recycled by now (the service stops when idle), so once the open
 /// handle pins it, its image must match and the SCM must still report that pid running.
 fn get_trusted_installer_handle() -> Result<HANDLE, SpawnError> {
-    acquire_debug_privilege()?;
+    // The open handle keeps its rights once the privilege is disabled again.
+    let _debug = acquire_debug_privilege()?;
     let windows_dir = String::from_utf16_lossy(
         &system_folder(GetSystemWindowsDirectoryW, "Windows").map_err(spawn_failed)?,
     );
