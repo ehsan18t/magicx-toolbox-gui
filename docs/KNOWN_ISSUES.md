@@ -17,7 +17,6 @@ the ADR and delete the entry.
 | 3   | Nothing inside the broker child is observable   | only as thin support detail after a failure  | 2026-09-12 |
 | 4   | An older build cannot read what this one resolved | only where two builds share one folder     | 2026-09-12 |
 | 5   | Atomic writes are not flushed through a power loss | only on power loss right after a write     | 2026-09-23 |
-| 6   | Update installer is saved predictably and run unverified | yes, to a same-user process during an update | 2026-09-23 |
 
 ---
 
@@ -60,27 +59,3 @@ Every snapshot entry, journal mark, drive mark, `_seq.json` and `_attention.json
 **What happens then.** A mark written just before a change can be lost while the change it guards survives. The registry value or service start type is set, but the drive mark, the in-flight action or the completed row that should say so is gone, and the next launch raises nothing for it or raises a row that did in fact finish. A crash of the app alone is not affected, since the rename reached the file system before the process died; only a power loss or an OS crash shortly after a write can do this. The pattern predates the drive mark and applies to every write in the store.
 
 **The fix.** Rename with `MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)` (or `SetFileInformationByHandle` with `FileRenameInfoEx` and a flush of the directory handle) in the one atomic-write helper, and measure the cost: every apply and restore writes several marks, so a slower write is paid on each.
-
-
-## 6. The update installer is saved predictably and run unverified
-
-**Where.** `install_update_in` in `commands/update.rs`. The download goes to `std::env::temp_dir().join(&asset_name)`, is written with `std::fs::write`, and is launched by path: `SystemTool::Msiexec` with `/i` for an `.msi`, `Command::new(&download_path)` otherwise.
-
-**The root cause.** Three independent gaps in the same few lines:
-
-- The file name is the release asset name, known in advance, in the user's `%TEMP%`. `std::fs::write` opens with create-or-truncate, follows whatever already sits at that name (a reparse point included), and asks for no sharing restriction, so another process can hold its own write handle across ours.
-- Between the write and the launch nothing holds the file, so its content can change before the installer starts, and the launch resolves the path again.
-- Nothing checks that what runs is what was downloaded or what was published: there is no hash check, and the releases are unsigned (`certificateThumbprint` is `null` in `tauri.conf.json`), so there is no signature to check either.
-
-When the app runs elevated (after Restart as administrator), the installer inherits the elevated token, so whatever controls the file content at launch runs elevated. The same code is on `main`; the redesign branch added URL and asset-name validation and an absolute `msiexec` path but left the file handling unchanged.
-
-**Also in this flow, lower weight.** `is_trusted_download_url` compares raw string prefixes. A URL containing `..` segments passes it and is normalized by the HTTP client afterwards, the `objects.githubusercontent.com/` prefix admits any repository's assets, and redirects are not re-checked. The URL arrives through the IPC arguments, so this is reachable only from a compromised webview.
-
-**Fix.**
-
-1. Create the file exclusively under an unguessable name: `exclusive_temp::unique_temp_path`, `create_new`, and a `FILE_SHARE_READ`-only handle, keeping the asset's extension (neither `msiexec` nor the NSIS installer cares about the rest of the name). `ExclusiveTempFile` deletes its file on drop, which would delete the installer while it runs, so add a way to keep the file, or open it directly the same way.
-2. After writing, close the write handle, reopen the file read-only with `FILE_SHARE_READ` only (no writer or deleter can then open it), read it back through that handle, compare it with the downloaded bytes, and keep the handle open until the installer process has started. A read-only, share-read handle should not block the image loader, which opens the file for read and execute; confirm that on the manual run below, since a sharing violation there would stop every update.
-3. Check integrity against the release: the GitHub release API returns a `digest` (`sha256:<hex>`) for each asset. Add it to `GitHubAsset`, carry it through `UpdateInfo`, and compare it with a SHA-256 of the bytes (CNG `BCryptHash` through `windows-sys`). Refuse to install when it is missing or differs. Signing the releases later would allow `WinVerifyTrust` on top.
-4. Parse the URL instead of prefix-matching it: require `https`, host `github.com`, and a path under `/ehsan18t/magicx-toolbox/releases/download/`; reject `..` segments; and re-check the host after each redirect, or turn redirects off and follow them manually through the same check.
-
-**How to verify.** Unit tests for the URL check (dot segments, other repositories, lookalike hosts) and for the digest comparison (match, mismatch, missing). The file handling needs one manual update from an older build to a newer release, run once unelevated and once after Restart as administrator.

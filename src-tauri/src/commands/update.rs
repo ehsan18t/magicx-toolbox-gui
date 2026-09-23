@@ -11,6 +11,9 @@ pub struct GitHubAsset {
     pub name: String,
     pub browser_download_url: String,
     pub size: u64,
+    /// `sha256:<hex>`, published by GitHub for every asset it stores.
+    #[serde(default)]
+    pub digest: Option<String>,
 }
 
 /// GitHub Release information from API
@@ -45,6 +48,7 @@ pub struct UpdateInfo {
     pub asset_name: Option<String>,
     /// Asset size in bytes
     pub asset_size: Option<u64>,
+    pub asset_digest: Option<String>,
 }
 
 /// Update check configuration
@@ -127,6 +131,7 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
                 published_at: None,
                 asset_name: None,
                 asset_size: None,
+                asset_digest: None,
             });
         }
         Err(ureq::Error::Status(code, _)) => {
@@ -181,19 +186,121 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
         published_at: release.published_at,
         asset_name: matching_asset.map(|a| a.name.clone()),
         asset_size: matching_asset.map(|a| a.size),
+        asset_digest: matching_asset.and_then(|a| a.digest.clone()),
     })
 }
 
-// Each prefix ends in '/': without it "magicx-toolbox-evil" matches too.
-const ALLOWED_DOWNLOAD_PREFIXES: &[&str] = &[
-    "https://github.com/ehsan18t/magicx-toolbox/",
-    "https://objects.githubusercontent.com/",
-];
+/// The repository `releasesApiUrl` in `src/lib/config/app.ts` queries.
+const RELEASE_REPO: &str = "ehsan18t/magicx-toolbox-gui";
 
-fn is_trusted_download_url(url: &str) -> bool {
-    ALLOWED_DOWNLOAD_PREFIXES
-        .iter()
-        .any(|prefix| url.starts_with(prefix))
+/// The whole URL must be `https://github.com/<RELEASE_REPO>/releases/download/<tag>/<asset_name>`: a
+/// prefix check admits dot segments, queries and a lookalike repository.
+fn is_trusted_download_url(url: &str, asset_name: &str) -> bool {
+    let prefix = format!("https://github.com/{RELEASE_REPO}/releases/download/");
+    let Some(rest) = url
+        .get(..prefix.len())
+        .filter(|head| head.eq_ignore_ascii_case(&prefix))
+        .map(|_| &url[prefix.len()..])
+    else {
+        return false;
+    };
+    let plain = |s: &str| {
+        !s.is_empty()
+            && s != "."
+            && s != ".."
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'))
+    };
+    matches!(rest.split_once('/'), Some((tag, name)) if plain(tag) && name == asset_name)
+}
+
+fn sha256(bytes: &[u8]) -> Result<[u8; 32], Error> {
+    use windows_sys::Win32::Security::Cryptography::{BCryptHash, BCRYPT_SHA256_ALG_HANDLE};
+    let len = u32::try_from(bytes.len())
+        .map_err(|_| Error::Update("The update is too large to verify".into()))?;
+    let mut out = [0u8; 32];
+    // SAFETY: the pseudo-handle needs no open; input and output are valid for the lengths given.
+    let status = unsafe {
+        BCryptHash(
+            BCRYPT_SHA256_ALG_HANDLE,
+            std::ptr::null(),
+            0,
+            bytes.as_ptr(),
+            len,
+            out.as_mut_ptr(),
+            out.len() as u32,
+        )
+    };
+    if status != 0 {
+        return Err(Error::Update(format!(
+            "Could not hash the update (NTSTATUS {status:#x})"
+        )));
+    }
+    Ok(out)
+}
+
+/// `expected` is GitHub's `sha256:<hex>`; anything else is refused rather than skipped.
+fn verify_digest(expected: &str, bytes: &[u8]) -> Result<(), Error> {
+    let hex = expected
+        .strip_prefix("sha256:")
+        .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
+        .ok_or_else(|| {
+            Error::Update("The release publishes no usable SHA-256 for this file".into())
+        })?;
+    let actual: String = sha256(bytes)?.iter().map(|b| format!("{b:02x}")).collect();
+    if !actual.eq_ignore_ascii_case(hex) {
+        log::error!("Downloaded update does not match the release's SHA-256");
+        return Err(Error::Update(
+            "The downloaded update does not match the published checksum".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Written under an unguessable name, then re-opened read-only with writers and deleters denied and
+/// compared with the verified bytes. Holding that handle until the installer starts is what keeps
+/// the file that runs identical to the one checked.
+fn stage_installer(
+    bytes: &[u8],
+    asset_name: &str,
+) -> Result<(std::path::PathBuf, std::fs::File), Error> {
+    use std::io::Write;
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+
+    let io_err = |what: &str, e: std::io::Error| {
+        log::error!("Failed to {what} the update file: {e}");
+        Error::Update(format!("Failed to save update file: {e}"))
+    };
+    let token =
+        crate::services::exclusive_temp::random_hex_token().map_err(|e| io_err("name", e))?;
+    let path = std::env::temp_dir().join(format!("magicx-update-{token}-{asset_name}"));
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(&path)
+        .and_then(|mut file| file.write_all(bytes))
+        .map_err(|e| io_err("write", e))?;
+
+    let mut held = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(&path)
+        .map_err(|e| io_err("reopen", e))?;
+    let mut on_disk = Vec::with_capacity(bytes.len());
+    held.read_to_end(&mut on_disk)
+        .map_err(|e| io_err("read back", e))?;
+    if on_disk != bytes {
+        drop(held);
+        if let Err(e) = std::fs::remove_file(&path) {
+            log::warn!("could not delete the altered update file: {}", e.kind());
+        }
+        return Err(Error::Update(
+            "The update file changed on disk before it could be run".into(),
+        ));
+    }
+    Ok((path, held))
 }
 
 // Windows opens the device for a reserved stem whatever the extension ("NUL.exe", "COM1 .msi").
@@ -233,12 +340,17 @@ fn validate_asset_name(name: &str) -> Result<(), Error> {
 }
 
 #[tauri::command]
-pub async fn install_update(download_url: String, asset_name: String) -> Result<(), Error> {
+pub async fn install_update(
+    download_url: String,
+    asset_name: String,
+    asset_digest: Option<String>,
+) -> Result<(), Error> {
     tauri::async_runtime::spawn_blocking(move || {
         install_update_in(
             crate::tweaks::engine::lifecycle::gate(),
             download_url,
             asset_name,
+            asset_digest,
         )
     })
     .await?
@@ -248,6 +360,7 @@ fn install_update_in(
     gate: &crate::tweaks::engine::lifecycle::ApplyGate,
     download_url: String,
     asset_name: String,
+    asset_digest: Option<String>,
 ) -> Result<(), Error> {
     log::info!("Starting update download: {:?}", asset_name);
 
@@ -257,20 +370,18 @@ fn install_update_in(
         .begin_exit()
         .map_err(|refused| Error::exit_refused(refused, "install the update"))?;
 
-    // Security: Validate download URL is from trusted source
-    if !is_trusted_download_url(&download_url) {
+    validate_asset_name(&asset_name)?;
+    if !is_trusted_download_url(&download_url, &asset_name) {
         log::error!("Rejected untrusted download URL: {:?}", download_url);
         return Err(Error::Update(
             "Download URL is not from a trusted source. Updates must come from the official GitHub repository.".into()
         ));
     }
-
-    validate_asset_name(&asset_name)?;
-
-    let temp_dir = std::env::temp_dir();
-    let download_path = temp_dir.join(&asset_name);
-
-    log::debug!("Downloading to: {:?}", download_path);
+    let Some(asset_digest) = asset_digest else {
+        return Err(Error::Update(
+            "The release publishes no checksum for this file, so it cannot be verified".into(),
+        ));
+    };
 
     // Download the file. ureq returns Err on a non-2xx status, so a failed download is caught here.
     let agent = ureq::AgentBuilder::new()
@@ -295,13 +406,10 @@ fn install_update_in(
             Error::Update(format!("Failed to read downloaded data: {}", e))
         })?;
 
-    // Write to temp file
-    std::fs::write(&download_path, &bytes).map_err(|e| {
-        log::error!("Failed to write update file: {}", e);
-        Error::Update(format!("Failed to save update file: {}", e))
-    })?;
+    verify_digest(&asset_digest, &bytes)?;
+    let (download_path, _held) = stage_installer(&bytes, &asset_name)?;
 
-    log::info!("Download complete, launching installer...");
+    log::info!("Download verified, launching installer...");
 
     let extension = download_path
         .extension()
@@ -458,20 +566,54 @@ mod tests {
     }
 
     #[test]
-    fn download_url_must_sit_under_the_repo_directory() {
+    fn download_url_must_be_this_repos_release_asset() {
+        let base = format!("https://github.com/{RELEASE_REPO}/releases/download");
         assert!(is_trusted_download_url(
-            "https://github.com/ehsan18t/magicx-toolbox/releases/download/v3.1.0/x.exe"
-        ));
-        assert!(is_trusted_download_url(
-            "https://objects.githubusercontent.com/x"
+            &format!("{base}/v3.1.0/x.exe"),
+            "x.exe"
         ));
         for url in [
-            "https://github.com/ehsan18t/magicx-toolbox-evil/releases/download/v1/x.exe",
-            "https://github.com/ehsan18t/magicx-toolbox",
-            "https://example.com/x.exe",
+            format!("{base}/v3.1.0/y.exe"),
+            format!("{base}/v3.1.0/x.exe?x=1"),
+            format!("{base}/../../evil/r/releases/download/v1/x.exe"),
+            format!("{base}/%2e%2e/x.exe"),
+            format!("{base}//x.exe"),
+            format!("{base}/v1/sub/x.exe"),
+            format!("https://github.com/{RELEASE_REPO}-evil/releases/download/v1/x.exe"),
+            "https://objects.githubusercontent.com/x.exe".to_string(),
+            "https://example.com/x.exe".to_string(),
         ] {
-            assert!(!is_trusted_download_url(url), "{url} trusted");
+            assert!(!is_trusted_download_url(&url, "x.exe"), "{url} trusted");
         }
+    }
+
+    #[test]
+    fn the_digest_must_match_and_be_well_formed() {
+        let abc = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(verify_digest(abc, b"abc").is_ok());
+        assert!(verify_digest(&abc.to_uppercase().replace("SHA256", "sha256"), b"abc").is_ok());
+        for bad in [
+            abc.replace("ba78", "0000"),
+            abc.trim_start_matches("sha256:").to_string(),
+            "sha256:xyz".to_string(),
+            "md5:900150983cd24fb0d6963f7d28e17f72".to_string(),
+        ] {
+            assert!(verify_digest(&bad, b"abc").is_err(), "{bad} accepted");
+        }
+    }
+
+    #[test]
+    fn a_staged_installer_cannot_be_rewritten_while_held() {
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+        let (path, held) = stage_installer(b"payload", "x.exe").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"payload");
+        let err = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect_err("no writer while the installer is held");
+        assert_eq!(err.raw_os_error(), Some(ERROR_SHARING_VIOLATION));
+        drop(held);
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
@@ -508,13 +650,16 @@ mod tests {
     #[tokio::test]
     async fn rejected_install_leaves_the_latch_released() {
         let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
-        for (url, name) in [
-            ("https://example.com/x.exe", "x.exe"),
-            ("https://github.com/ehsan18t/magicx-toolbox/x", "..\\x.exe"),
-            ("https://github.com/ehsan18t/magicx-toolbox/x", "C:x.exe"),
-            ("https://github.com/ehsan18t/magicx-toolbox/x", "x.zip"),
+        let ok = format!("https://github.com/{RELEASE_REPO}/releases/download/v1/x.exe");
+        for (url, name, digest) in [
+            ("https://example.com/x.exe", "x.exe", Some("sha256:00")),
+            (ok.as_str(), "..\\x.exe", Some("sha256:00")),
+            (ok.as_str(), "C:x.exe", Some("sha256:00")),
+            (ok.as_str(), "x.zip", Some("sha256:00")),
+            (ok.as_str(), "x.exe", None),
         ] {
-            let result = install_update_in(&gate, url.into(), name.into());
+            let result =
+                install_update_in(&gate, url.into(), name.into(), digest.map(str::to_string));
             assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
         }
         drop(
@@ -528,7 +673,12 @@ mod tests {
     async fn install_is_refused_under_an_apply() {
         let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
         let _guard = gate.lock_tweak("t").await.expect("no exit pending");
-        let result = install_update_in(&gate, "https://example.com/x.exe".into(), "x.exe".into());
+        let result = install_update_in(
+            &gate,
+            "https://example.com/x.exe".into(),
+            "x.exe".into(),
+            None,
+        );
         assert!(
             matches!(result, Err(Error::ApplyInFlight(_))),
             "got {result:?}"

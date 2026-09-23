@@ -779,6 +779,8 @@ export interface UpdateInfo {
   assetName?: string;
   /** Asset size in bytes */
   assetSize?: number;
+  /** GitHub's `sha256:<hex>` for the asset, required to install it */
+  assetDigest?: string;
 }
 
 /** Update check result */

@@ -115,6 +115,7 @@ export const updateStore = {
       await invoke("install_update", {
         downloadUrl: updateInfo.downloadUrl,
         assetName: updateInfo.assetName,
+        assetDigest: updateInfo.assetDigest ?? null,
       });
       return true;
     } catch (err) {
