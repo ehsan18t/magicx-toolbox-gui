@@ -255,6 +255,26 @@ pub enum ValidationError {
     },
 
     #[error(
+        "tweak id `{id}` is declared more than once (compared case-insensitively, since each id names a snapshots/<id>/ folder); rename one of them"
+    )]
+    DuplicateTweakId { id: String },
+
+    #[error(
+        "tweak id `{id}` {reason}: a tweak id names its snapshots/<id>/ folder, so it may use only a-z, 0-9 and _"
+    )]
+    InvalidTweakId { id: String, reason: &'static str },
+
+    #[error(
+        "tweak `{tweak}` declares effect id `{effect}` more than once; effect ids must be unique within a tweak"
+    )]
+    DuplicateEffectId { tweak: String, effect: EffectId },
+
+    #[error(
+        "tweak `{tweak}` declares option `{option}` more than once; option labels must be unique within a tweak"
+    )]
+    DuplicateOptionLabel { tweak: String, option: OptLabel },
+
+    #[error(
         "{owner} addresses field `{field}` of a {ty} value: a packed field lives only in a REG_SZ or REG_EXPAND_SZ value, so change the type or drop `field`"
     )]
     FieldOnNonStringType {
@@ -268,6 +288,7 @@ pub enum ValidationError {
 /// distinctness, and per-milestone quantification are [`validate_semantic`]'s.
 pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     let mut errors = Vec::new();
+    check_tweak_ids(corpus, &mut errors);
     check_duplicate_shared_ids(corpus, &mut errors);
     check_shared_refs_resolve(corpus, &mut errors);
     check_ownership(corpus, &mut errors);
@@ -275,6 +296,8 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     check_canonicalization(corpus, &mut errors);
     check_field_types(corpus, &mut errors);
     for tweak in &corpus.tweaks {
+        check_unique_effect_ids(tweak, &mut errors);
+        check_unique_option_labels(tweak, &mut errors);
         check_coverage(tweak, &mut errors);
         check_reversibility(tweak, &mut errors);
         check_ti_self_availability(tweak, &mut errors);
@@ -283,6 +306,64 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_action_never_ti(tweak, &mut errors);
     }
     errors
+}
+
+fn tweak_id_problem(id: &str) -> Option<&'static str> {
+    if id.is_empty() {
+        Some("is empty")
+    } else if id.contains(['\\', '/']) {
+        Some("contains a path separator")
+    } else if id.contains("..") {
+        Some("contains `..`")
+    } else if !id
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+    {
+        Some("uses a character outside a-z, 0-9 and _")
+    } else {
+        None
+    }
+}
+
+fn check_tweak_ids(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
+    let mut seen: HashSet<String> = HashSet::new();
+    for tweak in &corpus.tweaks {
+        if let Some(reason) = tweak_id_problem(&tweak.id) {
+            errors.push(ValidationError::InvalidTweakId {
+                id: tweak.id.clone(),
+                reason,
+            });
+        }
+        if !seen.insert(tweak.id.to_lowercase()) {
+            errors.push(ValidationError::DuplicateTweakId {
+                id: tweak.id.clone(),
+            });
+        }
+    }
+}
+
+fn check_unique_effect_ids(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    let mut seen: HashSet<&EffectId> = HashSet::new();
+    for effect in &tweak.surface {
+        if !seen.insert(&effect.id) {
+            errors.push(ValidationError::DuplicateEffectId {
+                tweak: tweak.id.clone(),
+                effect: effect.id.clone(),
+            });
+        }
+    }
+}
+
+fn check_unique_option_labels(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    let mut seen: HashSet<&OptLabel> = HashSet::new();
+    for opt in &tweak.options {
+        if !seen.insert(&opt.label) {
+            errors.push(ValidationError::DuplicateOptionLabel {
+                tweak: tweak.id.clone(),
+                option: opt.label.clone(),
+            });
+        }
+    }
 }
 
 /// Every Setting in the corpus with its owner: direct effects first, then `shared:` declarations.
@@ -1351,6 +1432,70 @@ mod tests {
     }
 
     #[test]
+    fn dup_tweak_id_is_rejected() {
+        let errors = errors_for("dup_tweak_id.yaml");
+        assert!(
+            matches!(&errors[..], [ValidationError::DuplicateTweakId { id }] if id == "same_tweak"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn tweak_ids_compare_case_insensitively() {
+        let mut corpus = load_corpus(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/bad/dup_tweak_id.yaml"),
+        )
+        .expect("fixture must load");
+        corpus.tweaks[1].id = "SAME_TWEAK".to_string();
+        let mut errors = Vec::new();
+        check_tweak_ids(&corpus, &mut errors);
+        assert!(
+            errors.iter().any(
+                |e| matches!(e, ValidationError::DuplicateTweakId { id } if id == "SAME_TWEAK")
+            ),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn invalid_tweak_ids_are_rejected() {
+        let errors = errors_for("invalid_tweak_id.yaml");
+        let reasons: Vec<(&str, &str)> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::InvalidTweakId { id, reason } => (id.as_str(), *reason),
+                other => panic!("expected InvalidTweakId, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            reasons,
+            vec![
+                ("nested\\evil", "contains a path separator"),
+                ("up..here", "contains `..`"),
+                ("Has-Dash", "uses a character outside a-z, 0-9 and _"),
+            ]
+        );
+    }
+
+    #[test]
+    fn dup_effect_id_is_rejected() {
+        let errors = errors_for("dup_effect_id.yaml");
+        assert!(
+            matches!(&errors[..], [ValidationError::DuplicateEffectId { effect, .. }] if effect.0 == "flag"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn dup_option_label_is_rejected() {
+        let errors = errors_for("dup_option_label.yaml");
+        assert!(
+            matches!(&errors[..], [ValidationError::DuplicateOptionLabel { option, .. }] if option.0 == "On"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
     fn field_on_non_string_type_is_rejected() {
         let errors = errors_for("field_on_non_string_type.yaml");
         assert!(
@@ -1416,6 +1561,25 @@ mod tests {
         assert_eq!(owners.len(), 2, "{owners:?}");
         assert!(owners[0].contains("key_owner") && owners[0].contains("value_owner"));
         assert!(owners[1].contains("key_owner") && owners[1].contains("subkey_owner"));
+    }
+
+    #[test]
+    fn every_bad_fixture_is_rejected() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/bad");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let rejected = match load_corpus(&path) {
+                Err(_) => true,
+                Ok(corpus) => {
+                    !validate_structural(&corpus).is_empty()
+                        || !validate_semantic(&corpus, SUPPORT_MATRIX).is_empty()
+                }
+            };
+            assert!(rejected, "{} builds clean", path.display());
+            checked += 1;
+        }
+        assert!(checked > 0, "no fixtures found in {}", dir.display());
     }
 
     #[test]
