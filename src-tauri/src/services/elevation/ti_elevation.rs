@@ -131,22 +131,27 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             "Starting the TrustedInstaller service, currently {}",
             describe_service_state(current_state)
         );
-        let start_result = StartServiceW(service, 0, ptr::null());
-
-        if start_result == 0 {
-            let err = GetLastError();
-            if err != ERROR_SERVICE_ALREADY_RUNNING {
-                CloseServiceHandle(service);
-                CloseServiceHandle(scm);
-                return Err(Error::win32(
-                    format!(
-                        "Failed to start the TrustedInstaller service: {}",
-                        describe_win32(err)
-                    ),
-                    err,
-                ));
+        // Ok(true): ERROR_SERVICE_ALREADY_RUNNING, which a service still stopping also returns.
+        let start = || -> Result<bool, Error> {
+            if StartServiceW(service, 0, ptr::null()) != 0 {
+                return Ok(false);
             }
-        }
+            match GetLastError() {
+                ERROR_SERVICE_ALREADY_RUNNING => Ok(true),
+                err => {
+                    CloseServiceHandle(service);
+                    CloseServiceHandle(scm);
+                    Err(Error::win32(
+                        format!(
+                            "Failed to start the TrustedInstaller service: {}",
+                            describe_win32(err)
+                        ),
+                        err,
+                    ))
+                }
+            }
+        };
+        let mut restart_once_stopped = start()?;
 
         // Poll up to 10s, querying first so a running service costs nothing. The last state and
         // query error leave the loop, so a timeout tells "stuck starting" from "never started".
@@ -180,6 +185,11 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
                 CloseServiceHandle(scm);
                 log::info!("The TrustedInstaller service started (pid {pid})");
                 return Ok(pid);
+            }
+            if last_state == SERVICE_STOPPED && restart_once_stopped {
+                log::info!("The TrustedInstaller service finished stopping; starting it again");
+                restart_once_stopped = false;
+                start()?;
             }
         }
 
