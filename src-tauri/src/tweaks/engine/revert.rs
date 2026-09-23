@@ -196,10 +196,7 @@ pub(crate) fn do_restore(
                 .collect(),
         };
         let mut store = Vec::new();
-        match deps
-            .snapshots
-            .set_attention(&current_tweak.id, deps.machine_guid, attention)
-        {
+        match apply::record_attention(deps, &current_tweak.id, attention) {
             Ok(()) => apply::settle_recorded(deps, &current_tweak.id, entry.seq, &inherited),
             Err(e) => store.push(EngineError::AttentionWrite(e)),
         }
@@ -1608,6 +1605,26 @@ mod tests {
 
         let outcome = run_restore(&t, &c, &h.deps()).expect("the captured value goes back");
         assert_eq!(h.kind.live_value("s1"), Value::Startup(StartupType::Manual));
+        assert!(outcome.consumed.is_some());
+    }
+
+    /// The upgrade scoped the effect out and removed its resource: nothing is left to put back, so
+    /// the restore is not stuck on it.
+    #[test]
+    fn a_values_restore_skips_an_effect_an_upgrade_scoped_out_and_removed() {
+        use crate::tweaks::model::{BuildExpr, WindowsScope};
+        let h = Harness::new();
+        let (mut t, _, _) = values_restore_setup(&h);
+        t.surface[0].windows = Some(WindowsScope {
+            products: None,
+            build: Some(BuildExpr::Max(19044)),
+            revision: None,
+        });
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Missing);
+        h.kind.drive_plan("s1", DrivePlan::ResourceMissing);
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("nothing left to restore");
         assert!(outcome.consumed.is_some());
     }
 

@@ -171,7 +171,7 @@ impl EffectKind for AllKinds {
                     // Ops run in order and the child stops at its first failure, so an op inside a
                     // named item's span proves every item ahead of it drove. An op that names no
                     // item proves nothing about any, so the run re-drives from its start.
-                    index: named.unwrap_or(spans.len().saturating_sub(1)),
+                    index: named.unwrap_or(0),
                     error: KindError::ElevatedOpFailed(Level::Ti, *class),
                     completed: named.unwrap_or(0),
                 }
@@ -338,9 +338,13 @@ pub fn user_facing_failure(phase: Phase, e: &EngineError) -> String {
         EngineError::CaptureMissingRequired(effect) => {
             format!("effect '{effect}' is required but is not present on this machine")
         }
-        EngineError::SnapshotWrite(_) => {
-            "the pre-apply snapshot could not be saved, so nothing was changed".to_owned()
+        EngineError::SnapshotWrite(_) => match phase {
+            Phase::Apply => "the pre-apply snapshot could not be saved, so nothing was changed",
+            Phase::Restore => {
+                "the snapshot history could not be read or updated, so nothing was changed"
+            }
         }
+        .to_owned(),
         EngineError::DriveFailed { effect, source } => format!(
             "effect '{effect}' could not be changed: {}",
             kind_failure(source)

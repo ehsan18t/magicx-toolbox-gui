@@ -495,6 +495,28 @@ pub(crate) fn settle_verified(
     record_settled(deps, tweak_id, attention)
 }
 
+/// Adds a failure to the record already there: an earlier failure's items are still unresolved,
+/// and replacing the record would lose them for good.
+pub(crate) fn record_attention(
+    deps: &Deps,
+    tweak_id: &str,
+    mut attention: Attention,
+) -> Result<(), SnapshotError> {
+    if let Ok(Some(existing)) = deps.snapshots.attention(tweak_id, deps.machine_guid) {
+        if existing.reason != AttentionReason::RecordUnreadable {
+            let mut items = existing.items;
+            for item in attention.items {
+                if !items.contains(&item) {
+                    items.push(item);
+                }
+            }
+            attention.items = items;
+        }
+    }
+    deps.snapshots
+        .set_attention(tweak_id, deps.machine_guid, attention)
+}
+
 fn record_settled(deps: &Deps, tweak_id: &str, attention: Attention) -> Settled {
     match deps
         .snapshots
@@ -777,10 +799,7 @@ pub(crate) fn do_apply(
                         .map(|e| attention_item(Phase::Apply, e))
                         .collect(),
                 };
-                match deps
-                    .snapshots
-                    .set_attention(&tweak.id, deps.machine_guid, attention)
-                {
+                match record_attention(deps, &tweak.id, attention) {
                     Ok(()) => {
                         let fresh = Inherited {
                             drive_open: false,
@@ -1187,9 +1206,7 @@ fn rollback(
                     failures.push(if state.failed_partway.as_ref() == Some(effect_id) {
                         EngineError::PartialNoUndo(effect_id.clone())
                     } else {
-                        EngineError::Invalid(format!(
-                            "action '{effect_id}' ran and cannot be undone (no undo script) -- rollback is incomplete"
-                        ))
+                        EngineError::NoUndo(effect_id.clone())
                     });
                 }
             }
@@ -1368,12 +1385,22 @@ pub(crate) fn drive_to_captured(
                 let Effect::Setting(setting) = &effect.kind else {
                     continue;
                 };
-                // Per-effect execution context (spec §9): see this file's module docs.
+                let cx = context::route(effect, tweak, corpus);
+                // An upgrade that scoped the effect out and removed its resource leaves nothing here
+                // to put back.
+                if !surface.iter().any(|e| e.id == effect.id)
+                    && matches!(deps.kinds.read(setting, &cx), Ok(Value::Missing))
+                {
+                    log::info!(
+                        "'{effect_id}' is scoped out and absent on this build; nothing to restore"
+                    );
+                    continue;
+                }
                 plan.push(Restorable {
                     effect,
                     setting,
                     value,
-                    cx: context::route(effect, tweak, corpus),
+                    cx,
                 });
             }
         }
@@ -1446,13 +1473,16 @@ fn already_there(item: &Restorable<'_>, deps: &Deps) -> bool {
 }
 
 /// A drive-back Windows refused is still verified when the effect reads as captured afterwards
-/// (Task Scheduler can refuse a toggle it then settles). An unknown elevated outcome is not: the
-/// child's work can land after this read.
+/// (Task Scheduler can refuse a toggle it then settles). Not an unknown outcome (the child's work
+/// can land later) nor a failed acquisition, which is charged to one item but reached none.
 fn refused_but_restored(failure: &EngineError, plan: &[Restorable<'_>], deps: &Deps) -> bool {
     let EngineError::DriveFailed { effect, source } = failure else {
         return false;
     };
-    if matches!(source, KindError::ElevatedOutcomeUnknown(..)) {
+    if matches!(
+        source,
+        KindError::ElevatedOutcomeUnknown(..) | KindError::CouldNotAcquireElevation(..)
+    ) {
         return false;
     }
     let restored = plan.iter().filter(|item| &item.effect.id == effect).any(
@@ -1790,6 +1820,10 @@ mod tests {
                 .insert(name.into(), call_num);
             self
         }
+        fn drive_plan_clear(&self, name: &str) {
+            self.drive_plan.lock().unwrap().remove(name);
+        }
+
         fn drive_plan(&self, name: &str, plan: DrivePlan) -> &Self {
             self.drive_plan.lock().unwrap().insert(name.into(), plan);
             self
@@ -3470,6 +3504,82 @@ mod tests {
             .head("demo", &c, Some("test-guid"), 19045)
             .unwrap()
             .is_none());
+    }
+
+    /// A failed acquisition is charged to the run's first item but reached none of them, so that
+    /// item reading as captured proves nothing about the rest; a plain refusal of it does.
+    #[test]
+    fn only_a_refusal_of_the_item_itself_is_cleared_by_its_read() {
+        use crate::services::elevation::{AcquireReason, OpFailureClass};
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        let effect = ti_svc_effect("s1");
+        let Effect::Setting(setting) = &effect.kind else {
+            unreachable!()
+        };
+        let captured = Value::Startup(StartupType::Manual);
+        let plan = [Restorable {
+            effect: &effect,
+            setting,
+            value: &captured,
+            cx: ExecCx::new(Level::Ti),
+        }];
+        let failed = |source| EngineError::DriveFailed {
+            effect: EffectId("s1".into()),
+            source,
+        };
+
+        let unacquired = failed(KindError::CouldNotAcquireElevation(
+            Level::Ti,
+            AcquireReason::TiServiceNotStarted,
+            "mock".into(),
+        ));
+        assert!(!refused_but_restored(&unacquired, &plan, &h.deps()));
+        let refused = failed(KindError::ElevatedOpFailed(
+            Level::Ti,
+            OpFailureClass::NotFound,
+        ));
+        assert!(refused_but_restored(&refused, &plan, &h.deps()));
+    }
+
+    /// A second failure adds to the record: the first failure's items are still unresolved.
+    #[test]
+    fn a_second_failure_keeps_the_first_failures_items() {
+        use crate::tweaks::model::StartupType;
+        let h = Harness::new();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.seed("s2", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan("s1", DrivePlan::Stuck);
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), svc_effect("s2", false)],
+            vec![opt(
+                "A",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("s2", set(Value::Startup(StartupType::Disabled))),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s1 is stuck");
+        let first = detect::attention("demo", &h.deps())
+            .expect("recorded")
+            .items;
+
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.kind.drive_plan_clear("s1");
+        h.kind.drive_plan("s2", DrivePlan::Stuck);
+        run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s2 is stuck");
+        let items = detect::attention("demo", &h.deps())
+            .expect("recorded")
+            .items;
+        assert!(first.iter().all(|i| items.contains(i)), "{items:?}");
+        assert!(
+            items.len() > first.len(),
+            "the second failure adds its own: {items:?}"
+        );
     }
 
     /// A drive-back that reports an error but leaves the effect at its captured value is verified
