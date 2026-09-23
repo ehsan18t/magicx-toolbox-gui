@@ -428,11 +428,13 @@ fn probe_cached(
     action: &ActionDef,
     cx: &ExecCx,
 ) -> Result<bool, KindError> {
-    if let Some(cached) = deps.probe_cache.get(tweak_id, effect_id) {
-        return Ok(cached);
-    }
+    let generation = match deps.probe_cache.get(tweak_id, effect_id) {
+        Ok(cached) => return Ok(cached),
+        Err(generation) => generation,
+    };
     let present = answer_probe(deps, action, cx)?;
-    deps.probe_cache.insert(tweak_id, effect_id, present);
+    deps.probe_cache
+        .insert(tweak_id, effect_id, present, generation);
     Ok(present)
 }
 

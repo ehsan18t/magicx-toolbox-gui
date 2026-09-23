@@ -590,7 +590,8 @@ pub(crate) fn do_apply(
     // driving pass only.
     let drive_surface = driving_surface(tweak, &winver);
 
-    // Step 0: detect current status (the lock is already held by `apply`).
+    // Step 0 decides the no-op and the capture shape, so it probes live, never from the session cache.
+    deps.probe_cache.invalidate(&tweak.id);
     let pre_status = detect::detect(tweak, corpus, deps);
     match &pre_status.state {
         TweakState::Active(label) if label == target => {

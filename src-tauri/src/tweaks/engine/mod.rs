@@ -670,8 +670,15 @@ pub struct Deps<'a> {
 /// an app is exactly what makes both stale.
 #[derive(Default)]
 pub struct ProbeCache {
-    entries: Mutex<HashMap<(String, EffectId), bool>>,
+    entries: Mutex<ProbeEntries>,
     appx: AppxIndex,
+}
+
+/// `generation` counts invalidations: a probe that started before one must not cache its reading.
+#[derive(Default)]
+struct ProbeEntries {
+    generation: u64,
+    readings: HashMap<(String, EffectId), bool>,
 }
 
 impl ProbeCache {
@@ -684,34 +691,36 @@ impl ProbeCache {
         &self.appx
     }
 
-    /// Private (module-private, so `engine::detect` -- a descendant -- can still call it):
-    /// only engine internals read/populate the cache directly; external callers only `invalidate`.
-    fn get(&self, tweak_id: &str, effect_id: &EffectId) -> Option<bool> {
-        self.entries
-            .lock()
-            .expect("ProbeCache mutex poisoned")
+    fn lock(&self) -> std::sync::MutexGuard<'_, ProbeEntries> {
+        self.entries.lock().expect("ProbeCache mutex poisoned")
+    }
+
+    /// The cached reading, or the generation a fresh probe must present to [`Self::insert`].
+    fn get(&self, tweak_id: &str, effect_id: &EffectId) -> Result<bool, u64> {
+        let entries = self.lock();
+        entries
+            .readings
             .get(&(tweak_id.to_string(), effect_id.clone()))
             .copied()
+            .ok_or(entries.generation)
     }
 
-    fn insert(&self, tweak_id: &str, effect_id: &EffectId, present: bool) {
-        self.entries
-            .lock()
-            .expect("ProbeCache mutex poisoned")
-            .insert((tweak_id.to_string(), effect_id.clone()), present);
+    fn insert(&self, tweak_id: &str, effect_id: &EffectId, present: bool, generation: u64) {
+        let mut entries = self.lock();
+        if entries.generation == generation {
+            entries
+                .readings
+                .insert((tweak_id.to_string(), effect_id.clone()), present);
+        }
     }
 
-    /// Drops every cached probe for `tweak_id` (spec §7), so the next detect re-observes live
-    /// state. Called by apply/restore after they mutate that tweak's surface, never by `detect`.
-    ///
-    /// The package enumeration goes with it, unconditionally rather than per-tweak: it is one
-    /// machine-wide reading with no tweak to key on, and the applies that invalidate a probe are
-    /// the same ones that install or remove packages.
+    /// Drops every cached probe for `tweak_id`, plus the machine-wide package enumeration: the
+    /// applies that invalidate a probe are the ones that install or remove packages.
     pub fn invalidate(&self, tweak_id: &str) {
-        self.entries
-            .lock()
-            .expect("ProbeCache mutex poisoned")
-            .retain(|(t, _), _| t != tweak_id);
+        let mut entries = self.lock();
+        entries.generation += 1;
+        entries.readings.retain(|(t, _), _| t != tweak_id);
+        drop(entries);
         self.appx.invalidate();
     }
 }
