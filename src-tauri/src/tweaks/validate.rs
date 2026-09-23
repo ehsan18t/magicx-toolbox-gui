@@ -12,8 +12,7 @@
 
 use super::model::{
     effective_level, ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Level, Opt,
-    OptLabel, OptValue, RegType, ScopedValue, Setting, SharedId, StartupType, Tweak, Value,
-    WindowsScope,
+    OptLabel, OptValue, RegType, Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
 };
 use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
@@ -97,14 +96,11 @@ pub enum ValidationError {
     )]
     DuplicateSharedId { id: SharedId },
 
-    /// A raw Registry effect addresses a value that a canonicalized kind (Service/Task) owns —
-    /// closing the alias route the ownership guard would otherwise miss (spec §10).
-    #[error(
-        "tweak `{tweak}` effect `{effect}` addresses {path} as a raw registry value — use the `{use_kind}` kind instead"
-    )]
+    /// A raw Registry effect or `shared:` entry addresses a value that a canonicalized kind
+    /// (Service/Task) owns, closing the alias route the ownership guard would otherwise miss.
+    #[error("{owner} addresses {path} as a raw registry value: use the `{use_kind}` kind instead")]
     NonCanonicalKind {
-        tweak: String,
-        effect: EffectId,
+        owner: AddressOwner,
         path: String,
         use_kind: &'static str,
     },
@@ -140,12 +136,12 @@ pub enum ValidationError {
         computed: bool,
     },
 
-    /// A typed Service effect disables the TrustedInstaller service itself (spec §10: the app's
-    /// own TI elevation path must stay available; script contents are out of scope by design).
+    /// A typed Service effect or `shared:` entry disables the TrustedInstaller service itself
+    /// (spec §10); script contents are out of scope by design.
     #[error(
-        "tweak `{tweak}` effect `{effect}` disables the TrustedInstaller service via a typed effect — this would strand the app's own TI elevation path"
+        "{owner} disables the TrustedInstaller service via a typed effect: this would strand the app's own TI elevation path"
     )]
-    TrustedInstallerDisabled { tweak: String, effect: EffectId },
+    TrustedInstallerDisabled { owner: AddressOwner },
 
     /// Apply honours `revision` but detection scopes by build only, so the two would disagree.
     #[error(
@@ -314,6 +310,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     check_ownership(corpus, &mut errors);
     check_key_subtrees(corpus, &mut errors);
     check_canonicalization(corpus, &mut errors);
+    check_ti_self_availability(corpus, &mut errors);
     check_field_types(corpus, &mut errors);
     for tweak in &corpus.tweaks {
         check_unique_effect_ids(tweak, &mut errors);
@@ -322,7 +319,6 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_coverage(tweak, &mut errors);
         check_reversibility(tweak, &mut errors);
         check_no_revision(tweak, &mut errors);
-        check_ti_self_availability(tweak, &mut errors);
         check_if_missing_requires_optional(tweak, &mut errors);
         check_ephemeral_has_no_undo_probe(tweak, &mut errors);
         check_action_never_ti(tweak, &mut errors);
@@ -642,39 +638,36 @@ fn same_tweak(a: &AddressOwner, b: &AddressOwner) -> bool {
     )
 }
 
-/// A raw Registry effect must not address a value that a canonicalized kind (Service/Task) owns —
-/// otherwise ownership can be dodged via a second address space (spec §10).
+/// A raw Registry effect or `shared:` entry must not address a value that a canonicalized kind
+/// (Service/Task) owns: otherwise ownership can be dodged via a second address space (spec §10).
 fn check_canonicalization(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
-    for tweak in &corpus.tweaks {
-        for effect in &tweak.surface {
-            let Effect::Setting(Setting::Registry(addr)) = &effect.kind else {
-                continue;
-            };
-            if addr.hive != Hive::Hklm {
-                continue;
-            }
-            let use_kind = if is_service_start_value(&addr.path, &addr.name) {
-                Some("Service")
-            } else if is_task_scheduler_path(&addr.path) {
-                Some("Task")
-            } else {
-                None
-            };
-            if let Some(use_kind) = use_kind {
-                errors.push(ValidationError::NonCanonicalKind {
-                    tweak: tweak.id.clone(),
-                    effect: effect.id.clone(),
-                    path: format!(r"HKLM\{}\{}", addr.path, addr.name),
-                    use_kind,
-                });
-            }
+    for (setting, owner) in owned_settings(corpus) {
+        let Setting::Registry(addr) = setting else {
+            continue;
+        };
+        if addr.hive != Hive::Hklm {
+            continue;
+        }
+        let use_kind = if is_service_startup_value(&addr.path, &addr.name) {
+            Some("Service")
+        } else if is_task_scheduler_path(&addr.path) {
+            Some("Task")
+        } else {
+            None
+        };
+        if let Some(use_kind) = use_kind {
+            errors.push(ValidationError::NonCanonicalKind {
+                owner,
+                path: format!(r"HKLM\{}\{}", addr.path, addr.name),
+                use_kind,
+            });
         }
     }
 }
 
-/// A service's start type lives at `...\Services\<name>` with a value named `Start`.
-fn is_service_start_value(path: &str, name: &str) -> bool {
-    if !name.eq_ignore_ascii_case("Start") {
+/// A service's start type lives at `...\Services\<name>` as `Start` plus `DelayedAutostart`.
+fn is_service_startup_value(path: &str, name: &str) -> bool {
+    if !name.eq_ignore_ascii_case("Start") && !name.eq_ignore_ascii_case("DelayedAutostart") {
         return false;
     }
     let segments: Vec<&str> = path.split('\\').collect();
@@ -740,29 +733,42 @@ fn check_reversibility(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
     }
 }
 
-/// No typed Service effect may disable the TrustedInstaller service itself — script contents are
-/// out of scope by design (spec §10).
-fn check_ti_self_availability(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
-    for effect in &tweak.surface {
-        let Effect::Setting(Setting::Service(addr)) = &effect.kind else {
-            continue;
+/// No typed Service effect or `shared:` entry may disable the TrustedInstaller service itself;
+/// script contents are out of scope by design (spec §10).
+fn check_ti_self_availability(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
+    let is_ti = |s: &Setting| {
+        let Setting::Service(addr) = s else {
+            return false;
         };
-        if !addr.name.eq_ignore_ascii_case("TrustedInstaller") {
-            continue;
+        addr.name.eq_ignore_ascii_case("TrustedInstaller")
+    };
+    let disabled = |v: &Value| *v == Value::Startup(StartupType::Disabled);
+    for tweak in &corpus.tweaks {
+        for effect in &tweak.surface {
+            let Effect::Setting(setting) = &effect.kind else {
+                continue;
+            };
+            let disables = is_ti(setting)
+                && tweak.options.iter().any(|opt| {
+                    let value = opt.values.get(&effect.id);
+                    matches!(value, Some(OptValue::Set(v)) if disabled(&v.value))
+                });
+            if disables {
+                errors.push(ValidationError::TrustedInstallerDisabled {
+                    owner: AddressOwner::Effect {
+                        tweak: tweak.id.clone(),
+                        effect: effect.id.clone(),
+                    },
+                });
+            }
         }
-        let disables = tweak.options.iter().any(|opt| {
-            matches!(
-                opt.values.get(&effect.id),
-                Some(OptValue::Set(ScopedValue {
-                    value: Value::Startup(StartupType::Disabled),
-                    ..
-                }))
-            )
-        });
-        if disables {
+    }
+    for shared in &corpus.shared {
+        if is_ti(&shared.setting) && disabled(&shared.value) {
             errors.push(ValidationError::TrustedInstallerDisabled {
-                tweak: tweak.id.clone(),
-                effect: effect.id.clone(),
+                owner: AddressOwner::Shared {
+                    id: shared.id.clone(),
+                },
             });
         }
     }
@@ -1341,13 +1347,38 @@ mod tests {
             "expected exactly one error, got {errors:?}"
         );
         let ValidationError::NonCanonicalKind {
-            use_kind, effect, ..
+            use_kind,
+            owner: AddressOwner::Effect { effect, .. },
+            ..
         } = &errors[0]
         else {
             panic!("expected NonCanonicalKind, got {:?}", errors[0]);
         };
         assert_eq!(*use_kind, "Service");
         assert_eq!(effect.0, "raw_start_value");
+    }
+
+    #[test]
+    fn shared_and_delayed_autostart_raw_service_registry_are_rejected() {
+        let errors = errors_for("raw_service_registry_shared_and_delayed.yaml");
+        let owners: Vec<String> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::NonCanonicalKind {
+                    owner,
+                    use_kind: "Service",
+                    ..
+                } => owner.to_string(),
+                other => panic!("expected NonCanonicalKind, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            owners,
+            [
+                "tweak `delayed_raw` effect `raw_delayed`",
+                "shared `raw_start`"
+            ]
+        );
     }
 
     /// Beyond the named fixture list: the same guard's other named pattern (spec §10), a scheduled
@@ -1446,11 +1477,28 @@ mod tests {
             1,
             "expected exactly one error, got {errors:?}"
         );
-        let ValidationError::TrustedInstallerDisabled { tweak, effect } = &errors[0] else {
+        let ValidationError::TrustedInstallerDisabled {
+            owner: AddressOwner::Effect { tweak, effect },
+        } = &errors[0]
+        else {
             panic!("expected TrustedInstallerDisabled, got {:?}", errors[0]);
         };
         assert_eq!(tweak, "disables_ti");
         assert_eq!(effect.0, "ti_service");
+    }
+
+    #[test]
+    fn ti_disabled_by_shared_entry_is_rejected() {
+        let errors = errors_for("ti_disabled_by_shared_entry.yaml");
+        assert!(
+            matches!(
+                errors.as_slice(),
+                [ValidationError::TrustedInstallerDisabled {
+                    owner: AddressOwner::Shared { id }
+                }] if id.0 == "ti_off"
+            ),
+            "{errors:?}"
+        );
     }
 
     #[test]

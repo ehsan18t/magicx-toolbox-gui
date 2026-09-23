@@ -1,0 +1,12 @@
+category:
+  id: ti_disabled_by_shared_entry
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A shared: entry drives the TrustedInstaller service to Disabled."
+
+shared:
+  - id: ti_off
+    service: { name: TrustedInstaller }
+    value: disabled
+
+tweaks: []
