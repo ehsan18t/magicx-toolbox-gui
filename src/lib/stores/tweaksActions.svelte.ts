@@ -108,7 +108,8 @@ async function applyTweakResult(
   options?: { showToast?: boolean; tweakName?: string },
 ): Promise<ActionResult> {
   const showToast = options?.showToast ?? true;
-  const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
+  const definition = tweaksStore.getById(tweakId)?.definition;
+  const tweakName = options?.tweakName ?? definition?.name;
 
   loadingStore.start(tweakId);
 
@@ -116,10 +117,14 @@ async function applyTweakResult(
     const outcome = await api.applyTweak(tweakId, optionLabel);
     errorStore.clearError(tweakId);
     tweaksStore.setStatusView(tweakId, outcome.status);
-    pendingChangesStore.clear(tweakId);
+    // A different label staged while this call was in flight is the user's newer choice.
+    if (pendingChangesStore.get(tweakId)?.optionLabel === optionLabel) pendingChangesStore.clear(tweakId);
+    if (definition?.requires_reboot) pendingRebootStore.add(tweakId);
 
     if (showToast) {
-      toastStore.success("Applied successfully", { tweakName });
+      toastStore.success(definition?.requires_reboot ? "Applied (reboot required)" : "Applied successfully", {
+        tweakName,
+      });
     }
     return { status: "ok" };
   } catch (error) {
@@ -165,7 +170,8 @@ async function revertTweakResult(
   options?: { showToast?: boolean; tweakName?: string },
 ): Promise<ActionResult> {
   const showToast = options?.showToast ?? true;
-  const tweakName = options?.tweakName ?? tweaksStore.getById(tweakId)?.definition.name;
+  const definition = tweaksStore.getById(tweakId)?.definition;
+  const tweakName = options?.tweakName ?? definition?.name;
 
   loadingStore.start(tweakId);
 
@@ -175,16 +181,19 @@ async function revertTweakResult(
     tweaksStore.setStatusView(tweakId, outcome.status);
     pendingChangesStore.clear(tweakId);
 
-    if (outcome.reboot_advisory) {
+    if (definition?.requires_reboot || outcome.reboot_advisory) {
       pendingRebootStore.add(tweakId);
     } else {
       pendingRebootStore.remove(tweakId);
     }
 
     if (showToast) {
-      toastStore.success(outcome.reboot_advisory ? "Restored (reboot advised)" : "Restored successfully", {
-        tweakName,
-      });
+      const text = definition?.requires_reboot
+        ? "Restored (reboot required)"
+        : outcome.reboot_advisory
+          ? "Restored (reboot advised)"
+          : "Restored successfully";
+      toastStore.success(text, { tweakName });
     }
     return { status: "ok" };
   } catch (error) {
@@ -284,18 +293,21 @@ function batchStopMessage(
  * (no backend batch command exists). Per-tweak results are surfaced via the loop.
  */
 export async function applyPendingChanges(): Promise<{ success: number; failed: number }> {
-  const changes = Array.from(pendingChangesStore.all.values());
-  if (changes.length === 0) {
+  const tweakIds = Array.from(pendingChangesStore.all.keys());
+  if (tweakIds.length === 0) {
     return { success: 0, failed: 0 };
   }
 
   let success = 0;
   let failed = 0;
-  for (const [index, change] of changes.entries()) {
-    const tweakName = tweaksStore.getById(change.tweakId)?.definition.name;
-    const result = await applyTweakResult(change.tweakId, change.optionLabel, { showToast: false, tweakName });
+  for (const [index, tweakId] of tweakIds.entries()) {
+    // Read at its turn: cards stay focusable under the overlay, so the stage can change mid-batch.
+    const change = pendingChangesStore.get(tweakId);
+    if (!change) continue;
+    const tweakName = tweaksStore.getById(tweakId)?.definition.name;
+    const result = await applyTweakResult(tweakId, change.optionLabel, { showToast: false, tweakName });
     if (result.status === "exiting") {
-      const counts = { success, failed, skipped: changes.length - index };
+      const counts = { success, failed, skipped: tweakIds.length - index };
       toastStore.warning(batchStopMessage("applied", "tweak", counts, result.message));
       return { success, failed };
     }
