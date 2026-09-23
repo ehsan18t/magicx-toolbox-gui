@@ -878,6 +878,7 @@ tweaks:
           probe:
             appx_absent: [MSTeams]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -938,6 +939,7 @@ tweaks:
           probe:
             appx_absent: [Clipchamp.Clipchamp]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -999,6 +1001,7 @@ tweaks:
           probe:
             appx_absent: [MicrosoftCorporationII.QuickAssist]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1065,6 +1068,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1127,6 +1131,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.MicrosoftSolitaireCollection]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1190,6 +1195,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.GetHelp]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1252,6 +1258,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.Getstarted]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1312,6 +1319,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.WindowsFeedbackHub]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1373,6 +1381,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.YourPhone]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1435,6 +1444,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.OutlookforWindows]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1499,6 +1509,7 @@ tweaks:
           probe:
             appx_absent: [Microsoft.XboxGamingOverlay]
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -1590,6 +1601,7 @@ tweaks:
             } catch { exit 1 }
             exit 0
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, onedrive: run }

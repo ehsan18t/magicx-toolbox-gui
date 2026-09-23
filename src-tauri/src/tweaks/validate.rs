@@ -282,7 +282,21 @@ pub enum ValidationError {
         field: String,
         ty: &'static str,
     },
+
+    #[error(
+        "tweak `{tweak}` effect `{effect}` sets timeout: {seconds}, but an action timeout must be {min} to {max} seconds",
+        min = ACTION_TIMEOUT_SECS.start(),
+        max = ACTION_TIMEOUT_SECS.end()
+    )]
+    InvalidActionTimeout {
+        tweak: String,
+        effect: EffectId,
+        seconds: u32,
+    },
 }
+
+/// Accepted `action: { timeout: }` range, in seconds.
+pub const ACTION_TIMEOUT_SECS: std::ops::RangeInclusive<u32> = 1..=1800;
 
 /// Runs every structural guard (spec §10) over an already-loaded corpus. Detectability,
 /// distinctness, and per-milestone quantification are [`validate_semantic`]'s.
@@ -298,6 +312,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
     for tweak in &corpus.tweaks {
         check_unique_effect_ids(tweak, &mut errors);
         check_unique_option_labels(tweak, &mut errors);
+        check_action_timeouts(tweak, &mut errors);
         check_coverage(tweak, &mut errors);
         check_reversibility(tweak, &mut errors);
         check_ti_self_availability(tweak, &mut errors);
@@ -362,6 +377,24 @@ fn check_unique_option_labels(tweak: &Tweak, errors: &mut Vec<ValidationError>) 
                 tweak: tweak.id.clone(),
                 option: opt.label.clone(),
             });
+        }
+    }
+}
+
+fn check_action_timeouts(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+    for effect in &tweak.surface {
+        if let Effect::Action(ActionDef::Script {
+            timeout: Some(seconds),
+            ..
+        }) = &effect.kind
+        {
+            if !ACTION_TIMEOUT_SECS.contains(seconds) {
+                errors.push(ValidationError::InvalidActionTimeout {
+                    tweak: tweak.id.clone(),
+                    effect: effect.id.clone(),
+                    seconds: *seconds,
+                });
+            }
         }
     }
 }
@@ -1532,6 +1565,19 @@ mod tests {
             matches!(&errors[..], [ValidationError::InvalidOptionValue { reason, .. }] if reason.contains("empty string")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn action_timeout_out_of_range_is_rejected() {
+        let errors = errors_for("action_timeout_out_of_range.yaml");
+        let seconds: Vec<u32> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::InvalidActionTimeout { seconds, .. } => *seconds,
+                other => panic!("expected InvalidActionTimeout, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(seconds, vec![0, 1801]);
     }
 
     #[test]

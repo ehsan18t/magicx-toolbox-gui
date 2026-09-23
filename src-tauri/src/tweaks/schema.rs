@@ -321,6 +321,8 @@ struct ActionRaw {
     #[serde(default)]
     ephemeral: bool,
     shell: ShellRaw,
+    #[serde(default)]
+    timeout: Option<u32>,
 }
 
 /// `probe:` is either a script block (the long-standing form) or one of the native forms. Untagged
@@ -861,6 +863,7 @@ fn convert_effect(
                         probe,
                         ephemeral: r.action.ephemeral,
                         shell: r.action.shell.into(),
+                        timeout: r.action.timeout,
                     })
                 })
                 .map_err(|source| ValidationError::InvalidAddress {
@@ -1471,6 +1474,22 @@ mod tests {
                 revision: None,
             })))
         );
+    }
+
+    #[test]
+    fn action_timeout_loads_and_defaults_to_none() {
+        let corpus = load_corpus(&fixture("good")).expect("the good fixture corpus must load");
+        let timeouts: Vec<Option<u32>> = corpus
+            .tweaks
+            .iter()
+            .flat_map(|t| &t.surface)
+            .filter_map(|e| match &e.kind {
+                Effect::Action(ActionDef::Script { timeout, .. }) => Some(*timeout),
+                _ => None,
+            })
+            .collect();
+        assert!(timeouts.contains(&Some(120)), "{timeouts:?}");
+        assert!(timeouts.contains(&None), "{timeouts:?}");
     }
 
     #[test]

@@ -266,6 +266,8 @@ pub enum ActionDef {
         probe: Option<Probe>,
         ephemeral: bool,
         shell: Shell,
+        /// Seconds allowed for `apply`/`undo`; `None` uses the kind's default. Probes always do.
+        timeout: Option<u32>,
     },
     DeleteTree {
         key: KeyAddr,

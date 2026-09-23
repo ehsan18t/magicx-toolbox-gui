@@ -63,9 +63,7 @@ use crate::tweaks::model::{ActionDef, Probe, Shell};
 use super::registry::RegistryKind;
 use super::{guard_level, Error, ExecCx};
 
-/// Bounded default for every script this kind runs (spec §14: "a bounded timeout"). Generous
-/// enough for a real tweak script (a service restart, `gpupdate /force`, a handful of registry
-/// writes) without ever hanging an apply/detect pass indefinitely.
+/// Bound for every probe, and for an apply/undo whose action sets no `timeout` (spec §14).
 const ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// `Child::try_wait` polling granularity — coarse enough to be cheap, fine enough that a timeout
@@ -82,9 +80,14 @@ impl ActionKind {
     /// (spec §7).
     pub fn run_apply(&self, action: &ActionDef, cx: &ExecCx) -> Result<(), Error> {
         match action {
-            ActionDef::Script { apply, shell, .. } => {
+            ActionDef::Script {
+                apply,
+                shell,
+                timeout,
+                ..
+            } => {
                 guard_level(cx)?;
-                run_and_require_zero(*shell, &apply.0)
+                run_and_require_zero(*shell, &apply.0, script_timeout(*timeout))
             }
             ActionDef::DeleteTree { key, .. } => RegistryKind.delete_tree(key, cx),
         }
@@ -97,10 +100,11 @@ impl ActionKind {
             ActionDef::Script {
                 undo: Some(undo),
                 shell,
+                timeout,
                 ..
             } => {
                 guard_level(cx)?;
-                run_and_require_zero(*shell, &undo.0)
+                run_and_require_zero(*shell, &undo.0, script_timeout(*timeout))
             }
             ActionDef::Script { undo: None, .. } => Err(Error::Invalid(
                 "this action has no undo script -- it is one-way (spec §7)",
@@ -109,7 +113,7 @@ impl ActionKind {
                 undo: Some(undo), ..
             } => {
                 guard_level(cx)?;
-                run_and_require_zero(Shell::PowerShell, &undo.0)
+                run_and_require_zero(Shell::PowerShell, &undo.0, ACTION_TIMEOUT)
             }
             ActionDef::DeleteTree { undo: None, .. } => Err(Error::Invalid(
                 "this delete-tree has no undo script -- it is one-way unless the author supplies one (spec §7)",
@@ -144,8 +148,12 @@ impl ActionKind {
     }
 }
 
-fn run_and_require_zero(shell: Shell, body: &str) -> Result<(), Error> {
-    match run_script(shell, body, ACTION_TIMEOUT)? {
+fn script_timeout(seconds: Option<u32>) -> Duration {
+    seconds.map_or(ACTION_TIMEOUT, |s| Duration::from_secs(s.into()))
+}
+
+fn run_and_require_zero(shell: Shell, body: &str, timeout: Duration) -> Result<(), Error> {
+    match run_script(shell, body, timeout)? {
         0 => Ok(()),
         code => Err(Error::ActionFailed(code)),
     }
@@ -408,6 +416,7 @@ mod tests {
             probe: probe.map(|s| Probe::Script(Script(s.to_string()))),
             ephemeral,
             shell,
+            timeout: None,
         }
     }
 
@@ -533,6 +542,32 @@ mod tests {
             "the timeout must actually kill the process rather than waiting out the full sleep: took {:?}",
             start.elapsed()
         );
+    }
+
+    #[test]
+    fn apply_and_undo_honor_the_actions_own_timeout() {
+        let cx = user_cx();
+        let mut action = script_action(
+            "Start-Sleep -Seconds 10",
+            Some("Start-Sleep -Seconds 10"),
+            None,
+            false,
+            Shell::PowerShell,
+        );
+        if let ActionDef::Script { timeout, .. } = &mut action {
+            *timeout = Some(1);
+        }
+        for (label, result) in [
+            ("apply", ActionKind.run_apply(&action, &cx)),
+            ("undo", ActionKind.run_undo(&action, &cx)),
+        ] {
+            let err = result.expect_err("a script outliving its own timeout must fail");
+            assert!(
+                matches!(&err, Error::ActionExecFailed(m) if m.contains("1s")),
+                "{label}: got {err:?}"
+            );
+        }
+        assert_eq!(script_timeout(None), ACTION_TIMEOUT);
     }
 
     #[test]

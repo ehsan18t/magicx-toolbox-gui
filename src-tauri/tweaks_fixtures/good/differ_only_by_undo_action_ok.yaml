@@ -20,6 +20,7 @@ tweaks:
           undo: "reg.exe delete HKCU\\Software\\ExampleCo\\Widget\\Legacy /f"
           probe: "reg.exe query HKCU\\Software\\ExampleCo\\Widget\\Legacy >nul 2>&1"
           shell: cmd
+          timeout: 120
     options:
       - label: "Enabled"
         values:

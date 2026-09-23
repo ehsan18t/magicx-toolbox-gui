@@ -775,6 +775,7 @@ mod tests {
                 probe: Some(Probe::Script(Script("exit 0".into()))),
                 ephemeral: false,
                 shell: Shell::PowerShell,
+                timeout: None,
             }),
             elevation: None,
             optional: false,
@@ -893,6 +894,7 @@ mod tests {
             }),
             ephemeral: false,
             shell: Shell::PowerShell,
+            timeout: None,
         }
     }
 

@@ -1466,6 +1466,7 @@ tweaks:
             try { $state = Get-WindowsReservedStorageState -ErrorAction Stop | Out-String } catch { Write-Error $_; exit 1 }
             if ($state -match 'Disabled') { exit 0 } else { exit 1 }
           shell: powershell
+          timeout: 300
     options:
       - label: "Reserved storage off"
         values: { state: 1, reserved_storage: run }

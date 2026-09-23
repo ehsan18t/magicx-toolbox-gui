@@ -224,6 +224,7 @@ tweaks:
           probe: |
             if ((Get-AppxPackage -AllUsers 'Microsoft.Copilot') -or (Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like 'Microsoft.Copilot*' })) { exit 1 } else { exit 0 }
           shell: powershell
+          timeout: 600
     options:
       - label: "Removed"
         values: { state: 1, app: run }
@@ -298,6 +299,7 @@ tweaks:
             $s = (Get-WindowsOptionalFeature -Online -FeatureName Recall -ErrorAction SilentlyContinue).State
             if ($s -eq 'Disabled' -or $s -eq 'DisabledWithPayloadRemoved') { exit 0 } else { exit 1 }
           shell: powershell
+          timeout: 900
     options:
       # "Removed" would overstate it: the apply runs /Disable-Feature without /Remove, so the payload
       # stays on disk. `remove_recall_component` next door does distinguish Removed from Disabled,

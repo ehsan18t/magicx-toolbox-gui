@@ -170,6 +170,7 @@ tweaks:
           probe: |
             if ((Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction Stop).State -eq 'Disabled') { exit 0 } else { exit 1 }
           shell: powershell
+          timeout: 900
     options:
       - label: "Removed"
         values: { smb1_server: 0, smb1_feature: run }
@@ -1939,6 +1940,7 @@ tweaks:
             $engine = (Get-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2 -ErrorAction Stop).State
             if ($root -eq 'Disabled' -and $engine -eq 'Disabled') { exit 0 } else { exit 1 }
           shell: powershell
+          timeout: 900
     options:
       - label: "Removed"
         values: { ps2_state: 1, ps2_feature: run }
