@@ -826,7 +826,7 @@ pub struct Milestone {
 }
 
 /// The declared support matrix (spec §14 default) — the single source of truth every guard loops
-/// over: Win10 22H2, then Win11 21H2 / 22H2 / 24H2.
+/// over: Win10 22H2, then Win11 22H2 / 23H2 / 24H2.
 pub const SUPPORT_MATRIX: &[Milestone] = &[
     Milestone { build: 19045 },
     Milestone { build: 22621 },

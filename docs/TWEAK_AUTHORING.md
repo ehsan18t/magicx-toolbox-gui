@@ -47,7 +47,7 @@ to open the spec to author a tweak) but it cites `spec §N` / `ADR-000N` through
 13. [Elevation](#13-elevation)
 14. [Reversibility](#14-reversibility)
 15. [Detectability & the status model](#15-detectability--the-status-model)
-16. [Build errors reference (all 21)](#16-build-errors-reference-all-21)
+16. [Build errors reference (all 28)](#16-build-errors-reference-all-28)
 17. [Complete worked examples](#17-complete-worked-examples)
 18. [What is gone from the old schema](#18-what-is-gone-from-the-old-schema)
 19. [Authoring checklist / do's & don'ts](#19-authoring-checklist--dos--donts)
@@ -403,10 +403,9 @@ Manages **whether a key exists**, with no value semantics.
 
 **Value domain:** `present` or `absent`.
 
-**Runtime behavior:** pre-existence is **captured** like any value. `present` creates the key;
-`absent` removes it, but on **revert the engine deletes the key only if it created it** (if the key
-pre-existed, revert leaves it). This is why key presence is a Setting, not a `create_key`/`delete_key`
-action (§18).
+**Runtime behavior:** capture records only whether the key exists, never what it holds. `present` creates the key (and any missing parents). `absent` deletes it only while **no value exists anywhere in its subtree**: if one does, the drive fails with a typed error and the key is left in place, because a restore could recreate the key but not the values deleted with it. Empty subkeys go with it. Revert drives back to the captured presence, so it deletes a key the apply created (with the same refusal if values have appeared beneath it since) and recreates, empty, a key the apply removed. This is why key presence is a Setting, not a `create_key`/`delete_key` action (§18).
+
+> ⚠️ Nothing another owner holds may live inside a `registry_key` path. A registry value or key owned by a different tweak, or by a `shared:` entry, beneath it is a `DuplicateAddress` build error (§16). Effects of the same tweak may nest.
 
 ---
 
@@ -582,6 +581,7 @@ contract in §12.
 | `probe`     | no       | reports present/absent: a script body, or a native form (§12.5); absent ⇒ not detectable |
 | `ephemeral` | no       | `true` = a transient side-effect; takes no `undo`/`probe` (default `false`) |
 | `shell`     | **yes**  | `cmd` \| `powershell`                                                       |
+| `timeout`   | no       | seconds allowed for `apply` and `undo`, 1 to 1800 (default 30); see §12.1   |
 
 **Value domain:** `run`, or **omit the entry entirely** (omitted = "this option does not run it").
 
@@ -626,10 +626,7 @@ on the effect's kind. This section documents **every** literal form (spec §6.2)
 - **`REG_BINARY`** is the `.reg` hex-pair form. Each token is **exactly two hex digits**; separate tokens
   by commas or spaces (not both styles at once). An odd-length token, a non-hex token, or a lone digit is
   a build error (it surfaces as `InvalidOptionValue`, §16 #4). Example: `"90,12,03,80"` = 4 bytes.
-- **`REG_MULTI_SZ`** is written as a **YAML list of strings**, never a comma-joined string. `[]` clears
-  it (deliberately better than `.reg`'s unwritable `hex(7):`). A non-list value on a `REG_MULTI_SZ`
-  address is a build error (`WrongLiteralShape`: "a string is not valid for MultiSz"); a list value on a
-  non-`REG_MULTI_SZ` address is likewise an error ("a list is not valid for Dword", etc.).
+- **`REG_MULTI_SZ`** is written as a **YAML list of strings**, never a comma-joined string. `[]` clears it (deliberately better than `.reg`'s unwritable `hex(7):`): it writes an empty value, which reads back and verifies as `[]`. Every entry must be a non-empty string, since the registry reads an empty entry as the end of the list: `["a", ""]` is a build error (`InvalidOptionValue`). A non-list value on a `REG_MULTI_SZ` address is a build error (`WrongLiteralShape`: "a string is not valid for MultiSz"); a list value on a non-`REG_MULTI_SZ` address is likewise an error ("a list is not valid for Dword", etc.).
 
 ```yaml
 values:
@@ -698,7 +695,7 @@ A **bare** `absent` is _always_ the keyword, never string content, at all three 
 ```yaml
 values:
   au_options: absent # registry VALUE: deletes the value
-  feature_key: absent # registry_key: removes the key (if we created it)
+  feature_key: absent # registry_key: removes the key (refused while values exist beneath it)
   block_host: absent # hosts entry: removes the line
   block_rule: absent # firewall rule: deletes the rule
   packed_flag: absent # packed FIELD: removes just that field (§11)
@@ -1234,8 +1231,8 @@ matrix** of Windows builds (spec §10/§14):
 
 ```
 19045   (Windows 10 22H2)
-22621   (Windows 11 21H2/22H2)
-22631   (Windows 11 22H2/23H2)
+22621   (Windows 11 22H2)
+22631   (Windows 11 23H2)
 26100   (Windows 11 24H2)
 ```
 
@@ -1347,9 +1344,9 @@ options:
       values: { packed_flag: "0" }
 ```
 
-### 11.6 Gotcha: field addressing requires `REG_SZ` or `REG_EXPAND_SZ`
+### 11.6 Field addressing requires `REG_SZ` or `REG_EXPAND_SZ`
 
-> ⚠️ **Warning:** a `field`-addressed effect's `type` **must** be `REG_SZ` or `REG_EXPAND_SZ`. The runtime (`kinds/registry.rs`) rejects every other type on **both** the read path (detect) and the write path (apply/restore) with `Error::Invalid("a packed field address must declare REG_SZ or REG_EXPAND_SZ")`. **This is a runtime check, not a build guard:** a tweak declaring `type: REG_DWORD, field: X, format: kv_semicolon` (or any non-string type paired with `field`) **builds clean** and only fails the first time it is detected or applied. Always pair `field`/`format` with `type: REG_SZ` or `type: REG_EXPAND_SZ`.
+A `field`-addressed effect's `type` **must** be `REG_SZ` or `REG_EXPAND_SZ`; any other type is a build error (`FieldOnNonStringType`, §16). On a `REG_EXPAND_SZ` value, write the field's option values as plain strings: they are read, compared, and written as `REG_EXPAND_SZ`, and rewriting one field keeps the whole value `REG_EXPAND_SZ`. `format` without `field` is also a build error (`InvalidAddress`), since there is nothing for it to pack.
 
 ---
 
@@ -1380,9 +1377,21 @@ Setting (spec §7). Reach for a Setting first; an Action is a last resort.
 | `probe`     | no       | reports present/absent, as a script or a native form (§12.5); **absent ⇒ this action does not contribute to detection** |
 | `ephemeral` | no       | `true` = a transient side-effect (§12.3); default `false`                                         |
 | `shell`     | **yes**  | `cmd` or `powershell`                                                                             |
+| `timeout`   | no       | seconds allowed for `apply` and `undo`, 1 to 1800; default 30                                     |
 
 `undo`, `probe`, and `ephemeral` are **independent**: an action can carry any combination (subject to
 the ephemeral rule, §12.3).
+
+**`timeout`** bounds `apply` and `undo`; without it each gets 30 seconds. A `probe` always gets 30 seconds, so keep probes quick. Set it on anything that services Windows (DISM, `*-WindowsOptionalFeature`, `Remove-AppxProvisionedPackage`, `Set-WindowsReservedStorageState`) or installs through `winget`: those routinely run for minutes, and a timeout kills the script and every process it started, mid-operation. A value outside 1 to 1800 is a build error (`InvalidActionTimeout`, §16).
+
+```yaml
+- id: feature
+  action:
+    apply: "DISM.exe /Online /Disable-Feature /FeatureName:Recall /NoRestart"
+    undo: "DISM.exe /Online /Enable-Feature /FeatureName:Recall /NoRestart"
+    shell: powershell
+    timeout: 900 # DISM can take minutes; the 30 second default would kill it
+```
 
 ### 12.2 The exit-code result contract
 
@@ -1490,7 +1499,7 @@ script body inline. (`probe` is the one field that also takes a map, for the nat
 
 > 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by `build.rs`). The **shipped `ActionRaw` schema accepts only a string** (`apply: String`, `undo: Option<String>` in `src-tauri/src/tweaks/schema.rs`), so filed scripts are not available and the spec is wrong on this point. This guide documents the shipped behavior.
 
-**Execution mechanics:** `powershell` runs via `powershell.exe -EncodedCommand` (base64 of UTF-16LE), so size, loops, quotes, and special characters carry **no escaping risk**; `cmd` runs the body from a temp script file via `cmd.exe /c`. Both shells launch by absolute path from System32 (`powershell` is Windows PowerShell 5.1 at `System32\WindowsPowerShell\v1.0\powershell.exe`, never `pwsh`), with System32 as the working directory. What that guarantees: the shell itself is the real one, and a bare command name in a `cmd` script that exists in System32 (such as `rundll32.exe`) resolves there, never from the app's folder. What it does not guarantee: any other name a script uses. A bare command name not in System32 falls through to `PATH` (in `powershell`, bare names always resolve through `PATH`; it never searches the working directory), and a relative file path resolves against System32. When it matters, write the full path (`%SystemRoot%\System32\...` in `cmd`, `$env:SystemRoot\System32\...` in `powershell`) and never rely on the working directory. Every script has a **bounded timeout**: a hang is killed and surfaced as a typed error, never a silent success.
+**Execution mechanics:** `powershell` runs via `powershell.exe -EncodedCommand` (base64 of UTF-16LE), so size, loops, quotes, and special characters carry **no escaping risk**; `cmd` runs the body from a temp script file via `cmd.exe /c`. Both shells launch by absolute path from System32 (`powershell` is Windows PowerShell 5.1 at `System32\WindowsPowerShell\v1.0\powershell.exe`, never `pwsh`), with System32 as the working directory. What that guarantees: the shell itself is the real one, and a bare command name in a `cmd` script that exists in System32 (such as `rundll32.exe`) resolves there, never from the app's folder. What it does not guarantee: any other name a script uses. A bare command name not in System32 falls through to `PATH` (in `powershell`, bare names always resolve through `PATH`; it never searches the working directory), and a relative file path resolves against System32. When it matters, write the full path (`%SystemRoot%\System32\...` in `cmd`, `$env:SystemRoot\System32\...` in `powershell`) and never rely on the working directory. Every script has a **bounded timeout** (30 seconds, or the action's `timeout` for `apply`/`undo`, §12.1): a hang is killed along with every process it started and surfaced as a typed error, never a silent success.
 
 ### 12.7 Actions and distinctness (the subtle part)
 
@@ -1512,11 +1521,7 @@ Whether an action can distinguish two options depends on `probe` **and** `undo` 
 
 ### 12.8 Delete-tree: reserved, but not authorable in v1
 
-The engine reserves one structural action, **delete-tree** (one-way unless the author supplies `undo`).
-It **has no YAML mapping in v1**: you cannot author it. Reach for value-driven deletion instead:
-`absent` removes a registry value or field, and a `registry_key` effect driven to `absent` removes a key
-the engine created (§4.2, §6). There is **no `create_key` and no `delete_value` action**: both are
-subsumed by Settings (§18).
+The engine reserves one structural action, **delete-tree** (one-way unless the author supplies `undo`). It **has no YAML mapping in v1**: you cannot author it. Reach for value-driven deletion instead: `absent` removes a registry value or field, and a `registry_key` effect driven to `absent` removes a key whose subtree holds no values (§4.2, §6). There is **no `create_key` and no `delete_value` action**: both are subsumed by Settings (§18).
 
 ### 12.9 Full action example with a Setting for detectability
 
@@ -1668,21 +1673,13 @@ via a typed Service effect (`TrustedInstallerDisabled`, §16): it would strand t
 
 ### 13.7 Current limitation: which kinds actually route through `ti` today
 
-> ⚠️ **Current limitation:** declaring `elevation: ti` (as the tweak's floor, or
-> as a per-effect escalation, §13.2) only actually reaches the elevation broker for four kinds today.
-> Every other kind **builds clean** at `ti` but fails every real apply with an
-> unsupported-elevation-level error, because `engine::AllKinds::drive` has no broker translation for
-> them yet:
+> ⚠️ **Current limitation:** declaring `elevation: ti` (as the tweak's floor, or as a per-effect escalation, §13.2) only reaches the elevation broker for four kinds today.
 >
-> - **Routed through the broker at `ti`:** whole-value `registry` effects (no `field`),
->   `registry_key`, `service`, `task`.
-> - **Not routed yet; fails every apply at `ti`:** `hosts`, `firewall`, `action` (including
->   `DeleteTree`), and a `field`-addressed `registry` effect (§11).
+> - **Routed through the broker at `ti`:** whole-value `registry` effects (no `field`), `registry_key`, `service`, `task`.
+> - **A build error at `ti`:** `action`. No broker operation carries a script, so an action whose routed level is `ti` is rejected at build time (`ActionAtTrustedInstaller`, §16), whether the `ti` comes from the tweak's floor or from the effect's own `elevation:`.
+> - **Builds clean but fails every apply at `ti`:** `hosts`, `firewall`, and a `field`-addressed `registry` effect (§11), with an unsupported-elevation-level error, because `engine::AllKinds::drive` has no broker translation for them yet.
 >
-> Since per-effect elevation only ever escalates (§13.2, never lowers below the tweak's floor), a
-> `hosts`/`firewall`/`action`/field-addressed effect anywhere inside a `ti`-floor tweak
-> inherits that unsupported level too. For now, keep those kinds (and any field-addressed `registry`
-> effect) inside tweaks whose effective level never rises above `admin`.
+> Since per-effect elevation only ever escalates (§13.2, never lowers below the tweak's floor), any of these kinds inside a `ti`-floor tweak inherits `ti` too. Keep them, and every `action`, inside tweaks whose effective level never rises above `admin`.
 
 ### 13.8 Declaration order decides how many elevated children you pay for
 
@@ -1822,7 +1819,7 @@ If your corpus builds, these hold. §16 is where you turn when it does not build
 
 ---
 
-## 16. Build errors reference (all 21)
+## 16. Build errors reference (all 28)
 
 `build.rs` runs three phases in order and stops at the first phase that fails, printing a framed report
 listing **every** error in that phase (you fix them all in one pass):
@@ -1832,7 +1829,7 @@ listing **every** error in that phase (you fix them all in one pass):
 3. **Semantic** (`validate_semantic`): detectability & distinctness, **per support-matrix milestone**. → `SEMANTIC VALIDATION FAILED`
 
 Below is **every** build-error variant, the message you will see (paraphrased from the validator), what
-triggers it, **why** the rule exists, and a wrong→right fix. The 21 `ValidationError` variants are
+triggers it, **why** the rule exists, and a wrong→right fix. The 28 `ValidationError` variants are
 grouped by phase.
 
 ### Load-phase errors (6)
@@ -1873,6 +1870,7 @@ The wrapped parse error is one of (spec §5.1):
 - `registry path "…" ends with a backslash: remove the trailing backslash`
 - `registry path "…" contains an empty segment: check for a doubled backslash`
 - `registry path "…" does not start with a supported hive: use HKLM or HKCU (short or long spelling)`
+- `` `format` only applies with `field`: add the `field` it packs, or drop `format` ``
 
 **Why:** exact, well-formed addresses are what the ownership guard and snapshot keys depend on; a
 trailing backslash was historically a real delete-the-wrong-thing hazard.
@@ -1907,12 +1905,7 @@ shared:
 
 > **Message:** ``tweak `T` option `O` effect `E`: {reason}``
 
-**Trigger:** the value under an effect id does not parse, or is the wrong shape for the kind: a service
-value that is not a start type, an action value that is not `run`, a shared value that is not
-`claim`/`unclaimed`, a `null`/empty value (`value is null or empty: write absent to delete it, or supply
-a literal`), a list on a non-`REG_MULTI_SZ` type, etc. It also fires when an option keys a value to an
-effect id **that does not exist** on the surface (`no effect with this id is declared on the tweak's
-surface`). **Why:** every option value must be meaningful for the effect it targets.
+**Trigger:** the value under an effect id does not parse, or is the wrong shape for the kind: a service value that is not a start type, an action value that is not `run`, a shared value that is not `claim`/`unclaimed`, a `null`/empty value (`value is null or empty: write absent to delete it, or supply a literal`), a list on a non-`REG_MULTI_SZ` type, an empty string inside a `REG_MULTI_SZ` list, etc. It also fires when an option keys a value to an effect id **that does not exist** on the surface (`no effect with this id is declared on the tweak's surface`). **Why:** every option value must be meaningful for the effect it targets.
 
 ```yaml
 # ❌ forgotten value
@@ -1962,7 +1955,7 @@ must be a value the effect could actually have.
   if_missing: disabled
 ```
 
-### Structural-phase errors (10)
+### Structural-phase errors (17)
 
 #### 7. `UnresolvedSharedRef`: a `shared: <id>` names no declared shared setting
 
@@ -1987,6 +1980,8 @@ effects: [{ id: r, shared: telemetry_off }]
 `shared:` declarations claim the **same** address, including a whole-value-vs-field mix on one packed
 value, and counting all owners across the corpus. **Why:** one address, one owner: dual ownership breaks
 tweaks on revert (ADR-0006, §9). With three colliding owners you get **one error per extra owner**.
+
+Addresses compare the way Windows does: registry paths and value names, service names, and task paths ignore case, so `HKLM\SOFTWARE\X` and `HKLM\Software\x` are one address. A registry value or key that one tweak (or a `shared:` entry) owns **inside another tweak's `registry_key` path** is also a collision, reported with the address `… (inside registry key …)`: driving that key `absent` would delete it. Effects of the same tweak may nest.
 
 ```yaml
 # ❌ two tweaks writing the same value
@@ -2096,13 +2091,79 @@ action: { apply: "ipconfig /flushdns", ephemeral: true, probe: "…", shell: cmd
 action: { apply: "ipconfig /flushdns", ephemeral: true, shell: cmd }
 ```
 
+#### 17. `ActionAtTrustedInstaller`: an action routed to `ti`
+
+> **Message:** ``tweak `T` effect `E` is an action routed to TrustedInstaller, from {the tweak's `elevation: ti` floor | the effect's own `elevation: ti`}: a script cannot run at `ti` (no broker op carries one), so lower the level or express the change as a typed effect``
+
+**Trigger:** an `action` effect whose effective level (§13.2) is `ti`, from either source. **Why:** no broker operation carries a script, so apply and every undo would fail at runtime (§13.7, ADR-0005).
+
+```yaml
+# ❌ a ti floor reaches the action too
+- id: t
+  elevation: ti
+  effects: [{ id: run_it, action: { apply: "…", undo: "…", shell: cmd } }]
+# ✅ keep actions in a tweak whose effective level stays at admin or below
+- id: t
+  elevation: admin
+```
+
+#### 18. `DuplicateTweakId`: two tweaks share an id
+
+> **Message:** ``tweak id `X` is declared more than once (compared case-insensitively, since each id names a snapshots/<id>/ folder); rename one of them``
+
+**Trigger:** two tweaks anywhere in the corpus use the same id, ignoring case. **Why:** the id names the tweak's snapshot folder, and the filesystem ignores case, so two such tweaks would share (and overwrite) one snapshot.
+
+#### 19. `InvalidTweakId`: a tweak id could escape or alias its snapshot folder
+
+> **Message:** ``tweak id `X` {is empty | contains a path separator | contains `..` | uses a character outside a-z, 0-9 and _}: a tweak id names its snapshots/<id>/ folder, so it may use only a-z, 0-9 and _``
+
+**Trigger:** an id that is empty, contains `\` or `/`, contains `..`, or uses anything but lowercase ASCII letters, digits, and `_`. **Why:** the id becomes a directory name under `snapshots/`.
+
+```yaml
+# ❌
+- id: Disable-Telemetry
+# ✅
+- id: disable_telemetry
+```
+
+#### 20. `DuplicateEffectId`: one tweak declares an effect id twice
+
+> **Message:** ``tweak `T` declares effect id `E` more than once; effect ids must be unique within a tweak``
+
+**Trigger:** two entries in one tweak's `effects:` share an `id`. **Why:** option values key effects by id, so the second effect could never get a value of its own.
+
+#### 21. `DuplicateOptionLabel`: one tweak offers two options with the same label
+
+> **Message:** ``tweak `T` declares option `O` more than once; option labels must be unique within a tweak``
+
+**Trigger:** two entries in one tweak's `options:` share a `label`. **Why:** an option is selected, applied, and detected by its label, so two with one label cannot be told apart.
+
+#### 22. `FieldOnNonStringType`: a packed field on a non-string value
+
+> **Message:** ``tweak `T` effect `E` addresses field `F` of a {REG_DWORD | …} value: a packed field lives only in a REG_SZ or REG_EXPAND_SZ value, so change the type or drop `field` ``
+
+**Trigger:** a `registry` effect (or `shared:` entry) with `field:` whose `type` is not `REG_SZ` or `REG_EXPAND_SZ`. **Why:** only a string value can hold `Name=Value;` text (§11.6).
+
+```yaml
+# ❌
+registry: { key: 'HKCU\Software\X', name: Packed, type: REG_DWORD, field: Flag }
+# ✅
+registry: { key: 'HKCU\Software\X', name: Packed, type: REG_SZ, field: Flag }
+```
+
+#### 23. `InvalidActionTimeout`: an action's `timeout` is out of range
+
+> **Message:** ``tweak `T` effect `E` sets timeout: {N}, but an action timeout must be 1 to 1800 seconds``
+
+**Trigger:** `timeout:` below 1 or above 1800. **Why:** zero would kill every run at once, and a script that needs more than half an hour should not block an apply that long (§12.1).
+
 ### Semantic-phase errors (5): quantified per support-matrix milestone
 
 These run **per Windows build** in the support matrix (`19045`, `22621`, `22631`, `26100`), over each
 milestone's applicable projection. The message names the **first** build the failure was seen on; fix the
 option/pair, not each build (§10.6).
 
-#### 17. `NotDetectable`: an option has no non-optional detectable effect on some build
+#### 24. `NotDetectable`: an option has no non-optional detectable effect on some build
 
 > **Message:** ``tweak `T` option `O` has no non-optional detectable effect on Windows build {N}: every option must stay distinguishable without effects that may read Missing``
 
@@ -2115,7 +2176,7 @@ option you cannot detect is an option the user can never see as active (§8.5, �
 # ✅ add a non-optional detectable Setting (see §8.5), or widen the scope
 ```
 
-#### 18. `OptionsByteIdentical`: two options are identical on a build
+#### 25. `OptionsByteIdentical`: two options are identical on a build
 
 > **Message:** ``tweak `T` options `A` and `B` are byte-identical on Windows build {N}: merge them or give one a distinct value``
 
@@ -2127,7 +2188,7 @@ identical options are one option; the user could never land distinctly on either
 # ✅ give them a real, detectable difference, or merge them
 ```
 
-#### 19. `OptionsNotDetectablyDistinct`: two options differ only where detection can't see
+#### 26. `OptionsNotDetectablyDistinct`: two options differ only where detection can't see
 
 > **Message:** ``tweak `T` options `A` and `B` are identical on their detectable projection on Windows build {N}: they differ only by effects detection cannot observe (e.g. a probe-less Action)``
 
@@ -2139,7 +2200,7 @@ identical options are one option; the user could never land distinctly on either
 # ✅ add a probe to the action AND an undo (so it's a reliable distinguisher), or add a Setting difference
 ```
 
-#### 20. `SharedOnlyDistinguisher`: two options differ only by a shared claim
+#### 27. `SharedOnlyDistinguisher`: two options differ only by a shared claim
 
 > **Message:** ``tweak `T` options `A` and `B` differ only by a shared effect on Windows build {N}: a claimed shared value can be held by another tweak too, so it cannot be the sole distinguisher``
 
@@ -2152,7 +2213,7 @@ a shared value can be held by another tweak, so it cannot reliably tell _this_ t
 # ✅ pair the shared effect with a non-shared Setting that differs (§9.4)
 ```
 
-#### 21. `ResidueOnlyDistinguisher`: two options differ only by a no-undo action's Residue
+#### 28. `ResidueOnlyDistinguisher`: two options differ only by a no-undo action's Residue
 
 > **Message:** ``tweak `T` options `A` and `B` have no reliable distinguisher on Windows build {N}: add a Setting or an undo-carrying probeable Action that differs between them; a no-undo Action's Residue lets the omitting option match too once it has run``
 
