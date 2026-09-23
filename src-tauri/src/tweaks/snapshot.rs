@@ -822,7 +822,14 @@ impl SnapshotStore {
         tweak_id: &str,
         machine_guid: Option<&str>,
     ) -> Result<Option<Attention>, SnapshotError> {
-        match read_record(&self.attention_path(tweak_id), machine_guid)? {
+        let mut state = RecordState::Absent;
+        for path in self.attention_paths(tweak_id) {
+            state = read_record(&path, machine_guid)?;
+            if !matches!(state, RecordState::Absent) {
+                break;
+            }
+        }
+        match state {
             RecordState::Ours(attention) => Ok(Some(attention)),
             RecordState::Absent => Ok(None),
             RecordState::Unreadable => {
@@ -849,10 +856,8 @@ impl SnapshotStore {
         machine_guid: Option<&str>,
         attention: Attention,
     ) -> Result<(), SnapshotError> {
-        if matches!(
-            read_record(&self.attention_path(tweak_id), machine_guid)?,
-            RecordState::Theirs
-        ) {
+        let current = self.tweak_dir(tweak_id).join(self.attention_file(tweak_id));
+        if matches!(read_record(&current, machine_guid)?, RecordState::Theirs) {
             log::error!("tweak '{tweak_id}': another machine's or build's Needs Attention record is on disk, so this mark was not recorded");
             return Err(SnapshotError::ForeignAttention {
                 tweak_id: tweak_id.to_string(),
@@ -871,6 +876,17 @@ impl SnapshotStore {
         let json = serde_json::to_vec_pretty(&record).expect("AttentionRecord always serializes");
         write_atomic(&dir, &self.attention_file(tweak_id), &json)?;
         log::warn!("tweak '{tweak_id}': recorded Needs Attention ({reason:?})");
+        // Callers write what they read through `attention`, which includes the other name's record.
+        for stale in self.attention_paths(tweak_id).into_iter().skip(1) {
+            if matches!(read_record(&stale, machine_guid), Ok(RecordState::Ours(_))) {
+                if let Err(e) = fs::remove_file(&stale) {
+                    log::warn!(
+                        "tweak '{tweak_id}': could not remove a superseded record: {}",
+                        e.kind()
+                    );
+                }
+            }
+        }
         Ok(())
     }
 
@@ -902,23 +918,22 @@ impl SnapshotStore {
         machine_guid: Option<&str>,
         consented: bool,
     ) -> Result<(), SnapshotError> {
-        let path = self.attention_path(tweak_id);
-        match read_record(&path, machine_guid)? {
-            RecordState::Absent => return Ok(()),
-            RecordState::Theirs if !consented => {
-                log::warn!("tweak '{tweak_id}': Needs Attention record is not this build's to clear, left on disk");
-                return Ok(());
+        for path in self.attention_paths(tweak_id) {
+            match read_record(&path, machine_guid)? {
+                RecordState::Absent => continue,
+                RecordState::Theirs if !consented => {
+                    log::warn!("tweak '{tweak_id}': Needs Attention record is not this build's to clear, left on disk");
+                    continue;
+                }
+                RecordState::Theirs | RecordState::Ours(_) | RecordState::Unreadable => {}
             }
-            RecordState::Theirs | RecordState::Ours(_) | RecordState::Unreadable => {}
-        }
-        match fs::remove_file(&path) {
-            Ok(()) => {
-                log::debug!("tweak '{tweak_id}': cleared Needs Attention");
-                Ok(())
+            match fs::remove_file(&path) {
+                Ok(()) => log::debug!("tweak '{tweak_id}': cleared Needs Attention"),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(SnapshotError::Io(e)),
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(SnapshotError::Io(e)),
         }
+        Ok(())
     }
 
     fn attention_file(&self, tweak_id: &str) -> String {
@@ -928,8 +943,19 @@ impl SnapshotStore {
         }
     }
 
-    fn attention_path(&self, tweak_id: &str) -> PathBuf {
-        self.tweak_dir(tweak_id).join(self.attention_file(tweak_id))
+    /// The current record name first, then the one this tweak would have used had it not (or had
+    /// it) touched HKCU: a corpus change or a SID read changing sides must not hide a record.
+    fn attention_paths(&self, tweak_id: &str) -> Vec<PathBuf> {
+        let dir = self.tweak_dir(tweak_id);
+        let other = match (self.account(tweak_id), self.user_sid.as_deref()) {
+            (Some(_), _) => Some(ATTENTION_FILE.to_string()),
+            (None, Some(sid)) => Some(format!("{ATTENTION_PREFIX}.{sid}.json")),
+            (None, None) => None,
+        };
+        std::iter::once(self.attention_file(tweak_id))
+            .chain(other)
+            .map(|name| dir.join(name))
+            .collect()
     }
 }
 
@@ -1598,6 +1624,25 @@ mod tests {
         b.clear_attention_consented("demo", Some(GUID)).unwrap();
         assert!(a.attention("demo", Some(GUID)).unwrap().is_some());
         assert_eq!(a.recorded_tweaks().unwrap(), vec!["demo".to_string()]);
+    }
+
+    /// A tweak that starts touching HKCU keeps showing the record it wrote as a machine-wide one,
+    /// and releasing it clears that record too.
+    #[test]
+    fn a_record_under_the_other_name_stays_visible_and_releasable() {
+        let tmp = tempfile::tempdir().unwrap();
+        user_store(tmp.path(), "S-1-A")
+            .set_attention("demo", Some(GUID), failed(AttentionReason::ApplyFailed))
+            .unwrap();
+
+        let now_per_account = account_store(tmp.path(), "S-1-A");
+        assert!(now_per_account
+            .attention("demo", Some(GUID))
+            .unwrap()
+            .is_some());
+        now_per_account.clear_attention("demo", Some(GUID)).unwrap();
+        assert_eq!(now_per_account.attention("demo", Some(GUID)).unwrap(), None);
+        assert!(now_per_account.recorded_tweaks().unwrap().is_empty());
     }
 
     #[test]
