@@ -199,29 +199,13 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
     }
 }
 
-/// Enable `SeDebugPrivilege` before opening the TrustedInstaller process. In a test build a probe
-/// can ask for it to be left disabled instead, to measure whether the open needs it (review A3.4).
-#[cfg(not(feature = "test-build"))]
 fn acquire_debug_privilege() -> Result<(), SpawnError> {
+    // A probe card disabled it itself, to learn whether the TI open still works without it.
+    #[cfg(feature = "test-build")]
+    if crate::manual_tests::probe::skip_debug_privilege() {
+        return Ok(());
+    }
     enable_debug_privilege()
-}
-
-#[cfg(feature = "test-build")]
-fn acquire_debug_privilege() -> Result<(), SpawnError> {
-    if crate::manual_tests::probe::disable_debug_privilege() {
-        super::common::disable_debug_privilege()
-    } else {
-        enable_debug_privilege()
-    }
-}
-
-/// test-build: re-enable `SeDebugPrivilege` after the A3.4 probe disabled it, leaving the process
-/// token as it was found. Best-effort; the next real spawn re-enables it regardless.
-#[cfg(feature = "test-build")]
-pub(crate) fn restore_debug_privilege() {
-    if let Err(e) = enable_debug_privilege() {
-        log::warn!("could not re-enable SeDebugPrivilege after the A3.4 probe: {e:?}");
-    }
 }
 
 fn ti_service_failure(e: Error) -> SpawnError {
@@ -444,26 +428,47 @@ fn open_trusted_installer(
     }
 }
 
-/// test-build (C5): the system-only environment block a probe asks the child to launch with, or
-/// `None` when the probe is not armed.
+/// The machine-only environment `CreateEnvironmentBlock` builds for a null token (no user profile,
+/// no `HKCU\Environment`), copied out as a double-NUL-terminated UTF-16 block.
+#[cfg(feature = "test-build")]
+fn system_env_block() -> Result<Vec<u16>, Error> {
+    use windows_sys::Win32::System::Environment::{
+        CreateEnvironmentBlock, DestroyEnvironmentBlock,
+    };
+    let mut raw: *mut core::ffi::c_void = ptr::null_mut();
+    // SAFETY: `raw` is an out-param; a null token with bInherit FALSE asks for system variables only.
+    if unsafe { CreateEnvironmentBlock(&mut raw, ptr::null_mut(), FALSE) } == FALSE {
+        return Err(super::common::win_err("CreateEnvironmentBlock"));
+    }
+    // SAFETY: a successful call yields a UTF-16 block ending in two NULs, read up to them and freed.
+    unsafe {
+        let p = raw as *const u16;
+        let mut len = 0;
+        while *p.add(len) != 0 || *p.add(len + 1) != 0 {
+            len += 1;
+        }
+        let block = std::slice::from_raw_parts(p, len + 2).to_vec();
+        DestroyEnvironmentBlock(raw);
+        Ok(block)
+    }
+}
+
+#[cfg(feature = "test-build")]
+pub(crate) fn windows_dir() -> Result<std::path::PathBuf, Error> {
+    use std::os::windows::ffi::OsStringExt;
+    system_folder(GetSystemWindowsDirectoryW, "Windows")
+        .map(|w| std::ffi::OsString::from_wide(&w).into())
+}
+
 #[cfg(feature = "test-build")]
 fn test_build_env_block() -> Result<Option<Vec<u16>>, SpawnError> {
     if !crate::manual_tests::probe::system_only_env() {
         return Ok(None);
     }
-    let system32 = String::from_utf16_lossy(
-        &system_folder(GetSystemDirectoryW, "System32").map_err(spawn_failed)?,
-    );
-    let windows = String::from_utf16_lossy(
-        &system_folder(GetSystemWindowsDirectoryW, "Windows").map_err(spawn_failed)?,
-    );
-    Ok(Some(crate::manual_tests::probe::system_env_block(
-        &system32, &windows,
-    )))
+    system_env_block().map(Some).map_err(spawn_failed)
 }
 
-/// test-build (F60): when a probe asked for it, record whether the freshly spawned child sits in a
-/// job object, read from the parent's own handle to it before `wait_and_reap` closes it.
+/// Read from the parent's own handle to the child before `wait_and_reap` closes it.
 #[cfg(feature = "test-build")]
 fn capture_child_job(pi: &PROCESS_INFORMATION) {
     use windows_sys::Win32::System::JobObjects::IsProcessInJob;
@@ -486,8 +491,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
     work_dir.push(0);
     let mut command_wide = to_wide_string(command_line);
 
-    // test-build (C5): a probe can hand the child a system-only environment instead of ours. Built
-    // before the TI handle opens, so a fallible build here cannot leak it.
+    // Built before the TI handle opens, so a fallible build here cannot leak it.
     #[cfg(feature = "test-build")]
     let env_block: Option<Vec<u16>> = test_build_env_block()?;
     #[cfg(not(feature = "test-build"))]
@@ -555,8 +559,8 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
             startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
             let mut process_info = empty_process_info();
 
-            // lpEnvironment is null in production, so the child inherits this app's (the admin
-            // user's) environment; `env_ptr` overrides it only under a test-build probe (C5).
+            // A null `env_ptr` (every non-probe spawn) makes the child inherit this app's (the admin
+            // user's) environment.
             let created = CreateProcessW(
                 ptr::null(),
                 command_wide.as_mut_ptr(),
@@ -585,7 +589,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
         CloseHandle(ti_handle);
         let process_info = created.map_err(spawn_failed)?;
         #[cfg(feature = "test-build")]
-        capture_child_job(&process_info); // F60: while the child is still alive
+        capture_child_job(&process_info);
         wait_and_reap(
             &process_info,
             "TrustedInstaller command",
@@ -704,5 +708,22 @@ mod tests {
         ] {
             assert!(!passes(image, r"C:\Windows"), "{image} passed");
         }
+    }
+
+    #[cfg(feature = "test-build")]
+    #[test]
+    fn the_system_env_block_is_machine_only() {
+        let block = String::from_utf16_lossy(&system_env_block().expect("block"));
+        assert!(block.ends_with("\0\0"), "{block:?}");
+        let vars: Vec<&str> = block.trim_end_matches('\0').split('\0').collect();
+        assert!(
+            vars.iter().any(|v| v.starts_with("SystemRoot=")),
+            "{vars:?}"
+        );
+        let profile = std::env::var("USERPROFILE").expect("USERPROFILE");
+        assert!(
+            !vars.contains(&format!("USERPROFILE={profile}").as_str()),
+            "{vars:?}"
+        );
     }
 }

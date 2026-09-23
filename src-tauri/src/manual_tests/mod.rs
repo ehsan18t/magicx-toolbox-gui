@@ -153,16 +153,9 @@ mod tests {
 
     #[test]
     fn only_the_tests_that_change_the_system_ask_for_confirmation() {
-        // The tests that apply block_update_pipeline change the PC and must confirm first; the
-        // rest (baseline reads, task reads, the parent-side spawn probes) do not.
-        let applying = [
-            "ti_batch_timing",
-            "waasmedic_watch",
-            "system_only_environment",
-            "systemtemp_transport",
-        ];
         for t in TESTS {
-            assert_eq!(t.changes_system, applying.contains(&t.id), "{}", t.id);
+            let changes_nothing = t.changes.starts_with("Nothing");
+            assert_eq!(t.changes_system, !changes_nothing, "{}", t.id);
         }
     }
 }

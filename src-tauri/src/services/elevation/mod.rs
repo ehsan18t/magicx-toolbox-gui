@@ -22,4 +22,4 @@ pub use broker::{
 };
 pub use level::Elevation;
 #[cfg(feature = "test-build")]
-pub(crate) use ti_elevation::restore_debug_privilege;
+pub(crate) use {common::set_debug_privilege, ti_elevation::windows_dir};

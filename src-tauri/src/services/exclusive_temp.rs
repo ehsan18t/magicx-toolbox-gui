@@ -75,8 +75,7 @@ impl ExclusiveTempFile {
         Self::create_in(&std::env::temp_dir(), prefix, ext, kind, contents)
     }
 
-    /// As [`create`](Self::create), but under `dir` instead of `%TEMP%`. Splitting the directory out
-    /// lets a test route the transport through `%SystemRoot%\SystemTemp` (review item F62).
+    /// As [`create`](Self::create), but under `dir` instead of `%TEMP%`.
     pub fn create_in(
         dir: &Path,
         prefix: &str,

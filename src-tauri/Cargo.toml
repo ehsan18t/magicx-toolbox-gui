@@ -22,7 +22,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 # The Manual Tests view (`pnpm run build:test`); never enabled in a release build.
-test-build = []
+test-build = ["windows-sys/Win32_System_Environment"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

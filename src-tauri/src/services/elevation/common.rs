@@ -71,8 +71,19 @@ pub(super) fn empty_process_info() -> PROCESS_INFORMATION {
 /// Enable `SeDebugPrivilege` for the current process. Required to open the TrustedInstaller service
 /// process (to spoof it as a parent).
 pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
+    adjust_debug_privilege(true).map(|_| ())
+}
+
+/// Sets `SeDebugPrivilege` on this process's token; `Ok(true)` when the call changed its state.
+#[cfg(feature = "test-build")]
+pub(crate) fn set_debug_privilege(enable: bool) -> Result<bool, Error> {
+    adjust_debug_privilege(enable)
+        .map_err(|(SpawnError::NoChild(_, e) | SpawnError::ChildRan(e))| e)
+}
+
+fn adjust_debug_privilege(enable: bool) -> Result<bool, SpawnError> {
     // SAFETY: standard OpenProcessToken/LookupPrivilegeValueW/AdjustTokenPrivileges sequence; the
-    // token handle is closed on every path and `tp` is fully initialized before use.
+    // token handle is closed on every path, `tp` is fully initialized and `previous` is sized.
     unsafe {
         let mut token: HANDLE = ptr::null_mut();
         if OpenProcessToken(
@@ -97,10 +108,20 @@ pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
         tp.PrivilegeCount = 1;
         tp.Privileges[0] = LUID_AND_ATTRIBUTES {
             Luid: luid,
-            Attributes: SE_PRIVILEGE_ENABLED,
+            Attributes: if enable { SE_PRIVILEGE_ENABLED } else { 0 },
         };
 
-        if AdjustTokenPrivileges(token, FALSE, &tp, 0, ptr::null_mut(), ptr::null_mut()) == FALSE {
+        let mut previous: TOKEN_PRIVILEGES = std::mem::zeroed();
+        let mut previous_len = 0u32;
+        if AdjustTokenPrivileges(
+            token,
+            FALSE,
+            &tp,
+            std::mem::size_of::<TOKEN_PRIVILEGES>() as u32,
+            &mut previous,
+            &mut previous_len,
+        ) == FALSE
+        {
             return Err(spawn_failed(close_then(
                 token,
                 win_err("AdjustTokenPrivileges"),
@@ -110,62 +131,16 @@ pub(super) fn enable_debug_privilege() -> Result<(), SpawnError> {
         // AdjustTokenPrivileges succeeds even when it granted nothing; only the last-error says so.
         let partial = GetLastError() == ERROR_NOT_ALL_ASSIGNED;
         CloseHandle(token);
-        if partial {
+        if enable && partial {
             return Err(SpawnError::NoChild(
                 AcquireReason::DebugPrivilegeStripped,
                 Error::WindowsApi("SeDebugPrivilege not available, admin rights required".into()),
             ));
         }
 
-        log::trace!("Enabled SeDebugPrivilege");
-        Ok(())
-    }
-}
-
-/// test-build (review item A3.4): drop `SeDebugPrivilege` from this process so a probe can learn
-/// whether opening the TrustedInstaller process actually needs it. Mirrors `enable_debug_privilege`
-/// with `Attributes` 0; disabling an already-disabled privilege is not an error, so no partial check.
-#[cfg(feature = "test-build")]
-pub(super) fn disable_debug_privilege() -> Result<(), SpawnError> {
-    // SAFETY: as `enable_debug_privilege`; the token handle is closed on every path.
-    unsafe {
-        let mut token: HANDLE = ptr::null_mut();
-        if OpenProcessToken(
-            GetCurrentProcess(),
-            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
-            &mut token,
-        ) == FALSE
-        {
-            return Err(spawn_failed(win_err("OpenProcessToken")));
-        }
-
-        let privilege_name = to_wide_string("SeDebugPrivilege");
-        let mut luid: LUID = std::mem::zeroed();
-        if LookupPrivilegeValueW(ptr::null(), privilege_name.as_ptr(), &mut luid) == FALSE {
-            return Err(spawn_failed(close_then(
-                token,
-                win_err("LookupPrivilegeValue"),
-            )));
-        }
-
-        let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0] = LUID_AND_ATTRIBUTES {
-            Luid: luid,
-            Attributes: 0,
-        };
-
-        let adjusted =
-            AdjustTokenPrivileges(token, FALSE, &tp, 0, ptr::null_mut(), ptr::null_mut());
-        let err = (adjusted == FALSE).then(|| win_err("AdjustTokenPrivileges"));
-        CloseHandle(token);
-        match err {
-            Some(e) => Err(spawn_failed(e)),
-            None => {
-                log::trace!("Disabled SeDebugPrivilege");
-                Ok(())
-            }
-        }
+        log::trace!("SeDebugPrivilege enabled = {enable}");
+        // PreviousState lists only the privileges whose state the call actually changed.
+        Ok(previous.PrivilegeCount > 0)
     }
 }
 
@@ -174,7 +149,7 @@ pub(super) fn spawn_failed(e: Error) -> SpawnError {
 }
 
 /// Wrap the current thread's last Win32 error. Call this BEFORE any `CloseHandle`.
-fn win_err(what: &str) -> Error {
+pub(super) fn win_err(what: &str) -> Error {
     // SAFETY: GetLastError only reads thread-local state.
     Error::WindowsApi(format!("{what} failed: {}", unsafe { GetLastError() }))
 }

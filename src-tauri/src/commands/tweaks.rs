@@ -1082,6 +1082,8 @@ async fn gate_and_stamp(tweak: &'static Tweak) -> Result<u64> {
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T> + Send + 'static,
 ) -> Result<T> {
+    #[cfg(feature = "test-build")]
+    let work = crate::manual_tests::probe::carry(work);
     tauri::async_runtime::spawn_blocking(work).await?
 }
 

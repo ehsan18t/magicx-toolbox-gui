@@ -7,7 +7,9 @@ use super::runner::{arm_batches, take_batches, BatchRecord, Ctx, Verdict};
 use super::{errors, probe};
 use crate::commands::tweaks::{build_deps, find_tweak};
 use crate::error::{win32, Error};
-use crate::services::elevation::{run_ops, AcquireReason, BrokerOpError, Elevation};
+use crate::services::elevation::{
+    run_ops, set_debug_privilege, windows_dir, AcquireReason, BrokerOpError, Elevation,
+};
 use crate::services::exclusive_temp::ExclusiveTempFile;
 use crate::services::{scheduler_service, system_info_service};
 use crate::tweaks::compiled_corpus;
@@ -425,6 +427,15 @@ pub fn baseline(cx: &Ctx) -> Verdict {
 }
 
 pub fn ti_batch_timing(cx: &Ctx) -> Verdict {
+    apply_and_restore(cx, || Ok(None))
+}
+
+/// Baseline, apply, restore, compare. `arm` runs once the preconditions pass and its probe covers
+/// the apply only.
+fn apply_and_restore(
+    cx: &Ctx,
+    arm: impl FnOnce() -> Result<Option<probe::ProbeGuard>, Verdict>,
+) -> Verdict {
     let tweak = match target(cx) {
         Ok(t) => t,
         Err(v) => return v,
@@ -433,7 +444,11 @@ pub fn ti_batch_timing(cx: &Ctx) -> Verdict {
         Ok(b) => b,
         Err(v) => return v,
     };
-    let applied = match apply(cx, tweak) {
+    let applied = match arm() {
+        Ok(_armed) => apply(cx, tweak),
+        Err(v) => return v,
+    };
+    let applied = match applied {
         Ok(a) => a,
         Err(v) => return v,
     };
@@ -598,16 +613,16 @@ fn require_elevated(cx: &Ctx) -> Option<Verdict> {
         .then(|| Verdict::fail("Refused: the app is not elevated; restart it as administrator."))
 }
 
-/// `%SystemRoot%\SystemTemp`, the candidate transport directory only SYSTEM and Administrators own.
-fn systemtemp_dir() -> Option<PathBuf> {
-    std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("SystemTemp"))
+/// The candidate transport directory only SYSTEM and Administrators own.
+fn systemtemp_dir() -> Result<PathBuf, Error> {
+    windows_dir().map(|w| w.join("SystemTemp"))
 }
 
 fn probe_admin_can_write(dir: &Path) -> std::io::Result<()> {
     ExclusiveTempFile::create_in(dir, "magicx-f62", "probe", "f62 probe", b"probe").map(|_| ())
 }
 
-/// A3.4 verdict from a no-op spawn made with `SeDebugPrivilege` disabled. Only a failure to open the
+/// The verdict from a no-op spawn made with `SeDebugPrivilege` disabled. Only a failure to open the
 /// TrustedInstaller process (`TiProcessUnverified`) points at the privilege; other failures do not.
 fn interpret_debug_privilege(outcome: &Result<(), BrokerOpError>) -> Verdict {
     match outcome {
@@ -634,15 +649,41 @@ pub fn debug_privilege_needed(cx: &Ctx) -> Verdict {
     if let Some(v) = require_elevated(cx) {
         return v;
     }
+    let was_enabled = match set_debug_privilege(false) {
+        Ok(changed) => changed,
+        Err(e) => {
+            return Verdict::fail(format!(
+                "Could not disable SeDebugPrivilege: {}",
+                errors::app(&e)
+            ))
+        }
+    };
+    cx.info(format!(
+        "SeDebugPrivilege enabled before this test = {was_enabled}"
+    ));
     cx.info("spawning a no-op TrustedInstaller batch with SeDebugPrivilege disabled");
     let outcome = {
-        let _probe = probe::arm_disable_debug_privilege();
+        let _probe = probe::arm_skip_debug_privilege();
         run_ops(Elevation::TrustedInstaller, Vec::new())
     };
-    crate::services::elevation::restore_debug_privilege(); // leave the token as we found it
+    // The token is process-wide: an elevated spawn from elsewhere in the app re-enables it.
+    let reenabled = !matches!(set_debug_privilege(false), Ok(false));
+    if was_enabled {
+        if let Err(e) = set_debug_privilege(true) {
+            cx.error(format!(
+                "could not re-enable SeDebugPrivilege: {}",
+                errors::app(&e)
+            ));
+        }
+    }
     match &outcome {
         Ok(()) => cx.info("no-op spawn returned Ok: the child ran with the privilege disabled"),
         Err(e) => cx.error(format!("no-op spawn returned: {e}")),
+    }
+    if reenabled {
+        return Verdict::fail(
+            "Inconclusive: SeDebugPrivilege did not stay disabled during the spawn (another elevated change in the app re-enables it). Re-run the test.",
+        );
     }
     interpret_debug_privilege(&outcome)
 }
@@ -691,54 +732,11 @@ pub fn child_job_object(cx: &Ctx) -> Verdict {
     }
 }
 
-/// C5 and F62 share the apply/verify/restore body; only what is armed around the apply differs.
-fn applied_under_probe(cx: &Ctx, note: &str, armed: probe::ProbeGuard) -> Verdict {
-    let tweak = match target(cx) {
-        Ok(t) => t,
-        Err(v) => return v,
-    };
-    let baseline = match capture_baseline(cx, tweak) {
-        Ok(b) => b,
-        Err(v) => return v,
-    };
-    cx.info(note);
-    let applied = {
-        let _armed = armed;
-        apply(cx, tweak)
-    };
-    let applied = match applied {
-        Ok(a) => a,
-        Err(v) => return v,
-    };
-    if !applied.verified {
-        return apply_failed(cx, tweak, &baseline);
-    }
-    read_surface(cx, tweak, "applied");
-    let restored = restore(cx, tweak);
-    let diffs = compare_with_baseline(cx, tweak, &baseline, "after restore");
-    if !restored || !diffs.is_empty() {
-        return restore_failed(restored, &diffs, Vec::new());
-    }
-    let details: Vec<String> = applied
-        .batches
-        .iter()
-        .enumerate()
-        .map(|(i, b)| batch_line(i, b))
-        .collect();
-    Verdict::pass(format!(
-        "Apply and restore verified, every effect matches the baseline. {} elevated batch(es) on apply, whole apply {} ms.",
-        applied.batches.len(),
-        applied.wall_ms
-    ))
-    .with_details(details)
-}
-
 pub fn system_only_environment(cx: &Ctx) -> Verdict {
-    let mut verdict = applied_under_probe(
-        cx,
-        "applying under a system-only environment block; the scheduler COM calls must still work",
-        probe::arm_system_only_env(),
-    );
+    let mut verdict = apply_and_restore(cx, || {
+        cx.info("applying under a system-only environment block; the scheduler COM calls must still work");
+        Ok(Some(probe::arm_system_only_env()))
+    });
     if verdict.status == super::runner::Status::Pass {
         verdict.summary = format!(
             "{} The scheduler COM calls worked without the user's environment, so a system-only block is viable (C5).",
@@ -749,29 +747,29 @@ pub fn system_only_environment(cx: &Ctx) -> Verdict {
 }
 
 pub fn systemtemp_transport(cx: &Ctx) -> Verdict {
-    if let Some(v) = require_elevated(cx) {
-        return v;
-    }
-    let Some(system_temp) = systemtemp_dir() else {
-        return Verdict::info("SystemRoot is not set, so SystemTemp cannot be located.");
-    };
-    cx.info(format!("SystemTemp = {}", system_temp.display()));
-    if !system_temp.exists() {
-        return Verdict::info(
-            "%SystemRoot%\\SystemTemp does not exist on this build, so the transport cannot move here. F62 stays open.",
+    let mut verdict = apply_and_restore(cx, || {
+        let system_temp = systemtemp_dir().map_err(|e| {
+            Verdict::fail(format!(
+                "Could not locate the Windows folder: {}",
+                errors::app(&e)
+            ))
+        })?;
+        cx.info(format!("SystemTemp = {}", system_temp.display()));
+        if !system_temp.exists() {
+            return Err(Verdict::info(
+                "SystemTemp does not exist on this build, so the transport cannot move here. F62 stays open.",
+            ));
+        }
+        probe_admin_can_write(&system_temp).map_err(|e| {
+            Verdict::fail(format!(
+                "This process could not create a file in SystemTemp ({e}); it needs administrator rights."
+            ))
+        })?;
+        cx.info(
+            "this process can create a file in SystemTemp; routing the apply's transport there",
         );
-    }
-    if let Err(e) = probe_admin_can_write(&system_temp) {
-        return Verdict::fail(format!(
-            "This process could not create a file in SystemTemp ({e}); it needs administrator rights."
-        ));
-    }
-    cx.info("this process can create a file in SystemTemp; routing the apply's transport there");
-    let mut verdict = applied_under_probe(
-        cx,
-        "applying with the broker request and response routed through SystemTemp",
-        probe::arm_transport_dir(system_temp),
-    );
+        Ok(Some(probe::arm_transport_dir(system_temp)))
+    });
     if verdict.status == super::runner::Status::Pass {
         verdict.summary = format!(
             "{} The TrustedInstaller child read and wrote in SystemTemp, so the transport can move there (F62).",
@@ -882,9 +880,9 @@ mod tests {
     }
 
     #[test]
-    fn systemtemp_sits_under_the_windows_folder_when_systemroot_is_set() {
-        if let Some(dir) = systemtemp_dir() {
-            assert!(dir.ends_with("SystemTemp"), "{}", dir.display());
-        }
+    fn systemtemp_sits_under_the_real_windows_folder() {
+        let dir = systemtemp_dir().expect("the Windows folder resolves");
+        assert!(dir.ends_with("SystemTemp"), "{}", dir.display());
+        assert!(dir.with_file_name("System32").is_dir(), "{}", dir.display());
     }
 }

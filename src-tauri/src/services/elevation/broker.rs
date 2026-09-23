@@ -491,8 +491,6 @@ fn run_elevated_broker(
     let req_json = serde_json::to_vec(&wire)
         .map_err(|e| undelivered(format!("serialize broker request: {e}")))?;
 
-    // test-build (F62): a probe can route the request/response through %SystemRoot%\SystemTemp
-    // instead of %TEMP%. `None` in production keeps the same %TEMP% transport.
     #[cfg(feature = "test-build")]
     let transport_dir = crate::manual_tests::probe::transport_dir();
     #[cfg(not(feature = "test-build"))]
