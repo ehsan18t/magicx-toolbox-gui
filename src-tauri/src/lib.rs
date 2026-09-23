@@ -69,13 +69,14 @@ pub fn run() {
     let after_restart = std::env::args_os()
         .nth(1)
         .is_some_and(|a| a == single_instance::AFTER_RESTART_ARG);
-    let _instance = match single_instance::acquire(after_restart) {
+    let mut instance = match single_instance::acquire(after_restart) {
         Instance::First(guard) => guard,
         Instance::AlreadyRunning => {
             single_instance::focus_running_instance("MagicX Toolbox");
             return;
         }
     };
+    let instance_note = instance.take_note();
     tauri::Builder::default()
         // Closing mid-apply kills the process while an elevated child may still be driving, and
         // leaves the snapshot entry that was written before the first drive with nothing to undo
@@ -151,8 +152,11 @@ pub fn run() {
                 })
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
             log::info!("Application starting...");
+            if let Some(note) = instance_note {
+                log::warn!("{note}");
+            }
             log::debug!("Debug logging enabled");
 
             // Start window visibility watchdog.
