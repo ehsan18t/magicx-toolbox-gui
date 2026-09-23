@@ -132,7 +132,7 @@ self-confirming green with no return point. Refusing mutates nothing. See
 
 **Related, deliberately unfixed:** the same machine-keyed-store/account-keyed-hive mismatch is
 reachable without any elevation at all, on a multi-user machine sharing one portable install. Recorded
-in `PRE_MERGE_TASKS.md` item 4 and consciously deferred; it predates this amendment and is not caused
+in `docs/KNOWN_ISSUES.md` issue 1 and consciously deferred; it predates this amendment and is not caused
 by it.
 
 ---
