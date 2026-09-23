@@ -1411,6 +1411,7 @@ pub(crate) fn drive_to_captured(
     plan.retain(|item| !absent_optional(item, deps) && !already_there(item, deps));
 
     drive_back(&plan, deps, &mut failures);
+    failures.retain(|failure| !refused_but_restored(failure, &plan, deps));
 
     if failures.is_empty() {
         Ok(())
@@ -1431,7 +1432,45 @@ struct Restorable<'a> {
 /// An effect the failed drive never moved reads back as its captured value, which is the verify;
 /// re-driving it can only fail again (a task Windows refuses to toggle) and fake a lost rollback.
 fn already_there(item: &Restorable<'_>, deps: &Deps) -> bool {
-    matches!(deps.kinds.read(item.setting, &item.cx), Ok(live) if &live == item.value)
+    match deps.kinds.read(item.setting, &item.cx) {
+        Ok(live) if &live == item.value => true,
+        read => {
+            log::info!(
+                "'{}' reads {} before its drive-back",
+                item.effect.id,
+                describe_read(&read)
+            );
+            false
+        }
+    }
+}
+
+/// A drive-back Windows refused is still verified when the effect reads as captured afterwards
+/// (Task Scheduler can refuse a toggle it then settles). An unknown elevated outcome is not: the
+/// child's work can land after this read.
+fn refused_but_restored(failure: &EngineError, plan: &[Restorable<'_>], deps: &Deps) -> bool {
+    let EngineError::DriveFailed { effect, source } = failure else {
+        return false;
+    };
+    if matches!(source, KindError::ElevatedOutcomeUnknown(..)) {
+        return false;
+    }
+    let restored = plan.iter().filter(|item| &item.effect.id == effect).any(
+        |item| matches!(deps.kinds.read(item.setting, &item.cx), Ok(live) if &live == item.value),
+    );
+    if restored {
+        log::info!("'{effect}' refused its drive-back but reads as captured, so it is verified");
+    }
+    restored
+}
+
+/// Never a registry value's data: logs are shared for support.
+fn describe_read(read: &Result<Value, KindError>) -> String {
+    match read {
+        Ok(Value::Reg(_)) => "a different registry value".to_string(),
+        Ok(value) => format!("{value:?}"),
+        Err(_) => "as unreadable".to_string(),
+    }
 }
 
 fn absent_optional(item: &Restorable<'_>, deps: &Deps) -> bool {
@@ -1703,6 +1742,8 @@ mod tests {
         Stuck,
         /// Drives normally once; the next drive changes the value but reports an unknown outcome.
         UnknownOnReturn,
+        /// Every drive changes the value and still reports an error.
+        LandsButErrs,
         ResourceMissing,
         /// Drives the value, then reports an unknown elevated outcome; later drives succeed.
         OutcomeUnknownOnce,
@@ -1817,6 +1858,10 @@ mod tests {
                         .lock()
                         .unwrap()
                         .insert(key.clone(), DrivePlan::Err);
+                    self.live.lock().unwrap().insert(key, target.clone());
+                    Err(KindError::Backend("mock drive failure".into()))
+                }
+                Some(DrivePlan::LandsButErrs) => {
                     self.live.lock().unwrap().insert(key, target.clone());
                     Err(KindError::Backend("mock drive failure".into()))
                 }
@@ -3425,6 +3470,24 @@ mod tests {
             .head("demo", &c, Some("test-guid"), 19045)
             .unwrap()
             .is_none());
+    }
+
+    /// A drive-back that reports an error but leaves the effect at its captured value is verified
+    /// by the read that follows, so the rollback is complete.
+    #[test]
+    fn a_refused_drive_back_that_still_restored_the_value_is_verified() {
+        let h = Harness::new();
+        let (t, c) = attention_fixture(&h, DrivePlan::LandsButErrs);
+
+        let err = run_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect_err("s1 errors");
+        let EngineError::RollbackReport {
+            rollback_failures, ..
+        } = err
+        else {
+            panic!("expected RollbackReport");
+        };
+        assert!(rollback_failures.is_empty(), "{rollback_failures:?}");
+        assert_eq!(detect::detect(&t, &c, &h.deps()).attention, None);
     }
 
     /// ADR-0005 amendment: a kept snapshot surfaces as Needs Attention on a rescan and after a
