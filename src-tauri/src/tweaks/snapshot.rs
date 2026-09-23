@@ -1050,14 +1050,55 @@ fn write_seq_cache(dir: &Path, seq: Seq) -> Result<(), SnapshotError> {
     write_atomic(dir, SEQ_CACHE_FILE, &json)
 }
 
-/// Replacing atomic write for the directory's non-entry files: temp file beside them, fsynced,
-/// then renamed over. Entries use `write_entry_create_new`, which must never replace.
+/// Replacing atomic write for the directory's non-entry files. Entries use
+/// `write_entry_create_new`, which must never replace.
 fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), SnapshotError> {
+    Ok(durable_write(dir, &dir.join(name), bytes, true)?)
+}
+
+/// Temp file beside `dest`, fsynced, renamed over it with `MOVEFILE_WRITE_THROUGH`: without it a
+/// power loss can undo the rename and bring the old file back. `replace: false` makes an existing
+/// `dest` an `AlreadyExists` error instead.
+pub(crate) fn durable_write(
+    dir: &Path,
+    dest: &Path,
+    bytes: &[u8],
+    replace: bool,
+) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     tmp.write_all(bytes)?;
     tmp.as_file().sync_all()?;
-    tmp.persist(dir.join(name))
-        .map_err(|e| SnapshotError::Io(e.error))?;
+    // `keep` clears FILE_ATTRIBUTE_TEMPORARY, which would otherwise ride along to `dest`.
+    let src = tmp.into_temp_path().keep().map_err(|e| e.error)?;
+    let wide = |p: &Path| -> Vec<u16> {
+        p.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    };
+    let (from, to) = (wide(&src), wide(dest));
+    let flags = MOVEFILE_WRITE_THROUGH
+        | if replace {
+            MOVEFILE_REPLACE_EXISTING
+        } else {
+            0
+        };
+    // SAFETY: both buffers are NUL-terminated and outlive the call.
+    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), flags) } == 0 {
+        let e = std::io::Error::last_os_error();
+        if let Err(cleanup) = fs::remove_file(&src) {
+            log::warn!(
+                "could not delete an unpublished temp file: {}",
+                cleanup.kind()
+            );
+        }
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -1101,26 +1142,20 @@ fn read_raw_entries(dir: &Path) -> Result<Vec<RawEntry>, SnapshotError> {
     Ok(out)
 }
 
-/// Atomic create-new write (spec §8.1/§11, invariant 6): temp file in the same directory, fsynced,
-/// then `persist_noclobber` — Windows `MoveFileExW` *without* `MOVEFILE_REPLACE_EXISTING`, so a
-/// seq collision is a loud `Err` and whatever was already at that seq is left untouched.
+/// Atomic create-new write (invariant 6): a seq collision is a loud `Err`, and whatever was already
+/// at that seq is left untouched.
 fn write_entry_create_new(dir: &Path, entry: &Entry) -> Result<(), SnapshotError> {
     let json = serde_json::to_vec_pretty(entry).expect("Entry always serializes");
-    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-    tmp.write_all(&json)?;
-    tmp.as_file().sync_all()?;
-    tmp.persist_noclobber(entry_path(dir, entry.seq))
-        .map_err(|e| {
-            if e.error.kind() == std::io::ErrorKind::AlreadyExists {
-                SnapshotError::SeqCollision {
-                    tweak_id: entry.tweak_id.clone(),
-                    seq: entry.seq,
-                }
-            } else {
-                SnapshotError::Io(e.error)
+    durable_write(dir, &entry_path(dir, entry.seq), &json, false).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            SnapshotError::SeqCollision {
+                tweak_id: entry.tweak_id.clone(),
+                seq: entry.seq,
             }
-        })?;
-    Ok(())
+        } else {
+            SnapshotError::Io(e)
+        }
+    })
 }
 
 /// The one read-modify-rewrite path for an entry: `seq` (the filename) is the only trusted write
@@ -1145,12 +1180,7 @@ fn update_entry(
 /// Atomic in-place rewrite at the caller-trusted `seq`, never `entry.seq` (see `update_entry`).
 fn rewrite_entry(dir: &Path, seq: Seq, entry: &Entry) -> Result<(), SnapshotError> {
     let json = serde_json::to_vec_pretty(entry).expect("Entry always serializes");
-    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-    tmp.write_all(&json)?;
-    tmp.as_file().sync_all()?;
-    tmp.persist(entry_path(dir, seq))
-        .map_err(|e| SnapshotError::Io(e.error))?;
-    Ok(())
+    Ok(durable_write(dir, &entry_path(dir, seq), &json, true)?)
 }
 
 fn remove_entry(dir: &Path, tweak_id: &str, seq: Seq) -> Result<(), SnapshotError> {
@@ -1526,6 +1556,29 @@ mod tests {
             .unwrap();
 
         assert!(b.attention("demo", Some(GUID)).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_durable_write_replaces_only_when_asked_and_publishes_a_normal_file() {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_TEMPORARY: u32 = 0x100;
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("f.json");
+
+        durable_write(tmp.path(), &dest, b"one", false).unwrap();
+        let err = durable_write(tmp.path(), &dest, b"two", false).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&dest).unwrap(), b"one");
+
+        durable_write(tmp.path(), &dest, b"three", true).unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), b"three");
+        let attributes = fs::metadata(&dest).unwrap().file_attributes();
+        assert_eq!(attributes & FILE_ATTRIBUTE_TEMPORARY, 0);
+        assert_eq!(
+            fs::read_dir(tmp.path()).unwrap().count(),
+            1,
+            "no temp file left"
+        );
     }
 
     #[test]

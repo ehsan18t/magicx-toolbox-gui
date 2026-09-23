@@ -16,7 +16,6 @@ the ADR and delete the entry.
 | 2   | Broker response is written to user TEMP         | only as a forced false failure, never silent | 2026-09-12 |
 | 3   | Nothing inside the broker child is observable   | only as thin support detail after a failure  | 2026-09-12 |
 | 4   | An older build cannot read what this one resolved | only where two builds share one folder     | 2026-09-12 |
-| 5   | Atomic writes are not flushed through a power loss | only on power loss right after a write     | 2026-09-23 |
 
 ---
 
@@ -51,11 +50,3 @@ Unresolved state has four durable forms. Needs Attention lives in `snapshots/<tw
 **The shared-claims record moved, and only pre-release builds of this branch are affected.** This build keeps it in `snapshots/shared_claims.<MachineGuid>.json` (schema version 2). It reads an unsuffixed `shared_claims.json` stamped for this machine, version 1 or 2, and folds it into its own file on its next write, deleting the old one; a version 1 record restores at the releasing tweak's own route, with a log line. A build that knows only the unsuffixed file then finds no record, so a first claim there would capture the already-driven value as a fabricated original, and a release there reports the claim as not held. No released build reads either file, since `main` has no shared claims, so the exposure is limited to development builds sharing one folder.
 
 **The fix.** Nothing in any mark: this resolves when the older build is gone, and downgrades are not a supported flow. Cross-build agreement would need the marks to live somewhere an older build already parses, and for the record that is exactly the entry field this design moved away from, because entry releases kept dropping it.
-
-## 5. Atomic writes are not flushed through a power loss
-
-Every snapshot entry, journal mark, drive mark, `_seq.json` and `_attention.json` is written as a temp file, `sync_all`, then renamed over the target (`write_atomic` and `rewrite_entry` in `tweaks/snapshot.rs`). The rename itself is neither `MOVEFILE_WRITE_THROUGH` nor followed by a flush of the directory, so after a power loss NTFS can come back with the old file in place: the new content was on disk, but the rename that published it was not.
-
-**What happens then.** A mark written just before a change can be lost while the change it guards survives. The registry value or service start type is set, but the drive mark, the in-flight action or the completed row that should say so is gone, and the next launch raises nothing for it or raises a row that did in fact finish. A crash of the app alone is not affected, since the rename reached the file system before the process died; only a power loss or an OS crash shortly after a write can do this. The pattern predates the drive mark and applies to every write in the store.
-
-**The fix.** Rename with `MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)` (or `SetFileInformationByHandle` with `FileRenameInfoEx` and a flush of the directory handle) in the one atomic-write helper, and measure the cost: every apply and restore writes several marks, so a slower write is paid on each.

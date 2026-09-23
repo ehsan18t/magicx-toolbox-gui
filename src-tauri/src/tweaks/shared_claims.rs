@@ -9,7 +9,7 @@ use crate::tweaks::model::{effective_level, Level, Setting, SharedDef, SharedId,
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -180,8 +180,6 @@ impl ClaimsStore {
         }
     }
 
-    /// Atomic whole-file rewrite (same-directory temp file, fsynced, renamed onto the final path).
-    /// A private copy of [`super::snapshot`]'s pattern; keep the two in sync.
     fn save(&self, records: BTreeMap<String, ClaimRecord>) -> Result<(), ClaimsError> {
         fs::create_dir_all(&self.root)?;
         let file = ClaimsFile {
@@ -190,11 +188,7 @@ impl ClaimsStore {
             records,
         };
         let json = serde_json::to_vec_pretty(&file).expect("ClaimsFile always serializes");
-        let mut tmp = tempfile::NamedTempFile::new_in(&self.root)?;
-        tmp.write_all(&json)?;
-        tmp.as_file().sync_all()?;
-        tmp.persist(self.file_path())
-            .map_err(|e| ClaimsError::Io(e.error))?;
+        super::snapshot::durable_write(&self.root, &self.file_path(), &json, true)?;
         // This machine's legacy file is now folded in; a failed delete is harmless because the
         // per-machine file shadows it from here on.
         if let Some(legacy) = self.legacy_path() {
