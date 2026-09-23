@@ -1001,7 +1001,15 @@ fn next_status_stamp() -> u64 {
 
 /// Detects one tweak and projects it into the event the frontend consumes.
 fn scan_one(tweak: &Tweak, corpus: &Corpus, deps: &Deps<'_>) -> TweakStatusEvent {
-    let stamp = next_status_stamp();
+    scan_one_stamped(tweak, corpus, deps, next_status_stamp())
+}
+
+fn scan_one_stamped(
+    tweak: &Tweak,
+    corpus: &Corpus,
+    deps: &Deps<'_>,
+    stamp: u64,
+) -> TweakStatusEvent {
     let status = detect::detect(tweak, corpus, deps);
     let observed = observed_view(tweak, &status.observed);
     let mut view = TweakStatusView::stamped(status, stamp);
@@ -1035,12 +1043,14 @@ fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakSta
                 // never true of the machine. The sweep takes no lock of its own (it is a pure
                 // read), so the only correct move is to leave that card showing what it had until
                 // the apply finishes and emits its own status.
+                // Stamped before the check: an apply that locks after it stamps higher and wins.
+                let stamp = next_status_stamp();
                 if lifecycle::is_locked(&tweak.id) {
                     log::debug!("skipping {} in the sweep: apply in flight", tweak.id);
                     return;
                 }
                 // A closed receiver only happens if the drain below panicked; nothing to do.
-                let _ = tx.send(scan_one(tweak, corpus, deps));
+                let _ = tx.send(scan_one_stamped(tweak, corpus, deps, stamp));
             });
         });
         for event in rx {
@@ -1081,17 +1091,14 @@ fn apply_tweak_logic(
     apply::do_apply(tweak, corpus, target, deps).map(|o| ApplyOutcomeView::stamped(o, stamp))
 }
 
-/// Refuses unless available, then stamps before the engine reads, so a later sweep outranks it.
-async fn gate_and_stamp(tweak: &'static Tweak) -> Result<u64> {
+async fn gate(tweak: &'static Tweak) -> Result<()> {
     blocking(move || {
-        let corpus = compiled_corpus();
         refuse_if_unavailable(
             tweak,
-            corpus,
+            compiled_corpus(),
             current_app_level(),
             context::sid_check(&RealSidProbe),
-        )?;
-        Ok(next_status_stamp())
+        )
     })
     .await
 }
@@ -1191,8 +1198,10 @@ pub(crate) async fn apply_gated(
     tweak: &'static Tweak,
     option_label: String,
 ) -> Result<std::result::Result<ApplyOutcomeView, EngineError>> {
-    let stamp = gate_and_stamp(tweak).await?;
+    gate(tweak).await?;
     run_locked(&tweak.id, move || {
+        // Stamped under the lock, before the engine reads: a sweep reading taken earlier ranks lower.
+        let stamp = next_status_stamp();
         let state = app.state::<TweakEngineState>();
         let target = OptLabel(option_label);
         Ok(apply_tweak_logic(
@@ -1211,13 +1220,20 @@ pub(crate) async fn restore_gated(
     app: AppHandle,
     tweak: &'static Tweak,
 ) -> Result<std::result::Result<RestoreOutcomeView, EngineError>> {
-    let stamp = gate_and_stamp(tweak).await?;
+    gate(tweak).await?;
     run_locked(&tweak.id, move || {
+        let stamp = next_status_stamp();
         let state = app.state::<TweakEngineState>();
-        Ok(
-            revert::do_restore(tweak, compiled_corpus(), &build_deps(state.inner()))
-                .map(|o| RestoreOutcomeView::stamped(o, stamp)),
-        )
+        let corpus = compiled_corpus();
+        let deps = build_deps(state.inner());
+        Ok(revert::do_restore(tweak, corpus, &deps).map(|o| {
+            // The engine's outcome carries no live readings; System Default's panel shows them.
+            let observed = matches!(o.status.state, TweakState::SystemDefault)
+                .then(|| detect::detect(tweak, corpus, &deps).observed);
+            let mut view = RestoreOutcomeView::stamped(o, stamp);
+            view.status.observed = observed.and_then(|readings| observed_view(tweak, &readings));
+            view
+        }))
     })
     .await
 }
