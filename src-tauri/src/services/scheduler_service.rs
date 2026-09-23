@@ -25,6 +25,7 @@ const TASK_STATE_RUNNING: i32 = 4;
 // "Not found" HRESULTs (ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND as HRESULT).
 const HRESULT_FILE_NOT_FOUND: u32 = 0x8007_0002;
 const HRESULT_PATH_NOT_FOUND: u32 = 0x8007_0003;
+const HRESULT_ELEMENT_NOT_FOUND: u32 = 0x8007_0490;
 
 /// State of a scheduled task.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,13 +137,11 @@ fn set_task_enabled(task_path: &str, task_name: &str, enabled: bool) -> Result<(
     with_task_service(|service| unsafe {
         let folder = service.GetFolder(&BSTR::from(task_path)).map_err(com_err)?;
         let task = folder.GetTask(&BSTR::from(task_name)).map_err(com_err)?;
-        // SetEnabled can flip the flag and then fail re-arming a trigger with not-found (an
-        // UpdateOrchestrator WNF-triggered task on 26100). The stored flag, re-read, decides.
         if let Err(e) = task.SetEnabled(flag) {
             let stored = folder
                 .GetTask(&BSTR::from(task_name))
                 .and_then(|fresh| fresh.Enabled());
-            if !(is_not_found(&e) && stored.is_ok_and(|now| now == flag)) {
+            if !toggle_landed(e.code().0 as u32, stored.is_ok_and(|now| now == flag)) {
                 return Err(com_err(e));
             }
             log::warn!(
@@ -151,6 +150,17 @@ fn set_task_enabled(task_path: &str, task_name: &str, enabled: bool) -> Result<(
         }
         Ok(())
     })
+}
+
+/// SetEnabled flips the flag and then fails with ERROR_NOT_FOUND (0x80070490) on the
+/// UpdateOrchestrator task StartOobeAppsScanAfterUpdate on 26100, observed as SYSTEM in both
+/// directions. Only that code, and only with the stored flag re-read as requested, counts as done.
+fn toggle_landed(code: u32, stored_as_requested: bool) -> bool {
+    stored_as_requested
+        && matches!(
+            code,
+            HRESULT_ELEMENT_NOT_FOUND | HRESULT_FILE_NOT_FOUND | HRESULT_PATH_NOT_FOUND
+        )
 }
 
 /// Enable a scheduled task.
@@ -180,6 +190,16 @@ pub fn apply_scheduler_change(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_toggle_counts_only_with_a_not_found_code_and_the_flag_in_place() {
+        assert!(toggle_landed(HRESULT_ELEMENT_NOT_FOUND, true));
+        assert!(!toggle_landed(HRESULT_ELEMENT_NOT_FOUND, false));
+        assert!(
+            !toggle_landed(0x8007_0005, true),
+            "access denied never counts"
+        );
+    }
 
     #[test]
     fn task_state_from_com_maps_numeric_states() {
