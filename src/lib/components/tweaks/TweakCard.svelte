@@ -113,11 +113,9 @@
   const optionLabels = $derived(tweak.definition.optionLabels);
   const isSegmented = $derived(optionLabels.length <= 2);
 
-  // ADR-0003: System Default is a computed *status*, not a state anyone picks. It means the live
-  // surface matched none of the authored options, so it only exists while that is true. Once an
-  // option matches there is nothing for it to describe and it is not offered; the way back out of
-  // an applied option is Restore, which is its own button.
-  const atSystemDefault = $derived(activeOption === null || activeOption === undefined);
+  // ADR-0003: offered only while it is the detected state. Not `activeOption == null`: Unknown and
+  // loading also have no active option, and must show nothing selected.
+  const atSystemDefault = $derived(status.state === "system_default");
 
   // Authored options in order, with the System Default position spliced in only while it is the
   // live state: [option 1] [System Default] [option 2], or just the options once one matches.
@@ -140,14 +138,9 @@
     });
   });
 
-  // Pending label, else the active option, else the System Default position. Shared by both shapes.
-  const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? SYSTEM_DEFAULT);
-  const segmentValue = $derived(
-    Math.max(
-      0,
-      segments.findIndex((s) => s.target === selectValue),
-    ),
-  );
+  const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? (atSystemDefault ? SYSTEM_DEFAULT : null));
+  // -1 selects no segment (Unknown / loading).
+  const segmentValue = $derived(segments.findIndex((s) => s.target === selectValue));
   const selectOptions = $derived.by(() => {
     const opts: { value: string; label: string; disabled?: boolean }[] = [];
     // Same rule as the segments: offered only while it is the live state.
@@ -162,20 +155,12 @@
   // Track a pending high-risk apply for confirmation.
   let pendingHighRiskLabel: string | null = $state(null);
 
-  /**
-   * The one place a clicked target becomes an action, so every control gets the same answer and no
-   * caller can stage a target that should never be staged.
-   *
-   * Ordering matters. System Default is handled first because it is a Restore, never an Apply
-   * (ADR-0003), and because the cancel branch below cannot cover it: `activeOption` is null while
-   * System Default is the live state, so no label ever equals it. Routing that position here rather
-   * than at each call site is what keeps "clicking what is already live clears the staged change"
-   * true for every state, instead of true only where a caller remembered to special-case it.
-   */
+  // System Default is a Restore, never an Apply (ADR-0003), and only from an authored option:
+  // clicking it while already there must only unstage.
   function selectTarget(target: string) {
     if (target === SYSTEM_DEFAULT) {
       unstageChange(tweak.definition.id);
-      if (hasSnapshot) handleRestoreClick();
+      if (activeOption && hasSnapshot) handleRestoreClick();
       return;
     }
     if (target === activeOption) {
@@ -371,6 +356,7 @@
           <Select
             value={selectValue}
             options={selectOptions}
+            placeholder={isUnknown ? "Unknown" : isChecking ? "Checking…" : undefined}
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}

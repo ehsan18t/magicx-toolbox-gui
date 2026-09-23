@@ -65,9 +65,11 @@
 
   // Find index of selected option for keyboard navigation
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
+  // With nothing selected the group still needs one tab stop.
+  const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
 
   function handleClick(optValue: number) {
-    if (disabled || loading) return;
+    if (disabled || loading || optValue === value) return;
     if (options.find((o) => o.value === optValue)?.disabled) return;
     onchange?.(optValue);
   }
@@ -120,13 +122,13 @@
   )}
   onkeydown={handleKeydown}
 >
-  {#each options as opt (opt.value)}
+  {#each options as opt, i (opt.value)}
     {@const isSelected = opt.value === value}
     <button
       type="button"
       role="radio"
       aria-checked={isSelected}
-      tabindex={isSelected ? 0 : -1}
+      tabindex={i === tabStopIndex ? 0 : -1}
       disabled={disabled || loading || opt.disabled}
       class={cn(
         "relative inline-flex items-center justify-center gap-1.5 font-medium transition-all duration-150",
