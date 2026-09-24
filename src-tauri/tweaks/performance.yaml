@@ -744,11 +744,9 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: UltimatePerformance, type: REG_DWORD }
       # `/duplicatescheme` mints a NEW guid, so the template guid can never be activated or probed.
-      # Apply captures both the guid it created and the scheme that was active before, in the app's
-      # own HKLM store, so undo restores the real prior plan instead of hardcoding Balanced.
+      # Only the plan this tweak created is reused or deleted, never one found by name: a user's own
+      # "Ultimate Performance" copy is theirs, and the name is translated.
       - id: ultimate_scheme
         action:
           apply: |
@@ -757,42 +755,38 @@ tweaks:
             $prior = [regex]::Match((powercfg /getactivescheme | Out-String), $guidRx).Value
             if (-not $prior) { Write-Error 'Could not read the currently active power scheme'; exit 1 }
             $known = (Get-ItemProperty -Path $store -Name AppliedScheme -ErrorAction SilentlyContinue).AppliedScheme
-            $list = (powercfg /list | Out-String)
-            $guid = $null
-            if ($known -and $list -match [regex]::Escape($known)) {
+            # New-Item -Force on an existing key deletes its values.
+            if (-not (Test-Path $store)) { New-Item -Path $store -Force | Out-Null }
+            if ($known -and (powercfg /list | Out-String) -match [regex]::Escape($known)) {
               $guid = $known
             } else {
-              $line = (powercfg /list) | Where-Object { $_ -match 'Ultimate Performance' } | Select-Object -First 1
-              if ($line) {
-                $guid = [regex]::Match($line, $guidRx).Value
-              } else {
-                $out = powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>&1
-                if ($LASTEXITCODE -ne 0) { Write-Error ($out | Out-String); exit 1 }
-                $guid = [regex]::Match(($out | Out-String), $guidRx).Value
-              }
+              $out = powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>&1
+              if ($LASTEXITCODE -ne 0) { Write-Error ($out | Out-String); exit 1 }
+              $guid = [regex]::Match(($out | Out-String), $guidRx).Value
+              if (-not $guid) { Write-Error 'Could not read the guid of the new scheme'; exit 1 }
+              Set-ItemProperty -Path $store -Name AppliedScheme -Value $guid -Force
             }
-            if (-not $guid) { Write-Error 'Could not determine the Ultimate Performance scheme guid'; exit 1 }
-            New-Item -Path $store -Force | Out-Null
             if ($prior -ne $guid) { Set-ItemProperty -Path $store -Name PriorScheme -Value $prior -Force }
-            Set-ItemProperty -Path $store -Name AppliedScheme -Value $guid -Force
             powercfg /setactive $guid
             if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /setactive failed'; exit 1 }
             exit 0
           undo: |
             $store = 'HKLM:\SOFTWARE\MagicXToolbox\PowerPlan'
-            $guidRx = '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
             $props = Get-ItemProperty -Path $store -ErrorAction SilentlyContinue
             $applied = $props.AppliedScheme
-            $prior = $props.PriorScheme
-            if (-not $prior) {
-              $prior = (powercfg /list) |
-                ForEach-Object { [regex]::Match($_, $guidRx).Value } |
-                Where-Object { $_ -and $_ -ne $applied } | Select-Object -First 1
+            if (-not $applied) { exit 0 }
+            $list = powercfg /list | Out-String
+            if ($list -match [regex]::Escape($applied)) {
+              if ((powercfg /getactivescheme | Out-String) -match [regex]::Escape($applied)) {
+                # Balanced exists on every machine; it stands in only when the recorded prior plan was deleted.
+                $prior = $props.PriorScheme
+                if (-not $prior -or $list -notmatch [regex]::Escape($prior)) { $prior = '381b4222-f694-41f0-9685-ff5bb260df2e' }
+                powercfg /setactive $prior
+                if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /setactive failed'; exit 1 }
+              }
+              powercfg /delete $applied
+              if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /delete failed'; exit 1 }
             }
-            if (-not $prior) { Write-Error 'Could not determine a power scheme to restore'; exit 1 }
-            powercfg /setactive $prior
-            if ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /setactive failed'; exit 1 }
-            if ($applied) { powercfg /delete $applied }
             Remove-ItemProperty -Path $store -Name AppliedScheme -Force -ErrorAction SilentlyContinue
             Remove-ItemProperty -Path $store -Name PriorScheme -Force -ErrorAction SilentlyContinue
             exit 0
@@ -805,9 +799,7 @@ tweaks:
           shell: powershell
     options:
       - label: "Ultimate Performance"
-        values: { state: 1, ultimate_scheme: run }
-      - label: "Previous power plan"
-        values: { state: 0 }
+        values: { ultimate_scheme: run }
 
   - id: disable_power_throttling
     name: "Disable CPU power throttling"
@@ -1140,8 +1132,6 @@ tweaks:
     reversible: true
     requires_reboot: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: MemoryCompression, type: REG_DWORD }
       - id: memory_compression
         action:
           apply: |
@@ -1156,9 +1146,7 @@ tweaks:
           shell: powershell
     options:
       - label: "Disabled"
-        values: { state: 1, memory_compression: run }
-      - label: "Enabled"
-        values: { state: 0 }
+        values: { memory_compression: run }
 
   - id: disable_fast_startup
     name: "Disable Fast Startup (hiberboot)"
@@ -1452,10 +1440,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: ReservedStorage, type: REG_DWORD }
-      # Out-String matching is the interim probe: the property name returned by
-      # Get-WindowsReservedStorageState on 26100 is not yet confirmed.
       - id: reserved_storage
         action:
           apply: |
@@ -1465,12 +1449,10 @@ tweaks:
             try { Set-WindowsReservedStorageState -State Enabled -ErrorAction Stop } catch { Write-Error $_; exit 1 }
             exit 0
           probe: |
-            try { $state = Get-WindowsReservedStorageState -ErrorAction Stop | Out-String } catch { Write-Error $_; exit 1 }
-            if ($state -match 'Disabled') { exit 0 } else { exit 1 }
+            try { $state = (Get-WindowsReservedStorageState -ErrorAction Stop).ReservedStorageState } catch { Write-Error $_; exit 1 }
+            if ($state -eq 'Disabled') { exit 0 } else { exit 1 }
           shell: powershell
           timeout: 300
     options:
       - label: "Reserved storage off"
-        values: { state: 1, reserved_storage: run }
-      - label: "Reserved storage on"
-        values: { state: 0 }
+        values: { reserved_storage: run }

@@ -18,18 +18,18 @@ This category covers system responsiveness, memory, storage, power and gaming or
 | [Variable refresh rate for windowed games](#variable-refresh-rate-for-windowed-games) | `variable_refresh_rate` | Dropdown (3 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn on optimizations for windowed games](#turn-on-optimizations-for-windowed-games) | `optimizations_windowed_games` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Disable Xbox Game Bar capture (Game DVR)](#disable-xbox-game-bar-capture-game-dvr) | `disable_gamedvr_capture` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Activate the Ultimate Performance power plan](#activate-the-ultimate-performance-power-plan) | `ultimate_performance_power_plan` | Switch (2 options) | medium | admin | no | INCORRECT (corrected form ships) |
+| [Activate the Ultimate Performance power plan](#activate-the-ultimate-performance-power-plan) | `ultimate_performance_power_plan` | Switch | medium | admin | no | INCORRECT (corrected form ships) |
 | [Disable CPU power throttling](#disable-cpu-power-throttling) | `disable_power_throttling` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Lift the multimedia network throttling cap](#lift-the-multimedia-network-throttling-cap) | `network_throttling_index` | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Disable Storage Sense auto-cleanup](#disable-storage-sense-auto-cleanup) | `disable_storage_sense` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Enable SSD TRIM (delete notification)](#enable-ssd-trim-delete-notification) | `ssd_optimize_trim` | Switch (2 options) | low | admin | no | INCORRECT (corrected form ships) |
 | [Pin NTFS last-access updates off](#pin-ntfs-last-access-updates-off) | `ntfs_disable_lastaccess` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
-| [Disable RAM memory compression](#disable-ram-memory-compression) | `disable_memory_compression` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Disable RAM memory compression](#disable-ram-memory-compression) | `disable_memory_compression` | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable Fast Startup (hiberboot)](#disable-fast-startup-hiberboot) | `disable_fast_startup` | Switch (2 options) | low | admin | no (next shutdown) | VERIFIED-WITH-CORRECTION |
 | [Disable VBS and Memory Integrity (HVCI)](#disable-vbs-and-memory-integrity-hvci) | `disable_vbs_hvci` | Switch (2 options) | critical | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable Spectre / Meltdown CPU mitigations](#disable-spectre--meltdown-cpu-mitigations) | `disable_spectre_meltdown` | Switch (2 options) | critical | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable mouse acceleration (Enhance Pointer Precision)](#disable-mouse-acceleration-enhance-pointer-precision) | `disable_mouse_acceleration` | Switch (2 options) | low | none | no (sign-out) | VERIFIED-WITH-CORRECTION |
-| [Turn off reserved storage](#turn-off-reserved-storage) | `reserved_storage_off` | Switch (2 options) | medium | admin | no | VERIFIED |
+| [Turn off reserved storage](#turn-off-reserved-storage) | `reserved_storage_off` | Switch | medium | admin | no | VERIFIED |
 
 Elevation `none` means the tweak runs as the signed-in user (the YAML level `user`). Any per-user (HKCU) effect inside an `admin` tweak still runs as the signed-in user, so it lands in your own hive. A tweak with two options renders as a two-position switch; three or more render as a dropdown. In every tweak, **System Default** is never an authored option: it is the status the app shows when the live machine matches none of the options, and selecting it restores the snapshot the app took before the tweak was first applied.
 
@@ -731,7 +731,7 @@ Worth applying if you never use Game Bar clips and want the recorder out of the 
 
 ### Activate the Ultimate Performance power plan
 
-`ultimate_performance_power_plan` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`ultimate_performance_power_plan` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Activates the hidden Ultimate Performance power plan, cutting CPU idle transitions on a desktop.**
 
@@ -739,21 +739,19 @@ Worth applying if you never use Game Bar clips and want the recorder out of the 
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `UltimatePerformance`, `REG_DWORD` (the app's own marker) |
 | `ultimate_scheme` | action (PowerShell, with undo and probe) | `powercfg` scheme duplication and activation; bookkeeping in `HKLM\SOFTWARE\MagicXToolbox\PowerPlan` (`AppliedScheme`, `PriorScheme`) |
 
-| Option | `state` | `ultimate_scheme` |
-|---|---|---|
-| Ultimate Performance | `1` | run apply |
-| Previous power plan | `0` | not run (its undo is driven if the plan is active) |
+| Option | `ultimate_scheme` |
+|---|---|
+| Ultimate Performance | run apply |
 
-The action works as follows. **Apply** reads the currently active scheme GUID (`powercfg /getactivescheme`); reuses the GUID it recorded on an earlier apply if that scheme still exists; otherwise reuses any existing scheme named "Ultimate Performance" in `powercfg /list`; otherwise runs `powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61` and captures the new GUID it prints. It records the prior scheme as `PriorScheme` (unless it is the same plan) and the Ultimate GUID as `AppliedScheme`, then runs `powercfg /setactive` on that GUID; any failure exits non-zero. **Undo** activates `PriorScheme` (or, if none was recorded, the first other scheme in the list), then deletes the applied scheme with `powercfg /delete` and clears both bookkeeping values. **Probe** reports the plan as present only when `AppliedScheme` is recorded and `powercfg /getactivescheme` shows it active.
+The action works as follows. **Apply** reads the currently active scheme GUID (`powercfg /getactivescheme`); reuses the GUID it recorded on an earlier apply if that scheme still exists; otherwise runs `powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61` and records the new GUID it prints as `AppliedScheme`. It never reuses a plan it did not create, even one named "Ultimate Performance". It records the prior scheme as `PriorScheme` (unless it is the same plan), then runs `powercfg /setactive` on the Ultimate GUID; any failure exits non-zero. **Undo** does nothing if no `AppliedScheme` is recorded. Otherwise, if the created plan still exists: when it is the active plan, it activates `PriorScheme` (or Balanced, `381b4222-f694-41f0-9685-ff5bb260df2e`, if that plan was deleted since); a plan you switched to yourself is left active. It then deletes the created plan with `powercfg /delete`, failing if either step fails, and clears both bookkeeping values. **Probe** reports the plan as present only when `AppliedScheme` is recorded and `powercfg /getactivescheme` shows it active.
 
-System Default appears when the marker is absent, which is the state of any machine the tweak has never touched, whatever plan is active. Windows' stock active plan is Balanced, or an OEM plan on many laptops and prebuilt desktops.
+System Default appears whenever the plan this tweak created is not the active one, which includes any machine the tweak has never touched and a machine where you switched plans since; selecting it after applying restores the snapshot, which runs the undo. Windows' stock active plan is Balanced, or an OEM plan on many laptops and prebuilt desktops.
 
 #### How it works
 
-The Ultimate Performance scheme is a hidden power-plan template (GUID `e9a42b02-d5df-448d-aa00-03f14749eb61`) present since Windows 10 1803. The plan disables core parking, raises the minimum processor state and removes most idle power transitions, so cores do not spend time ramping back up from low-power states. The template is not selectable directly: `powercfg /duplicatescheme` materialises a copy, and the copy receives a newly generated GUID, not the template's (confirmed by Microsoft's `PowerDuplicateScheme` documentation and on a live machine, where the copy appeared as `4da59277-...` and the template GUID never appeared in `powercfg /list`). That is why the tweak captures the printed GUID, and why it records the plan that was active before so the undo returns you to your real prior plan (including an OEM plan) instead of assuming Balanced. The probe compares GUIDs rather than plan names, so it works on a localised Windows; the apply's reuse-by-name check does match the English name "Ultimate Performance" and falls back to duplicating a new copy when the name differs. Microsoft does not expose the plan on battery-powered systems by design, and on Modern Standby hardware `powercfg /list` may show only Balanced, in which case the plan cannot be selected. The duplication works on all client editions, not only Pro for Workstations.
+The Ultimate Performance scheme is a hidden power-plan template (GUID `e9a42b02-d5df-448d-aa00-03f14749eb61`) present since Windows 10 1803. The plan disables core parking, raises the minimum processor state and removes most idle power transitions, so cores do not spend time ramping back up from low-power states. The template is not selectable directly: `powercfg /duplicatescheme` materialises a copy, and the copy receives a newly generated GUID, not the template's (confirmed by Microsoft's `PowerDuplicateScheme` documentation and on a live machine, where the copy appeared as `4da59277-...` and the template GUID never appeared in `powercfg /list`). That is why the tweak captures the printed GUID, and why it records the plan that was active before so the undo returns you to your real prior plan (including an OEM plan) instead of assuming Balanced. The probe compares GUIDs rather than plan names, so it works on a localised Windows, and the apply never looks plans up by name: a copy you made yourself (the research machine had one, `4da59277-...`) is neither reused nor deleted. Microsoft does not expose the plan on battery-powered systems by design, and on Modern Standby hardware `powercfg /list` may show only Balanced, in which case the plan cannot be selected. The duplication works on all client editions, not only Pro for Workstations.
 
 #### Benefits
 - Less jitter from cores ramping up out of low-power states.
@@ -765,21 +763,20 @@ The Ultimate Performance scheme is a hidden power-plan template (GUID `e9a42b02-
 - Materially worse battery runtime on any laptop or handheld.
 - Small delta against the stock High Performance plan.
 - No measurable gain on modern hardware; no average-FPS improvement in any published measurement; the honest claim is reduced micro-latency, not more frames.
-- If you already had a plan named "Ultimate Performance", the tweak reuses it and the undo deletes it with `powercfg /delete`.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build; sensible on desktops on AC power. May be unavailable on Modern Standby hardware.
 - **Takes effect**: immediately.
-- **Reverting**: "Previous power plan" and System Default both run the undo: the plan active before the apply is reactivated and the duplicated Ultimate plan is deleted. If no prior plan was recorded (because Ultimate was already active when you applied), the undo activates the first other plan in the list, which may not be the one you expect. Changes you made to the duplicated plan's settings are lost when it is deleted.
+- **Reverting**: turning the switch off (System Default) runs the undo: if the created plan is still active, the plan active before the apply is reactivated (Balanced if that plan has since been deleted), and the created Ultimate plan is deleted. Changes you made to the created plan's settings are lost when it is deleted. A failed delete surfaces as Needs Attention.
 
 #### Interactions
-Network tweaks that edit power settings (`network:disable_usb_selective_suspend`, `network:disable_wake_timers` and similar) apply to whichever scheme is active when they run; if you apply them while Ultimate is active, they change only the duplicated plan, which reverting this tweak deletes, so apply or re-check them after choosing your plan. The `state` marker is per-user while the power plan is machine-wide, so another account on the same PC sees this tweak as System Default.
+Network tweaks that edit power settings (`network:disable_usb_selective_suspend`, `network:disable_wake_timers` and similar) apply to whichever scheme is active when they run; if you apply them while Ultimate is active, they change only the duplicated plan, which reverting this tweak deletes, so apply or re-check them after choosing your plan.
 
 #### Validation
-- **Verdict**: INCORRECT as researched; the shipped tweak implements the research's corrected form. The research found that activating the template GUID can never work (the copy gets a new GUID), and required the apply to capture the new GUID and reuse an existing copy, and the undo to restore the previously active plan rather than Balanced and to delete the copy. The shipped action does all of that. Apply and activation failures exit non-zero; a failed `powercfg /delete` during undo is not reported, so a duplicate plan can remain.
+- **Verdict**: INCORRECT as researched; the shipped tweak implements the research's corrected form. The research found that activating the template GUID can never work (the copy gets a new GUID), and required the apply to capture the new GUID and reuse an existing copy, and the undo to restore the previously active plan rather than Balanced and to delete the copy. The shipped action does all of that, reusing only a copy it created itself. Apply, activation and delete failures all exit non-zero.
 - **Confidence**: Microsoft-documented (`powercfg` and `PowerDuplicateScheme` on Microsoft Learn).
 - **Reasoning**: the new-GUID behaviour is documented and was reproduced on a live machine; an independent community bug report describes the same failure in another tool. The adversarial probe audit lists this probe among those with the safe polarity: only the proven success path exits 0, and any failure reports "not applied".
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Tested**: Build validation (schema, ownership and conflict checks); apply, probe, undo and probe again run under Windows PowerShell 5.1 on build 26100 with a user-made "Ultimate Performance" copy present: the tweak created and deleted its own copy, left the user's copy in place and reactivated the prior OEM plan.
 
 #### Recommendation
 Worth trying on a desktop on AC power where you want minimum latency and do not mind the extra heat and power. On a laptop, or if you already run High Performance, skip it: you are paying real power for a difference you are unlikely to measure.
@@ -1090,7 +1087,7 @@ Worth applying if you want last-access updates pinned off by your own decision r
 
 ### Disable RAM memory compression
 
-`disable_memory_compression` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
+`disable_memory_compression` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Turns off RAM page compression, trading memory headroom for a little less CPU work.**
 
@@ -1098,15 +1095,13 @@ Worth applying if you want last-access updates pinned off by your own decision r
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `MemoryCompression`, `REG_DWORD` (the app's own marker) |
 | `memory_compression` | action (PowerShell, with undo and probe) | apply `Disable-MMAgent -MemoryCompression`; undo `Enable-MMAgent -MemoryCompression`; probe `(Get-MMAgent).MemoryCompression -eq $false` |
 
-| Option | `state` | `memory_compression` |
-|---|---|---|
-| Disabled | `1` | run apply |
-| Enabled | `0` | not run (its undo is driven if compression is off) |
+| Option | `memory_compression` |
+|---|---|
+| Disabled | run apply |
 
-Every cmdlet call uses `-ErrorAction Stop` and exits non-zero on failure, so a failed call never reads as success. System Default appears while the marker is absent, which is the state of any machine the tweak has never touched. Windows ships with memory compression enabled.
+Every cmdlet call uses `-ErrorAction Stop` and exits non-zero on failure, so a failed call never reads as success. System Default appears while memory compression is on, which is how Windows ships; selecting it after applying restores the snapshot, which runs the undo. Detection reads `Get-MMAgent` itself, so a machine where compression was already off reads as "Disabled" for every account and has nothing to revert.
 
 #### How it works
 
@@ -1125,15 +1120,15 @@ When memory is under pressure, the Windows memory manager compresses infrequentl
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; sensible only with 32 GB of RAM or more.
 - **Takes effect**: immediately for newly compressed pages; fully after a reboot, when the existing store is gone.
-- **Reverting**: "Enabled" and System Default both run `Enable-MMAgent -MemoryCompression`, restoring the shipped behaviour.
+- **Reverting**: turning the switch off (System Default) after applying runs `Enable-MMAgent -MemoryCompression`, restoring the shipped behaviour.
 
 #### Interactions
-`memory_prefetch_mode` ("Disable SysMain (SuperFetch) prefetching") is a different MMAgent feature; disabling the SysMain service does not disable compression, and this tweak does not touch SysMain. The `state` marker is per-user while compression is machine-wide, so another account on the same PC sees this tweak as System Default.
+`memory_prefetch_mode` ("Disable SysMain (SuperFetch) prefetching") is a different MMAgent feature; disabling the SysMain service does not disable compression, and this tweak does not touch SysMain.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research corrected the timing: the cmdlet takes effect immediately for newly compressed pages, and the reboot only drains the existing store.
 - **Confidence**: Microsoft-documented (`Disable-MMAgent`, `Enable-MMAgent`, `Get-MMAgent`).
-- **Reasoning**: apply, undo and probe map one-to-one onto the documented cmdlets, and `Get-MMAgent` returned `MemoryCompression : False` on a machine where it had been applied, confirming the probe. The adversarial probe audit lists this probe among those with the safe polarity. The research also confirmed that the engine runs the action's undo when you select the option that omits it.
+- **Reasoning**: apply, undo and probe map one-to-one onto the documented cmdlets, and `Get-MMAgent` returned `MemoryCompression : False` on a machine where it had been applied, confirming the probe. The adversarial probe audit lists this probe among those with the safe polarity.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
@@ -1380,7 +1375,7 @@ Strongly recommended for gamers, especially in shooters, where 1:1 movement is a
 
 ### Turn off reserved storage
 
-`reserved_storage_off` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`reserved_storage_off` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Frees the disk space Windows sets aside for updates, at the cost of update headroom.**
 
@@ -1388,19 +1383,17 @@ Strongly recommended for gamers, especially in shooters, where 1:1 movement is a
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `ReservedStorage`, `REG_DWORD` (the app's own marker) |
-| `reserved_storage` | action (PowerShell, with undo and probe, 300-second timeout) | apply `Set-WindowsReservedStorageState -State Disabled`; undo `Set-WindowsReservedStorageState -State Enabled`; probe: `Get-WindowsReservedStorageState` output contains "Disabled" |
+| `reserved_storage` | action (PowerShell, with undo and probe, 300-second timeout) | apply `Set-WindowsReservedStorageState -State Disabled`; undo `Set-WindowsReservedStorageState -State Enabled`; probe: the `ReservedStorageState` property of `Get-WindowsReservedStorageState` is `Disabled` |
 
-| Option | `state` | `reserved_storage` |
-|---|---|---|
-| Reserved storage off | `1` | run apply |
-| Reserved storage on | `0` | not run (its undo is driven if reserved storage is off) |
+| Option | `reserved_storage` |
+|---|---|
+| Reserved storage off | run apply |
 
-Every cmdlet call uses `-ErrorAction Stop` and exits non-zero on failure. System Default appears while the marker is absent, which is the state of any machine the tweak has never touched.
+Every cmdlet call uses `-ErrorAction Stop` and exits non-zero on failure. System Default appears while reserved storage is on; selecting it after applying restores the snapshot, which runs the undo. Detection reads the live state, so a machine that never had reserved storage (an upgraded install) reads as "Reserved storage off" for every account, and nothing is turned on by a revert.
 
 #### How it works
 
-Reserved storage (Windows 10 1903 and later) is a block of disk space Windows sets aside so that feature updates, temporary files and system caches always have room, even when the disk is nearly full. `Set-WindowsReservedStorageState` in the DISM PowerShell module turns it off or on for the running (online) image, and `Get-WindowsReservedStorageState` reports it; the probe matches the word "Disabled" in that output. Microsoft documents the failure mode verbatim: if reserved storage is in use, it "may not be disabled", and the cmdlet returns "This operation is not supported when reserved storage is in use. Please wait for any servicing operations to complete and then try again later." In that case the apply fails and the tweak reports the failure rather than a false success. Reserved storage is enabled automatically only on new PCs with 1903 or later preinstalled and on clean installs; it is not enabled when upgrading from an earlier version, so many machines never had it and there is nothing to reclaim. Its size varies with installed language packs and optional features, typically several GB. The action has a 300-second timeout because DISM servicing calls can run long.
+Reserved storage (Windows 10 1903 and later) is a block of disk space Windows sets aside so that feature updates, temporary files and system caches always have room, even when the disk is nearly full. `Set-WindowsReservedStorageState` in the DISM PowerShell module turns it off or on for the running (online) image, and `Get-WindowsReservedStorageState` reports it; the probe reads its `ReservedStorageState` property, an enum that is not translated. Microsoft documents the failure mode verbatim: if reserved storage is in use, it "may not be disabled", and the cmdlet returns "This operation is not supported when reserved storage is in use. Please wait for any servicing operations to complete and then try again later." In that case the apply fails and the tweak reports the failure rather than a false success. Reserved storage is enabled automatically only on new PCs with 1903 or later preinstalled and on clean installs; it is not enabled when upgrading from an earlier version, so many machines never had it and there is nothing to reclaim. Its size varies with installed language packs and optional features, typically several GB. The action has a 300-second timeout because DISM servicing calls can run long.
 
 #### Benefits
 - Reclaims several GB, the largest single reclaimable allocation on a stock install.
@@ -1416,15 +1409,15 @@ Reserved storage (Windows 10 1903 and later) is a block of disk space Windows se
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; only useful where reserved storage was enabled (clean installs and preinstalled machines). On the LTSC/IoT image inspected it was already disabled.
 - **Takes effect**: immediately, unless a servicing operation is in progress, in which case Windows refuses and the tweak reports the failure.
-- **Reverting**: "Reserved storage on" and System Default both run `Set-WindowsReservedStorageState -State Enabled`. On a machine that never had reserved storage, choosing "Reserved storage on" turns it on for the first time.
+- **Reverting**: turning the switch off (System Default) after applying runs `Set-WindowsReservedStorageState -State Enabled`. A machine that never had reserved storage reads as "Reserved storage off" before any apply, so it is never turned on by a revert.
 
 #### Interactions
-None; nothing else in the corpus touches reserved storage. The `state` marker is per-user while reserved storage is machine-wide, so another account on the same PC sees this tweak as System Default.
+None; nothing else in the corpus touches reserved storage.
 
 #### Validation
 - **Verdict**: VERIFIED. Carried in from the gap hunt and confirmed by the adversarial pass, with framing corrections: the size is variable (no fixed "roughly 7 GB"), upgraded machines may never have had it, and it is a disk-space control, not a speed tweak.
 - **Confidence**: Microsoft-documented (both cmdlets and the enablement rule on Microsoft Learn).
-- **Reasoning**: the cmdlet, its parameter values and its in-use failure mode are quoted from Microsoft Learn, and the clean-install-only rule from Microsoft's LTSC 2021 what's-new page. Open item: the exact property name `Get-WindowsReservedStorageState` returns on 26100 was not confirmed, so the probe string-matches the formatted output instead of reading a property.
+- **Reasoning**: the cmdlet, its parameter values and its in-use failure mode are quoted from Microsoft Learn, and the clean-install-only rule from Microsoft's LTSC 2021 what's-new page. The property the probe reads, `ReservedStorageState` (type `Microsoft.Dism.Commands.ReservedStorageState`), was confirmed on build 26100.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
