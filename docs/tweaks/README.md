@@ -200,16 +200,16 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Enable DNS over HTTPS auto-upgrade](network.md#enable-dns-over-https-auto-upgrade) | `dns_over_https` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Require encrypted DNS](network.md#require-encrypted-dns) | `require_doh` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable LLMNR](network.md#disable-llmnr) | `disable_llmnr` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED |
-| [Disable NetBIOS over TCP/IP](network.md#disable-netbios-over-tcpip) | `disable_netbios_tcpip` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Disable NetBIOS over TCP/IP](network.md#disable-netbios-over-tcpip) | `disable_netbios_tcpip` | Network & Power tweaks | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable mDNS](network.md#disable-mdns) | `disable_mdns` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable WPAD auto-proxy discovery](network.md#disable-wpad-auto-proxy-discovery) | `disable_wpad` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Disable IPv6 transition technologies](network.md#disable-ipv6-transition-technologies) | `disable_ipv6_transition` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable Internet Connection Sharing](network.md#disable-internet-connection-sharing) | `disable_internet_connection_sharing` | Network & Power tweaks | Switch | medium | admin | yes | VERIFIED |
 | [Firewall logging and local policy merge](network.md#firewall-logging-and-local-policy-merge) | `firewall_logging_and_merge` | Network & Power tweaks | Dropdown (3 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable NIC power management](network.md#disable-nic-power-management) | `disable_nic_power_management` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Disable NIC power management](network.md#disable-nic-power-management) | `disable_nic_power_management` | Network & Power tweaks | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable hibernation](network.md#disable-hibernation) | `disable_hibernation` | Network & Power tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable USB selective suspend](network.md#disable-usb-selective-suspend) | `disable_usb_selective_suspend` | Network & Power tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable wake timers](network.md#disable-wake-timers) | `disable_wake_timers` | Network & Power tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable USB selective suspend](network.md#disable-usb-selective-suspend) | `disable_usb_selective_suspend` | Network & Power tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable wake timers](network.md#disable-wake-timers) | `disable_wake_timers` | Network & Power tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Modern Standby (force S3)](network.md#disable-modern-standby-force-s3) | `disable_modern_standby` | Network & Power tweaks | Switch (2 options) | high | admin | yes | VERIFIED |
 | [Set visual effects to best performance](performance.md#set-visual-effects-to-best-performance) | `optimize_visual_effects` | Performance & Gaming tweaks | Switch (2 options) | low | none | no | INCORRECT (corrected form ships) |
 | [Disable Windows Search indexing](performance.md#disable-windows-search-indexing) | `disable_search_indexing` | Performance & Gaming tweaks | Switch (2 options) | medium | admin | yes | VERIFIED |

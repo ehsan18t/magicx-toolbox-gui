@@ -9,19 +9,19 @@ This category covers network hardening (encrypted DNS, the three broadcast name-
 | [Enable DNS over HTTPS auto-upgrade](#enable-dns-over-https-auto-upgrade) | `dns_over_https` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Require encrypted DNS](#require-encrypted-dns) | `require_doh` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable LLMNR](#disable-llmnr) | `disable_llmnr` | Switch (2 options) | medium | admin | yes | VERIFIED |
-| [Disable NetBIOS over TCP/IP](#disable-netbios-over-tcpip) | `disable_netbios_tcpip` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Disable NetBIOS over TCP/IP](#disable-netbios-over-tcpip) | `disable_netbios_tcpip` | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable mDNS](#disable-mdns) | `disable_mdns` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable WPAD auto-proxy discovery](#disable-wpad-auto-proxy-discovery) | `disable_wpad` | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Disable IPv6 transition technologies](#disable-ipv6-transition-technologies) | `disable_ipv6_transition` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable Internet Connection Sharing](#disable-internet-connection-sharing) | `disable_internet_connection_sharing` | Switch | medium | admin | yes | VERIFIED |
 | [Firewall logging and local policy merge](#firewall-logging-and-local-policy-merge) | `firewall_logging_and_merge` | Dropdown (3 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable NIC power management](#disable-nic-power-management) | `disable_nic_power_management` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Disable NIC power management](#disable-nic-power-management) | `disable_nic_power_management` | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable hibernation](#disable-hibernation) | `disable_hibernation` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable USB selective suspend](#disable-usb-selective-suspend) | `disable_usb_selective_suspend` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable wake timers](#disable-wake-timers) | `disable_wake_timers` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable USB selective suspend](#disable-usb-selective-suspend) | `disable_usb_selective_suspend` | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable wake timers](#disable-wake-timers) | `disable_wake_timers` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Modern Standby (force S3)](#disable-modern-standby-force-s3) | `disable_modern_standby` | Switch (2 options) | high | admin | yes | VERIFIED |
 
-A note on the Control column: in this app one authored option renders as a toggle (System Default or that option) and two or more render as a dropdown whose first entry is the computed System Default status. System Default is never written; it is what the app shows when the live machine matches none of the authored options, and selecting it walks back through the tweak's snapshot (Restore Snapshot) rather than writing a guessed "default" value.
+A note on the Control column: in this app one or two authored options render as a segmented switch and three or more as a dropdown; System Default joins either while it is the live state. System Default is never written; it is what the app shows when the live machine matches none of the authored options, and selecting it walks back through the tweak's snapshot (Restore Snapshot) rather than writing a guessed "default" value.
 
 ## Tweaks
 
@@ -222,7 +222,7 @@ Apply it. On any network with a working DNS server, which includes essentially e
 
 ### Disable NetBIOS over TCP/IP
 
-`disable_netbios_tcpip` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
+`disable_netbios_tcpip` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Shuts off the NetBIOS name service on every network adapter, removing the second broadcast name-resolution protocol that credential-theft tools spoof.**
 
@@ -230,21 +230,19 @@ Apply it. On any network with a working DNS server, which includes essentially e
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `NetbiosTcpip`, `REG_DWORD` (the app's own marker of the chosen option) |
 | `netbios_off` | action (PowerShell, with `apply`, `undo` and `probe`) | writes `NetbiosOptions = 2` (`REG_DWORD`) to every `Tcpip_*` subkey of `HKLM\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces`; records each interface's prior value under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\NetbiosTcpip` |
 
-| Option | `state` | `netbios_off` |
-|---|---|---|
-| Disabled | `1` | run (apply) |
-| Enabled | `0` | not run (the engine runs the action's `undo` if the probe reads it present) |
+| Option | `netbios_off` |
+|---|---|
+| Disabled | run (apply) |
 
 What the action does, precisely:
 
 - **apply**: for each `Tcpip_*` interface subkey, reads the current `NetbiosOptions`, stores it under `ActionSnapshots\NetbiosTcpip` with the interface name as the value name (`-1` if the value was absent), then writes `NetbiosOptions = 2`. Stops on the first error.
-- **undo**: for each `Tcpip_*` subkey, restores the stored value; if the stored value is `-1` or there is no stored value for that interface, deletes `NetbiosOptions`. Then deletes the `ActionSnapshots\NetbiosTcpip` key.
+- **undo**: for each `Tcpip_*` subkey, restores the stored value; deletes `NetbiosOptions` where the stored value is `-1` (it was absent before); writes 0, the documented default, where there is no stored value for that interface (an adapter added after apply, or a missing snapshot key). Then deletes the `ActionSnapshots\NetbiosTcpip` key.
 - **probe**: "applied" only if at least one `Tcpip_*` interface exists and every one of them reads exactly 2. Any interface that reads anything else (including an unreadable or absent value) reports "not applied".
 
-System Default: shown whenever the machine matches neither option, which includes an untouched machine (the HKCU marker does not exist until you pick an option) and a machine where a new adapter has appeared since you applied (the probe then fails). Selecting it restores the snapshot. Stock Windows: every interface carries `NetbiosOptions = 0` ("use the DHCP server's setting"), measured on all seven interfaces of the research machine and matching Microsoft's documented default.
+System Default: shown whenever the probe reads "not applied", which includes an untouched machine and a machine where a new adapter has appeared since you applied. Selecting it restores the snapshot. The tweak is detected from the live interfaces alone, so a machine where every interface was already at 2 reads as "Disabled" without any apply, for every Windows account. Stock Windows: every interface carries `NetbiosOptions = 0` ("use the DHCP server's setting"), measured on all seven interfaces of the research machine and matching Microsoft's documented default.
 
 #### How it works
 
@@ -253,8 +251,6 @@ System Default: shown whenever the machine matches neither option, which include
 NetBIOS Name Service (NBT-NS) resolves names by broadcast, so like LLMNR any host on the subnet can answer and redirect a victim's authentication attempt. Responder poisons NBT-NS and LLMNR with the same tooling.
 
 There is no single machine-wide switch: the setting is per interface, which is why this is an action rather than a single registry effect. An adapter that did not exist at apply time (a new USB NIC, a VPN adapter, a Hyper-V virtual switch) gets a fresh subkey with the default and keeps NetBIOS. The probe catches this and the tweak drops to System Default, so the drift is visible; re-apply to cover the new adapter.
-
-The applied-state marker is in HKCU (per user) while the change is machine-wide, so another Windows account sees the tweak as System Default even though NetBIOS is off for everyone. Because of the HKCU marker, the app's over-the-shoulder guard applies: if the app was elevated with a different account's credentials, the tweak is disabled rather than writing the wrong user's hive.
 
 #### Benefits
 - Closes NBT-NS poisoning, the twin of LLMNR poisoning.
@@ -272,7 +268,7 @@ The applied-state marker is in HKCU (per user) while the change is machine-wide,
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions.
 - **Takes effect**: after a reboot, or after `ipconfig /renew` on a DHCP interface.
-- **Reverting**: "Enabled" runs the undo, which restores each interface's recorded value and deletes `NetbiosOptions` on any interface that had none or that the snapshot does not list. If the `ActionSnapshots\NetbiosTcpip` key is missing (for example deleted by hand), the undo deletes the value on every interface instead of restoring it; the research does not establish whether an absent value behaves exactly like 0.
+- **Reverting**: turning the switch off (System Default) runs the undo, which restores each interface's recorded value, deletes `NetbiosOptions` on any interface that had none, and writes 0 on any interface the snapshot does not list. If the `ActionSnapshots\NetbiosTcpip` key is missing (for example deleted by hand), every interface gets 0, the documented default.
 
 #### Interactions
 - The triad with [Disable LLMNR](#disable-llmnr) and [Disable mDNS](#disable-mdns); apply LLMNR first (cheapest), then this, then mDNS.
@@ -628,7 +624,7 @@ Choose "Log dropped packets" on any machine where you want to diagnose blocked c
 
 ### Disable NIC power management
 
-`disable_nic_power_management` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
+`disable_nic_power_management` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Stops Windows powering down your physical network adapters to save power, the standard cure for Wi-Fi or Ethernet that drops when the PC sits idle.**
 
@@ -636,31 +632,27 @@ Choose "Log dropped packets" on any machine where you want to diagnose blocked c
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `NicPowerManagement`, `REG_DWORD` (the app's own marker of the chosen option) |
-| `nic_power_off` | action (PowerShell, with `apply`, `undo` and `probe`) | writes `PnPCapabilities = 24` (`0x18`, `REG_DWORD`) under `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}\<NNNN>` for each physical adapter whose driver description matches exactly (see How it works for the duplicate-adapter gap); records each key's prior value under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement` |
+| `nic_power_off` | action (PowerShell, with `apply`, `undo` and `probe`) | writes `PnPCapabilities = 24` (`0x18`, `REG_DWORD`) under `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}\<NNNN>` for each physical adapter, matched by GUID; records each key's prior value under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement` |
 
-| Option | `state` | `nic_power_off` |
-|---|---|---|
-| Disabled | `1` | run (apply) |
-| Enabled | `0` | not run (the engine runs the action's `undo` if the probe reads it present) |
+| Option | `nic_power_off` |
+|---|---|
+| Disabled | run (apply) |
 
 What the action does, precisely:
 
-- **apply**: lists the adapters Windows reports as physical (`Get-NetAdapter -Physical`) and takes their interface descriptions. It fails (exit 1) if there are none. For each four-digit subkey of the network adapter class key whose `DriverDesc` matches one of those descriptions, it stores the prior `PnPCapabilities` under the snapshot key (value name = the subkey number, `-1` if absent) and writes 24. It fails if no subkey matched. Virtual adapters, WAN Miniports, the Kernel Debug adapter, Wi-Fi Direct virtual adapters and the Bluetooth PAN device are skipped.
+- **apply**: lists the adapters Windows reports as physical (`Get-NetAdapter -Physical`) and takes their interface GUIDs. It fails (exit 1) if there are none. For each four-digit subkey of the network adapter class key whose `NetCfgInstanceId` is one of those GUIDs, it stores the prior `PnPCapabilities` under the snapshot key (value name = the subkey number, `-1` if absent) and writes 24. It fails if no subkey matched. Virtual adapters, WAN Miniports, the Kernel Debug adapter, Wi-Fi Direct virtual adapters and the Bluetooth PAN device are skipped.
 - **undo**: for each subkey number recorded in the snapshot, writes the recorded value back, or deletes `PnPCapabilities` where the record is `-1`. Then deletes the snapshot key. Keys the apply never touched are left alone.
 - **probe**: "applied" only if at least one physical adapter's class subkey was found and every such subkey reads exactly 24.
 
-System Default: shown on an untouched machine (the HKCU marker does not exist yet) and whenever the physical adapters' values stop matching (for example after a driver reinstall resets `PnPCapabilities`, or a new physical adapter appears). Selecting it restores the snapshot. Stock Windows: per adapter and mixed. Microsoft documents 0 (power management enabled) as the default meaning; on the research machine only 1 of 16 network class subkeys had any value (a MediaTek Wi-Fi 6 MT7921 with `16`, set by its driver) and the other 15 had none.
+System Default: shown whenever the probe reads "not applied": on an untouched machine, and whenever the physical adapters' values stop matching (for example after a driver reinstall resets `PnPCapabilities`, or a new physical adapter appears). Selecting it restores the snapshot. The tweak is detected from the adapters alone, so a machine whose physical adapters already read 24 shows "Disabled" for every Windows account. Stock Windows: per adapter and mixed. Microsoft documents 0 (power management enabled) as the default meaning; on the research machine only 1 of 16 network class subkeys had any value (a MediaTek Wi-Fi 6 MT7921 with `16`, set by its driver) and the other 15 had none.
 
 #### How it works
 
 `PnPCapabilities` in an adapter's driver key is read by NDIS (`ndis.sys`; the string is present there on 26100.4061 and absent from `pci.sys` and `umpnpmgr.dll`) when the device starts. Microsoft's support article "Power management setting on a network adapter" (originally KB 2740020) documents it: "By default, a value of 0 indicates that power management of the network adapter is enabled. A value of 24 will prevent Windows from turning off the network adapter or let the network adapter wake the computer from standby." It maps the Device Manager Power Management checkboxes to values (all three checked `0x100`/256, only the first `0x110`/272, first cleared with the other two greyed `0x118`/280, default 0) and states "For deployment purpose, to keep option 1 cleared, one needs to use the value 24 (0x18)." So 24 is Microsoft's own deployment value for clearing "Allow the computer to turn off this device to save power". It also stops the adapter waking the computer from standby (Wake-on-LAN through that adapter).
 
-The action matches adapters by comparing the class key's `DriverDesc` to the physical adapter's interface description, because only physical adapters expose the Power Management tab. The match is exact text, and Windows appends " #2" (and so on) to the interface description of a second identical adapter but not to its `DriverDesc` (on the test machine, "Microsoft Wi-Fi Direct Virtual Adapter #2" has `DriverDesc` "Microsoft Wi-Fi Direct Virtual Adapter"). A second identical physical NIC is therefore skipped by both the apply and the probe, silently. Because it records each key's prior value, including "absent", the revert puts back a vendor value such as the MediaTek's 16 rather than deleting it.
+The action touches only physical adapters, because only they expose the Power Management tab. It matches the class key's `NetCfgInstanceId` against the adapter's `InterfaceGuid`, not the description text: Windows appends " #2" (and so on) to the interface description of a second identical adapter but not to its `DriverDesc` (on the test machine, "Microsoft Wi-Fi Direct Virtual Adapter #2" has `DriverDesc` "Microsoft Wi-Fi Direct Virtual Adapter"), so a text match would silently skip a second identical NIC. Because it records each key's prior value, including "absent", the revert puts back a vendor value such as the MediaTek's 16 rather than deleting it.
 
 Microsoft's per-adapter PowerShell alternative is `Set-NetAdapterPowerManagement -AllowComputerToTurnOffDevice Disabled`. Microsoft's Exchange Health Checker "Sleepy NIC Check" flags NIC power saving as a cause of packet loss.
-
-The applied-state marker is in HKCU (per user) while the change is machine-wide, so another account sees System Default; the over-the-shoulder guard applies as for any HKCU-writing tweak.
 
 #### Benefits
 - Stops idle disconnects and the latency spike when traffic resumes on a parked link.
@@ -672,12 +664,11 @@ The applied-state marker is in HKCU (per user) while the change is machine-wide,
 - Also removes the adapter's ability to wake the PC from standby (value 24 clears wake too), so Wake-on-LAN through that adapter stops.
 - A driver reinstall or upgrade can reset the value without the app noticing until the next scan shows System Default.
 - The stock state differs per adapter, so there is no single "stock" value to go back to other than the snapshot.
-- A second identical physical adapter (same model, interface description ending in " #2") is not matched, so it keeps power management on and the probe does not notice.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on physical adapters whose driver exposes the Power Management tab.
 - **Takes effect**: after a reboot (or when the device next starts), since NDIS reads the value at device start.
-- **Reverting**: "Enabled" runs the undo, which restores each recorded adapter's prior value or deletes it where there was none. If the `ActionSnapshots\NicPowerManagement` key is missing, the undo changes nothing on the adapters and exits successfully, which leaves 24 in place; the engine's post-undo probe then still reads "applied", so the revert fails verification and surfaces as Needs Attention instead of reporting success.
+- **Reverting**: turning the switch off (System Default) runs the undo, which restores each recorded adapter's prior value or deletes it where there was none. If the `ActionSnapshots\NicPowerManagement` key is missing, the undo changes nothing on the adapters and exits successfully, which leaves 24 in place; the engine's post-undo probe then still reads "applied", so the revert fails verification and surfaces as Needs Attention instead of reporting success.
 
 #### Interactions
 - [Disable USB selective suspend](#disable-usb-selective-suspend) looks like a pair but is independent: a different mechanism (power-scheme index versus per-adapter driver value), different symptoms and a different revert.
@@ -709,26 +700,26 @@ Worth it on a desktop, or on any machine that actually suffers idle network drop
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `Hibernation`, `REG_DWORD` (the app's own marker of the chosen option) |
-| `hibernate_off` | action (PowerShell, with `apply`, `undo` and a native registry `probe`) | runs `powercfg /hibernate off`; records the prior state under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation`; the probe reads `HKLM\SYSTEM\CurrentControlSet\Control\Power` `HibernateEnabled` and reports "applied" when it equals 0 |
+| `hibernate_off` | action (PowerShell, with `apply`, `undo` and a native registry `probe`) | runs `powercfg /hibernate off`; records the prior hibernation file size under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation`; the probe reads `HKLM\SYSTEM\CurrentControlSet\Control\Power` `HibernateEnabled` and reports "applied" when it equals 0 |
+| `hibernate_enabled` | registry | `HKLM\SYSTEM\CurrentControlSet\Control\Power`, value `HibernateEnabled`, `REG_DWORD` |
 
-| Option | `state` | `hibernate_off` |
+| Option | `hibernate_off` | `hibernate_enabled` |
 |---|---|---|
-| Disabled | `1` | run (apply) |
-| Enabled | `0` | not run (the engine runs the action's `undo` if the probe reads it present) |
+| Disabled | run (apply) | `0` |
+| Enabled | not run (the engine runs the action's `undo` when the probe reads it present) | `1` |
 
-What the action does, precisely:
+The action is declared first, so `powercfg` does the real work (it writes `HibernateEnabled` and deletes or creates `hiberfil.sys`) and the registry effect then only confirms the value `powercfg` left. What the action does, precisely:
 
-- **apply**: records `HibernateEnabled` and `HiberFileSizePercent` from `HKLM\SYSTEM\CurrentControlSet\Control\Power` (as `Enabled` and `SizePercent`, `-1` if absent), then runs `powercfg /hibernate off` and fails if it returns non-zero.
-- **undo**: if the recorded `Enabled` is 0 (hibernation was already off before apply), it leaves hibernation off, deletes the snapshot key and exits 0. The probe then still reads `HibernateEnabled = 0` ("applied"), so the engine's post-undo check fails: choosing "Enabled" fails and is rolled back to "Disabled", and Restore Snapshot ends in Needs Attention. Hibernation does stay off, but the revert never reports success. Otherwise it runs `powercfg /hibernate on`, fails if that returns non-zero, then, if a size percentage above 0 was recorded, runs `powercfg /hibernate /size <percent>`, and deletes the snapshot key.
+- **apply**: records `HiberFileSizePercent` from `HKLM\SYSTEM\CurrentControlSet\Control\Power` (as `SizePercent`, `-1` if absent), then runs `powercfg /hibernate off` and fails if it returns non-zero.
+- **undo**: runs `powercfg /hibernate on` and fails if that returns non-zero; then, if a size percentage above 0 was recorded, runs `powercfg /hibernate /size <percent>` (failing if that fails), and deletes the snapshot key.
 
-System Default: shown on an untouched machine (the HKCU marker does not exist yet) and whenever the marker and the live `HibernateEnabled` disagree (for example hibernation turned back on with `powercfg /h on` after applying). Selecting it restores the snapshot. Stock Windows: hibernation enabled on most machines; the research machine read `HibernateEnabled = 0` with `HibernateEnabledDefault = 1`, and that machine is owner-modified, so it is not evidence of the Windows default.
+System Default: shown only when `HibernateEnabled` holds neither 0 nor 1 (for example it is missing); selecting it restores the snapshot. Detection reads the live value, so a machine that already had hibernation off reads as "Disabled" without any apply, and one with hibernation on reads as "Enabled", for every Windows account. Stock Windows: hibernation enabled on most machines; the research machine read `HibernateEnabled = 0` with `HibernateEnabledDefault = 1`, and that machine is owner-modified, so it is not evidence of the Windows default.
 
 #### How it works
 
 `powercfg /hibernate off` clears hibernation support and deletes the hidden `C:\hiberfil.sys`, which Windows sizes as a fraction of installed RAM. The power manager records the state in `HibernateEnabled`. Because Fast Startup is a partial hibernation (the kernel session is written to `hiberfil.sys` at shutdown), turning hibernation off also makes Fast Startup unavailable, and hybrid sleep, which writes a hibernation image while sleeping, goes too. On the research machine `powercfg /a` reported Hibernate ("Hibernation has not been enabled"), Hybrid Sleep and Fast Startup ("Hibernation is not available") all unavailable, confirming the cascade.
 
-The revert is conditional: a machine that had hibernation off before you applied stays off, rather than having a multi-gigabyte `hiberfil.sys` and Fast Startup recreated. Because the probe cannot tell "off because this tweak turned it off" from "off before apply", that case fails the engine's post-undo check (see the undo bullet above). A previously reduced hibernation file size is put back with `/size`. A previous `powercfg /hibernate /type reduced` configuration (hibernation file kept only for Fast Startup) is not recorded, so a revert brings back a full hibernation file type.
+Because detection follows `HibernateEnabled`, the revert stays faithful to what the machine had: a machine that already had hibernation off is detected as "Disabled" before any apply, so choosing "Disabled" there changes nothing and no snapshot is taken, and a revert never recreates a `hiberfil.sys` the machine did not have. Choosing "Enabled" turns hibernation on with `powercfg /hibernate on`. A previously reduced hibernation file size is put back with `/size`. A previous `powercfg /hibernate /type reduced` configuration (hibernation file kept only for Fast Startup) is not recorded, so a revert brings back a full hibernation file type.
 
 #### Benefits
 - Reclaims disk space equal to a large fraction of installed RAM, often several gigabytes.
@@ -740,19 +731,18 @@ The revert is conditional: a machine that had hibernation off before you applied
 - Laptops lose the low-battery safety net: hibernation saves the session to disk when the battery runs critically low.
 - Modern Standby machines can drain flat: hibernate-after-standby is what stops an idle Modern Standby laptop discharging completely.
 - A prior `/type reduced` configuration is not preserved by the revert.
-- On a machine that already had hibernation off before apply, the revert cannot verify: "Enabled" fails and rolls back to "Disabled", and Restore Snapshot ends in Needs Attention (hibernation stays off either way).
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
 - **Takes effect**: immediately.
-- **Reverting**: "Enabled" runs the undo. If hibernation was on before apply, it comes back with the recorded size percentage. If it was already off, it stays off but the revert fails its check: "Enabled" is rolled back to "Disabled", and Restore Snapshot ends in Needs Attention. If the snapshot key is missing, the undo turns hibernation on at the default size.
+- **Reverting**: "Enabled", or System Default after applying, runs the undo: hibernation comes back with the recorded size percentage, or at the default size if none was recorded. On hardware or a virtual machine that does not support hibernation, `powercfg /hibernate on` fails and the change is rolled back.
 
 #### Interactions
 - [performance] `disable_fast_startup` (`HiberbootEnabled = 0`) turns off Fast Startup alone; with hibernation disabled here, Fast Startup is already unavailable, so that tweak changes nothing extra until hibernation is re-enabled.
 - [Disable Modern Standby (force S3)](#disable-modern-standby-force-s3): on a machine still using Modern Standby, hibernation is the protection against in-bag drain; do not remove both protections.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. The command and the probe target are correct; the correction concerned the revert, which must not turn hibernation on where it was already off and should keep the prior size. The shipped undo is conditional on the recorded state and restores the size percentage; the hibernation file type is not recorded. When hibernation was already off before apply, the undo leaves it off but the probe still reads "applied", so that revert fails verification rather than reporting success.
+- **Verdict**: VERIFIED-WITH-CORRECTION. The command and the probe target are correct; the correction concerned the revert, which must not turn hibernation on where it was already off and should keep the prior size. The shipped tweak detects its state from `HibernateEnabled` itself, so a machine that already had hibernation off reads as "Disabled" and is never "reverted" into hibernation; the undo restores the size percentage; the hibernation file type is not recorded.
 - **Confidence**: Microsoft-documented (`powercfg` reference and Microsoft's sleep settings documentation), plus `powercfg /a` and registry reads on 26100.
 - **Reasoning**: the adversarial pass attacked the unconditional revert using a measured machine where `HibernateEnabled` was already 0. The probe-fail-open audit lists this tweak among the probes that already fail safe (the native registry probe reports "applied" only when the value reads 0).
 - **Tested**: Build validation (schema, ownership and conflict checks).
@@ -767,7 +757,7 @@ Good on a desktop or a space-constrained SSD where you never hibernate. On a lap
 
 ### Disable USB selective suspend
 
-`disable_usb_selective_suspend` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_usb_selective_suspend` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Stops Windows suspending idle USB ports, the standard fix for USB audio dropouts, dongle disconnects and slow-to-wake hubs.**
 
@@ -775,21 +765,21 @@ Good on a desktop or a space-constrained SSD where you never hibernate. On a lap
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `UsbSelectiveSuspend`, `REG_DWORD` (the app's own marker of the chosen option) |
 | `usb_suspend_off` | action (PowerShell, with `apply`, `undo` and `probe`) | power-plan setting "USB selective suspend setting" (subgroup `2a737441-1930-4402-8d77-b2bebba308a3` "USB settings", setting `48e6b7a6-50f5-4782-a5d4-53bb8f07e226`) on the active scheme, AC and DC indices; records the prior state under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend` |
 
-| Option | `state` | `usb_suspend_off` |
-|---|---|---|
-| Disabled | `1` | run (apply) |
-| Enabled | `0` | not run (the engine runs the action's `undo` if the probe reads it present) |
+| Option | `usb_suspend_off` |
+|---|---|
+| Disabled | run (apply) |
 
 The setting's indices are 0 "Disabled" and 1 "Enabled". What the action does, precisely:
 
-- **apply**: reads the active scheme GUID (`powercfg /GETACTIVESCHEME`) and fails if none is found; queries the current AC and DC indices for the setting on that scheme; records the scheme GUID and both indices (falling back to 1 if an index cannot be parsed); sets AC and DC to 0 with `/SETACVALUEINDEX` and `/SETDCVALUEINDEX`; re-activates the scheme with `/SETACTIVE`, failing if that returns non-zero.
-- **undo**: writes the recorded AC and DC indices back to the recorded scheme (not whichever plan is active now) and re-activates that scheme; if no record exists, it writes 1 and 1 to the current scheme. Then deletes the snapshot key.
+- **apply**: reads the active scheme GUID (`powercfg /GETACTIVESCHEME`) and fails if none is found; queries the current AC and DC indices for the setting on that scheme and fails if it cannot read both; records the scheme GUID and both indices; sets AC and DC to 0 with `/SETACVALUEINDEX` and `/SETDCVALUEINDEX`; re-activates the scheme with `/SETACTIVE`. Any `powercfg` step that returns non-zero fails the apply.
+- **undo**: if the record is complete and the recorded scheme still exists, writes the recorded AC and DC indices back to that scheme (not whichever plan is active now) and re-activates it only if it is still the active plan, so a plan you switched to since is left active. An incomplete record means the apply stopped before changing anything, and a plan deleted since has nothing to restore; in both cases the undo changes nothing. Then deletes the snapshot key.
 - **probe**: "applied" only if both the AC and the DC index of the currently active scheme read 0.
 
-System Default: shown on an untouched machine (the HKCU marker does not exist yet), and whenever the active plan does not have both indices at 0, which includes switching to a different power plan after applying. Selecting it restores the snapshot. Stock Windows: Balanced has selective suspend enabled (index 1) on both AC and DC (measured on 26100).
+The indices are read as the last two hexadecimal numbers in the `powercfg /QUERY` output (AC, then DC), never by the text labels beside them, which Windows translates.
+
+System Default: shown whenever the active plan does not have both indices at 0: on an untouched machine, and after switching to a different power plan. Selecting it restores the snapshot. The tweak is detected from the active plan alone, so a plan that already has both indices at 0 shows "Disabled" for every Windows account. Stock Windows: Balanced has selective suspend enabled (index 1) on both AC and DC (measured on 26100).
 
 #### How it works
 
@@ -806,13 +796,12 @@ Power-plan values are per scheme and per power source. The action writes only th
 #### Drawbacks
 - Higher idle power, a small but real battery cost on laptops.
 - Only the plan active at apply time is changed: switching to another plan (including enabling Ultimate Performance) brings selective suspend back, and the tweak then shows System Default.
-- Reverting re-activates the recorded plan with `/SETACTIVE`, so if you switched plans after applying, the revert silently makes the old plan your active plan again.
 - No benefit if your USB devices behave.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
+- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, in any display language. Requires administrator.
 - **Takes effect**: immediately; the scheme is re-activated on apply.
-- **Reverting**: "Enabled" runs the undo, restoring the recorded AC and DC indices on the recorded scheme. Without a record, it writes the stock Balanced value (1) to both on the current scheme.
+- **Reverting**: turning the switch off (System Default) runs the undo, restoring the recorded AC and DC indices on the recorded scheme without changing which plan is active.
 
 #### Interactions
 - [performance] `ultimate_performance_power_plan` changes which scheme is active; after it switches plans, this tweak's change stays on the old plan and the probe reads the new one.
@@ -820,10 +809,10 @@ Power-plan values are per scheme and per power source. The action writes only th
 - [Disable NIC power management](#disable-nic-power-management) is a different mechanism for network adapters, not USB ports.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. Both GUIDs and the index meanings are correct; the corrections concerned the revert and detection: restore the recorded indices rather than a fixed 1, pin the scheme so a plan switch cannot misdirect the undo, and check both AC and DC in the probe. The shipped action does all three.
+- **Verdict**: VERIFIED-WITH-CORRECTION. Both GUIDs and the index meanings are correct; the corrections concerned the revert and detection: restore the recorded indices rather than a fixed 1, pin the scheme so a plan switch cannot misdirect the undo, and check both AC and DC in the probe. The shipped action does all three, reads the indices without depending on the display language, and never switches the active plan on revert.
 - **Confidence**: Microsoft-documented (Microsoft's USB selective suspend and `powercfg` references), plus live `powercfg /QUERY` output on 26100 for the names, indices and stock values.
 - **Reasoning**: the adversarial pass accepted the mechanism and attacked only revert fidelity, scheme drift and a one-rail probe. The probe-fail-open audit lists this probe as failing safe (it reports "applied" only on an explicit match of both rails).
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Tested**: Build validation (schema, ownership and conflict checks); the action's apply, probe, undo and probe again run under Windows PowerShell 5.1 on build 26100, restoring the original AC and DC indices exactly.
 
 #### Recommendation
 Apply it if you actually experience USB dropouts, audio glitches or slow wake-ups. If your USB devices behave, especially on a laptop, leave selective suspend on and keep the power saving.
@@ -835,7 +824,7 @@ Apply it if you actually experience USB dropouts, audio glitches or slow wake-up
 
 ### Disable wake timers
 
-`disable_wake_timers` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_wake_timers` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Stops scheduled tasks waking the PC from sleep, ending mystery overnight wake-ups.**
 
@@ -843,21 +832,21 @@ Apply it if you actually experience USB dropouts, audio glitches or slow wake-up
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\State`, value `WakeTimers`, `REG_DWORD` (the app's own marker of the chosen option) |
 | `wake_timers_off` | action (PowerShell, with `apply`, `undo` and `probe`) | power-plan setting "Allow wake timers" / "Automatically wake for tasks" (`SUB_SLEEP` = `238c9fa8-0aad-41ed-83f4-97be242c8f20`, `RTCWAKE` = `bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d`) on the active scheme, AC and DC indices; records the prior state under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers` |
 
-| Option | `state` | `wake_timers_off` |
-|---|---|---|
-| Disabled | `1` | run (apply) |
-| Enabled | `0` | not run (the engine runs the action's `undo` if the probe reads it present) |
+| Option | `wake_timers_off` |
+|---|---|
+| Disabled | run (apply) |
 
 The setting has three indices: 0 "Disable", 1 "Enable", 2 "Important Wake Timers Only". What the action does, precisely:
 
-- **apply**: reads the active scheme GUID and fails if none is found; queries the current AC and DC indices; records the scheme GUID and both indices (falling back to the Windows 11 stock Balanced values AC 2 and DC 0 if an index cannot be parsed, never to "Enable"); sets AC and DC to 0; re-activates the scheme, failing if that returns non-zero.
-- **undo**: writes the recorded indices back to the recorded scheme and re-activates it; without a record, writes AC 2 and DC 0 to the current scheme. Then deletes the snapshot key.
+- **apply**: reads the active scheme GUID and fails if none is found; queries the current AC and DC indices and fails if it cannot read both; records the scheme GUID and both indices; sets AC and DC to 0; re-activates the scheme. Any `powercfg` step that returns non-zero fails the apply.
+- **undo**: if the record is complete and the recorded scheme still exists, writes the recorded indices back to that scheme and re-activates it only if it is still the active plan. An incomplete record (the apply stopped before changing anything) or a deleted plan leaves everything as it is. Then deletes the snapshot key.
 - **probe**: "applied" only if both the AC and the DC index of the currently active scheme read 0.
 
-System Default: shown on an untouched machine (the HKCU marker does not exist yet) and whenever the active plan does not have both indices at 0, including after switching plans. Selecting it restores the snapshot. Stock Windows 11 Balanced (measured on 26100): AC = 2 "Important Wake Timers Only", DC = 0 "Disable".
+As with USB selective suspend, the indices are read as the last two hexadecimal numbers of the `powercfg /QUERY` output, never by the translated labels.
+
+System Default: shown whenever the active plan does not have both indices at 0: on an untouched machine, and after switching plans. Selecting it restores the snapshot. A plan that already has both indices at 0 shows "Disabled" for every Windows account. Stock Windows 11 Balanced (measured on 26100): AC = 2 "Important Wake Timers Only", DC = 0 "Disable".
 
 #### How it works
 
@@ -878,13 +867,12 @@ As with USB selective suspend, only the scheme active at apply time is changed, 
 - Windows Update maintenance may only run while you are using the PC.
 - On battery nothing changes on a stock Windows 11 machine, since wake timers are already disabled there.
 - Only the plan active at apply time is changed; switching plans brings wake timers back.
-- Reverting re-activates the recorded plan with `/SETACTIVE`, so if you switched plans after applying, the revert silently makes the old plan your active plan again.
 - Wake sources that are not timers (a keyboard, mouse, network adapter wake, or the lid) are unaffected.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on hardware with RTC wake. Requires administrator.
+- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, in any display language, on hardware with RTC wake. Requires administrator.
 - **Takes effect**: immediately; the scheme is re-activated on apply.
-- **Reverting**: "Enabled" runs the undo, restoring the recorded AC and DC indices on the recorded scheme. Without a record, it writes the Windows 11 stock Balanced values (AC 2, DC 0) to the current scheme; on a Windows 10 machine whose stock values differ, that fallback may not match its original state.
+- **Reverting**: turning the switch off (System Default) runs the undo, restoring the recorded AC and DC indices on the recorded scheme without changing which plan is active.
 
 #### Interactions
 - [Disable USB selective suspend](#disable-usb-selective-suspend) uses the same scheme-pinned pattern on another setting; independent.
@@ -893,10 +881,10 @@ As with USB selective suspend, only the scheme active at apply time is changed, 
 - Windows Update maintenance and scheduled backups that rely on waking the PC stop waking it.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. The setting and aliases are correct; the corrections concerned the revert and the stock state: stock Windows 11 Balanced is AC 2 and DC 0 (not "Enable" on both), so the revert must restore the recorded indices (or those stock values), pin the scheme, and the probe must check both rails. The shipped action does all of this.
+- **Verdict**: VERIFIED-WITH-CORRECTION. The setting and aliases are correct; the corrections concerned the revert and the stock state: stock Windows 11 Balanced is AC 2 and DC 0 (not "Enable" on both), so the revert must restore the recorded indices, pin the scheme, and the probe must check both rails. The shipped action does all of this, refuses to apply when it cannot read the current indices rather than guessing them, and never switches the active plan on revert.
 - **Confidence**: Microsoft-documented (Microsoft's "Automatically wake for tasks" and sleep settings pages), plus `powercfg /aliases` and `/QUERY` on 26100 for the three indices and stock values.
-- **Reasoning**: the adversarial pass identified a revert to "Enable" on both rails as the most consequential revert defect in the category, because it would leave a machine waking on battery where it never did; the shipped undo restores recorded values and falls back to the stock pair. The stock values are from one owner-modified machine plus Balanced defaults; a clean-image baseline is the open question.
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Reasoning**: the adversarial pass identified a revert to "Enable" on both rails as the most consequential revert defect in the category, because it would leave a machine waking on battery where it never did; the shipped undo restores only recorded values and never writes a guessed pair. The stock values are from one owner-modified machine plus Balanced defaults; a clean-image baseline is the open question.
+- **Tested**: Build validation (schema, ownership and conflict checks); the action's apply, probe, undo and probe again run under Windows PowerShell 5.1 on build 26100, restoring the original AC and DC indices exactly.
 
 #### Recommendation
 Worth applying if a PC that wakes itself on mains power at night bothers you. Skip it if you rely on scheduled overnight work, such as automated backups, that needs to wake the machine.

@@ -211,8 +211,6 @@ tweaks:
     reversible: true
     requires_reboot: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: NetbiosTcpip, type: REG_DWORD }
       - id: netbios_off
         action:
           apply: |
@@ -234,7 +232,10 @@ tweaks:
             $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
             Get-ChildItem $root | Where-Object { $_.PSChildName -like 'Tcpip_*' } | ForEach-Object {
               $p = if ($s) { $s.PSObject.Properties[$_.PSChildName] } else { $null }
-              if ($null -eq $p -or [int]$p.Value -lt 0) {
+              # No record: write 0, the documented default, since nothing establishes absent equals 0.
+              if ($null -eq $p) {
+                Set-ItemProperty -Path $_.PSPath -Name NetbiosOptions -Value 0 -Type DWord
+              } elseif ([int]$p.Value -lt 0) {
                 Remove-ItemProperty -Path $_.PSPath -Name NetbiosOptions -ErrorAction SilentlyContinue
               } else {
                 Set-ItemProperty -Path $_.PSPath -Name NetbiosOptions -Value ([int]$p.Value) -Type DWord
@@ -253,9 +254,7 @@ tweaks:
           shell: powershell
     options:
       - label: "Disabled"
-        values: { state: 1, netbios_off: run }
-      - label: "Enabled"
-        values: { state: 0 }
+        values: { netbios_off: run }
 
   - id: disable_mdns
     name: "Disable mDNS"
@@ -626,23 +625,21 @@ tweaks:
     reversible: true
     requires_reboot: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: NicPowerManagement, type: REG_DWORD }
       - id: nic_power_off
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\NicPowerManagement'
-            # Only adapters Windows reports as physical expose a Power Management tab; virtual
-            # adapters, WAN Miniports and the Bluetooth PAN device are deliberately skipped.
-            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceDescription })
+            # Only adapters Windows reports as physical expose a Power Management tab. Matched by GUID:
+            # a second identical adapter's InterfaceDescription gains " #2", its DriverDesc does not.
+            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceGuid })
             if ($phys.Count -eq 0) { exit 1 }
             New-Item -Path $snap -Force | Out-Null
             $hit = 0
             foreach ($k in @(Get-ChildItem $class -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' })) {
-              $desc = (Get-ItemProperty -Path $k.PSPath -Name DriverDesc -ErrorAction SilentlyContinue).DriverDesc
-              if ($desc -and $phys -contains $desc) {
+              $id = (Get-ItemProperty -Path $k.PSPath -Name NetCfgInstanceId -ErrorAction SilentlyContinue).NetCfgInstanceId
+              if ($id -and $phys -contains $id) {
                 $prior = (Get-ItemProperty -Path $k.PSPath -Name PnPCapabilities -ErrorAction SilentlyContinue).PnPCapabilities
                 Set-ItemProperty -Path $snap -Name $k.PSChildName -Value $(if ($null -eq $prior) { -1 } else { [int]$prior }) -Type DWord
                 Set-ItemProperty -Path $k.PSPath -Name PnPCapabilities -Value 24 -Type DWord
@@ -672,12 +669,12 @@ tweaks:
             exit 0
           probe: |
             $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002bE10318}'
-            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceDescription })
+            $phys = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | ForEach-Object { $_.InterfaceGuid })
             if ($phys.Count -eq 0) { exit 1 }
             $seen = 0
             foreach ($k in @(Get-ChildItem $class -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' })) {
-              $desc = (Get-ItemProperty -Path $k.PSPath -Name DriverDesc -ErrorAction SilentlyContinue).DriverDesc
-              if ($desc -and $phys -contains $desc) {
+              $id = (Get-ItemProperty -Path $k.PSPath -Name NetCfgInstanceId -ErrorAction SilentlyContinue).NetCfgInstanceId
+              if ($id -and $phys -contains $id) {
                 $seen++
                 if ((Get-ItemProperty -Path $k.PSPath -Name PnPCapabilities -ErrorAction SilentlyContinue).PnPCapabilities -ne 24) { exit 1 }
               }
@@ -687,9 +684,7 @@ tweaks:
           shell: powershell
     options:
       - label: "Disabled"
-        values: { state: 1, nic_power_off: run }
-      - label: "Enabled"
-        values: { state: 0 }
+        values: { nic_power_off: run }
 
   - id: disable_hibernation
     name: "Disable hibernation"
@@ -733,20 +728,16 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: Hibernation, type: REG_DWORD }
+      # Declared before the value it drives: powercfg writes HibernateEnabled and deletes or creates
+      # hiberfil.sys, so the registry effect below only confirms what the action already set.
       - id: hibernate_off
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
-            $pw = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation'
+            $pct = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HiberFileSizePercent -ErrorAction SilentlyContinue).HiberFileSizePercent
             New-Item -Path $snap -Force | Out-Null
-            $p = Get-ItemProperty -Path $pw -ErrorAction SilentlyContinue
-            $en = if ($p -and $null -ne $p.HibernateEnabled) { [int]$p.HibernateEnabled } else { -1 }
-            $pct = if ($p -and $null -ne $p.HiberFileSizePercent) { [int]$p.HiberFileSizePercent } else { -1 }
-            Set-ItemProperty -Path $snap -Name Enabled -Value $en -Type DWord
-            Set-ItemProperty -Path $snap -Name SizePercent -Value $pct -Type DWord
+            Set-ItemProperty -Path $snap -Name SizePercent -Value $(if ($null -eq $pct) { -1 } else { [int]$pct }) -Type DWord
             powercfg /hibernate off
             if ($LASTEXITCODE -ne 0) { exit 1 }
             exit 0
@@ -754,15 +745,12 @@ tweaks:
             $ErrorActionPreference = 'Stop'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\Hibernation'
             $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
-            # A machine that already had hibernation off before apply must stay off: re-enabling would
-            # recreate a multi-gigabyte hiberfil.sys and Fast Startup the user never had.
-            if ($s -and $s.Enabled -eq 0) {
-              Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
-              exit 0
-            }
             powercfg /hibernate on
             if ($LASTEXITCODE -ne 0) { exit 1 }
-            if ($s -and [int]$s.SizePercent -gt 0) { powercfg /hibernate /size ([int]$s.SizePercent) }
+            if ($s -and [int]$s.SizePercent -gt 0) {
+              powercfg /hibernate /size ([int]$s.SizePercent)
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+            }
             Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
             exit 0
           probe:
@@ -771,11 +759,13 @@ tweaks:
               name: HibernateEnabled
               equals: 0
           shell: powershell
+      - id: hibernate_enabled
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power', name: HibernateEnabled, type: REG_DWORD }
     options:
       - label: "Disabled"
-        values: { state: 1, hibernate_off: run }
+        values: { hibernate_off: run, hibernate_enabled: 0 }
       - label: "Enabled"
-        values: { state: 0 }
+        values: { hibernate_enabled: 1 }
 
   - id: disable_usb_selective_suspend
     name: "Disable USB selective suspend"
@@ -818,8 +808,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: UsbSelectiveSuspend, type: REG_DWORD }
       - id: usb_suspend_off
         action:
           apply: |
@@ -830,15 +818,17 @@ tweaks:
             # Pin the scheme GUID so the undo cannot write to a different plan the user switched to.
             $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
             if (-not $scheme) { exit 1 }
-            $q = (powercfg /QUERY $scheme $sub $set) -join "`n"
-            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
-            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            # AC then DC are the query's last two hex numbers; the labels beside them are translated.
+            $ix = [regex]::Matches(((powercfg /QUERY $scheme $sub $set) -join "`n"), '0x([0-9a-fA-F]+)')
+            if ($ix.Count -lt 2) { exit 1 }
             New-Item -Path $snap -Force | Out-Null
             Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
-            Set-ItemProperty -Path $snap -Name Ac -Value $(if ($ac) { [Convert]::ToInt32($ac, 16) } else { 1 }) -Type DWord
-            Set-ItemProperty -Path $snap -Name Dc -Value $(if ($dc) { [Convert]::ToInt32($dc, 16) } else { 1 }) -Type DWord
+            Set-ItemProperty -Path $snap -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
+            Set-ItemProperty -Path $snap -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
             powercfg /SETACVALUEINDEX $scheme $sub $set 0
+            if ($LASTEXITCODE -ne 0) { exit 1 }
             powercfg /SETDCVALUEINDEX $scheme $sub $set 0
+            if ($LASTEXITCODE -ne 0) { exit 1 }
             powercfg /SETACTIVE $scheme
             if ($LASTEXITCODE -ne 0) { exit 1 }
             exit 0
@@ -848,28 +838,29 @@ tweaks:
             $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
             $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
-            $scheme = if ($s -and $s.Scheme) { $s.Scheme } else { 'SCHEME_CURRENT' }
-            $ac = if ($s -and $null -ne $s.Ac) { [int]$s.Ac } else { 1 }
-            $dc = if ($s -and $null -ne $s.Dc) { [int]$s.Dc } else { 1 }
-            powercfg /SETACVALUEINDEX $scheme $sub $set $ac
-            powercfg /SETDCVALUEINDEX $scheme $sub $set $dc
-            powercfg /SETACTIVE $scheme
-            if ($LASTEXITCODE -ne 0) { exit 1 }
+            # An incomplete record means apply stopped before changing the plan; a deleted plan has nothing to restore.
+            if ($s -and $s.Scheme -and $null -ne $s.Ac -and $null -ne $s.Dc -and ((powercfg /LIST) -join ' ') -match [regex]::Escape($s.Scheme)) {
+              powercfg /SETACVALUEINDEX $s.Scheme $sub $set ([int]$s.Ac)
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+              powercfg /SETDCVALUEINDEX $s.Scheme $sub $set ([int]$s.Dc)
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+              # Re-activate only the plan in use: activating the recorded one would switch the user's plan back.
+              if (((powercfg /GETACTIVESCHEME) -join ' ') -match [regex]::Escape($s.Scheme)) {
+                powercfg /SETACTIVE $s.Scheme
+                if ($LASTEXITCODE -ne 0) { exit 1 }
+              }
+            }
             Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
             exit 0
           probe: |
-            $q = (powercfg /QUERY SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226) -join "`n"
-            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
-            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
-            if (-not $ac -or -not $dc) { exit 1 }
-            if ([Convert]::ToInt32($ac, 16) -eq 0 -and [Convert]::ToInt32($dc, 16) -eq 0) { exit 0 }
+            $ix = [regex]::Matches(((powercfg /QUERY SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226) -join "`n"), '0x([0-9a-fA-F]+)')
+            if ($ix.Count -lt 2) { exit 1 }
+            if ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16) -eq 0 -and [Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16) -eq 0) { exit 0 }
             exit 1
           shell: powershell
     options:
       - label: "Disabled"
-        values: { state: 1, usb_suspend_off: run }
-      - label: "Enabled"
-        values: { state: 0 }
+        values: { usb_suspend_off: run }
 
   - id: disable_wake_timers
     name: "Disable wake timers"
@@ -913,8 +904,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\State', name: WakeTimers, type: REG_DWORD }
       - id: wake_timers_off
         action:
           apply: |
@@ -922,16 +911,17 @@ tweaks:
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
             $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
             if (-not $scheme) { exit 1 }
-            $q = (powercfg /QUERY $scheme SUB_SLEEP RTCWAKE) -join "`n"
-            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
-            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
+            # AC then DC are the query's last two hex numbers; the labels beside them are translated.
+            $ix = [regex]::Matches(((powercfg /QUERY $scheme SUB_SLEEP RTCWAKE) -join "`n"), '0x([0-9a-fA-F]+)')
+            if ($ix.Count -lt 2) { exit 1 }
             New-Item -Path $snap -Force | Out-Null
             Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
-            # Fall back to the Windows 11 stock Balanced indices (AC 2, DC 0), never to "Enable" on both.
-            Set-ItemProperty -Path $snap -Name Ac -Value $(if ($ac) { [Convert]::ToInt32($ac, 16) } else { 2 }) -Type DWord
-            Set-ItemProperty -Path $snap -Name Dc -Value $(if ($dc) { [Convert]::ToInt32($dc, 16) } else { 0 }) -Type DWord
+            Set-ItemProperty -Path $snap -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
+            Set-ItemProperty -Path $snap -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
             powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            if ($LASTEXITCODE -ne 0) { exit 1 }
             powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            if ($LASTEXITCODE -ne 0) { exit 1 }
             powercfg /SETACTIVE $scheme
             if ($LASTEXITCODE -ne 0) { exit 1 }
             exit 0
@@ -939,28 +929,29 @@ tweaks:
             $ErrorActionPreference = 'Stop'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
             $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
-            $scheme = if ($s -and $s.Scheme) { $s.Scheme } else { 'SCHEME_CURRENT' }
-            $ac = if ($s -and $null -ne $s.Ac) { [int]$s.Ac } else { 2 }
-            $dc = if ($s -and $null -ne $s.Dc) { [int]$s.Dc } else { 0 }
-            powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE $ac
-            powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE $dc
-            powercfg /SETACTIVE $scheme
-            if ($LASTEXITCODE -ne 0) { exit 1 }
+            # An incomplete record means apply stopped before changing the plan; a deleted plan has nothing to restore.
+            if ($s -and $s.Scheme -and $null -ne $s.Ac -and $null -ne $s.Dc -and ((powercfg /LIST) -join ' ') -match [regex]::Escape($s.Scheme)) {
+              powercfg /SETACVALUEINDEX $s.Scheme SUB_SLEEP RTCWAKE ([int]$s.Ac)
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+              powercfg /SETDCVALUEINDEX $s.Scheme SUB_SLEEP RTCWAKE ([int]$s.Dc)
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+              # Re-activate only the plan in use: activating the recorded one would switch the user's plan back.
+              if (((powercfg /GETACTIVESCHEME) -join ' ') -match [regex]::Escape($s.Scheme)) {
+                powercfg /SETACTIVE $s.Scheme
+                if ($LASTEXITCODE -ne 0) { exit 1 }
+              }
+            }
             Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
             exit 0
           probe: |
-            $q = (powercfg /QUERY SCHEME_CURRENT SUB_SLEEP RTCWAKE) -join "`n"
-            $ac = [regex]::Match($q, 'AC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
-            $dc = [regex]::Match($q, 'DC[^\r\n]*:\s*0x([0-9a-fA-F]+)').Groups[1].Value
-            if (-not $ac -or -not $dc) { exit 1 }
-            if ([Convert]::ToInt32($ac, 16) -eq 0 -and [Convert]::ToInt32($dc, 16) -eq 0) { exit 0 }
+            $ix = [regex]::Matches(((powercfg /QUERY SCHEME_CURRENT SUB_SLEEP RTCWAKE) -join "`n"), '0x([0-9a-fA-F]+)')
+            if ($ix.Count -lt 2) { exit 1 }
+            if ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16) -eq 0 -and [Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16) -eq 0) { exit 0 }
             exit 1
           shell: powershell
     options:
       - label: "Disabled"
-        values: { state: 1, wake_timers_off: run }
-      - label: "Enabled"
-        values: { state: 0 }
+        values: { wake_timers_off: run }
 
   - id: disable_modern_standby
     name: "Disable Modern Standby (force S3)"
