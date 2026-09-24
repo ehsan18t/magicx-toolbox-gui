@@ -11,7 +11,7 @@ This category collects the Windows AI controls in one place: Recall (snapshot po
 | [Disable the Click to Do overlay](#disable-the-click-to-do-overlay) | `disable_click_to_do` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Remove the Copilot app](#remove-the-copilot-app) | `remove_copilot_app` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable the Recall optional feature](#disable-the-recall-optional-feature) | `remove_recall_feature` | Switch (2 options) | medium | admin | yes | INCORRECT (corrected form ships) |
-| [Hide the Copilot taskbar button](#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Hide the Copilot taskbar button](#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](#disable-notepad-ai-features) | `disable_notepad_ai` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Paint AI features](#disable-paint-ai-features) | `disable_paint_ai` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge AI features](#turn-off-edge-ai-features) | `disable_edge_ai_features` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
@@ -369,7 +369,7 @@ Use it on a Copilot+ PC where Recall is present and you want it off at the compo
 
 ### Hide the Copilot taskbar button
 
-`disable_copilot_taskbar` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_copilot_taskbar` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Removes the Copilot button from your taskbar without touching anything else.**
 
@@ -396,11 +396,10 @@ Microsoft has deprecated the policy: Manage Windows Copilot says AppLocker "shou
 
 Applicability per the Policy CSP: Windows 10 21H2 (19044.3758) and later, Windows 10 22H2 with KB5032278, Windows 11 22H2 with KB5030310, and Windows 11 23H2 and later. This is one of the two tweaks in the category that apply to Windows 10 IoT Enterprise LTSC 2021 (the other is the Edge policies tweak), given build 19044.3758 or newer. Editions: Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC; the ADMX `supportedOn` is `SUPPORTED_Windows_11_0_NOSERVER_ENTERPRISE_EDUCATION_PRO_SANDBOX`, so Home is excluded and the write is expected to be inert there.
 
-Because the value is in HKCU, it applies to the current user only, needs no elevation, and is subject to the app's different-account guard.
+Because the value is in HKCU, it applies to the current user only and is subject to the app's different-account guard. It still needs administrator rights: `HKCU\Software\Policies` grants the user read access only (SYSTEM and Administrators have full control), so an unelevated write is refused.
 
 #### Benefits
 - Cleaner taskbar with the Copilot button gone.
-- No administrator rights needed.
 - Removing the value restores the button exactly.
 
 #### Drawbacks
@@ -411,7 +410,7 @@ Because the value is in HKCU, it applies to the current user only, needs no elev
 - Per-user only: other accounts on the PC keep the button.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 22H2 (with KB5030310) and newer, including 24H2 and 25H2; Windows 10 21H2 build 19044.3758 and newer (so Windows 10 IoT Enterprise LTSC 2021 on a current cumulative update); Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC.
+- **Applies to**: Windows 11 22H2 (with KB5030310) and newer, including 24H2 and 25H2; Windows 10 21H2 build 19044.3758 and newer (so Windows 10 IoT Enterprise LTSC 2021 on a current cumulative update); Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after signing out and back in (the tweak does not flag a reboot for this per-user cosmetic change).
 - **Reverting**: System Default or Shown restores the captured value.
 

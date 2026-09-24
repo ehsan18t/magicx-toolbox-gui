@@ -350,7 +350,7 @@ tweaks:
       - [Policy CSP - WindowsAI, TurnOffWindowsCopilot](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
       - [Manage Windows Copilot](https://learn.microsoft.com/en-us/windows/client-management/manage-windows-copilot)
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     effects:
       - id: copilot_off

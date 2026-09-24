@@ -705,7 +705,7 @@ tweaks:
       - [Policy CSP - Experience (AllowTailoredExperiencesWithDiagnosticData)](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
       - [Manage connections from Windows components to Microsoft services, 25 Personalized Experiences](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     effects:
       - id: tailored_user

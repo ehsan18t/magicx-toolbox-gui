@@ -1,6 +1,6 @@
 # Interface & Explorer tweaks
 
-This category covers the look and behaviour of the desktop, the taskbar, the Start menu, File Explorer, notifications and the sign-in screen. Almost every tweak here is a per-user (HKCU) shell preference that needs no elevation, takes effect on an Explorer restart or a sign-out, and reverts cleanly from the snapshot; a handful are documented Group Policy values, and four write to HKLM and need administrator rights. The supported platform is Windows 11 24H2 (build 26100) and newer, including 25H2 (26200), as the primary target, and Windows 10 IoT Enterprise LTSC 2021 (build 19044) as the secondary target; tweaks gated to Windows 11 or to a minimum build are hidden on LTSC 2021.
+This category covers the look and behaviour of the desktop, the taskbar, the Start menu, File Explorer, notifications and the sign-in screen. Most tweaks here are per-user (HKCU) shell preferences that need no elevation, take effect on an Explorer restart or a sign-out, and revert cleanly from the snapshot. A handful are documented Group Policy values: four of them live under `HKCU\Software\Policies`, which the user can only read, so they need administrator rights even though they are per user, and four other tweaks write to HKLM and need administrator rights too. The supported platform is Windows 11 24H2 (build 26100) and newer, including 25H2 (26200), as the primary target, and Windows 10 IoT Enterprise LTSC 2021 (build 19044) as the secondary target; tweaks gated to Windows 11 or to a minimum build are hidden on LTSC 2021.
 
 Two facts apply to the whole category. First, Microsoft publishes no reference for most `HKCU\...\Explorer\Advanced` value names, so a shell preference counts as verified only when several independent long-lived community references agree on key, name, type and values and the setting is exposed in Settings or Folder Options, where its effect can be observed directly; policy-backed tweaks are sourced from the ADMX templates shipped in `C:\Windows\PolicyDefinitions` on build 26100. Second, every HKCU effect runs as the signed-in user even when the app is elevated, so a per-user value always lands in the hive of the person at the keyboard. In the tables below, elevation `none` is the YAML's `elevation: user`.
 
@@ -38,16 +38,16 @@ Two facts apply to the whole category. First, Microsoft publishes no reference f
 | [Turn off accessibility shortcut prompts](#turn-off-accessibility-shortcut-prompts) | `disable_accessibility_key_prompts` | Switch | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Restore the classic context menu](#restore-the-classic-context-menu) | `classic_context_menu_win11` | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn NumLock on at startup](#turn-numlock-on-at-startup) | `numlock_on_startup` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
-| [Hide the Recommended section in Start](#hide-the-recommended-section-in-start) | `disable_start_recommended_section` | Switch (2 options) | low | none | no | VERIFIED |
+| [Hide the Recommended section in Start](#hide-the-recommended-section-in-start) | `disable_start_recommended_section` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Hide the unsupported hardware notice](#hide-the-unsupported-hardware-notice) | `hide_unsupported_hardware_notice` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Hide the mobile device panel in Start](#hide-the-mobile-device-panel-in-start) | `disable_phone_companion_start` | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off the Drop Tray share overlay](#turn-off-the-drop-tray-share-overlay) | `disable_drag_tray` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
-| [Alt+Tab shows windows only](#alttab-shows-windows-only) | `alt_tab_hide_browser_tabs` | Dropdown (5 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Alt+Tab shows windows only](#alttab-shows-windows-only) | `alt_tab_hide_browser_tabs` | Dropdown (5 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off the Snap Assist suggestion picker](#turn-off-the-snap-assist-suggestion-picker) | `disable_snap_assist` | Switch (2 options) | low | none | no | VERIFIED |
 | [Expand the tree to the open folder](#expand-the-tree-to-the-open-folder) | `explorer_expand_to_current_folder` | Switch (2 options) | low | none | no | VERIFIED |
 | [Restore Explorer windows at sign-in](#restore-explorer-windows-at-sign-in) | `explorer_restore_folders_at_logon` | Switch (2 options) | low | none | no | VERIFIED |
-| [Show the full date and time in the tray](#show-the-full-date-and-time-in-the-tray) | `taskbar_full_date_time` | Switch (2 options) | low | none | yes | VERIFIED |
-| [Hide recently added apps in Start](#hide-recently-added-apps-in-start) | `hide_recently_added_apps` | Switch (2 options) | low | none | yes | VERIFIED |
+| [Show the full date and time in the tray](#show-the-full-date-and-time-in-the-tray) | `taskbar_full_date_time` | Switch (2 options) | low | admin | yes | VERIFIED |
+| [Hide recently added apps in Start](#hide-recently-added-apps-in-start) | `hide_recently_added_apps` | Switch (2 options) | low | admin | yes | VERIFIED |
 | [Focus the last active window on click](#focus-the-last-active-window-on-click) | `taskbar_last_active_click` | Switch (2 options) | low | none | no | VERIFIED |
 | [Remove the Notification Center](#remove-the-notification-center) | `disable_notification_center` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 
@@ -1719,7 +1719,7 @@ Apply it on a desktop with a full-size keyboard where you enter numbers often. S
 
 ### Hide the Recommended section in Start
 
-`disable_start_recommended_section` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: build 22621 and newer · Reversible: yes
+`disable_start_recommended_section` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: build 22621 and newer · Reversible: yes
 
 **Removes the entire Recommended section from the Start menu, not just the promoted rows.**
 
@@ -1751,7 +1751,7 @@ System Default is shown when the value is present with anything other than `1`, 
 - **Start host restart needed**: the layout reflows after sign-out or a restart of `StartMenuExperienceHost.exe`.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 build 22621 and newer on Pro, Enterprise, Education and IoT Enterprise editions; hidden on Windows 10 LTSC 2021.
+- **Applies to**: Windows 11 build 22621 and newer on Pro, Enterprise, Education and IoT Enterprise editions; hidden on Windows 10 LTSC 2021. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after sign-out, or when `StartMenuExperienceHost.exe` restarts; no reboot.
 - **Reverting**: restores the captured state, normally removing the value.
 
@@ -1942,7 +1942,7 @@ Apply it if you drag files between Explorer windows often and the overlay gets i
 
 ### Alt+Tab shows windows only
 
-`alt_tab_hide_browser_tabs` · Dropdown (5 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`alt_tab_hide_browser_tabs` · Dropdown (5 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Alt+Tab lists your open windows again instead of filling up with browser tabs.**
 
@@ -1977,7 +1977,7 @@ The shipped `Multitasking.admx` on 26100 defines the policy `BrowserAltTabBlowou
 - **Two keys, two numberings**: a hand edit copied from the wrong guide sets the wrong option.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: every supported build and edition (policy declared from Windows 10 2004).
+- **Applies to**: every supported build and edition (policy declared from Windows 10 2004). Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after Explorer restarts or sign-out; the ADML states no reboot requirement, and whether `twinui.dll` caches the value per session is unconfirmed.
 - **Reverting**: restores the captured state, normally removing the value.
 
@@ -2165,7 +2165,7 @@ Apply it on a personal workstation where you keep a fixed set of folders open. S
 
 ### Show the full date and time in the tray
 
-`taskbar_full_date_time` · Switch (2 options) · Risk: low · Elevation: none · Reboot: yes · Windows: build 22621 and newer · Reversible: yes
+`taskbar_full_date_time` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: yes · Windows: build 22621 and newer · Reversible: yes
 
 **Shows the full date with the year and an AM/PM marker in the taskbar clock.**
 
@@ -2197,7 +2197,7 @@ The shipped `Taskbar.admx` on 26100 defines this as a User-class policy at `Soft
 - **Windows 11 only**: declared from 22H2.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 build 22621 and newer, every edition; hidden on Windows 10 LTSC 2021.
+- **Applies to**: Windows 11 build 22621 and newer, every edition; hidden on Windows 10 LTSC 2021. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a reboot, as the ADML states.
 - **Reverting**: restores the captured state, normally removing the value; also needs a reboot.
 
@@ -2219,7 +2219,7 @@ Apply it if you use a 12-hour clock and keep misreading the tray. On a narrow la
 
 ### Hide recently added apps in Start
 
-`hide_recently_added_apps` · Switch (2 options) · Risk: low · Elevation: none · Reboot: yes · Windows: all supported builds · Reversible: yes
+`hide_recently_added_apps` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Removes the "Recently added" list of newly installed apps from the Start menu.**
 
@@ -2252,7 +2252,7 @@ The shipped `StartMenu.admx` on 26100 defines `HideRecentlyAddedApps` with `clas
 - **Not on Home**: the CSP's edition list does not include Home.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: every supported build on Pro, Enterprise, Education and IoT Enterprise editions, including Windows 10 IoT Enterprise LTSC 2021.
+- **Applies to**: every supported build on Pro, Enterprise, Education and IoT Enterprise editions, including Windows 10 IoT Enterprise LTSC 2021. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a reboot.
 - **Reverting**: restores the captured state, normally removing the value, which also unlocks the Settings toggle; needs a reboot.
 

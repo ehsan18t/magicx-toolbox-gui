@@ -20,7 +20,7 @@ A note on "System Default" for every entry below: it is not an option anyone aut
 | [Turn off online speech recognition](#turn-off-online-speech-recognition) | `disable_online_speech_recognition` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Disable inking and typing personalization](#disable-inking-and-typing-personalization) | `disable_inking_typing_personalization` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off the advertising ID](#turn-off-the-advertising-id) | `disable_advertising_id` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Turn off tailored experiences](#turn-off-tailored-experiences) | `disable_tailored_experiences` | Switch | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Turn off tailored experiences](#turn-off-tailored-experiences) | `disable_tailored_experiences` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off location tracking](#turn-off-location-tracking) | `disable_location_tracking` | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Block app diagnostic access](#block-app-diagnostic-access) | `disable_app_diagnostics` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off Find My Device](#turn-off-find-my-device) | `disable_find_my_device` | Switch (2 options) | medium | admin | no | VERIFIED |
@@ -775,7 +775,7 @@ Apply it on every machine. There is no functional cost and the identifier exists
 
 ### Turn off tailored experiences
 
-`disable_tailored_experiences` · Switch · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_tailored_experiences` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Stops Windows using your diagnostic data to target the tips, ads and recommendations it shows you.**
 
@@ -804,7 +804,7 @@ Microsoft documents this policy as depending on Windows Spotlight being allowed;
 - Recommendations stop being shaped by what the device reports.
 - The policy pins the setting and the Settings value matches, so the UI agrees.
 - Nothing stops working; only the targeting changes.
-- Per-user, so no elevation is needed.
+- Per user: other accounts on the PC are unaffected. It still needs administrator rights, because `HKCU\Software\Policies` is read-only for the user.
 
 #### Drawbacks
 - Suggestions do not stop; they become generic.
@@ -812,7 +812,7 @@ Microsoft documents this policy as depending on Windows Spotlight being allowed;
 - User-scoped: each account needs it applied separately.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 24H2 and newer, and Windows 10 1703 and later, so LTSC 2021 is covered.
+- **Applies to**: Windows 11 24H2 and newer, and Windows 10 1703 and later, so LTSC 2021 is covered. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: immediately.
 - **Reverting**: System Default removes the policy value (if absent before) and restores the previous Settings value from the snapshot.
 

@@ -318,7 +318,7 @@ tweaks:
       - [privacy.sexy, Disable Bing search and recent search suggestions](https://github.com/undergroundwires/privacy.sexy)
       - [Win11Debloat, Disable_Bing_Cortana_In_Search.reg](https://github.com/Raphire/Win11Debloat)
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     requires_reboot: true
     effects:
@@ -429,7 +429,7 @@ tweaks:
       - [Start menu policy settings, Disable Account Notifications](https://learn.microsoft.com/en-us/windows/configuration/start/policy-settings)
       - [Policy CSP - Start](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     requires_reboot: false
     effects:
@@ -540,7 +540,7 @@ tweaks:
       - [Policy CSP - Experience, AllowWindowsSpotlight](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
       - [Manage connections from Windows components to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     requires_reboot: false
     effects:
@@ -590,7 +590,7 @@ tweaks:
       - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
       - [Win11Debloat, Disable_Desktop_Spotlight.reg](https://github.com/Raphire/Win11Debloat)
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     requires_reboot: false
     effects:

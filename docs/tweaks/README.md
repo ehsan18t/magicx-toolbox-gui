@@ -123,7 +123,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Disable the Click to Do overlay](ai.md#disable-the-click-to-do-overlay) | `disable_click_to_do` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Remove the Copilot app](ai.md#remove-the-copilot-app) | `remove_copilot_app` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable the Recall optional feature](ai.md#disable-the-recall-optional-feature) | `remove_recall_feature` | AI & Copilot tweaks | Switch (2 options) | medium | admin | yes | INCORRECT (corrected form ships) |
-| [Hide the Copilot taskbar button](ai.md#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | AI & Copilot tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Hide the Copilot taskbar button](ai.md#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](ai.md#disable-notepad-ai-features) | `disable_notepad_ai` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Paint AI features](ai.md#disable-paint-ai-features) | `disable_paint_ai` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge AI features](ai.md#turn-off-edge-ai-features) | `disable_edge_ai_features` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
@@ -133,12 +133,12 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Turn off the post-update welcome experience](debloat.md#turn-off-the-post-update-welcome-experience) | `disable_welcome_experience` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn off the 'Get even more out of Windows' nag](debloat.md#turn-off-the-get-even-more-out-of-windows-nag) | `disable_scoobe_nag` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn off File Explorer sync-provider ads](debloat.md#turn-off-file-explorer-sync-provider-ads) | `disable_explorer_sync_ads` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED |
-| [Turn off web results in Start search](debloat.md#turn-off-web-results-in-start-search) | `disable_web_search_start` | Debloat & Consumer tweaks | Switch (2 options) | low | none | yes | VERIFIED-WITH-CORRECTION |
+| [Turn off web results in Start search](debloat.md#turn-off-web-results-in-start-search) | `disable_web_search_start` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Turn off Widgets](debloat.md#turn-off-widgets) | `disable_widgets` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | yes | VERIFIED |
-| [Turn off Microsoft account nags in Start](debloat.md#turn-off-microsoft-account-nags-in-start) | `disable_account_notifications` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED |
+| [Turn off Microsoft account nags in Start](debloat.md#turn-off-microsoft-account-nags-in-start) | `disable_account_notifications` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off account upsell cards in Settings](debloat.md#turn-off-account-upsell-cards-in-settings) | `disable_settings_account_ads` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
-| [Turn off all Windows Spotlight features](debloat.md#turn-off-all-windows-spotlight-features) | `disable_windows_spotlight_all` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED |
-| [Turn off Spotlight desktop wallpaper](debloat.md#turn-off-spotlight-desktop-wallpaper) | `disable_spotlight_desktop` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED |
+| [Turn off all Windows Spotlight features](debloat.md#turn-off-all-windows-spotlight-features) | `disable_windows_spotlight_all` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
+| [Turn off Spotlight desktop wallpaper](debloat.md#turn-off-spotlight-desktop-wallpaper) | `disable_spotlight_desktop` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Silence suggested and backup reminder toasts](debloat.md#silence-suggested-and-backup-reminder-toasts) | `disable_nag_toasts` | Debloat & Consumer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off the Edge first-run experience](debloat.md#turn-off-the-edge-first-run-experience) | `disable_edge_first_run` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge startup boost](debloat.md#turn-off-edge-startup-boost) | `disable_edge_startup_boost` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
@@ -185,16 +185,16 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Turn off accessibility shortcut prompts](interface.md#turn-off-accessibility-shortcut-prompts) | `disable_accessibility_key_prompts` | Interface & Explorer tweaks | Switch | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Restore the classic context menu](interface.md#restore-the-classic-context-menu) | `classic_context_menu_win11` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn NumLock on at startup](interface.md#turn-numlock-on-at-startup) | `numlock_on_startup` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
-| [Hide the Recommended section in Start](interface.md#hide-the-recommended-section-in-start) | `disable_start_recommended_section` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
+| [Hide the Recommended section in Start](interface.md#hide-the-recommended-section-in-start) | `disable_start_recommended_section` | Interface & Explorer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Hide the unsupported hardware notice](interface.md#hide-the-unsupported-hardware-notice) | `hide_unsupported_hardware_notice` | Interface & Explorer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Hide the mobile device panel in Start](interface.md#hide-the-mobile-device-panel-in-start) | `disable_phone_companion_start` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off the Drop Tray share overlay](interface.md#turn-off-the-drop-tray-share-overlay) | `disable_drag_tray` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
-| [Alt+Tab shows windows only](interface.md#alttab-shows-windows-only) | `alt_tab_hide_browser_tabs` | Interface & Explorer tweaks | Dropdown (5 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Alt+Tab shows windows only](interface.md#alttab-shows-windows-only) | `alt_tab_hide_browser_tabs` | Interface & Explorer tweaks | Dropdown (5 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off the Snap Assist suggestion picker](interface.md#turn-off-the-snap-assist-suggestion-picker) | `disable_snap_assist` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Expand the tree to the open folder](interface.md#expand-the-tree-to-the-open-folder) | `explorer_expand_to_current_folder` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Restore Explorer windows at sign-in](interface.md#restore-explorer-windows-at-sign-in) | `explorer_restore_folders_at_logon` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
-| [Show the full date and time in the tray](interface.md#show-the-full-date-and-time-in-the-tray) | `taskbar_full_date_time` | Interface & Explorer tweaks | Switch (2 options) | low | none | yes | VERIFIED |
-| [Hide recently added apps in Start](interface.md#hide-recently-added-apps-in-start) | `hide_recently_added_apps` | Interface & Explorer tweaks | Switch (2 options) | low | none | yes | VERIFIED |
+| [Show the full date and time in the tray](interface.md#show-the-full-date-and-time-in-the-tray) | `taskbar_full_date_time` | Interface & Explorer tweaks | Switch (2 options) | low | admin | yes | VERIFIED |
+| [Hide recently added apps in Start](interface.md#hide-recently-added-apps-in-start) | `hide_recently_added_apps` | Interface & Explorer tweaks | Switch (2 options) | low | admin | yes | VERIFIED |
 | [Focus the last active window on click](interface.md#focus-the-last-active-window-on-click) | `taskbar_last_active_click` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Remove the Notification Center](interface.md#remove-the-notification-center) | `disable_notification_center` | Interface & Explorer tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Enable DNS over HTTPS auto-upgrade](network.md#enable-dns-over-https-auto-upgrade) | `dns_over_https` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
@@ -247,7 +247,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Turn off online speech recognition](privacy.md#turn-off-online-speech-recognition) | `disable_online_speech_recognition` | Privacy & Telemetry tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Disable inking and typing personalization](privacy.md#disable-inking-and-typing-personalization) | `disable_inking_typing_personalization` | Privacy & Telemetry tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off the advertising ID](privacy.md#turn-off-the-advertising-id) | `disable_advertising_id` | Privacy & Telemetry tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Turn off tailored experiences](privacy.md#turn-off-tailored-experiences) | `disable_tailored_experiences` | Privacy & Telemetry tweaks | Switch | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Turn off tailored experiences](privacy.md#turn-off-tailored-experiences) | `disable_tailored_experiences` | Privacy & Telemetry tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off location tracking](privacy.md#turn-off-location-tracking) | `disable_location_tracking` | Privacy & Telemetry tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Block app diagnostic access](privacy.md#block-app-diagnostic-access) | `disable_app_diagnostics` | Privacy & Telemetry tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn off Find My Device](privacy.md#turn-off-find-my-device) | `disable_find_my_device` | Privacy & Telemetry tweaks | Switch (2 options) | medium | admin | no | VERIFIED |

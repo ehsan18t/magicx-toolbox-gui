@@ -1601,7 +1601,7 @@ tweaks:
       - [Policy CSP - Start > HideRecommendedSection](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
       - Shipped `StartMenu.admx` and `en-US\StartMenu.adml` on Windows 11 build 26100
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     windows: { build: ">=22621" }
     effects:
@@ -1816,7 +1816,7 @@ tweaks:
       - Binary evidence: `MultiTaskingAltTabFilter` in `twinui.dll`, `SettingsHandlers_nt.dll` and
         `SHCore.dll` on build 26100
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     effects:
       - id: alt_tab_filter
@@ -2024,7 +2024,7 @@ tweaks:
       - Binary evidence: `TurnOffAbbreviatedDateTimeFormat` in `Taskbar.View.dll` and
         `SettingsHandlers_DesktopTaskbar.dll` on build 26100
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     requires_reboot: true
     windows: { build: ">=22621" }
@@ -2078,7 +2078,7 @@ tweaks:
       - [Policy CSP - Start > HideRecentlyAddedApps](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
       - Shipped `StartMenu.admx` and `en-US\StartMenu.adml` on Windows 11 build 26100
     risk_level: low
-    elevation: user
+    elevation: admin
     reversible: true
     requires_reboot: true
     effects:

@@ -13,12 +13,12 @@ Two things apply across the whole page. First, every app removal writes a small 
 | [Turn off the post-update welcome experience](#turn-off-the-post-update-welcome-experience) | `disable_welcome_experience` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn off the 'Get even more out of Windows' nag](#turn-off-the-get-even-more-out-of-windows-nag) | `disable_scoobe_nag` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn off File Explorer sync-provider ads](#turn-off-file-explorer-sync-provider-ads) | `disable_explorer_sync_ads` | Switch (2 options) | low | none | no | VERIFIED |
-| [Turn off web results in Start search](#turn-off-web-results-in-start-search) | `disable_web_search_start` | Switch (2 options) | low | none | yes | VERIFIED-WITH-CORRECTION |
+| [Turn off web results in Start search](#turn-off-web-results-in-start-search) | `disable_web_search_start` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Turn off Widgets](#turn-off-widgets) | `disable_widgets` | Switch (2 options) | low | admin | yes | VERIFIED |
-| [Turn off Microsoft account nags in Start](#turn-off-microsoft-account-nags-in-start) | `disable_account_notifications` | Switch (2 options) | low | none | no | VERIFIED |
+| [Turn off Microsoft account nags in Start](#turn-off-microsoft-account-nags-in-start) | `disable_account_notifications` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off account upsell cards in Settings](#turn-off-account-upsell-cards-in-settings) | `disable_settings_account_ads` | Switch (2 options) | low | admin | no | VERIFIED |
-| [Turn off all Windows Spotlight features](#turn-off-all-windows-spotlight-features) | `disable_windows_spotlight_all` | Switch (2 options) | low | none | no | VERIFIED |
-| [Turn off Spotlight desktop wallpaper](#turn-off-spotlight-desktop-wallpaper) | `disable_spotlight_desktop` | Switch (2 options) | low | none | no | VERIFIED |
+| [Turn off all Windows Spotlight features](#turn-off-all-windows-spotlight-features) | `disable_windows_spotlight_all` | Switch (2 options) | low | admin | no | VERIFIED |
+| [Turn off Spotlight desktop wallpaper](#turn-off-spotlight-desktop-wallpaper) | `disable_spotlight_desktop` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Silence suggested and backup reminder toasts](#silence-suggested-and-backup-reminder-toasts) | `disable_nag_toasts` | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off the Edge first-run experience](#turn-off-the-edge-first-run-experience) | `disable_edge_first_run` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge startup boost](#turn-off-edge-startup-boost) | `disable_edge_startup_boost` | Switch (2 options) | low | admin | no | VERIFIED |
@@ -349,7 +349,7 @@ Apply it unless you rely on OneDrive status messages inside Explorer. For everyo
 
 ### Turn off web results in Start search
 
-`disable_web_search_start` · Switch (2 options) · Risk: low · Elevation: none · Reboot: yes · Windows: all supported builds · Reversible: yes
+`disable_web_search_start` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Keeps Start search local, so typing an app name stops sending keystrokes to Bing.**
 
@@ -383,7 +383,7 @@ System Default is any mix that matches neither option, for example the policy at
 - Microsoft Q&A has reports of this policy hiding the taskbar search box entirely on some builds (unconfirmed on 26100).
 
 #### Applies to, takes effect, reverting
-- **Applies to**: every supported build and edition; per user.
+- **Applies to**: every supported build and edition; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a reboot; a sign-out or restarting Explorer and the search host also works.
 - **Reverting**: "On" deletes both values, returning the profile to its shipped state. System Default restores the snapshot.
 
@@ -469,7 +469,7 @@ Apply it if you never open the widgets board. Leave it alone if you glance at th
 
 ### Turn off Microsoft account nags in Start
 
-`disable_account_notifications` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_account_notifications` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Stops Windows nagging you in the Start menu user tile to back up, re-sign-in, or buy more storage.**
 
@@ -493,7 +493,7 @@ The shipped `AccountNotifications.admx` on build 26100 declares `DisableAccountN
 #### Benefits
 - The Start account area stops carrying upsell badges.
 - The OneDrive "you are almost full" prompt in Start goes quiet.
-- Per user, instant, no elevation.
+- Per user and instant. It needs administrator rights, because `HKCU\Software\Policies` is read-only for the user.
 
 #### Drawbacks
 - Genuine reminders go too: a real "sign in again" prompt is suppressed along with the marketing.
@@ -501,7 +501,7 @@ The shipped `AccountNotifications.admx` on build 26100 declares `DisableAccountN
 - Per user: other accounts need it separately.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 10 2004 and later (including LTSC 2021) and all Windows 11 builds; user scope; not edition-gated.
+- **Applies to**: Windows 10 2004 and later (including LTSC 2021) and all Windows 11 builds; user scope; not edition-gated. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: immediately, as the ADML states.
 - **Reverting**: "On" deletes the policy value, restoring shipped behaviour. System Default restores the snapshot.
 
@@ -585,7 +585,7 @@ Apply it on Enterprise, Education or IoT Enterprise, where it works. On Home and
 
 ### Turn off all Windows Spotlight features
 
-`disable_windows_spotlight_all` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_windows_spotlight_all` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **One switch that turns off every Windows Spotlight surface at once.**
 
@@ -617,7 +617,7 @@ The shipped `CloudContent.admx` on 26100 declares `DisableWindowsSpotlightFeatur
 - It overrides the surfaces of four other tweaks without writing their values, so those tweaks still read "not applied" while their surfaces are gone.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 10 (including LTSC 2021) and all Windows 11 builds, all editions; per user.
+- **Applies to**: Windows 10 (including LTSC 2021) and all Windows 11 builds, all editions; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a sign-out, when the lock screen and tip surfaces refresh.
 - **Reverting**: "On" deletes the policy value and the individual tweaks resume controlling their own surfaces. System Default restores the snapshot.
 
@@ -645,7 +645,7 @@ Apply it if you want the whole Spotlight system off and do not care about the wa
 
 ### Turn off Spotlight desktop wallpaper
 
-`disable_spotlight_desktop` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_spotlight_desktop` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Stops the rotating Spotlight image collection from taking over your desktop wallpaper.**
 
@@ -677,7 +677,7 @@ The shipped `CloudContent.admx` on 26100 declares `DisableSpotlightCollectionOnD
 - Per user: other accounts need it separately.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 10 and all Windows 11 builds, all editions; per user.
+- **Applies to**: Windows 10 and all Windows 11 builds, all editions; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a sign-out, when the wallpaper provider falls back.
 - **Reverting**: "On" deletes the policy value so Spotlight is selectable again. System Default restores the snapshot.
 
