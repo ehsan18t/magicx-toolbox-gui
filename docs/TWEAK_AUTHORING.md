@@ -982,8 +982,7 @@ A's revert changes the value out from under B: B's option is genuinely no longer
 honestly shows B at System Default, and the user watches a tweak flip itself off (ADR-0006). This
 happened in practice with the old corpus.
 
-So the **ownership guard** (§16) enforces **one address, one owner, corpus-wide.** The _only_ sanctioned
-way for two tweaks to touch one address is a corpus-level `shared:` block.
+So the **ownership guard** (§16) enforces **one address, one owner, corpus-wide.** The _only_ sanctioned way for two tweaks that can both run on one machine to touch one address is a corpus-level `shared:` block. Tweaks gated to Windows versions that never overlap may own the same address, since only one can ever be available (§16, `DuplicateAddress`).
 
 ### 9.1 Declaring a shared setting
 
@@ -1985,10 +1984,13 @@ tweaks on revert (ADR-0006, §9). With three colliding owners you get **one erro
 
 Addresses compare the way Windows does: registry paths and value names, service names, and task paths ignore case, so `HKLM\SOFTWARE\X` and `HKLM\Software\x` are one address. A registry value or key that one tweak (or a `shared:` entry) owns **inside another tweak's `registry_key` path** is also a collision, reported with the address `… (inside registry key …)`: driving that key `absent` would delete it. Effects of the same tweak may nest, except a value beneath a key the tweak can drive `absent` (`ValueBeneathOwnDeletableKey`).
 
+**The one exception: owners whose Windows scopes never overlap.** Two effects may own the same address when the builds their tweak-level and effect-level `windows:` scopes admit are disjoint (`products` and `build` combined; a `shared:` declaration counts as every build). Only one of them can ever be available on a machine, so they never drive the address together. This is how one setting whose choices differ by Windows version ships as two tweaks, for example `taskbar_search_mode` (`products: [10]`) and `taskbar_search_mode_win11` (`build: ">=22621"`). Any overlap, even a single build, is still a collision.
+
 ```yaml
 # ❌ two tweaks writing the same value
 # tweak_a: registry HKLM\...\Foo   +   tweak_b: registry HKLM\...\Foo
 # ✅ extract a shared: entry both claim, or merge the tweaks, or give one a different address
+# ✅ or gate them to Windows versions that never overlap (windows: { products: [10] } vs { products: [11] })
 ```
 
 #### 9. `DuplicateSharedId`: a `shared:` id is declared twice
@@ -2490,7 +2492,7 @@ Run through this before you commit a tweak.
 
 - ✅ HKLM/HKCU only; no leading/trailing/doubled backslash; no forward slash (§4.1).
 - ✅ One address, one owner: use `shared:` for genuine cross-tweak sharing (§9). ❌ Never two effects on
-  one address.
+  one address, unless their Windows scopes never overlap (§16, `DuplicateAddress`).
 - ✅ Use the `service`/`task` kind: ❌ never reach a service/task through raw registry storage (§16 #10).
 - ✅ A packed value is whole-owned **XOR** field-addressed; each field owned once (§11.3).
 

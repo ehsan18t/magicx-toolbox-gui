@@ -554,8 +554,68 @@ fn coarse_key_and_field(setting: &Setting) -> (CoarseKey, Option<String>, String
     }
 }
 
+/// The build ranges a `windows:` scope admits (`products` and `build` ANDed); `None` admits all.
+fn scope_ranges(scope: Option<&WindowsScope>) -> Vec<(u32, u32)> {
+    fn range(expr: BuildExpr) -> (u32, u32) {
+        match expr {
+            BuildExpr::Exact(n) => (n, n),
+            BuildExpr::Min(n) => (n, u32::MAX),
+            BuildExpr::Max(n) => (0, n),
+            BuildExpr::Range(lo, hi) => (lo, hi),
+        }
+    }
+    let all = (0, u32::MAX);
+    let Some(scope) = scope else { return vec![all] };
+    let build = scope.build.map_or(all, range);
+    let products: Vec<(u32, u32)> = scope.products.as_ref().map_or(vec![all], |products| {
+        products
+            .iter()
+            .filter_map(|&p| expand_product(p).ok().map(range))
+            .collect()
+    });
+    products
+        .into_iter()
+        .filter_map(|p| intersect(p, build))
+        .collect()
+}
+
+fn intersect(a: (u32, u32), b: (u32, u32)) -> Option<(u32, u32)> {
+    let (lo, hi) = (a.0.max(b.0), a.1.min(b.1));
+    (lo <= hi).then_some((lo, hi))
+}
+
+/// The builds on which `owner` can drive its address: its tweak's scope ANDed with its effect's.
+fn owner_ranges(corpus: &Corpus, owner: &AddressOwner) -> Vec<(u32, u32)> {
+    let AddressOwner::Effect { tweak, effect } = owner else {
+        return vec![(0, u32::MAX)];
+    };
+    let Some(tweak) = corpus.tweaks.iter().find(|t| &t.id == tweak) else {
+        return vec![(0, u32::MAX)];
+    };
+    let effect_scope = tweak
+        .surface
+        .iter()
+        .find(|e| &e.id == effect)
+        .and_then(|e| e.windows.as_ref());
+    let effect_ranges = scope_ranges(effect_scope);
+    scope_ranges(tweak.windows.as_ref())
+        .into_iter()
+        .flat_map(|t| effect_ranges.iter().filter_map(move |&e| intersect(t, e)))
+        .collect()
+}
+
+/// Two owners collide only where both can run: owners gated to builds that never overlap (a
+/// Windows 10 tweak and a Windows 11 tweak for one setting) never drive the address together.
+fn owners_overlap(corpus: &Corpus, a: &AddressOwner, b: &AddressOwner) -> bool {
+    let b_ranges = owner_ranges(corpus, b);
+    owner_ranges(corpus, a)
+        .into_iter()
+        .any(|x| b_ranges.iter().any(|&y| intersect(x, y).is_some()))
+}
+
 /// One address, one owner, corpus-wide — direct effects and `shared` declarations counted
-/// together; a packed value is whole-owned xor field-addressed (spec §10, ADR-0006).
+/// together; a packed value is whole-owned xor field-addressed (spec §10, ADR-0006). Owners whose
+/// Windows scopes never overlap are exempt.
 fn check_ownership(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
     let mut groups: HashMap<CoarseKey, Vec<Claim>> = HashMap::new();
     for (setting, owner) in owned_settings(corpus) {
@@ -579,30 +639,38 @@ fn check_ownership(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
             // A whole-value (or non-registry) claim coexists with at least one other claim.
             // Every additional owner beyond the first must be surfaced — not just the second —
             // or a 3rd+ colliding owner silently escapes the guard (ADR-0006's core guarantee).
-            for other in &claims[1..] {
-                errors.push(ValidationError::DuplicateAddress {
-                    address: claims[0].display.clone(),
-                    first: claims[0].owner.clone(),
-                    second: other.owner.clone(),
-                });
+            for (i, other) in claims.iter().enumerate().skip(1) {
+                if let Some(first) = claims[..i]
+                    .iter()
+                    .find(|c| owners_overlap(corpus, &c.owner, &other.owner))
+                {
+                    errors.push(ValidationError::DuplicateAddress {
+                        address: claims[0].display.clone(),
+                        first: first.owner.clone(),
+                        second: other.owner.clone(),
+                    });
+                }
             }
         } else {
-            // All field-addressed: each field must be owned once.
-            let mut field_seen: HashMap<&str, &AddressOwner> = HashMap::new();
+            // All field-addressed: each field must be owned once where its owners can both run.
+            let mut field_seen: HashMap<&str, Vec<&AddressOwner>> = HashMap::new();
             for claim in &claims {
                 let field = claim
                     .field
                     .as_deref()
                     .expect("checked: all Some in this branch");
-                if let Some(&prev) = field_seen.get(field) {
+                let seen = field_seen.entry(field).or_default();
+                if let Some(&prev) = seen
+                    .iter()
+                    .find(|prev| owners_overlap(corpus, prev, &claim.owner))
+                {
                     errors.push(ValidationError::DuplicateAddress {
                         address: format!("{}[{field}]", claims[0].display),
                         first: prev.clone(),
                         second: claim.owner.clone(),
                     });
-                } else {
-                    field_seen.insert(field, &claim.owner);
                 }
+                seen.push(&claim.owner);
             }
         }
     }
@@ -645,7 +713,7 @@ fn check_key_subtrees(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
                         });
                     }
                 }
-            } else {
+            } else if owners_overlap(corpus, key_owner, owner) {
                 errors.push(ValidationError::DuplicateAddress {
                     address: format!(
                         "{} (inside registry key {:?}\\{})",
@@ -1242,6 +1310,37 @@ mod tests {
         assert!(
             owners.contains("tweak_a") && owners.contains("tweak_b"),
             "{owners}"
+        );
+    }
+
+    fn scoped_fixture_errors(name: &str) -> Vec<ValidationError> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tweaks_fixtures/scoped")
+            .join(name);
+        let corpus = load_corpus(&path).expect("fixture must load");
+        let mut errors = validate_structural(&corpus);
+        errors.extend(validate_semantic(&corpus, SUPPORT_MATRIX));
+        errors
+    }
+
+    #[test]
+    fn owners_with_disjoint_windows_scopes_may_share_an_address() {
+        let errors = scoped_fixture_errors("disjoint_owners_ok.yaml");
+        assert!(errors.is_empty(), "expected no errors, got {errors:?}");
+    }
+
+    #[test]
+    fn owners_whose_windows_scopes_overlap_are_still_rejected() {
+        let errors = scoped_fixture_errors("overlapping_owners_rejected.yaml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {errors:?}"
+        );
+        assert!(
+            matches!(errors[0], ValidationError::DuplicateAddress { .. }),
+            "expected DuplicateAddress, got {:?}",
+            errors[0]
         );
     }
 

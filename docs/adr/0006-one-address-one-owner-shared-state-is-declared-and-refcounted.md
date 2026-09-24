@@ -31,6 +31,11 @@ with the old corpus (multiple tweaks sharing policy values and `Services\…\Sta
    mechanism can paper over; the build error names both tweaks and the playbook: merge them (they are
    usually one feature wearing two names), reassign the address to the one tweak it belongs to, or
    extract the shared knob into its own tweak.
+5. **Owners whose Windows scopes never overlap are exempt.** When the builds two owners' `windows:`
+   scopes admit are disjoint, only one of them is ever available on a machine, so neither can apply,
+   detect or revert over the other and the breakage above cannot occur. This lets one setting whose
+   choices differ by Windows version ship as one tweak per version (the taskbar search style's
+   Windows 10 and Windows 11 tweaks). Any overlapping build is still a collision.
 
 ## Considered Options
 
