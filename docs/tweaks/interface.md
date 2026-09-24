@@ -884,7 +884,7 @@ Choose "Never combine" on a wide monitor where you keep fewer than a dozen windo
 
 ### Show taskbar thumbnails instantly
 
-`taskbar_hover_time` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`taskbar_hover_time` · Switch (2 options) · Risk: low · Elevation: none · Reboot: no · Windows: build 22631 and older · Reversible: yes
 
 **Taskbar thumbnail previews appear the moment you hover instead of after a pause, on builds that still honour the value.**
 
@@ -899,7 +899,7 @@ Choose "Never combine" on a wide monitor where you keep fewer than a dozen windo
 | Instant | `1` |
 | 400 ms | `absent` |
 
-System Default is shown when the value holds any other number (a custom delay); selecting it restores the snapshot. Stock is value-absent, confirmed by registry inspection on 26100.4061, with the shell falling back to an internal 400 ms. The app shows a warning banner on this tweak: it is widely reported to do nothing on Windows 11 24H2 and newer.
+System Default is shown when the value holds any other number (a custom delay); selecting it restores the snapshot. Stock is value-absent, confirmed by registry inspection on 26100.4061, with the shell falling back to an internal 400 ms. The tweak is gated to build 22631 and older, because it is widely reported to do nothing on Windows 11 24H2 and newer.
 
 #### How it works
 
@@ -915,7 +915,7 @@ System Default is shown when the value holds any other number (a custom delay); 
 - **Undocumented**: no Microsoft reference in either direction.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: works on Windows 10 LTSC 2021 and Windows 11 up to 23H2; on 24H2 (26100) and 25H2 the effect is disputed and most likely absent. The tweak carries no `windows:` gate.
+- **Applies to**: works on Windows 10 LTSC 2021 and Windows 11 up to 23H2; on 24H2 (26100) and 25H2 the effect is disputed and most likely absent, so the tweak is gated to build 22631 and older and hidden from 24H2 on.
 - **Takes effect**: after sign-out or an Explorer restart.
 - **Reverting**: restores the captured state; on an untouched machine that means removing the value rather than writing 400.
 
@@ -925,11 +925,11 @@ System Default is shown when the value holds any other number (a custom delay); 
 #### Validation
 - **Verdict**: DISPUTED. The value's function on the primary target is contested by current evidence; the stock state was confirmed as value-absent, which the "400 ms" option reproduces.
 - **Confidence**: Community-corroborated for the mechanism on older builds. Binary and registry inspection on 26100.4061 (tier A measurements) confirm the name survives and the stock is absent, but not that the value has an effect.
-- **Reasoning**: a genuine evidence conflict rather than silence. The 24H2 re-scope judged it obsolete on the primary platform and recommended deleting it or gating it to Windows 10; the category research accepted an explicit warning as the alternative, which is how it ships. Only a visual test settles it: set the value to 1, restart Explorer, and watch whether the thumbnail appears immediately.
+- **Reasoning**: a genuine evidence conflict rather than silence. The 24H2 re-scope judged it obsolete on the primary platform and recommended deleting it or gating it to Windows 10; the category research accepted an explicit warning as the alternative. The tweak now ships gated to build 22631 and older, following the re-scope (Windows 11 22H2 and 23H2 keep it, since the value is confirmed working on 22631). Only a visual test settles it: set the value to 1, restart Explorer, and watch whether the thumbnail appears immediately.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
-Worth applying only on Windows 10 LTSC 2021. On 24H2 and newer expect it to do nothing and do not spend time troubleshooting it.
+Worth applying on Windows 10 and on Windows 11 up to 23H2 if the thumbnail delay bothers you. The tweak is not offered on 24H2 and newer, where it does nothing.
 
 #### Sources
 1. Direct binary inspection, Windows 11 24H2 build 26100.4061: `ExtendedUIHoverTime` in `Taskbar.dll` only, out of 5,418 `System32` binaries, inside the legacy taskband string block (tier A, primary measurement)

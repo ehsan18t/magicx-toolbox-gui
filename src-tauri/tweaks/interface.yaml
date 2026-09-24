@@ -481,19 +481,17 @@ tweaks:
   - id: taskbar_hover_time
     name: "Show taskbar thumbnails instantly"
     description: "Taskbar thumbnail previews appear the moment you hover instead of after a pause."
-    warning: "Widely reported to have stopped working on Windows 11 24H2 and newer. The value name still exists in the shipping taskbar, but the redesigned taskbar appears not to read it, so applying this may change nothing you can see."
     info: |
       **Makes taskbar thumbnail previews appear as soon as you hover a button, instead of after a 400 ms pause.**
 
       ## Drawbacks
       - Previews pop up whenever the cursor crosses the taskbar.
 
-      ## Notes
-      - Works on Windows 10 and on Windows 11 up to 23H2.
-      - Takes effect after you sign out or restart Explorer.
+      ## Requirements
+      - Windows 10 or Windows 11 up to 23H2. The 24H2 taskbar no longer reads the value, so the tweak is hidden from 24H2 on.
 
-      ## Recommendation
-      Worth applying on Windows 10. On 24H2 and newer, expect no change and do not spend time troubleshooting it.
+      ## Notes
+      - Takes effect after you sign out or restart Explorer.
 
       ## Sources
       - [Change hover time for taskbar thumbnail previews in Windows 11](https://www.elevenforum.com/t/change-hover-time-to-show-taskbar-thumbnail-previews-in-windows-11.6366/)
@@ -501,6 +499,8 @@ tweaks:
     risk_level: low
     elevation: user
     reversible: true
+    # Stops working from 24H2 (26100): the value survives in Taskbar.dll's legacy strings but the taskbar ignores it.
+    windows: { build: "<=22631" }
     effects:
       - id: hover_time
         registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ExtendedUIHoverTime, type: REG_DWORD }
