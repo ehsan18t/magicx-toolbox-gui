@@ -12,7 +12,7 @@ Tweaks are authored as YAML in `src-tauri/tweaks/`, one file per category. The Y
 |---|---|
 | [AI & Copilot tweaks](ai.md) | 10 |
 | [Debloat & Consumer tweaks](debloat.md) | 27 |
-| [Interface & Explorer tweaks](interface.md) | 42 |
+| [Interface & Explorer tweaks](interface.md) | 43 |
 | [Network & Power tweaks](network.md) | 14 |
 | [Performance & Gaming tweaks](performance.md) | 24 |
 | [Privacy & Telemetry tweaks](privacy.md) | 34 |
@@ -20,7 +20,7 @@ Tweaks are authored as YAML in `src-tauri/tweaks/`, one file per category. The Y
 | [Services & Scheduled Tasks tweaks](services.md) | 29 |
 | [Windows Update tweaks](windows_update.md) | 14 |
 
-256 tweaks in total.
+257 tweaks in total.
 
 ## How to read an entry
 
@@ -168,7 +168,8 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Hide the Task View button](interface.md#hide-the-task-view-button) | `disable_task_view_button` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Show seconds in the tray clock](interface.md#show-seconds-in-the-tray-clock) | `seconds_in_tray_clock` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn off search highlights](interface.md#turn-off-search-highlights) | `disable_search_highlights` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
-| [Taskbar search style](interface.md#taskbar-search-style) | `taskbar_search_mode` | Interface & Explorer tweaks | Dropdown (4 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Taskbar search style (Windows 10)](interface.md#taskbar-search-style-windows-10) | `taskbar_search_mode` | Interface & Explorer tweaks | Dropdown (3 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Taskbar search style (Windows 11)](interface.md#taskbar-search-style-windows-11) | `taskbar_search_mode_win11` | Interface & Explorer tweaks | Dropdown (4 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Ungroup taskbar buttons](interface.md#ungroup-taskbar-buttons) | `taskbar_ungroup_labels` | Interface & Explorer tweaks | Dropdown (3 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Show taskbar thumbnails instantly](interface.md#show-taskbar-thumbnails-instantly) | `taskbar_hover_time` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | DISPUTED |
 | [Left-align the taskbar](interface.md#left-align-the-taskbar) | `taskbar_alignment_left` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |

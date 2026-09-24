@@ -21,7 +21,8 @@ Two facts apply to the whole category. First, Microsoft publishes no reference f
 | [Hide the Task View button](#hide-the-task-view-button) | `disable_task_view_button` | Switch (2 options) | low | none | no | VERIFIED |
 | [Show seconds in the tray clock](#show-seconds-in-the-tray-clock) | `seconds_in_tray_clock` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Turn off search highlights](#turn-off-search-highlights) | `disable_search_highlights` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
-| [Taskbar search style](#taskbar-search-style) | `taskbar_search_mode` | Dropdown (4 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Taskbar search style (Windows 10)](#taskbar-search-style-windows-10) | `taskbar_search_mode` | Dropdown (3 options) | low | none | no | VERIFIED-WITH-CORRECTION |
+| [Taskbar search style (Windows 11)](#taskbar-search-style-windows-11) | `taskbar_search_mode_win11` | Dropdown (4 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Ungroup taskbar buttons](#ungroup-taskbar-buttons) | `taskbar_ungroup_labels` | Dropdown (3 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Show taskbar thumbnails instantly](#show-taskbar-thumbnails-instantly) | `taskbar_hover_time` | Switch (2 options) | low | none | no | DISPUTED |
 | [Left-align the taskbar](#left-align-the-taskbar) | `taskbar_alignment_left` | Switch (2 options) | low | none | no | VERIFIED |
@@ -768,11 +769,11 @@ Apply it. There is no functional cost, and a search box is a poor place for prom
 2. Enable or Disable Search Highlights in Windows 11, the per-user value, https://www.elevenforum.com/t/enable-or-disable-search-highlights-in-windows-11.5735/ (tier C)
 3. Enable or Disable Search Highlights in Windows 10, the same value on Windows 10, https://www.tenforums.com/tutorials/194711-enable-disable-search-highlights-windows-10-a.html (tier C)
 
-### Taskbar search style
+### Taskbar search style (Windows 10)
 
-`taskbar_search_mode` · Dropdown (4 options) · Risk: low · Elevation: none · Reboot: no · Windows: all supported builds · Reversible: yes
+`taskbar_search_mode` · Dropdown (3 options) · Risk: low · Elevation: none · Reboot: no · Windows: Windows 10 only (`products: [10]`) · Reversible: yes
 
-**Shrinks or removes the taskbar search box, the widest element on a stock Windows 11 taskbar.**
+**Shrinks or hides the Windows 10 taskbar search box.**
 
 #### What it changes
 
@@ -786,13 +787,66 @@ Apply it. There is no functional cost, and a search box is a poor place for prom
 | Hidden | `0` | `1` |
 | Icon only | `1` | `1` |
 | Search box | `2` | `absent` |
-| Icon and label | `3` | `1` |
 
-System Default is shown when the pair matches no row, for example mode `2` with a cache value present; selecting it restores the snapshot. The Windows 11 stock state is the search box (`2`), which the "Search box" option reproduces.
+System Default is shown when the pair matches no row; selecting it restores the snapshot. The stock state is the search box (`2`), which the "Search box" option reproduces.
 
 #### How it works
 
-`SearchboxTaskbarMode` is the Settings > Personalization > Taskbar > "Search" dropdown: `0` hides search, `1` shows an icon, `2` shows the full search box, and `3` shows an icon with a label, a presentation added with the Windows 11 22H2 build 22621.1344 search redesign. Windows treats a missing `SearchboxTaskbarModeCache` as "the user has expressed no preference" and can re-migrate the mode back to `2`, which would read back as a failed apply; deployment guidance therefore writes the cache as `1` next to the mode. The tweak pins the cache for every non-stock option and removes it for "Search box", because re-migration to `2` is harmless there and writing it would leave an artefact on an otherwise pristine profile. Hiding the box does not disable search: pressing the Windows key and typing still searches.
+`SearchboxTaskbarMode` is the value behind the taskbar's Search menu on Windows 10: `0` hides search, `1` shows the search icon, `2` shows the full search box. Windows 10 has no icon-and-label mode (`3`), which is why the Windows 11 variant is a separate tweak, [Taskbar search style (Windows 11)](#taskbar-search-style-windows-11). The two write the same two values, and their Windows gates never overlap, so only one is ever available. `SearchboxTaskbarModeCache` is the Windows 11 re-migration guard (see the Windows 11 entry); it is written here with the same shape so behaviour matches the single tweak this was split from, and nothing establishes that Windows 10 reads it. Community guides say an Explorer restart may be needed on Windows 10 for the taskbar to pick up the change. Hiding the box does not disable search: pressing the Windows key and typing still searches.
+
+#### Benefits
+- **Reclaims space**: the search box is the widest default taskbar element.
+- **Keyboard search unaffected**: Windows key and type still works in every mode.
+
+#### Drawbacks
+- **Keyboard only when hidden**: mode 0 leaves no mouse entry point to search.
+
+#### Applies to, takes effect, reverting
+- **Applies to**: Windows 10, including LTSC 2021, every edition. On Windows 11 the tweak shows as unavailable; use the Windows 11 variant.
+- **Takes effect**: usually at once; otherwise after an Explorer restart or a sign-out.
+- **Reverting**: restores both captured values, which on a stock machine is mode `2` with no cache value.
+
+#### Interactions
+- [Taskbar search style (Windows 11)](#taskbar-search-style-windows-11) owns the same two values on Windows 11.
+
+#### Validation
+- **Verdict**: VERIFIED-WITH-CORRECTION. The corrections (made for the original single tweak): "Search box" (`2`) is the stock state, and `SearchboxTaskbarModeCache` is written alongside non-stock modes. The tweak was split by Windows version because mode `3` does not exist on Windows 10.
+- **Confidence**: Community-corroborated: independent guides give the 0, 1 and 2 values for Windows 10.
+- **Reasoning**: key, name, type and the 0 to 2 enum held up. Open question: whether Windows 10 reads `SearchboxTaskbarModeCache`.
+- **Tested**: Build validation (schema, ownership and conflict checks, including the rule that lets two tweaks share a value only when their Windows gates never overlap).
+
+#### Recommendation
+Icon only frees the space without losing the mouse route. Choose Hidden only if you always search with the Windows key.
+
+#### Sources
+1. Hide or Show Search Box or Search Icon on Taskbar in Windows 10, Ten Forums tutorial, https://www.tenforums.com/tutorials/2854-hide-show-search-box-search-icon-taskbar-windows-10-a.html (tier C)
+2. Control Cortana on the Windows 10 taskbar through the Registry, the 0, 1 and 2 values and the Explorer restart, https://www.404techsupport.com/2015/11/27/control-cortana-windows-10-taskbar-registry/ (tier C)
+
+### Taskbar search style (Windows 11)
+
+`taskbar_search_mode_win11` · Dropdown (4 options) · Risk: low · Elevation: none · Reboot: no · Windows: build 22621 and newer · Reversible: yes
+
+**Chooses how search appears on the Windows 11 taskbar, with the same four choices as Settings: hide, search icon only, search icon and label, or the full search box.**
+
+#### What it changes
+
+| Effect | Kind | Target |
+|---|---|---|
+| `search_mode` | registry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Search`, value `SearchboxTaskbarMode`, REG_DWORD |
+| `search_mode_cache` | registry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Search`, value `SearchboxTaskbarModeCache`, REG_DWORD |
+
+| Option | `search_mode` | `search_mode_cache` |
+|---|---|---|
+| Hide | `0` | `1` |
+| Search icon only | `1` | `1` |
+| Search icon and label | `3` | `1` |
+| Search box | `2` | `absent` |
+
+The options follow the order and wording of Settings > Personalization > Taskbar > Search. System Default is shown when the pair matches no row, for example mode `2` with a cache value present; selecting it restores the snapshot. The stock state is the search box (`2`), which the "Search box" option reproduces.
+
+#### How it works
+
+`SearchboxTaskbarMode` is the Settings > Personalization > Taskbar > "Search" dropdown: `0` hides search, `1` shows an icon, `2` shows the full search box, and `3` shows an icon with a label, a presentation added with the Windows 11 22H2 build 22621.1344 search redesign. Windows treats a missing `SearchboxTaskbarModeCache` as "the user has expressed no preference" and can re-migrate the mode back to `2`, which would read back as a failed apply; deployment guidance therefore writes the cache as `1` next to the mode. The tweak pins the cache for every non-stock option and removes it for "Search box", because re-migration to `2` is harmless there and writing it would leave an artefact on an otherwise pristine profile. Hiding the box does not disable search: pressing the Windows key and typing still searches. The Windows 10 variant, [Taskbar search style (Windows 10)](#taskbar-search-style-windows-10), owns the same two values; their gates never overlap.
 
 #### Benefits
 - **Reclaims space**: the search box is the widest default taskbar element.
@@ -801,15 +855,14 @@ System Default is shown when the pair matches no row, for example mode `2` with 
 
 #### Drawbacks
 - **Keyboard only when hidden**: mode 0 leaves no mouse entry point to search.
-- **Mode 3 is Windows 11 only**: Windows 10, including LTSC 2021, supports modes 0, 1 and 2; the tweak does not gate the "Icon and label" option there, so avoid it on Windows 10.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: every supported build and edition; "Icon and label" needs Windows 11 22621.1344 or later.
+- **Applies to**: Windows 11 22H2 (build 22621) and newer, every edition; "Search icon and label" needs 22621.1344 or later, a revision the build gate cannot express. Windows 11 21H2 (22000) is outside the gate.
 - **Takes effect**: immediately, the taskbar re-lays out on its own.
 - **Reverting**: restores both captured values, which on a stock machine is mode `2` with no cache value.
 
 #### Interactions
-None known.
+- [Taskbar search style (Windows 10)](#taskbar-search-style-windows-10) owns the same two values on Windows 10.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The corrections: "Search box" (`2`) is the stock state, and `SearchboxTaskbarModeCache` must be written alongside non-stock modes to stop re-migration.
@@ -818,7 +871,7 @@ None known.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
-Icon only is the sweet spot for most people: it frees the space without losing the mouse route. Choose Hidden only if you always search with the Windows key.
+Search icon only is the sweet spot for most people: it frees the space without losing the mouse route. Choose Hide only if you always search with the Windows key.
 
 #### Sources
 1. Customizing search on the Windows 11 taskbar, Windows IT Pro blog, confirms the four presentation options exist, https://techcommunity.microsoft.com/blog/windows-itpro-blog/customizing-search-on-the-windows-11-taskbar/3730314 (tier B)

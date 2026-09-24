@@ -402,33 +402,32 @@ tweaks:
         values: { search_highlights: 1 }
 
   - id: taskbar_search_mode
-    name: "Taskbar search style"
-    description: "Shrink or remove the taskbar search box, the widest element on a stock Windows 11 taskbar."
+    name: "Taskbar search style (Windows 10)"
+    description: "Shrink or hide the taskbar search box on Windows 10."
     info: |
-      **Chooses how search appears on the taskbar: hidden, an icon, an icon with a label, or the full search box (the Windows 11 default).**
-
-      ## Requirements
-      - Icon and label needs Windows 11. Windows 10 does not support it, and the app does not stop you picking it there.
+      **Chooses how search appears on the Windows 10 taskbar: hidden, an icon, or the full search box (the default).**
 
       ## Notes
       - Hiding it does not turn search off: press the Windows key and type.
-      - Takes effect immediately.
+      - If the taskbar does not change at once, restart Explorer or sign out.
+
+      ## Related
+      - **Taskbar search style (Windows 11)** is the Windows 11 version, with an extra icon-and-label choice.
 
       ## Recommendation
       Icon only frees the space and keeps a mouse route. Pick Hidden only if you always search from the keyboard.
 
       ## Sources
-      - [Customizing search on the Windows 11 taskbar](https://techcommunity.microsoft.com/blog/windows-itpro-blog/customizing-search-on-the-windows-11-taskbar/3730314)
-      - [Disabling the Windows 11 taskbar search box for all users](https://awakecoding.com/posts/disabling-the-windows-11-taskbar-search-box-for-all-users/)
+      - [Hide or show the search box or icon on the Windows 10 taskbar](https://www.tenforums.com/tutorials/2854-hide-show-search-box-search-icon-taskbar-windows-10-a.html)
+      - [Control the Windows 10 taskbar search box through the registry](https://www.404techsupport.com/2015/11/27/control-cortana-windows-10-taskbar-registry/)
     risk_level: low
     elevation: user
     reversible: true
+    # Windows 10 has no icon-and-label mode (3); the Windows 11 tweak below owns the same values.
+    windows: { products: [10] }
     effects:
       - id: search_mode
         registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarMode, type: REG_DWORD }
-      # Windows reads a missing cache value as "no preference recorded" and re-migrates the mode back
-      # to 2, so every non-stock option pins it. The stock option leaves it absent: re-migration to 2
-      # is a no-op there, and writing 1 would leave an artefact on an otherwise pristine profile.
       - id: search_mode_cache
         registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarModeCache, type: REG_DWORD }
     options:
@@ -438,8 +437,49 @@ tweaks:
         values: { search_mode: 1, search_mode_cache: 1 }
       - label: "Search box"
         values: { search_mode: 2, search_mode_cache: absent }
-      - label: "Icon and label"
+
+  - id: taskbar_search_mode_win11
+    name: "Taskbar search style (Windows 11)"
+    description: "Shrink or remove the taskbar search box, the widest element on a stock Windows 11 taskbar."
+    info: |
+      **Chooses how search appears on the taskbar, the same four choices as Settings: hide it, a search icon, an icon with a label, or the full search box (the default).**
+
+      ## Notes
+      - Hiding it does not turn search off: press the Windows key and type.
+      - Search icon and label needs build 22621.1344 or newer.
+      - Takes effect immediately.
+
+      ## Related
+      - **Taskbar search style (Windows 10)** is the Windows 10 version.
+
+      ## Recommendation
+      Search icon only frees the space and keeps a mouse route. Pick Hide only if you always search from the keyboard.
+
+      ## Sources
+      - [Customizing search on the Windows 11 taskbar](https://techcommunity.microsoft.com/blog/windows-itpro-blog/customizing-search-on-the-windows-11-taskbar/3730314)
+      - [Disabling the Windows 11 taskbar search box for all users](https://awakecoding.com/posts/disabling-the-windows-11-taskbar-search-box-for-all-users/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    # The four-way search setting arrived with 22H2; the Windows 10 tweak above owns the same values.
+    windows: { build: ">=22621" }
+    effects:
+      - id: search_mode
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarMode, type: REG_DWORD }
+      # Windows reads a missing cache value as "no preference recorded" and re-migrates the mode back
+      # to 2, so every non-stock option pins it. The stock option leaves it absent: re-migration to 2
+      # is a no-op there, and writing 1 would leave an artefact on an otherwise pristine profile.
+      - id: search_mode_cache
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarModeCache, type: REG_DWORD }
+    options:
+      - label: "Hide"
+        values: { search_mode: 0, search_mode_cache: 1 }
+      - label: "Search icon only"
+        values: { search_mode: 1, search_mode_cache: 1 }
+      - label: "Search icon and label"
         values: { search_mode: 3, search_mode_cache: 1 }
+      - label: "Search box"
+        values: { search_mode: 2, search_mode_cache: absent }
 
   - id: taskbar_ungroup_labels
     name: "Ungroup taskbar buttons"
