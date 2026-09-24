@@ -399,37 +399,38 @@ fn reapply_option_ref(
         if scoped_out {
             continue;
         }
-        if matches!(raw, Some(OptValue::Run(_))) {
-            action_plan.push((effect.id.clone(), ActionPlan::Apply));
-            continue;
-        }
-        if let ActionDef::Script {
+        let runs = matches!(raw, Some(OptValue::Run(_)));
+        let ActionDef::Script {
             probe: Some(_),
             undo,
             ..
         } = action_def
-        {
-            match detect::probe_live(
-                deps,
-                action_def,
-                &context::read_route(effect, deps.level, corpus),
-            ) {
-                // A verified read of the action's state, so it accounts for it whatever it reads.
-                Ok(present) => {
-                    probed.insert(effect.id.clone());
-                    if present && undo.is_some() {
-                        action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
-                    } else if present {
-                        residues.push(effect.id.clone());
-                    }
+        else {
+            if runs {
+                action_plan.push((effect.id.clone(), ActionPlan::Apply));
+            }
+            continue;
+        };
+        match detect::probe_live(
+            deps,
+            action_def,
+            &context::read_route(effect, deps.level, corpus),
+        ) {
+            // A verified read of the action's state, so it accounts for it whatever it reads.
+            Ok(present) => {
+                probed.insert(effect.id.clone());
+                match apply::plan_for(runs, present, undo.is_some()) {
+                    apply::ProbedPlan::Drive(plan) => action_plan.push((effect.id.clone(), plan)),
+                    apply::ProbedPlan::Residue => residues.push(effect.id.clone()),
+                    apply::ProbedPlan::Nothing => {}
                 }
-                Err(e) => {
-                    failures.push(EngineError::CaptureFailed {
-                        effect: effect.id.clone(),
-                        source: e,
-                    });
-                    plan_failed = true;
-                }
+            }
+            Err(e) => {
+                failures.push(EngineError::CaptureFailed {
+                    effect: effect.id.clone(),
+                    source: e,
+                });
+                plan_failed = true;
             }
         }
     }
@@ -1401,6 +1402,123 @@ mod tests {
             Some(&true)
         );
         assert_eq!(crash_reason(&h), None);
+    }
+
+    /// The machine already has `x`'s state but not the option's Setting, so it reads System
+    /// Default. Applying must leave `x` alone and unjournaled, and the revert must restore only the
+    /// Setting: running `x`'s undo would force off a state the apply never made.
+    #[test]
+    fn an_action_already_present_is_neither_run_nor_undone() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", true, true)],
+            vec![opt(
+                "On",
+                vec![
+                    ("s1", set(Value::Startup(StartupType::Disabled))),
+                    ("x", ModelOptValue::Run(None)),
+                ],
+            )],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.probes
+            .presence
+            .lock()
+            .unwrap()
+            .insert("x_apply".into(), true);
+
+        apply::do_apply(&t, &c, &OptLabel("On".into()), &h.deps()).expect("apply verifies");
+        assert!(!h.log().contains(&Op::RunApply("x_apply".into())));
+        let head = h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .expect("the apply keeps its entry");
+        assert!(head.journal.is_empty(), "nothing to undo was recorded");
+
+        let outcome = run_restore(&t, &c, &h.deps()).expect("the restore verifies");
+        assert!(outcome.consumed.is_some());
+        assert!(!h.log().contains(&Op::RunUndo("x_apply".into())));
+        assert_eq!(
+            h.probes.presence.lock().unwrap().get("x_apply"),
+            Some(&true),
+            "the state the machine already had survives the revert"
+        );
+        assert_eq!(h.kind.live_value("s1"), Value::Startup(StartupType::Manual));
+    }
+
+    /// A skip is decided from the live probe on every apply, never remembered: once option B drives
+    /// `x` back, returning to A must run `x` for real and journal it, and the revert must undo it.
+    #[test]
+    fn an_action_skipped_once_runs_after_another_option_removed_its_state() {
+        let h = Harness::new();
+        let t = tweak(
+            "demo",
+            vec![svc_effect("s1", false), action_effect("x", true, true)],
+            vec![
+                opt(
+                    "A",
+                    vec![
+                        ("s1", set(Value::Startup(StartupType::Disabled))),
+                        ("x", ModelOptValue::Run(None)),
+                    ],
+                ),
+                opt(
+                    "B",
+                    vec![("s1", set(Value::Startup(StartupType::Automatic)))],
+                ),
+            ],
+        );
+        let c = corpus(vec![t.clone()], vec![]);
+        let present = |h: &Harness| h.probes.presence.lock().unwrap().get("x_apply").copied();
+        h.kind.seed("s1", Value::Startup(StartupType::Manual));
+        h.probes
+            .presence
+            .lock()
+            .unwrap()
+            .insert("x_apply".into(), true);
+
+        apply::do_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("A verifies");
+        assert!(
+            !h.log().contains(&Op::RunApply("x_apply".into())),
+            "already present: skipped"
+        );
+
+        apply::do_apply(&t, &c, &OptLabel("B".into()), &h.deps()).expect("B verifies");
+        assert!(
+            h.log().contains(&Op::RunUndo("x_apply".into())),
+            "B drives x back"
+        );
+        assert_eq!(present(&h), Some(false));
+
+        apply::do_apply(&t, &c, &OptLabel("A".into()), &h.deps()).expect("A verifies again");
+        assert!(
+            h.log().contains(&Op::RunApply("x_apply".into())),
+            "A now really runs x"
+        );
+        assert_eq!(present(&h), Some(true));
+        let head = h
+            .snapshots
+            .head("demo", &c, Some("test-guid"), 19045)
+            .unwrap()
+            .expect("the apply keeps its entry");
+        assert!(head
+            .journal
+            .iter()
+            .any(|r| r.action_id.0 == "x" && r.completed && !r.undo_back));
+
+        run_restore(&t, &c, &h.deps()).expect("the restore back to B verifies");
+        assert_eq!(
+            present(&h),
+            Some(false),
+            "the revert undoes the run it recorded"
+        );
+        assert_eq!(
+            h.kind.live_value("s1"),
+            Value::Startup(StartupType::Automatic)
+        );
     }
 
     /// A crashed re-apply left `x`'s re-run unfinished on the head. The retry's verified undo of `x`

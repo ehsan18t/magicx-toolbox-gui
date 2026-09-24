@@ -248,20 +248,20 @@ Apply it unless you deliberately connect into this PC over Remote Desktop. If yo
 
 | Option | `smb1_server` | `smb1_feature` |
 |---|---|---|
-| Removed | `absent` | `run` (apply: disable the feature) |
+| Removed | `0` | `run` (apply: disable the feature) |
 | Installed | `absent` | omitted (undo: re-enable the feature) |
 
-System Default is shown when the live state matches neither row, for example `SMB1` = 0 set by another tool; selecting it restores the snapshot. The common stock state on Windows 11 (`SMB1` absent, feature disabled) reads as "Removed", so applying there changes nothing and a revert can never install SMBv1 on a machine that did not have it. Microsoft states the `SMB1` value's default is 1 (Enabled) and "no registry key is created", so absent is the stock registry state; the feature itself is not installed by default on Windows 11 or on Windows 10 1709 and later, except Windows 10 Home and Pro.
+System Default is shown when the live state matches neither row, for example `SMB1` absent with the feature disabled (the common stock state on Windows 11); selecting it restores the snapshot. Applying "Removed" there writes `SMB1` = 0 and leaves the already-disabled feature alone: the engine does not run an action whose probe already reads present, so nothing is recorded that a revert could undo, and a revert only deletes `SMB1` again. SMBv1 is never installed on a machine that did not have it. Microsoft states the `SMB1` value's default is 1 (Enabled) and "no registry key is created", so absent is the stock registry state; the feature itself is not installed by default on Windows 11 or on Windows 10 1709 and later, except Windows 10 Home and Pro.
 
 #### How it works
 
 SMBv1 is delivered as the `SMB1Protocol` Windows optional feature, which carries both the SMBv1 client and the SMBv1 server component. Disabling the feature through DISM (`Disable-WindowsOptionalFeature`) removes both halves; the change is staged and finishes on the next restart, which is why the tweak passes `-NoRestart` and sets `requires_reboot`. SMB 2.x and 3.x, used by every modern file share, are separate and unaffected.
 
-The registry half is Microsoft's documented server-side switch: `LanmanServer\Parameters\SMB1` = 0 disables SMBv1 on the server even if the feature is present. The tweak deliberately does not write it: both options leave `SMB1` at its stock `absent`. Writing 0 in "Removed" would make a stock Windows 11 machine (feature already disabled, value absent) read as System Default, so applying would record the feature action and a later revert would run its undo and install SMBv1 on a machine that never had it. With the feature removed, the server component the value controls is gone anyway; the cost is that nothing pins the server side off if something else reinstalls the feature later, which the tweak would then show as "Installed".
+The registry half is Microsoft's documented server-side switch: `LanmanServer\Parameters\SMB1` = 0 disables SMBv1 on the server even if the feature is present. Writing it alongside the feature removal makes the server side explicit and pins it off if the feature is later reinstalled by something else.
 
 The action has a probe, so the app detects the real feature state instead of trusting that the script ran. The probe is written in the fail-safe polarity: only an explicit state of `Disabled` exits 0; any other state, or a failed query, exits 1 and the effect reads as not applied. The cross-cutting probe audit lists this tweak among the probes that are already correct. `DisablePending` (the disable is staged until the restart) and `DisabledWithPayloadRemoved` also read as removed.
 
-"Installed" leaves the action out of its values. Omitting an action drives it back to its not-run state, which runs the undo script: `Enable-WindowsOptionalFeature ... -All` reinstalls the feature (with `-All` also enabling any parent features it needs) and the `SMB1` value stays absent so the server default applies. The undo can take several minutes, hence the 900 second timeout.
+"Installed" leaves the action out of its values. Omitting an action drives it back to its not-run state, which runs the undo script: `Enable-WindowsOptionalFeature ... -All` reinstalls the feature (with `-All` also enabling any parent features it needs) and the `SMB1` value is deleted so the server default applies. The undo can take several minutes, hence the 900 second timeout.
 
 #### Benefits
 - **Kills a wormable protocol**: SMBv1 carried EternalBlue and WannaCry.
@@ -278,7 +278,7 @@ The action has a probe, so the app detects the real feature state instead of tru
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer (usually already absent); Windows 10 22H2 Home and Pro still ship it; Microsoft's exception list names only Home and Pro, so Enterprise-family editions such as Windows 10 IoT Enterprise LTSC 2021 do not install it by default.
 - **Takes effect**: after reboot.
-- **Reverting**: choosing "Installed" runs the undo (reinstalls the feature); Restore Snapshot restores the captured `SMB1` value and, when the apply actually disabled the feature, reinstalls it. Either path needs another reboot. On a machine where the feature is already disabled, the tweak reads as "Removed" and applying is a no-op, so no revert can reinstall it.
+- **Reverting**: choosing "Installed" runs the undo (reinstalls the feature) and deletes `SMB1`; Restore Snapshot restores the captured `SMB1` value and reinstalls the feature only if the apply actually disabled it. Either path needs another reboot. Applying on a machine where the feature is already disabled leaves the feature alone, so no revert can reinstall it.
 
 #### Interactions
 - [Require SMB signing](#require-smb-signing), [Disable SMB insecure guest logons](#disable-smb-insecure-guest-logons) and [Block NTLM on the SMB client](#block-ntlm-on-the-smb-client) harden SMB 2 and 3; they produce the same class of legacy-NAS breakage, so apply them together and test old storage once.
@@ -3852,7 +3852,7 @@ This uses a different audit subcategory from the logon-auditing tweak (`{0CCE921
 - Command lines can contain secrets: a password passed as an argument lands in the Security log, readable by every administrator on the machine.
 - Log volume: process creation is frequent, so the Security log fills faster; pair it with a larger Security log.
 - The revert depends on the stash: if `AuditProcessCreationPriorSetting` is missing when the undo runs, it disables both success and failure auditing for the subcategory.
-- If process-creation success auditing is already on (for example by Group Policy) while the command-line value is absent, the tweak reads System Default; applying records the pre-apply setting, but a later revert then fails its check, because the undo restores auditing that the probe still reads as on, and the tweak shows Needs Attention.
+- If process-creation success auditing is already on (for example by Group Policy) while the command-line value is absent, the tweak reads System Default; applying writes the value and leaves the audit action alone, because its probe already reads present, so nothing is recorded that a revert would undo.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows 8.1 and later).

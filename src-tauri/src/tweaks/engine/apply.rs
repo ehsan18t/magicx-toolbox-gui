@@ -302,6 +302,26 @@ pub(crate) enum ActionPlan {
     UndoBack,
 }
 
+/// What Step 1 does with a probeable action once its probe has been read.
+pub(crate) enum ProbedPlan {
+    Drive(ActionPlan),
+    /// A no-undo action's product the target omits: disclosed, left in place.
+    Residue,
+    Nothing,
+}
+
+/// The plan for a probeable action, shared by apply and restore so both decide alike. An action
+/// the target runs whose state is already present is left alone and never journaled: a revert
+/// must not undo a change this apply did not make.
+pub(crate) fn plan_for(runs: bool, present: bool, has_undo: bool) -> ProbedPlan {
+    match (runs, present, has_undo) {
+        (true, false, _) => ProbedPlan::Drive(ActionPlan::Apply),
+        (false, true, true) => ProbedPlan::Drive(ActionPlan::UndoBack),
+        (false, true, false) => ProbedPlan::Residue,
+        (true, true, _) | (false, false, _) => ProbedPlan::Nothing,
+    }
+}
+
 /// One non-Setting effect Step 3 changed, in order; rollback walks these in reverse. Settings need
 /// no entry (drive-to-value is absolute); Shared effects do, since the captured entry excludes them
 /// (spec §8.6).
@@ -650,32 +670,28 @@ pub(crate) fn do_apply(
             continue; // never read, never journaled, never driven
         }
         let runs = matches!(raw, Some(OptValue::Run(_)));
-        if runs {
-            action_plan.push((effect.id.clone(), ActionPlan::Apply));
-            continue;
-        }
-        // Genuinely omitted -- the expectation splits on `undo` (spec §8.4/§10).
-        if let ActionDef::Script {
+        let ActionDef::Script {
             probe: Some(_),
             undo,
             ..
         } = action_def
-        {
-            let cx = context::read_route(effect, deps.level, corpus);
-            let present = detect::probe_live(deps, action_def, &cx).map_err(|e| {
-                EngineError::CaptureFailed {
-                    effect: effect.id.clone(),
-                    source: e,
-                }
-            })?;
-            probed.insert(effect.id.clone());
-            if present {
-                if undo.is_some() {
-                    action_plan.push((effect.id.clone(), ActionPlan::UndoBack));
-                } else {
-                    residues.push(effect.id.clone()); // no-undo -- disclosed, left in place
-                }
+        else {
+            if runs {
+                action_plan.push((effect.id.clone(), ActionPlan::Apply));
             }
+            continue;
+        };
+        let cx = context::read_route(effect, deps.level, corpus);
+        let present =
+            detect::probe_live(deps, action_def, &cx).map_err(|e| EngineError::CaptureFailed {
+                effect: effect.id.clone(),
+                source: e,
+            })?;
+        probed.insert(effect.id.clone());
+        match plan_for(runs, present, undo.is_some()) {
+            ProbedPlan::Drive(plan) => action_plan.push((effect.id.clone(), plan)),
+            ProbedPlan::Residue => residues.push(effect.id.clone()),
+            ProbedPlan::Nothing => {}
         }
     }
 
@@ -4429,6 +4445,20 @@ mod tests {
             .attention
             .expect("an unreadable record is surfaced, not swallowed");
         assert_eq!(attention.reason, AttentionReason::RecordUnreadable);
+    }
+
+    #[test]
+    fn a_probed_action_is_driven_only_when_its_state_must_change() {
+        let plan = |runs, present, undo| match plan_for(runs, present, undo) {
+            ProbedPlan::Drive(p) => Some(p),
+            ProbedPlan::Residue | ProbedPlan::Nothing => None,
+        };
+        assert_eq!(plan(true, false, true), Some(ActionPlan::Apply));
+        assert_eq!(plan(true, true, true), None, "already present: left alone");
+        assert_eq!(plan(true, true, false), None);
+        assert_eq!(plan(false, true, true), Some(ActionPlan::UndoBack));
+        assert!(matches!(plan_for(false, true, false), ProbedPlan::Residue));
+        assert_eq!(plan(false, false, true), None);
     }
 
     #[test]

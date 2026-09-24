@@ -95,14 +95,11 @@ tweaks:
 
       ## Mechanism
       - Disables the `SMB1Protocol` Windows feature, which removes both the SMBv1 client and server.
-      - Detected from the real feature state: where SMBv1 is already absent (most Windows 11 PCs), the tweak shows Removed and applying changes nothing.
-
-      ## Caveats
-      - Nothing pins SMBv1 off if another tool reinstalls the feature later; the tweak then shows Installed.
+      - Also sets the server switch `SMB1 = 0`, so the SMBv1 server stays off even if the feature comes back.
 
       ## Notes
       - Removing or reinstalling the feature can take several minutes and finishes at the next restart.
-      - Installed reinstalls the feature, and so does reverting after an apply. A PC that never had SMBv1 is never given it.
+      - Where the feature is already off (most Windows 11 PCs), applying only sets the server switch and never touches the feature, so reverting cannot install SMBv1.
 
       ## Related
       - **Require SMB signing**, **Disable SMB insecure guest logons** and **Block NTLM on the SMB client** cause the same kind of old-NAS breakage; apply them together and test old storage once.
@@ -133,10 +130,8 @@ tweaks:
           shell: powershell
           timeout: 900
     options:
-      # `smb1_server` stays at its stock `absent` in both options: writing 0 in "Removed" would make a
-      # stock machine (feature already off) read System Default, and its revert would install SMBv1.
       - label: "Removed"
-        values: { smb1_server: absent, smb1_feature: run }
+        values: { smb1_server: 0, smb1_feature: run }
       # Omitting the action drives it back to absent, which runs the undo and reinstalls the feature.
       - label: "Installed"
         values: { smb1_server: absent }
@@ -2564,11 +2559,11 @@ tweaks:
       - The Security log fills faster; pair it with a larger log.
 
       ## Caveats
-      - If process-creation auditing was already on (for example by Group Policy) without command lines, a later revert can fail its check and show Needs Attention.
       - If the app's record of the previous audit setting is lost, reverting turns process-creation auditing off entirely.
 
       ## Notes
       - Off deletes the command-line value and restores the audit setting recorded before you applied.
+      - If process-creation auditing was already on (for example by Group Policy), applying only adds the command lines and leaves the audit setting alone, and reverting leaves it on.
 
       ## Related
       - **Event log retention size** enlarges the Security log.

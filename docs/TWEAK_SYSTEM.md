@@ -81,7 +81,7 @@ A tweak is in exactly one state at a time; options are mutually exclusive (spec 
 **Apply(option):** acquire the per-tweak lock and detect current status (applying the active option is
 a verified no-op). Capture the pre-apply `Value` of every applicable non-shared Setting; a read that
 cannot read is `Err` and aborts *before touching anything*. Persist the snapshot entry atomically before
-mutating, including the **WAL action journal** (the target's intended action list, unmarked). Drive each
+mutating, including the **WAL action journal** (the target's intended action list, unmarked). A probeable action the target runs whose probe already reads present is left out of that list: it is not run, and no later revert undoes a state the apply did not create. Drive each
 effect to its desired value in declaration order through its kind module and the broker; verify each by
 read-back (Settings) or `probe`/exit-code (Actions). Each action's completion is fsynced into the journal
 after it runs, and a row left planned but never confirmed complete surfaces as **Needs Attention**, never a silent skip.
