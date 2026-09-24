@@ -5,9 +5,9 @@ category:
   description: "Windows AI controls in one place: Recall snapshots, Click to Do, the Copilot app and taskbar button, AI features in Notepad, Paint and Edge, and the AI service broker. Mostly policy values, reversible from snapshots."
 
 tweaks:
-  # Microsoft's applicability floor for the WindowsAI policies is 26100.3915 (KB5055627). The `windows`
-  # grammar can only pin a revision against a single exact build, which would exclude 25H2, so the gate
-  # is the build line and the revision floor lives in the copy.
+  # WindowsAI policy floor is 26100.3915 (KB5055627). No `revision:` gate: it is a build error
+  # (`RevisionUnsupported`), and one pinned to a single build would exclude 25H2. The info text
+  # carries the revision floor.
   - id: disable_recall_snapshots
     name: "Disable Windows Recall snapshots"
     description: "Stop Windows Recall from saving screen snapshots, and delete the snapshots already stored."

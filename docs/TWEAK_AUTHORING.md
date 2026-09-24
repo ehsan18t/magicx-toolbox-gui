@@ -1436,12 +1436,7 @@ computes the truth and rejects the lie (`ReversibilityMismatch`, §14/§16).
 
 ### 12.5 `probe`: state-based, cached, present/absent
 
-`probe` answers _"is the state this action produces currently present?"_: **state-based, never
-history-based.** The **same** probe is the apply-time did-it-work check and the detect-time
-present/absent contribution. Probe results are **cached per session** and refreshed after an
-apply/restore of that tweak (detection never re-spawns a shell per status poll). Apply itself never
-trusts the cache: it re-probes live before deciding whether anything needs to change. An action **without**
-`probe` does not contribute to detection at all.
+`probe` answers _"is the state this action produces currently present?"_: **state-based, never history-based.** The **same** probe is the apply-time did-it-work check and the detect-time present/absent contribution. Probe results are **cached per session** and refreshed after an apply/restore of that tweak (detection never re-spawns a shell per status poll). Apply itself never trusts the cache: it re-probes live to detect the current state (a target option that is already active is a verified no-op) and to decide whether an omitted action must be driven back with its `undo`. An action the target option **runs** is always run, even when its probe already reads present, and is journaled like any other, so a later revert runs its `undo`. Author the options so that a machine already in the action's state detects as the option that runs it: then apply is a no-op there and nothing is journaled. A per-user marker, or a Setting whose stock value differs from the one the running option writes, breaks this: the machine reads System Default, the apply journals the action, and the revert's `undo` forces the opposite state onto a machine that never had it (or, where the `undo` restores a recorded prior, fails verification because the probe still reads present). An action **without** `probe` does not contribute to detection at all.
 
 #### Pick the cheapest form that answers the question
 
@@ -1503,6 +1498,8 @@ script body inline. (`probe` is the one field that also takes a map, for the nat
 > 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by `build.rs`). The **shipped `ActionRaw` schema accepts only a string** (`apply: String`, `undo: Option<String>` in `src-tauri/src/tweaks/schema.rs`), so filed scripts are not available and the spec is wrong on this point. This guide documents the shipped behavior.
 
 **Execution mechanics:** `powershell` runs via `powershell.exe -EncodedCommand` (base64 of UTF-16LE), so size, loops, quotes, and special characters carry **no escaping risk**; `cmd` runs the body from a temp script file via `cmd.exe /c`. Both shells launch by absolute path from System32 (`powershell` is Windows PowerShell 5.1 at `System32\WindowsPowerShell\v1.0\powershell.exe`, never `pwsh`), with System32 as the working directory. What that guarantees: the shell itself is the real one, and a bare command name in a `cmd` script that exists in System32 (such as `rundll32.exe`) resolves there, never from the app's folder. What it does not guarantee: any other name a script uses. A bare command name not in System32 falls through to `PATH` (in `powershell`, bare names always resolve through `PATH`; it never searches the working directory), and a relative file path resolves against System32. When it matters, write the full path (`%SystemRoot%\System32\...` in `cmd`, `$env:SystemRoot\System32\...` in `powershell`) and never rely on the working directory. Every script has a **bounded timeout** (30 seconds, or the action's `timeout` for `apply`/`undo`, §12.1): a hang is killed along with every process it started and surfaced as a typed error, never a silent success.
+
+Three Windows traps have bitten scripts in this corpus. Windows PowerShell 5.1 rejects `&&` and `||` as statement separators, so chain with `;` and check `$LASTEXITCODE` after each native command. `New-Item -Force` on a registry key that already exists deletes the key's values, so guard it with `Test-Path` whenever the key holds state you need later, including another tweak's. And the text of `powercfg`, `auditpol` and DISM output is translated, so read numbers, GUIDs and enum values (the hexadecimal indices of `powercfg /QUERY`, the `Setting Value` column of `auditpol /backup`, the `State` property of `Get-WindowsOptionalFeature`), never labels.
 
 ### 12.7 Actions and distinctness (the subtle part)
 
@@ -1566,6 +1563,8 @@ The engine reserves one structural action, **delete-tree** (one-way unless the a
 
 Note "Skip" **omits** both actions (legal, omitted actions are not run) and relies on `demo_marker: 0`
 to stay detectable/distinct from "Run".
+
+A marker like `demo_marker` is safe here only because the action's state (the example's own `ScriptMarker`) cannot exist without this tweak. When the action changes real machine state that may already be in place (a feature already off, an app never installed, a power setting already set), a marker makes that machine read System Default and the revert undoes a change the tweak never made (§12.5). Author a single option that runs the action instead, or anchor the second option on a Setting that is part of the same machine state (for example `HibernateEnabled` next to `powercfg /hibernate off`).
 
 ---
 

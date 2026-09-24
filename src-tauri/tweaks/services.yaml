@@ -603,9 +603,6 @@ tweaks:
       - label: "Manual"
         values: { phonesvc: manual }
 
-  # SSDP/UPnP and Windows Media Player network sharing are one subsystem: DLNA discovery IS
-  # SSDP/UPnP. Merged so the optional WMPNetworkSvc effect (absent on LTSC images, which have no
-  # Windows Media Player Legacy feature) is paired with two always-present marker effects.
   - id: disable_ssdp_upnp
     name: "Disable Network Device Discovery (SSDPSRV/upnphost)"
     description: "Disable SSDP and UPnP device discovery to shrink the local-network surface."
