@@ -649,10 +649,10 @@ tweaks:
       - Slightly higher idle power; a small battery cost on laptops.
 
       ## Caveats
-      - Only the active power plan changes. Switching plans (including to Ultimate Performance) brings selective suspend back, and the tweak shows System Default.
+      - Only the active power plan changes. Switching plans (including to Ultimate Performance) brings selective suspend back, and the tweak shows System Default; applying again covers the new plan too.
 
       ## Notes
-      - Reverting restores the exact previous values on the plan that was changed, without switching your active plan.
+      - Reverting restores the exact previous values on every plan the tweak changed, without switching your active plan.
 
       ## Recommendation
       Apply it if you have USB dropouts, audio glitches or slow wake-ups. If your USB devices behave, leave selective suspend on and keep the power saving.
@@ -671,16 +671,18 @@ tweaks:
             $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
             $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
-            # Pin the scheme GUID so the undo cannot write to a different plan the user switched to.
             $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
             if (-not $scheme) { exit 1 }
-            # AC then DC are the query's last two hex numbers; the labels beside them are translated.
-            $ix = [regex]::Matches(((powercfg /QUERY $scheme $sub $set) -join "`n"), '0x([0-9a-fA-F]+)')
-            if ($ix.Count -lt 2) { exit 1 }
-            New-Item -Path $snap -Force | Out-Null
-            Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
-            Set-ItemProperty -Path $snap -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
-            Set-ItemProperty -Path $snap -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
+            # One record per plan, named by its GUID and never overwritten: re-applying on another plan keeps the first plan's values.
+            $rec = Join-Path $snap $scheme
+            if (-not (Test-Path $rec)) {
+              # AC then DC are the query's last two hex numbers; the labels beside them are translated.
+              $ix = [regex]::Matches(((powercfg /QUERY $scheme $sub $set) -join "`n"), '0x([0-9a-fA-F]+)')
+              if ($ix.Count -lt 2) { exit 1 }
+              New-Item -Path $rec -Force | Out-Null
+              Set-ItemProperty -Path $rec -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
+              Set-ItemProperty -Path $rec -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
+            }
             powercfg /SETACVALUEINDEX $scheme $sub $set 0
             if ($LASTEXITCODE -ne 0) { exit 1 }
             powercfg /SETDCVALUEINDEX $scheme $sub $set 0
@@ -693,20 +695,26 @@ tweaks:
             $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
             $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
-            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
-            # An incomplete record means apply stopped before changing the plan; a deleted plan has nothing to restore.
-            if ($s -and $s.Scheme -and $null -ne $s.Ac -and $null -ne $s.Dc -and ((powercfg /LIST) -join ' ') -match [regex]::Escape($s.Scheme)) {
-              powercfg /SETACVALUEINDEX $s.Scheme $sub $set ([int]$s.Ac)
-              if ($LASTEXITCODE -ne 0) { exit 1 }
-              powercfg /SETDCVALUEINDEX $s.Scheme $sub $set ([int]$s.Dc)
-              if ($LASTEXITCODE -ne 0) { exit 1 }
-              # Re-activate only the plan in use: activating the recorded one would switch the user's plan back.
-              if (((powercfg /GETACTIVESCHEME) -join ' ') -match [regex]::Escape($s.Scheme)) {
-                powercfg /SETACTIVE $s.Scheme
+            if (Test-Path $snap) {
+              $plans = (powercfg /LIST) -join ' '
+              $active = (powercfg /GETACTIVESCHEME) -join ' '
+              foreach ($rec in @(Get-ChildItem -Path $snap)) {
+                $scheme = $rec.PSChildName
+                $r = Get-ItemProperty -Path $rec.PSPath
+                # An incomplete record means apply stopped before changing that plan; a deleted plan has nothing to restore.
+                if ($null -eq $r.Ac -or $null -eq $r.Dc -or $plans -notmatch [regex]::Escape($scheme)) { continue }
+                powercfg /SETACVALUEINDEX $scheme $sub $set ([int]$r.Ac)
                 if ($LASTEXITCODE -ne 0) { exit 1 }
+                powercfg /SETDCVALUEINDEX $scheme $sub $set ([int]$r.Dc)
+                if ($LASTEXITCODE -ne 0) { exit 1 }
+                # Re-activate only the plan in use: activating a recorded one would switch the user's plan back.
+                if ($active -match [regex]::Escape($scheme)) {
+                  powercfg /SETACTIVE $scheme
+                  if ($LASTEXITCODE -ne 0) { exit 1 }
+                }
               }
+              Remove-Item -Path $snap -Recurse -Force
             }
-            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
             exit 0
           probe: |
             $ix = [regex]::Matches(((powercfg /QUERY SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226) -join "`n"), '0x([0-9a-fA-F]+)')
@@ -733,11 +741,11 @@ tweaks:
       - Windows Update maintenance may only run while you are using the PC.
 
       ## Caveats
-      - Only the active plan changes; switching plans brings wake timers back.
+      - Only the active plan changes; switching plans brings wake timers back until you apply it again on the new plan.
       - Keyboard, mouse, network and lid wakes are not timers and still wake the PC.
 
       ## Notes
-      - Reverting restores the exact previous values on the plan that was changed.
+      - Reverting restores the exact previous values on every plan the tweak changed, without switching your active plan.
 
       ## Recommendation
       Worth applying if a plugged-in PC waking at night bothers you. Skip it if scheduled overnight work, such as backups, needs to wake the machine.
@@ -753,40 +761,53 @@ tweaks:
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
+            $sub = 'SUB_SLEEP'
+            $set = 'RTCWAKE'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
             $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
             if (-not $scheme) { exit 1 }
-            # AC then DC are the query's last two hex numbers; the labels beside them are translated.
-            $ix = [regex]::Matches(((powercfg /QUERY $scheme SUB_SLEEP RTCWAKE) -join "`n"), '0x([0-9a-fA-F]+)')
-            if ($ix.Count -lt 2) { exit 1 }
-            New-Item -Path $snap -Force | Out-Null
-            Set-ItemProperty -Path $snap -Name Scheme -Value $scheme -Type String
-            Set-ItemProperty -Path $snap -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
-            Set-ItemProperty -Path $snap -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
-            powercfg /SETACVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            # One record per plan, named by its GUID and never overwritten: re-applying on another plan keeps the first plan's values.
+            $rec = Join-Path $snap $scheme
+            if (-not (Test-Path $rec)) {
+              # AC then DC are the query's last two hex numbers; the labels beside them are translated.
+              $ix = [regex]::Matches(((powercfg /QUERY $scheme $sub $set) -join "`n"), '0x([0-9a-fA-F]+)')
+              if ($ix.Count -lt 2) { exit 1 }
+              New-Item -Path $rec -Force | Out-Null
+              Set-ItemProperty -Path $rec -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
+              Set-ItemProperty -Path $rec -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
+            }
+            powercfg /SETACVALUEINDEX $scheme $sub $set 0
             if ($LASTEXITCODE -ne 0) { exit 1 }
-            powercfg /SETDCVALUEINDEX $scheme SUB_SLEEP RTCWAKE 0
+            powercfg /SETDCVALUEINDEX $scheme $sub $set 0
             if ($LASTEXITCODE -ne 0) { exit 1 }
             powercfg /SETACTIVE $scheme
             if ($LASTEXITCODE -ne 0) { exit 1 }
             exit 0
           undo: |
             $ErrorActionPreference = 'Stop'
+            $sub = 'SUB_SLEEP'
+            $set = 'RTCWAKE'
             $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
-            $s = Get-ItemProperty -Path $snap -ErrorAction SilentlyContinue
-            # An incomplete record means apply stopped before changing the plan; a deleted plan has nothing to restore.
-            if ($s -and $s.Scheme -and $null -ne $s.Ac -and $null -ne $s.Dc -and ((powercfg /LIST) -join ' ') -match [regex]::Escape($s.Scheme)) {
-              powercfg /SETACVALUEINDEX $s.Scheme SUB_SLEEP RTCWAKE ([int]$s.Ac)
-              if ($LASTEXITCODE -ne 0) { exit 1 }
-              powercfg /SETDCVALUEINDEX $s.Scheme SUB_SLEEP RTCWAKE ([int]$s.Dc)
-              if ($LASTEXITCODE -ne 0) { exit 1 }
-              # Re-activate only the plan in use: activating the recorded one would switch the user's plan back.
-              if (((powercfg /GETACTIVESCHEME) -join ' ') -match [regex]::Escape($s.Scheme)) {
-                powercfg /SETACTIVE $s.Scheme
+            if (Test-Path $snap) {
+              $plans = (powercfg /LIST) -join ' '
+              $active = (powercfg /GETACTIVESCHEME) -join ' '
+              foreach ($rec in @(Get-ChildItem -Path $snap)) {
+                $scheme = $rec.PSChildName
+                $r = Get-ItemProperty -Path $rec.PSPath
+                # An incomplete record means apply stopped before changing that plan; a deleted plan has nothing to restore.
+                if ($null -eq $r.Ac -or $null -eq $r.Dc -or $plans -notmatch [regex]::Escape($scheme)) { continue }
+                powercfg /SETACVALUEINDEX $scheme $sub $set ([int]$r.Ac)
                 if ($LASTEXITCODE -ne 0) { exit 1 }
+                powercfg /SETDCVALUEINDEX $scheme $sub $set ([int]$r.Dc)
+                if ($LASTEXITCODE -ne 0) { exit 1 }
+                # Re-activate only the plan in use: activating a recorded one would switch the user's plan back.
+                if ($active -match [regex]::Escape($scheme)) {
+                  powercfg /SETACTIVE $scheme
+                  if ($LASTEXITCODE -ne 0) { exit 1 }
+                }
               }
+              Remove-Item -Path $snap -Recurse -Force
             }
-            Remove-Item -Path $snap -Recurse -Force -ErrorAction SilentlyContinue
             exit 0
           probe: |
             $ix = [regex]::Matches(((powercfg /QUERY SCHEME_CURRENT SUB_SLEEP RTCWAKE) -join "`n"), '0x([0-9a-fA-F]+)')
