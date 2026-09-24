@@ -184,12 +184,15 @@ tweaks:
     info: |
       **Keeps Start search local: no Bing web results or search-box suggestions, and what you type stays on the PC.**
 
+      ## Mechanism
+      - Three layers: the per-user search-box policy (every edition), the Bing setting the 24H2 search host still reads, and Microsoft's "Don't search the web" policy, which only Enterprise, Education and IoT editions honour.
+
       ## Drawbacks
       - Web answers in the search box (conversions, definitions, quick lookups) stop.
       - File Explorer stops suggesting and storing your recent searches, the only effect Microsoft documents for this policy.
 
       ## Caveats
-      - Feature updates often reset the Bing half; the tweak then shows System Default while the policy half still holds.
+      - Feature updates often reset the Bing setting; the tweak then shows System Default while the policies still hold. Apply it again to restore all three.
       - Some users report the taskbar search box disappearing with this policy (not confirmed on 24H2).
 
       ## Notes
@@ -202,7 +205,7 @@ tweaks:
       Apply it if you use Start to open apps and settings. Skip it if you use the Start box as a web search bar.
 
       ## Sources
-      - [Policy CSP - Search](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-search)
+      - [Policy CSP - Search, DoNotUseWebResults](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-search#donotusewebresults)
       - [Pureinfotech: disable web search results on Windows 11](https://pureinfotech.com/disable-search-web-results-windows-11/)
       - [Microsoft Q&A: DisableSearchBoxSuggestions hides taskbar search](https://learn.microsoft.com/en-us/answers/questions/3234673/disablesearchboxsuggestions-disables-task-bar-sear)
     risk_level: low
@@ -214,13 +217,16 @@ tweaks:
         registry: { key: 'HKCU\Software\Policies\Microsoft\Windows\Explorer', name: DisableSearchBoxSuggestions, type: REG_DWORD }
       - id: bing_enabled
         registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: BingSearchEnabled, type: REG_DWORD }
+      # DoNotUseWebResults: Microsoft's documented switch, honoured on Enterprise, Education and IoT only.
+      - id: web_results_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search', name: ConnectedSearchUseWeb, type: REG_DWORD }
     options:
       - label: "Off"
-        values: { box_suggestions: 1, bing_enabled: 0 }
+        values: { box_suggestions: 1, bing_enabled: 0, web_results_policy: 0 }
       # The whole CurrentVersion\Search key is absent on a fresh profile, so BingSearchEnabled is
       # `absent` on revert, matching what this option already does for the policy value.
       - label: "On"
-        values: { box_suggestions: absent, bing_enabled: absent }
+        values: { box_suggestions: absent, bing_enabled: absent, web_results_policy: absent }
 
   - id: disable_widgets
     name: "Turn off Widgets"

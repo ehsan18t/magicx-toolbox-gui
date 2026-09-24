@@ -359,17 +359,18 @@ Apply it unless you rely on OneDrive status messages inside Explorer. For everyo
 |---|---|---|
 | `box_suggestions` | registry | `HKCU\Software\Policies\Microsoft\Windows\Explorer`, value `DisableSearchBoxSuggestions`, `REG_DWORD` |
 | `bing_enabled` | registry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Search`, value `BingSearchEnabled`, `REG_DWORD` |
+| `web_results_policy` | registry | `HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search`, value `ConnectedSearchUseWeb`, `REG_DWORD` |
 
-| Option | `box_suggestions` | `bing_enabled` |
-|---|---|---|
-| Off | `1` | `0` |
-| On | `absent` | `absent` |
+| Option | `box_suggestions` | `bing_enabled` | `web_results_policy` |
+|---|---|---|---|
+| Off | `1` | `0` | `0` |
+| On | `absent` | `absent` | `absent` |
 
-System Default is any mix that matches neither option, for example the policy at 1 while a feature update has reset `BingSearchEnabled`; selecting it restores the snapshot. Neither key exists on a fresh profile, so a stock machine reads as "On".
+System Default is any mix that matches neither option, for example the policy at 1 while a feature update has reset `BingSearchEnabled`; selecting it restores the snapshot. None of the three values exists on a fresh install, so a stock machine reads as "On".
 
 #### How it works
 
-`DisableSearchBoxSuggestions` is a documented per-user policy. The shipped `WindowsExplorer.admx` on 26100.4061 declares it `class="User"` at `Software\Policies\Microsoft\Windows\Explorer`, enabled 1, disabled 0, supported from Windows 7, so the HKCU location, type and polarity match Microsoft's definition exactly and "not configured" is the value being absent. Microsoft's own description (the shipped ADML title is "Turn off display of recent search entries in the File Explorer search box") is about File Explorer: it suppresses suggestion pop-ups built from past search-box entries and stops those entries being stored. The additional effect this tweak relies on, removing web and Bing suggestions from the Start and taskbar search flyout on Windows 10 20H2 and later, is corroborated by three independent community sources but not stated by Microsoft; on 26100 the literal appears only in `SHCore.dll`, consistent with the search host reading it through a shared shell policy helper. `BingSearchEnabled` is the weaker half: it is referenced by the 24H2 search host (`SearchUx.Core.dll`, `SearchUx.UI.dll`) and `windowsudk.shellcommon.dll`, but it is not a policy value, is undocumented, and is reported to be reset by feature updates. Because the policy is User-class and not edition-gated, the tweak works on Home. The first-party machine-wide option, `DoNotUseWebResults` (`ConnectedSearchUseWeb` = 0 under `HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search`), is honoured only on Enterprise, Education and IoT Enterprise, which is why this tweak uses the HKCU policy instead.
+`DisableSearchBoxSuggestions` is a documented per-user policy. The shipped `WindowsExplorer.admx` on 26100.4061 declares it `class="User"` at `Software\Policies\Microsoft\Windows\Explorer`, enabled 1, disabled 0, supported from Windows 7, so the HKCU location, type and polarity match Microsoft's definition exactly and "not configured" is the value being absent. Microsoft's own description (the shipped ADML title is "Turn off display of recent search entries in the File Explorer search box") is about File Explorer: it suppresses suggestion pop-ups built from past search-box entries and stops those entries being stored. The additional effect this tweak relies on, removing web and Bing suggestions from the Start and taskbar search flyout on Windows 10 20H2 and later, is corroborated by three independent community sources but not stated by Microsoft; on 26100 the literal appears only in `SHCore.dll`, consistent with the search host reading it through a shared shell policy helper. `BingSearchEnabled` is the weaker half: it is referenced by the 24H2 search host (`SearchUx.Core.dll`, `SearchUx.UI.dll`) and `windowsudk.shellcommon.dll`, but it is not a policy value, is undocumented, and is reported to be reset by feature updates. Because the policy is User-class and not edition-gated, the tweak works on Home. The first-party machine-wide option, `DoNotUseWebResults` (`ConnectedSearchUseWeb` = 0 under `HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search`, Group Policy "Don't search the web or display web results in Search"), is Microsoft's documented switch for exactly this, but the Policy CSP lists it for Enterprise, Education and IoT Enterprise only (Pro is marked not applicable). The tweak writes it as a third layer: it is the reliable control on those editions and inert on Home and Pro, where the HKCU policy does the work. `BingSearchEnabled` is kept rather than dropped, because the 24H2 search host still reads it; dropping it could lose the effect on builds where the policy alone does not cover every web surface.
 
 #### Benefits
 - Local-only results: apps, settings and files instead of web answers and promoted cards; the Copilot entry in the search flyout goes too.
@@ -379,13 +380,13 @@ System Default is any mix that matches neither option, for example the policy at
 #### Drawbacks
 - File Explorer stops suggesting and storing your recent search entries; that is the only behaviour Microsoft documents for the policy.
 - Web answers from the search box (unit conversions, definitions, quick lookups) stop.
-- `BingSearchEnabled` is fragile: if a feature update resets it, the tweak drops to System Default even though the policy half still holds.
+- `BingSearchEnabled` is fragile: if a feature update resets it, the tweak drops to System Default even though both policies still hold; applying again restores it.
 - Microsoft Q&A has reports of this policy hiding the taskbar search box entirely on some builds (unconfirmed on 26100).
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a reboot; a sign-out or restarting Explorer and the search host also works.
-- **Reverting**: "On" deletes both values, returning the profile to its shipped state. System Default restores the snapshot.
+- **Reverting**: "On" deletes all three values, returning the machine to its shipped state. System Default restores the snapshot.
 
 #### Interactions
 - `interface:disable_search_highlights` (`IsDynamicSearchBoxEnabled`), `privacy:disable_search_history` (`IsDeviceSearchHistoryEnabled`) and `privacy:disable_cloud_content_search` (`AllowCloudSearch` and the `SearchSettings` cloud values) are related search controls on different values; they combine without conflict.
@@ -394,7 +395,7 @@ System Default is any mix that matches neither option, for example the policy at
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. `BingSearchEnabled` is absent on a fresh profile, so the stock option deletes it rather than writing 1; and the copy discloses the documented File Explorer search-history side effect.
 - **Confidence**: Microsoft-documented for the policy mechanism (shipped ADMX, confirmed User class by the adversarial policy-hive audit); community-corroborated for the Start-search web effect.
-- **Reasoning**: the hive audit attacked the policy's class and confirmed HKCU is correct. The 24H2 re-scope review found `DisableSearchBoxSuggestions` still effective on 26100 and recommended not presenting `BingSearchEnabled` as the mechanism, which the copy follows. Open question: whether the search-box-hiding report reproduces on any current build.
+- **Reasoning**: the hive audit attacked the policy's class and confirmed HKCU is correct. The 24H2 re-scope review found `DisableSearchBoxSuggestions` still effective on 26100 and recommended not presenting `BingSearchEnabled` as the mechanism, which the copy follows. A follow-up check kept `BingSearchEnabled` as a layer, since the search host still references it, and added `DoNotUseWebResults` for the editions that honour it. Open question: whether the search-box-hiding report reproduces on any current build.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
