@@ -392,7 +392,7 @@ tweaks:
     options:
       - label: "Excluded"
         values: { device_name: 0 }
-      - label: "Included"
+      - label: "Not configured"
         values: { device_name: absent }
 
   - id: disable_activity_history

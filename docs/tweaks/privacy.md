@@ -434,9 +434,9 @@ Apply it if you want the local configuration to stay put and you accept that som
 | Option | `device_name` |
 |---|---|
 | Excluded | `0` |
-| Included | `absent` |
+| Not configured | `absent` |
 
-System Default appears if the value holds 1 (the device name is being sent, typically set by an MDM profile or administrative template); selecting it restores the snapshot. The stock Windows state is value-absent. Note that the "Included" label names the option that deletes the value, which in practice also excludes the device name, because that is Windows' default when the policy is not configured.
+System Default appears if the value holds 1 (the device name is being sent, typically set by an MDM profile or administrative template); selecting it restores the snapshot. The stock Windows state is value-absent. "Not configured" deletes the value, which in practice also excludes the device name, because that is Windows' default when the policy is not configured.
 
 #### How it works
 
@@ -457,7 +457,7 @@ The shipped ADML explain string reads: "This policy allows the device name to be
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1803 and later, so LTSC 2021 is covered.
 - **Takes effect**: immediately.
-- **Reverting**: "Included" deletes the value; behaviour is unchanged because the default is the same.
+- **Reverting**: "Not configured" deletes the value; behaviour is unchanged because the default is the same.
 
 #### Interactions
 - Shares the `DataCollection` policy key with `disable_diagnostic_data`, `disable_feedback_notifications` and `disable_onesettings_downloads`; each owns a different value.

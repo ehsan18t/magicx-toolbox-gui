@@ -224,7 +224,7 @@ tweaks:
     options:
       - label: "Disabled"
         values: { use_logon_credential: 0 }
-      - label: "Enabled"
+      - label: "Not configured"
         values: { use_logon_credential: absent }
 
   - id: enable_lsa_protection
@@ -335,7 +335,7 @@ tweaks:
     options:
       - label: "NTLMv2 only"
         values: { lm_compat_level: 5 }
-      - label: "All NTLM versions"
+      - label: "Not configured"
         values: { lm_compat_level: absent }
 
   - id: require_smb_signing
@@ -394,7 +394,7 @@ tweaks:
         values: { workstation_signing: 1, server_signing: 1 }
       # Must delete, never write 0: 24H2 Pro/Enterprise/Education require signing by default, so a
       # literal 0 would leave the machine weaker than never applying the tweak.
-      - label: "Not required"
+      - label: "Not configured"
         values: { workstation_signing: absent, server_signing: absent }
 
   - id: rdp_security_hardening
@@ -732,7 +732,7 @@ tweaks:
     options:
       - label: "Enabled"
         values: { vuln_driver_blocklist: 1 }
-      - label: "Off"
+      - label: "Not configured"
         values: { vuln_driver_blocklist: absent }
 
   - id: disable_wpbt
@@ -1177,7 +1177,7 @@ tweaks:
     options:
       - label: "Admins only"
         values: { restrict_driver_install: 1 }
-      - label: "Any user"
+      - label: "Not configured"
         values: { restrict_driver_install: absent }
 
   - id: disable_remote_assistance
@@ -1231,7 +1231,7 @@ tweaks:
         values: { allow_get_help: 0 }
       # Must delete, never write 1: Microsoft documents the shipped default as "cannot request
       # assistance", so a literal 1 would open a channel that was closed.
-      - label: "Enabled"
+      - label: "Not configured"
         values: { allow_get_help: absent }
 
   - id: disable_windows_script_host
@@ -1461,7 +1461,7 @@ tweaks:
     options:
       - label: "Block"
         values: { pua_protection: 1 }
-      - label: "Off"
+      - label: "Not configured"
         values: { pua_protection: absent }
 
   - id: asr_block_lsass_theft
@@ -2477,7 +2477,7 @@ tweaks:
           wtds_notify_password_reuse: 1
           wtds_notify_unsafe_app: 1
           wtds_capture_threat_window: 1
-      - label: "Off"
+      - label: "Not configured"
         values:
           wtds_service_enabled: absent
           wtds_notify_malicious: absent
@@ -2771,7 +2771,7 @@ tweaks:
     options:
       - label: "Administrators only"
         values: { restrict_remote_sam: "O:BAG:BAD:(A;;RC;;;BA)" }
-      - label: "Any authenticated user"
+      - label: "Not configured"
         values: { restrict_remote_sam: absent }
 
   - id: block_always_install_elevated
@@ -2828,7 +2828,7 @@ tweaks:
     options:
       - label: "Blocked"
         values: { always_install_elevated_machine: 0, always_install_elevated_user: 0 }
-      - label: "Allowed"
+      - label: "Not configured"
         values: { always_install_elevated_machine: absent, always_install_elevated_user: absent }
 
   - id: kernel_dma_protection
@@ -2897,7 +2897,7 @@ tweaks:
       - label: "Allow only after sign-in"
         values: { dma_device_enumeration: 1, dma_disable_under_lock: 1 }
       # Never writes 2 ("Allow all"): that would be less protective than the Windows default.
-      - label: "Allow all"
+      - label: "Not configured"
         values: { dma_device_enumeration: absent, dma_disable_under_lock: absent }
 
   - id: asr_extended_rules
@@ -3767,7 +3767,7 @@ tweaks:
     options:
       - label: "Enabled"
         values: { disable_exception_chain_validation: 0 }
-      - label: "Off"
+      - label: "Not configured"
         values: { disable_exception_chain_validation: absent }
 
   - id: disable_pku2u_online_id
@@ -3879,7 +3879,7 @@ tweaks:
     options:
       - label: "Not indexed"
         values: { allow_indexing_encrypted: 0 }
-      - label: "Indexed"
+      - label: "Not configured"
         values: { allow_indexing_encrypted: absent }
 
   - id: autoplay_non_volume

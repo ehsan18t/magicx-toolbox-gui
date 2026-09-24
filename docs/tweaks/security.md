@@ -313,9 +313,9 @@ Apply it on any modern setup; SMBv1 has no place on today's networks. Hold off o
 | Option | `use_logon_credential` |
 |---|---|
 | Disabled | `0` |
-| Enabled | `absent` |
+| Not configured | `absent` |
 
-System Default is shown when `UseLogonCredential` holds any value other than 0 (for example 1, the value credential-theft tooling writes); selecting it restores the snapshot. The stock state is absent. Note the "Enabled" label: it deletes the value, and Microsoft documents that with the value absent WDigest does **not** cache credentials on Windows 8.1 and later, so "Enabled" is the Windows default, not "caching turned on".
+System Default is shown when `UseLogonCredential` holds any value other than 0 (for example 1, the value credential-theft tooling writes); selecting it restores the snapshot. The stock state is absent. "Not configured" deletes the value, and Microsoft documents that with the value absent WDigest does **not** cache credentials on Windows 8.1 and later, so "Not configured" is the Windows default, not "caching turned on".
 
 #### How it works
 
@@ -336,7 +336,7 @@ The value is read at logon, so a change affects the next sign-in. Setting it exp
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (Windows 11 24H2 and newer, Windows 10 IoT Enterprise LTSC 2021); the switch exists on Windows 8.1 and later, all editions.
 - **Takes effect**: at the next sign-in, no reboot.
-- **Reverting**: "Enabled" deletes the value, which is the stock state; Restore Snapshot restores the captured pre-apply value (absent on stock). Reverting is safe because absent and 0 behave identically. Reverting is safe because absent and 0 behave identically.
+- **Reverting**: "Not configured" deletes the value, which is the stock state; Restore Snapshot restores the captured pre-apply value (absent on stock). Reverting is safe because absent and 0 behave identically.
 
 #### Interactions
 - Part of the research's "LSASS credential protection" merge candidate (3) with [Enable LSA protection (RunAsPPL)](#enable-lsa-protection-runasppl), [Block LSASS credential theft (ASR rule)](#block-lsass-credential-theft-asr-rule) and [Enable Credential Guard](#enable-credential-guard). They are complementary layers: this one stops the plaintext secret existing; LSA protection and Credential Guard stop it being read.
@@ -432,7 +432,7 @@ Strongly worth it if you do not depend on unusual authentication add-ins. Test s
 | Option | `lm_compat_level` |
 |---|---|
 | NTLMv2 only | `5` |
-| All NTLM versions | `absent` |
+| Not configured | `absent` |
 
 System Default is shown when `LmCompatibilityLevel` is set to any level from 0 to 4 (or any other value); selecting it restores the snapshot. The stock state is absent: Microsoft's default-values table gives "Client Computer Effective Default Settings: Not defined".
 
@@ -451,7 +451,7 @@ System Default is shown when `LmCompatibilityLevel` is set to any level from 0 t
 
 Level 5 is the strictest level Microsoft defines: this PC sends only NTLMv2, and when it acts as the server (file sharing, RPC) it refuses LM and NTLMv1 responses as well. LM and NTLMv1 responses can be cracked or relayed trivially once captured, so removing them on both sides closes the downgrade path. The value is an LSA setting read by the authentication packages, not an ADMX policy; on a domain it is usually delivered as a Security Option through Group Policy, which would overwrite a local write on refresh.
 
-The "All NTLM versions" option deletes the value, returning to "Not defined". The label reflects that the accept side then tolerates the older protocols; the precise send-side behaviour of "Not defined" on current Windows is not stated in the research.
+The "Not configured" option deletes the value, returning to "Not defined". The research does not state what "Not defined" means on current Windows, for either the send or the accept side.
 
 Microsoft documents "Restart requirement: None" for this setting. The tweak still sets `requires_reboot`, a conservative choice so long-lived LSA sessions pick up the new level.
 
@@ -468,7 +468,7 @@ Microsoft documents "Restart requirement: None" for this setting. The tweak stil
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (Windows 11 24H2 and newer, Windows 10 IoT Enterprise LTSC 2021), all editions.
 - **Takes effect**: Microsoft documents no restart requirement; the app flags a reboot as a conservative measure.
-- **Reverting**: "All NTLM versions" deletes the value; Restore Snapshot restores the captured pre-apply value (absent on stock, the "Not defined" state).
+- **Reverting**: "Not configured" deletes the value; Restore Snapshot restores the captured pre-apply value (absent on stock, the "Not defined" state).
 
 #### Interactions
 - [Block NTLM on the SMB client](#block-ntlm-on-the-smb-client) goes further for SMB: `LmCompatibilityLevel` picks which NTLM variant is used, while that tweak stops the SMB client offering NTLM at all.
@@ -503,9 +503,9 @@ Apply it on modern networks. Hold off only if you still authenticate against leg
 | Option | `workstation_signing` | `server_signing` |
 |---|---|---|
 | Required | `1` | `1` |
-| Not required | `absent` | `absent` |
+| Not configured | `absent` | `absent` |
 
-System Default is shown for any mixed or other state (for example 1 on one side only, or an explicit 0); selecting it restores the snapshot. "Not required" deletes both values so the OS default for the installed version and edition applies. Microsoft documents that Windows 11 24H2 Enterprise, Pro and Education require both outbound and inbound signing by default, while Windows 11 24H2 Home and Windows 10 require neither; so on 24H2 Pro and above, "Not required" still means signing is required by the OS default. Whether the default is expressed as a physical registry value or as a built-in default is not settled.
+System Default is shown for any mixed or other state (for example 1 on one side only, or an explicit 0); selecting it restores the snapshot. "Not configured" deletes both values so the OS default for the installed version and edition applies. Microsoft documents that Windows 11 24H2 Enterprise, Pro and Education require both outbound and inbound signing by default, while Windows 11 24H2 Home and Windows 10 require neither; so on 24H2 Pro and above, "Not configured" still means signing is required by the OS default. Whether the default is expressed as a physical registry value or as a built-in default is not settled.
 
 #### How it works
 
@@ -515,7 +515,7 @@ System Default is shown for any mixed or other state (for example 1 on one side 
 
 A server that cannot sign fails the connection with STATUS_INVALID_SIGNATURE (0xc000a000). Microsoft's guidance in that case is to fix or replace the server rather than turn signing off.
 
-"Not required" deletes both values rather than writing 0. Writing 0 would drop a 24H2 Pro, Enterprise or Education machine below its own OS default, leaving it less secure than never applying the tweak; the cross-cutting harmful-revert review ranks that pattern as the top-priority defect class, and deleting avoids it. Both services read the values when they start, so the change needs a reboot (or a restart of both services).
+"Not configured" deletes both values rather than writing 0. Writing 0 would drop a 24H2 Pro, Enterprise or Education machine below its own OS default, leaving it less secure than never applying the tweak; the cross-cutting harmful-revert review ranks that pattern as the top-priority defect class, and deleting avoids it. Both services read the values when they start, so the change needs a reboot (or a restart of both services).
 
 #### Benefits
 - **Defeats SMB relay**: the most reliable lateral-movement technique on a Windows network.
@@ -527,12 +527,12 @@ A server that cannot sign fails the connection with STATUS_INVALID_SIGNATURE (0x
 - **Cheap NAS breaks**: servers that cannot sign fail with STATUS_INVALID_SIGNATURE (0xc000a000).
 - **Needs a restart**: the services read the registry values at start.
 - **Mostly already on**: Windows 11 24H2 Pro, Enterprise and Education require both directions by default, so on those editions this confirms the state rather than changing it.
-- **Label caveat**: on 24H2 Pro and above, "Not required" is the OS default, which itself requires signing.
+- **"Not configured" still signs on 24H2 Pro and above**: it leaves the OS default in force, which itself requires signing.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build. Changes behaviour on Windows 11 24H2 Home and on Windows 10 (including IoT Enterprise LTSC 2021), which require neither direction by default; confirms the default on Windows 11 24H2 Pro, Enterprise and Education.
 - **Takes effect**: after reboot.
-- **Reverting**: "Not required" deletes both values; Restore Snapshot restores the captured pre-apply values. Neither path ever writes 0.
+- **Reverting**: "Not configured" deletes both values; Restore Snapshot restores the captured pre-apply values. Neither path ever writes 0.
 
 #### Interactions
 - Research merge candidate 5 groups this with [Disable SMB insecure guest logons](#disable-smb-insecure-guest-logons) (which this tweak makes largely redundant for signed sessions, since requiring signing disables guest access) and [Block NTLM on the SMB client](#block-ntlm-on-the-smb-client). All three produce the same NAS breakage.
@@ -887,9 +887,9 @@ Useful on managed or domain-joined laptops, especially ones shared between sever
 | Option | `vuln_driver_blocklist` |
 |---|---|
 | Enabled | `1` |
-| Off | `absent` |
+| Not configured | `absent` |
 
-System Default is shown when the value holds anything other than 1 (for example 0, which the Windows Security toggle's off position is reported to write); selecting it restores the snapshot. Note the "Off" label: it deletes the value, which returns control to the Windows Security app toggle and Microsoft's default. Microsoft states "Since the Windows 11 2022 update, the vulnerable driver blocklist is enabled by default for all devices", so "Off" does not necessarily switch the blocklist off.
+System Default is shown when the value holds anything other than 1 (for example 0, which the Windows Security toggle's off position is reported to write); selecting it restores the snapshot. "Not configured" deletes the value, which returns control to the Windows Security app toggle and Microsoft's default. Microsoft states "Since the Windows 11 2022 update, the vulnerable driver blocklist is enabled by default for all devices", so "Not configured" does not necessarily switch the blocklist off.
 
 #### How it works
 
@@ -915,7 +915,7 @@ Already-loaded drivers are not unloaded, so the change takes effect at the next 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build. Windows 11 24H2 and newer ship it on by default; Windows 10 22H2 gained the toggle via KB5018482 (Windows 11: KB5018483 / KB5018496). Whether Windows 10 IoT Enterprise LTSC 2021 received the same servicing is not stated in the research.
 - **Takes effect**: after reboot; already-loaded drivers keep running until then.
-- **Reverting**: "Off" deletes the value, returning control to the Windows Security toggle; Restore Snapshot restores the captured pre-apply value.
+- **Reverting**: "Not configured" deletes the value, returning control to the Windows Security toggle; Restore Snapshot restores the captured pre-apply value.
 
 #### Interactions
 - `performance:disable_vbs_hvci` turns memory integrity off. While HVCI is on, the blocklist is forced on and this value is moot; once HVCI is off, this value (or the Windows Security toggle) is what keeps the blocklist on. Applying both is coherent and gives the gaming-performance trade without losing BYOVD protection.
@@ -1402,9 +1402,9 @@ Worth it on shared or physically exposed machines. On a private single-user PC t
 | Option | `restrict_driver_install` |
 |---|---|
 | Admins only | `1` |
-| Any user | `absent` |
+| Not configured | `absent` |
 
-System Default is shown when the value holds anything else, notably an explicit `0`; Restore Snapshot writes back the captured pre-apply value. On a stock, fully updated machine the value does not exist, so a stock machine is detected as "Any user", even though (see below) a missing value already behaves as admins-only.
+System Default is shown when the value holds anything else, notably an explicit `0`; Restore Snapshot writes back the captured pre-apply value. On a stock, fully updated machine the value does not exist, so a stock machine is detected as "Not configured", even though (see below) a missing value already behaves as admins-only.
 
 #### How it works
 
@@ -1415,7 +1415,7 @@ KB5005010 introduced `RestrictDriverInstallationToAdministrators` under the Poin
 The practical consequences on any currently patched machine:
 
 - **"Admins only" confirms the default.** It writes an explicit 1, which protects against something else writing 0 later and makes the restriction visible to policy tooling, but it does not change behaviour on a patched machine.
-- **"Any user" does not unrestrict.** It deletes the value, which on a patched machine leaves the restriction in force. The option label describes the pre-August-2021 behaviour. Only an explicit 0 loosens the restriction, and this tweak never writes 0. If something else writes 0, the tweak shows System Default.
+- **"Not configured" does not unrestrict.** It deletes the value, which on a patched machine leaves the restriction in force. Only an explicit 0 loosens the restriction, and this tweak never writes 0. If something else writes 0, the tweak shows System Default.
 
 The value lives in the Policies hive and is a Machine-class policy in `Printing.admx`, so HKLM is the correct store. The spooler reads it when a driver installation is attempted, so no reboot or service restart is needed.
 
@@ -1427,12 +1427,12 @@ The value lives in the Policies hive and is a Machine-class policy in `Printing.
 #### Drawbacks
 - **Standard users cannot add printers that need a new driver**: an administrator must install the driver. Microsoft's alternatives for self-service printing are pre-staging drivers or a print-management solution.
 - **No behavioural change on a patched machine**: since August 10, 2021 a missing value already behaves as 1, so "Admins only" confirms rather than changes.
-- **The "Any user" option is not what its name says**: it deletes the value, which on a patched machine keeps the restriction on.
+- **"Not configured" keeps the restriction on a patched machine**: it deletes the value, and the patched default is the restriction.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer and Windows 10 22H2 / IoT Enterprise LTSC 2021, all editions with the July 6, 2021 or later cumulative updates (every supported build qualifies).
 - **Takes effect**: immediately; the spooler reads it at the next driver installation.
-- **Reverting**: "Any user" deletes the value, which on a patched machine leaves driver installation restricted to administrators. Restore Snapshot writes back the captured pre-apply value, including an explicit 0 if that is what was there.
+- **Reverting**: "Not configured" deletes the value, which on a patched machine leaves driver installation restricted to administrators. Restore Snapshot writes back the captured pre-apply value, including an explicit 0 if that is what was there.
 
 #### Interactions
 - `services:disable_print_spooler` disables the spooler entirely, which removes the whole attack surface (and all printing). With it applied, this tweak has nothing to protect.
@@ -1441,11 +1441,11 @@ The value lives in the Policies hive and is a Machine-class policy in `Printing.
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The correction is about default semantics: since the August 10, 2021 updates a missing value means 1 (restricted), so the applied option confirms the default and deleting the value does not restore unrestricted installation.
 - **Confidence**: Microsoft-documented. Key path, value name, DWORD type and the date-dependent defaults are verbatim in KB5005010.
-- **Reasoning**: the mechanism is exactly Microsoft's. The research found both option labels misleading on a patched machine (the applied option is a no-op there, and the "revert" does not unrestrict), which this entry states plainly. The research also noted that a quote often attributed to KB5005010 ("no other combination of mitigations provides equivalent protection") actually comes from the CVE-2021-34527 MSRC advisory FAQ; it is not relied on here. The inclusion-principle review keeps the tweak: a control that Windows already ships in the safe state is still a legitimate control to expose.
+- **Reasoning**: the mechanism is exactly Microsoft's. The research found both option labels misleading on a patched machine (the applied option is a no-op there, and the "revert" does not unrestrict); the unapplied option is therefore labelled "Not configured", and this entry states the no-op plainly. The research also noted that a quote often attributed to KB5005010 ("no other combination of mitigations provides equivalent protection") actually comes from the CVE-2021-34527 MSRC advisory FAQ; it is not relied on here. The inclusion-principle review keeps the tweak: a control that Windows already ships in the safe state is still a legitimate control to expose.
 - **Tested**: Build validation (schema, ownership and conflict checks)
 
 #### Recommendation
-Apply it on essentially every machine: it pins the authoritative PrintNightmare mitigation and costs nothing on a patched system. Reconsider only if standard users must install printer drivers themselves, and know that choosing "Any user" will not actually give them that on a patched machine.
+Apply it on essentially every machine: it pins the authoritative PrintNightmare mitigation and costs nothing on a patched system. Reconsider only if standard users must install printer drivers themselves, and know that choosing "Not configured" will not actually give them that on a patched machine.
 
 #### Sources
 1. KB5005010: Restricting installation of new printer drivers after applying the July 6, 2021 updates, establishes the key, value, type, meaning of 0 and 1, and the date-dependent default, https://support.microsoft.com/en-us/topic/kb5005010-restricting-installation-of-new-printer-drivers-after-applying-the-july-6-2021-updates-31b91c02-05bc-4ada-a7ea-183b129578a7 (tier A)
@@ -1467,7 +1467,7 @@ Apply it on essentially every machine: it pins the authoritative PrintNightmare 
 | Option | `allow_get_help` |
 |---|---|
 | Disabled | `0` |
-| Enabled | `absent` |
+| Not configured | `absent` |
 
 System Default is shown when the value holds anything else, notably `1` (the state the System Properties checkbox writes when a user ticks "Allow Remote Assistance connections to this computer"); Restore Snapshot writes back the captured pre-apply value. Microsoft documents the shipped default as "cannot request assistance".
 
@@ -1478,7 +1478,7 @@ System Default is shown when the value holds anything else, notably `1` (the sta
 The two options are asymmetric by design:
 
 - **"Disabled"** writes 0 explicitly.
-- **"Enabled"** deletes the value; it never writes 1. Microsoft's unattend reference for `fAllowToGetHelp` states of the false value: "Specifies that the user cannot request assistance from a friend or a support professional. This is the default value." Writing a literal 1 would therefore open an inbound remote-control channel that Windows ships closed. Deleting the value returns the machine to whatever the image ships. Despite its label, selecting "Enabled" does not by itself switch Remote Assistance on; to actually allow it, tick the checkbox in System Properties (which writes 1, and the tweak then shows System Default).
+- **"Not configured"** deletes the value; it never writes 1. Microsoft's unattend reference for `fAllowToGetHelp` states of the false value: "Specifies that the user cannot request assistance from a friend or a support professional. This is the default value." Writing a literal 1 would therefore open an inbound remote-control channel that Windows ships closed. Deleting the value returns the machine to whatever the image ships. Selecting "Not configured" does not by itself switch Remote Assistance on; to actually allow it, tick the checkbox in System Properties (which writes 1, and the tweak then shows System Default).
 
 This is the preference (non-policy) store. The Group Policy counterpart is policy `RA_Solicit` in the shipped `RemoteAssistance.admx`: class Machine, key `HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services`, the same value name `fAllowToGetHelp`, enabled 1 / disabled 0. When that policy is set it overrides the value this tweak writes, so on a managed machine a GPO can silently defeat or supersede the tweak. Unsolicited Remote Assistance ("Offer Remote Assistance", where a helper connects without an invitation) is governed by `fAllowUnsolicited` under the same Terminal Services policy key; this tweak does not set it.
 
@@ -1498,7 +1498,7 @@ Quick Assist, the modern replacement, is a separate Store app with its own relay
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, all editions; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: immediately, for the next Remote Assistance connection attempt; no reboot.
-- **Reverting**: "Enabled" deletes the value so the machine falls back to the image's shipped behaviour, which Microsoft documents as off. Restore Snapshot writes back the captured pre-apply value, including 1 if Remote Assistance had been turned on before the first apply.
+- **Reverting**: "Not configured" deletes the value so the machine falls back to the image's shipped behaviour, which Microsoft documents as off. Restore Snapshot writes back the captured pre-apply value, including 1 if Remote Assistance had been turned on before the first apply.
 
 #### Interactions
 - [Disable Remote Desktop (RDP)](#disable-remote-desktop-rdp) (`disable_remote_desktop`) closes the other built-in inbound remote-control channel. The two are independent: Remote Assistance works even when Remote Desktop is denied.
@@ -1731,7 +1731,7 @@ Recommended if Defender is your active antivirus on Pro or better and cloud-deli
 | Option | `pua_protection` |
 |---|---|
 | Block | `1` |
-| Off | `absent` |
+| Not configured | `absent` |
 
 System Default is shown when the value holds something else (for example `0` or `2`); Restore Snapshot writes back the captured pre-apply value. On a stock machine the policy value does not exist, and Defender then runs PUA protection in its own default mode, which is Audit (see below), not off.
 
@@ -1759,7 +1759,7 @@ Microsoft Edge has its own, separate PUA blocking for downloads; this tweak gove
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer and Windows 10 (including IoT Enterprise LTSC 2021), all editions, with Microsoft Defender Antivirus active; Microsoft also documents it for Windows 8.1.
 - **Takes effect**: immediately; no reboot.
-- **Reverting**: "Off" deletes the value. Despite its label, that does not switch PUA protection off: Defender returns to its own default, which is Audit (2) on a current, non-onboarded machine. Restore Snapshot writes back the captured pre-apply value.
+- **Reverting**: "Not configured" deletes the value. That does not switch PUA protection off: Defender returns to its own default, which is Audit (2) on a current, non-onboarded machine. Restore Snapshot writes back the captured pre-apply value.
 
 #### Interactions
 - [Enforce SmartScreen (apps and Edge)](#enforce-smartscreen-apps-and-edge) and [Defender Network Protection](#defender-network-protection) combined with this tweak make the machine noticeably more restrictive.
@@ -2706,9 +2706,9 @@ Apply it if all your SMB targets are reachable by name and can do Kerberos, whic
 |---|---|---|---|---|---|
 | Warnings on, no screenshot upload | `1` | `1` | `1` | `1` | `0` |
 | Warnings on, with screenshot upload | `1` | `1` | `1` | `1` | `1` |
-| Off | `absent` | `absent` | `absent` | `absent` | `absent` |
+| Not configured | `absent` | `absent` | `absent` | `absent` | `absent` |
 
-System Default is shown when the five values match no option; selecting it restores the captured values. Stock Windows has none of these policy values, so a stock machine reads as "Off". "Off" means "no policy": the shipped behaviour then applies, which is not fully off. The effective defaults on a consumer 26100 machine are:
+System Default is shown when the five values match no option; selecting it restores the captured values. Stock Windows has none of these policy values, so a stock machine reads as "Not configured". "Not configured" means "no policy": the shipped behaviour then applies, which is not fully off. The effective defaults on a consumer 26100 machine are:
 
 | Value | Effective default with no policy |
 |---|---|
@@ -2743,12 +2743,12 @@ On a consumer machine, `ServiceEnabled` and `NotifyMalicious` are already effect
 - **Locks the UI toggle**: with `ServiceEnabled` written, users can no longer turn the feature off in Windows Security.
 - **Screenshot upload is a privacy cost**: the "with screenshot upload" option sends window captures to Microsoft; it is not a security gain for the user.
 - **Two of five are already on**: `ServiceEnabled` and `NotifyMalicious` are the effective defaults, so writing them changes nothing except the lock.
-- **"Off" is not off**: it removes the policy, and the shipped defaults (audit mode plus malicious-site warnings) resume.
+- **"Not configured" leaves protection on**: it removes the policy, and the shipped defaults (audit mode plus malicious-site warnings) resume.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 and newer (24H2 and 25H2 included), editions Pro, Enterprise, Education, IoT Enterprise and IoT Enterprise LTSC per the Policy CSP. The component does not exist on Windows 10, and the tweak is hidden there.
 - **Takes effect**: immediately; no reboot.
-- **Reverting**: "Off" deletes all five values, restoring the shipped behaviour and unlocking the Windows Security toggle. System Default restores the captured values. Screenshots already uploaded are not recalled.
+- **Reverting**: "Not configured" deletes all five values, restoring the shipped behaviour and unlocking the Windows Security toggle. System Default restores the captured values. Screenshots already uploaded are not recalled.
 
 #### Interactions
 - [Enforce SmartScreen (apps and Edge)](#enforce-smartscreen-apps-and-edge): configures SmartScreen's app and Edge checks; Enhanced Phishing Protection is a separate SmartScreen component that tweak does not touch.
@@ -3008,9 +3008,9 @@ Choose "Module logging and transcription" if you investigate incidents or want a
 | Option | `restrict_remote_sam` |
 |---|---|
 | Administrators only | `O:BAG:BAD:(A;;RC;;;BA)` |
-| Any authenticated user | `absent` |
+| Not configured | `absent` |
 
-System Default is shown when the value holds any other string (a custom descriptor); selecting it restores the captured value. Stock Windows has no value, so a stock machine reads as "Any authenticated user". That label describes the pre-Windows 10 1607 behaviour: on Windows 10 1607 and later, the built-in default applied when the value is absent already restricts remote SAM calls to administrators, so on every supported build both options currently grant the same access.
+System Default is shown when the value holds any other string (a custom descriptor); selecting it restores the captured value. Stock Windows has no value, so a stock machine reads as "Not configured". With the value absent, Windows 10 1607 and later apply a built-in default that already restricts remote SAM calls to administrators, so on every supported build both options currently grant the same access.
 
 #### How it works
 
@@ -3036,7 +3036,7 @@ This is a different control from anonymous-enumeration hardening. `RestrictAnony
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 1607 and later, including Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately for new remote SAM calls; no reboot.
-- **Reverting**: "Any authenticated user" deletes the value, restoring Windows' built-in default descriptor (administrators only on 1607 and later). System Default restores the captured value.
+- **Reverting**: "Not configured" deletes the value, restoring Windows' built-in default descriptor (administrators only on 1607 and later). System Default restores the captured value.
 
 #### Interactions
 - [Restrict anonymous enumeration](#restrict-anonymous-enumeration): same `Lsa` key, different values, different attack (anonymous rather than authenticated callers). Additive, not a duplicate.
@@ -3072,9 +3072,9 @@ Apply "Administrators only". It costs nothing on a consumer machine, pins a stat
 | Option | `always_install_elevated_machine` | `always_install_elevated_user` |
 |---|---|---|
 | Blocked | `0` | `0` |
-| Allowed | `absent` | `absent` |
+| Not configured | `absent` | `absent` |
 
-System Default is shown when the two values match neither option (for example one of them set to 1 by a deployment script); selecting it restores the captured values. Stock Windows has neither value, so a stock machine reads as "Allowed". That label means "no policy": with both values absent the escalation is not enabled, so "Allowed" is the safe shipped state, not an open one.
+System Default is shown when the two values match neither option (for example one of them set to 1 by a deployment script); selecting it restores the captured values. Stock Windows has neither value, so a stock machine reads as "Not configured". That means no policy: with both values absent the escalation is not enabled, so "Not configured" is the safe shipped state, not an open one.
 
 #### How it works
 
@@ -3097,7 +3097,7 @@ Writing `0` cannot break a working installer: a legitimate installation never de
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately for the next installer run; no reboot.
-- **Reverting**: "Allowed" deletes both values, which is the shipped state. System Default restores the captured values, including a 1 if one was present before the first apply.
+- **Reverting**: "Not configured" deletes both values, which is the shipped state. System Default restores the captured values, including a 1 if one was present before the first apply.
 
 #### Interactions
 None known. No other tweak in the corpus writes the Windows Installer policy key.
@@ -3134,9 +3134,9 @@ Apply "Blocked" on every machine. It costs nothing, cannot break a working insta
 |---|---|---|
 | Block all | `0` | `1` |
 | Allow only after sign-in | `1` | `1` |
-| Allow all | `absent` | `absent` |
+| Not configured | `absent` | `absent` |
 
-System Default is shown when the two values match no option (for example `DeviceEnumerationPolicy` = 2 set by another tool); selecting it restores the captured values. Stock Windows has neither value, so a stock machine reads as "Allow all". That label is misleading: with the values absent, Windows applies its own default, which Microsoft labels "Only while logged in (default)" (the behaviour of value 1). The tweak never writes 2, the real "Allow all" enum value, because that would be less protective than the Windows default.
+System Default is shown when the two values match no option (for example `DeviceEnumerationPolicy` = 2 set by another tool); selecting it restores the captured values. Stock Windows has neither value, so a stock machine reads as "Not configured": with the values absent, Windows applies its own default, which Microsoft labels "Only while logged in (default)" (the behaviour of value 1). The tweak never writes 2, the real "Allow all" enum value, because that would be less protective than the Windows default.
 
 #### How it works
 
@@ -3165,7 +3165,7 @@ The tweak cannot lock you out: the internal keyboard, display and storage are no
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer and Windows 10 1809 (build 17763) and later, including Windows 10 IoT Enterprise LTSC 2021; Pro, Enterprise, Education, IoT Enterprise and IoT Enterprise LTSC. Not Home (the tweak is gated by build only, so it is offered on Home but does nothing there). Requires a platform shipped with Kernel DMA Protection.
 - **Takes effect**: after a reboot, as the Policy CSP requires.
-- **Reverting**: "Allow all" deletes both values so the Windows default ("Only while logged in") applies again; it never writes 2. System Default restores the captured values. A reboot completes either.
+- **Reverting**: "Not configured" deletes both values so the Windows default ("Only while logged in") applies again; it never writes 2. System Default restores the captured values. A reboot completes either.
 
 #### Interactions
 - [Prevent automatic device encryption](#prevent-automatic-device-encryption): `DisableExternalDMAUnderLock` is only enforced with BitLocker or device encryption on, so preventing automatic device encryption can leave that half of this tweak inert.
@@ -4028,9 +4028,9 @@ Apply "Filtered" on any machine that is not administered remotely with a local a
 | Option | `disable_exception_chain_validation` |
 |---|---|
 | Enabled | `0` |
-| Off | absent |
+| Not configured | absent |
 
-The option labelled "Off" deletes the value; it does not turn SEHOP off. With the value absent, SEHOP is on for 64-bit Windows, exactly as with `0`. System Default is shown when the value is present with anything other than `0` (for example `1`, which does disable SEHOP); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Off".
+The option labelled "Not configured" deletes the value; it does not turn SEHOP off. With the value absent, SEHOP is on for 64-bit Windows, exactly as with `0`. System Default is shown when the value is present with anything other than `0` (for example `1`, which does disable SEHOP); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Not configured".
 
 #### How it works
 
@@ -4049,12 +4049,12 @@ It is a direct registry write per the DISA STIG check text, not a Group Policy: 
 - No behavioural change on x64: it only affects 32-bit processes, where SEHOP is already on.
 - Needs a reboot, because the value is read at boot.
 - Not Microsoft-documented on today's web: the control rests on the DISA STIG check text plus community sources.
-- The "Off" label is misleading: selecting it deletes the value, which leaves SEHOP on.
+- "Not configured" deletes the value, which leaves SEHOP on; no option turns SEHOP off.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, x64.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Off" deletes the value, which behaves the same as `0` on a healthy machine. Selecting System Default restores the snapshot value. Either takes effect at the next boot.
+- **Reverting**: "Not configured" deletes the value, which behaves the same as `0` on a healthy machine. Selecting System Default restores the snapshot value. Either takes effect at the next boot.
 
 #### Interactions
 - None known in this corpus.
@@ -4147,9 +4147,9 @@ Apply it on a machine that never authenticates peer-to-peer with another non-dom
 | Option | `allow_indexing_encrypted` |
 |---|---|
 | Not indexed | `0` |
-| Indexed | absent |
+| Not configured | absent |
 
-The option labelled "Indexed" deletes the policy value, which hands control back to the Control Panel setting; by default that setting does not index encrypted content either, so "Indexed" does not by itself turn indexing of encrypted files on. System Default is shown when the value is present with anything other than `0` (an explicit `1`); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Indexed".
+The option labelled "Not configured" deletes the policy value, which hands control back to the Control Panel setting; by default that setting does not index encrypted content either, so "Not configured" does not by itself turn indexing of encrypted files on. System Default is shown when the value is present with anything other than `0` (an explicit `1`); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Not configured".
 
 #### How it works
 
@@ -4173,7 +4173,7 @@ Only EFS (per-file) encryption is involved; BitLocker whole-volume encryption is
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Vista and later).
 - **Takes effect**: immediately, followed by a full index rebuild.
-- **Reverting**: "Indexed" deletes the value, returning control to the Control Panel setting, and triggers another full rebuild. Selecting System Default restores the snapshot value.
+- **Reverting**: "Not configured" deletes the value, returning control to the Control Panel setting, and triggers another full rebuild. Selecting System Default restores the snapshot value.
 
 #### Interactions
 - `performance:disable_search_indexing` disables the Windows Search service (`WSearch`); with it applied there is no index and this tweak is moot.
