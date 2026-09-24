@@ -125,6 +125,7 @@ tweaks:
     risk_level: medium
     elevation: admin
     reversible: true
+    requires_reboot: true
     effects:
       - id: wsearch
         service: { name: WSearch }
@@ -228,6 +229,7 @@ tweaks:
     risk_level: medium
     elevation: admin
     reversible: true
+    requires_reboot: true
     effects:
       - id: sysmain
         service: { name: SysMain }

@@ -1812,6 +1812,7 @@ tweaks:
     risk_level: medium
     elevation: admin
     reversible: true
+    requires_reboot: true
     effects:
       - id: wer_service
         service: { name: WerSvc }

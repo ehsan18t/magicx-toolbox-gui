@@ -454,6 +454,7 @@ tweaks:
     risk_level: medium
     elevation: admin
     reversible: true
+    requires_reboot: true
     effects:
       - id: ics_service
         service: { name: SharedAccess }

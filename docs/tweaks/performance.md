@@ -7,9 +7,9 @@ This category covers system responsiveness, memory, storage, power and gaming or
 | Tweak | Id | Control | Risk | Elevation | Reboot | Verdict |
 |---|---|---|---|---|---|---|
 | [Set visual effects to best performance](#set-visual-effects-to-best-performance) | `optimize_visual_effects` | Switch (2 options) | low | none | no | INCORRECT (corrected form ships) |
-| [Disable Windows Search indexing](#disable-windows-search-indexing) | `disable_search_indexing` | Switch (2 options) | medium | admin | no | VERIFIED |
+| [Disable Windows Search indexing](#disable-windows-search-indexing) | `disable_search_indexing` | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Block UWP background apps](#block-uwp-background-apps) | `disable_background_apps` | Switch (2 options) | low | admin | no | VERIFIED |
-| [Disable SysMain (SuperFetch) prefetching](#disable-sysmain-superfetch-prefetching) | `memory_prefetch_mode` | Switch (2 options) | medium | admin | no | VERIFIED |
+| [Disable SysMain (SuperFetch) prefetching](#disable-sysmain-superfetch-prefetching) | `memory_prefetch_mode` | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Halve the MMCSS reserved CPU (System Responsiveness)](#halve-the-mmcss-reserved-cpu-system-responsiveness) | `system_responsiveness` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Turn on Windows Game Mode](#turn-on-windows-game-mode) | `enable_game_mode` | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Hardware-accelerated GPU scheduling (HAGS)](#hardware-accelerated-gpu-scheduling-hags) | `enable_gpu_scheduling` | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
@@ -100,7 +100,7 @@ Worth it on an older or low-end machine, over Remote Desktop, or if you simply p
 
 ### Disable Windows Search indexing
 
-`disable_search_indexing` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_search_indexing` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Stops the background file indexer, cutting idle disk and CPU activity.**
 
@@ -134,7 +134,7 @@ System Default appears when `WSearch` is in any other start type, such as Manual
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
-- **Takes effect**: immediately; the service stops on apply.
+- **Takes effect**: the start type is written immediately, but the app does not stop a running service, so the indexer keeps running until the next restart; the tweak is flagged as needing a reboot for that reason.
 - **Reverting**: System Default restores the start type captured in the snapshot. "Automatic, Delayed" writes the confirmed stock start type. The index rebuilds from scratch after the service returns, which takes a while on a large profile.
 
 #### Interactions
@@ -215,7 +215,7 @@ Good for most people who do not live inside Store apps and want less background 
 
 ### Disable SysMain (SuperFetch) prefetching
 
-`memory_prefetch_mode` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`memory_prefetch_mode` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Turns off the SysMain preloader, a targeted fix for the case where it pins your disk at 100 percent.**
 
@@ -249,7 +249,7 @@ System Default appears when `SysMain` is in any other start type (Manual, Automa
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
-- **Takes effect**: immediately; the service stops on apply.
+- **Takes effect**: the start type is written immediately, but the app does not stop a running service, so `SysMain` keeps running until the next restart; the tweak is flagged as needing a reboot for that reason. Choosing Automatic likewise starts the service only at the next boot.
 - **Reverting**: System Default restores the start type captured in the snapshot, which is the safest path because it is your machine's real prior state. "Automatic" writes the published default; treat it as best effort, since it has not been confirmed on a clean 24H2 image.
 
 #### Interactions

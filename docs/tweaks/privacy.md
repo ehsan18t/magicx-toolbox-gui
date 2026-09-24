@@ -41,7 +41,7 @@ A note on "System Default" for every entry below: it is not an option anyone aut
 | [Block voice activation and wake words](#block-voice-activation-and-wake-words) | `disable_voice_activation` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Windows Backup and cloud restore](#disable-windows-backup-and-cloud-restore) | `disable_windows_backup` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Settings app online tips](#disable-settings-app-online-tips) | `disable_online_tips` | Switch (2 options) | low | admin | no | VERIFIED |
-| [Disable the Windows Error Reporting service](#disable-the-windows-error-reporting-service) | `disable_wer_service` | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable the Windows Error Reporting service](#disable-the-windows-error-reporting-service) | `disable_wer_service` | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 
 ## Tweaks
 
@@ -2054,7 +2054,7 @@ Apply it on any machine where you would rather Settings did not contact Microsof
 
 ### Disable the Windows Error Reporting service
 
-`disable_wer_service` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_wer_service` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Stops the Windows Error Reporting service, so crash reports are not collected or uploaded at all.**
 
@@ -2089,7 +2089,7 @@ This is the service-level companion to the WER `Disabled` values (`disable_error
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and all supported Windows 10 versions including LTSC 2021.
-- **Takes effect**: immediately; the start type changes on apply.
+- **Takes effect**: the start type changes on apply; a `WerSvc` instance that is already running is not stopped and keeps running until it exits or the machine restarts, so the tweak is flagged as needing a reboot.
 - **Reverting**: System Default restores the previous start type from the snapshot rather than writing a fixed value.
 
 #### Interactions

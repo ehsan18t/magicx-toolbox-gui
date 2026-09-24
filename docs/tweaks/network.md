@@ -13,7 +13,7 @@ This category covers network hardening (encrypted DNS, the three broadcast name-
 | [Disable mDNS](#disable-mdns) | `disable_mdns` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable WPAD auto-proxy discovery](#disable-wpad-auto-proxy-discovery) | `disable_wpad` | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Disable IPv6 transition technologies](#disable-ipv6-transition-technologies) | `disable_ipv6_transition` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
-| [Disable Internet Connection Sharing](#disable-internet-connection-sharing) | `disable_internet_connection_sharing` | Switch | medium | admin | no | VERIFIED |
+| [Disable Internet Connection Sharing](#disable-internet-connection-sharing) | `disable_internet_connection_sharing` | Switch | medium | admin | yes | VERIFIED |
 | [Firewall logging and local policy merge](#firewall-logging-and-local-policy-merge) | `firewall_logging_and_merge` | Dropdown (3 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable NIC power management](#disable-nic-power-management) | `disable_nic_power_management` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable hibernation](#disable-hibernation) | `disable_hibernation` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
@@ -482,7 +482,7 @@ Worth applying on an ordinary client that does not need tunnelled IPv6, which is
 
 ### Disable Internet Connection Sharing
 
-`disable_internet_connection_sharing` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_internet_connection_sharing` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Turns off Internet Connection Sharing so the PC cannot be turned into an unmanaged router and NAT, at the cost of breaking WSL2 and Windows Sandbox networking.**
 
@@ -522,7 +522,7 @@ The Windows Mobile Hotspot service (`icssvc`) depends on `RpcSs` and `wcmsvc`, n
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The policy is declared for Windows XP and later, so every supported platform qualifies.
-- **Takes effect**: the policy value and the start type are written immediately. The service is not stopped by the app, so a running instance stops only when it exits on its own or at the next restart.
+- **Takes effect**: the policy value and the start type are written immediately. The service is not stopped by the app, so a running instance stops only when it exits on its own or at the next restart; the tweak is flagged as needing a reboot for that reason.
 - **Reverting**: turning the toggle off restores the captured start type and the captured policy value (normally absent) from the snapshot. There is no hard-coded "stock" start type.
 
 #### Interactions

@@ -8,7 +8,7 @@ The verdicts on this page come from the July 2026 validation research. That rese
 
 | Tweak | Id | Control | Risk | Elevation | Reboot | Verdict |
 |---|---|---|---|---|---|---|
-| [Disable the Remote Registry service](#disable-the-remote-registry-service) | `disable_remote_registry` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable the Remote Registry service](#disable-the-remote-registry-service) | `disable_remote_registry` | Switch | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable Remote Desktop (RDP)](#disable-remote-desktop-rdp) | `disable_remote_desktop` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Remove SMBv1 protocol](#remove-smbv1-protocol) | `remove_smbv1` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable WDigest credential caching](#disable-wdigest-credential-caching) | `disable_wdigest` | Switch (2 options) | low | admin | no | VERIFIED |
@@ -49,7 +49,7 @@ The verdicts on this page come from the July 2026 validation research. That rese
 | [Block NTLM on the SMB client](#block-ntlm-on-the-smb-client) | `smb_client_block_ntlm` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Enhanced Phishing Protection](#enhanced-phishing-protection) | `enhanced_phishing_protection` | Dropdown (3 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [ASR standard protection rules](#asr-standard-protection-rules) | `asr_standard_protection_rules` | Dropdown (3 options) | low | admin | no | VERIFIED |
-| [Disable WinRM remoting](#disable-winrm-remoting) | `disable_winrm_remoting` | Switch | medium | admin | no | VERIFIED |
+| [Disable WinRM remoting](#disable-winrm-remoting) | `disable_winrm_remoting` | Switch | medium | admin | yes | VERIFIED |
 | [PowerShell module logging and transcription](#powershell-module-logging-and-transcription) | `powershell_module_transcript_logging` | Dropdown (3 options) | low | admin | no | VERIFIED |
 | [Restrict remote SAM calls to administrators](#restrict-remote-sam-calls-to-administrators) | `restrict_remote_sam` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Block AlwaysInstallElevated](#block-alwaysinstallelevated) | `block_always_install_elevated` | Switch (2 options) | low | admin | no | VERIFIED |
@@ -57,7 +57,7 @@ The verdicts on this page come from the July 2026 validation research. That rese
 | [ASR extended rule set](#asr-extended-rule-set) | `asr_extended_rules` | Dropdown (3 options) | medium | admin | no | VERIFIED |
 | [Restrict outgoing NTLM](#restrict-outgoing-ntlm) | `ntlm_outgoing_restriction` | Dropdown (3 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Harden the RDP session](#harden-the-rdp-session) | `rdp_session_hardening` | Dropdown (3 options) | low | admin | no | VERIFIED |
-| [Disable the Secondary Logon service](#disable-the-secondary-logon-service) | `disable_secondary_logon` | Switch | medium | admin | no | VERIFIED |
+| [Disable the Secondary Logon service](#disable-the-secondary-logon-service) | `disable_secondary_logon` | Switch | medium | admin | yes | VERIFIED |
 | [Early Launch Antimalware driver policy](#early-launch-antimalware-driver-policy) | `early_launch_antimalware_policy` | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Force updated CredSSP clients](#force-updated-credssp-clients) | `credssp_encryption_oracle` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Prevent automatic device encryption](#prevent-automatic-device-encryption) | `device_encryption_posture` | Switch (2 options) | medium | admin | no | VERIFIED |
@@ -113,7 +113,7 @@ Because the value is declared once for the whole corpus, the four tweaks cannot 
 
 ### Disable the Remote Registry service
 
-`disable_remote_registry` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_remote_registry` · Switch · Risk: low · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Stops anyone from reading or editing this PC's registry over the network.**
 
@@ -149,7 +149,7 @@ There is only one authored option because the shipped start type is the same val
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 (build 26100) and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions ship the service.
-- **Takes effect**: immediately for new start attempts, no reboot. An instance already running is not stopped by the tweak.
+- **Takes effect**: immediately for new start attempts. An instance already running is not stopped by the tweak and keeps serving until it stops or the machine restarts, which is why the tweak is flagged as needing a reboot.
 - **Reverting**: Restore Snapshot sets the start type back to the captured pre-apply value. It never hardcodes Manual.
 
 #### Interactions
@@ -2843,7 +2843,7 @@ Apply "Block" on any machine where Defender is the active antivirus; Microsoft's
 
 ### Disable WinRM remoting
 
-`disable_winrm_remoting` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_winrm_remoting` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Shuts down WinRM, the inbound remote-execution channel behind PowerShell Remoting that attackers use after stealing credentials.**
 
@@ -2869,7 +2869,7 @@ This is a toggle: On is "Disabled", and Off is System Default. System Default is
 
 Windows Remote Management (WinRM) is Microsoft's WS-Management implementation. It carries PowerShell Remoting (`Enter-PSSession`, `Invoke-Command` into this machine), Windows Event Collector forwarding and many remote-management agents. Post-exploitation tooling reaches for it after credential theft because it offers remote command execution with legitimate credentials.
 
-Setting the `WinRM` service to Disabled removes the inbound channel. On a stock client the practical effect is usually invisible: Microsoft states "By default, no WinRM listener is configured. Even if the WinRM service is running, WS-Management protocol messages that request data can't be received or sent." The service matters on machines where `winrm quickconfig` (or `Enable-PSRemoting`) has run: those sit at delayed automatic start with a listener configured, and this tweak shuts them down.
+Setting the `WinRM` service to Disabled removes the inbound channel. On a stock client the practical effect is usually invisible: Microsoft states "By default, no WinRM listener is configured. Even if the WinRM service is running, WS-Management protocol messages that request data can't be received or sent." The service matters on machines where `winrm quickconfig` (or `Enable-PSRemoting`) has run: those sit at delayed automatic start with a listener configured, and this tweak stops the service starting again, so the listener goes away at the next restart.
 
 The six policy values, all confirmed in the shipped 26100 `WindowsRemoteManagement.admx` (class Machine), harden both roles so that re-enabling the service later does not reopen weak authentication:
 
@@ -2896,7 +2896,7 @@ The tweak cannot lock anyone out. WinRM governs inbound WS-Man only; local sign-
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions.
-- **Takes effect**: immediately; the service is stopped and disabled, and the policy values are read on the next WinRM operation. No reboot.
+- **Takes effect**: the start type and the policy values are written immediately, and the policy values are read on the next WinRM operation. The app does not stop a running `WinRM` service, so a configured listener keeps accepting connections until the service stops or the machine restarts; the tweak is flagged as needing a reboot for that reason.
 - **Reverting**: turning the toggle off restores the previous service start type from the snapshot and restores the six policy values (normally by deleting them). It never hardcodes Manual, because a machine where `winrm quickconfig` has run sits at delayed automatic start.
 
 #### Interactions
@@ -3430,7 +3430,7 @@ Apply it if you use Remote Desktop and want the STIG-level session settings; tak
 
 ### Disable the Secondary Logon service
 
-`disable_secondary_logon` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_secondary_logon` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Disables the service behind `runas` and "Run as different user", removing a routine step in privilege-escalation and lateral-movement chains.**
 
@@ -3466,7 +3466,7 @@ Normal UAC elevation of the same user does not go through Secondary Logon, so th
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (Windows 11 24H2 and newer; Windows 10 22H2 and LTSC 2021).
-- **Takes effect**: new starts are blocked immediately; an instance that is already running keeps running until it stops or the machine restarts. No reboot is required.
+- **Takes effect**: new starts are blocked immediately; an instance that is already running keeps running until it stops or the machine restarts. The tweak is flagged as needing a reboot, since only a restart guarantees no instance is left running.
 - **Reverting**: selecting System Default restores the start type captured in the snapshot, exactly (including delayed-start). The tweak never hardcodes a stock start type.
 
 #### Interactions

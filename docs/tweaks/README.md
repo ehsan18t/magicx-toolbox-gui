@@ -204,7 +204,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Disable mDNS](network.md#disable-mdns) | `disable_mdns` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable WPAD auto-proxy discovery](network.md#disable-wpad-auto-proxy-discovery) | `disable_wpad` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Disable IPv6 transition technologies](network.md#disable-ipv6-transition-technologies) | `disable_ipv6_transition` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
-| [Disable Internet Connection Sharing](network.md#disable-internet-connection-sharing) | `disable_internet_connection_sharing` | Network & Power tweaks | Switch | medium | admin | no | VERIFIED |
+| [Disable Internet Connection Sharing](network.md#disable-internet-connection-sharing) | `disable_internet_connection_sharing` | Network & Power tweaks | Switch | medium | admin | yes | VERIFIED |
 | [Firewall logging and local policy merge](network.md#firewall-logging-and-local-policy-merge) | `firewall_logging_and_merge` | Network & Power tweaks | Dropdown (3 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable NIC power management](network.md#disable-nic-power-management) | `disable_nic_power_management` | Network & Power tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable hibernation](network.md#disable-hibernation) | `disable_hibernation` | Network & Power tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
@@ -212,9 +212,9 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Disable wake timers](network.md#disable-wake-timers) | `disable_wake_timers` | Network & Power tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Modern Standby (force S3)](network.md#disable-modern-standby-force-s3) | `disable_modern_standby` | Network & Power tweaks | Switch (2 options) | high | admin | yes | VERIFIED |
 | [Set visual effects to best performance](performance.md#set-visual-effects-to-best-performance) | `optimize_visual_effects` | Performance & Gaming tweaks | Switch (2 options) | low | none | no | INCORRECT (corrected form ships) |
-| [Disable Windows Search indexing](performance.md#disable-windows-search-indexing) | `disable_search_indexing` | Performance & Gaming tweaks | Switch (2 options) | medium | admin | no | VERIFIED |
+| [Disable Windows Search indexing](performance.md#disable-windows-search-indexing) | `disable_search_indexing` | Performance & Gaming tweaks | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Block UWP background apps](performance.md#block-uwp-background-apps) | `disable_background_apps` | Performance & Gaming tweaks | Switch (2 options) | low | admin | no | VERIFIED |
-| [Disable SysMain (SuperFetch) prefetching](performance.md#disable-sysmain-superfetch-prefetching) | `memory_prefetch_mode` | Performance & Gaming tweaks | Switch (2 options) | medium | admin | no | VERIFIED |
+| [Disable SysMain (SuperFetch) prefetching](performance.md#disable-sysmain-superfetch-prefetching) | `memory_prefetch_mode` | Performance & Gaming tweaks | Switch (2 options) | medium | admin | yes | VERIFIED |
 | [Halve the MMCSS reserved CPU (System Responsiveness)](performance.md#halve-the-mmcss-reserved-cpu-system-responsiveness) | `system_responsiveness` | Performance & Gaming tweaks | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Turn on Windows Game Mode](performance.md#turn-on-windows-game-mode) | `enable_game_mode` | Performance & Gaming tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
 | [Hardware-accelerated GPU scheduling (HAGS)](performance.md#hardware-accelerated-gpu-scheduling-hags) | `enable_gpu_scheduling` | Performance & Gaming tweaks | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
@@ -268,8 +268,8 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Block voice activation and wake words](privacy.md#block-voice-activation-and-wake-words) | `disable_voice_activation` | Privacy & Telemetry tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Windows Backup and cloud restore](privacy.md#disable-windows-backup-and-cloud-restore) | `disable_windows_backup` | Privacy & Telemetry tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Settings app online tips](privacy.md#disable-settings-app-online-tips) | `disable_online_tips` | Privacy & Telemetry tweaks | Switch (2 options) | low | admin | no | VERIFIED |
-| [Disable the Windows Error Reporting service](privacy.md#disable-the-windows-error-reporting-service) | `disable_wer_service` | Privacy & Telemetry tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable the Remote Registry service](security.md#disable-the-remote-registry-service) | `disable_remote_registry` | Security Hardening tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Disable the Windows Error Reporting service](privacy.md#disable-the-windows-error-reporting-service) | `disable_wer_service` | Privacy & Telemetry tweaks | Switch | medium | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Disable the Remote Registry service](security.md#disable-the-remote-registry-service) | `disable_remote_registry` | Security Hardening tweaks | Switch | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable Remote Desktop (RDP)](security.md#disable-remote-desktop-rdp) | `disable_remote_desktop` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Remove SMBv1 protocol](security.md#remove-smbv1-protocol) | `remove_smbv1` | Security Hardening tweaks | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable WDigest credential caching](security.md#disable-wdigest-credential-caching) | `disable_wdigest` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED |
@@ -310,7 +310,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Block NTLM on the SMB client](security.md#block-ntlm-on-the-smb-client) | `smb_client_block_ntlm` | Security Hardening tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Enhanced Phishing Protection](security.md#enhanced-phishing-protection) | `enhanced_phishing_protection` | Security Hardening tweaks | Dropdown (3 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [ASR standard protection rules](security.md#asr-standard-protection-rules) | `asr_standard_protection_rules` | Security Hardening tweaks | Dropdown (3 options) | low | admin | no | VERIFIED |
-| [Disable WinRM remoting](security.md#disable-winrm-remoting) | `disable_winrm_remoting` | Security Hardening tweaks | Switch | medium | admin | no | VERIFIED |
+| [Disable WinRM remoting](security.md#disable-winrm-remoting) | `disable_winrm_remoting` | Security Hardening tweaks | Switch | medium | admin | yes | VERIFIED |
 | [PowerShell module logging and transcription](security.md#powershell-module-logging-and-transcription) | `powershell_module_transcript_logging` | Security Hardening tweaks | Dropdown (3 options) | low | admin | no | VERIFIED |
 | [Restrict remote SAM calls to administrators](security.md#restrict-remote-sam-calls-to-administrators) | `restrict_remote_sam` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Block AlwaysInstallElevated](security.md#block-alwaysinstallelevated) | `block_always_install_elevated` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED |
@@ -318,7 +318,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [ASR extended rule set](security.md#asr-extended-rule-set) | `asr_extended_rules` | Security Hardening tweaks | Dropdown (3 options) | medium | admin | no | VERIFIED |
 | [Restrict outgoing NTLM](security.md#restrict-outgoing-ntlm) | `ntlm_outgoing_restriction` | Security Hardening tweaks | Dropdown (3 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Harden the RDP session](security.md#harden-the-rdp-session) | `rdp_session_hardening` | Security Hardening tweaks | Dropdown (3 options) | low | admin | no | VERIFIED |
-| [Disable the Secondary Logon service](security.md#disable-the-secondary-logon-service) | `disable_secondary_logon` | Security Hardening tweaks | Switch | medium | admin | no | VERIFIED |
+| [Disable the Secondary Logon service](security.md#disable-the-secondary-logon-service) | `disable_secondary_logon` | Security Hardening tweaks | Switch | medium | admin | yes | VERIFIED |
 | [Early Launch Antimalware driver policy](security.md#early-launch-antimalware-driver-policy) | `early_launch_antimalware_policy` | Security Hardening tweaks | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Force updated CredSSP clients](security.md#force-updated-credssp-clients) | `credssp_encryption_oracle` | Security Hardening tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Prevent automatic device encryption](security.md#prevent-automatic-device-encryption) | `device_encryption_posture` | Security Hardening tweaks | Switch (2 options) | medium | admin | no | VERIFIED |

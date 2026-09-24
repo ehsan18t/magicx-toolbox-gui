@@ -54,6 +54,7 @@ tweaks:
     risk_level: low
     elevation: admin
     reversible: true
+    requires_reboot: true
     effects:
       # One authored option: the shipped start type is Disabled too, so a second "stock" option would
       # be byte-identical. The Default position restores the captured start type from the snapshot.
@@ -2600,6 +2601,7 @@ tweaks:
     risk_level: medium
     elevation: admin
     reversible: true
+    requires_reboot: true
     warning: "Inbound PowerShell Remoting, Windows Event Collector forwarding, Windows Admin Center and similar remote-management agents stop working. It cannot lock you out: WinRM is inbound only."
     effects:
       # One authored option: no tier A source pins the shipped WinRM start type, so an authored
@@ -3204,6 +3206,7 @@ tweaks:
     risk_level: medium
     elevation: admin
     reversible: true
+    requires_reboot: true
     warning: "`runas`, the \"Run as different user\" menu entry and anything calling CreateProcessWithLogonW stop working. Skip it if you keep a separate administrator account."
     effects:
       # One authored option: no authoritative source pins the shipped start type, so an authored
