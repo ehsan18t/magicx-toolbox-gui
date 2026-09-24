@@ -9,42 +9,29 @@ tweaks:
     name: "Enable DNS over HTTPS auto-upgrade"
     description: "Auto-upgrade DNS lookups to encrypted HTTPS, but only where the configured resolver is already DoH-capable."
     info: |
-      **Upgrades your DNS lookups to encrypted HTTPS, but only if you already use a resolver Windows recognises as DoH-capable.**
+      **Encrypts your DNS lookups over HTTPS, but only when your adapter already uses a DNS server Windows knows can do it (Cloudflare, Google, Quad9, or one you registered). It never picks a server for you.**
 
-      ## What it does
-      Sets `EnableAutoDoh = 2` under `Dnscache\Parameters`, which tells the Windows 11 DNS client to
-      promote plaintext lookups to DNS over HTTPS whenever the configured resolver is on Windows'
-      known-DoH list (Cloudflare, Google, Quad9). It does not choose a resolver for you, and it does
-      not force encryption.
-
-      ## Benefits
-      - **Hides your lookups**: your ISP and anyone on the path stop seeing which names you resolve
-      - **Blocks on-path tampering**: encrypted answers cannot be silently rewritten in transit
-      - **No configuration UI needed**: one value, applied machine-wide across every adapter
+      ## Mechanism
+      - Sets `EnableAutoDoh = 2` in the DNS Client service settings, which upgrades lookups to a known DoH server and falls back to plaintext otherwise.
 
       ## Drawbacks
-      - **Does nothing by itself**: on an ordinary ISP resolver nothing is encrypted, because auto-upgrade only fires for known-DoH servers
-      - **Unsupported by Microsoft**: the blog that published this value said registry DoH configuration would not be supported in release builds
-      - **No feedback**: nothing in Settings reflects the change, so you cannot tell whether it took effect
-      - **Breaks captive portals and internal DNS**: hotel and airport sign-in pages, and split-horizon corporate names, can stop resolving
+      - On the DNS server your router or ISP hands out, it does nothing, and nothing tells you so.
+      - If encryption is not possible, lookups go out in plaintext without warning.
+      - Can upset captive portals (hotel and airport sign-in pages) and internal company DNS.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer. The built-in DoH client does not exist on Windows 10, including 22H2 and LTSC 2021, so this does nothing there.
-      - **Takes effect**: after reboot
-      - **Reverting**: deletes the value, restoring the Windows default of no auto-upgrade
-      - **Set a DoH resolver first**: point the adapter at 1.1.1.1, 8.8.8.8 or 9.9.9.9, or this write is inert
-      - **The supported route** is the "Require DoH" policy tweak, the Settings UI, or `Add-DnsClientDohServerAddress`
+      ## Caveats
+      - Microsoft published this value for Insider testing and said registry DoH setup would not be supported. It works on build 26100 today but could stop without notice.
+      - Settings does not reflect the change, so you cannot see whether it took effect.
+
+      ## Related
+      - **Require encrypted DNS** guarantees encryption instead: lookups fail rather than fall back. Pick one of the two.
 
       ## Recommendation
-      Use it only if you have already set a DoH-capable resolver such as Cloudflare or Quad9; on an
-      ISP-assigned resolver it changes nothing. If you want encryption guaranteed rather than
-      opportunistic, use the policy-based "Require DoH" control instead.
+      Use it only if your adapter already points at a DoH-capable server such as 1.1.1.1, 8.8.8.8 or 9.9.9.9. On an ISP-assigned server, skip it: it changes nothing.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Windows Insiders can now test DNS over HTTPS](https://techcommunity.microsoft.com/blog/networkingblog/windows-insiders-can-now-test-dns-over-https/1381282)
+      ## Sources
       - [Secure DNS Client over HTTPS (DoH)](https://learn.microsoft.com/en-us/windows-server/networking/dns/doh-client-support)
+      - [Windows Insiders can now test DNS over HTTPS](https://techcommunity.microsoft.com/blog/networkingblog/windows-insiders-can-now-test-dns-over-https/1381282)
       - [Add-DnsClientDohServerAddress](https://learn.microsoft.com/en-us/powershell/module/dnsclient/add-dnsclientdohserveraddress)
     risk_level: medium
     elevation: admin
@@ -64,42 +51,28 @@ tweaks:
     name: "Require encrypted DNS"
     description: "Enforce DNS over HTTPS by policy so lookups fail rather than silently falling back to plaintext."
     info: |
-      **Forces encrypted DNS: if the resolver will not do DNS over HTTPS, name resolution fails rather than falling back to plaintext.**
-
-      ## What it does
-      Sets `DoHPolicy = 3` ("Require encryption") under the DNS Client policy key, the first-party
-      Group Policy "Configure DNS over HTTPS (DoH) name resolution". Unlike opportunistic
-      auto-upgrade, this never falls back to unencrypted queries.
-
-      ## Benefits
-      - **A real guarantee**: no silent plaintext fallback, which is the whole weakness of auto-upgrade
-      - **Microsoft-documented**: an ADMX-backed policy, not an undocumented registry value
-      - **Machine-wide**: applies across every interface, not per-server
+      **Forces every DNS lookup over encrypted HTTPS. If your DNS server cannot do DoH, lookups fail instead of quietly falling back to plaintext.**
 
       ## Drawbacks
-      - **Total name-resolution failure if misconfigured**: if your DNS servers do not speak DoH, nothing resolves and the machine looks like it has no internet
-      - **Breaks captive portals**: hotel and airport sign-in pages depend on plaintext DNS interception
-      - **Wrong for domain-joined machines**: Microsoft warns against requiring DoH where Windows Server DNS answers internal names, because it does not serve DoH
-      - **Needs a DoH-capable resolver set first**: this policy enforces encryption, it does not provide a server
+      - Captive portals (hotel and airport Wi-Fi sign-in pages) fail until you revert.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer. The policy itself declares Windows 10 20H2 and later, but no shipping Windows 10 release has the DoH client, so it has no practical effect there.
-      - **Takes effect**: after reboot, or after restarting the DNS Client (`Dnscache`) service
-      - **Reverting**: deletes the value, restoring Windows' default encryption behaviour
-      - **Set a DoH resolver first** (Cloudflare, Google or Quad9, or one added with `Add-DnsClientDohServerAddress`), then apply this
-      - The same policy also carries separate DoH and DNS over TLS sub-settings, which this does not write
+      ## Caveats
+      - It does not choose a DNS server. Point your adapter at a DoH-capable one (Cloudflare, Google, Quad9, or one registered with `Add-DnsClientDohServerAddress`) before applying.
+      - Only one of the policy's three required values is written, so Group Policy tools may show it as partly configured. Windows still enforces it.
+      - A Group Policy or MDM DoH setting overwrites it at the next refresh.
+
+      ## Requirements
+      - Microsoft documents the DNS Client policies for Pro and above; behaviour on Home is unverified.
+
+      ## Related
+      - **Enable DNS over HTTPS auto-upgrade** encrypts when it can and falls back to plaintext otherwise. Pick one of the two.
 
       ## Recommendation
-      The right choice for a privacy-motivated user on a standalone machine who has already configured
-      a DoH-capable resolver and wants encryption guaranteed rather than opportunistic. Do not apply it
-      on a domain-joined machine, or on a laptop that regularly connects through captive portals,
-      without an easy way to revert.
+      For a standalone PC that already uses a DoH-capable server and wants encryption guaranteed. On a laptop that often signs in through captive portals, the auto-upgrade tweak is the gentler choice.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [Secure DNS Client over HTTPS (DoH)](https://learn.microsoft.com/en-us/windows-server/networking/dns/doh-client-support)
-      - [Policy CSP - ADMX_DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [Policy CSP - ADMX DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
       - [Add-DnsClientDohServerAddress](https://learn.microsoft.com/en-us/powershell/module/dnsclient/add-dnsclientdohserveraddress)
     warning: "If your DNS servers do not support DNS over HTTPS, name resolution stops entirely and the machine will look like it has no internet. Configure a DoH-capable resolver first, and do not apply this on a domain-joined machine."
     risk_level: medium
@@ -120,40 +93,27 @@ tweaks:
     name: "Disable LLMNR"
     description: "Turn off multicast LLMNR name resolution to block a common credential-theft and spoofing vector."
     info: |
-      **Turns off the legacy LLMNR name-resolution fallback, closing a favourite target for local-network credential theft.**
+      **Turns off LLMNR, the fallback name lookup that attack tools like Responder answer to steal password hashes on your local network.**
 
-      ## What it does
-      Sets the `EnableMulticast` policy value to 0, the registry form of the Group Policy "Turn off
-      multicast name resolution". LLMNR is the fallback Windows uses to find machines by name when
-      DNS does not answer, and it broadcasts those queries to the whole local network.
-
-      ## Benefits
-      - **Closes LLMNR poisoning**: the highest-yield, lowest-effort attack on a flat Windows network
-      - **Stops credential capture**: tools like Responder answer the broadcast and harvest NTLM hashes
-      - **Benchmark-backed**: CIS control 18.5.4.1 recommends exactly this
-      - **Survives updates**: it is a policy value, not a preference
+      ## Mechanism
+      - When DNS cannot resolve a name, LLMNR asks the whole local network and trusts whoever answers. An attacker answers and captures your NTLM sign-in attempt.
+      - Writes the "Turn off multicast name resolution" Group Policy value, `EnableMulticast = 0`.
 
       ## Drawbacks
-      - **Short names may fail**: on a network with no DNS server, single-label lookups fall back to NetBIOS or stop working
-      - **Pairs with NetBIOS**: if you also disable NetBIOS, short-name discovery on a DNS-less network stops entirely
-      - **Not the whole picture**: mDNS is a third broadcast protocol and needs its own control
+      - On a network with no DNS server, short names that only LLMNR could resolve stop resolving.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021
-      - **Takes effect**: after reboot, when the DNS Client service next reads the policy
-      - **Reverting**: deletes the value, which is the Windows default state (LLMNR enabled)
-      - **Editions**: documented for Pro, Education, Enterprise and IoT Enterprise; the DNS client reads the value on Home too, but Microsoft does not document that
+      ## Requirements
+      - Microsoft documents the policy for Pro, Education, Enterprise and IoT editions. Home reads it too, but that is undocumented.
+
+      ## Related
+      - **Disable NetBIOS over TCP/IP** and **Disable mDNS** close the other two broadcast lookups used in the same attack.
 
       ## Recommendation
-      Apply it. On any network with a working DNS server, which includes essentially every home
-      router, the cost is zero and the security gain is real. Skip it only if you depend on short-name
-      discovery on a network with no DNS at all.
+      Apply it. Any network with a working DNS server, which includes every normal home router, loses nothing. CIS benchmarks recommend it.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - ADMX_DnsClient, Turn_Off_Multicast](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
-      - [CIS 18.5.4.1, Turn off multicast name resolution](https://www.tenable.com/audits/items/CIS_DC_SERVER_2012_Level_1_v2.2.0.audit:f9584c0c934378405ec052736485f437)
+      ## Sources
+      - [Policy CSP - ADMX DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      - [CIS 18.5.4.1: Turn off multicast name resolution](https://www.tenable.com/audits/items/CIS_DC_SERVER_2012_Level_1_v2.2.0.audit:f9584c0c934378405ec052736485f437)
     risk_level: medium
     elevation: admin
     reversible: true
@@ -171,39 +131,31 @@ tweaks:
     name: "Disable NetBIOS over TCP/IP"
     description: "Disable the legacy NetBIOS name service (NBT-NS) on every adapter to close a spoofing and poisoning attack surface."
     info: |
-      **Shuts off the ancient NetBIOS name service on every adapter, removing a second broadcast attack surface that credential-theft tools abuse.**
+      **Turns off NetBIOS name lookups on every network adapter, closing the second broadcast lookup that attack tools spoof to capture sign-ins.**
 
-      ## What it does
-      Writes `NetbiosOptions = 2` to every `Tcpip_*` interface under `NetBT\Parameters\Interfaces`,
-      the registry equivalent of selecting "Disable NetBIOS over TCP/IP" on the WINS tab. Like LLMNR,
-      NBT-NS answers name requests by broadcast, which attackers hijack.
-
-      ## Benefits
-      - **Closes NBT-NS poisoning**: the twin of LLMNR poisoning, targeted by the same tooling
-      - **Completes the pair**: with LLMNR off, the two classic broadcast name-resolution holes are both shut
-      - **Machine-wide**: applied to every adapter present, not just the active one
+      ## Mechanism
+      - Sets `NetbiosOptions = 2` on each adapter present at apply time, recording each adapter's previous value first.
+      - Detected from the adapters themselves: if every adapter already has NetBIOS off, the tweak shows as applied.
 
       ## Drawbacks
-      - **Breaks legacy discovery**: NetBIOS-only NAS boxes, old network printers and some line-of-business apps stop resolving
-      - **Not applied to new adapters**: a USB NIC, VPN adapter or Hyper-V switch added later keeps NetBIOS until you re-apply
-      - **WINS networks**: any network still using WINS depends on this
-      - **`net view` browsing** stops working where it relied on NetBIOS names
+      - Very old NAS boxes, printers and business apps that find devices only by NetBIOS name stop resolving.
+      - WINS and `net view` browsing stop working where they relied on NetBIOS.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions
-      - **Takes effect**: after reboot (or `ipconfig /renew` on a DHCP interface)
-      - **Reverting**: restores the previous per-interface value from the snapshot
-      - Modern file sharing over SMB on port 445 with DNS names is unaffected
+      ## Caveats
+      - Adapters added later (USB, VPN, Hyper-V switch) keep NetBIOS, and the tweak then shows System Default. Re-apply to cover them.
+
+      ## Notes
+      - Takes effect after a reboot, or after `ipconfig /renew` on a DHCP adapter.
+      - Reverting restores each adapter's own previous value; an adapter with no record gets 0, the Windows default (follow the DHCP server).
+      - File sharing by DNS name on port 445 is unaffected.
+
+      ## Related
+      - **Disable LLMNR** (the cheapest, apply it first) and **Disable mDNS** close the other two broadcast lookups.
 
       ## Recommendation
-      Apply it on any modern network, ideally together with disabling LLMNR. Skip it if you still run
-      genuinely old NetBIOS-only hardware, or test first and re-enable NetBIOS on the one adapter that
-      needs it.
+      Apply it on any modern network, together with Disable LLMNR. Skip it if you still rely on old NetBIOS-only hardware or WINS.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [NetbiosOptions (Core Services)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776524(v=ws.10))
+      ## Sources
       - [TCP/IP and NBT configuration parameters](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/tcpip-and-nbt-configuration-parameters)
       - [Unattend NetbiosOptions setting](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-netbt-interfaces-interface-netbiosoptions)
     risk_level: medium
@@ -260,40 +212,28 @@ tweaks:
     name: "Disable mDNS"
     description: "Turn off multicast DNS, the third broadcast name-resolution protocol, at both the policy and service keys."
     info: |
-      **Turns off mDNS, the third broadcast name-resolution protocol, closing the last leg of the LLMNR and NetBIOS spoofing triad.**
+      **Turns off multicast DNS, the last of the three broadcast lookups attackers spoof. It also stops `.local` names and automatic discovery of printers and cast devices.**
 
-      ## What it does
-      Sets `EnableMDNS = 0` both under the DNS Client policy key and under the `Dnscache\Parameters`
-      service key, which is the "locally configured setting" the policy's own help text defers to.
-      The DNS client then stops answering and issuing multicast DNS queries.
-
-      ## Benefits
-      - **Closes mDNS poisoning**: the same Responder-class attack that motivates disabling LLMNR works over mDNS
-      - **Completes the set**: with LLMNR and NetBIOS already off, this is the remaining broadcast name-resolution protocol
-      - **First-party control**: Windows ships a Group Policy for it, "Configure multicast DNS (mDNS) protocol"
-      - **Fully reversible**: deleting both values restores the default
+      ## Mechanism
+      - Writes `EnableMDNS = 0` in both the Group Policy key and the DNS Client service key.
+      - Both are needed: Microsoft's policy text says a disabled policy hands control back to the local setting.
 
       ## Drawbacks
-      - **`.local` names stop resolving**: anything you reach by a `.local` hostname becomes unreachable by name
-      - **Network printers vanish**: AirPrint and IPP Everywhere printers are discovered over mDNS
-      - **Casting and smart-home discovery break**: Chromecast, Google Cast, Apple device discovery and some smart-home apps rely on it
-      - **Highest cost of the three**: this is the name-resolution tweak users are most likely to notice
+      - `.local` host names stop resolving.
+      - AirPrint and IPP Everywhere printers disappear from discovery.
+      - Chromecast, Google Cast, Apple devices and some smart-home apps can no longer be found.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer. The policy declares "At least Windows 10", so Windows 10 including LTSC 2021 should honour it, but that was verified on 26100 only.
-      - **Takes effect**: after reboot, or after restarting the DNS Client (`Dnscache`) service
-      - **Reverting**: deletes both values, restoring mDNS
-      - Apply this after LLMNR and NetBIOS, not before; it is the one most likely to be noticed
+      ## Requirements
+      - Verified on Windows 11 24H2. Windows 10 (including LTSC 2021) should honour it but was not tested.
+
+      ## Related
+      - **Disable LLMNR** and **Disable NetBIOS over TCP/IP** close the other two. Apply those first; this is the one you will notice.
 
       ## Recommendation
-      Worth applying on a hardened workstation with no `.local` dependencies and no mDNS-discovered
-      printers or cast devices. If you print to a network printer found by name, or cast to a TV,
-      expect that to stop and skip this one.
+      For a hardened PC that prints to no automatically found network printer and never casts to a TV. Otherwise skip it.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - ADMX_DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
+      ## Sources
+      - [Policy CSP - ADMX DnsClient](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient)
       - [DNS Client Group Policy settings](https://learn.microsoft.com/en-us/windows-server/networking/dns/dns-top)
     risk_level: medium
     elevation: admin
@@ -314,38 +254,26 @@ tweaks:
     name: "Disable WPAD auto-proxy discovery"
     description: "Disable Web Proxy Auto-Discovery machine-wide so attackers cannot hijack traffic via rogue WPAD responses."
     info: |
-      **Blocks Windows from auto-hunting the network for proxy settings, killing a classic man-in-the-middle trick that reroutes your web traffic.**
+      **Stops Windows searching the local network for a proxy setup file, a classic trick attackers use to route your web traffic through their machine.**
 
-      ## What it does
-      Sets `DisableWpad = 1` under `Internet Settings\WinHttp`, the method Microsoft documents for
-      switching Web Proxy Auto-Discovery off since Windows 10 1809. Every proxy-detection call made
-      through the WinHTTP API stops looking for a WPAD configuration file.
-
-      ## Benefits
-      - **Kills a live MITM vector**: a rogue device can no longer answer WPAD and route your traffic through its proxy
-      - **Documented switch**: Microsoft's own supported way to turn WPAD off
-      - **Free if unused**: costs nothing on any network that does not hand out proxy config by WPAD
-      - **Works on Home**: a product key, not a policy key, so no edition gate
+      ## Mechanism
+      - Sets Microsoft's documented `DisableWpad = 1` for WinHTTP, the web client that Windows services and many apps use.
+      - The WinHTTP auto-proxy service is left running, since many Windows parts depend on it.
 
       ## Drawbacks
-      - **Breaks WPAD networks**: where proxy settings are distributed this way, web access stops until you set a proxy by hand
-      - **Not complete coverage**: applications can still resolve the name "WPAD" through plain DNS, so DNS-level WPAD queries continue
-      - **Settings UI still matters**: third-party apps and browsers may read the Windows Settings proxy auto-discovery toggle, which this does not change
+      - On a network that hands out its proxy through WPAD (some company networks), web access fails until you set the proxy by hand.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1809 and later including LTSC 2021, all editions
-      - **Takes effect**: after reboot, because WinHTTP caches proxy configuration per process
-      - **Reverting**: deletes the value, restoring automatic proxy discovery
-      - This deliberately does not disable the `WinHttpAutoProxySvc` service, because many Windows components depend on it
+      ## Caveats
+      - Apps can still look up the name `wpad` through DNS themselves.
+      - Browsers and other apps may follow Settings > Network & internet > Proxy > "Automatically detect settings", which this does not change. Turn that off too.
+
+      ## Related
+      - **Disable LLMNR**, **Disable NetBIOS over TCP/IP** and **Disable mDNS** remove channels an attacker can use to answer a `wpad` lookup.
 
       ## Recommendation
-      Apply it on any home or small-office machine that does not use automatic proxy configuration,
-      and also turn off auto-discovery in Settings for full coverage. On a corporate network that
-      distributes proxy settings by WPAD, leave it alone or configure the proxy manually first.
+      Apply it on home and small-office PCs that do not use automatic proxy setup. On a company network that uses WPAD, leave it alone.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [How to disable HTTP proxy features](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/disable-http-proxy-auth-features)
       - [WinHTTP AutoProxy functions](https://learn.microsoft.com/en-us/windows/win32/winhttp/winhttp-autoproxy-api)
     risk_level: medium
@@ -365,39 +293,23 @@ tweaks:
     name: "Disable IPv6 transition technologies"
     description: "Drop the legacy IPv6 tunnel interfaces (6to4 and the generic tunnel) without touching native IPv6."
     info: |
-      **Drops the legacy IPv6 tunnel interfaces so 6to4 cannot quietly build a tunnel and register its addresses in DNS, while native IPv6 keeps working.**
+      **Turns off the legacy IPv6 tunnel interfaces, mainly 6to4, which can build a tunnel on its own and register its addresses in DNS. Native IPv6 keeps working.**
 
-      ## What it does
-      Sets `DisabledComponents = 0x01` on the IPv6 stack, the low bit of Microsoft's documented
-      bitmask, which disables the tunnel interfaces (6to4, Teredo, ISATAP). Native IPv6 lives in a
-      different bit and is untouched.
-
-      ## Benefits
-      - **Stops 6to4 auto-tunnels**: 6to4 enables itself whenever an interface holds a public IPv4 address, and Microsoft itself recommends disabling it when that is unwanted
-      - **Fewer address leaks**: no tunnel addresses registered in DNS and no unexpected connectivity path
-      - **Native IPv6 intact**: this is bit 0, not the 0x10 bit that disables native IPv6
+      ## Mechanism
+      - Sets `DisabledComponents = 0x01`, the value Microsoft gives for disabling 6to4 and the other transition technologies.
+      - Teredo and ISATAP are already off by default, so on a stock PC the real change is 6to4 and the generic tunnel interface.
 
       ## Drawbacks
-      - **Breaks Routing and Remote Access**: Microsoft states any value other than 0 or 32 causes RRAS to fail, and `0x01` is such a value
-      - **Smaller change than it sounds**: ISATAP and Teredo are already disabled by default in Windows, so on a stock machine only 6to4 and the generic tunnel interface actually go away
-      - **Teredo-dependent apps**: some older peer-to-peer software and legacy console networking need Teredo
+      - Apps that depend on Teredo (some older peer-to-peer software and legacy console networking) lose it.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions
-      - **Takes effect**: after reboot, which Microsoft requires for this value
-      - **Reverting**: deletes the value, restoring the Windows default of 0x00
-      - **Do not confuse `0x01` with `0xFF`**: 0xFF disables IPv6 entirely, which Microsoft does not support and which breaks Windows features that assume IPv6 is present
+      ## Caveats
+      - Replaces any existing `DisabledComponents` value, such as `0x20` (prefer IPv4) from another tool. Reverting puts the old value back.
 
       ## Recommendation
-      Worth applying on an ordinary client that does not need tunnelled IPv6, which is most machines.
-      Do not apply it on anything running Routing and Remote Access, or on a machine that depends on
-      Teredo or on an ISATAP intranet deployment.
+      Fine for an ordinary PC that does not need tunnelled IPv6. Skip it on anything running Routing and Remote Access or relying on Teredo.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Guidance for configuring IPv6 in Windows for advanced users](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/configure-ipv6-in-windows)
-      - [IPv6 transition technologies overview](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/bb726951(v=technet.10))
+      ## Sources
+      - [Guidance for configuring IPv6 in Windows](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/configure-ipv6-in-windows)
     warning: "Microsoft states that any DisabledComponents value other than 0 or 32 causes the Routing and Remote Access service to fail. Do not apply this on a machine running RRAS."
     risk_level: medium
     elevation: admin
@@ -416,39 +328,28 @@ tweaks:
     name: "Disable Internet Connection Sharing"
     description: "Disable the ICS service and hide its UI so the PC cannot be turned into an unmanaged router and NAT."
     info: |
-      **Turns off Internet Connection Sharing, so the PC cannot be turned into an unmanaged router and NAT.**
+      **Disables the Internet Connection Sharing service and hides the Sharing tab, so this PC cannot share its connection as a router for other devices.**
 
-      ## What it does
-      Disables the `SharedAccess` service (Internet Connection Sharing) and enables the "Prohibit use
-      of Internet Connection Sharing" policy, which writes `NC_ShowSharedAccessUI = 0` and removes the
-      sharing option from network connection properties.
-
-      ## Benefits
-      - **No accidental routing**: the machine cannot start NATting another network onto your connection
-      - **Removes the UI**: the sharing tab option disappears, so it cannot be enabled by mistake
-      - **Benchmark-backed**: DISA's Windows 11 STIG has a dedicated rule requiring ICS be disabled
+      ## Mechanism
+      - Sets the `SharedAccess` service to Disabled and turns on the policy that prohibits Internet Connection Sharing, which hides the Sharing tab.
 
       ## Drawbacks
-      - **Breaks WSL2 and the Hyper-V Default Switch**: `SharedAccess` is the NAT engine behind them, so WSL2 and Windows Sandbox lose internet access
-      - **Mobile Hotspot may stop working**: the Hotspot service does not formally depend on this one, but it uses the same NAT engine
-      - **No sharing a connection**: if you ever tether one adapter's connection to another, that stops
+      - WSL2, Docker Desktop (WSL2 backend), the Hyper-V Default Switch and Windows Sandbox lose internet access: they rely on this service's NAT.
+      - You can no longer share one adapter's connection with another.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The policy is declared for Windows XP and later, so every target platform qualifies.
-      - **Takes effect**: immediately, the service is stopped on apply
-      - **Reverting**: restores the previous service start type from the snapshot and deletes the policy value
-      - **Do not apply this on a machine that runs WSL2, Docker Desktop or Windows Sandbox.** It is the most common cause of "WSL2 suddenly has no internet".
+      ## Caveats
+      - Mobile Hotspot may stop working too. It does not formally depend on the service but uses the same NAT engine; this is unverified either way.
+      - The app does not stop a running ICS service. It keeps running until it exits or the PC restarts.
+
+      ## Notes
+      - Reverting restores the start type and policy value recorded before you applied; there is no preset "enabled" option.
 
       ## Recommendation
-      Apply it on an ordinary desktop or work machine that will never share a connection. Do not apply
-      it on a development machine using WSL2, Docker Desktop or Windows Sandbox, and do not apply it if
-      you use Mobile Hotspot.
+      Fine on an ordinary desktop that never shares its connection and never runs WSL2, Docker Desktop or Windows Sandbox. Skip it on a development machine or if you use Mobile Hotspot.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Prohibit use of Internet Connection Sharing, Policy CSP ADMX_NetworkConnections](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-networkconnections)
-      - [Internet Connection Sharing overview](https://learn.microsoft.com/en-us/windows/win32/ics/internet-connection-sharing)
+      ## Sources
+      - [Policy CSP - ADMX NetworkConnections](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-networkconnections)
+      - [Internet Connection Sharing](https://learn.microsoft.com/en-us/windows/win32/ics/internet-connection-sharing)
     warning: "SharedAccess is the NAT engine behind the Hyper-V Default Switch, so disabling it is a well-known cause of WSL2, Docker Desktop and Windows Sandbox losing internet access. Do not apply it on a development machine."
     risk_level: medium
     elevation: admin
@@ -469,44 +370,35 @@ tweaks:
     name: "Firewall logging and local policy merge"
     description: "Log dropped packets on all three firewall profiles, and optionally stop applications adding their own allow rules."
     info: |
-      **Turns on firewall drop logging across all three profiles, and optionally stops applications adding their own allow rules.**
+      **Records dropped inbound connections in a log for each firewall profile (Domain, Private, Public). The second option also makes the firewall ignore the rules apps add for themselves.**
 
-      ## What it does
-      Writes `LogDroppedPackets = 1` with a log path and a 16 MB size limit into the Domain, Private
-      and Public firewall profile policy keys, so blocked inbound packets are recorded. The stricter
-      option also sets `AllowLocalPolicyMerge = 0`, which makes Windows ignore locally created
-      firewall rules.
+      ## Mechanism
+      - Logs go to the `System32\logfiles\firewall` folder as domainfw.log, privatefw.log and publicfw.log, up to 16 MB each (Windows' default size is 4 MB).
+      - "Ignore local rules" turns off local policy merge: only rules from Group Policy or MDM apply, and the "Windows Defender Firewall has blocked some features" prompt never appears.
 
       ## Benefits
-      - **You can see what is blocked**: dropped packets land in a per-profile log instead of vanishing silently
-      - **Bigger log**: 16 MB instead of the 4 MB default, so the log covers more than a few minutes of noise
-      - **Stops silent rule creation**: with local policy merge off, an application cannot quietly add an allow rule for itself
-      - **Benchmark-backed**: CIS recommends firewall logging and merge control on all three profiles
+      - Blocked connections leave a record, so "why can't this connect" becomes answerable.
 
       ## Drawbacks
-      - **Local policy merge off breaks inbound, silently**: on a standalone machine there is no pushed rule set to fall back to, so the "Windows Defender Firewall has blocked some features of this app" prompt never appears and games or servers just fail to accept connections
-      - **Log noise**: a Public-profile log fills quickly on a busy network
-      - **Small disk cost**: up to 16 MB per profile
-      - **Does nothing on Home for the merge half**: `AllowLocalPolicyMerge` is documented for Pro and above
+      - The Public profile log fills quickly on a busy network.
+      - The firewall logging settings show as managed by policy while applied.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC
-      - **Takes effect**: immediately
-      - **Reverting**: deletes all four values per profile, restoring the default log settings and re-enabling local rule merge
-      - Logs land at `%SystemRoot%\System32\logfiles\firewall\<profile>fw.log`
-      - `AllowLocalPolicyMerge` is documented by Microsoft's Firewall CSP but is not in the shipped ADMX; it is written directly
+      ## Caveats
+      - Local rule merge is documented for Pro and above; on Home the "ignore local rules" part is not expected to do anything.
+      - A domain Group Policy for the same settings overrides this at the next refresh.
+
+      ## Notes
+      - "No dropped-packet logging" removes all the values: logging goes back off and app rules apply again.
+
+      ## Related
+      - **Enforce the firewall on all profiles** (Security) writes other values in the same policy keys; they work together.
 
       ## Recommendation
-      Turn on logging on any machine where you want to diagnose blocked connections; it is cheap and
-      reversible. Only turn off local policy merge on a machine whose firewall rules are managed
-      centrally, because on a standalone PC it breaks inbound connections with no prompt and no
-      obvious cause.
+      Pick "Log dropped packets" if you want to diagnose blocked connections; it is cheap. Pick "ignore local rules" only when your firewall rules come from Group Policy or MDM, never on a home PC.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Firewall CSP, MdmStore AllowLocalPolicyMerge](https://learn.microsoft.com/en-us/windows/client-management/mdm/firewall-csp)
-      - [Configure the Windows Firewall log](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure-logging)
+      ## Sources
+      - [Configure Windows Firewall logging](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure-logging)
+      - [Firewall CSP](https://learn.microsoft.com/en-us/windows/client-management/mdm/firewall-csp)
     warning: "The second option turns off local policy merge. On a standalone PC that silently stops inbound connections working: the usual firewall prompt never appears and games or servers simply fail to accept connections. Choose logging alone unless this machine's firewall rules are managed centrally."
     risk_level: medium
     elevation: admin
@@ -584,42 +476,30 @@ tweaks:
     name: "Disable NIC power management"
     description: "Stop Windows powering down physical network adapters to prevent Wi-Fi drops and idle latency spikes."
     info: |
-      **Stops Windows parking your network adapter to save power, curing Wi-Fi that drops when the PC sits idle.**
+      **Stops Windows turning off your physical network adapters to save power, the usual fix for Wi-Fi or Ethernet that drops when the PC is idle.**
 
-      ## What it does
-      Writes `PnPCapabilities = 24` into the network adapter driver keys, which is Microsoft's
-      documented deployment value for clearing "Allow the computer to turn off this device to save
-      power". Windows then leaves the adapter powered instead of parking it when idle.
-
-      ## Benefits
-      - **Stops idle disconnects**: the standard fix for Wi-Fi that drops after the machine sits unused
-      - **No post-idle latency**: traffic resumes on a link Windows never parked
-      - **Microsoft-documented value**: 24 (0x18) is the value Microsoft names for deployment, not a community guess
-      - **Endorsed by Microsoft tooling**: the Exchange Health Checker "Sleepy NIC Check" flags NIC power saving as a cause of packet loss
+      ## Mechanism
+      - Writes `PnPCapabilities = 24`, Microsoft's documented deployment value, to the driver key of each adapter Windows reports as physical. Virtual adapters are skipped.
+      - Each adapter's previous value, or its absence, is recorded so reverting restores it exactly.
 
       ## Drawbacks
-      - **Higher idle power**: measurable battery cost on laptops
-      - **Written to every adapter**: the current action also writes to virtual adapters, WAN Miniports and the Bluetooth PAN device, none of which have a power management tab
-      - **Revert is imperfect today**: the undo deletes the value rather than restoring whatever your adapter vendor had set
-      - **Stock state varies**: some adapters ship with a vendor value already present and some with none, so there is no single correct "off"
+      - Slightly higher idle power; a small battery cost on laptops.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on physical adapters whose driver exposes the Power Management tab
-      - **Takes effect**: after reboot, when the device next starts
-      - **Reverting**: restores the previous per-adapter value from the snapshot
-      - Microsoft's supported per-adapter alternative is `Set-NetAdapterPowerManagement -AllowComputerToTurnOffDevice Disabled`
+      ## Caveats
+      - A driver reinstall or update can reset the value, and a newly added adapter is not covered. The tweak then shows System Default until you re-apply.
+      - If the app's record of the previous values is deleted, reverting cannot restore them and is flagged as Needs Attention.
+
+      ## Related
+      - **Disable USB selective suspend** is the separate fix for USB devices.
 
       ## Recommendation
-      Worth it on a desktop, or on any machine that actually suffers idle network drops. On a laptop
-      with no connectivity symptoms, leave power management enabled and keep the battery life.
+      Worth it on a desktop, or on any PC with idle network drops. On a laptop with no symptoms, or if you use Wake-on-LAN, skip it.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Power management setting on a network adapter (KB 2740020)](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/power-management-on-network-adapter)
-      - [Set-NetAdapterPowerManagement](https://learn.microsoft.com/en-us/powershell/module/netadapter/set-netadapterpowermanagement)
+      ## Sources
+      - [Power management setting on a network adapter](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/power-management-on-network-adapter)
       - [How NDIS sets the power policy for a network adapter](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/how-ndis-sets-the-power-policy-for-a-network-adapter)
-    warning: "PnPCapabilities = 24 is Microsoft's documented deployment value (KB 2740020). This tweak writes it only to the driver keys of adapters Windows reports as physical, and records each key's prior value (including absent) so the revert restores it. A driver reinstall or upgrade can reset the value without this app noticing."
+      - [Set-NetAdapterPowerManagement](https://learn.microsoft.com/en-us/powershell/module/netadapter/set-netadapterpowermanagement)
+    warning: "Also stops these adapters waking the PC from sleep, so Wake-on-LAN through them no longer works."
     risk_level: medium
     elevation: admin
     reversible: true
@@ -690,40 +570,29 @@ tweaks:
     name: "Disable hibernation"
     description: "Remove hibernation and delete hiberfil.sys to reclaim disk space (also disables Fast Startup)."
     info: |
-      **Turns off hibernation and deletes hiberfil.sys, reclaiming gigabytes of disk space.**
-
-      ## What it does
-      Runs `powercfg /hibernate off`, which clears hibernation support and removes the hidden
-      `hiberfil.sys` file Windows reserves for it. Because Fast Startup is a partial hibernation,
-      turning hibernation off also disables Fast Startup.
-
-      ## Benefits
-      - **Reclaims disk space**: `hiberfil.sys` is sized as a fraction of installed RAM, often several gigabytes
-      - **Immediate**: the file is deleted on apply, no reboot needed
-      - **No loss on a desktop that never hibernates**: dead space recovered for nothing given up
+      **Turns off hibernation and deletes the hidden `hiberfil.sys` file, often freeing several gigabytes. Hibernate, hybrid sleep and Fast Startup all stop working, since they use that file.**
 
       ## Drawbacks
-      - **No hibernate, no hybrid sleep, no Fast Startup**: all three depend on the same file
-      - **Laptops lose the low-battery safety net**: hibernation is what saves your session to disk when the battery runs critically low
-      - **Modern Standby machines drain flat**: hibernate-after-sleep is what stops an idle Modern Standby laptop discharging completely
-      - **Reverting is currently blunt**: it enables hibernation unconditionally at full size, even on a machine that never had it
+      - Laptops lose the low-battery safety net that saves your session to disk before the battery dies.
+      - On a Modern Standby laptop, hibernation is what stops an idle machine in a bag draining completely.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
-      - **Takes effect**: immediately
-      - **Reverting**: re-enables hibernation from the snapshot; a machine that already had hibernation off before applying should stay that way
-      - A prior `powercfg /hibernate /size` or `/type reduced` configuration is not preserved by a plain re-enable
+      ## Caveats
+      - A reduced hibernation file (set with `powercfg /hibernate /type reduced`) is not recorded; turning hibernation back on gives the full-size file.
+      - On a PC or virtual machine that cannot hibernate, choosing Enabled fails and the change is rolled back.
+
+      ## Notes
+      - Detected from the machine: if hibernation is already off, the tweak shows Disabled and applying changes nothing.
+      - Enabled turns hibernation back on, at the file size recorded when you applied if there is one, otherwise at the default size.
+
+      ## Related
+      - **Disable Fast Startup (hiberboot)** (Performance) has nothing left to do while hibernation is off.
 
       ## Recommendation
-      Good on a desktop or a space-constrained SSD where you never hibernate. On a laptop, think
-      twice: you give up the low-battery hibernate safety net, which is the one thing standing between
-      a flat battery and a lost session.
+      Good on a desktop, or on a small SSD, if you never hibernate. On a laptop, think twice before giving up the low-battery safety net.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
-      - [Sleep settings overview](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
+      - [Sleep settings](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
     risk_level: medium
     elevation: admin
     reversible: true
@@ -771,37 +640,24 @@ tweaks:
     name: "Disable USB selective suspend"
     description: "Stop Windows suspending idle USB ports to fix device dropouts, audio glitches, and slow wakeups."
     info: |
-      **Stops Windows parking idle USB ports, fixing device dropouts, audio glitches and slow wakeups.**
+      **Keeps idle USB ports powered instead of letting Windows suspend them, the usual fix for USB audio dropouts, dongle disconnects and slow-to-wake hubs.**
 
-      ## What it does
-      Sets the "USB selective suspend setting" power-plan value to Disabled for both AC and battery on
-      the current power scheme, then reactivates the scheme so the change applies. Ports stay powered
-      instead of being suspended when idle.
-
-      ## Benefits
-      - **Fixes USB audio dropouts**: the standard cure for USB DACs and interfaces that glitch after idle
-      - **Stops dongle disconnects**: wireless receivers stay awake and responsive
-      - **No slow-to-wake hubs**: devices behind a hub respond immediately instead of after a stall
+      ## Mechanism
+      - Sets the power plan's "USB selective suspend" setting to Disabled, on battery and plugged in, for the plan active when you apply.
 
       ## Drawbacks
-      - **Higher idle power**: a small but real battery cost on laptops
-      - **Only the active power plan**: switching to another plan silently loses the change
-      - **No benefit without symptoms**: if your USB devices behave, this only costs power
+      - Slightly higher idle power; a small battery cost on laptops.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
-      - **Takes effect**: immediately, the power scheme is reactivated on apply
-      - **Reverting**: restores the previous AC and battery indices from the snapshot
-      - Stock Balanced has selective suspend enabled on both AC and battery
+      ## Caveats
+      - Only the active power plan changes. Switching plans (including to Ultimate Performance) brings selective suspend back, and the tweak shows System Default.
+
+      ## Notes
+      - Reverting restores the exact previous values on the plan that was changed, without switching your active plan.
 
       ## Recommendation
-      Apply it if you actually experience USB dropouts, audio glitches or slow wakeups. If your USB
-      devices behave fine, especially on a laptop, leave selective suspend on and keep the power
-      saving.
+      Apply it if you have USB dropouts, audio glitches or slow wake-ups. If your USB devices behave, leave selective suspend on and keep the power saving.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [USB selective suspend](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/usb-selective-suspend)
       - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
     risk_level: medium
@@ -866,40 +722,29 @@ tweaks:
     name: "Disable wake timers"
     description: "Block scheduled tasks from waking the PC from sleep (stops overnight update and maintenance wakes)."
     info: |
-      **Stops scheduled tasks waking your PC out of sleep, ending mystery overnight wakeups.**
+      **Stops scheduled tasks waking the PC from sleep, ending unexplained overnight wake-ups.**
 
-      ## What it does
-      Sets the "Automatically wake for tasks" power-plan value to Disable for both AC and battery on
-      the current scheme. Windows stops using the system-wide wake-on-timer capability, so scheduled
-      jobs can no longer rouse a sleeping machine.
-
-      ## Benefits
-      - **The PC stays asleep**: no 3 a.m. wake for maintenance, and no fans spinning up overnight
-      - **No battery drain from wakes**: an unattended laptop is not woken to do work
-      - **Tightens the mains behaviour**: on AC, Windows normally allows "important" wake timers, and this removes those too
+      ## Mechanism
+      - Sets the power plan's "Allow wake timers" to Disable, on battery and plugged in, for the plan active when you apply.
+      - Stock Windows 11 already blocks them on battery and allows only "important" timers (such as update restarts) when plugged in, so the real change is those plugged-in wakes.
 
       ## Drawbacks
-      - **Legitimate scheduled wakes stop**: overnight backups, media indexing and alarms no longer wake the machine
-      - **Update maintenance shifts**: Windows Update work may only run while you are actively using the PC
-      - **Less change than it sounds on battery**: Windows 11 already disables wake timers on battery by default, so only the mains behaviour actually changes
-      - **Only the active power plan**: switching to another plan silently loses the change
+      - Overnight backups, recordings and alarms that need to wake the PC no longer do.
+      - Windows Update maintenance may only run while you are using the PC.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, on hardware with RTC wake. Requires administrator.
-      - **Takes effect**: immediately, the power scheme is reactivated on apply
-      - **Reverting**: restores the previous AC and battery indices from the snapshot. Stock Windows 11 Balanced is "Important Wake Timers Only" on AC and "Disable" on battery, not "Enable" on both.
-      - The setting has three states, not two: Disable, Enable, and Important Wake Timers Only
+      ## Caveats
+      - Only the active plan changes; switching plans brings wake timers back.
+      - Keyboard, mouse, network and lid wakes are not timers and still wake the PC.
+
+      ## Notes
+      - Reverting restores the exact previous values on the plan that was changed.
 
       ## Recommendation
-      Worth applying if a PC that wakes itself overnight bothers you. Skip it if you rely on scheduled
-      overnight work such as automated backups, because those wakes stop too.
+      Worth applying if a plugged-in PC waking at night bothers you. Skip it if scheduled overnight work, such as backups, needs to wake the machine.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [Automatically wake for tasks](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings-automatically-wake-for-tasks)
-      - [Sleep settings overview](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
-      - [powercfg command-line options](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options)
+      - [Sleep settings](https://learn.microsoft.com/en-us/windows-hardware/customize/power-settings/sleep-settings)
     risk_level: low
     elevation: admin
     reversible: true
@@ -957,43 +802,30 @@ tweaks:
     name: "Disable Modern Standby (force S3)"
     description: "Force legacy S3 sleep instead of Modern Standby (S0) to stop in-bag battery drain and overheating."
     info: |
-      **Forces old-style S3 deep sleep instead of Modern Standby, stopping in-bag battery drain, on hardware that still supports S3.**
-
-      ## What it does
-      Sets `PlatformAoAcOverride = 0` under the kernel power key, which tells Windows not to use the
-      always-on always-connected power model. On a platform whose firmware still exposes S3, Windows
-      then selects S3 instead of S0 Low Power Idle.
-
-      ## Benefits
-      - **Real deep sleep**: no background work while "asleep", so no warm laptop and no drained battery in a bag
-      - **Verifiable**: `powercfg /a` shows the change afterwards
-      - **Fully reversible**: deleting the value restores Modern Standby on the next boot
+      **Makes Windows use classic S3 sleep instead of Modern Standby, so a sleeping laptop stops draining its battery and warming up in a bag. Works only where the firmware still offers S3.**
 
       ## Drawbacks
-      - **Catastrophic on hardware without S3**: if `powercfg /a` does not list "Standby (S3)" as available, you can end up with no working sleep state at all
-      - **No instant-on or background connectivity**: S3 gives up the things Modern Standby exists to provide
-      - **Undocumented and unsupported**: Microsoft does not document this value and states that switching the power model "is not supported in Windows without a complete OS re-install"
-      - **Not always better**: Microsoft's own guidance is to measure idle power first, because it can be worse rather than better
+      - No instant-on or connected standby: no notifications, mail sync or background updates while asleep.
+      - S3 is not always lower power on every platform; Microsoft advises measuring idle power first.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. The real gate is firmware, not Windows version.
-      - **Takes effect**: after reboot
-      - **Reverting**: deletes the value, restoring Modern Standby
-      - **Run `powercfg /a` first.** If "Standby (S3)" is not listed as available, do not apply this.
-      - The value is confirmed present in the Windows 11 24H2 kernel and corroborated by several independent references, but Microsoft has never documented it
+      ## Caveats
+      - The apply check needs `powercfg /a` to list Standby (S3) as available, but a PC running Modern Standby usually lists S3 as unavailable. It may refuse on exactly the laptops this targets; that is untested on real Modern Standby hardware.
+      - Do not work around a refusal: without firmware S3 the PC can be left with no working sleep, and closing the lid can misbehave.
+
+      ## Notes
+      - After the reboot, confirm the result with `powercfg /a`.
+      - Choosing Modern Standby deletes the value; it comes back at the next boot.
+
+      ## Related
+      - **Disable hibernation**: if S3 cannot be forced, keep hibernation, since it is what stops Modern Standby draining the battery flat.
 
       ## Recommendation
-      Only for users who have confirmed with `powercfg /a` that Standby (S3) is available and who are
-      actually fighting Modern Standby drain. If S3 is not listed, do not touch this; you risk a
-      machine that cannot sleep or wake properly.
+      Only if `powercfg /a` shows Standby (S3) as available and you are actually fighting Modern Standby battery drain. Otherwise leave it alone.
 
-      ## Evidence
-      - **Risk**: high
-      - **Confidence**: Community-corroborated
+      ## Sources
       - [What is Modern Standby](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby)
       - [Modern Standby vs S3](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/modern-standby-vs-s3)
-      - [How to disable Modern Standby on Windows](https://pureinfotech.com/disable-modern-standby-windows/)
-      - [Disable Modern Standby in Windows 10 and Windows 11](https://www.elevenforum.com/t/disable-modern-standby-in-windows-10-and-windows-11.3929/)
+      - [How to disable Modern Standby (Pureinfotech)](https://pureinfotech.com/disable-modern-standby-windows/)
     warning: "Applying this is refused unless powercfg /a reports an available S3 standby state. PlatformAoAcOverride is not documented by Microsoft, and Microsoft states that switching the power model is not supported without a complete OS re-install."
     risk_level: high
     elevation: admin

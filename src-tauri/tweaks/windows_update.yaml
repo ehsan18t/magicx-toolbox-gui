@@ -9,41 +9,23 @@ tweaks:
     name: "Disable Delivery Optimization P2P"
     description: "Pin Delivery Optimization to HTTP only, so update chunks are not shared with other machines on your network."
     info: |
-      **Pins Windows Update to downloading straight from Microsoft, with no peer-to-peer sharing on your network.**
-
-      ## What it does
-      Sets `DODownloadMode = 0` under the Delivery Optimization policy key, which Microsoft defines as
-      "HTTP Only": no peer-to-peer caching, downloads coming from the original source or a Microsoft
-      Connected Cache. Windows Update and Store downloads keep working.
-
-      ## Benefits
-      - **No LAN peering**: your PC stops sharing update chunks with other machines behind the same router
-      - **Locks the mode**: with the policy set, nothing can turn peering on later, from Settings or from an image change
-      - **Predictable traffic**: updates come from one place, which is easier to reason about on a capped link
-      - **Service stays intact**: this changes the mode only and does not disable `DoSvc`, which the Store depends on
+      **Stops your PC sharing Windows Update and Store download chunks with other PCs on your network. Everything downloads straight from Microsoft.**
 
       ## Drawbacks
-      - **More total WAN traffic**: with several Windows PCs on one network, each downloads its own copy
-      - **Smaller change than it sounds**: your PC was never seeding to strangers on the internet, because that is download mode 3 and is not the default
-      - **Default is ambiguous**: Microsoft's reference page says the unconfigured default is LAN peering while its Policy CSP page says it is no peering, so on some machines this may change nothing visible
+      - With several Windows PCs on one network, each downloads its own copy, so total internet traffic rises.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1511 and later including LTSC 2021. The Delivery Optimization client reads this policy on all editions, including Home.
-      - **Takes effect**: immediately, the Delivery Optimization service picks the policy up without a reboot
-      - **Reverting**: deletes the value, returning the machine to Windows' unconfigured behaviour
-      - **Avoid mode 100**: Microsoft deprecated Bypass mode in Windows 11 and says it "can cause some content to fail to download"
+      ## Notes
+      - By default your PC never uploads to strangers on the internet; the most this removes is sharing on your local network.
+      - Microsoft's own pages disagree on whether local sharing is on by default, so on some PCs nothing visibly changes.
+      - Locked by policy: Settings cannot turn sharing back on while this is applied.
+      - Works on every edition, including Home, and takes effect at once.
 
       ## Recommendation
-      A sensible default for a single-PC household, especially on a connection with limited upload.
-      Leave peering on if you run several Windows PCs on the same network and want them to share
-      downloads locally.
+      Good for a single-PC home, especially on a slow upload link. Leave sharing on if several Windows PCs on your network should share downloads.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Delivery Optimization reference, Download Mode](https://learn.microsoft.com/en-us/windows/deployment/update/waas-delivery-optimization-reference)
-      - [Policy CSP - DeliveryOptimization, DODownloadMode](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-deliveryoptimization)
-      - [Manage connections from Windows to Microsoft services, section 28.3](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      ## Sources
+      - [Delivery Optimization reference, download modes](https://learn.microsoft.com/en-us/windows/deployment/update/waas-delivery-optimization-reference)
+      - [Policy CSP - DeliveryOptimization](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-deliveryoptimization)
     risk_level: low
     elevation: admin
     reversible: true
@@ -60,39 +42,29 @@ tweaks:
     name: "Defer quality updates"
     description: "Hold back monthly quality (security) updates for a set number of days on Pro, Education, and Enterprise editions."
     info: |
-      **Holds back the monthly security rollup for a week or two, so a bad patch gets reported before it reaches you.**
-
-      ## What it does
-      Sets `DeferQualityUpdates = 1` and `DeferQualityUpdatesPeriodInDays` to 7 or 14 under the
-      Windows Update policy key, the registry form of "Select when Quality Updates are received".
-      The updates still install, just later.
-
-      ## Benefits
-      - **Buffer against bad patches**: by the time a deferred update reaches you, problems others hit have usually surfaced
-      - **Still fully patched**: a deferral is not a block, so nothing is skipped
-      - **Middle ground**: control over cadence without turning automatic updates off
+      **Delays the monthly security and quality updates by 7 or 14 days, so a bad patch is usually reported before it reaches you. Nothing is skipped; updates just arrive later.**
 
       ## Drawbacks
-      - **Unpatched window**: you run without the newest security fixes for the deferral period
-      - **Longer than Microsoft advises**: Microsoft recommends keeping quality deferral under 3 days, so both 7 and 14 exceed that
-      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies at all
-      - **Not a pause**: you cannot skip a month, only delay it
+      - You run without the newest security fixes for the deferral period.
+      - Microsoft advises a quality deferral under 3 days; both options exceed that.
+      - A delay, not a pause: you cannot skip a month.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes both values, restoring Windows' normal cadence
-      - Deferring quality updates is independent of pinning a feature version; the two work together
+      ## Requirements
+      - Pro, Education or Enterprise (including IoT and LTSC). Windows Home ignores it.
+
+      ## Notes
+      - Takes effect at the next Windows Update scan.
+
+      ## Related
+      - **Defer feature updates** delays the annual upgrade instead; the two combine, and so does **Pin Windows feature version**.
+      - Does nothing while **Block the Windows Update pipeline** is applied, and applies again once that is reverted.
 
       ## Recommendation
-      Use it on Pro if you want to dodge bad patches, and keep the deferral short. Do not use it on
-      Home, where it does nothing, and do not treat it as a substitute for patching.
+      Use the 7-day option on Pro and above if you want to dodge bad patches. Skip it on Home, where it does nothing.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [Configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
-      - [Policy CSP - Update, DeferQualityUpdatesPeriodInDays](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Policy CSP - Update](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
       - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
     risk_level: medium
     elevation: admin
@@ -114,41 +86,28 @@ tweaks:
     name: "Defer feature updates"
     description: "Slide every annual Windows feature update back by a chosen number of days, without pinning a version."
     info: |
-      **Slides every annual Windows feature update back by a number of days you choose, so other people find the bugs first.**
+      **Delays each annual Windows feature update by 30, 180 or 365 days. Monthly security updates keep arriving on time.**
 
-      ## What it does
-      Sets `DeferFeatureUpdates = 1` and `DeferFeatureUpdatesPeriodInDays` to 30, 180 or 365 under the
-      Windows Update policy key. Feature updates still arrive, just later. Monthly security updates
-      are unaffected.
+      ## Requirements
+      - Pro, Education or Enterprise (including IoT and LTSC). Windows Home ignores it.
+      - LTSC editions get no annual feature updates through Windows Update, so there is little to delay there.
 
-      ## Benefits
-      - **Security patches keep flowing**: only feature updates are delayed, never quality updates
-      - **Up to a full year**: the documented maximum deferral is 365 days
-      - **Slides rather than pins**: unlike pinning a version, you never have to remember to move it forward before servicing ends
+      ## Notes
+      - The delay slides with each release, so you never sit on a version that has run out of support.
+      - A pause you set in Settings is left untouched, on apply and on revert.
+      - Takes effect at the next Windows Update scan.
 
-      ## Drawbacks
-      - **Inert if you pin a version**: Microsoft states feature update deferrals are not in effect while a target release version is set, so do not use both
-      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
-      - **New features arrive late**: anything shipped in the annual feature update waits out the deferral
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes both values, restoring Windows' normal feature update cadence
-      - **Do not combine with pinning a feature version.** Pick one: a deferral slides, a pin holds.
-      - This does not touch the separate "pause updates" state the Settings UI writes
+      ## Related
+      - **Pin Windows feature version** holds one named version instead; pick one of the two.
+      - **Defer quality updates** delays the monthly patches; the two combine.
+      - Applied before **Block the Windows Update pipeline**, it controls what installs once the block is lifted.
 
       ## Recommendation
-      A better default than pinning for most people who want caution without risk: it delays feature
-      updates without the trap of a pinned version silently ageing out of support. Use 180 days unless
-      you have a reason for more or less, and do not set it on a machine that already has a version
-      pin.
+      A safer choice than pinning for most people who want caution; 180 days suits most. Skip it on Home and on a PC with a version pin.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Update, DeferFeatureUpdatesPeriodInDays](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
-      - [Walkthrough: use Group Policy to configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wufb-group-policy)
+      ## Sources
+      - [Policy CSP - Update](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Configure Windows Update client policies with Group Policy](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wufb-group-policy)
       - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
     warning: "Microsoft states that feature update deferrals are not in effect while a target release version is pinned. Do not use this together with the Pin Windows feature version tweak, or the deferral will silently do nothing."
     risk_level: low
@@ -173,41 +132,29 @@ tweaks:
     name: "Pin Windows feature version"
     description: "Lock the PC to a specific feature version so it will not jump to a newer release."
     info: |
-      **Locks the PC to one Windows feature version, so it keeps getting monthly security patches but never jumps to a new release on its own.**
+      **Locks the PC to one Windows 11 feature version (25H2 or 26H1). Security patches keep coming for that version, but Windows does not move to a newer release on its own.**
 
-      ## What it does
-      Sets `TargetReleaseVersion = 1` plus the version string (`TargetReleaseVersionInfo`) and the
-      product string (`ProductVersion`) under the Windows Update policy key. Microsoft requires the
-      product value alongside the version value for the pin to work.
+      ## Caveats
+      - The pin means "move to and stay on": a 24H2 PC pinned to 25H2 first upgrades to 25H2, then holds there.
+      - On Windows 10 it requests Windows 11, a product move Microsoft frames as an organization, volume-licensed action.
+      - Reverting does not roll back a feature update the pin already installed.
 
-      ## Benefits
-      - **No surprise upgrades**: the annual feature update does not land until you move the pin
-      - **Security patches continue**: monthly quality updates keep arriving for the pinned version
-      - **The supported route**: this replaced the deprecated "defer feature updates by N days" control for version pinning
+      ## Requirements
+      - Pro, Education or Enterprise (including IoT and LTSC), Windows 10 2004 or newer. Windows Home ignores it.
 
-      ## Drawbacks
-      - **Silent end of updates**: once the pinned release reaches end of servicing, the device stops receiving security updates entirely
-      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
-      - **Cancels feature deferrals**: Microsoft states feature update deferrals are not in effect while a target version is pinned, so do not set both
-      - **Licensing intent**: Microsoft attaches a licensing attestation to using this policy to move a device to a new product
+      ## Notes
+      - Takes effect at the next Windows Update scan.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 2004 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes all three values, restoring the normal upgrade path
-      - **Check the servicing date**: Windows 11 24H2 Home and Pro end updates on 2026-10-13; 25H2 ends 2027-10-12 and 26H1 ends 2028-03-14
+      ## Related
+      - **Defer feature updates** stops working while a pin is set; pick one.
 
       ## Recommendation
-      Good on Pro if you want to decide when to take a feature upgrade, provided you pin to a release
-      with plenty of servicing left and set yourself a reminder. Do not pin a version that is within
-      months of end of servicing, and do not use it if nobody will move the pin forward.
+      Good on Pro and above if you want to choose when to take a feature upgrade and will move the pin forward before support ends. Skip it if nobody will.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Update, TargetReleaseVersion and ProductVersion](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      ## Sources
+      - [Policy CSP - Update, target release version](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
       - [Windows 11 release information](https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information)
-      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+      - [Configure Windows Update client policies with Group Policy](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wufb-group-policy)
     warning: "A pinned release stops receiving security updates the day its servicing ends. 25H2 ends 2027-10-12 and 26H1 ends 2028-03-14; move the pin forward before then. Windows 11 24H2 is deliberately not offered here because its servicing ends 2026-10-13."
     risk_level: medium
     elevation: admin
@@ -231,42 +178,29 @@ tweaks:
     name: "Control mid-cycle features and optional content"
     description: "Decide whether features shipped inside monthly quality updates, and optional content, are turned on."
     info: |
-      **Stops new features and optional content arriving inside monthly updates, so the installed Windows stops changing shape between feature updates.**
+      **Stops new features and optional preview updates arriving inside monthly updates, so Windows does not change shape between annual feature updates. The second option opts in to them instead.**
 
-      ## What it does
-      Writes `AllowTemporaryEnterpriseFeatureControl = 0` so features shipped inside a monthly quality
-      update stay off until the feature update that includes them, and `SetAllowOptionalContent = 0`
-      so optional non-security preview updates and optional driver updates are not offered.
+      ## Mechanism
+      - Two policies: one keeps features shipped in monthly updates off until the annual update that includes them; the other stops optional non-security updates.
 
-      ## Benefits
-      - **A stable install**: the machine does not gain new UI or behaviour mid-cycle
-      - **No optional previews**: optional non-security preview updates stop being offered
-      - **Nothing breaks**: features simply arrive later, with the annual feature update
-      - **Genuine second state**: users who want features early can pick the permissive option instead
+      ## Caveats
+      - The feature half acts only on an "update-managed" PC, one with another Windows Update policy such as a deferral or pin. Whether this tweak alone counts is undocumented.
+      - Turning optional content off also stops optional driver updates.
+      - Reverting the opt-in option does not switch off features already turned on.
 
-      ## Drawbacks
-      - **May do nothing on an unmanaged PC**: Microsoft applies temporary enterprise feature control only to devices whose updates are policy-managed, so on a machine with no other Windows Update policy this half may be inert
-      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
-      - **You wait for fixes delivered as features**: improvements shipped through servicing arrive with the next feature update instead
-      - **Split applicability**: the temporary-feature-control half needs Windows 11 22H2 or newer, so it does not exist on Windows 10 LTSC 2021
+      ## Requirements
+      - Pro, Education or Enterprise. Windows Home ignores both halves.
+      - The feature half needs Windows 11 22H2 or newer; Windows 10 21H2 (build 19044.3757 and later, including patched LTSC 2021) gets only the optional-content half.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores these policies.** The optional-content half also applies to Windows 10 21H2 and later, including a patched LTSC 2021; the temporary-feature-control half does not.
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes all three values, restoring Windows' normal behaviour
-      - Setting a quality-update deferral or a target release version makes the device update-managed, which is what activates the temporary feature control half
+      ## Related
+      - **Defer quality updates** or **Pin Windows feature version** makes the PC update-managed.
 
       ## Recommendation
-      Worth applying on a Pro machine you want to stop changing shape month to month, particularly
-      alongside a quality-update deferral, which is what makes the device update-managed. Skip it if
-      you like getting new features as soon as they ship, and skip it entirely on Home.
+      Worth it on a Pro PC you want stable month to month, ideally alongside a quality deferral. Skip it if you like new features as soon as they ship.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Update, AllowOptionalContent](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      ## Sources
+      - [Policy CSP - Update, optional content](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
       - [Configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
-      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
     risk_level: low
     elevation: admin
     reversible: true
@@ -292,37 +226,23 @@ tweaks:
     name: "Block Insider preview builds by policy"
     description: "Block enrolment in the Windows Insider Program with the policy value the Settings UI cannot override."
     info: |
-      **Blocks enrolment in the Windows Insider Program by policy, which the Settings UI cannot override.**
+      **Blocks this PC from joining the Windows Insider Program for preview builds, using a policy the Settings app cannot override.**
 
-      ## What it does
-      Sets `ManagePreviewBuildsPolicyValue = 1` under the Windows Update policy key, which is what the
-      "Manage preview builds" Group Policy writes in its Disabled state. Windows then refuses Insider
-      preview builds regardless of what the Settings UI offers.
+      ## Requirements
+      - Pro, Education or Enterprise (including IoT and LTSC). Windows Home ignores it.
 
-      ## Benefits
-      - **Cannot be undone from Settings**: unlike disabling the Insider service, a policy is not something a user can restart around
-      - **Stops accidental enrolment**: no route from the Windows Update settings page into preview builds
-      - **Complements the service tweak**: the Insider service tweak and this policy close different routes, so both are worth having
+      ## Notes
+      - Only preview builds are affected; normal feature and security updates are not.
+      - Takes effect at the next Windows Update or Insider check.
 
-      ## Drawbacks
-      - **No Insider builds at all**: if you actually want to test upcoming releases on this machine, this blocks it
-      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
-      - **Only preview builds**: it does not change anything about ordinary feature or quality updates
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately
-      - **Reverting**: deletes the value, returning the Insider choice to the user
-      - The same policy can also select a preview channel; this tweak deliberately writes only the blocking value and does not touch the channel
+      ## Related
+      - **Disable Windows Insider Service (wisvc)** closes a different route; keep both, since a service can be restarted but this policy cannot be bypassed from Settings.
 
       ## Recommendation
-      Worth applying on any Pro machine that should never run preview builds, especially a shared or
-      work machine. Do not apply it on a box you use for testing upcoming Windows releases.
+      Apply it on any Pro PC that should never run preview builds, such as a shared or work PC. Skip it on a PC you use to test upcoming Windows releases.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Update, ManagePreviewBuilds](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      ## Sources
+      - [Policy CSP - Update, preview builds](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
       - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
     risk_level: low
     elevation: admin
@@ -341,41 +261,30 @@ tweaks:
     name: "Set active hours"
     description: "Tell Windows when you use the PC so automatic update restarts happen outside those hours."
     info: |
-      **Tells Windows the hours you actually use the PC, so update restarts happen while you are away.**
-
-      ## What it does
-      Writes `ActiveHoursStart` and `ActiveHoursEnd` to the Windows Update settings store, and sets
-      `SmartActiveHoursState = 2` so Windows stops auto-adjusting the window from your usage
-      patterns. Automatic restarts are then scheduled outside the hours you chose.
-
-      ## Benefits
-      - **No mid-task reboots**: restarts move to times you are not at the machine
-      - **Your window sticks**: turning Smart Active Hours off stops Windows revising the hours behind you
-      - **Works on every edition**: this is the same store the consumer Settings UI writes, not a policy key
+      **Sets your active hours to 8:00 to 23:00, so automatic update restarts happen outside them, and stops Windows adjusting that window from your activity.**
 
       ## Drawbacks
-      - **Not a "never restart" switch**: Windows can still restart after an update deadline passes
-      - **Capped at 18 hours**: you cannot cover a full day
-      - **Overrides your existing hours**: applying replaces whatever start and end you had set
-      - **`SmartActiveHoursState` is undocumented**: 2 meaning off comes from community sources, not from Microsoft
+      - Not a never-restart switch: Windows can still restart once an update deadline passes.
+      - Replaces your current active hours; reverting puts them back.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, all editions
-      - **Takes effect**: immediately
-      - **Reverting**: restores your previous active hours from the snapshot and removes the Smart Active Hours value
-      - **Interaction**: active hours has no effect if "No auto-restart with logged-on users" or "Always automatically restart at scheduled time" is enabled, so this and the auto-restart block partly cancel each other
-      - On a managed machine the Windows Update policy key overrides this settings store
+      ## Caveats
+      - The value that turns off automatic adjustment is documented only by community sources.
+      - Changing active hours in Settings afterwards moves this tweak to System Default.
+
+      ## Notes
+      - Works on every edition, including Home, and takes effect at once.
+      - An organization's active-hours policy overrides this setting.
+
+      ## Related
+      - **Block auto-restart while signed in**, while it is active, makes active hours ineffective.
 
       ## Recommendation
-      Worth setting for anyone annoyed by mistimed restarts. Set your genuine working window, and
-      expect it to reduce badly timed reboots rather than eliminate them.
+      Worth it if restarts land at bad times and your day fits inside 8:00 to 23:00. Expect fewer badly timed restarts, not none.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Community-corroborated
-      - [Manage device restarts after updates, Configure active hours](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
-      - [Policy CSP - Update, ActiveHoursStart / ActiveHoursEnd / ActiveHoursMaxRange](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
-      - [Automatically adjust active hours](https://winaero.com/automatically-adjust-active-hours-windows-10/)
+      ## Sources
+      - [Manage device restarts after updates](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
+      - [Policy CSP - Update, active hours](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Winaero: automatically adjust active hours](https://winaero.com/automatically-adjust-active-hours-windows-10/)
     risk_level: low
     elevation: admin
     reversible: true
@@ -397,43 +306,26 @@ tweaks:
     name: "Block auto-restart while signed in"
     description: "Prevent Windows Update from automatically rebooting the PC while a user is logged on."
     info: |
-      **Stops Windows Update rebooting the PC on its own while you are signed in, protecting open work.**
+      **Stops Windows Update restarting the PC on its own after a scheduled install while someone is signed in, so open work is not lost.**
 
-      ## What it does
-      Sets `NoAutoRebootWithLoggedOnUsers = 1` under the Windows Update AU policy key, so scheduled
-      update installs do not restart the machine while a user is signed in. Microsoft applies this
-      only when automatic updates are configured to "auto download and schedule the install", so it
-      must be paired with that setting to do anything.
+      ## Caveats
+      - On a PC nobody signs out of, update restarts may never happen and patches never finish installing; Microsoft warns of this itself.
+      - Only active sessions count: a PC with only disconnected remote sessions still restarts.
+      - A restart you schedule from the update notification still happens at that time.
 
-      ## Benefits
-      - **No reboot mid-task**: unsaved documents and long-running sessions survive update night
-      - **You choose the moment**: Windows still notifies, it just does not act
-      - **Policy-backed**: written to the policy branch, so a later Settings change cannot override it
+      ## Requirements
+      - Pro, Education or Enterprise. Windows Home ignores it.
 
-      ## Drawbacks
-      - **Inert on its own**: Microsoft applies it only when Configure Automatic Updates is set to option 4, so without that companion setting it does nothing
-      - **Patches can stall indefinitely**: Microsoft warns it "can result in no quality update reboots period, given many users never log off"
-      - **Does nothing on Home**: Windows Home does not honour the Windows Update AU policies
-      - **Cancels active hours**: Microsoft states active hours has no effect while this policy is enabled
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, on Pro, Education, Enterprise and IoT Enterprise. **Windows Home does not honour it.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes the value, restoring Windows' normal restart behaviour
-      - **Over RDP** only active sessions count as signed-in users, so a machine with only disconnected sessions still restarts
-      - Microsoft recommends compliance deadlines instead of relying on this alone
+      ## Related
+      - **Windows Update mode** must be on "Automatic: download and install" (that is option 4); on any other mode this does nothing.
+      - While active, **Set active hours** has no effect.
 
       ## Recommendation
-      Use it on Pro alongside scheduled automatic installs if you keep long work sessions open, and
-      restart soon after updates so the fixes actually apply. Do not use it on Home, and do not use it
-      on a machine that will simply never be restarted.
+      Use it on Pro, with Windows Update mode on Automatic, if you leave long work sessions open, and restart soon after updates install. Skip it on PCs that are never restarted.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [Manage device restarts after updates](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
       - [Manage additional Windows Update settings](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wu-settings)
-      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
     warning: "Microsoft applies this policy only when Configure Automatic Updates is set to option 4 (auto download and schedule the install). On a machine that has not separately configured automatic updates, the value is written but has no effect."
     risk_level: medium
     elevation: admin
@@ -451,40 +343,29 @@ tweaks:
     name: "Exclude driver updates from Windows Update"
     description: "Stop Windows Update from delivering hardware drivers so you control driver versions yourself."
     info: |
-      **Stops Windows Update pushing hardware drivers, so you decide which driver versions your PC runs.**
-
-      ## What it does
-      Sets `ExcludeWUDriversInQualityUpdate = 1` under the Windows Update policy key, the registry
-      form of "Do not include drivers with Windows Updates". Quality and security updates still
-      install normally; only the driver payload is left out.
-
-      ## Benefits
-      - **No surprise driver swaps**: Windows Update stops replacing a working GPU, chipset or audio driver
-      - **Vendor drivers win**: if you install NVIDIA, AMD, Intel or board-vendor packages, this ends the tug of war
-      - **Narrow blast radius**: it changes driver delivery only, not patching
+      **Stops Windows Update installing hardware drivers, so you choose which driver versions the PC runs. Security and quality updates are unaffected.**
 
       ## Drawbacks
-      - **You own driver updates now**: driver security and stability fixes shipped through Windows Update no longer arrive
-      - **Does nothing on Home**: this is a Windows Update client policy and Windows Home does not honour it
-      - **Not a total block**: Microsoft excludes drivers bundled inside a security or critical update, and drivers installed dynamically during a feature update
+      - Driver fixes, including security fixes, are now yours to install.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes the value, restoring driver delivery through Windows Update
-      - A same-named value under `WindowsUpdate\UX\Settings` is the Settings mirror, not the policy; the policy key governs
+      ## Caveats
+      - Not a total block: drivers bundled in security updates, and drivers installed during a feature update, still arrive.
+
+      ## Requirements
+      - Pro, Education or Enterprise (including IoT and LTSC). Windows Home ignores it.
+
+      ## Notes
+      - Takes effect at the next update scan; after reverting, held-back drivers are offered again.
+
+      ## Related
+      - **Disable automatic driver installation** stops the driver search when you connect hardware; together they give full driver control.
 
       ## Recommendation
-      Good for anyone who manages drivers from vendor sites and has been bitten by an automatic driver
-      swap. Leave it off if you would rather not think about drivers, and do not bother on Home where
-      it has no effect.
+      Good if you install drivers from vendor sites and have been hit by an automatic driver swap. Leave it off if you would rather not manage drivers.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Update, ExcludeWUDriversInQualityUpdate](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
-      - [Configure Windows Update client policies, exclude drivers](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
-      - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
+      ## Sources
+      - [Policy CSP - Update, driver exclusion](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Configure Windows Update client policies](https://learn.microsoft.com/en-us/windows/deployment/update/waas-configure-wufb)
     risk_level: medium
     elevation: admin
     reversible: true
@@ -501,39 +382,33 @@ tweaks:
     name: "Disable automatic driver installation"
     description: "Block Windows from auto-searching for device drivers and fetching device metadata, using the documented policy keys."
     info: |
-      **Stops Windows installing drivers by itself and fetching device details over the network when you plug in new hardware.**
+      **Stops Windows searching Windows Update for a driver when you connect new hardware, and stops it downloading device details (names, icons) from the internet.**
 
-      ## What it does
-      Sets `SearchOrderConfig = 0` to stop the automatic driver search and
-      `PreventDeviceMetadataFromNetwork = 1` to stop device metadata downloads (icons, names,
-      details). New devices then wait for you to install their driver deliberately.
-
-      ## Benefits
-      - **You curate every driver**: nothing installs itself when hardware is attached
-      - **Fewer outbound requests**: device metadata retrieval stops, a small privacy gain
-      - **Pairs with driver exclusion**: together with excluding drivers from Windows Update it gives end-to-end control
+      ## Mechanism
+      - Sets two documented policies that override the Control Panel "Device Installation Settings" dialog, so the dialog cannot undo them.
 
       ## Drawbacks
-      - **New hardware may not work**: peripherals sit undriven until you install software by hand
-      - **Written to the Settings store, not the policy store**: opening Device Installation Settings in Control Panel can undo it without this app noticing, and a Group Policy on the machine silently overrides it
-      - **`SearchOrderConfig = 0` is undocumented on this path**: Microsoft defines the value for the policy key only, and community sources disagree about what 0 means outside it
+      - New hardware may have no driver until you install one yourself; keep vendor driver packages handy.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The Settings-store form is not edition-gated; the policy form is Pro and above.
-      - **Takes effect**: after reboot
-      - **Reverting**: restores `SearchOrderConfig` to 1 and removes the metadata value, matching the stock state of the Settings store
-      - Keep vendor driver packages handy before adding new devices
+      ## Caveats
+      - The meaning of the search-order value (0 = do not search Windows Update) comes from community references, not Microsoft.
+      - After reverting, devices left without a driver are not retried until Windows detects them again, for example when reconnected.
+
+      ## Requirements
+      - Microsoft documents the device-details policy for Pro and above; behaviour on Home is undocumented.
+
+      ## Notes
+      - Applies at the next device installation; the restart is advised for a clean read, not strictly needed.
+
+      ## Related
+      - **Exclude driver updates from Windows Update** stops driver delivery through Windows Update; together they give full driver control.
 
       ## Recommendation
-      For power users who want to approve every driver, ideally alongside excluding drivers from
-      Windows Update. Skip it if you plug in new peripherals often and expect them to work
-      immediately.
+      For people who want to approve every driver. Skip it if you plug in new devices often and expect them to just work.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Community-corroborated
-      - [Policy CSP - DeviceInstallation, PreventDeviceMetadataFromNetwork](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-deviceinstallation)
-      - [Manage connections from Windows to Microsoft services, device metadata retrieval](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      ## Sources
+      - [Policy CSP - DeviceInstallation](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-deviceinstallation)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
       - [Specify search order for device driver source locations](https://www.windows-security.org/4e9792f8fcb59047c7a25891728d5f0c/specify-search-order-for-device-driver-source-locations)
     risk_level: medium
     elevation: admin
@@ -556,39 +431,24 @@ tweaks:
     name: "Disable Microsoft Store auto-updates"
     description: "Stop the Microsoft Store from automatically downloading and installing app updates."
     info: |
-      **Stops the Microsoft Store updating your apps in the background, so app versions change only when you say so.**
-
-      ## What it does
-      Sets `AutoDownload = 2` under the Store policy key, the registry form of "Turn off Automatic
-      Download and Install of updates". Store apps stay at their current versions until you update
-      them from the Store's Library page.
-
-      ## Benefits
-      - **No background downloads**: useful on a metered or slow connection
-      - **Version stability**: an app you rely on does not change shape overnight
-      - **Survives the UI**: recent Store builds reduced the in-app toggle to a pause, but the policy value still applies
+      **Stops the Microsoft Store updating your apps in the background. Apps update only when you update them from the Store Library.**
 
       ## Drawbacks
-      - **Apps go stale**: including Store apps that ship security fixes
-      - **Manual upkeep**: you have to remember to check the Library
-      - **Home not documented**: Policy CSP lists Pro and above, so Home behaviour is likely but unconfirmed
+      - Apps go stale, including security fixes for Store apps, until you update them yourself.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1507 and later including LTSC 2021. Policy CSP lists Pro, Enterprise, Education and IoT Enterprise; Microsoft's privacy guide gives the registry form with no edition caveat.
-      - **Takes effect**: immediately
-      - **Reverting**: deletes the value, restoring automatic Store updates
-      - Setting the value to 4 rather than deleting it explicitly forces auto-updates on
+      ## Requirements
+      - Microsoft documents it for Pro and above; Home support is likely but unconfirmed.
+
+      ## Notes
+      - Recent Store versions only let you pause updates; this policy keeps them off until reverted.
+      - Takes effect immediately.
 
       ## Recommendation
-      Reasonable on a metered connection or where you want app versions pinned, provided you check the
-      Store Library now and then. If you would forget, leave auto-updates on so security fixes keep
-      arriving.
+      Reasonable on a metered connection or to keep app versions fixed, if you check the Store Library now and then. If you would forget, leave auto-updates on.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Manage connections from Windows to Microsoft services, section 26 Microsoft Store](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
-      - [Policy CSP - ApplicationManagement, AllowAppStoreAutoUpdate](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-applicationmanagement)
+      ## Sources
+      - [Manage connections from Windows to Microsoft services, Microsoft Store](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - ApplicationManagement, Store auto-update](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-applicationmanagement)
     risk_level: medium
     elevation: admin
     reversible: true
@@ -605,38 +465,21 @@ tweaks:
     name: "Block auto-download over metered"
     description: "Lock the existing no-auto-download-over-metered default into the Windows Update policy branch."
     info: |
-      **Locks "no automatic downloads over metered connections" into policy, so nothing can turn it back on.**
+      **Locks Windows' existing "no automatic update downloads on metered connections" behaviour into policy, so neither Settings nor another tool can switch it on.**
 
-      ## What it does
-      Sets `AllowAutoWindowsUpdateDownloadOverMeteredNetwork = 0` under the Windows Update policy key.
-      Microsoft documents 0 as the shipped default, so this does not change today's behaviour: it
-      moves the decision into the policy branch, where it overrides the Settings toggle.
+      ## Caveats
+      - A stock PC already behaves this way, so nothing visibly changes; this is a lock, not a change.
+      - Acts only on connections marked as metered in Settings.
+      - Priority and critical updates can still download over a metered connection.
 
-      ## Benefits
-      - **Cannot be opted in later**: the Settings toggle for metered downloads no longer takes effect
-      - **Auditable posture**: the machine's intent is recorded in policy rather than left implicit
-      - **Zero cost**: nothing is given up, because the machine already behaves this way
-
-      ## Drawbacks
-      - **No visible change today**: Windows already does not auto-download over metered links, so you will not observe a difference
-      - **Does nothing on Home**: Windows Home does not honour Windows Update client policies
-      - **Not a full block**: high-priority and critical updates can still download over a metered connection
-      - **Needs a metered connection**: it does nothing until you actually mark a connection as metered in Settings
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: deletes the value, returning the decision to the Settings toggle
-      - Mark your hotspot or capped connection as metered in Settings for this to have anything to govern
+      ## Requirements
+      - Pro, Education or Enterprise (including IoT and LTSC). Windows Home ignores it.
 
       ## Recommendation
-      Worth setting on a Pro machine that regularly runs on a hotspot or capped plan, as a lock rather
-      than a change. Skip it on Home, where it is not honoured.
+      Worth setting on a Pro PC that often runs on a hotspot or capped plan. Skip it on Home.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Update, AllowAutoWindowsUpdateDownloadOverMeteredNetwork](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      ## Sources
+      - [Policy CSP - Update, metered downloads](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
       - [What are Windows Update client policies?](https://learn.microsoft.com/en-us/windows/deployment/update/waas-manage-updates-wufb)
     risk_level: medium
     elevation: admin
@@ -654,43 +497,33 @@ tweaks:
     name: "Windows Update mode"
     description: "Choose how Windows Update behaves: install automatically, download only, notify only, or off by policy."
     info: |
-      **Puts Windows Update into one of four automatic-update modes.**
+      **Sets how Windows Update handles updates: install automatically, download only, notify only, or off by policy.**
 
-      ## What it does
-      Writes `NoAutoUpdate` and `AUOptions` under the Windows Update AU policy key, which is exactly
-      what the "Configure Automatic Updates" Group Policy writes. Microsoft's registry table maps
-      `AUOptions` as 2 = notify of download and installation, 3 = auto download and notify of
-      installation, 4 = auto download and schedule the installation. `NoAutoUpdate = 1` turns
-      automatic updates off outright, at which point `AUOptions` is ignored and so is removed rather
-      than left behind at a stale value.
+      ## Mechanism
+      - **Automatic**: downloads and installs on Windows' default daily schedule.
+      - **Download only**: downloads in the background, then tells you updates are ready to install.
+      - **Notify only**: nothing downloads until you start it from Settings.
+      - **Off by policy**: no automatic updates; you check and install from Settings yourself.
 
-      ## Options explained
-      - **Automatic**: Windows downloads and installs on its own schedule (`NoAutoUpdate = 0`, `AUOptions = 4`)
-      - **Download only**: updates download in the background and wait for you to install them (`AUOptions = 3`)
-      - **Notify only**: nothing downloads until you approve it (`AUOptions = 2`)
-      - **Off by policy**: automatic updates are disabled entirely (`NoAutoUpdate = 1`)
+      ## Caveats
+      - **Off by policy** is not a full block: the update services keep running, Check for updates still works, and other parts of Windows can still start scans.
+      - **Automatic** is not the same as no policy: it locks a daily install schedule, where an unmanaged PC uses Microsoft's own install-and-restart behaviour.
 
-      ## Drawbacks
-      - **Does nothing on Home**: Windows Home ignores the Windows Update AU policy entirely
-      - **You will be unpatched between checks**: every mode except Automatic delays security fixes, which is why the risk is high
-      - **Policy only, not a pipeline block**: "Off by policy" stops the automatic-update scheduler, but the update services keep running and Windows Update still works if driven by hand. To stop the pipeline itself, use "Block the Windows Update pipeline".
-      - **Cancels the reboot block**: `NoAutoRebootWithLoggedOnUsers` only applies at `AUOptions = 4`, so any other mode makes that tweak inert
+      ## Notes
+      - Reverting removes the policy, and your own Settings choices apply again.
+      - Takes effect at the next update scan, with no restart.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, on Pro, Education, Enterprise and IoT Enterprise. **Windows Home ignores this policy.**
-      - **Takes effect**: immediately, at the next Windows Update scan
-      - **Reverting**: System Default restores the values captured in the snapshot, so a machine that had no policy set goes back to having none
+      ## Related
+      - **Block auto-restart while signed in** works only with Automatic.
+      - **Block the Windows Update pipeline** is the full off switch. With both, pick Notify only here: Off by policy disables the pipeline's server redirect.
 
       ## Recommendation
-      "Notify only" is the balanced choice for a machine you actually maintain. If there is any chance
-      patches will pile up unattended, stay on Automatic; the security cost outweighs the control.
+      Notify only is the balanced choice for a Pro PC you actually maintain. If patches could pile up unattended, stay on Automatic.
 
-      ## Evidence
-      - **Risk**: high
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [Manage additional Windows Update settings](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wu-settings)
-      - [Manage device restarts after updates, AU registry table](https://learn.microsoft.com/en-us/windows/deployment/update/waas-restart)
-      - [Policy CSP - Update, AllowAutoUpdate](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Policy CSP - Update, automatic updates](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-update)
+      - [Windows Central: how to stop automatic updates on Windows 11](https://www.windowscentral.com/how-stop-automatic-updates-windows-11)
     warning: "Windows Home ignores the Windows Update AU policy entirely, so this does nothing there. Every mode except Automatic delays security patches: if you do not check regularly, the machine runs unpatched."
     risk_level: high
     elevation: admin
@@ -714,57 +547,41 @@ tweaks:
     name: "Block the Windows Update pipeline"
     description: "Stop Windows Update at the source: the services, every scan and notification task, the update UI, and the Medic service that undoes exactly this kind of change."
     info: |
-      **Shuts down Windows Update properly, including the parts that put it back.**
+      **Shuts Windows Update down completely: its services, its scan and reminder tasks, the update page in Settings and the network path to Microsoft. It also disables the Medic service that would otherwise undo the block.**
 
-      ## Why the obvious approach fails
-      Setting `wuauserv` to Disabled does not hold, and that is not a bug in the tweak. Windows runs a
-      **Windows Update Medic Service** (`WaaSMedicSvc`) whose entire job is to detect and repair
-      tampered update components: it puts `wuauserv` and `UsoSvc` back, which is why naive update
-      blockers appear to work and then quietly stop working a few minutes or one reboot later.
+      ## Mechanism
+      - Disables the Windows Update Medic service and its tasks first, since they re-enable update services that were turned off.
+      - Disables every task that starts an update scan or shows the "missing important updates" prompt.
+      - Removes Check for updates and update notifications by policy, and points scans at a local address where nothing answers.
+      - Disables the Windows Update and Update Orchestrator services last.
 
-      This tweak closes every route that was verified on a live machine:
+      ## Caveats
+      - **The Microsoft Store may break.** Microsoft says one of these policies can stop Store and Delivery Optimization connections, and a disabled update service is a known cause of Store error 0x80070422. Not tested here.
+      - **The block may not last.** A Windows repair tool (`upfc.exe`) is reported to reset the update services roughly every five days; this tweak does not handle it. Check that the block still holds after a week.
+      - Defender definitions lose the Windows Update route; Defender's own update channel should keep working (not tested).
+      - Programs that use the Windows Update API stop working.
+      - It overwrites any WSUS or organization update server setting; never apply it on a managed PC.
 
-      - **The reverter.** `WaaSMedicSvc` plus both of its scheduled tasks (`PerformRemediation` and
-        `DeferredWork`) are disabled **first**, in declaration order. The service registers no start
-        triggers at all, so once those tasks are off it has no way to run.
-      - **The scan triggers.** Every `UpdateOrchestrator` task that launches `usoclient.exe`, plus the
-        `WindowsUpdate` folder tasks, are disabled. These are what re-arm a scan after a reboot.
-      - **The nagging.** `USO_UxBroker` runs `MusNotification.exe`, which is the "your device is
-        missing updates" prompt that appears once updates are off. It is disabled, and update
-        notifications are switched off by policy as well.
-      - **The UI.** `SetDisableUXWUAccess` removes access to Windows Update features, so the Settings
-        page no longer offers a Download or Check for updates button that would restart the pipeline.
-      - **The network path.** Windows Update is pointed at a dead local WSUS endpoint and blocked from
-        contacting Microsoft's update locations, so a scan that does start finds nothing to do.
-      - **The services.** `UsoSvc` and `wuauserv` are disabled last, once nothing is left to restart
-        them.
+      ## Requirements
+      - Services and tasks are blocked on every edition; Home ignores the policy parts (Settings page, notifications, server redirect).
+      - Needs the TrustedInstaller service; without it the tweak shows as not available.
 
-      ## Drawbacks
-      - **No security patches at all** while it is on. That is the entire purpose of the tweak and it is a real, ongoing exposure.
-      - **Needs a restart to fully take hold.** Start types apply immediately, but a Medic service that happens to be running stays running until you reboot.
-      - **The Windows Update page will show errors** rather than a clean "you're up to date", because the WSUS endpoint deliberately does not answer.
-      - **Defender definition updates may be slower.** They have their own delivery path, but the Windows Update fallback is blocked. Defender still updates itself; if you rely on that fallback, use "Notify only" on the Windows Update mode tweak instead.
-      - **Needs TrustedInstaller for the scheduled tasks.** Windows protects them: on a stock Windows 11 24H2 machine the `UpdateOrchestrator` task files grant Administrators read and execute only (`(A;;0x1200a9;;;BA)`), and the WaaSMedic tasks carry a protected DACL, so an elevated administrator alone cannot disable them.
+      ## Notes
+      - Restart after reverting too: some re-enabled tasks do not re-arm until then.
+      - Other Windows Update tweaks sit idle while this is applied and take effect again when it is reverted.
 
-      ## Good to know
-      - **Applies to**: Windows 11 and Windows 10, **all editions including Home**, because none of this depends on Group Policy being honoured
-      - **Takes effect**: immediately for new starts, fully after a restart
-      - **Reverting**: System Default restores every service, task and value to the exact state captured in the snapshot, not to a guessed default
-      - **Microsoft Store keeps working**: BITS, Delivery Optimization and the `InstallService` tasks are deliberately left alone
-      - Tasks that do not exist on your build are skipped rather than failing the apply, so the same tweak covers Windows 10 and 11
-      - To also delay what happens when you eventually turn this off, pair it with "Defer feature updates" and "Defer quality updates", which own those policy values separately
+      ## Related
+      - **Windows Update mode**: pick Notify only there, not Off by policy, which switches off this tweak's server redirect.
+      - **Defer feature updates** and **Defer quality updates**, applied beforehand, control what installs when the block is lifted.
 
       ## Recommendation
-      Only for a machine where you take responsibility for patching some other way, such as an offline
-      or tightly controlled system. For everyday use prefer "Notify only" on the Windows Update mode
-      tweak, which leaves the pipeline intact and needs no reboot.
+      Only for a PC you patch some other way: offline, a lab machine, or one you patch by hand. Revert it at least monthly to install updates. For everyday control, use Windows Update mode on Notify only instead.
 
-      ## Evidence
-      - **Risk**: high
-      - **Confidence**: service, task and trigger inventory verified on Windows 11 24H2 (26100); `sc qtriggerinfo WaaSMedicSvc` confirms no start triggers
-      - [How Windows Update works](https://learn.microsoft.com/en-us/windows/deployment/update/how-windows-update-works)
+      ## Sources
       - [Manage additional Windows Update settings](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wu-settings)
-      - [Windows as a service overview](https://learn.microsoft.com/en-us/windows/deployment/update/waas-overview)
+      - [How Windows Update works](https://learn.microsoft.com/en-us/windows/deployment/update/how-windows-update-works)
+      - [privacy.sexy issue 294: upfc.exe re-enables Windows Update](https://github.com/undergroundwires/privacy.sexy/issues/294)
+      - [Winhelponline: error 0x80070422 in Windows Update and Store](https://www.winhelponline.com/blog/fix-windows-update-error-0x80070422-in-windows-10/)
     warning: "This stops all Windows security updates until you revert it, and the Windows Update page will show connection errors by design. Every scheduled-task effect needs TrustedInstaller because Windows denies even elevated administrators write access to them, and a restart is required before the block is fully effective."
     risk_level: high
     elevation: admin

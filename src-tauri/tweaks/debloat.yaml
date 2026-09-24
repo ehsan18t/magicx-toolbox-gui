@@ -10,44 +10,25 @@ tweaks:
     name: "Turn off Start menu app promotions"
     description: "Stop the Start menu suggestion slot from showing promoted apps and tip cards."
     info: |
-      **Clears promoted-app and tip cards out of the Start menu's suggestion slot.**
+      **Closes the Start menu slot that shows promoted apps and tip cards.**
 
-      ## What it does
-      Clears `SubscribedContent-338388Enabled` under the per-user `ContentDeliveryManager` key, the
-      switch behind the Start menu suggestion slot. On Windows 11 the visually similar
-      "recommendations" row is a separate control, `Start_IrisRecommendations`, which this tweak
-      does not write.
+      ## Caveats
+      - On Windows 11 the Start recommendations row uses a different setting, so this alone may change nothing visible.
+      - Microsoft does not document this slot and can move it between releases.
 
-      ## Benefits
-      - **No promoted apps**: the suggestion slot stops surfacing apps you never asked for
-      - **Fewer nudges**: one less Microsoft content channel pointed at the Start menu
-      - **Per-user and instant**: no policy, no elevation, no reboot
+      ## Notes
+      - Start may need a sign-out to redraw.
 
-      ## Drawbacks
-      - **Partial on Windows 11**: the 24H2 recommendations row is driven by a different value, so
-        use the Start recommendations tweak as well if that row is what bothers you
-      - **Undocumented slot**: Microsoft composes these IDs at runtime and can move the surface
-        between releases
-      - **May look like nothing changed**: on a machine where the slot is already empty there is no
-        visible difference
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; the surface it maps to is the Windows 10 Start
-        suggestion toggle
-      - **Takes effect**: immediately, Start may need a sign-out to redraw
-      - **Reverting**: deletes the value so the profile returns to its shipped state
-      - Pair with the Start recommendations tweak in Interface for the Windows 11 row
+      ## Related
+      - **Turn off promoted recommendations in Start** (Interface) handles the Windows 11 recommendations row.
+      - **Hide the Recommended section in Start** (Interface) hides the whole section.
 
       ## Recommendation
-      Apply it if you want every Start suggestion channel closed. If your only complaint is the
-      Windows 11 recommendations row, the Interface tweak for that row is the one that fixes it.
+      Harmless, so apply it if you want every Start suggestion channel closed. If the Windows 11 recommendations row is what bothers you, use Turn off promoted recommendations in Start.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Community-corroborated
-      - [Turn on or off app suggestions in Start (TenForums 24117)](https://www.tenforums.com/tutorials/24117-turn-off-app-suggestions-start-windows-10-a.html)
-      - [Win11Debloat, Disable_Windows_Suggestions.reg](https://github.com/Raphire/Win11Debloat)
-      - [Policy CSP - Experience, AllowWindowsSpotlight](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      ## Sources
+      - [TenForums: turn off app suggestions in Start](https://www.tenforums.com/tutorials/24117-turn-off-app-suggestions-start-windows-10-a.html)
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
     risk_level: low
     elevation: user
     reversible: true
@@ -65,43 +46,24 @@ tweaks:
     name: "Turn off auto-installed sponsored apps"
     description: "Stop Windows from silently installing promoted, preinstalled and OEM apps into your account."
     info: |
-      **Stops Windows from silently installing promoted, preinstalled and OEM apps into your
-      account.**
+      **Stops Windows silently installing promoted, preinstalled and OEM apps into your account.**
 
-      ## What it does
-      Clears `SilentInstalledAppsEnabled`, `PreInstalledAppsEnabled` and `OemPreInstalledAppsEnabled`
-      under the per-user `ContentDeliveryManager` key. Those three values gate the post-setup silent
-      install of promoted Store apps, the bundled app set, and anything the OEM added.
+      ## Caveats
+      - Future installs only: apps already on the PC stay; the Remove tweaks in this category handle those.
+      - A feature update can still bring apps back.
 
-      ## Benefits
-      - **No surprise apps**: game and trial tiles stop appearing in Start on their own
-      - **Survives new accounts**: each profile gets its own copy of the switch, so setting it early
-        keeps the account clean
-      - **Reversible per value**: the snapshot restores the exact prior data
+      ## Notes
+      - Applies to your account only; set it in each account you use.
 
-      ## Drawbacks
-      - **Future installs only**: promo apps already on the machine must be uninstalled separately
-      - **Not enforced**: a feature update can re-provision apps regardless of these per-user values
-      - **No policy backing on Home and Pro**: the machine-wide consumer-features policy is
-        Enterprise, Education and IoT Enterprise only
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: immediately, for any install that has not already started
-      - **Reverting**: restores the shipped value of 1 for all three
-      - Pair with the consumer features tweak in Privacy on Enterprise, Education and IoT Enterprise,
-        where that policy is honoured
+      ## Related
+      - **Disable Windows consumer features** (Privacy) is a stronger machine-wide block, but only on Enterprise, Education and IoT Enterprise.
 
       ## Recommendation
-      Apply it. There is no scenario where you want Windows quietly installing sponsored apps into
-      your profile, and the only cost is that you install wanted apps yourself.
+      Apply it. The only cost is installing apps you actually want yourself.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Community-corroborated
-      - [Turn off automatic installation of suggested apps (TenForums 68217)](https://www.tenforums.com/tutorials/68217-turn-off-automatic-installation-suggested-apps-windows-10-a.html)
-      - [Sophia Script for Windows, AppsSilentInstalling](https://github.com/farag2/Sophia-Script-for-Windows)
-      - [Policy CSP - Experience, AllowWindowsConsumerFeatures](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      ## Sources
+      - [TenForums: turn off automatic installation of suggested apps](https://www.tenforums.com/tutorials/68217-turn-off-automatic-installation-suggested-apps-windows-10-a.html)
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
     risk_level: low
     elevation: user
     reversible: true
@@ -123,40 +85,18 @@ tweaks:
     name: "Turn off the post-update welcome experience"
     description: "Turn off the full-screen 'what's new' tour shown after updates."
     info: |
-      **Skips the full-screen "what's new" tour after an update so you land straight on your
-      desktop.**
+      **Skips the full-screen "what's new" tour after updates and the occasional highlight page at sign-in. The update itself is unaffected.**
 
-      ## What it does
-      Clears `SubscribedContent-310093Enabled` under the per-user `ContentDeliveryManager` key, the
-      value behind Settings > System > Notifications > "Show me the Windows welcome experience after
-      updates". The update itself is untouched.
+      ## Notes
+      - The same switch as "Show me the Windows welcome experience after updates" in Settings > System > Notifications.
+      - Undocumented by Microsoft, but it has held from Windows 10 1703 through Windows 11 25H2.
 
-      ## Benefits
-      - **No post-update splash**: you reach the desktop instead of a promotional tour
-      - **Fewer sign-in interruptions**: the same slot drives the occasional sign-in highlight page
-      - **Purely cosmetic**: nothing functional depends on the welcome screen
+      ## Related
+      - **Turn off the 'Get even more out of Windows' nag** covers the separate "finish setting up" screen.
 
-      ## Drawbacks
-      - **No change summary**: you no longer get the built-in "here is what changed" page
-      - **Undocumented slot**: the numeric ID is composed at runtime, so Microsoft can move it
-      - **Only this surface**: other post-update prompts, such as the setup nag, need their own tweak
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: immediately, from the next update onward
-      - **Reverting**: deletes the value so the profile returns to its shipped state
-      - The Enterprise-only policy equivalent is `DisableWindowsSpotlightWindowsWelcomeExperience`
-
-      ## Recommendation
-      Apply it if you already track what changes in Windows updates or simply do not want a tour.
-      Leave it on if you like being shown new features after an update.
-
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Community-corroborated
-      - [Enable or disable Windows welcome experience (ElevenForum 3657)](https://www.elevenforum.com/t/enable-or-disable-windows-welcome-experience-in-windows-11.3657/)
-      - [Sophia Script for Windows, WindowsWelcomeExperience](https://github.com/farag2/Sophia-Script-for-Windows)
-      - [Policy CSP - Experience, AllowWindowsSpotlightWindowsWelcomeExperience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      ## Sources
+      - [ElevenForum: Windows welcome experience](https://www.elevenforum.com/t/enable-or-disable-windows-welcome-experience-in-windows-11.3657/)
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
     risk_level: low
     elevation: user
     reversible: true
@@ -173,41 +113,21 @@ tweaks:
     name: "Turn off the 'Get even more out of Windows' nag"
     description: "Stop the post-sign-in 'finish setting up your device' full-screen prompt."
     info: |
-      **Stops the full-screen "finish setting up your device" prompt after you sign in.**
+      **Stops the full-screen "finish setting up your device" prompt that pushes a Microsoft account, OneDrive backup, Edge and Microsoft 365 after sign-in.**
 
-      ## What it does
-      Clears `ScoobeSystemSettingEnabled` under `HKCU\...\UserProfileEngagement`, the value behind
-      Settings > System > Notifications > "Suggest ways to get the most out of Windows and finish
-      setting up this device". That is the screen pushing a Microsoft account, OneDrive backup and
-      Edge as default.
+      ## Caveats
+      - Not absolute: on some builds the screen can still appear once after a large feature update.
 
-      ## Benefits
-      - **No sign-in upsell**: you reach the desktop instead of a setup wizard
-      - **Reachable on Home**: unlike the policy alternatives, this value works on every edition
-      - **Instant**: takes effect with no reboot or service restart
-
-      ## Drawbacks
-      - **Not absolute**: some builds gate the screen on server-side flags too, so it can still
-        appear once after a large feature update
-      - **Undocumented**: Microsoft has no Learn page or ADMX for this key
-      - **Per user**: a second account on the machine needs it applied separately
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: immediately, from the next sign-in onward
-      - **Reverting**: deletes the value, and the key with it, so the profile returns to shipped state
-      - The key does not exist on a fresh profile; apply creates it
+      ## Notes
+      - The same switch as "Suggest ways to get the most out of Windows" in Settings > System > Notifications, so it works on every edition, including Home.
+      - Applies to your account only.
 
       ## Recommendation
-      Apply it. The screen offers nothing you cannot reach from Settings and it interrupts every
-      sign-in that follows a large update.
+      Apply it. Everything the screen offers is reachable from Settings.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Community-corroborated
-      - [Enable or disable "Let's finish setting up your device" (ElevenForum 5205)](https://www.elevenforum.com/t/enable-or-disable-lets-finish-setting-up-your-device-in-windows-11.5205/)
-      - [Sophia Script for Windows, WhatsNewInWindows](https://github.com/farag2/Sophia-Script-for-Windows)
-      - [Win11Debloat, Disable_Windows_Suggestions.reg](https://github.com/Raphire/Win11Debloat)
+      ## Sources
+      - [ElevenForum: Let's finish setting up your device](https://www.elevenforum.com/t/enable-or-disable-lets-finish-setting-up-your-device-in-windows-11.5205/)
+      - [Sophia Script for Windows](https://github.com/farag2/Sophia-Script-for-Windows)
     risk_level: low
     elevation: user
     reversible: true
@@ -227,38 +147,23 @@ tweaks:
     info: |
       **Removes the OneDrive and Microsoft 365 upsell banners from File Explorer.**
 
-      ## What it does
-      Clears `ShowSyncProviderNotifications` under `HKCU\...\Explorer\Advanced`, the value behind the
-      "Show sync provider notifications" checkbox in Folder Options > View. Windows declares that
-      option in shipped OS data with a default of 1, so this is the same switch the UI writes.
-
-      ## Benefits
-      - **No upsell banners**: the Explorer header stops advertising OneDrive and Microsoft 365
-      - **Documented switch**: Windows itself declares the value, type and default
-      - **No elevation**: a per-user preference, applied instantly
-
       ## Drawbacks
-      - **Real sync notices go too**: the checkbox governs genuine sync-provider notifications, not
-        only the promotional ones
-      - **Explorer only**: OneDrive's own tray notifications are unaffected
-      - **Per user**: other accounts on the machine need it applied separately
+      - Genuine sync-provider notices in Explorer go too, not only the ads.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: after restarting Explorer, or on the next new Explorer window
-      - **Reverting**: restores the checkbox to its shipped checked state
-      - Same as unticking Folder Options > View > "Show sync provider notifications"
+      ## Notes
+      - The same as the Folder Options checkbox "Show sync provider notifications". OneDrive's own tray notifications are unaffected.
+      - A fresh profile reads as System Default here, which behaves exactly like On.
+      - Takes effect in the next Explorer window.
+
+      ## Related
+      - **Remove OneDrive** uninstalls the client; **Hide OneDrive in Explorer** (Interface) removes it from the navigation pane.
 
       ## Recommendation
-      Apply it unless you actively rely on OneDrive status messages appearing inside Explorer. For
-      everyone else this is an advertising surface in a window you open dozens of times a day.
+      Apply it unless you rely on OneDrive status messages inside Explorer.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Enable or disable sync provider notifications (ElevenForum 5200)](https://www.elevenforum.com/t/enable-or-disable-sync-provider-notifications-in-file-explorer-in-windows-11.5200/)
-      - [privacy.sexy, Disable sync provider notifications](https://github.com/undergroundwires/privacy.sexy)
-      - [Sophia Script for Windows, OneDriveFileExplorerAd](https://github.com/farag2/Sophia-Script-for-Windows)
+      ## Sources
+      - [ElevenForum: sync provider notifications in File Explorer](https://www.elevenforum.com/t/enable-or-disable-sync-provider-notifications-in-file-explorer-in-windows-11.5200/)
+      - [Sophia Script for Windows](https://github.com/farag2/Sophia-Script-for-Windows)
     risk_level: low
     elevation: user
     reversible: true
@@ -277,46 +182,29 @@ tweaks:
     name: "Turn off web results in Start search"
     description: "Keep Start search local by turning off Bing web results and search-box suggestions."
     info: |
-      **Keeps Start search local, so typing an app name stops sending keystrokes to Bing.**
-
-      ## What it does
-      Sets the documented per-user policy `DisableSearchBoxSuggestions` = 1 under
-      `HKCU\Software\Policies\Microsoft\Windows\Explorer` and clears `BingSearchEnabled`. Local
-      results for apps, settings and files keep working; the web layer and the Copilot entry in the
-      search flyout go away.
-
-      ## Benefits
-      - **Local-only results**: apps and files instead of web answers and promoted cards
-      - **Less sent to Bing**: what you type in Start stops leaving the machine
-      - **Policy backed**: `DisableSearchBoxSuggestions` is declared in the shipped
-        `WindowsExplorer.admx` and works on every edition, including Home
+      **Keeps Start search local: no Bing web results or search-box suggestions, and what you type stays on the PC.**
 
       ## Drawbacks
-      - **Explorer search history**: Microsoft's own description of this policy is that it stops
-        File Explorer suggesting and storing your recent search entries, so you lose that too
-      - **No web answers**: unit conversions, definitions and quick lookups from the search box stop
-      - **Bing value is fragile**: `BingSearchEnabled` is undocumented and feature updates have been
-        seen resetting it
-      - **Taskbar search box reports**: a few builds have been reported hiding the box entirely
+      - Web answers in the search box (conversions, definitions, quick lookups) stop.
+      - File Explorer stops suggesting and storing your recent searches, the only effect Microsoft documents for this policy.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: after reboot (a sign-out or an Explorer restart also works)
-      - **Reverting**: deletes both values so the profile returns to its shipped state
-      - Enterprise, Education and IoT Enterprise have a stronger machine-wide option,
-        `DoNotUseWebResults`
+      ## Caveats
+      - Feature updates often reset the Bing half; the tweak then shows System Default while the policy half still holds.
+      - Some users report the taskbar search box disappearing with this policy (not confirmed on 24H2).
+
+      ## Notes
+      - Works on every edition, including Home. Signing out, or restarting Explorer, also applies it.
+
+      ## Related
+      - **Turn off search highlights** (Interface) removes promoted content from the search box; the two combine.
 
       ## Recommendation
-      Apply it if you use Start to launch apps and open settings, which is most people. Skip it if
-      you deliberately use the Start box as a web search bar or rely on File Explorer's recent
-      search suggestions.
+      Apply it if you use Start to open apps and settings. Skip it if you use the Start box as a web search bar.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Search, DoNotUseWebResults](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-search)
-      - [privacy.sexy, Disable Bing search and recent search suggestions](https://github.com/undergroundwires/privacy.sexy)
-      - [Win11Debloat, Disable_Bing_Cortana_In_Search.reg](https://github.com/Raphire/Win11Debloat)
+      ## Sources
+      - [Policy CSP - Search](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-search)
+      - [Pureinfotech: disable web search results on Windows 11](https://pureinfotech.com/disable-search-web-results-windows-11/)
+      - [Microsoft Q&A: DisableSearchBoxSuggestions hides taskbar search](https://learn.microsoft.com/en-us/answers/questions/3234673/disablesearchboxsuggestions-disables-task-bar-sear)
     risk_level: low
     elevation: admin
     reversible: true
@@ -338,41 +226,23 @@ tweaks:
     name: "Turn off Widgets"
     description: "Turn off the Widgets board (News and Interests) machine-wide."
     info: |
-      **Turns off the Widgets board machine-wide, clearing the news and weather feed off your
-      taskbar.**
-
-      ## What it does
-      Sets the documented `AllowNewsAndInterests` policy to 0 under
-      `HKLM\SOFTWARE\Policies\Microsoft\Dsh`. Microsoft states this covers the entire widgets
-      experience including taskbar content. The WebExperience host package stays installed on disk.
-
-      ## Benefits
-      - **No taskbar feed**: no hover-open board and no MSN headlines one mouse-bump away
-      - **Fewer background fetches**: the widgets host stops pulling content you are not reading
-      - **Machine-wide**: one policy covers every account on the PC
+      **Turns off the Widgets board for every account, removing the news and weather feed from the taskbar.**
 
       ## Drawbacks
-      - **Widgets are gone entirely**: including the weather, calendar and any pinned widget you did
-        want
-      - **Not an uninstall**: the WebExperience host package still occupies disk
-      - **Home is outside the matrix**: Microsoft documents this policy for Pro, Enterprise,
-        Education and IoT Enterprise, not Home, though the widgets host generally honours it anyway
+      - All or nothing: weather, calendar and any widget you wanted go too.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; the feature does not exist on Windows 10
-      - **Takes effect**: after reboot, so the taskbar drops the entry point
-      - **Reverting**: deletes the policy value, restoring the shipped default of allowed
-      - Requires administrator rights because it writes a machine policy
+      ## Requirements
+      - Microsoft documents it for Pro and above; Home generally honours it, but that is not guaranteed.
 
-      ## Recommendation
-      Apply it if you never open the widgets board. Leave it alone if you actually glance at the
-      feed, because there is no partial setting here.
+      ## Notes
+      - The Widgets app stays installed; it just stops being offered.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - NewsAndInterests, AllowNewsAndInterests](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-newsandinterests)
-      - [Manage connections from Windows components to Microsoft services, section 32 Widgets](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      ## Related
+      - **Remove Bing News and Weather** removes the standalone MSN apps; the two complement each other.
+
+      ## Sources
+      - [Policy CSP - NewsAndInterests](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-newsandinterests)
+      - [Manage connections from Windows to Microsoft services: Widgets](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
     elevation: admin
     reversible: true
@@ -391,42 +261,21 @@ tweaks:
     name: "Turn off Microsoft account nags in Start"
     description: "Stop the Microsoft account upsell prompts in the Start menu user tile."
     info: |
-      **Stops Windows nagging you in the Start menu user tile to back up, re-sign-in, or buy more
-      storage.**
-
-      ## What it does
-      Sets the documented policy `DisableAccountNotifications` to 1 under
-      `HKCU\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications`. Microsoft's own
-      description lists what that suppresses: prompts to reauthenticate, to back up the device, to
-      manage cloud storage quota, and to manage a Microsoft 365 or Xbox subscription.
-
-      ## Benefits
-      - **Clean user tile**: the Start account area stops carrying upsell badges
-      - **No storage-quota nag**: the OneDrive "you are almost full" prompt in Start goes quiet
-      - **Instant and per user**: no reboot, no elevation, no service restart
+      **Stops the Start menu account tile nagging you to back up, sign in again, buy storage or manage Microsoft 365 and Xbox subscriptions.**
 
       ## Drawbacks
-      - **You lose real reminders too**: a genuine "sign in again" prompt is suppressed along with
-        the marketing
-      - **Start only**: notifications from OneDrive, Microsoft 365 and Xbox in the Action Center are
-        unaffected
-      - **Per user**: another account on the machine needs it applied separately
+      - A genuine "sign in again" reminder is hidden along with the marketing.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: immediately, no reboot or sign-out needed
-      - **Reverting**: deletes the policy value so Windows returns to its shipped behaviour
-      - Settings has a related switch, `Start_AccountNotifications`; this tweak deliberately leaves
-        that one to you so the two do not fight
+      ## Notes
+      - Start only: OneDrive, Microsoft 365 and Xbox notifications elsewhere are unaffected.
+      - Separate from the account notifications switch in Settings; Windows honours both.
+      - Applies to your account only, and takes effect immediately.
 
       ## Recommendation
-      Apply it if you use a Microsoft account and are tired of the account tile selling you storage
-      and subscriptions. Skip it if you rely on Windows telling you when your sign-in has expired.
+      Apply it if the account tile keeps selling you storage and subscriptions. Skip it if you rely on Windows telling you when your sign-in has expired.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Start menu policy settings, Disable Account Notifications](https://learn.microsoft.com/en-us/windows/configuration/start/policy-settings)
+      ## Sources
+      - [Start menu policy settings](https://learn.microsoft.com/en-us/windows/configuration/start/policy-settings)
       - [Policy CSP - Start](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
     risk_level: low
     elevation: admin
@@ -445,42 +294,20 @@ tweaks:
     name: "Turn off account upsell cards in Settings"
     description: "Replace the account-state promo cards in Settings with plain default content."
     info: |
-      **Replaces the account upsell cards inside Settings with plain default content, on the
-      editions that honour it.**
+      **Replaces the account upsell cards in Settings (finish setting up, upgrade storage, manage your subscription) with plain default content.**
 
-      ## What it does
-      Sets the documented policy `DisableConsumerAccountStateContent` to 1 under
-      `HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent`. Windows experiences that would show
-      account-state promotions (finish setting up your account, upgrade your storage, manage your
-      subscription) present the default fallback content instead.
+      ## Requirements
+      - Works only on Enterprise, Education and IoT Enterprise. On Home and Pro it applies cleanly and does nothing.
 
-      ## Benefits
-      - **Quieter Settings**: the account-state promo cards stop appearing
-      - **Machine-wide**: one policy covers every account on the PC
-      - **Documented**: shipped `CloudContent.admx` declares the key, value and polarity
-
-      ## Drawbacks
-      - **Ignored on Home and Pro**: Microsoft supports this policy only on Enterprise, Education
-        and IoT Enterprise, so most consumer PCs will see no change at all
-      - **Not all upsells**: Microsoft 365 and OneDrive prompts from their own apps are unaffected
-      - **Requires admin**: it writes a machine policy, unlike the per-user suggestion tweaks
-
-      ## Good to know
-      - **Applies to**: Windows 11 21H2 and newer, Enterprise, Education, IoT Enterprise and IoT
-        Enterprise LTSC only
-      - **Takes effect**: immediately; sign out and back in if a card is still on screen
-      - **Reverting**: deletes the policy value so Windows returns to its shipped behaviour
-      - Check your edition first: on Home and Pro this applies cleanly and changes nothing
+      ## Notes
+      - Sign out and back in if a card is still on screen.
+      - Prompts inside Microsoft 365 and OneDrive apps are unaffected.
 
       ## Recommendation
-      Apply it on Enterprise, Education or IoT Enterprise, where it does what it says. On Home and
-      Pro it is honest to skip it, because Windows will not honour the policy.
+      Apply it on Enterprise, Education or IoT Enterprise. Skip it on Home and Pro.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
+      ## Sources
       - [Policy CSP - Experience, DisableConsumerAccountStateContent](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
-      - [Manage connections from Windows components to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
     elevation: admin
     reversible: true
@@ -502,43 +329,28 @@ tweaks:
     name: "Turn off all Windows Spotlight features"
     description: "Turn off every Windows Spotlight surface with one per-user policy."
     info: |
-      **One switch that turns off every Windows Spotlight surface at once.**
-
-      ## What it does
-      Sets the documented policy `DisableWindowsSpotlightFeatures` to 1 under
-      `HKCU\SOFTWARE\Policies\Microsoft\Windows\CloudContent`. Microsoft's own description covers
-      Spotlight on the lock screen, Windows tips, Microsoft consumer features and related surfaces,
-      and names reducing network traffic as a reason to enable it.
-
-      ## Benefits
-      - **Everything at once**: lock screen images, tips and consumer content stop in one write
-      - **Less network chatter**: Microsoft names traffic reduction as the point of this policy
-      - **Works on Home**: this is the user-scoped Spotlight policy, not the edition-gated
-        machine one
+      **Turns off every Windows Spotlight feature at once: lock screen images, Windows tips, Microsoft consumer content and related surfaces.**
 
       ## Drawbacks
-      - **No Spotlight wallpapers**: the rotating lock screen and desktop images stop, and the lock
-        screen falls back to a static picture
-      - **Broad**: it also covers surfaces some people like, such as Windows tips
-      - **Makes other tweaks look unapplied**: the individual lock screen, soft landing and consumer
-        content tweaks will still read "not applied" even though their surfaces are gone
+      - The rotating lock screen and desktop images stop; the lock screen falls back to a static picture.
+      - Broad: surfaces some people like, such as Windows tips, go too.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: after sign-out, so the lock screen and tip surfaces refresh
-      - **Reverting**: deletes the policy value, and the individual tweaks resume controlling their
-        own surfaces
-      - Choose this or the desktop-only Spotlight tweak, not both; this one already includes it
+      ## Caveats
+      - It overrides four narrower tweaks without changing them, so those can read as not applied while their surfaces are off.
+
+      ## Notes
+      - Works on every edition, including Home. Takes effect after a sign-out.
+
+      ## Related
+      - **Turn off Spotlight desktop wallpaper** is a subset of this; pick one.
+      - **Turn off lock screen ads and fun facts** and **Turn off Windows tips and suggestions** (Privacy) remove the ads but keep the images.
 
       ## Recommendation
-      Apply it if you want the whole Spotlight system off and do not care about the wallpapers. If
-      you like the lock screen images and only want the ads gone, use the individual tweaks instead.
+      Apply it if you want all of Spotlight gone. If you like the lock screen images, use the individual Privacy tweaks instead.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy CSP - Experience, AllowWindowsSpotlight](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
-      - [Manage connections from Windows components to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      ## Sources
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
     elevation: admin
     reversible: true
@@ -556,39 +368,18 @@ tweaks:
     name: "Turn off Spotlight desktop wallpaper"
     description: "Stop the rotating Spotlight image collection from taking over the desktop wallpaper."
     info: |
-      **Stops the rotating Spotlight image collection from taking over your desktop wallpaper.**
+      **Stops Windows Spotlight rotating your desktop wallpaper and removes its "learn about this picture" icon. Lock screen Spotlight is untouched.**
 
-      ## What it does
-      Sets the documented policy `DisableSpotlightCollectionOnDesktop` to 1 under
-      `HKCU\SOFTWARE\Policies\Microsoft\Windows\CloudContent`. That removes "Windows spotlight" as a
-      desktop background option and returns the desktop to whatever wallpaper you set.
+      ## Notes
+      - Takes effect after a sign-out, when Spotlight stops being offered as a background.
+      - Applies to your account only.
 
-      ## Benefits
-      - **Your wallpaper stays put**: no daily image swap chosen by Microsoft
-      - **No desktop info bubble**: the Spotlight "learn about this picture" icon goes with it
-      - **Narrow**: lock screen Spotlight and Windows tips are untouched
+      ## Related
+      - **Turn off all Windows Spotlight features** already covers this; applying both changes nothing extra.
 
-      ## Drawbacks
-      - **No rotating images**: if you enjoy the daily photo, this removes it
-      - **Redundant with the master switch**: the "all Spotlight features" tweak already covers this
-        surface, so applying both changes nothing extra
-      - **Per user**: another account on the machine needs it applied separately
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: after sign-out, when the wallpaper provider falls back
-      - **Reverting**: deletes the policy value so Spotlight becomes selectable again
-      - Pick this or the all-Spotlight tweak; this one is the narrower of the two
-
-      ## Recommendation
-      Apply it if you want to keep lock screen Spotlight but want control of your own desktop. If
-      you want the whole Spotlight system gone, use the all-Spotlight tweak instead of this one.
-
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
+      ## Sources
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
       - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
-      - [Win11Debloat, Disable_Desktop_Spotlight.reg](https://github.com/Raphire/Win11Debloat)
     risk_level: low
     elevation: admin
     reversible: true
@@ -606,41 +397,17 @@ tweaks:
     name: "Silence suggested and backup reminder toasts"
     description: "Silence the 'Suggested' ad toasts and the Windows Backup reminder toasts."
     info: |
-      **Silences the "Suggested" ad toasts and the Windows Backup reminder without muting every
-      notification.**
+      **Silences two Microsoft nag notifications: the "Suggested" ad toasts and the Windows Backup reminders. All other notifications keep working.**
 
-      ## What it does
-      Writes `Enabled` = 0 under
-      `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings` for two system toast
-      identifiers, `Windows.SystemToast.Suggested` and `Windows.SystemToast.BackupReminder`. That is
-      the same per-app store the Settings notifications page uses.
+      ## Caveats
+      - Other Microsoft promotional toasts use other channels and keep coming.
+      - Undocumented by Microsoft, though it uses the same per-app switch as Settings.
 
-      ## Benefits
-      - **Surgical**: only these two nag channels stop, everything else still notifies you
-      - **Both real**: both toast identifiers exist in shipped Windows 11 24H2 binaries
-      - **Instant and per user**: no elevation, no reboot
+      ## Related
+      - **Turn off toast notifications** (Interface) silences all notifications instead.
 
-      ## Drawbacks
-      - **No backup reminders**: if you rely on Windows Backup prompting you, that prompt is gone
-      - **Not a master mute**: other Microsoft promo toasts use different identifiers and keep coming
-      - **Undocumented**: Microsoft publishes no page for these identifiers, though the storage
-        scheme is the one Settings itself writes
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, all editions
-      - **Takes effect**: immediately, from the next toast onward
-      - **Reverting**: deletes both values so the notification platform returns to its default
-      - The keys do not exist on a fresh profile; applying creates them
-
-      ## Recommendation
-      Apply it if you want notifications generally but are tired of being sold Microsoft services in
-      the Action Center. If you want silence overall, use the toast notifications tweak in Interface
-      instead of this one.
-
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Community-corroborated
-      - [Win11Debloat, Disable_Windows_Suggestions.reg](https://github.com/Raphire/Win11Debloat)
+      ## Sources
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
       - [Change notification settings in Windows](https://support.microsoft.com/en-us/windows/change-notification-settings-in-windows-8942c744-6198-fe56-4639-34320cf9444e)
     risk_level: low
     elevation: user
@@ -665,37 +432,18 @@ tweaks:
     name: "Turn off the Edge first-run experience"
     description: "Skip Microsoft Edge's first-run setup and import prompts."
     info: |
-      **Edge opens straight to a normal window instead of a setup and import wizard.**
+      **Makes Microsoft Edge open straight to a normal window, skipping its setup, import and sign-in wizard.**
 
-      ## What it does
-      Sets the documented Edge policy `HideFirstRunExperience` to 1 under
-      `HKLM\SOFTWARE\Policies\Microsoft\Edge`. That suppresses the first-run walkthrough, the
-      "import your browsing data" prompt and the sign-in and personalization pages.
-
-      ## Benefits
-      - **No setup gauntlet**: useful on fresh installs and every new Windows profile
-      - **No default-browser nag**: the first-run flow is where Edge pushes hardest
-      - **Documented policy**: Microsoft publishes the value, type and behaviour
-
-      ## Drawbacks
-      - **No guided setup**: new users on a shared PC are not walked through Edge
-      - **Edge stays installed**: this hides a wizard, it does not remove or disable the browser
-      - **Nothing else changes**: sidebar, Copilot and background processes need their own tweaks
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, with Microsoft Edge 80 or later
-      - **Takes effect**: immediately, on the next Edge launch
-      - **Reverting**: deletes the policy value, restoring Edge's own default behaviour
-      - Requires administrator rights because it writes a machine policy
+      ## Notes
+      - Takes effect the next time Edge starts. Edge itself stays installed.
+      - New users on a shared PC are not walked through Edge.
+      - Does nothing on Windows 10 LTSC 2021 unless Edge was installed separately.
 
       ## Recommendation
-      Apply it, especially on new setups. There is no cost beyond losing a walkthrough that exists
-      to change your defaults.
+      Apply it, especially on new setups; the wizard's main job is changing your defaults.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Microsoft Edge policy, HideFirstRunExperience](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/hidefirstrunexperience)
+      ## Sources
+      - [Microsoft Edge policy: HideFirstRunExperience](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/hidefirstrunexperience)
     risk_level: low
     elevation: admin
     reversible: true
@@ -712,41 +460,21 @@ tweaks:
     name: "Turn off Edge startup boost"
     description: "Stop Microsoft Edge from preloading at sign-in and running in the background."
     info: |
-      **Stops Edge preloading at sign-in and lingering after you close it, so closing it actually
-      closes it.**
-
-      ## What it does
-      Sets the documented Edge policies `StartupBoostEnabled` and `BackgroundModeEnabled` to 0 under
-      `HKLM\SOFTWARE\Policies\Microsoft\Edge`. The first stops Edge pre-launching processes at
-      sign-in; the second stops it staying resident after the last window closes.
-
-      ## Benefits
-      - **No idle Edge processes**: memory is not held while the browser is closed
-      - **Quieter sign-in**: nothing pre-warms a browser you may not open
-      - **Both halves documented**: Microsoft publishes each policy with its data type
+      **Stops Edge preloading at sign-in and staying in the background after you close it, so closing it really closes it.**
 
       ## Drawbacks
-      - **Slower first launch**: Edge's cold start each session is measurably slower without
-        pre-warming
-      - **Background extensions stop**: extensions that rely on background mode no longer run with
-        Edge closed
-      - **Edge only**: other Chromium browsers have their own equivalent settings
+      - Edge's first start each session is slower.
+      - Extensions that run in the background stop while Edge is closed.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, with Microsoft Edge 88 or later
-      - **Takes effect**: immediately, at the next sign-in or Edge restart
-      - **Reverting**: deletes both policy values, restoring Edge's own defaults, which have both on
-      - Requires administrator rights because it writes machine policies
+      ## Notes
+      - Takes effect at the next sign-in or Edge restart.
 
       ## Recommendation
-      Apply it if Edge is not your main browser, or if you simply want nothing resident when the
-      browser is closed. Skip it if you use Edge all day and value the faster cold start.
+      Apply it if Edge is not your main browser. Skip it if you use Edge all day and value the faster first start.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Microsoft Edge policy, StartupBoostEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/startupboostenabled)
-      - [Microsoft Edge policy, BackgroundModeEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/backgroundmodeenabled)
+      ## Sources
+      - [Microsoft Edge policy: StartupBoostEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/startupboostenabled)
+      - [Microsoft Edge policy: BackgroundModeEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/backgroundmodeenabled)
     risk_level: low
     elevation: admin
     reversible: true
@@ -765,41 +493,21 @@ tweaks:
     name: "Turn off the Edge sidebar and Collections"
     description: "Hide the Microsoft Edge sidebar panel and disable Collections."
     info: |
-      **Hides the Edge sidebar panel, reclaiming browser width.**
+      **Hides the Edge sidebar panel (Discover, the calculator and other tools) and turns off Collections.**
 
-      ## What it does
-      Sets the documented Edge policies `HubsSidebarEnabled` and `EdgeCollectionsEnabled` to 0 under
-      `HKLM\SOFTWARE\Policies\Microsoft\Edge`. The first removes the right-edge hubs panel and its
-      toggle; the second disables Collections outright.
+      ## Caveats
+      - Saved Collections become unreachable while this is applied; they come back when you revert.
+      - The Copilot button in the Edge toolbar stays; this policy no longer controls it.
 
-      ## Benefits
-      - **More page width**: the right-edge panel and its rail stop taking space
-      - **Less clutter**: no Discover pane inviting you into Bing content
-      - **Documented policies**: both are current, non-deprecated and published by Microsoft
-
-      ## Drawbacks
-      - **Collections is disabled**: existing collections become unreachable from the UI while the
-        policy is set, which is a real data feature, not decoration
-      - **The Copilot toolbar button stays**: from Edge 141 Microsoft moved that button to a
-        separate policy, so this tweak no longer removes it
-      - **Sidebar tools go too**: anything you used in the panel, such as the calculator or unit
-        converter, goes with it
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, with Microsoft Edge 99 or later
-      - **Takes effect**: immediately, on the next Edge restart
-      - **Reverting**: deletes both policy values, restoring Edge's own defaults
-      - Removing the toolbar Copilot button needs `Microsoft365CopilotChatIconEnabled` instead
+      ## Notes
+      - Takes effect the next time Edge starts.
 
       ## Recommendation
-      Apply it if the sidebar is noise to you and you do not use Collections. If you use Collections
-      at all, leave it alone until the two are split, because you would lose saved content access.
+      Apply it if the sidebar is noise and you do not use Collections. If you use Collections, leave it alone.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Microsoft Edge policy, HubsSidebarEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/hubssidebarenabled)
-      - [Microsoft Edge policy, EdgeCollectionsEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/edgecollectionsenabled)
+      ## Sources
+      - [Microsoft Edge policy: HubsSidebarEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/hubssidebarenabled)
+      - [Microsoft Edge policy: EdgeCollectionsEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/edgecollectionsenabled)
     risk_level: low
     elevation: admin
     reversible: true
@@ -823,42 +531,21 @@ tweaks:
     name: "Remove the Microsoft Teams app"
     description: "Uninstall the preinstalled Microsoft Teams app, one package shared by personal, work and school."
     info: |
-      **Uninstalls the preinstalled Microsoft Teams app, which on current Windows is one app for
-      personal, work and school.**
-
-      ## What it does
-      Removes the `MSTeams` Appx package for all users. Since Windows 11 23H2 Microsoft ships a
-      single unified Teams package (`MSTeams_8wekyb3d8bbwe`) instead of the old separate consumer
-      chat build, so this is not a personal-only removal.
-
-      ## Benefits
-      - **One less preinstalled app**: Teams stops occupying disk and the app list
-      - **No sign-in prompts**: the app cannot ask you to connect a personal account
-      - **Reinstallable**: it is a normal Store app, so you can put it back
+      **Uninstalls the preinstalled Microsoft Teams app for every account on the PC, including accounts created later.**
 
       ## Drawbacks
-      - **Work and school Teams goes too**: the unified package is the same one organizations
-        deploy, so removing it removes your work client
-      - **Meeting links break**: joining a Teams meeting falls back to the browser
-      - **Feature updates can bring it back**: a Windows feature update may re-provision the package,
-        in which case apply the tweak again
+      - Teams meetings open in the browser instead.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Teams from the Microsoft Store, which needs internet access
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - Reverting reinstalls Teams with winget, which needs internet access; if that fails, the tweak shows Needs Attention. The command-line reinstall of this Store listing is unverified.
+      - A feature update may bring the app back; apply again if so.
 
       ## Recommendation
-      Remove it only on a personal machine where nobody uses Teams for work. If the PC is used for
-      any work or school account, leave it, because there is no longer a separate consumer package
-      to target.
+      Remove it only on a personal PC where nobody uses Teams for work or school.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
-      - [What's new in Windows 11 version 23H2, Teams Chat removal](https://learn.microsoft.com/en-us/windows/whats-new/whats-new-windows-11-version-23h2)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [What's new in Windows 11 version 23H2](https://learn.microsoft.com/en-us/windows/whats-new/whats-new-windows-11-version-23h2)
     warning: "On Windows 11 23H2 and newer, personal, work and school Teams are one package. Removing it removes your work or school Teams client too."
     risk_level: low
     elevation: admin
@@ -889,39 +576,15 @@ tweaks:
     name: "Remove Clipchamp"
     description: "Uninstall the bundled Clipchamp video editor."
     info: |
-      **Uninstalls the bundled Clipchamp video editor.**
+      **Uninstalls the bundled Clipchamp video editor for every account on the PC, including accounts created later.**
 
-      ## What it does
-      Removes the `Clipchamp.Clipchamp` Appx package for all users. Clipchamp is a consumer video
-      editor Microsoft bundles with Windows 11; it is not an operating system component and nothing
-      in Windows depends on it.
+      ## Caveats
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back; apply again if so.
 
-      ## Benefits
-      - **Reclaims space**: Clipchamp is one of the larger bundled apps
-      - **Tidier app list**: one fewer entry in Start and in Installed apps
-      - **Safe to remove**: Microsoft lists it among the inbox apps supported for removal on 24H2
-
-      ## Drawbacks
-      - **No built-in video editor**: nothing else in Windows replaces it
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
-      - **Store needed to undo**: reinstalling requires the Microsoft Store or winget and internet
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Clipchamp from the Microsoft Store
-      - Removing for all users needs administrator rights
-
-      ## Recommendation
-      Remove it if you have never opened it, which is most people. Keep it if you actually edit video
-      on this machine, because there is no in-box alternative.
-
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
-      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: low
     elevation: admin
     reversible: true
@@ -951,40 +614,24 @@ tweaks:
     name: "Remove Quick Assist"
     description: "Uninstall Quick Assist, the built-in remote-help tool."
     info: |
-      **Uninstalls Quick Assist, the remote-help tool that tech-support scammers lean on.**
-
-      ## What it does
-      Removes the `MicrosoftCorporationII.QuickAssist` Appx package for all users. Quick Assist lets
-      another person view or control your PC after you read them a code, which is exactly the flow
-      support scams use.
-
-      ## Benefits
-      - **Removes a scam vector**: no in-box path for a caller to take control of your screen
-      - **One less Store app**: it is not a system component and nothing depends on it
-      - **Reinstallable**: available from the Microsoft Store if you ever need it
+      **Uninstalls Quick Assist, the built-in tool that lets someone view or control your PC after you read them a code, the route tech-support scammers rely on.**
 
       ## Drawbacks
-      - **No built-in remote help**: a family member who supports you remotely loses their easiest
-        route in
-      - **Friction, not a block**: someone can still be talked into reinstalling it from the Store
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
+      - A family member who helps you remotely loses their easiest way in.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; the LTSC image ships a different, Win32 build that
-        this does not touch
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Quick Assist from the Microsoft Store
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - Friction, not a block: someone could still talk you into reinstalling it.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Requirements
+      - Windows 11. On Windows 10 LTSC 2021 the older built-in Quick Assist is untouched, so this does nothing.
 
       ## Recommendation
-      Remove it on a personal machine that never receives remote assistance, especially one used by
-      someone who might fall for a support call. Keep it if you or your helper actually use it.
+      Remove it on a PC that never gets remote help, especially one used by someone who might fall for a support call.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
     risk_level: low
     elevation: admin
@@ -1014,40 +661,21 @@ tweaks:
     name: "Remove Bing News and Weather"
     description: "Uninstall the preinstalled Microsoft News and MSN Weather apps."
     info: |
-      **Uninstalls the MSN News and Weather apps, cutting one MSN content and notification channel.**
+      **Uninstalls the Microsoft News and MSN Weather apps for every account on the PC.**
 
-      ## What it does
-      Removes the `Microsoft.BingNews` and `Microsoft.BingWeather` Appx packages for all users. These
-      are the standalone MSN apps; both are in Microsoft's supported inbox app removal list for
-      Windows 11 24H2.
+      ## Caveats
+      - Reverting reinstalls both with winget, which needs internet access; if either install fails, the tweak shows Needs Attention.
+      - A feature update may bring them back.
 
-      ## Benefits
-      - **Two content apps gone**: no MSN News or Weather in Start or in Installed apps
-      - **Fewer notifications**: their toast and badge channels go with them
-      - **Supported removal**: Microsoft lists both as removable inbox apps on 24H2
+      ## Notes
+      - Widgets still show weather through their own feed, and nothing in Windows replaces the Weather app.
 
-      ## Drawbacks
-      - **Widgets still shows weather**: the widgets board pulls content through its own host, so
-        disable Widgets separately if that is what you want gone
-      - **No offline weather**: nothing in Windows replaces the standalone app
-      - **Feature updates can restore them**: a Windows feature update may re-provision either
-        package, in which case apply the tweak again
+      ## Related
+      - **Turn off Widgets** removes the other MSN feed.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; neither app ships on Windows 10 LTSC
-      - **Takes effect**: immediately, both apps are uninstalled on apply
-      - **Reverting**: reinstalls both from the Microsoft Store, which needs internet access
-      - Removing for all users needs administrator rights
-
-      ## Recommendation
-      Remove them if you get news and weather anywhere else, which is most people. Keep them if you
-      actually open the Weather app, because the widgets feed is not a replacement.
-
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
-      - [Remove-AppxPackage, bundle guidance](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: low
     elevation: admin
     reversible: true
@@ -1086,39 +714,18 @@ tweaks:
     name: "Remove Solitaire Collection"
     description: "Uninstall the ad-supported Microsoft Solitaire Collection."
     info: |
-      **Uninstalls the ad-supported Microsoft Solitaire Collection.**
+      **Uninstalls the ad-supported Microsoft Solitaire Collection for every account on the PC.**
 
-      ## What it does
-      Removes the `Microsoft.MicrosoftSolitaireCollection` Appx package for all users. This is the
-      bundled games app that shows video ads between hands and sells a subscription to remove them.
-
-      ## Benefits
-      - **Removes an ad-supported app**: no video ads or Premium upsell on the machine
-      - **Reclaims space**: the collection is a large bundle
-      - **Supported removal**: Microsoft lists it among the removable inbox apps on 24H2
-
-      ## Drawbacks
-      - **The games go**: Klondike, Spider and the rest are gone, with no in-box replacement
-      - **Reinstall needs the Store**: this product is not resolvable through winget, so the revert
-        may need the Store app rather than a command
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; not present on LTSC images
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls from the Microsoft Store; winget cannot resolve this product ID
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - Reverting cannot reinstall it for you: it opens the Store page, where you install it yourself (needs internet). Until you do, the tweak shows Needs Attention.
+      - A feature update may bring it back.
 
       ## Recommendation
-      Remove it unless you play these games. If you do play them, note that removal is easy to undo
-      only through the Store, so decide before applying.
+      Remove it unless you play these games; getting them back means a manual Store install.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
-      - [Remove-AppxPackage, bundle guidance](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: low
     elevation: admin
     reversible: true
@@ -1145,43 +752,25 @@ tweaks:
     name: "Remove the Get Help app"
     description: "Uninstall the Get Help support app."
     info: |
-      **Uninstalls the Get Help support app.**
-
-      ## What it does
-      Removes the `Microsoft.GetHelp` Appx package for all users. Get Help is Microsoft's in-app
-      support and troubleshooting front end, and it is the target of the `ms-get-started:` links some
-      Settings troubleshooters use.
-
-      ## Benefits
-      - **One less preinstalled app**: for people who never use Microsoft's guided support
-      - **Removes a support-chat surface**: the app is also the entry point to Microsoft's virtual
-        agent
-      - **Reinstallable**: available from the Microsoft Store if you change your mind
+      **Uninstalls Get Help, Microsoft's support and troubleshooting app.**
 
       ## Drawbacks
-      - **Troubleshooter links break**: some Settings flows deep-link into Get Help and those links
-        fail rather than falling back
-      - **Store lists it as a System Component**: Windows expects it to be present, even though
-        removal is supported
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
+      - Troubleshooter links in Settings that open Get Help fail instead.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; presence on a stock 24H2 image is not guaranteed,
-        so on some machines there may be nothing to remove
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Get Help from the Microsoft Store
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - The Store lists it as a system component: removal works, but Windows expects it to be there.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Notes
+      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
 
       ## Recommendation
-      Remove it if you troubleshoot Windows yourself or with a search engine. Keep it if you use the
-      built-in guided troubleshooters, because those links stop working without it.
+      Remove it if you troubleshoot Windows yourself. Keep it if you use the built-in guided troubleshooters.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+      ## Sources
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
     risk_level: low
     elevation: admin
     reversible: true
@@ -1210,41 +799,24 @@ tweaks:
     name: "Remove Tips (Get Started)"
     description: "Uninstall the deprecated Tips app that shows onboarding and promotional content."
     info: |
-      **Uninstalls the Tips app, which exists to show onboarding and promotional content.**
+      **Uninstalls the Tips app, which exists to show onboarding and promotional content. Microsoft has deprecated it.**
 
-      ## What it does
-      Removes the `Microsoft.Getstarted` Appx package for all users. The app, listed in the Store as
-      "Microsoft Tips", delivers "getting started" walkthroughs and tip content; Microsoft has marked
-      it deprecated.
+      ## Caveats
+      - Reverting cannot reinstall it for you: it opens the Store page, where you install it yourself (needs internet). Until you do, the tweak shows Needs Attention.
+      - A feature update may bring it back.
 
-      ## Benefits
-      - **Removes a promotional app**: its whole purpose is onboarding and tip content
-      - **Deprecated upstream**: Microsoft has said it will be removed from Windows in a future
-        release
-      - **No functional loss**: nothing in Windows depends on it
+      ## Notes
+      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
 
-      ## Drawbacks
-      - **No tip walkthroughs**: if you use the guided tips, they go
-      - **Reinstall needs the Store**: this product is not resolvable through winget, so the revert
-        may need the Store app rather than a command
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
-
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; presence on a stock 24H2 image is not guaranteed,
-        so on some machines there may be nothing to remove
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls from the Microsoft Store; winget cannot resolve this product ID
-      - Windows tips shown through Spotlight are a separate surface with their own tweak
+      ## Related
+      - **Turn off Windows tips and suggestions** (Privacy) covers the tips Windows shows elsewhere, which are separate from this app.
 
       ## Recommendation
-      Remove it. It is deprecated, purely promotional, and nothing depends on it.
+      Remove it; nothing depends on it.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Deprecated features in the Windows client, Tips app](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
-      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+      ## Sources
+      - [Deprecated features in Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
     risk_level: low
     elevation: admin
     reversible: true
@@ -1269,40 +841,24 @@ tweaks:
     name: "Remove Feedback Hub"
     description: "Uninstall Feedback Hub, the app for sending feedback and traces to Microsoft."
     info: |
-      **Uninstalls Feedback Hub, the app for sending feedback and diagnostic traces to Microsoft.**
-
-      ## What it does
-      Removes the `Microsoft.WindowsFeedbackHub` Appx package for all users. Feedback Hub is where
-      you file bugs and suggestions with Microsoft, and it is wired into some diagnostic and trace
-      collection flows.
-
-      ## Benefits
-      - **Removes an app most people never open**: it exists for people who report bugs to Microsoft
-      - **One fewer diagnostic surface**: the app collects traces and attaches them to reports
-      - **Supported removal**: Microsoft lists it among the removable inbox apps on 24H2
+      **Uninstalls Feedback Hub, the app for sending bug reports, suggestions and diagnostic traces to Microsoft.**
 
       ## Drawbacks
-      - **Insiders need it**: Windows Insider feedback and several diagnostic flows require this app
-      - **No in-box way to report bugs**: Microsoft's own deprecated-features page directs feature
-        feedback here
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
+      - No built-in way to report bugs remains, and Windows Insider feedback needs it.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; not present on LTSC images
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Feedback Hub from the Microsoft Store
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Related
+      - **Turn off feedback request notifications** (Privacy) stops Windows asking for feedback, with or without the app.
 
       ## Recommendation
-      Remove it on a stable, non-Insider machine that never files feedback. Keep it if you run
-      Insider builds, because the feedback flow depends on it.
+      Remove it on a PC that is not in the Insider Program and never sends feedback. Keep it on Insider builds.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
-      - [Deprecated features in the Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Deprecated features in Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
     risk_level: low
     elevation: admin
     reversible: true
@@ -1331,41 +887,27 @@ tweaks:
     name: "Remove Phone Link"
     description: "Uninstall Phone Link, the companion app that mirrors a phone on the PC."
     info: |
-      **Uninstalls Phone Link, the companion app that mirrors an Android phone or iPhone on the PC.**
-
-      ## What it does
-      Removes the `Microsoft.YourPhone` Appx package for all users. Phone Link mirrors phone
-      notifications, messages, calls and photos, and on Windows 11 24H2 it also backs the phone panel
-      in the Start menu.
-
-      ## Benefits
-      - **Removes a background companion**: nothing pairing or polling if you never link a phone
-      - **Clears the Start phone panel**: the 24H2 side panel goes with the app
-      - **Reinstallable**: it is a normal Store app
+      **Uninstalls Phone Link, which connects an Android phone or iPhone to the PC. On Windows 11 24H2 and later the phone panel in Start goes with it.**
 
       ## Drawbacks
-      - **Phone integration stops**: notification mirroring, messaging, calls and photo transfer all
-        go, on both Android and iPhone
-      - **Start panel disappears**: the 24H2 Start phone panel is backed by this package
-      - **Feature updates can restore it**: this package is re-provisioned unusually often, in which
-        case apply the tweak again
+      - All phone integration (notifications, messages, calls, photos) stops.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer; presence on a stock 24H2 image is not guaranteed,
-        so on some machines there may be nothing to remove
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Phone Link from the Microsoft Store
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - Feature updates bring Phone Link back unusually often.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+
+      ## Notes
+      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+
+      ## Related
+      - **Hide the mobile device panel in Start** (Interface) hides only the Start panel and keeps the app.
 
       ## Recommendation
-      Remove it if you never connect a phone to this PC. Keep it if you use phone mirroring at all,
-      because the Start panel and the app share the same package.
+      Remove it if you never connect a phone to this PC. If only the Start panel bothers you, use Hide the mobile device panel in Start.
 
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+      ## Sources
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Mobile device in Start menu](https://support.microsoft.com/en-us/windows/mobile-device-in-start-menu-21676d6a-3bc3-439a-aaa3-7463b91cda79)
     risk_level: low
     elevation: admin
     reversible: true
@@ -1394,40 +936,17 @@ tweaks:
     name: "Remove the New Outlook app"
     description: "Uninstall the preinstalled new Outlook for Windows, leaving classic Outlook untouched."
     info: |
-      **Uninstalls the preinstalled new Outlook for Windows, leaving classic Outlook untouched.**
-
-      ## What it does
-      Removes the `Microsoft.OutlookforWindows` Appx package for all users. This is the web-wrapper
-      mail client Microsoft bundles with Windows 11 and positions as the replacement for the Mail,
-      Calendar and People apps. Classic Outlook from Microsoft 365 is a separate Win32 install and is
-      not affected.
-
-      ## Benefits
-      - **Removes a mail client you did not choose**: it is preinstalled, not selected
-      - **Stops the migration nudges**: no prompts to move from classic Outlook or Mail
-      - **Classic Outlook is untouched**: the Office desktop app is a separate installation
+      **Uninstalls the preinstalled new Outlook for Windows for every account on the PC. Classic Outlook from Microsoft 365 is not touched.**
 
       ## Drawbacks
-      - **Mail and Calendar have no in-box replacement**: Microsoft retired those apps in favour of
-        this one, so removing it leaves no bundled mail client
-      - **Microsoft re-pushes it hard**: it has arrived through Windows Update as well as Store
-        provisioning, so a feature update can re-provision the package; apply the tweak again if so
-      - **Removes it for every account**: other users on the PC lose it too
+      - Windows no longer includes Mail and Calendar, so no built-in mail app remains.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Outlook for Windows from the Microsoft Store
-      - Removing for all users needs administrator rights
+      ## Caveats
+      - Microsoft also pushes this app through Windows Update, so it can come back; apply again if so.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
 
-      ## Recommendation
-      Remove it if you use classic Outlook, a browser, or another mail client. Keep it if it is your
-      mail app, because Windows no longer ships an alternative.
-
-      ## Evidence
-      - **Risk**: low
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
     risk_level: low
     elevation: admin
@@ -1458,43 +977,26 @@ tweaks:
     name: "Remove Xbox Game Bar"
     description: "Uninstall the Win+G Game Bar overlay, without touching Game Mode or any GPU feature."
     info: |
-      **Uninstalls the Win+G Game Bar overlay, without touching Game Mode or any GPU feature.**
-
-      ## What it does
-      Removes the `Microsoft.XboxGamingOverlay` Appx package for all users. That is the overlay
-      itself: capture, the performance widget, and the Xbox social panels. Game Mode, hardware
-      accelerated GPU scheduling and Auto HDR are separate and unaffected.
-
-      ## Benefits
-      - **No overlay hooks**: the capture and overlay layer stops loading with games
-      - **No accidental Win+G**: the overlay cannot open mid-game
-      - **Game Mode is untouched**: this removes an app, not a performance feature
+      **Uninstalls the Xbox Game Bar overlay (Win+G): capture, the performance widget and the Xbox social panels. Game Mode and GPU features are unaffected.**
 
       ## Drawbacks
-      - **ms-gamingoverlay errors**: games that call the overlay URI show a "You'll need a new app to
-        open this ms-gamingoverlay link" dialog
-      - **You lose built-in capture**: the Win+Alt+R recorder and screenshot hotkeys go with it
-      - **Some builds refuse**: the package is flagged as a system component and removal can fail
-        with 0x80073CFA, which the tool reports as an error rather than hiding
-      - **Feature updates can restore it**: a Windows feature update may re-provision the package, in
-        which case apply the tweak again
+      - The Win+Alt+R recorder and screenshot shortcuts go with it.
+      - Games or Settings that call the overlay show a "You'll need a new app to open this ms-gamingoverlay link" dialog.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer
-      - **Takes effect**: immediately, the app is uninstalled on apply
-      - **Reverting**: reinstalls Game Bar from the Microsoft Store
-      - Keep the Xbox Identity Provider package, which game sign-in depends on
+      ## Caveats
+      - Some builds refuse the removal (error 0x80073CFA); the app then reports the error and rolls back.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Related
+      - **Disable Xbox Game Bar capture (Game DVR)** (Performance) turns off background recording without removing anything.
 
       ## Recommendation
-      Remove it only if you never press Win+G and can live with the occasional ms-gamingoverlay
-      prompt. If you only want background recording off, use the Game DVR tweak instead; it is a much
-      smaller change.
+      Remove it only if you never use Win+G and can live with the occasional link dialog. If recording is your only concern, use Disable Xbox Game Bar capture instead.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Microsoft-documented
-      - [Policy-based inbox app removal, supported app list](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
-      - [Remove-AppxPackage, bundle guidance](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: medium
     elevation: admin
     reversible: true
@@ -1524,40 +1026,27 @@ tweaks:
     name: "Remove OneDrive"
     description: "Uninstall the OneDrive client, per-user and per-machine, without deleting local files."
     info: |
-      **Uninstalls the OneDrive client so it stops syncing and stops asking to back up your
-      folders.**
-
-      ## What it does
-      Runs the in-box `OneDriveSetup.exe /uninstall`, which unlinks the account, removes the client
-      and drops its startup entry. Files already downloaded to your disk are left where they are.
-
-      ## Benefits
-      - **No background sync**: no OneDrive process, no upload activity, no sync icon
-      - **No backup nags**: the recurring "back up your folders" prompts stop
-      - **Local files stay**: anything already downloaded remains on disk
+      **Uninstalls the OneDrive client, both per-user and per-machine installs, so it stops syncing and asking to back up your folders. Files already downloaded stay on disk.**
 
       ## Drawbacks
-      - **Cloud-only files become unreachable**: Files On-Demand placeholders that were never
-        downloaded are lost to you locally, so download them first
-      - **Known Folder Move can misplace folders**: if Desktop, Documents or Pictures were redirected
-        into OneDrive, they can end up somewhere you do not expect
-      - **Office AutoSave changes**: documents stop auto-saving to the cloud
-      - **A feature update can reinstall the stub**: apply the tweak again if it comes back
+      - Office documents stop saving to the cloud automatically.
 
-      ## Good to know
-      - **Applies to**: Windows 11 24H2 and newer, and Windows 10; LTSC images do not ship OneDrive
-        at all
-      - **Takes effect**: immediately, the uninstaller runs on apply
-      - **Reverting**: reinstalls OneDrive through winget, which needs internet access
-      - Unlink your account and confirm nothing is cloud-only before you apply this
+      ## Caveats
+      - Cloud-only files that were never downloaded become unreachable on this PC; download them first.
+      - If Desktop, Documents or Pictures were moved into OneDrive, they may end up somewhere unexpected.
+      - Reverting reinstalls OneDrive with winget (needs internet) but does not re-link your account or restore folder redirection; if the reinstall fails, the tweak shows Needs Attention.
+      - A feature update can reinstall it.
+
+      ## Notes
+      - LTSC images ship without OneDrive, so they already read as Removed.
+
+      ## Related
+      - **Turn off File Explorer sync-provider ads** removes the upsell banners without uninstalling anything.
 
       ## Recommendation
-      Remove it if you never use OneDrive and have checked that no files are cloud-only and no
-      folders are redirected. If you sync anything, or use Known Folder backup, leave it alone.
+      Remove it if you never use OneDrive and have checked for cloud-only files and redirected folders. If you sync anything, leave it.
 
-      ## Evidence
-      - **Risk**: medium
-      - **Confidence**: Community-corroborated
+      ## Sources
       - [Turn off, disable, or uninstall OneDrive](https://support.microsoft.com/en-us/office/turn-off-disable-or-uninstall-onedrive-f32a17ce-3336-40fe-9c38-6efb09f944b0)
       - [Install OneDrive per machine](https://learn.microsoft.com/en-us/sharepoint/per-machine-installation)
     risk_level: medium
