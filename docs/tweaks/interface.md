@@ -802,7 +802,7 @@ System Default is shown when the pair matches no row; selecting it restores the 
 - **Keyboard only when hidden**: mode 0 leaves no mouse entry point to search.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 10, including LTSC 2021, every edition. On Windows 11 the tweak shows as unavailable; use the Windows 11 variant.
+- **Applies to**: Windows 10, including LTSC 2021, every edition. Windows 11 does not list it (debug and test builds show it as unavailable); the Windows 11 variant takes its place.
 - **Takes effect**: usually at once; otherwise after an Explorer restart or a sign-out.
 - **Reverting**: restores both captured values, which on a stock machine is mode `2` with no cache value.
 

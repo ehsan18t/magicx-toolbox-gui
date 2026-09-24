@@ -1171,8 +1171,7 @@ The error:
 
 `windows:` is legal at three levels: **tweak**, **effect**, and **per-option-value**:
 
-**Tweak level**: scopes the whole tweak. If the tweak's scope excludes the running build, the tweak
-shows **unavailable, with the reason**:
+**Tweak level**: scopes the whole tweak. If the tweak's scope excludes the running build, a release build does not list the tweak at all; debug and `test-build` builds list it as **unavailable, with the reason**, so every gate stays reviewable on one machine:
 
 ```yaml
 - id: example_windows_scoped
@@ -1221,7 +1220,7 @@ always-in-scope companion effect matters for detectability: see §10.6 and §17.
 
 A scoped-out effect is **excluded entirely** (not applied, not read, not counted toward detection) on
 builds its scope excludes. A tweak whose **entire applicable surface is empty** on the running build is
-shown **unavailable, with the reason**; it is _not_ an error, just genuinely inapplicable there.
+left out of a release build's tweak list (debug and `test-build` builds show it **unavailable, with the reason**); it is _not_ an error, just genuinely inapplicable there.
 
 The runtime reads the build via `RtlGetVersion` (never `GetVersionEx`) and the revision via the `UBR`
 registry value.
@@ -2384,7 +2383,7 @@ Tweak-level scope makes a whole tweak apply only on 24H2+:
 ```
 
 Walking the support matrix: on `19045`, `22621`, `22631` the tweak's applicable surface is **empty** →
-the tweak is **skipped** (shown unavailable, not an error). On `26100` it applies, and both options
+the tweak is **skipped** (not listed in a release build, unavailable in a debug build; not an error). On `26100` it applies, and both options
 differ on the detectable `modern_flag` → valid.
 
 Now a harder composed case mixing all three scoping levels with an always-in-scope base marker (so no

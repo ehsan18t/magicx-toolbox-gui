@@ -32,6 +32,7 @@ use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{
     Attention, EntrySummary, EntryValidity, InvalidReason, Seq, SnapshotError, SnapshotStore,
 };
+use crate::tweaks::validate::applicable_surface;
 use crate::tweaks::winver::{running_winver, WinVer};
 
 /// App-lifetime singletons the engine needs across every tweak command: managed once via Tauri
@@ -1067,7 +1068,11 @@ fn spawn_full_scan(app: AppHandle) {
         let state = app.state::<TweakEngineState>();
         let deps = build_deps(state.inner());
         let corpus = compiled_corpus();
+        let winver = running_winver();
         scan_and_emit(corpus, &deps, |event| {
+            if !find_tweak(corpus, &event.tweak_id).is_ok_and(|t| listed(t, &winver)) {
+                return;
+            }
             if let Err(e) = app.emit("tweak-status", &event) {
                 log::warn!(
                     "tweak status scan: failed to emit for '{}': {e}",
@@ -1129,6 +1134,20 @@ async fn run_locked<T: Send + 'static>(
     .await
 }
 
+/// Release builds leave out tweaks this Windows build cannot run at all; debug and test builds list
+/// them, shown as unavailable, so every gate stays reviewable on one machine.
+fn listed(tweak: &Tweak, winver: &WinVer) -> bool {
+    listed_in(
+        tweak,
+        winver,
+        cfg!(any(debug_assertions, feature = "test-build")),
+    )
+}
+
+fn listed_in(tweak: &Tweak, winver: &WinVer, show_unsupported: bool) -> bool {
+    show_unsupported || !applicable_surface(tweak, &winver.to_milestone()).is_empty()
+}
+
 // --- commands -------------------------------------------------------------------------------------
 
 #[tauri::command]
@@ -1142,6 +1161,7 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
         Ok(corpus
             .tweaks
             .iter()
+            .filter(|t| listed(t, &winver))
             .map(|t| tweak_view(t, corpus, &winver, level, sid_check))
             .collect())
     })
@@ -2298,6 +2318,24 @@ mod tests {
         assert_eq!(view.options[0].service_changes.len(), 1);
         assert_eq!(view.options[0].service_changes[0].startup, "manual");
         assert!(view.options[0].registry_changes.is_empty());
+    }
+
+    #[test]
+    fn release_builds_leave_out_tweaks_this_windows_build_cannot_run() {
+        let mut win11_only = tweak("win11_only", vec![opt("On", StartupType::Manual)]);
+        win11_only.windows = Some(crate::tweaks::model::WindowsScope {
+            products: Some(vec![11]),
+            build: None,
+            revision: None,
+        });
+        let everywhere = tweak("everywhere", vec![opt("On", StartupType::Manual)]);
+        // WINVER is Windows 10 (19045).
+        assert!(!listed_in(&win11_only, &WINVER, false));
+        assert!(listed_in(&everywhere, &WINVER, false));
+        assert!(
+            listed_in(&win11_only, &WINVER, true),
+            "debug and test builds list every tweak"
+        );
     }
 
     #[test]
