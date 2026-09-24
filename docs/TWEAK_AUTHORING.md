@@ -120,8 +120,8 @@ the author never defined that exact state, or the machine drifted out of every d
 
 You author **only the real states you offer.** The app supplies the rest of the story:
 
-- **1 authored option → a toggle** (Default ↔ On).
-- **≥2 authored options → a dropdown** (Default / A / B / …).
+- **1 or 2 authored options → a segmented switch** (A, or A / B; System Default joins while it is the live state).
+- **3 or more authored options → a dropdown** (A / B / C / …, plus System Default while it is the live state).
 
 The "Default" position in the UI is always this computed status, never a target you write. Returning
 toward a previous state happens only through **Restore Snapshot**, which walks the tweak's captured
@@ -816,12 +816,12 @@ The three families cover differently:
 flipping to it would leave that address at whatever the previous option set: a state no option
 describes.
 
-### 7.2 The shape rule: toggle vs dropdown
+### 7.2 The shape rule: switch vs dropdown
 
 The UI shape follows the option count (spec §6.1, ADR-0003):
 
-- **1 authored option → a toggle** (Default ↔ On).
-- **2 or more → a dropdown** (Default / A / B / …).
+- **1 or 2 authored options → a segmented switch** (A, or A / B; System Default joins while it is the live state).
+- **3 or more → a dropdown** (A / B / C / …, plus System Default while it is the live state).
 
 You never author "System Default": it is the computed status when the live surface matches no option
 (§1.3, §15). So a **1-option** tweak is a switch between "the one state you defined" and "whatever the
@@ -2289,8 +2289,8 @@ schema-valid against the shipped validator.
       values: { demo_flag: absent } # delete DemoFlag entirely
 ```
 
-Two options, both valuing the one Setting, differing on a detectable value → valid. UI: a dropdown of
-Default / Enabled / Disabled.
+Two options, both valuing the one Setting, differing on a detectable value → valid. UI: a segmented switch of
+Enabled / Disabled, with System Default joining while it is the live state.
 
 ### 17.2 Service + task with presence (optional / if_missing)
 

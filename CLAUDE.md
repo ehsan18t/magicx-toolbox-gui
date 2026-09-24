@@ -125,11 +125,12 @@ explicitly with `cargo test -- --ignored`.
 
 - Tweaks are YAML in `src-tauri/tweaks/`, compiled at build time by `build.rs` (the schema types are
   shared with the runtime via `src/tweaks/{model,parse,schema,validate}.rs`, so drift is a compile
-  error). Category is **per file**, not per tweak: one `category:` header per YAML file. 1 authored
-  option → toggle, 2+ → dropdown; you never author "System Default", it is the computed state when
+  error). Category is **per file**, not per tweak: one `category:` header per YAML file. 1 or 2 authored
+  options → segmented switch, 3+ → dropdown; you never author "System Default", it is the computed state when
   the live surface matches no option. `optional: true` (with an optional `if_missing:`) tolerates a
   *missing* resource at capture and detect; it does not weaken the post-apply verify.
 - **When tweak runtime behavior changes, update `docs/TWEAK_AUTHORING.md`**, the authoritative author guide. `docs/TWEAK_SYSTEM.md` is the architecture reference.
+- **When a tweak changes (effect, option, value, gate, risk), update its entry in `docs/tweaks/<category>.md` in the same commit.** The wiki is the complete per-tweak reference; the YAML stays lean. Adding a tweak adds an entry and an index row in `docs/tweaks/README.md`; removing one moves it to "Considered and not shipped".
 
 ## Dependencies
 
