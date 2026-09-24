@@ -40,7 +40,7 @@ The verdicts on this page come from the July 2026 validation research. That rese
 | [Disable legacy TLS 1.0/1.1 (Schannel)](#disable-legacy-tls-1011-schannel) | `disable_tls_legacy` | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Force .NET strong crypto (TLS 1.2+)](#force-net-strong-crypto-tls-12) | `dotnet_strong_crypto` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable SMB insecure guest logons](#disable-smb-insecure-guest-logons) | `disable_smb_guest` | Switch (2 options) | low | admin | no | VERIFIED |
-| [Remove PowerShell 2.0 engine](#remove-powershell-20-engine) | `remove_powershell_v2` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Remove PowerShell 2.0 engine](#remove-powershell-20-engine) | `remove_powershell_v2` | Switch | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Enforce the firewall on all profiles](#enforce-the-firewall-on-all-profiles) | `firewall_all_profiles` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Enable logon/credential auditing](#enable-logoncredential-auditing) | `audit_logon_events` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Lock the screen when idle](#lock-the-screen-when-idle) | `lock_on_inactivity` | Switch | low | none | no | VERIFIED-WITH-CORRECTION |
@@ -244,24 +244,24 @@ Apply it unless you deliberately connect into this PC over Remote Desktop. If yo
 | Effect id | Kind | Target | Notes |
 |---|---|---|---|
 | `smb1_server` | registry | `HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters` value `SMB1` (REG_DWORD) | Not `optional`; no elevation override |
-| `smb1_feature` | action (PowerShell, timeout 900 s) | apply: `Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction Stop`; undo: `Enable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -All -ErrorAction Stop`; probe: exits 0 only when `(Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol).State` is `Disabled` | Reversible (has undo) and detectable (has probe) |
+| `smb1_feature` | action (PowerShell, timeout 900 s) | apply: `Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction Stop`; undo: `Enable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -All -ErrorAction Stop`; probe: exits 0 only when `(Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol).State` is `Disabled`, `DisablePending` or `DisabledWithPayloadRemoved` | Reversible (has undo) and detectable (has probe) |
 
 | Option | `smb1_server` | `smb1_feature` |
 |---|---|---|
-| Removed | `0` | `run` (apply: disable the feature) |
+| Removed | `absent` | `run` (apply: disable the feature) |
 | Installed | `absent` | omitted (undo: re-enable the feature) |
 
-System Default is shown when the live state matches neither row, for example `SMB1` = 0 with the feature still installed, or `SMB1` absent with the feature disabled (the common stock state on Windows 11); selecting it restores the snapshot. Microsoft states the `SMB1` value's default is 1 (Enabled) and "no registry key is created", so absent is the stock registry state; the feature itself is not installed by default on Windows 11 or on Windows 10 1709 and later, except Windows 10 Home and Pro.
+System Default is shown when the live state matches neither row, for example `SMB1` = 0 set by another tool; selecting it restores the snapshot. The common stock state on Windows 11 (`SMB1` absent, feature disabled) reads as "Removed", so applying there changes nothing and a revert can never install SMBv1 on a machine that did not have it. Microsoft states the `SMB1` value's default is 1 (Enabled) and "no registry key is created", so absent is the stock registry state; the feature itself is not installed by default on Windows 11 or on Windows 10 1709 and later, except Windows 10 Home and Pro.
 
 #### How it works
 
 SMBv1 is delivered as the `SMB1Protocol` Windows optional feature, which carries both the SMBv1 client and the SMBv1 server component. Disabling the feature through DISM (`Disable-WindowsOptionalFeature`) removes both halves; the change is staged and finishes on the next restart, which is why the tweak passes `-NoRestart` and sets `requires_reboot`. SMB 2.x and 3.x, used by every modern file share, are separate and unaffected.
 
-The registry half is Microsoft's documented server-side switch: `LanmanServer\Parameters\SMB1` = 0 disables SMBv1 on the server even if the feature is present. Writing it alongside the feature removal makes the server side explicit and pins it if the feature is later reinstalled by something else.
+The registry half is Microsoft's documented server-side switch: `LanmanServer\Parameters\SMB1` = 0 disables SMBv1 on the server even if the feature is present. The tweak deliberately does not write it: both options leave `SMB1` at its stock `absent`. Writing 0 in "Removed" would make a stock Windows 11 machine (feature already disabled, value absent) read as System Default, so applying would record the feature action and a later revert would run its undo and install SMBv1 on a machine that never had it. With the feature removed, the server component the value controls is gone anyway; the cost is that nothing pins the server side off if something else reinstalls the feature later, which the tweak would then show as "Installed".
 
-The action has a probe, so the app detects the real feature state instead of trusting that the script ran. The probe is written in the fail-safe polarity: only an explicit state of `Disabled` exits 0; any other state, or a failed query, exits 1 and the effect reads as not applied. The cross-cutting probe audit lists this tweak among the probes that are already correct. A state of `DisabledWithPayloadRemoved` also reads as not applied, because the probe tests for `Disabled` exactly.
+The action has a probe, so the app detects the real feature state instead of trusting that the script ran. The probe is written in the fail-safe polarity: only an explicit state of `Disabled` exits 0; any other state, or a failed query, exits 1 and the effect reads as not applied. The cross-cutting probe audit lists this tweak among the probes that are already correct. `DisablePending` (the disable is staged until the restart) and `DisabledWithPayloadRemoved` also read as removed.
 
-"Installed" leaves the action out of its values. Omitting an action drives it back to its not-run state, which runs the undo script: `Enable-WindowsOptionalFeature ... -All` reinstalls the feature (with `-All` also enabling any parent features it needs) and the `SMB1` value is deleted so the server default applies. The undo can take several minutes, hence the 900 second timeout.
+"Installed" leaves the action out of its values. Omitting an action drives it back to its not-run state, which runs the undo script: `Enable-WindowsOptionalFeature ... -All` reinstalls the feature (with `-All` also enabling any parent features it needs) and the `SMB1` value stays absent so the server default applies. The undo can take several minutes, hence the 900 second timeout.
 
 #### Benefits
 - **Kills a wormable protocol**: SMBv1 carried EternalBlue and WannaCry.
@@ -278,7 +278,7 @@ The action has a probe, so the app detects the real feature state instead of tru
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer (usually already absent); Windows 10 22H2 Home and Pro still ship it; Microsoft's exception list names only Home and Pro, so Enterprise-family editions such as Windows 10 IoT Enterprise LTSC 2021 do not install it by default.
 - **Takes effect**: after reboot.
-- **Reverting**: choosing "Installed" runs the undo (reinstalls the feature) and deletes `SMB1`; Restore Snapshot restores the captured `SMB1` value and the captured feature state. Either path needs another reboot. Applying on a machine where the feature is already Disabled is a safe no-op for the feature half.
+- **Reverting**: choosing "Installed" runs the undo (reinstalls the feature); Restore Snapshot restores the captured `SMB1` value and, when the apply actually disabled the feature, reinstalls it. Either path needs another reboot. On a machine where the feature is already disabled, the tweak reads as "Removed" and applying is a no-op, so no revert can reinstall it.
 
 #### Interactions
 - [Require SMB signing](#require-smb-signing), [Disable SMB insecure guest logons](#disable-smb-insecure-guest-logons) and [Block NTLM on the SMB client](#block-ntlm-on-the-smb-client) harden SMB 2 and 3; they produce the same class of legacy-NAS breakage, so apply them together and test old storage once.
@@ -2203,7 +2203,7 @@ Apply it on any machine, and give your shares proper credentials. Leave it at "A
 
 ### Remove PowerShell 2.0 engine
 
-`remove_powershell_v2` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
+`remove_powershell_v2` · Switch · Risk: low · Elevation: admin · Reboot: yes · Windows: all supported builds · Reversible: yes
 
 **Removes the obsolete PowerShell 2.0 engine, so scripts can no longer be downgraded onto an engine with no AMSI scanning and no logging.**
 
@@ -2211,15 +2211,13 @@ Apply it on any machine, and give your shares proper credentials. Leave it at "A
 
 | Effect | Kind | Target | Notes |
 |---|---|---|---|
-| `ps2_state` | registry | `HKLM\SOFTWARE\MagicXToolbox\State`, value `PowerShellV2` (REG_DWORD) | the app's own applied-state marker, machine-wide because the change is machine-wide |
-| `ps2_feature` | action (PowerShell, timeout 900 s) | apply: `Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -NoRestart -ErrorAction Stop`; undo: `Enable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -NoRestart -All -ErrorAction Stop`; probe: exits 0 only when both `MicrosoftWindowsPowerShellV2Root` and `MicrosoftWindowsPowerShellV2` report `Disabled` | has apply, undo and probe, so it is reversible and detectable |
+| `ps2_feature` | action (PowerShell, timeout 900 s) | apply: `Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -NoRestart -ErrorAction Stop`; undo: `Enable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -NoRestart -All -ErrorAction Stop`; probe: exits 0 only when both `MicrosoftWindowsPowerShellV2Root` and `MicrosoftWindowsPowerShellV2` report `Disabled`, `DisablePending` or `DisabledWithPayloadRemoved` | has apply, undo and probe, so it is reversible and detectable |
 
-| Option | `ps2_state` | `ps2_feature` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (omitting a present action drives its undo, which reinstalls the feature) |
+| Option | `ps2_feature` |
+|---|---|
+| Removed | run |
 
-System Default is shown when the marker and the feature state match neither option. A stock machine has no marker value, so it reads as System Default even though the feature is installed. Selecting System Default restores the snapshot: the marker goes back to its captured state (normally absent) and, if the action ran, its undo reinstalls the feature. Where the feature ships, it is present and enabled by default.
+System Default is shown while either feature is enabled, which is the stock state where the feature ships; selecting it after applying restores the snapshot, which runs the undo and reinstalls the feature. Detection reads the feature state itself, so a machine where PowerShell 2.0 is already disabled reads as "Removed" and a revert never installs it there.
 
 #### How it works
 
@@ -2227,9 +2225,7 @@ System Default is shown when the marker and the feature state match neither opti
 
 The change is made through DISM's PowerShell cmdlets, which service the Windows image. That is why the action carries a 900-second timeout (servicing routinely takes minutes) and why a reboot is needed before the change is complete. `-NoRestart` suppresses DISM's own restart so the app controls the reboot prompt.
 
-The probe checks both features, which is what DISA's check requires. Checking only the parent would let a half-finished servicing operation (parent disabled, engine still present) read as success. The probe is written fail-safe: only the explicit "both Disabled" branch exits 0, and any query failure exits non-zero, so "could not tell" never reads as "removed". The category's probe review lists this tweak among the probes with the correct polarity.
-
-The applied-state marker lives in HKLM, not the user hive, because the change is machine-wide and is applied through the elevated app; a per-user marker could land in a different hive from the one the UI reads.
+The probe checks both features, which is what DISA's check requires. Checking only the parent would let a half-finished servicing operation (parent disabled, engine still present) read as success. `DisablePending` (a disable that waits for a restart) and `DisabledWithPayloadRemoved` count as disabled too. The probe is written fail-safe: only the explicit "both Disabled" branch exits 0, and any query failure exits non-zero, so "could not tell" never reads as "removed". The category's probe review lists this tweak among the probes with the correct polarity.
 
 PowerShell 2.0 is being withdrawn by Microsoft. DISA's Windows 11 STIG marks the requirement Not Applicable from 24H2 onward, and Microsoft has begun removing PowerShell 2.0 from Insider builds (Canary 27891 and later). On a build where the feature no longer exists, the apply script uses `-ErrorAction Stop`, so it fails with an error rather than quietly succeeding; the app surfaces that failure instead of reporting a change it did not make.
 
@@ -2248,17 +2244,17 @@ PowerShell 2.0 is being withdrawn by Microsoft. DISA's Windows 11 STIG marks the
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer where the feature is still present; also Windows 10 22H2, Windows 10 IoT Enterprise LTSC 2021 and Windows 11 up to 23H2, where the feature is present and enabled by default. All editions.
 - **Takes effect**: after a reboot (servicing completes at restart).
-- **Reverting**: "Installed" writes the marker `0` and runs the undo (`Enable-WindowsOptionalFeature ... -All`), which reinstalls the parent and its engine; a second reboot completes it. System Default restores the captured marker and also runs the undo if the action ran. The revert is complete once the reboot finishes.
+- **Reverting**: turning the switch off (System Default) after applying runs the undo (`Enable-WindowsOptionalFeature ... -All`), which reinstalls the parent and its engine; a second reboot completes it.
 
 #### Interactions
 - [Enable PowerShell script-block logging](#enable-powershell-script-block-logging) and [PowerShell module logging and transcription](#powershell-module-logging-and-transcription): both log only on engines newer than 2.0. This tweak removes the engine that bypasses them, so the three are complementary.
 - [Disable Windows Script Host](#disable-windows-script-host): a separate script host, unaffected.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. The research established that the revert must actually reinstall the feature (the "Installed" option omits the action so its undo runs), that the applied-state marker belongs in HKLM because the change is machine-wide, and that a complete check requires both `MicrosoftWindowsPowerShellV2Root` and `MicrosoftWindowsPowerShellV2` to report Disabled.
+- **Verdict**: VERIFIED-WITH-CORRECTION. The research established that the revert must actually reinstall the feature, that a per-user marker cannot track a machine-wide change, and that a complete check requires both `MicrosoftWindowsPowerShellV2Root` and `MicrosoftWindowsPowerShellV2` to report Disabled. The shipped tweak reads its state from both features directly, with no marker, and reinstalls them on revert.
 - **Confidence**: Microsoft-documented. The cmdlets are documented by Microsoft, and the requirement and its check are defined by the DISA STIG.
 - **Reasoning**: The feature names, the parent/child relationship and the downgrade rationale held under the adversarial pass. The open point is applicability: the research recommended a build gate or a graceful path for builds where Microsoft has removed the feature (Insider 27891 and later, and STIG Not Applicable from 24H2). The shipped tweak has no gate, so on such a build the apply fails with an error rather than silently succeeding, which is safe but not graceful.
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 the disable and the re-enable each completed without a pending restart (`RestartNeeded` False), both features reading `Disabled` and then `Enabled` at once.
 
 #### Recommendation
 Apply it on almost every machine; the security gain is real and the compatibility cost is negligible. Skip it only if you know you run software that forces PowerShell 2.0.
@@ -2318,7 +2314,7 @@ This tweak does not change `AllowLocalPolicyMerge`, so locally created allow rul
 - **Reverting**: "User's choice" deletes all six values, which returns control to the user and lets the firewall fall back to its non-policy (local) state. System Default restores exactly the captured values.
 
 #### Interactions
-- `network:firewall_logging_and_merge`: writes logging values and `AllowLocalPolicyMerge` under the same `WindowsFirewall` policy tree, but uses `StandardProfile` as its middle profile subkey while this tweak uses `PrivateProfile`. Different value names, so there is no ownership conflict, but the two tweaks address the private profile through different subkeys.
+- `network:firewall_logging_and_merge`: writes logging values and `AllowLocalPolicyMerge` under the same `WindowsFirewall` profile policy keys, including `PrivateProfile`. Different value names, so there is no ownership conflict.
 - Any third-party firewall product that manages Windows Defender Firewall.
 
 #### Validation
@@ -2344,14 +2340,13 @@ Apply it; the firewall on with default-block inbound is baseline security. Be re
 
 | Effect | Kind | Target | Notes |
 |---|---|---|---|
-| `audit_logon_state` | registry | `HKLM\SOFTWARE\MagicXToolbox\State`, value `AuditLogonEvents` (REG_DWORD) | the app's own applied-state marker, machine-wide |
-| `audit_logon` | action (PowerShell) | apply: reads the current inclusion setting of the Logon subcategory `{0CCE9215-69AE-11D9-BED3-505054503030}` with `auditpol /get /subcategory:... /r`, stores it as `AuditLogonPrior` (REG_SZ) under `HKLM\SOFTWARE\MagicXToolbox\State`, then runs `auditpol /set /subcategory:"{0CCE9215-...}" /success:enable /failure:enable`; undo: reads `AuditLogonPrior`, sets Success and Failure back to match it, then deletes `AuditLogonPrior`; probe: exits 0 only when the inclusion setting contains both "Success" and "Failure" | default 30 s timeout; exit codes are `auditpol`'s own |
+| `audit_logon` | action (PowerShell) | apply: reads the numeric setting of the Logon subcategory `{0CCE9215-69AE-11D9-BED3-505054503030}` from an `auditpol /backup` file (fails if it cannot), stores it as `AuditLogonPriorSetting` (REG_DWORD) under `HKLM\SOFTWARE\MagicXToolbox\State` unless a stash is already there, then runs `auditpol /set /subcategory:"{0CCE9215-...}" /success:enable /failure:enable`; undo: sets Success and Failure back from the stash (Success and Failure if there is none) and deletes the stash once `auditpol` succeeds; probe: exits 0 only when the numeric setting is 3 (Success and Failure) | default 30 s timeout; exit codes are `auditpol`'s own |
 
-| Option | `audit_logon_state` | `audit_logon` |
-|---|---|---|
-| Success and failure | `1` | run |
+| Option | `audit_logon` |
+|---|---|
+| Success and failure | run |
 
-This is a toggle: On is the option above, and Off is System Default. System Default is shown whenever the marker is not `1` or the probe does not see both Success and Failure. A stock machine has no marker, so it reads as System Default even if Windows is already auditing Success and Failure. Turning the toggle off restores the snapshot: the marker returns to its captured state (normally absent) and the action's undo puts the Logon subcategory back to the captured pre-apply setting. Windows 10 and 11 clients are documented as shipping with Logon auditing at Success and Failure, but that has not been confirmed on a clean 26100 image.
+This is a toggle: On is the option above, and Off is System Default. System Default is shown whenever the probe does not see both Success and Failure. A machine already auditing Success and Failure, which Windows clients are documented to ship with (and which the research machine showed), reads as "Success and failure" without any apply, so there is nothing to revert. Turning the toggle off after applying restores the snapshot: the action's undo puts the Logon subcategory back to the captured pre-apply setting. Windows 10 and 11 clients are documented as shipping with Logon auditing at Success and Failure, but that has not been confirmed on a clean 26100 image.
 
 #### How it works
 
@@ -2359,9 +2354,9 @@ The advanced audit policy (the `auditpol` subcategories) decides which security 
 
 The tweak addresses the subcategory by GUID, not by its name, because `auditpol` subcategory names are translated on non-English Windows and a name-based command would fail there. `auditpol.exe` needs administrator rights.
 
-The revert is designed not to leave the machine auditing less than before. The apply captures the pre-apply inclusion setting ("No Auditing", "Success", "Failure" or "Success and Failure") into `AuditLogonPrior` before changing anything, and the undo maps it back: "No Auditing" disables both, "Success" alone enables only Success, "Failure" alone enables only Failure, and anything else (including "Success and Failure", or a missing stash) enables both. If the capture itself fails, the apply records "Success and Failure", the documented client default. This matters because a hardcoded Success-only revert would silently switch off failure auditing that Windows ships with.
+The revert is designed not to leave the machine auditing less than before. The apply captures the pre-apply setting as a number (bit 1 Success, bit 2 Failure) before changing anything, and the undo writes each half back from it; with no stash it enables both, the documented client default. The number is read from the `Setting Value` column of `auditpol /backup`, because the text `auditpol /get` prints ("Success and Failure", "No Auditing") is translated on non-English Windows. A stash already present is kept, so re-applying never replaces the pre-tweak setting with this tweak's own. If the capture fails, the apply fails rather than guessing. This matters because a hardcoded Success-only revert would silently switch off failure auditing that Windows ships with.
 
-The probe follows the fail-safe pattern: only a parsed row containing both Success and Failure exits 0; anything else exits 1. The marker makes the applied state distinguishable from a stock machine that happens to audit the same way.
+The probe follows the fail-safe pattern: only a parsed setting of exactly 3 (Success and Failure) exits 0; anything else, including a failed read, exits 1.
 
 Two things can override the setting. On a managed machine, an audit-policy Group Policy object overwrites whatever `auditpol` set at the next refresh. And the legacy (category-level) audit policy can override subcategory settings unless *Audit: Force audit policy subcategory settings to override audit policy category settings* (`SCENoApplyLegacyAuditPolicy`) is enabled.
 
@@ -2381,17 +2376,17 @@ Two things can override the setting. On a managed machine, an audit-policy Group
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately; the next sign-in event is audited. No reboot.
-- **Reverting**: turning the toggle off restores the captured marker and runs the undo, which restores the captured inclusion setting and removes the `AuditLogonPrior` stash. If a Group Policy object has changed the subcategory since the apply, the undo still writes the captured pre-apply setting.
+- **Reverting**: turning the toggle off after applying runs the undo, which restores the captured setting and removes the `AuditLogonPriorSetting` stash. If a Group Policy object has changed the subcategory since the apply, the undo still writes the captured pre-apply setting.
 
 #### Interactions
 - [Event log retention size](#event-log-retention-size): sizes the Security log this tweak fills. Pair them so events are not overwritten before you read them.
 - [Log command lines in process-creation events](#log-command-lines-in-process-creation-events): uses `auditpol` on a different subcategory (Process Creation, `{0CCE922B-...}`) with the same capture-and-restore pattern; no collision.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. The research established that the revert must restore the captured pre-apply inclusion setting (Windows clients ship auditing Success and Failure, so a Success-only undo lowers the audit level), and that the applied-state marker belongs in HKLM because the change is machine-wide.
+- **Verdict**: VERIFIED-WITH-CORRECTION. The research established that the revert must restore the captured pre-apply inclusion setting (Windows clients ship auditing Success and Failure, so a Success-only undo lowers the audit level), and that a per-user marker cannot track a machine-wide change. The shipped tweak reads its state from the audit policy itself, with no marker, so a stock machine that already audits Success and Failure is never applied to or reverted.
 - **Confidence**: Microsoft-documented. The Audit Logon article documents the events, the recommended Success and Failure setting and the volume; the `auditpol set` reference documents the command.
 - **Reasoning**: The GUID, the event list and the admin requirement held under the adversarial pass. The probe was independently reviewed and has the correct fail-safe polarity. Open question: the exact shipped inclusion setting of the Logon subcategory on a clean 26100 install was not read (research UNKNOWN 8); the capture-and-restore design makes the revert correct regardless.
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 the probe reads the machine's Success and Failure setting (3) as applied under Windows PowerShell 5.1.
 
 #### Recommendation
 Enable it if you want visibility into access attempts, and pair it with a larger Security log. If you never review event logs the benefit is limited, but the cost is close to zero.
@@ -2965,13 +2960,13 @@ PowerShell 7 (`pwsh.exe`) reads its own `HKLM\SOFTWARE\Policies\Microsoft\PowerS
 #### Drawbacks
 - **Transcript files accumulate**: one file per session, which adds up on a machine that runs a lot of scripted work. Nothing rotates or deletes them.
 - **Very verbose**: module logging with `*` fills the PowerShell operational log faster.
-- **Secrets land in files**: anything typed or piped in plaintext, including passwords and tokens, is written to the transcript, so the output folder must be protected. The tweak does not create the folder or set its permissions; it must stay writable by administrators only.
+- **Secrets land in files**: anything typed or piped in plaintext, including passwords and tokens, is written to the transcript, so the output folder must be protected. The tweak does not create the folder or set its permissions: it inherits `C:\ProgramData`'s defaults, which give every local user read access to the files (and full control to whichever account creates the folder), so on a PC other people use, restrict the folder to administrators yourself.
 - **PowerShell 7 coverage not established**: only the Windows PowerShell policy keys are written.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions. Covers Windows PowerShell 5.1.
 - **Takes effect**: immediately for new PowerShell sessions; no reboot.
-- **Reverting**: "Off" deletes all five values; "Module logging only" deletes the three transcription values. System Default restores the captured values. Transcript files already written stay on disk, and the now-empty `ModuleNames` subkey may remain.
+- **Reverting**: "Off" deletes all five values; "Module logging only" deletes the three transcription values. System Default restores the captured values. Transcript files already written stay on disk, and the now-empty `ModuleNames`, `ModuleLogging` and `Transcription` keys remain. They are harmless: PowerShell treats a missing `EnableModuleLogging` or `EnableTranscripting` value as off. A `registry_key` effect cannot remove `ModuleNames`, because the build rejects deleting a key that holds one of the tweak's own values.
 
 #### Interactions
 - [Enable PowerShell script-block logging](#enable-powershell-script-block-logging): complementary; that tweak also writes the `PowerShellCore` key for PowerShell 7.
@@ -2981,11 +2976,11 @@ PowerShell 7 (`pwsh.exe`) reads its own `HKLM\SOFTWARE\Policies\Microsoft\PowerS
 #### Validation
 - **Verdict**: VERIFIED. No correction needed.
 - **Confidence**: Microsoft-documented. Keys, value names and types come from the shipped ADMX; the `ModuleNames` layout is settled from PowerShell's own first-party source code.
-- **Reasoning**: The one plausible failure mode, the `ModuleNames` value layout (the ADMX list carries no `explicitValue`), was settled by reading PowerShell's policy reader: value names are read, data is ignored. Types follow the ADMX element types (`text` is REG_SZ, `boolean` is REG_DWORD). No lockout path exists. Not covered by the research: whether PowerShell 7 honours these Windows PowerShell keys, and the permissions of the output folder.
+- **Reasoning**: The one plausible failure mode, the `ModuleNames` value layout (the ADMX list carries no `explicitValue`), was settled by reading PowerShell's policy reader: value names are read, data is ignored. Types follow the ADMX element types (`text` is REG_SZ, `boolean` is REG_DWORD). No lockout path exists. Not covered by the research: whether PowerShell 7 honours these Windows PowerShell keys. The output folder's permissions were read afterwards: `C:\ProgramData` grants `BUILTIN\Users` read and execute (inherited by files) plus create-folder and write-data rights, and `CREATOR OWNER` full control, so without a manual ACL change other local users can read transcripts.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
-Choose "Module logging and transcription" if you investigate incidents or want a full audit trail, and make sure only administrators can write to `C:\ProgramData\PowerShellTranscripts`. If transcript files on disk bother you (they can contain secrets), choose "Module logging only"; it still records pipeline activity in the event log.
+Choose "Module logging and transcription" if you investigate incidents or want a full audit trail, and, on a PC other people use, restrict `C:\ProgramData\PowerShellTranscripts` to administrators, because by default every local user can read it. If transcript files on disk bother you (they can contain secrets), choose "Module logging only"; it still records pipeline activity in the event log.
 
 #### Sources
 1. Shipped `C:\Windows\PolicyDefinitions\PowerShellExecutionPolicy.admx` (26100), policies `EnableModuleLogging` and `EnableTranscripting`: keys, value names, element types and class Both (tier A, shipped ADMX)
@@ -3823,7 +3818,7 @@ Apply "Standard" if you have enabled any auditing or PowerShell logging. Take "L
 | Effect | Kind | Target |
 |---|---|---|
 | `include_cmdline` | registry | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit` → `ProcessCreationIncludeCmdLine_Enabled` (REG_DWORD) |
-| `audit_process_creation` | action (PowerShell, `apply` / `undo` / `probe`) | Advanced audit policy subcategory Detailed Tracking > Process Creation, `{0CCE922B-69AE-11D9-BED3-505054503030}`, via `auditpol`; stashes the prior setting in `HKLM\SOFTWARE\MagicXToolbox\State` → `AuditProcessCreationPrior` (REG_SZ) |
+| `audit_process_creation` | action (PowerShell, `apply` / `undo` / `probe`) | Advanced audit policy subcategory Detailed Tracking > Process Creation, `{0CCE922B-69AE-11D9-BED3-505054503030}`, via `auditpol`; stashes the prior setting in `HKLM\SOFTWARE\MagicXToolbox\State`, value `AuditProcessCreationPriorSetting` (REG_DWORD) |
 
 | Option | `include_cmdline` | `audit_process_creation` |
 |---|---|---|
@@ -3832,9 +3827,11 @@ Apply "Standard" if you have enabled any auditing or PowerShell logging. Take "L
 
 The action's scripts:
 
-- **apply**: reads the subcategory's current "Inclusion Setting" with `auditpol /get /subcategory:{0CCE922B-...} /r` (defaulting to `No Auditing` if the read fails), stores it as `AuditProcessCreationPrior`, then runs `auditpol /set /subcategory:{0CCE922B-...} /success:enable` and exits with `auditpol`'s exit code. Failure auditing is left as it was.
-- **undo**: reads the stashed prior setting and maps it back: `Success and Failure` enables both, `Success` enables success only, `Failure` enables failure only, and anything else (including `No Auditing` or a missing stash) disables both. It runs `auditpol /set` accordingly, deletes the stash value, and exits with `auditpol`'s exit code.
-- **probe**: reports present when the subcategory's inclusion setting contains `Success`.
+- **apply**: reads the subcategory's current setting as a number (bit 1 Success, bit 2 Failure) from the `Setting Value` column of an `auditpol /backup` file, failing if it cannot; stores it as `AuditProcessCreationPriorSetting` unless a stash is already there (so a re-apply never replaces the pre-tweak setting with this tweak's own); then runs `auditpol /set /subcategory:{0CCE922B-...} /success:enable` and exits with `auditpol`'s exit code. Failure auditing is left as it was.
+- **undo**: sets Success and Failure back from the stashed number (both off if there is no stash, the Windows default), deletes the stash once `auditpol` succeeds, and exits with `auditpol`'s exit code.
+- **probe**: reports present when the subcategory's numeric setting has the Success bit.
+
+The setting is read as a number because the text `auditpol /get` prints ("No Auditing", "Success") is translated on non-English Windows.
 
 System Default is shown when the live state matches neither option: for example `ProcessCreationIncludeCmdLine_Enabled` = 1 while process-creation success auditing is off, or the value absent while success auditing is on (set by another tool or policy). Selecting it restores the snapshot. "Enabled" expects the value at 1 and the probe present; "Off" expects the value absent and the probe absent. The shipped default of the Process Creation subcategory was not established by the research.
 
@@ -3854,7 +3851,8 @@ This uses a different audit subcategory from the logon-auditing tweak (`{0CCE921
 #### Drawbacks
 - Command lines can contain secrets: a password passed as an argument lands in the Security log, readable by every administrator on the machine.
 - Log volume: process creation is frequent, so the Security log fills faster; pair it with a larger Security log.
-- The revert depends on the stash: if `AuditProcessCreationPrior` is missing when "Off" runs, the undo disables both success and failure auditing for the subcategory.
+- The revert depends on the stash: if `AuditProcessCreationPriorSetting` is missing when the undo runs, it disables both success and failure auditing for the subcategory.
+- If process-creation success auditing is already on (for example by Group Policy) while the command-line value is absent, the tweak reads System Default; applying records the pre-apply setting, but a later revert then fails its check, because the undo restores auditing that the probe still reads as on, and the tweak shows Needs Attention.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows 8.1 and later).
@@ -3870,7 +3868,7 @@ This uses a different audit subcategory from the logon-auditing tweak (`{0CCE921
 - **Verdict**: VERIFIED. Nothing in the mechanism needed correcting; the research required the `auditpol` half to revert from a captured state rather than leaving auditing on.
 - **Confidence**: Microsoft-documented: the policy was read verbatim from the shipped `AuditSettings.admx` on 26100, and Microsoft documents the Process Creation subcategory and `auditpol /set`.
 - **Reasoning**: Key, value, type, polarity and `supportedOn` survived. The pass found that the registry value alone logs nothing and that `auditpol` state is outside the registry snapshot; the shipped action captures and restores it. The privacy caution about secrets in command lines was confirmed as real.
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 the action applied twice and then undone under Windows PowerShell 5.1 kept the first stash and restored `No Auditing` exactly.
 
 #### Recommendation
 Enable it if you have enabled logon auditing or care about forensic evidence; without command lines, process events are close to useless. Enlarge the Security log at the same time. Skip it if administrators on this machine should not see credentials that scripts pass as arguments.

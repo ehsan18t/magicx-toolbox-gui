@@ -10,7 +10,7 @@ This category collects the Windows AI controls in one place: Recall (snapshot po
 | [Recall feature component](#recall-feature-component) | `remove_recall_component` | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable the Click to Do overlay](#disable-the-click-to-do-overlay) | `disable_click_to_do` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Remove the Copilot app](#remove-the-copilot-app) | `remove_copilot_app` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable the Recall optional feature](#disable-the-recall-optional-feature) | `remove_recall_feature` | Switch (2 options) | medium | admin | yes | INCORRECT (corrected form ships) |
+| [Disable the Recall optional feature](#disable-the-recall-optional-feature) | `remove_recall_feature` | Switch | medium | admin | yes | INCORRECT (corrected form ships) |
 | [Hide the Copilot taskbar button](#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](#disable-notepad-ai-features) | `disable_notepad_ai` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Paint AI features](#disable-paint-ai-features) | `disable_paint_ai` | Switch (2 options) | low | admin | no | VERIFIED |
@@ -292,7 +292,7 @@ Apply it if you do not use Copilot; it is the cleanest way to get rid of the app
 
 ### Disable the Recall optional feature
 
-`remove_recall_feature` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: yes · Windows: build >= 26100 · Reversible: yes
+`remove_recall_feature` · Switch · Risk: medium · Elevation: admin · Reboot: yes · Windows: build >= 26100 · Reversible: yes
 
 **Turns off the Recall optional Windows feature at the component level, below the Settings toggle.**
 
@@ -300,15 +300,13 @@ Apply it if you do not use Copilot; it is the cleanest way to get rid of the app
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry (app state marker) | `HKCU\Software\MagicXToolbox\Debloat`, value `RecallFeature`, `REG_DWORD` |
-| `feature` | action (PowerShell, timeout 900 s) | apply: reads the current state of optional feature `Recall` (`Unknown` if unreadable), stores it as `REG_SZ` `PreApplyState` under `HKLM\SOFTWARE\MagicXToolbox\RecallFeature`, then runs `DISM.exe /Online /Disable-Feature /FeatureName:Recall /NoRestart`, treating exit codes 0 and 3010 as success; undo: exits 0 without doing anything unless `PreApplyState` is `Enabled`, otherwise runs `DISM.exe /Online /Enable-Feature /FeatureName:Recall /NoRestart` (0 and 3010 are success); probe: exits 0 (applied) when the feature state is `Disabled` or `DisabledWithPayloadRemoved`, otherwise 1 |
+| `feature` | action (PowerShell, timeout 900 s) | apply: `DISM.exe /Online /Disable-Feature /FeatureName:Recall /NoRestart`, treating exit codes 0 and 3010 as success; undo: `DISM.exe /Online /Enable-Feature /FeatureName:Recall /NoRestart` (0 and 3010 are success); probe: exits 0 (applied) when the feature state is `Disabled`, `DisablePending` or `DisabledWithPayloadRemoved`, otherwise 1 |
 
-| Option | `state` | `feature` |
-|---|---|---|
-| Disabled | `1` | run (probe must report disabled) |
-| Enabled | `0` | not run (probe must report not disabled, so selecting it from Disabled runs the undo) |
+| Option | `feature` |
+|---|---|
+| Disabled | run (probe must report disabled) |
 
-System Default: shown whenever the marker does not match an option, which includes every stock machine (no marker exists until the app writes it). Selecting it restores the snapshot, running the undo when needed. On stock Windows 11 24H2 x64 the `Recall` feature entry is enumerated on every install; on a machine that is not a Copilot+ PC with Recall on, its state is typically `Disabled` or `DisabledWithPayloadRemoved` (observed on IoT Enterprise LTSC 2024, 26100.4061).
+System Default: shown whenever the feature is not disabled (for example `Enabled` on a Copilot+ PC with Recall on); selecting it after applying restores the snapshot, which re-enables the feature. Detection reads the real feature state, so a machine where Recall is already disabled reads as "Disabled" without any apply, for every Windows account. On stock Windows 11 24H2 x64 the `Recall` feature entry is enumerated on every install; on a machine that is not a Copilot+ PC with Recall on, its state is typically `Disabled` or `DisabledWithPayloadRemoved` (observed on IoT Enterprise LTSC 2024, 26100.4061).
 
 #### How it works
 
@@ -316,11 +314,9 @@ Windows 11 24H2 enumerates an optional feature literally named `Recall` (`Get-Wi
 
 Without `/Remove`, DISM leaves the payload on disk; the tweak does not pass `/Remove`, so the result is state `Disabled`, not `DisabledWithPayloadRemoved`. The probe accepts both, because both mean "off", and a machine that already has the payload removed is more thoroughly disabled than this tweak would make it.
 
-With `/NoRestart`, DISM returns 3010 (`ERROR_SUCCESS_REBOOT_REQUIRED`) when the change succeeded and needs a restart, which is the normal result for disabling a feature; the script maps it to exit 0 so the app's exit-code contract (0 is success) reads it correctly.
+With `/NoRestart`, DISM returns 3010 (`ERROR_SUCCESS_REBOOT_REQUIRED`) when the change succeeded and needs a restart, which is the normal result for disabling a feature; the script maps it to exit 0 so the app's exit-code contract (0 is success) reads it correctly. Until that restart the feature reads `DisablePending`, which the probe also counts as disabled, so the apply verifies without waiting for the reboot.
 
-The undo is conditional. Apply records the feature's state before it ran in `HKLM\SOFTWARE\MagicXToolbox\RecallFeature\PreApplyState`, and undo only re-enables Recall when that recorded state is `Enabled`. That stops a revert from installing Recall on a machine that never had it; an unconditional enable would also fail with 0x800F081F where the payload is not staged, because no `/Source` is given. If the payload has ever been removed, re-enabling needs a DISM `/Source`.
-
-The marker `HKCU\Software\MagicXToolbox\Debloat\RecallFeature` records the chosen option. It lives in HKCU, so the different-account guard applies. The `PreApplyState` value is written by the script, not owned as a tweak effect, and is not removed by the undo.
+A revert never installs Recall on a machine that never had it: such a machine already reads as "Disabled" before any apply, so choosing Disabled there is a no-op and nothing is recorded to undo. The apply only runs, and the undo only ever re-enables, where the feature was not disabled. If the payload has ever been removed, re-enabling needs a DISM `/Source` and the revert surfaces as Needs Attention.
 
 #### Benefits
 - Disables the feature itself, not the setting on top of it.
@@ -331,23 +327,21 @@ The marker `HKCU\Software\MagicXToolbox\Debloat\RecallFeature` records the chose
 
 #### Drawbacks
 - The payload stays on disk, only inactive.
-- The feature entry exists everywhere, but the Recall experience needs Copilot+ hardware, so on most PCs applying changes nothing visible.
-- Revert is conditional: on a machine where Recall was already disabled, reverting correctly does nothing.
+- The feature entry exists everywhere, but the Recall experience needs Copilot+ hardware, so on most PCs the tweak already reads as "Disabled" and there is nothing to do.
 - A reboot is needed to complete the change.
 - DISM can take minutes; the action allows up to 900 seconds.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, x64; the feature entry is present even on SKUs that never offer Recall. Not present on Windows 10 LTSC 2021.
 - **Takes effect**: after a reboot; DISM reports a pending restart on success.
-- **Reverting**: System Default restores the snapshot. The undo re-enables the feature only if the recorded pre-apply state was `Enabled`; otherwise it leaves the feature disabled. Choosing the Enabled option directly on a machine where Recall was never enabled runs that same no-op undo, so the feature stays disabled and the probe cannot confirm the Enabled state; use System Default rather than Enabled on such a machine.
+- **Reverting**: turning the switch off (System Default) after applying runs the undo, which re-enables the feature; a reboot completes it.
 
 #### Interactions
 - [Recall feature component](#recall-feature-component) with Removed also removes the Recall bits through policy; applying both is redundant but consistent. Bringing Recall back after both may need this tweak reverted (on a machine where it was enabled) plus the component policy set to Available.
 - [Disable Windows Recall snapshots](#disable-windows-recall-snapshots) is the documented, reversible alternative that stops capture without touching the component.
-- Shares the HKCU marker key with [Remove the Copilot app](#remove-the-copilot-app) under a different value name.
 
 #### Validation
-- **Verdict**: INCORRECT as researched; the shipped tweak implements the research's corrected form. The research required that the probe accept both `Disabled` and `DisabledWithPayloadRemoved`, that DISM exit 3010 count as success, that the undo branch on the recorded pre-apply state, and that the copy not claim the payload is removed. The shipped action meets all four. The research did not re-verify the shipped script.
+- **Verdict**: INCORRECT as researched; the shipped tweak implements the research's corrected form. The research required that the probe accept both `Disabled` and `DisabledWithPayloadRemoved`, that DISM exit 3010 count as success, that a revert never enable Recall where it was not enabled before, and that the copy not claim the payload is removed. The shipped action meets all four; the third holds because detection reads the feature state itself, so a machine with Recall already off is never applied to and never reverted. The research did not re-verify the shipped script.
 - **Confidence**: Microsoft-documented for DISM semantics (`/Disable-Feature`, `/Enable-Feature`, `/Remove`, `/Source`, `/NoRestart`, feature states), plus direct feature enumeration on 26100.4061.
 - **Reasoning**: The feature name `Recall` was confirmed by enumeration; the state `DisabledWithPayloadRemoved` was observed on a non-Copilot+ SKU; the 3010 behaviour is standard DISM with `/NoRestart`. The probe-fail-open audit lists this tweak among the probes with safe polarity: an unreadable feature state leaves `$s` empty and the probe exits 1 (not applied) rather than reporting success.
 - **Tested**: Build validation (schema, ownership and conflict checks).

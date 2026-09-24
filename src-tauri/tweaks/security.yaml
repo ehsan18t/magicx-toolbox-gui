@@ -169,12 +169,15 @@ tweaks:
           undo: |
             Enable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -All -ErrorAction Stop | Out-Null
           probe: |
-            if ((Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction Stop).State -eq 'Disabled') { exit 0 } else { exit 1 }
+            $s = (Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction Stop).State
+            if ($s -in 'Disabled', 'DisablePending', 'DisabledWithPayloadRemoved') { exit 0 } else { exit 1 }
           shell: powershell
           timeout: 900
     options:
+      # `smb1_server` stays at its stock `absent` in both options: writing 0 in "Removed" would make a
+      # stock machine (feature already off) read System Default, and its revert would install SMBv1.
       - label: "Removed"
-        values: { smb1_server: 0, smb1_feature: run }
+        values: { smb1_server: absent, smb1_feature: run }
       # Omitting the action drives it back to absent, which runs the undo and reinstalls the feature.
       - label: "Installed"
         values: { smb1_server: absent }
@@ -1927,9 +1930,6 @@ tweaks:
     reversible: true
     requires_reboot: true
     effects:
-      # Machine-wide change, so the applied-state marker lives in HKLM, not the user hive.
-      - id: ps2_state
-        registry: { key: 'HKLM\SOFTWARE\MagicXToolbox\State', name: PowerShellV2, type: REG_DWORD }
       - id: ps2_feature
         action:
           apply: |
@@ -1937,17 +1937,15 @@ tweaks:
           undo: |
             Enable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -NoRestart -All -ErrorAction Stop | Out-Null
           probe: |
+            $off = 'Disabled', 'DisablePending', 'DisabledWithPayloadRemoved'
             $root = (Get-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -ErrorAction Stop).State
             $engine = (Get-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2 -ErrorAction Stop).State
-            if ($root -eq 'Disabled' -and $engine -eq 'Disabled') { exit 0 } else { exit 1 }
+            if ($root -in $off -and $engine -in $off) { exit 0 } else { exit 1 }
           shell: powershell
           timeout: 900
     options:
       - label: "Removed"
-        values: { ps2_state: 1, ps2_feature: run }
-      # Omitting the action drives its undo, which reinstalls the optional feature.
-      - label: "Installed"
-        values: { ps2_state: 0 }
+        values: { ps2_feature: run }
 
   - id: firewall_all_profiles
     name: "Enforce the firewall on all profiles"
@@ -2074,44 +2072,55 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      # Machine-wide change, so the applied-state marker lives in HKLM, not the user hive.
-      - id: audit_logon_state
-        registry: { key: 'HKLM\SOFTWARE\MagicXToolbox\State', name: AuditLogonEvents, type: REG_DWORD }
-      # The apply stashes the pre-apply inclusion setting so the undo can restore it instead of
-      # hardcoding Success-only, which would leave the machine auditing less than Windows ships.
+      # The apply stashes the pre-apply setting so the undo can restore it instead of hardcoding
+      # Success-only. Settings are read as the numeric Setting Value (1 success, 2 failure) from
+      # `auditpol /backup`: the /get text ("Success and Failure") is translated.
       - id: audit_logon
         action:
           apply: |
+            $ErrorActionPreference = 'Stop'
             $sub = '{0CCE9215-69AE-11D9-BED3-505054503030}'
-            $prior = 'Success and Failure'
-            try { $prior = (auditpol /get /subcategory:"$sub" /r | ConvertFrom-Csv)[0].'Inclusion Setting' } catch { }
-            New-Item -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Force | Out-Null
-            New-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Name AuditLogonPrior -Value "$prior" -PropertyType String -Force | Out-Null
+            $store = 'HKLM:\SOFTWARE\MagicXToolbox\State'
+            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
+            auditpol /backup /file:$f | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            $v = $null
+            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
+            Remove-Item -LiteralPath $f -Force
+            if ($null -eq $v) { exit 1 }
+            # New-Item -Force on an existing key deletes its values.
+            if (-not (Test-Path $store)) { New-Item -Path $store -Force | Out-Null }
+            # Keep the first stash: a re-apply must not replace the pre-tweak setting with this tweak's own.
+            if ($null -eq (Get-ItemProperty -Path $store -Name AuditLogonPriorSetting -ErrorAction SilentlyContinue)) {
+              New-ItemProperty -Path $store -Name AuditLogonPriorSetting -Value $v -PropertyType DWord -Force | Out-Null
+            }
             auditpol /set /subcategory:"$sub" /success:enable /failure:enable
             exit $LASTEXITCODE
           undo: |
             $sub = '{0CCE9215-69AE-11D9-BED3-505054503030}'
-            $prior = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Name AuditLogonPrior -ErrorAction SilentlyContinue).AuditLogonPrior
-            switch -Regex ($prior) {
-              'No Auditing'          { $s = 'disable'; $f = 'disable' }
-              '^Success$'            { $s = 'enable';  $f = 'disable' }
-              '^Failure$'            { $s = 'disable'; $f = 'enable'  }
-              default                { $s = 'enable';  $f = 'enable'  }
-            }
-            auditpol /set /subcategory:"$sub" /success:$s /failure:$f
+            $store = 'HKLM:\SOFTWARE\MagicXToolbox\State'
+            $p = (Get-ItemProperty -Path $store -Name AuditLogonPriorSetting -ErrorAction SilentlyContinue).AuditLogonPriorSetting
+            # Without a stash, the Windows client default: Success and Failure.
+            $v = if ($null -eq $p) { 3 } else { [int]$p }
+            auditpol /set /subcategory:"$sub" /success:$(if ($v -band 1) { 'enable' } else { 'disable' }) /failure:$(if ($v -band 2) { 'enable' } else { 'disable' })
             $code = $LASTEXITCODE
-            Remove-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Name AuditLogonPrior -Force -ErrorAction SilentlyContinue
+            if ($code -eq 0) { Remove-ItemProperty -Path $store -Name AuditLogonPriorSetting -Force -ErrorAction SilentlyContinue }
             exit $code
           probe: |
             $sub = '{0CCE9215-69AE-11D9-BED3-505054503030}'
-            $row = (auditpol /get /subcategory:"$sub" /r | ConvertFrom-Csv)[0].'Inclusion Setting'
-            if ($row -match 'Success' -and $row -match 'Failure') { exit 0 } else { exit 1 }
+            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
+            auditpol /backup /file:$f | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            $v = $null
+            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
+            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+            if ($v -eq 3) { exit 0 } else { exit 1 }
           shell: powershell
     options:
       # One authored option: Windows clients already audit Success and Failure here, so an authored
       # "stock" option would be undetectable. Default restores the captured setting from the snapshot.
       - label: "Success and failure"
-        values: { audit_logon_state: 1, audit_logon: run }
+        values: { audit_logon: run }
 
   - id: lock_on_inactivity
     name: "Lock the screen when idle"
@@ -2681,7 +2690,7 @@ tweaks:
     risk_level: low
     elevation: admin
     reversible: true
-    warning: "Transcripts capture anything typed or piped in plaintext, including secrets. They land in C:\\ProgramData\\PowerShellTranscripts, which must stay administrator-writable only."
+    warning: "Transcripts capture anything typed or piped in plaintext, including secrets. They land in C:\\ProgramData\\PowerShellTranscripts, which inherits ProgramData's default permissions: every local user can read the files. Restrict the folder to administrators if other people use this PC."
     effects:
       - id: module_logging
         registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging', name: EnableModuleLogging, type: REG_DWORD }
@@ -3556,35 +3565,49 @@ tweaks:
       - id: include_cmdline
         registry:
           { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit', name: ProcessCreationIncludeCmdLine_Enabled, type: REG_DWORD }
-      # auditpol state is not a registry value, so the apply stashes the prior inclusion setting and
-      # the undo restores it. Deleting the DWORD alone would leave process auditing switched on.
+      # auditpol state is not a registry value, so the apply stashes the prior setting and the undo
+      # restores it. Settings are read as the numeric Setting Value (1 success, 2 failure) from
+      # `auditpol /backup`: the /get text ("No Auditing") is translated.
       - id: audit_process_creation
         action:
           apply: |
+            $ErrorActionPreference = 'Stop'
             $sub = '{0CCE922B-69AE-11D9-BED3-505054503030}'
-            $prior = 'No Auditing'
-            try { $prior = (auditpol /get /subcategory:"$sub" /r | ConvertFrom-Csv)[0].'Inclusion Setting' } catch { }
-            New-Item -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Force | Out-Null
-            New-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Name AuditProcessCreationPrior -Value "$prior" -PropertyType String -Force | Out-Null
+            $store = 'HKLM:\SOFTWARE\MagicXToolbox\State'
+            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
+            auditpol /backup /file:$f | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            $v = $null
+            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
+            Remove-Item -LiteralPath $f -Force
+            if ($null -eq $v) { exit 1 }
+            # New-Item -Force on an existing key deletes its values.
+            if (-not (Test-Path $store)) { New-Item -Path $store -Force | Out-Null }
+            # Keep the first stash: a re-apply must not replace the pre-tweak setting with this tweak's own.
+            if ($null -eq (Get-ItemProperty -Path $store -Name AuditProcessCreationPriorSetting -ErrorAction SilentlyContinue)) {
+              New-ItemProperty -Path $store -Name AuditProcessCreationPriorSetting -Value $v -PropertyType DWord -Force | Out-Null
+            }
             auditpol /set /subcategory:"$sub" /success:enable
             exit $LASTEXITCODE
           undo: |
             $sub = '{0CCE922B-69AE-11D9-BED3-505054503030}'
-            $prior = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Name AuditProcessCreationPrior -ErrorAction SilentlyContinue).AuditProcessCreationPrior
-            switch -Regex ($prior) {
-              '^Success and Failure$' { $s = 'enable';  $f = 'enable'  }
-              '^Success$'             { $s = 'enable';  $f = 'disable' }
-              '^Failure$'             { $s = 'disable'; $f = 'enable'  }
-              default                 { $s = 'disable'; $f = 'disable' }
-            }
-            auditpol /set /subcategory:"$sub" /success:$s /failure:$f
+            $store = 'HKLM:\SOFTWARE\MagicXToolbox\State'
+            $p = (Get-ItemProperty -Path $store -Name AuditProcessCreationPriorSetting -ErrorAction SilentlyContinue).AuditProcessCreationPriorSetting
+            # Without a stash, the Windows default: No Auditing.
+            $v = if ($null -eq $p) { 0 } else { [int]$p }
+            auditpol /set /subcategory:"$sub" /success:$(if ($v -band 1) { 'enable' } else { 'disable' }) /failure:$(if ($v -band 2) { 'enable' } else { 'disable' })
             $code = $LASTEXITCODE
-            Remove-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\State' -Name AuditProcessCreationPrior -Force -ErrorAction SilentlyContinue
+            if ($code -eq 0) { Remove-ItemProperty -Path $store -Name AuditProcessCreationPriorSetting -Force -ErrorAction SilentlyContinue }
             exit $code
           probe: |
             $sub = '{0CCE922B-69AE-11D9-BED3-505054503030}'
-            $row = (auditpol /get /subcategory:"$sub" /r | ConvertFrom-Csv)[0].'Inclusion Setting'
-            if ($row -match 'Success') { exit 0 } else { exit 1 }
+            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
+            auditpol /backup /file:$f | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            $v = $null
+            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
+            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+            if ($v -band 1) { exit 0 } else { exit 1 }
           shell: powershell
     options:
       - label: "Enabled"

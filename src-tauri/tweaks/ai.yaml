@@ -278,28 +278,19 @@ tweaks:
     requires_reboot: true
     windows: { build: ">=26100" }
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: RecallFeature, type: REG_DWORD }
       # DISM returns 3010 (reboot required) on a successful /NoRestart disable, so both 0 and 3010 map
-      # to exit 0. Apply records the pre-apply feature state so undo can refuse to install Recall on a
-      # machine that never had it enabled.
+      # to exit 0, and the feature reads DisablePending until that reboot.
       - id: feature
         action:
           apply: |
-            $pre = (Get-WindowsOptionalFeature -Online -FeatureName Recall -ErrorAction SilentlyContinue).State
-            if (-not $pre) { $pre = 'Unknown' }
-            New-Item -Path 'HKLM:\SOFTWARE\MagicXToolbox\RecallFeature' -Force | Out-Null
-            New-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\RecallFeature' -Name PreApplyState -Value "$pre" -PropertyType String -Force | Out-Null
             DISM.exe /Online /Disable-Feature /FeatureName:Recall /NoRestart
             if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { exit 0 } else { exit $LASTEXITCODE }
           undo: |
-            $pre = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\MagicXToolbox\RecallFeature' -Name PreApplyState -ErrorAction SilentlyContinue).PreApplyState
-            if ($pre -ne 'Enabled') { exit 0 }
             DISM.exe /Online /Enable-Feature /FeatureName:Recall /NoRestart
             if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 3010) { exit 0 } else { exit $LASTEXITCODE }
           probe: |
-            $s = (Get-WindowsOptionalFeature -Online -FeatureName Recall -ErrorAction SilentlyContinue).State
-            if ($s -eq 'Disabled' -or $s -eq 'DisabledWithPayloadRemoved') { exit 0 } else { exit 1 }
+            $s = (Get-WindowsOptionalFeature -Online -FeatureName Recall -ErrorAction Stop).State
+            if ($s -in 'Disabled', 'DisablePending', 'DisabledWithPayloadRemoved') { exit 0 } else { exit 1 }
           shell: powershell
           timeout: 900
     options:
@@ -307,9 +298,7 @@ tweaks:
       # stays on disk. `remove_recall_component` next door does distinguish Removed from Disabled,
       # so reusing the word here would collide with a state this tweak never reaches.
       - label: "Disabled"
-        values: { state: 1, feature: run }
-      - label: "Enabled"
-        values: { state: 0 }
+        values: { feature: run }
 
   - id: disable_copilot_taskbar
     name: "Hide the Copilot taskbar button"

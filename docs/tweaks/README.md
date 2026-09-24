@@ -122,7 +122,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Recall feature component](ai.md#recall-feature-component) | `remove_recall_component` | AI & Copilot tweaks | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable the Click to Do overlay](ai.md#disable-the-click-to-do-overlay) | `disable_click_to_do` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Remove the Copilot app](ai.md#remove-the-copilot-app) | `remove_copilot_app` | AI & Copilot tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Disable the Recall optional feature](ai.md#disable-the-recall-optional-feature) | `remove_recall_feature` | AI & Copilot tweaks | Switch (2 options) | medium | admin | yes | INCORRECT (corrected form ships) |
+| [Disable the Recall optional feature](ai.md#disable-the-recall-optional-feature) | `remove_recall_feature` | AI & Copilot tweaks | Switch | medium | admin | yes | INCORRECT (corrected form ships) |
 | [Hide the Copilot taskbar button](ai.md#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](ai.md#disable-notepad-ai-features) | `disable_notepad_ai` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Disable Paint AI features](ai.md#disable-paint-ai-features) | `disable_paint_ai` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED |
@@ -301,7 +301,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Disable legacy TLS 1.0/1.1 (Schannel)](security.md#disable-legacy-tls-1011-schannel) | `disable_tls_legacy` | Security Hardening tweaks | Switch (2 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Force .NET strong crypto (TLS 1.2+)](security.md#force-net-strong-crypto-tls-12) | `dotnet_strong_crypto` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable SMB insecure guest logons](security.md#disable-smb-insecure-guest-logons) | `disable_smb_guest` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED |
-| [Remove PowerShell 2.0 engine](security.md#remove-powershell-20-engine) | `remove_powershell_v2` | Security Hardening tweaks | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
+| [Remove PowerShell 2.0 engine](security.md#remove-powershell-20-engine) | `remove_powershell_v2` | Security Hardening tweaks | Switch | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Enforce the firewall on all profiles](security.md#enforce-the-firewall-on-all-profiles) | `firewall_all_profiles` | Security Hardening tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Enable logon/credential auditing](security.md#enable-logoncredential-auditing) | `audit_logon_events` | Security Hardening tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Lock the screen when idle](security.md#lock-the-screen-when-idle) | `lock_on_inactivity` | Security Hardening tweaks | Switch | low | none | no | VERIFIED-WITH-CORRECTION |
