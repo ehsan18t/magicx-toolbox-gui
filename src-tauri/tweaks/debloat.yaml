@@ -1,0 +1,1113 @@
+category:
+  id: debloat
+  name: "Debloat & Consumer"
+  icon: "mdi:broom"
+  description: "Uninstall preinstalled apps and turn off Microsoft's consumer promotions, suggestions, Spotlight content and nag prompts. App removals reinstall from the Microsoft Store on revert (best effort)."
+
+tweaks:
+  # ---- Suggestions, promotions and nags (per-user) ----
+  - id: disable_start_suggestions
+    name: "Turn off Start menu app promotions"
+    description: "Stop the Start menu suggestion slot from showing promoted apps and tip cards."
+    info: |
+      **Closes the Start menu slot that shows promoted apps and tip cards.**
+
+      ## Caveats
+      - On Windows 11 the Start recommendations row uses a different setting, so this alone may change nothing visible.
+      - Microsoft does not document this slot and can move it between releases.
+
+      ## Notes
+      - Start may need a sign-out to redraw.
+
+      ## Related
+      - **Turn off promoted recommendations in Start** (Interface) handles the Windows 11 recommendations row.
+      - **Hide the Recommended section in Start** (Interface) hides the whole section.
+
+      ## Recommendation
+      Harmless, so apply it if you want every Start suggestion channel closed. If the Windows 11 recommendations row is what bothers you, use Turn off promoted recommendations in Start.
+
+      ## Sources
+      - [TenForums: turn off app suggestions in Start](https://www.tenforums.com/tutorials/24117-turn-off-app-suggestions-start-windows-10-a.html)
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: start_sug
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-338388Enabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { start_sug: 0 }
+      # A fresh profile carries no value at all, so the stock state is `absent`, not 1.
+      - label: "On"
+        values: { start_sug: absent }
+
+  - id: disable_auto_install_sponsored_apps
+    name: "Turn off auto-installed sponsored apps"
+    description: "Stop Windows from silently installing promoted, preinstalled and OEM apps into your account."
+    info: |
+      **Stops Windows silently installing promoted, preinstalled and OEM apps into your account.**
+
+      ## Caveats
+      - Future installs only: apps already on the PC stay; the Remove tweaks in this category handle those.
+      - A feature update can still bring apps back.
+
+      ## Notes
+      - Applies to your account only; set it in each account you use.
+
+      ## Related
+      - **Disable Windows consumer features** (Privacy) is a stronger machine-wide block, but only on Enterprise, Education and IoT Enterprise.
+
+      ## Recommendation
+      Apply it. The only cost is installing apps you actually want yourself.
+
+      ## Sources
+      - [TenForums: turn off automatic installation of suggested apps](https://www.tenforums.com/tutorials/68217-turn-off-automatic-installation-suggested-apps-windows-10-a.html)
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: silent
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SilentInstalledAppsEnabled, type: REG_DWORD }
+      - id: preinstalled
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: PreInstalledAppsEnabled, type: REG_DWORD }
+      - id: oem
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: OemPreInstalledAppsEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { silent: 0, preinstalled: 0, oem: 0 }
+      # All three are seeded as 1 in the shipped Default user hive, so 1 really is the stock state.
+      - label: "On"
+        values: { silent: 1, preinstalled: 1, oem: 1 }
+
+  - id: disable_welcome_experience
+    name: "Turn off the post-update welcome experience"
+    description: "Turn off the full-screen 'what's new' tour shown after updates."
+    info: |
+      **Skips the full-screen "what's new" tour after updates and the occasional highlight page at sign-in. The update itself is unaffected.**
+
+      ## Notes
+      - The same switch as "Show me the Windows welcome experience after updates" in Settings > System > Notifications.
+      - Undocumented by Microsoft, but it has held from Windows 10 1703 through Windows 11 25H2.
+
+      ## Related
+      - **Turn off the 'Get even more out of Windows' nag** covers the separate "finish setting up" screen.
+
+      ## Sources
+      - [ElevenForum: Windows welcome experience](https://www.elevenforum.com/t/enable-or-disable-windows-welcome-experience-in-windows-11.3657/)
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: welcome
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-310093Enabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { welcome: 0 }
+      - label: "On"
+        values: { welcome: absent }
+
+  - id: disable_scoobe_nag
+    name: "Turn off the 'Get even more out of Windows' nag"
+    description: "Stop the post-sign-in 'finish setting up your device' full-screen prompt."
+    info: |
+      **Stops the full-screen "finish setting up your device" prompt that pushes a Microsoft account, OneDrive backup, Edge and Microsoft 365 after sign-in.**
+
+      ## Caveats
+      - Not absolute: on some builds the screen can still appear once after a large feature update.
+
+      ## Notes
+      - The same switch as "Suggest ways to get the most out of Windows" in Settings > System > Notifications, so it works on every edition, including Home.
+      - Applies to your account only.
+
+      ## Recommendation
+      Apply it. Everything the screen offers is reachable from Settings.
+
+      ## Sources
+      - [ElevenForum: Let's finish setting up your device](https://www.elevenforum.com/t/enable-or-disable-lets-finish-setting-up-your-device-in-windows-11.5205/)
+      - [Sophia Script for Windows](https://github.com/farag2/Sophia-Script-for-Windows)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: scoobe
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement', name: ScoobeSystemSettingEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { scoobe: 0 }
+      # Neither the value nor its parent key exists in the shipped Default user hive.
+      - label: "On"
+        values: { scoobe: absent }
+
+  - id: disable_explorer_sync_ads
+    name: "Turn off File Explorer sync-provider ads"
+    description: "Remove the OneDrive and Microsoft 365 upsell banners from File Explorer."
+    info: |
+      **Removes the OneDrive and Microsoft 365 upsell banners from File Explorer.**
+
+      ## Drawbacks
+      - Genuine sync-provider notices in Explorer go too, not only the ads.
+
+      ## Notes
+      - The same as the Folder Options checkbox "Show sync provider notifications". OneDrive's own tray notifications are unaffected.
+      - A fresh profile reads as System Default here, which behaves exactly like On.
+      - Takes effect in the next Explorer window.
+
+      ## Related
+      - **Remove OneDrive** uninstalls the client; **Hide OneDrive in Explorer** (Interface) removes it from the navigation pane.
+
+      ## Recommendation
+      Apply it unless you rely on OneDrive status messages inside Explorer.
+
+      ## Sources
+      - [ElevenForum: sync provider notifications in File Explorer](https://www.elevenforum.com/t/enable-or-disable-sync-provider-notifications-in-file-explorer-in-windows-11.5200/)
+      - [Sophia Script for Windows](https://github.com/farag2/Sophia-Script-for-Windows)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: sync_ads
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ShowSyncProviderNotifications, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { sync_ads: 0 }
+      # Windows declares DefaultValue = 1 for this folder option, so an explicit 1 and an absent
+      # value behave identically here.
+      - label: "On"
+        values: { sync_ads: 1 }
+
+  - id: disable_web_search_start
+    name: "Turn off web results in Start search"
+    description: "Keep Start search local by turning off Bing web results and search-box suggestions."
+    info: |
+      **Keeps Start search local: no Bing web results or search-box suggestions, and what you type stays on the PC.**
+
+      ## Mechanism
+      - Three layers: the per-user search-box policy (every edition), the Bing setting the 24H2 search host still reads, and Microsoft's "Don't search the web" policy, which only Enterprise, Education and IoT editions honour.
+
+      ## Drawbacks
+      - Web answers in the search box (conversions, definitions, quick lookups) stop.
+      - File Explorer stops suggesting and storing your recent searches, the only effect Microsoft documents for this policy.
+
+      ## Caveats
+      - Feature updates often reset the Bing setting; the tweak then shows System Default while the policies still hold. Apply it again to restore all three.
+      - Some users report the taskbar search box disappearing with this policy (not confirmed on 24H2).
+
+      ## Notes
+      - Works on every edition, including Home. Signing out, or restarting Explorer, also applies it.
+
+      ## Related
+      - **Turn off search highlights** (Interface) removes promoted content from the search box; the two combine.
+
+      ## Recommendation
+      Apply it if you use Start to open apps and settings. Skip it if you use the Start box as a web search bar.
+
+      ## Sources
+      - [Policy CSP - Search, DoNotUseWebResults](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-search#donotusewebresults)
+      - [Pureinfotech: disable web search results on Windows 11](https://pureinfotech.com/disable-search-web-results-windows-11/)
+      - [Microsoft Q&A: DisableSearchBoxSuggestions hides taskbar search](https://learn.microsoft.com/en-us/answers/questions/3234673/disablesearchboxsuggestions-disables-task-bar-sear)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: box_suggestions
+        registry: { key: 'HKCU\Software\Policies\Microsoft\Windows\Explorer', name: DisableSearchBoxSuggestions, type: REG_DWORD }
+      - id: bing_enabled
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: BingSearchEnabled, type: REG_DWORD }
+      # DoNotUseWebResults: Microsoft's documented switch, honoured on Enterprise, Education and IoT only.
+      - id: web_results_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search', name: ConnectedSearchUseWeb, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { box_suggestions: 1, bing_enabled: 0, web_results_policy: 0 }
+      # The whole CurrentVersion\Search key is absent on a fresh profile, so BingSearchEnabled is
+      # `absent` on revert, matching what this option already does for the policy value.
+      - label: "On"
+        values: { box_suggestions: absent, bing_enabled: absent, web_results_policy: absent }
+
+  - id: disable_widgets
+    name: "Turn off Widgets"
+    description: "Turn off the Widgets board (News and Interests) machine-wide."
+    info: |
+      **Turns off the Widgets board for every account, removing the news and weather feed from the taskbar.**
+
+      ## Drawbacks
+      - All or nothing: weather, calendar and any widget you wanted go too.
+
+      ## Requirements
+      - Microsoft documents it for Pro and above; Home generally honours it, but that is not guaranteed.
+
+      ## Notes
+      - The Widgets app stays installed; it just stops being offered.
+
+      ## Related
+      - **Remove Bing News and Weather** removes the standalone MSN apps; the two complement each other.
+
+      ## Sources
+      - [Policy CSP - NewsAndInterests](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-newsandinterests)
+      - [Manage connections from Windows to Microsoft services: Widgets](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { products: [11] }
+    effects:
+      - id: widgets
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Dsh', name: AllowNewsAndInterests, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { widgets: 0 }
+      - label: "On"
+        values: { widgets: absent }
+
+  - id: disable_account_notifications
+    name: "Turn off Microsoft account nags in Start"
+    description: "Stop the Microsoft account upsell prompts in the Start menu user tile."
+    info: |
+      **Stops the Start menu account tile nagging you to back up, sign in again, buy storage or manage Microsoft 365 and Xbox subscriptions.**
+
+      ## Drawbacks
+      - A genuine "sign in again" reminder is hidden along with the marketing.
+
+      ## Notes
+      - Start only: OneDrive, Microsoft 365 and Xbox notifications elsewhere are unaffected.
+      - Separate from the account notifications switch in Settings; Windows honours both.
+      - Applies to your account only, and takes effect immediately.
+
+      ## Recommendation
+      Apply it if the account tile keeps selling you storage and subscriptions. Skip it if you rely on Windows telling you when your sign-in has expired.
+
+      ## Sources
+      - [Start menu policy settings](https://learn.microsoft.com/en-us/windows/configuration/start/policy-settings)
+      - [Policy CSP - Start](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    effects:
+      - id: account_notifications
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications', name: DisableAccountNotifications, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { account_notifications: 1 }
+      - label: "On"
+        values: { account_notifications: absent }
+
+  - id: disable_settings_account_ads
+    name: "Turn off account upsell cards in Settings"
+    description: "Replace the account-state promo cards in Settings with plain default content."
+    info: |
+      **Replaces the account upsell cards in Settings (finish setting up, upgrade storage, manage your subscription) with plain default content.**
+
+      ## Requirements
+      - Works only on Enterprise, Education and IoT Enterprise. On Home and Pro it applies cleanly and does nothing.
+
+      ## Notes
+      - Sign out and back in if a card is still on screen.
+      - Prompts inside Microsoft 365 and OneDrive apps are unaffected.
+
+      ## Recommendation
+      Apply it on Enterprise, Education or IoT Enterprise. Skip it on Home and Pro.
+
+      ## Sources
+      - [Policy CSP - Experience, DisableConsumerAccountStateContent](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    windows: { products: [11] }
+    effects:
+      # The Policy CSP allowed-values table reads "0 (Default) Disabled. 1 Enabled", which describes
+      # the POLICY state, not the feature state. The ADMX enabledValue of 1 is decisive: 1 turns the
+      # account-state content off. Do not invert this against the CSP table.
+      - id: account_state_content
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name: DisableConsumerAccountStateContent, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { account_state_content: 1 }
+      - label: "On"
+        values: { account_state_content: absent }
+
+  - id: disable_windows_spotlight_all
+    name: "Turn off all Windows Spotlight features"
+    description: "Turn off every Windows Spotlight surface with one per-user policy."
+    info: |
+      **Turns off every Windows Spotlight feature at once: lock screen images, Windows tips, Microsoft consumer content and related surfaces.**
+
+      ## Drawbacks
+      - The rotating lock screen and desktop images stop; the lock screen falls back to a static picture.
+      - Broad: surfaces some people like, such as Windows tips, go too.
+
+      ## Caveats
+      - It overrides four narrower tweaks without changing them, so those can read as not applied while their surfaces are off.
+
+      ## Notes
+      - Works on every edition, including Home. Takes effect after a sign-out.
+
+      ## Related
+      - **Turn off Spotlight desktop wallpaper** is a subset of this; pick one.
+      - **Turn off lock screen ads and fun facts** and **Turn off Windows tips and suggestions** (Privacy) remove the ads but keep the images.
+
+      ## Recommendation
+      Apply it if you want all of Spotlight gone. If you like the lock screen images, use the individual Privacy tweaks instead.
+
+      ## Sources
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    effects:
+      - id: spotlight_all
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name: DisableWindowsSpotlightFeatures, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { spotlight_all: 1 }
+      - label: "On"
+        values: { spotlight_all: absent }
+
+  - id: disable_spotlight_desktop
+    name: "Turn off Spotlight desktop wallpaper"
+    description: "Stop the rotating Spotlight image collection from taking over the desktop wallpaper."
+    info: |
+      **Stops Windows Spotlight rotating your desktop wallpaper and removes its "learn about this picture" icon. Lock screen Spotlight is untouched.**
+
+      ## Notes
+      - Takes effect after a sign-out, when Spotlight stops being offered as a background.
+      - Applies to your account only.
+
+      ## Related
+      - **Turn off all Windows Spotlight features** already covers this; applying both changes nothing extra.
+
+      ## Sources
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: false
+    effects:
+      - id: spotlight_desktop
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name: DisableSpotlightCollectionOnDesktop, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { spotlight_desktop: 1 }
+      - label: "On"
+        values: { spotlight_desktop: absent }
+
+  - id: disable_nag_toasts
+    name: "Silence suggested and backup reminder toasts"
+    description: "Silence the 'Suggested' ad toasts and the Windows Backup reminder toasts."
+    info: |
+      **Silences two Microsoft nag notifications: the "Suggested" ad toasts and the Windows Backup reminders. All other notifications keep working.**
+
+      ## Caveats
+      - Other Microsoft promotional toasts use other channels and keep coming.
+      - Undocumented by Microsoft, though it uses the same per-app switch as Settings.
+
+      ## Related
+      - **Turn off toast notifications** (Interface) silences all notifications instead.
+
+      ## Sources
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
+      - [Change notification settings in Windows](https://support.microsoft.com/en-us/windows/change-notification-settings-in-windows-8942c744-6198-fe56-4639-34320cf9444e)
+    risk_level: low
+    elevation: user
+    reversible: true
+    requires_reboot: false
+    effects:
+      # Both per-app keys are created lazily on the first toast. A registry effect auto-creates its
+      # parent keys on apply, and a missing key reads as Absent rather than as an error, so the
+      # stock "no key at all" state detects correctly.
+      - id: suggested
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.Suggested', name: Enabled, type: REG_DWORD }
+      - id: backup
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.BackupReminder', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "Silenced"
+        values: { suggested: 0, backup: 0 }
+      - label: "On"
+        values: { suggested: absent, backup: absent }
+
+  # ---- Microsoft Edge policies (HKLM) ----
+  - id: disable_edge_first_run
+    name: "Turn off the Edge first-run experience"
+    description: "Skip Microsoft Edge's first-run setup and import prompts."
+    info: |
+      **Makes Microsoft Edge open straight to a normal window, skipping its setup, import and sign-in wizard.**
+
+      ## Notes
+      - Takes effect the next time Edge starts. Edge itself stays installed.
+      - New users on a shared PC are not walked through Edge.
+      - Does nothing on Windows 10 LTSC 2021 unless Edge was installed separately.
+
+      ## Recommendation
+      Apply it, especially on new setups; the wizard's main job is changing your defaults.
+
+      ## Sources
+      - [Microsoft Edge policy: HideFirstRunExperience](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/hidefirstrunexperience)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: edge_frx
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: HideFirstRunExperience, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { edge_frx: 1 }
+      - label: "On"
+        values: { edge_frx: absent }
+
+  - id: disable_edge_startup_boost
+    name: "Turn off Edge startup boost"
+    description: "Stop Microsoft Edge from preloading at sign-in and running in the background."
+    info: |
+      **Stops Edge preloading at sign-in and staying in the background after you close it, so closing it really closes it.**
+
+      ## Drawbacks
+      - Edge's first start each session is slower.
+      - Extensions that run in the background stop while Edge is closed.
+
+      ## Notes
+      - Takes effect at the next sign-in or Edge restart.
+
+      ## Recommendation
+      Apply it if Edge is not your main browser. Skip it if you use Edge all day and value the faster first start.
+
+      ## Sources
+      - [Microsoft Edge policy: StartupBoostEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/startupboostenabled)
+      - [Microsoft Edge policy: BackgroundModeEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/backgroundmodeenabled)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: startup_boost
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: StartupBoostEnabled, type: REG_DWORD }
+      - id: background_mode
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: BackgroundModeEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { startup_boost: 0, background_mode: 0 }
+      - label: "On"
+        values: { startup_boost: absent, background_mode: absent }
+
+  - id: disable_edge_sidebar
+    name: "Turn off the Edge sidebar and Collections"
+    description: "Hide the Microsoft Edge sidebar panel and disable Collections."
+    info: |
+      **Hides the Edge sidebar panel (Discover, the calculator and other tools) and turns off Collections.**
+
+      ## Caveats
+      - Saved Collections become unreachable while this is applied; they come back when you revert.
+      - The Copilot button in the Edge toolbar stays; this policy no longer controls it.
+
+      ## Notes
+      - Takes effect the next time Edge starts.
+
+      ## Recommendation
+      Apply it if the sidebar is noise and you do not use Collections. If you use Collections, leave it alone.
+
+      ## Sources
+      - [Microsoft Edge policy: HubsSidebarEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/hubssidebarenabled)
+      - [Microsoft Edge policy: EdgeCollectionsEnabled](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/edgecollectionsenabled)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: sidebar
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: HubsSidebarEnabled, type: REG_DWORD }
+      - id: collections
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: EdgeCollectionsEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { sidebar: 0, collections: 0 }
+      - label: "On"
+        values: { sidebar: absent, collections: absent }
+
+  # Every removal below removes the installed package for all users AND the provisioned package
+  # registered against the image, and every probe is fail-closed: an unelevated or failing
+  # Get-AppxPackage exits non-zero ("not removed") instead of reporting a removal that never
+  # happened. Elevation stays at `admin`; action effects are not routed through the elevation
+  # broker at system/ti.
+  - id: remove_teams_consumer_app
+    name: "Remove the Microsoft Teams app"
+    description: "Uninstall the preinstalled Microsoft Teams app, one package shared by personal, work and school."
+    info: |
+      **Uninstalls the preinstalled Microsoft Teams app for every account on the PC, including accounts created later.**
+
+      ## Drawbacks
+      - Teams meetings open in the browser instead.
+
+      ## Caveats
+      - Reverting reinstalls Teams with winget, which needs internet access; if that fails, the tweak shows Needs Attention. The command-line reinstall of this Store listing is unverified.
+      - A feature update may bring the app back; apply again if so.
+
+      ## Recommendation
+      Remove it only on a personal PC where nobody uses Teams for work or school.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [What's new in Windows 11 version 23H2](https://learn.microsoft.com/en-us/windows/whats-new/whats-new-windows-11-version-23h2)
+    warning: "On Windows 11 23H2 and newer, personal, work and school Teams are one package. Removing it removes your work or school Teams client too."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'MSTeams' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MSTeams' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'MSTeams') { exit 0 }
+            winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [MSTeams]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_clipchamp
+    name: "Remove Clipchamp"
+    description: "Uninstall the bundled Clipchamp video editor."
+    info: |
+      **Uninstalls the bundled Clipchamp video editor for every account on the PC, including accounts created later.**
+
+      ## Caveats
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back; apply again if so.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Clipchamp.Clipchamp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp') { exit 0 }
+            winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Clipchamp.Clipchamp]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_quick_assist
+    name: "Remove Quick Assist"
+    description: "Uninstall Quick Assist, the built-in remote-help tool."
+    info: |
+      **Uninstalls Quick Assist, the built-in tool that lets someone view or control your PC after you read them a code, the route tech-support scammers rely on.**
+
+      ## Drawbacks
+      - A family member who helps you remotely loses their easiest way in.
+
+      ## Caveats
+      - Friction, not a block: someone could still talk you into reinstalling it.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Requirements
+      - Windows 11. On Windows 10 LTSC 2021 the older built-in Quick Assist is untouched, so this does nothing.
+
+      ## Recommendation
+      Remove it on a PC that never gets remote help, especially one used by someone who might fall for a support call.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MicrosoftCorporationII.QuickAssist' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist') { exit 0 }
+            winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [MicrosoftCorporationII.QuickAssist]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_bing_news_weather
+    name: "Remove Bing News and Weather"
+    description: "Uninstall the preinstalled Microsoft News and MSN Weather apps."
+    info: |
+      **Uninstalls the Microsoft News and MSN Weather apps for every account on the PC.**
+
+      ## Caveats
+      - Reverting reinstalls both with winget, which needs internet access; if either install fails, the tweak shows Needs Attention.
+      - A feature update may bring them back.
+
+      ## Notes
+      - Widgets still show weather through their own feed, and nothing in Windows replaces the Weather app.
+
+      ## Related
+      - **Turn off Widgets** removes the other MSN feed.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          # Get-AppxPackage -Name is System.String, not String[]: passing both names as an array is a
+          # binder error that removes nothing. Iterate instead. Both apps ship as bundles, so the
+          # bundle pass runs first per Microsoft's -PackageTypeFilter guidance.
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            foreach ($name in @('Microsoft.BingNews', 'Microsoft.BingWeather')) {
+              Get-AppxPackage -AllUsers -Name $name -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
+              Get-AppxPackage -AllUsers -Name $name | Remove-AppxPackage -AllUsers
+              Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $name } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+            }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # One install per package: Windows PowerShell 5.1 rejects `&&`.
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            foreach ($app in @(@('Microsoft.BingNews', '9WZDNCRFHVFW'), @('Microsoft.BingWeather', '9WZDNCRFJ3Q2'))) {
+              if (Get-AppxPackage -AllUsers -Name $app[0]) { continue }
+              winget install --id $app[1] -e --accept-source-agreements --accept-package-agreements
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            exit 0
+          probe:
+            appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_solitaire
+    name: "Remove Solitaire Collection"
+    description: "Uninstall the ad-supported Microsoft Solitaire Collection."
+    info: |
+      **Uninstalls the ad-supported Microsoft Solitaire Collection for every account on the PC.**
+
+      ## Caveats
+      - Reverting cannot reinstall it for you: it opens the Store page, where you install it yourself (needs internet). Until you do, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Recommendation
+      Remove it unless you play these games; getting them back means a manual Store install.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection' -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
+            Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.MicrosoftSolitaireCollection' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          # winget cannot resolve 9WZDNCRFHWD2 in any source, so the undo opens the Store product
+          # page instead of pretending a command-line install succeeded.
+          undo: "Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRFHWD2'"
+          probe:
+            appx_absent: [Microsoft.MicrosoftSolitaireCollection]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_get_help
+    name: "Remove the Get Help app"
+    description: "Uninstall the Get Help support app."
+    info: |
+      **Uninstalls Get Help, Microsoft's support and troubleshooting app.**
+
+      ## Drawbacks
+      - Troubleshooter links in Settings that open Get Help fail instead.
+
+      ## Caveats
+      - The Store lists it as a system component: removal works, but Windows expects it to be there.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Notes
+      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+
+      ## Recommendation
+      Remove it if you troubleshoot Windows yourself. Keep it if you use the built-in guided troubleshooters.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.GetHelp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp') { exit 0 }
+            winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Microsoft.GetHelp]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_getstarted_tips
+    name: "Remove Tips (Get Started)"
+    description: "Uninstall the deprecated Tips app that shows onboarding and promotional content."
+    info: |
+      **Uninstalls the Tips app, which exists to show onboarding and promotional content. Microsoft has deprecated it.**
+
+      ## Caveats
+      - Reverting cannot reinstall it for you: it opens the Store page, where you install it yourself (needs internet). Until you do, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Notes
+      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+
+      ## Related
+      - **Turn off Windows tips and suggestions** (Privacy) covers the tips Windows shows elsewhere, which are separate from this app.
+
+      ## Recommendation
+      Remove it; nothing depends on it.
+
+      ## Sources
+      - [Deprecated features in Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.Getstarted' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          # winget cannot resolve 9WZDNCRDTBJJ in any source, so the undo opens the Store product page.
+          undo: "Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRDTBJJ'"
+          probe:
+            appx_absent: [Microsoft.Getstarted]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_feedback_hub
+    name: "Remove Feedback Hub"
+    description: "Uninstall Feedback Hub, the app for sending feedback and traces to Microsoft."
+    info: |
+      **Uninstalls Feedback Hub, the app for sending bug reports, suggestions and diagnostic traces to Microsoft.**
+
+      ## Drawbacks
+      - No built-in way to report bugs remains, and Windows Insider feedback needs it.
+
+      ## Caveats
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Related
+      - **Turn off feedback request notifications** (Privacy) stops Windows asking for feedback, with or without the app.
+
+      ## Recommendation
+      Remove it on a PC that is not in the Insider Program and never sends feedback. Keep it on Insider builds.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Deprecated features in Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.WindowsFeedbackHub' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub') { exit 0 }
+            winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Microsoft.WindowsFeedbackHub]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_phone_link
+    name: "Remove Phone Link"
+    description: "Uninstall Phone Link, the companion app that mirrors a phone on the PC."
+    info: |
+      **Uninstalls Phone Link, which connects an Android phone or iPhone to the PC. On Windows 11 24H2 and later the phone panel in Start goes with it.**
+
+      ## Drawbacks
+      - All phone integration (notifications, messages, calls, photos) stops.
+
+      ## Caveats
+      - Feature updates bring Phone Link back unusually often.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+
+      ## Notes
+      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+
+      ## Related
+      - **Hide the mobile device panel in Start** (Interface) hides only the Start panel and keeps the app.
+
+      ## Recommendation
+      Remove it if you never connect a phone to this PC. If only the Start panel bothers you, use Hide the mobile device panel in Start.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Mobile device in Start menu](https://support.microsoft.com/en-us/windows/mobile-device-in-start-menu-21676d6a-3bc3-439a-aaa3-7463b91cda79)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.YourPhone' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone') { exit 0 }
+            winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Microsoft.YourPhone]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_outlook_new
+    name: "Remove the New Outlook app"
+    description: "Uninstall the preinstalled new Outlook for Windows, leaving classic Outlook untouched."
+    info: |
+      **Uninstalls the preinstalled new Outlook for Windows for every account on the PC. Classic Outlook from Microsoft 365 is not touched.**
+
+      ## Drawbacks
+      - Windows no longer includes Mail and Calendar, so no built-in mail app remains.
+
+      ## Caveats
+      - Microsoft also pushes this app through Windows Update, so it can come back; apply again if so.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.OutlookforWindows' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows') { exit 0 }
+            winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Microsoft.OutlookforWindows]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_xbox_game_bar
+    name: "Remove Xbox Game Bar"
+    description: "Uninstall the Win+G Game Bar overlay, without touching Game Mode or any GPU feature."
+    info: |
+      **Uninstalls the Xbox Game Bar overlay (Win+G): capture, the performance widget and the Xbox social panels. Game Mode and GPU features are unaffected.**
+
+      ## Drawbacks
+      - The Win+Alt+R recorder and screenshot shortcuts go with it.
+      - Games or Settings that call the overlay show a "You'll need a new app to open this ms-gamingoverlay link" dialog.
+
+      ## Caveats
+      - Some builds refuse the removal (error 0x80073CFA); the app then reports the error and rolls back.
+      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - A feature update may bring it back.
+
+      ## Related
+      - **Disable Xbox Game Bar capture (Game DVR)** (Performance) turns off background recording without removing anything.
+
+      ## Recommendation
+      Remove it only if you never use Win+G and can live with the occasional link dialog. If recording is your only concern, use Disable Xbox Game Bar capture instead.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: app
+        action:
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
+            Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.XboxGamingOverlay' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay') { exit 0 }
+            winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Microsoft.XboxGamingOverlay]
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { app: run }
+
+  - id: remove_onedrive
+    name: "Remove OneDrive"
+    description: "Uninstall the OneDrive client, per-user and per-machine, without deleting local files."
+    info: |
+      **Uninstalls the OneDrive client, both per-user and per-machine installs, so it stops syncing and asking to back up your folders. Files already downloaded stay on disk.**
+
+      ## Drawbacks
+      - Office documents stop saving to the cloud automatically.
+
+      ## Caveats
+      - Cloud-only files that were never downloaded become unreachable on this PC; download them first.
+      - If Desktop, Documents or Pictures were moved into OneDrive, they may end up somewhere unexpected.
+      - Reverting reinstalls OneDrive with winget (needs internet) but does not re-link your account or restore folder redirection; if the reinstall fails, the tweak shows Needs Attention.
+      - A feature update can reinstall it.
+
+      ## Notes
+      - LTSC images ship without OneDrive, so they already read as Removed.
+
+      ## Related
+      - **Turn off File Explorer sync-provider ads** removes the upsell banners without uninstalling anything.
+
+      ## Recommendation
+      Remove it if you never use OneDrive and have checked for cloud-only files and redirected folders. If you sync anything, leave it.
+
+      ## Sources
+      - [Turn off, disable, or uninstall OneDrive](https://support.microsoft.com/en-us/office/turn-off-disable-or-uninstall-onedrive-f32a17ce-3336-40fe-9c38-6efb09f944b0)
+      - [Install OneDrive per machine](https://learn.microsoft.com/en-us/sharepoint/per-machine-installation)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: onedrive
+        action:
+          # Per-machine OneDrive (OneDriveSetup.exe /allusers, what Microsoft 365 and modern imaging
+          # deploy) lives under Program Files and needs /uninstall /allusers. Finding no installer at
+          # all is a failure, not a silent success, and the child's exit code is propagated.
+          apply: |
+            $ErrorActionPreference = 'Stop'
+            $targets = @()
+            foreach ($p in @("$env:SystemRoot\SysWOW64\OneDriveSetup.exe", "$env:SystemRoot\System32\OneDriveSetup.exe")) {
+              if (Test-Path -LiteralPath $p) { $targets += ,@($p, @('/uninstall')) }
+            }
+            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+              if (-not $root) { continue }
+              $base = Join-Path $root 'Microsoft OneDrive'
+              if (-not (Test-Path -LiteralPath $base)) { continue }
+              foreach ($dir in (Get-ChildItem -LiteralPath $base -Directory)) {
+                $exe = Join-Path $dir.FullName 'OneDriveSetup.exe'
+                if (Test-Path -LiteralPath $exe) { $targets += ,@($exe, @('/uninstall', '/allusers')) }
+              }
+            }
+            if ($targets.Count -eq 0) { exit 1 }
+            foreach ($t in $targets) {
+              $proc = Start-Process -FilePath $t[0] -ArgumentList $t[1] -Wait -PassThru
+              if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
+            }
+            exit 0
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an existing install (a rollback of a partial removal): winget's exit code for one is unverified.
+            $paths = @("$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe")
+            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+              if ($root) { $paths += (Join-Path $root 'Microsoft OneDrive\OneDrive.exe') }
+            }
+            foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { exit 0 } }
+            winget install --id Microsoft.OneDrive -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe: |
+            $ErrorActionPreference = 'Stop'
+            try {
+              if (Get-Process -Name OneDrive -ErrorAction SilentlyContinue) { exit 1 }
+              $paths = @("$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe")
+              foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+                if ($root) { $paths += (Join-Path $root 'Microsoft OneDrive\OneDrive.exe') }
+              }
+              foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { exit 1 } }
+            } catch { exit 1 }
+            exit 0
+          shell: powershell
+          timeout: 600
+    options:
+      - label: "Removed"
+        values: { onedrive: run }

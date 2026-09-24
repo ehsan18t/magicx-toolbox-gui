@@ -106,8 +106,10 @@
 
   function selectOption(opt: Option) {
     if (opt.disabled) return;
-    value = opt.value;
-    onchange?.(opt.value);
+    if (opt.value !== value) {
+      value = opt.value;
+      onchange?.(opt.value);
+    }
     close();
     triggerEl?.focus();
   }

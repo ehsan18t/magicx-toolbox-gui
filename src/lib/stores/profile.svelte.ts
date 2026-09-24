@@ -6,6 +6,7 @@
 
 import type { ConfigurationProfile, ProfileApplyResult, ProfileValidation, TweakChangePreview } from "$lib/api/profile";
 import * as profileApi from "$lib/api/profile";
+import { errorMessage } from "$lib/utils/error";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
@@ -152,7 +153,7 @@ export const profileStore = {
       return true;
     } catch (error) {
       console.error("Failed to export profile:", error);
-      exportError = error instanceof Error ? error.message : String(error);
+      exportError = errorMessage(error);
       return false;
     } finally {
       isExporting = false;
@@ -169,7 +170,7 @@ export const profileStore = {
       savedProfiles = await profileApi.getSavedProfiles(currentProfileDirStore.value);
     } catch (error) {
       console.error("Failed to load saved profiles:", error);
-      savedProfilesError = error instanceof Error ? error.message : String(error);
+      savedProfilesError = errorMessage(error);
     } finally {
       loadingSavedProfiles = false;
     }
@@ -190,7 +191,7 @@ export const profileStore = {
       return true;
     } catch (error) {
       console.error("Failed to delete profile:", error);
-      deleteError = error instanceof Error ? error.message : String(error);
+      deleteError = errorMessage(error);
       return false;
     } finally {
       isDeleting = false;
@@ -228,7 +229,7 @@ export const profileStore = {
       return true;
     } catch (error) {
       console.error("Failed to import profile:", error);
-      importError = error instanceof Error ? error.message : String(error);
+      importError = errorMessage(error);
       return false;
     } finally {
       isImporting = false;
@@ -255,7 +256,7 @@ export const profileStore = {
       return true;
     } catch (error) {
       console.error("Failed to import profile:", error);
-      importError = error instanceof Error ? error.message : String(error);
+      importError = errorMessage(error);
       return false;
     } finally {
       isImporting = false;
@@ -294,7 +295,7 @@ export const profileStore = {
       return result.success;
     } catch (error) {
       console.error("Failed to apply profile:", error);
-      applyError = error instanceof Error ? error.message : String(error);
+      applyError = errorMessage(error);
       return false;
     } finally {
       isApplying = false;

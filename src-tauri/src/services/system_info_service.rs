@@ -9,21 +9,6 @@ use winreg::enums::*;
 use winreg::RegKey;
 use wmi::WMIConnection;
 
-/// Lightweight system context for tweak/profile operations.
-///
-/// This intentionally avoids WMI hardware/device enumeration from `get_system_info`.
-#[derive(Debug, Clone)]
-pub struct RuntimeContext {
-    pub windows: WindowsInfo,
-    pub is_admin: bool,
-}
-
-impl RuntimeContext {
-    pub fn windows_version(&self) -> u32 {
-        self.windows.version_number()
-    }
-}
-
 // WMI query structs
 #[derive(Deserialize, Debug)]
 #[serde(rename = "Win32_Processor")]
@@ -1008,22 +993,42 @@ pub fn get_system_info() -> Result<SystemInfo, Error> {
     })
 }
 
-/// Get only the runtime context needed by tweak/profile operations.
-pub fn get_runtime_context() -> Result<RuntimeContext, Error> {
-    Ok(RuntimeContext {
-        windows: get_windows_info()?,
-        is_admin: is_running_as_admin(),
-    })
-}
-
-/// Check if running as administrator
-/// Uses a simple heuristic: try to open a protected registry key
+/// Whether this process holds an elevated token, via `TokenElevation`. Not a `KEY_WRITE` probe of
+/// an HKLM key: any error there (low memory, missing key) reads as "not admin", falsely gating
+/// every admin-floor tweak and every HKLM write.
 pub fn is_running_as_admin() -> bool {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    // Try to open SYSTEM key with write access - only admins can do this
-    let is_admin = hklm
-        .open_subkey_with_flags("SYSTEM\\CurrentControlSet\\Control", KEY_WRITE)
-        .is_ok();
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle that never needs closing; the token
+    // handle is closed on every path; `elevation` is a live local sized to what the callee writes.
+    let is_admin = unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == FALSE {
+            log::warn!("admin check: OpenProcessToken failed; assuming not elevated");
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut returned: u32 = 0;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            std::ptr::addr_of_mut!(elevation).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        ) != FALSE;
+        CloseHandle(token);
+        if !ok {
+            log::warn!(
+                "admin check: GetTokenInformation(TokenElevation) failed; assuming not elevated"
+            );
+            return false;
+        }
+        elevation.TokenIsElevated != 0
+    };
     log::trace!("Admin check: {}", is_admin);
     is_admin
 }
@@ -1036,6 +1041,7 @@ pub fn machine_guid() -> Option<String> {
     RegKey::predef(HKEY_LOCAL_MACHINE)
         .open_subkey_with_flags("SOFTWARE\\Microsoft\\Cryptography", KEY_READ)
         .and_then(|key| key.get_value::<String, _>("MachineGuid"))
+        .inspect_err(|e| log::warn!("could not read MachineGuid: {e}"))
         .ok()
 }
 

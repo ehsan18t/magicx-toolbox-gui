@@ -1,0 +1,23 @@
+category:
+  id: dup_option_label
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "One tweak offers two options with the same label, which the engine selects by label."
+
+tweaks:
+  - id: dup_label_tweak
+    name: "Duplicate Option Label"
+    description: "Two options labelled On."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: flag
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          flag: 1
+      - label: "On"
+        values:
+          flag: 2

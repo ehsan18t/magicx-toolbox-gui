@@ -8,6 +8,8 @@
     label: string;
     /** Optional icon to show (Iconify format, e.g., 'mdi:check') */
     icon?: string;
+    /** Segment is shown but cannot be selected (e.g. System Default with no snapshot). */
+    disabled?: boolean;
   }
 
   interface Props {
@@ -63,34 +65,46 @@
 
   // Find index of selected option for keyboard navigation
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
+  // With nothing selected the group still needs one tab stop.
+  const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
 
   function handleClick(optValue: number) {
-    if (disabled || loading) return;
+    if (disabled || loading || optValue === value) return;
+    if (options.find((o) => o.value === optValue)?.disabled) return;
     onchange?.(optValue);
+  }
+
+  /** Next selectable segment in `step` direction, skipping disabled ones. Null if there is none. */
+  function nextSelectable(from: number, step: number): number | null {
+    for (let i = 1; i <= options.length; i++) {
+      const idx = (from + step * i + options.length * options.length) % options.length;
+      if (!options[idx].disabled) return idx;
+    }
+    return null;
   }
 
   function handleKeydown(e: KeyboardEvent) {
     if (disabled || loading) return;
 
-    let newIndex: number;
+    let newIndex: number | null;
 
     if (e.key === "ArrowRight" || e.key === "ArrowDown") {
       e.preventDefault();
-      newIndex = (selectedIndex + 1) % options.length;
+      newIndex = nextSelectable(selectedIndex, 1);
     } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
       e.preventDefault();
-      newIndex = (selectedIndex - 1 + options.length) % options.length;
+      newIndex = nextSelectable(selectedIndex, -1);
     } else if (e.key === "Home") {
       e.preventDefault();
-      newIndex = 0;
+      newIndex = nextSelectable(-1, 1);
     } else if (e.key === "End") {
       e.preventDefault();
-      newIndex = options.length - 1;
+      newIndex = nextSelectable(options.length, -1);
     } else {
       return;
     }
 
-    if (newIndex !== selectedIndex) {
+    if (newIndex !== null && newIndex !== selectedIndex) {
       onchange?.(options[newIndex].value);
     }
   }
@@ -108,14 +122,14 @@
   )}
   onkeydown={handleKeydown}
 >
-  {#each options as opt (opt.value)}
+  {#each options as opt, i (opt.value)}
     {@const isSelected = opt.value === value}
     <button
       type="button"
       role="radio"
       aria-checked={isSelected}
-      tabindex={isSelected ? 0 : -1}
-      disabled={disabled || loading}
+      tabindex={i === tabStopIndex ? 0 : -1}
+      disabled={disabled || loading || opt.disabled}
       class={cn(
         "relative inline-flex items-center justify-center gap-1.5 font-medium transition-all duration-150",
         "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
@@ -128,7 +142,8 @@
             : "scale-[1.02] bg-accent text-accent-foreground shadow-md"
           : cn(
               "text-foreground-muted",
-              !disabled && !loading && "cursor-pointer hover:bg-white/5 hover:text-foreground",
+              opt.disabled && "opacity-40",
+              !disabled && !loading && !opt.disabled && "cursor-pointer hover:bg-white/5 hover:text-foreground",
             ),
       )}
       onclick={() => handleClick(opt.value)}

@@ -1,0 +1,23 @@
+category:
+  id: services_start_raw_registry
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A raw registry effect addresses a service's Start value instead of using the Service kind."
+
+tweaks:
+  - id: bad_service_tweak
+    name: "Bad"
+    description: "Should use `service: { name: wuauserv }` instead."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: raw_start_value
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\wuauserv', name: Start, type: REG_DWORD }
+    options:
+      - label: "Automatic"
+        values:
+          raw_start_value: 2
+      - label: "Disabled"
+        values:
+          raw_start_value: 4

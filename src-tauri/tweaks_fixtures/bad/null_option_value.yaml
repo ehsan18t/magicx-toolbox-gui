@@ -1,0 +1,23 @@
+category:
+  id: null_option_value
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An option's value entry is null/empty instead of a literal or `absent`."
+
+tweaks:
+  - id: null_value_tweak
+    name: "Null Value"
+    description: "The Off option leaves some_effect blank."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: some_effect
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          some_effect: 1
+      - label: "Off"
+        values:
+          some_effect:

@@ -1,0 +1,32 @@
+category:
+  id: shared_only_distinguisher
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two options differ only by a shared claim — a value other tweaks can also claim, so it cannot be the sole distinguisher."
+
+tweaks:
+  - id: shared_only_tweak
+    name: "Shared Only"
+    description: "Both options agree on marker; only the shared telemetry claim differs between them."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: telemetry
+        shared: telemetry_off_local
+    options:
+      - label: "Claims It"
+        values:
+          marker: 1
+          telemetry: claim
+      - label: "Leaves It"
+        values:
+          marker: 1
+          telemetry: unclaimed
+
+shared:
+  - id: telemetry_off_local
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    value: 0

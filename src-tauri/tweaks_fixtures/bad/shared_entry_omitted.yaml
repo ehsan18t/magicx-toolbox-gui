@@ -1,0 +1,27 @@
+category:
+  id: shared_entry_omitted
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An option's values: map does not explicitly say claim/unclaimed for a shared effect."
+
+shared:
+  - id: telemetry_off
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    value: 0
+
+tweaks:
+  - id: telemetry_tweak
+    name: "Telemetry"
+    description: "The Enabled option omits the telemetry entry entirely."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: telemetry
+        shared: telemetry_off
+    options:
+      - label: "Disabled"
+        values:
+          telemetry: claim
+      - label: "Enabled"
+        values: {}

@@ -23,8 +23,8 @@
   const levelConfig = {
     info: { icon: "tabler:info-circle", color: "text-info", bg: "bg-info/10" },
     warn: { icon: "tabler:alert-triangle", color: "text-warning", bg: "bg-warning/10" },
-    error: { icon: "tabler:x-circle", color: "text-error", bg: "bg-error/10" },
-    success: { icon: "tabler:check-circle", color: "text-success", bg: "bg-success/10" },
+    error: { icon: "tabler:circle-x", color: "text-error", bg: "bg-error/10" },
+    success: { icon: "tabler:circle-check", color: "text-success", bg: "bg-success/10" },
   };
 
   function formatTime(date: Date): string {

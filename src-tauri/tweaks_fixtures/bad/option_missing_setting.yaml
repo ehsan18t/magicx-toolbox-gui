@@ -1,0 +1,26 @@
+category:
+  id: option_missing_setting
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An option's values: map omits one of the tweak's Setting effects."
+
+tweaks:
+  - id: incomplete_tweak
+    name: "Incomplete"
+    description: "The Off option forgets second_effect."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: first_effect
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: First, type: REG_DWORD }
+      - id: second_effect
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Second, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          first_effect: 1
+          second_effect: 1
+      - label: "Off"
+        values:
+          first_effect: 0

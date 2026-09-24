@@ -1,0 +1,20 @@
+category:
+  id: field_on_non_string_type
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A packed field on a REG_DWORD value, which can hold no Name=Value text."
+
+tweaks:
+  - id: dword_field_tweak
+    name: "Field On A DWORD"
+    description: "Addresses a field of a numeric value."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: packed_flag
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Packed, type: REG_DWORD, field: Flag, format: kv_semicolon }
+    options:
+      - label: "On"
+        values:
+          packed_flag: 1

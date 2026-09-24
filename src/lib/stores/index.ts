@@ -11,6 +11,9 @@ export { themeStore, type Theme } from "./theme.svelte";
 // Favorites
 export { favoritesStore } from "./favorites.svelte";
 
+// Manual Tests (test build only)
+export { manualTestsStore } from "./manualTests.svelte";
+
 // Modal state
 export {
   closeModal,
@@ -53,13 +56,11 @@ export {
   stageChange,
   // Data stores
   systemStore,
-  toggleTweak,
   tweaksStore,
   unstageChange,
 } from "./tweaks.svelte";
 
 // System elevation
-export { systemElevationStore } from "./systemElevation.svelte";
 
 // Update system
 export { updateStore } from "./update.svelte";

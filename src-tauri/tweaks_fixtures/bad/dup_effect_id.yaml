@@ -1,0 +1,22 @@
+category:
+  id: dup_effect_id
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "One tweak declares the same effect id twice, so an option value can only reach the first."
+
+tweaks:
+  - id: dup_effect_tweak
+    name: "Duplicate Effect Id"
+    description: "Two effects named flag."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: flag
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: First, type: REG_DWORD }
+      - id: flag
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Second, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          flag: 1

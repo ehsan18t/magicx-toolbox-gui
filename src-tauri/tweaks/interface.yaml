@@ -1,0 +1,1354 @@
+category:
+  id: interface
+  name: "Interface & Explorer"
+  icon: "mdi:monitor"
+  description: "Desktop, taskbar, and File Explorer appearance and behavior. Per-user (HKCU) preferences, safe and reversible."
+
+tweaks:
+  - id: enable_dark_mode
+    name: "Turn on dark mode"
+    description: "Switch Windows, the shell and your apps to the dark color theme."
+    info: |
+      **Switches both Windows and your apps to the dark theme in one step: taskbar, Start, File Explorer and every app that follows the system theme.**
+
+      ## Drawbacks
+      - Some older dialogs, MMC consoles and Control Panel pages stay light.
+      - A few apps that are already open switch only after you restart them.
+
+      ## Notes
+      - Takes effect immediately, and the Settings page keeps working as usual.
+      - Both parts are set together; a mix of dark apps and a light Windows (or the reverse) shows as System Default.
+
+      ## Sources
+      - [Choose Dark or Light Mode for Colors in Windows 11](https://www.elevenforum.com/t/choose-dark-or-light-mode-for-colors-in-windows-11.555/)
+      - [Enable Dark mode on Windows](https://pureinfotech.com/enable-dark-mode-windows-10/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: apps_theme
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', name: AppsUseLightTheme, type: REG_DWORD }
+      - id: system_theme
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', name: SystemUsesLightTheme, type: REG_DWORD }
+    options:
+      - label: "Dark"
+        values: { apps_theme: 0, system_theme: 0 }
+      - label: "Light"
+        values: { apps_theme: 1, system_theme: 1 }
+
+  - id: disable_transparency
+    name: "Turn off transparency effects"
+    description: "Make the taskbar, Start menu and flyouts solid instead of translucent."
+    info: |
+      **Makes the taskbar, Start menu, Settings and flyouts solid instead of see-through, so their text stands out from the wallpaper.**
+
+      ## Notes
+      - A look-and-readability change: on any modern graphics card it does not make Windows faster.
+      - Battery saver and reduced visual effects can switch transparency off on their own, whatever this is set to.
+      - Takes effect within a second or two.
+
+      ## Sources
+      - [Enable or Disable Transparency in Windows 11](https://winaero.com/how-to-enable-or-disable-transparency-in-windows-11/)
+      - [Enable or Disable Transparency Effects in Windows 11](https://www.ninjaone.com/blog/enable-or-disable-transparency-effects-in-windows-11/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: transparency
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', name: EnableTransparency, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { transparency: 0 }
+      - label: "On"
+        values: { transparency: 1 }
+
+  - id: disable_ui_animations
+    name: "Turn off window animations"
+    description: "Remove the slide and fade animations when windows open, close, minimise and maximise."
+    info: |
+      **Removes the slide and fade animations when windows open, close, minimise and maximise, plus the taskbar and Start animations.**
+
+      ## Drawbacks
+      - Without the motion it is harder to see where a minimised window went.
+
+      ## Notes
+      - The taskbar part applies after Explorer restarts; the window part only after you sign out and back in. The app does not prompt for the sign-out.
+      - Switching Settings > Accessibility > Visual effects > Animation effects later overwrites this.
+
+      ## Related
+      - **Set visual effects to best performance** (Performance) applies the rest of the best-performance visual profile and leaves these two animations to this tweak.
+
+      ## Recommendation
+      Worth it on low-end hardware or over Remote Desktop, where the delay is noticeable. Skip it if you rely on the motion to follow your windows.
+
+      ## Sources
+      - [Animate windows when minimizing and maximizing](https://www.tenforums.com/tutorials/126788-enable-disable-animate-windows-when-minimizing-maximizing.html)
+      - [Enable or Disable Animations in the Taskbar](https://www.tenforums.com/tutorials/126795-enable-disable-animations-taskbar-windows-10-a.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: taskbar_anim
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: TaskbarAnimations, type: REG_DWORD }
+      - id: min_animate
+        registry: { key: 'HKCU\Control Panel\Desktop\WindowMetrics', name: MinAnimate, type: REG_SZ }
+    options:
+      - label: "Off"
+        values: { taskbar_anim: 0, min_animate: "0" }
+      - label: "On"
+        values: { taskbar_anim: 1, min_animate: "1" }
+
+  # Polarity note: `DisallowShaking = 0` turns the gesture ON. Windows 11 ships it off, so that
+  # option is an opt-in, not a restore.
+  - id: disable_aero_shake
+    name: "Disable Aero Shake"
+    description: "Stop windows minimising when you grab a title bar and shake it."
+    info: |
+      **Stops windows from minimising when you grab a title bar and shake it.**
+
+      ## Notes
+      - Windows 11 and Windows 10 LTSC 2021 already ship with shaking off, so applying may change nothing you can see, and an untouched PC may show System Default.
+      - Enabled switches the gesture on; it is not the Windows default.
+      - Takes effect after Explorer restarts. The Settings toggle (System > Multitasking > Title bar window shake) keeps working.
+
+      ## Sources
+      - [Enable or Disable Title Bar Window Shake in Windows 11](https://www.elevenforum.com/t/enable-or-disable-title-bar-window-shake-in-windows-11.2078/)
+      - [Enable or Disable Aero Shake in Windows 10](https://www.tenforums.com/tutorials/4417-how-enable-disable-aero-shake-windows-10-a.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: shaking
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: DisallowShaking, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { shaking: 1 }
+      - label: "Enabled"
+        values: { shaking: 0 }
+
+  - id: show_file_extensions
+    name: "Show file name extensions"
+    description: "Show the real file extension on every file, so a disguised executable cannot hide."
+    info: |
+      **Shows the extension on every file name (such as .pdf or .exe), so a file like `invoice.pdf.exe` cannot pass itself off as a PDF.**
+
+      ## Drawbacks
+      - File names get longer, and renaming a file can change its extension by mistake (Explorer warns you first).
+
+      ## Notes
+      - Only your account changes. Takes effect after Explorer restarts, or press F5 in an open window.
+
+      ## Recommendation
+      Worth applying on almost any PC. The only reason to skip it is a shared PC where someone is likely to break files while renaming them.
+
+      ## Sources
+      - [Show or Hide File Name Extensions in Windows 11](https://www.elevenforum.com/t/show-or-hide-file-name-extensions-for-known-file-types-in-windows-11.898/)
+      - [Explorer Advanced registry reference](https://renenyffenegger.ch/notes/Windows/registry/tree/HKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Explorer/Advanced/index)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: hide_ext
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: HideFileExt, type: REG_DWORD }
+    options:
+      - label: "Show"
+        values: { hide_ext: 0 }
+      - label: "Hide"
+        values: { hide_ext: 1 }
+
+  - id: show_hidden_files
+    name: "Show hidden files and folders"
+    description: "Reveal hidden files and folders in File Explorer, without exposing protected system files."
+    info: |
+      **Shows hidden files and folders in File Explorer, such as AppData. Protected system files such as `pagefile.sys` stay hidden.**
+
+      ## Drawbacks
+      - Folders show extra clutter such as `desktop.ini`.
+
+      ## Caveats
+      - Hidden app data folders become easy to delete by mistake.
+      - Security monitoring tools on work PCs may flag this change, because malware also makes it.
+
+      ## Notes
+      - Takes effect after Explorer restarts, or press F5 in an open window.
+
+      ## Sources
+      - [Explorer Advanced registry reference](https://renenyffenegger.ch/notes/Windows/registry/tree/HKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Explorer/Advanced/index)
+      - [What does the SuperHidden registry value control?](https://fleexlab.blogspot.com/2017/08/what-does-superhidden-registry-value.html)
+      - [Sigma rule for this change](https://detection.fyi/sigmahq/sigma/windows/registry/registry_set/registry_set_hide_file/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: hidden
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: Hidden, type: REG_DWORD }
+    options:
+      - label: "Show"
+        values: { hidden: 1 }
+      - label: "Hide"
+        values: { hidden: 2 }
+
+  - id: open_explorer_to_this_pc
+    name: "Open File Explorer to This PC"
+    description: "File Explorer opens on your drives instead of a feed of recent files."
+    info: |
+      **File Explorer opens on This PC (your drives) instead of the Home page with its recent files and pinned folders.**
+
+      ## Drawbacks
+      - Pinned folders and recent files are one click further away.
+
+      ## Notes
+      - Applies to new Explorer windows after Explorer restarts.
+
+      ## Related
+      - **Hide Home in Explorer**: apply this tweak first or together with it, so Explorer does not open to a page you hid.
+
+      ## Sources
+      - [Change the startup page of File Explorer on Windows 11](https://pureinfotech.com/open-file-explorer-this-pc-instead-quick-access-windows-11/)
+      - [Open File Explorer to This PC by default](https://memstechtips.com/set-file-explorer-launch-this-pc-regedit/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: launch_to
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: LaunchTo, type: REG_DWORD }
+    options:
+      - label: "This PC"
+        values: { launch_to: 1 }
+      - label: "Home / Quick Access"
+        values: { launch_to: 2 }
+
+  - id: explorer_full_path_title
+    name: "Show the full path in the Explorer title"
+    description: "Put the full folder path in the Explorer window title instead of just the folder name."
+    info: |
+      **Uses the full folder path (such as `C:\Users\You\Projects`) as the Explorer window title instead of just the folder name.**
+
+      ## Notes
+      - On Windows 11 the title bar holds tabs, so you mostly see the path in Alt+Tab and taskbar previews. On Windows 10 it shows in the title bar.
+      - The address bar does not change.
+      - Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Display Full Path in Title Bar of File Explorer in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-display-full-path-in-title-bar-of-file-explorer-in-windows-11.3585/)
+      - [Display Full Path in Title Bar of File Explorer in Windows 10](https://www.tenforums.com/tutorials/3430-display-full-path-title-bar-file-explorer-windows-10-a.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: full_path
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState', name: FullPath, type: REG_DWORD }
+    options:
+      - label: "On"
+        values: { full_path: 1 }
+      - label: "Off"
+        values: { full_path: 0 }
+
+  - id: disable_recent_files
+    name: "Hide recent files and folders in Explorer"
+    description: "Empty the recent files and frequent folders lists from the File Explorer Home page."
+    info: |
+      **Hides the recent files and frequent folders lists on the File Explorer Home page. Pinned folders stay.**
+
+      ## Caveats
+      - On recent Windows 11 builds, turning this off may clear the saved recent list instead of hiding it, so old entries may not come back when you revert.
+      - Windows keeps recording what you open; this only hides the lists.
+
+      ## Notes
+      - Takes effect after Explorer restarts.
+
+      ## Related
+      - **Turn off recent items tracking** stops the recording itself. With both applied, reverting only one leaves Recent empty.
+      - **Disable File Explorer cloud recommendations** (Privacy) removes the cloud file suggestions, which this tweak does not touch.
+
+      ## Sources
+      - [Disable recent files and frequent folders in Explorer](https://matthewhill.uk/windows/group-policy-disable-recent-files-frequent-folder-explorer/)
+      - [How to Remove Recent Files in File Explorer](https://www.ninjaone.com/blog/how-to-remove-recent-files-in-file-explorer/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: show_recent
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer', name: ShowRecent, type: REG_DWORD }
+      - id: show_frequent
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer', name: ShowFrequent, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { show_recent: 0, show_frequent: 0 }
+      - label: "On"
+        values: { show_recent: 1, show_frequent: 1 }
+
+  - id: disable_start_recent_items
+    name: "Turn off recent items tracking"
+    description: "Stop Windows recording what you opened, across Start, jump lists and File Explorer at once."
+    info: |
+      **Stops Windows tracking the files you open, so they no longer appear in Start, taskbar jump lists or File Explorer's Recent section.**
+
+      ## Drawbacks
+      - Right-clicking a taskbar app no longer lists your recent documents.
+
+      ## Notes
+      - The same switch as Settings > Personalization > Start > Show recently opened items.
+      - Takes effect after Explorer restarts.
+
+      ## Related
+      - **Hide recent files and folders in Explorer** also empties Explorer's Recent list; with both applied, reverting only one leaves it empty.
+      - **Hide the Recommended section in Start** removes the whole Start section these files appear in.
+
+      ## Recommendation
+      Use it on a shared PC or if you do not want your documents on show. Skip it if you reopen work from jump lists.
+
+      ## Sources
+      - [Recommended files in Start, recent files in Explorer and jump lists](https://www.elevenforum.com/t/enable-or-disable-recommended-files-in-start-recent-files-in-file-explorer-and-items-in-jump-lists-in-windows-11.1161/)
+      - [Recently opened files: how to hide or show them](https://www.majorgeeks.com/content/page/recently_opened_files_how_to_hide_or_show_them_in_jump_listsfile_explorerand_start_menu.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: track_docs
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: Start_TrackDocs, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { track_docs: 0 }
+      - label: "On"
+        values: { track_docs: absent }
+
+  - id: disable_task_view_button
+    name: "Hide the Task View button"
+    description: "Remove the Task View icon from the taskbar without disabling virtual desktops."
+    info: |
+      **Removes the Task View button from the taskbar. Virtual desktops and Win+Tab keep working.**
+
+      ## Notes
+      - Takes effect immediately on Windows 11, after Explorer restarts on Windows 10.
+
+      ## Recommendation
+      Hide it if you use Win+Tab or no virtual desktops. Keep it on a touch device, where the button is the easy way in.
+
+      ## Sources
+      - [Add or Remove Task View Button on Taskbar in Windows 11](https://www.elevenforum.com/t/add-or-remove-task-view-button-on-taskbar-in-windows-11.1037/)
+      - [Add or remove the Task View button](https://www.ninjaone.com/blog/add-or-remove-the-task-view-button-on-the-taskbar-in-windows-11/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: task_view
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ShowTaskViewButton, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { task_view: 0 }
+      - label: "Shown"
+        values: { task_view: 1 }
+
+  - id: seconds_in_tray_clock
+    name: "Show seconds in the tray clock"
+    description: "The taskbar clock ticks in seconds instead of only showing hours and minutes."
+    info: |
+      **Makes the taskbar clock show seconds.**
+
+      ## Drawbacks
+      - Redrawing the clock every second uses a little more power, which Microsoft's own Settings text warns about. It matters on battery.
+
+      ## Notes
+      - Takes effect after Explorer restarts.
+
+      ## Related
+      - **Show the full date and time in the tray** adds the year and AM/PM; the two combine.
+
+      ## Sources
+      - [Show Seconds in System Tray Clock in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-show-seconds-in-system-tray-clock-in-windows-11.10591/)
+      - [Enable seconds for the taskbar clock in Windows 11](https://winaero.com/how-to-enable-seconds-for-the-taskbar-clock-in-windows-11/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: clock_seconds
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ShowSecondsInSystemClock, type: REG_DWORD }
+    options:
+      - label: "Shown"
+        values: { clock_seconds: 1 }
+      - label: "Hidden"
+        values: { clock_seconds: 0 }
+
+  # Ships the per-user preference only. The durable HKLM policy companion (EnableDynamicContentInWSB)
+  # is deliberately omitted so this stays a user-level tweak; the info block documents it instead.
+  - id: disable_search_highlights
+    name: "Turn off search highlights"
+    description: "Remove the rotating artwork and trending topics from the Windows search box."
+    info: |
+      **Removes the artwork and trending topics Microsoft shows in the Windows search box and search panel.**
+
+      ## Notes
+      - It does not change how search finds your apps and files.
+      - A Settings change or a feature update can turn highlights back on.
+      - Takes effect after Explorer restarts or the next time search opens.
+
+      ## Related
+      - **Turn off web results in Start search** (Debloat) removes Bing results, a separate feature.
+
+      ## Sources
+      - [Enable or Disable Search Highlights in Windows 11](https://www.elevenforum.com/t/enable-or-disable-search-highlights-in-windows-11.5735/)
+      - [Enable or Disable Search Highlights in Windows 10](https://www.tenforums.com/tutorials/194711-enable-disable-search-highlights-windows-10-a.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: search_highlights
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\SearchSettings', name: IsDynamicSearchBoxEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { search_highlights: 0 }
+      - label: "On"
+        values: { search_highlights: 1 }
+
+  - id: taskbar_search_mode
+    name: "Taskbar search style (Windows 10)"
+    description: "Shrink or hide the taskbar search box on Windows 10."
+    info: |
+      **Chooses how search appears on the Windows 10 taskbar: hidden, an icon, or the full search box (the default).**
+
+      ## Notes
+      - Hiding it does not turn search off: press the Windows key and type.
+      - If the taskbar does not change at once, restart Explorer or sign out.
+
+      ## Related
+      - **Taskbar search style (Windows 11)** is the Windows 11 version, with an extra icon-and-label choice.
+
+      ## Recommendation
+      Icon only frees the space and keeps a mouse route. Pick Hidden only if you always search from the keyboard.
+
+      ## Sources
+      - [Hide or show the search box or icon on the Windows 10 taskbar](https://www.tenforums.com/tutorials/2854-hide-show-search-box-search-icon-taskbar-windows-10-a.html)
+      - [Control the Windows 10 taskbar search box through the registry](https://www.404techsupport.com/2015/11/27/control-cortana-windows-10-taskbar-registry/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    # Windows 10 has no icon-and-label mode (3); the Windows 11 tweak below owns the same values.
+    windows: { products: [10] }
+    effects:
+      - id: search_mode
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarMode, type: REG_DWORD }
+      - id: search_mode_cache
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarModeCache, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { search_mode: 0, search_mode_cache: 1 }
+      - label: "Icon only"
+        values: { search_mode: 1, search_mode_cache: 1 }
+      - label: "Search box"
+        values: { search_mode: 2, search_mode_cache: absent }
+
+  - id: taskbar_search_mode_win11
+    name: "Taskbar search style (Windows 11)"
+    description: "Shrink or remove the taskbar search box, the widest element on a stock Windows 11 taskbar."
+    info: |
+      **Chooses how search appears on the taskbar, the same four choices as Settings: hide it, a search icon, an icon with a label, or the full search box (the default).**
+
+      ## Notes
+      - Hiding it does not turn search off: press the Windows key and type.
+      - Search icon and label needs build 22621.1344 or newer.
+      - Takes effect immediately.
+
+      ## Related
+      - **Taskbar search style (Windows 10)** is the Windows 10 version.
+
+      ## Recommendation
+      Search icon only frees the space and keeps a mouse route. Pick Hide only if you always search from the keyboard.
+
+      ## Sources
+      - [Customizing search on the Windows 11 taskbar](https://techcommunity.microsoft.com/blog/windows-itpro-blog/customizing-search-on-the-windows-11-taskbar/3730314)
+      - [Disabling the Windows 11 taskbar search box for all users](https://awakecoding.com/posts/disabling-the-windows-11-taskbar-search-box-for-all-users/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    # The four-way search setting arrived with 22H2; the Windows 10 tweak above owns the same values.
+    windows: { build: ">=22621" }
+    effects:
+      - id: search_mode
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarMode, type: REG_DWORD }
+      # Windows reads a missing cache value as "no preference recorded" and re-migrates the mode back
+      # to 2, so every non-stock option pins it. The stock option leaves it absent: re-migration to 2
+      # is a no-op there, and writing 1 would leave an artefact on an otherwise pristine profile.
+      - id: search_mode_cache
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Search', name: SearchboxTaskbarModeCache, type: REG_DWORD }
+    options:
+      - label: "Hide"
+        values: { search_mode: 0, search_mode_cache: 1 }
+      - label: "Search icon only"
+        values: { search_mode: 1, search_mode_cache: 1 }
+      - label: "Search icon and label"
+        values: { search_mode: 3, search_mode_cache: 1 }
+      - label: "Search box"
+        values: { search_mode: 2, search_mode_cache: absent }
+
+  - id: taskbar_ungroup_labels
+    name: "Ungroup taskbar buttons"
+    description: "Give every window its own labelled taskbar button instead of stacking them under one icon."
+    info: |
+      **Gives each window its own labelled taskbar button instead of stacking an app's windows under one icon.**
+
+      ## Notes
+      - Combine when the taskbar is full keeps labels until space runs out. Always combine, hide labels is the Windows default.
+      - Applies to the taskbar on every display; the main and extra monitors cannot be set differently here.
+      - Takes effect immediately.
+
+      ## Related
+      - **Focus the last active window on click** only matters while buttons are combined.
+
+      ## Recommendation
+      Never combine suits a wide monitor with a handful of windows open. On a laptop screen, pick Combine when the taskbar is full or keep the default.
+
+      ## Sources
+      - [Enable taskbar labels and never combine on Windows 11](https://pureinfotech.com/show-taskbar-labels-never-combine-windows-11/)
+      - [Always or Never Combine Taskbar Buttons in Windows 11](https://www.elevenforum.com/t/always-or-never-combine-taskbar-buttons-and-hide-labels-in-windows-11.15135/)
+      - [Never combine taskbar buttons in Windows 11 25H2](https://www.tech2geek.net/how-to-enable-never-combine-taskbar-buttons-in-windows-11-25h2/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: glom_level
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: TaskbarGlomLevel, type: REG_DWORD }
+      - id: mm_glom_level
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: MMTaskbarGlomLevel, type: REG_DWORD }
+    options:
+      - label: "Never combine"
+        values: { glom_level: 2, mm_glom_level: 2 }
+      - label: "Combine when the taskbar is full"
+        values: { glom_level: 1, mm_glom_level: 1 }
+      - label: "Always combine, hide labels"
+        values: { glom_level: 0, mm_glom_level: 0 }
+
+  - id: taskbar_hover_time
+    name: "Show taskbar thumbnails instantly"
+    description: "Taskbar thumbnail previews appear the moment you hover instead of after a pause."
+    info: |
+      **Makes taskbar thumbnail previews appear as soon as you hover a button, instead of after a 400 ms pause.**
+
+      ## Drawbacks
+      - Previews pop up whenever the cursor crosses the taskbar.
+
+      ## Requirements
+      - Windows 10 or Windows 11 up to 23H2. The 24H2 taskbar no longer reads the value, so the tweak is hidden from 24H2 on.
+
+      ## Notes
+      - Takes effect after you sign out or restart Explorer.
+
+      ## Sources
+      - [Change hover time for taskbar thumbnail previews in Windows 11](https://www.elevenforum.com/t/change-hover-time-to-show-taskbar-thumbnail-previews-in-windows-11.6366/)
+      - [ExtendedUIHoverTime is not working anymore (Microsoft Q&A)](https://learn.microsoft.com/en-us/answers/questions/2263244/extendeduihovertime-is-not-working-anymore)
+    risk_level: low
+    elevation: user
+    reversible: true
+    # Stops working from 24H2 (26100): the value survives in Taskbar.dll's legacy strings but the taskbar ignores it.
+    windows: { build: "<=22631" }
+    effects:
+      - id: hover_time
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: ExtendedUIHoverTime, type: REG_DWORD }
+    options:
+      - label: "Instant"
+        values: { hover_time: 1 }
+      - label: "400 ms"
+        values: { hover_time: absent }
+
+  - id: taskbar_alignment_left
+    name: "Left-align the taskbar"
+    description: "Move Start and the pinned icons back to the left corner of the taskbar."
+    info: |
+      **Moves Start and your taskbar icons to the left corner, as in Windows 10, instead of the centre.**
+
+      ## Benefits
+      - Start stays in one place instead of shifting as apps open and close.
+
+      ## Notes
+      - Takes effect immediately.
+
+      ## Sources
+      - [Change Taskbar Alignment in Windows 11](https://www.elevenforum.com/t/change-taskbar-alignment-in-windows-11.12/)
+      - [Left-align the taskbar on Windows 11](https://pureinfotech.com/align-taskbar-icons-left-windows-11/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: taskbar_align
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: TaskbarAl, type: REG_DWORD }
+    options:
+      - label: "Left"
+        values: { taskbar_align: 0 }
+      - label: "Center"
+        values: { taskbar_align: 1 }
+
+  - id: disable_snap_flyout
+    name: "Turn off the snap layouts hover flyout"
+    description: "Stop the snap layout grid popping out when the cursor passes a window's maximise button."
+    info: |
+      **Stops the snap layout grid popping up when your cursor rests on a window's maximise button.**
+
+      ## Notes
+      - Snapping still works: drag a window to a screen edge or use Win+Arrow. Win+Z still opens the layout grid.
+      - The layout bar that drops down when you drag a window to the top of the screen stays on.
+      - Takes effect after Explorer restarts or a sign-out.
+
+      ## Related
+      - **Turn off the Snap Assist suggestion picker** turns off the suggestions shown after you snap a window.
+
+      ## Sources
+      - [Disable the snap layouts flyout on the maximize button](https://www.askvg.com/how-to-disable-snap-layouts-flyout-on-maximize-button-in-windows-11/)
+      - [Enable or disable Snap Layouts on hover](https://www.thewindowsclub.com/enable-snap-layouts-on-windows-11)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: snap_flyout
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: EnableSnapAssistFlyout, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { snap_flyout: 0 }
+      - label: "On"
+        values: { snap_flyout: absent }
+
+  - id: explorer_compact_view
+    name: "Turn on Explorer compact view"
+    description: "Tighten File Explorer row spacing so more files fit on screen."
+    info: |
+      **Reduces the spacing between rows in File Explorer so more files fit on screen, as in Windows 10.**
+
+      ## Drawbacks
+      - Smaller rows are harder to tap with a finger or pen.
+
+      ## Notes
+      - Some users report that recent 24H2 and 25H2 updates make compact mode tighten less than it used to.
+      - Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Turn On or Off Compact View in File Explorer in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-compact-view-in-file-explorer-in-windows-11.896/)
+      - [Enable compact view in File Explorer](https://winaero.com/windows-11-enable-compact-view-in-file-explorer/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: compact_mode
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: UseCompactMode, type: REG_DWORD }
+    options:
+      - label: "On"
+        values: { compact_mode: 1 }
+      - label: "Off"
+        values: { compact_mode: 0 }
+
+  - id: disable_start_recommendations
+    name: "Turn off promoted recommendations in Start"
+    description: "Stop Microsoft's promoted tips, shortcuts and app suggestions appearing in the Start menu."
+    info: |
+      **Stops Start showing Microsoft's promoted tips, shortcut suggestions and new apps in its Recommended area.**
+
+      ## Notes
+      - The Recommended section itself stays.
+      - Takes effect after Explorer restarts.
+
+      ## Related
+      - **Hide the Recommended section in Start** removes the whole section.
+      - **Turn off Start menu app promotions** (Debloat) turns off a second promotion channel; a quiet Start needs both.
+
+      ## Sources
+      - [Recommended tips, shortcuts and new apps in Start](https://www.elevenforum.com/t/enable-or-disable-recommended-tips-shortcuts-new-apps-and-more-on-start-menu-in-windows-11.14346/)
+      - [Disable Recommended in the Start menu](https://winaero.com/disable-recommended-start/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: iris_recommendations
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: Start_IrisRecommendations, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { iris_recommendations: 0 }
+      - label: "On"
+        values: { iris_recommendations: 1 }
+
+  - id: enable_end_task_taskbar
+    name: "Add End task to the taskbar menu"
+    description: "Add \"End task\" to the taskbar right-click menu so you can kill a hung app in one click."
+    info: |
+      **Adds End task to the right-click menu of every taskbar button, so you can close a frozen app without opening Task Manager.**
+
+      ## Caveats
+      - End task closes the app and its child processes at once, with no prompt to save, so unsaved work is lost.
+
+      ## Notes
+      - The same switch as Settings > System > For developers > End Task.
+      - Takes effect after Explorer restarts or a sign-out.
+
+      ## Sources
+      - [Enable or Disable End Task in Taskbar in Windows 11](https://www.elevenforum.com/t/enable-or-disable-end-task-in-taskbar-by-right-click-in-windows-11.14325/)
+      - [Enable or disable the End Task option in the taskbar](https://cloudinfra.net/enable-disable-end-task-option-in-taskbar-on-windows-11/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { build: ">=22631" }
+    effects:
+      - id: end_task
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings', name: TaskbarEndTask, type: REG_DWORD }
+    options:
+      - label: "On"
+        values: { end_task: 1 }
+      - label: "Off"
+        values: { end_task: 0 }
+
+  - id: remove_gallery_nav_pane
+    name: "Hide Gallery in Explorer"
+    description: "Remove the Gallery entry from the File Explorer sidebar."
+    info: |
+      **Removes Gallery from the File Explorer sidebar for your account. Your photos and folders are not touched.**
+
+      ## Notes
+      - Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Add or Remove Gallery in File Explorer in Windows 11](https://www.elevenforum.com/t/add-or-remove-gallery-in-file-explorer-navigation-pane-in-windows-11.14178/)
+      - [Remove Gallery from File Explorer](https://winaero.com/remove-gallery-from-file-explorer/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { build: ">=22631" }
+    effects:
+      - id: gallery_pin
+        registry: { key: 'HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}', name: System.IsPinnedToNameSpaceTree, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { gallery_pin: 0 }
+      - label: "Shown"
+        values: { gallery_pin: absent }
+
+  - id: remove_home_nav_pane
+    name: "Hide Home in Explorer"
+    description: "Remove the Home entry from the File Explorer sidebar."
+    info: |
+      **Removes Home, the page with pinned folders and recent files, from the File Explorer sidebar for your account.**
+
+      ## Drawbacks
+      - Pinned folders live in Home, so they get harder to reach.
+
+      ## Caveats
+      - Explorer opens on Home by default. Apply Open File Explorer to This PC first or together with this, or Explorer opens to a page you hid.
+
+      ## Notes
+      - Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Add or Remove Home in File Explorer in Windows 11](https://www.elevenforum.com/t/add-or-remove-home-in-navigation-pane-of-file-explorer-in-windows-11.2449/)
+      - [Remove the File Explorer Home page on Windows 11](https://pureinfotech.com/remove-home-file-explorer-windows-11/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: home_pin
+        registry: { key: 'HKCU\Software\Classes\CLSID\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}', name: System.IsPinnedToNameSpaceTree, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { home_pin: 0 }
+      - label: "Shown"
+        values: { home_pin: absent }
+
+  - id: remove_onedrive_nav_pane
+    name: "Hide OneDrive in Explorer"
+    description: "Hide the OneDrive entry from the File Explorer sidebar without uninstalling OneDrive."
+    info: |
+      **Hides OneDrive from the File Explorer sidebar. OneDrive stays installed and keeps syncing your files.**
+
+      ## Caveats
+      - Files keep syncing from a folder you no longer see in the sidebar.
+      - Covers personal OneDrive only; work or school OneDrive entries stay.
+      - Does nothing on a PC without personal OneDrive.
+
+      ## Notes
+      - Takes effect after Explorer restarts.
+
+      ## Related
+      - **Remove OneDrive** (Debloat) uninstalls OneDrive instead.
+
+      ## Sources
+      - [Remove the OneDrive icon from File Explorer in Windows 11](https://winaero.com/how-to-remove-onedrive-icon-from-file-explorer-in-windows-11/)
+      - [Add or Remove OneDrive in File Explorer in Windows 11](https://www.elevenforum.com/t/add-or-remove-onedrive-in-navigation-pane-of-file-explorer-in-windows-11.2478/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: onedrive_pin
+        registry: { key: 'HKCU\Software\Classes\CLSID\{018D5C66-4533-4307-9B53-224DE2ED1FE6}', name: System.IsPinnedToNameSpaceTree, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { onedrive_pin: 0 }
+      - label: "Shown"
+        values: { onedrive_pin: 1 }
+
+  - id: disable_toast_notifications
+    name: "Turn off toast notifications"
+    description: "Silence every pop-up notification on the machine, from every app and from Windows itself."
+    info: |
+      **Stops every pop-up notification for your account, from all apps and from Windows itself.**
+
+      ## Caveats
+      - Security warnings (Windows Security, BitLocker), backup failures and low-battery warnings are hidden too.
+
+      ## Notes
+      - Takes effect after you sign out and back in; the app does not prompt for it. Reverting also needs a sign-out.
+      - The Settings switch may show the old state until you sign in again.
+
+      ## Related
+      - **Silence suggested and backup reminder toasts** (Debloat) silences only two Windows nag notifications.
+      - **Remove the Notification Center** removes the history panel; pop-ups still appear.
+
+      ## Recommendation
+      Use it for a demo, a recording or a kiosk. For everyday quiet, turn on Do Not Disturb instead: it hides pop-ups but keeps what you missed.
+
+      ## Sources
+      - [How to disable notifications in Windows 11](https://winaero.com/how-to-disable-notifications-in-windows-11/)
+      - [Turn On or Off Notifications in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-notifications-in-windows-11.821/)
+    risk_level: medium
+    elevation: user
+    reversible: true
+    effects:
+      - id: toast_enabled
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\PushNotifications', name: ToastEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { toast_enabled: 0 }
+      - label: "On"
+        values: { toast_enabled: 1 }
+
+  - id: verbose_logon_messages
+    name: "Show verbose logon messages"
+    description: "Replace the sign-in spinner with step-by-step text so you can see what Windows is doing."
+    info: |
+      **Shows what Windows is doing during startup, sign-in, sign-out and shutdown (such as "Applying computer settings") instead of a plain spinner.**
+
+      ## Drawbacks
+      - The extra text can look like an error to other users, and it can show policy or server names on a shared screen.
+
+      ## Notes
+      - Applies to every account on the PC.
+      - Has no effect while the policy that removes these status messages is on.
+
+      ## Recommendation
+      Useful while tracking down a slow sign-in or shutdown. Turn it off on a shared or public PC.
+
+      ## Sources
+      - [Display highly detailed status messages (policy reference)](https://admx.help/?Category=Windows_10_2016&Policy=Microsoft.Policies.WindowsLogon::VerboseStatus)
+      - [Enable detailed status messages](https://www.tenforums.com/tutorials/100262-enable-detailed-status-messages-shut-down-sign-out-sign.html)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: verbose_status
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', name: VerboseStatus, type: REG_DWORD }
+    options:
+      - label: "On"
+        values: { verbose_status: 1 }
+      - label: "Off"
+        values: { verbose_status: absent }
+
+  # Polarity note: `DisableStartupSound = 0` turns the chime ON. It is an opt-in, not a restore.
+  - id: disable_startup_sound
+    name: "Silence the startup sound"
+    description: "Silence the Windows startup chime played when the sign-in screen appears, or switch it back on."
+    info: |
+      **Silences the Windows startup sound that plays when the sign-in screen appears, for every account. The other option switches it on.**
+
+      ## Caveats
+      - The Sound control panel has its own Windows Startup sound setting, which can still turn the sound on or off independently.
+      - A leftover value from an older, retired policy can override this setting.
+
+      ## Notes
+      - Takes effect at the next startup.
+      - Play the startup sound turns the sound on explicitly; to get back exactly what this PC had before, choose System Default.
+
+      ## Sources
+      - [DisableStartupSound (Microsoft unattend reference)](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-authentication-authui-disablestartupsound)
+      - [Enable or Disable Startup Sound in Windows 11](https://www.elevenforum.com/t/enable-or-disable-startup-sound-in-windows-11.85/)
+      - [Disable the Windows 11 startup sound](https://winaero.com/disable-windows-11-startup-sound-using-these-three-methods/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: startup_sound
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation', name: DisableStartupSound, type: REG_DWORD }
+    options:
+      - label: "Silent"
+        values: { startup_sound: 1 }
+      - label: "Play the startup sound"
+        values: { startup_sound: 0 }
+
+  # One authored option only. `Flags` is a live bitmask of every sub-option for each accessibility
+  # feature, so a hardcoded "restore" constant would clobber unrelated sub-settings. Revert therefore
+  # goes through the snapshot, which carries the machine's own pre-apply values.
+  - id: disable_accessibility_key_prompts
+    name: "Turn off accessibility shortcut prompts"
+    description: "Stop the Sticky Keys, Filter Keys and Toggle Keys popups that fire from stray key presses."
+    info: |
+      **Stops the Sticky Keys, Filter Keys and Toggle Keys pop-ups that appear when you press Shift five times, hold Shift or hold NumLock.**
+
+      ## Caveats
+      - It writes fixed values: if Sticky Keys, Filter Keys or Toggle Keys is switched on, applying switches it off, and custom options for all three are reset until you revert.
+      - Anyone who uses these keyboard shortcuts to turn the features on loses them.
+
+      ## Notes
+      - Takes effect after you sign out and back in; the app does not prompt for it. Reverting restores your own previous values and also needs a sign-out.
+      - The features stay available in Settings > Accessibility > Keyboard.
+
+      ## Recommendation
+      Use it if the prompts interrupt games or fast typing. Skip it on an account where someone relies on these features.
+
+      ## Sources
+      - [STICKYKEYS structure (Microsoft)](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-stickykeys)
+      - [Turn On or Off Sticky Keys in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-sticky-keys-in-windows-11.8889/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: sticky_keys
+        registry: { key: 'HKCU\Control Panel\Accessibility\StickyKeys', name: Flags, type: REG_SZ }
+      - id: filter_keys
+        registry: { key: 'HKCU\Control Panel\Accessibility\Keyboard Response', name: Flags, type: REG_SZ }
+      - id: toggle_keys
+        registry: { key: 'HKCU\Control Panel\Accessibility\ToggleKeys', name: Flags, type: REG_SZ }
+    options:
+      - label: "Prompts off"
+        values: { sticky_keys: "506", filter_keys: "122", toggle_keys: "58" }
+
+  - id: classic_context_menu_win11
+    name: "Restore the classic context menu"
+    description: "Bring back the full Windows 10 right-click menu, so shell extensions appear on the first click."
+    info: |
+      **Brings back the full Windows 10 right-click menu, so entries from apps like 7-Zip or Git appear without clicking Show more options.**
+
+      ## Drawbacks
+      - You lose the Windows 11 menu, including its icon row for cut, copy, rename and delete.
+      - Apps that add entries only to the new menu may lose them.
+
+      ## Caveats
+      - An undocumented method: it works on 24H2 and 25H2, but a future update could stop honouring it.
+
+      ## Notes
+      - Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Restore the old right-click context menu in Windows 11 (Microsoft Q&A)](https://learn.microsoft.com/en-us/answers/questions/2287432/article-restore-old-right-click-context-menu-in-wi)
+      - [Unable to change the Windows 11 context menu with the registry (Microsoft Q&A)](https://learn.microsoft.com/en-us/answers/questions/4045956/unable-to-change-win11-context-menu-with-registry)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: context_menu
+        registry: { key: 'HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32', name: "", type: REG_SZ }
+    options:
+      - label: "Classic"
+        values: { context_menu: "" }
+      - label: "Modern"
+        values: { context_menu: absent }
+
+  - id: numlock_on_startup
+    name: "Turn NumLock on at startup"
+    description: "Turn NumLock on automatically for your sessions, so the numeric keypad works right away."
+    info: |
+      **Turns NumLock on when you sign in, so the number keypad works right away.**
+
+      ## Drawbacks
+      - On laptops whose letter keys double as a number pad, NumLock on turns those letters into digits.
+
+      ## Caveats
+      - Windows saves the live NumLock state at every sign-out, so if you switch NumLock off during a session it stays off next time, and the switch may then show System Default.
+      - The sign-in screen uses its own setting, which this does not change.
+      - Fast Startup can bring back the old keyboard state and override this.
+
+      ## Notes
+      - Takes effect after you sign out and back in; the app does not prompt for it.
+
+      ## Related
+      - **Disable Fast Startup (hiberboot)** (Performance) removes the Fast Startup override.
+
+      ## Sources
+      - [InitialKeyboardIndicators (Microsoft reference)](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-2000-server/cc978657%28v=technet.10%29)
+      - [Enable NumLock on the sign-in screen](https://winaero.com/enable-numlock-logon-screen-windows-10/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: numlock
+        registry: { key: 'HKCU\Control Panel\Keyboard', name: InitialKeyboardIndicators, type: REG_SZ }
+    options:
+      - label: "NumLock on"
+        values: { numlock: "2147483650" }
+      - label: "NumLock off"
+        values: { numlock: "0" }
+
+  - id: disable_start_recommended_section
+    name: "Hide the Recommended section in Start"
+    description: "Remove the entire Recommended section from the Start menu, not just the promoted rows."
+    info: |
+      **Removes the whole Recommended section from Start, including suggestions and your recent files, so pinned apps fill the space.**
+
+      ## Requirements
+      - Home edition is not in Microsoft's supported list for this policy.
+
+      ## Notes
+      - Applies to your account only.
+      - Takes effect after you sign out, or when Start restarts.
+
+      ## Related
+      - **Turn off promoted recommendations in Start** has nothing left to do while this is applied.
+      - **Hide recently added apps in Start** clears another part of Start.
+
+      ## Recommendation
+      Use it if Start is only an app launcher for you. Skip it if you reopen recent documents from Start.
+
+      ## Sources
+      - [Policy CSP - Start](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { build: ">=22621" }
+    effects:
+      - id: hide_recommended
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: HideRecommendedSection, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { hide_recommended: 1 }
+      - label: "Shown"
+        values: { hide_recommended: absent }
+
+  - id: hide_unsupported_hardware_notice
+    name: "Hide the unsupported hardware notice"
+    description: "Clear the \"system requirements not met\" watermark from the desktop and the About page."
+    info: |
+      **Hides the "System requirements not met" watermark on the desktop and the matching banner in Settings > System > About.**
+
+      ## Caveats
+      - Cosmetic only: the PC stays unsupported, and a future upgrade can still be blocked.
+
+      ## Notes
+      - Applies to every account. The About banner clears the next time the page opens; the desktop watermark may need an Explorer restart or a sign-out.
+
+      ## Sources
+      - [Remove the "System requirements not met" message in Windows 11](https://www.elevenforum.com/t/remove-system-requirements-not-met-message-on-desktop-and-settings-in-windows-11.5241/)
+      - [Remove the "System Requirements Not Met" watermark](https://winaero.com/how-to-remove-system-requirements-not-met-watermark-in-windows-11/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: hide_unsupported
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', name: HideUnsupportedHardwareNotifications, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { hide_unsupported: 1 }
+      - label: "Shown"
+        values: { hide_unsupported: absent }
+
+  - id: disable_phone_companion_start
+    name: "Hide the mobile device panel in Start"
+    description: "Remove the phone panel from the Start menu without uninstalling Phone Link."
+    info: |
+      **Removes the phone panel from the side of the Start menu. Phone Link stays installed and works if you open it.**
+
+      ## Requirements
+      - Needs Windows 11 24H2 build 26100.3915 or newer (23H2: 22631.5262); earlier builds have no panel to hide.
+
+      ## Notes
+      - Does nothing on a PC without Phone Link.
+      - Takes effect the next time Start opens.
+
+      ## Related
+      - **Remove Phone Link** (Debloat) uninstalls the app instead.
+
+      ## Sources
+      - [Mobile device in Start menu (Microsoft Support)](https://support.microsoft.com/en-us/windows/mobile-device-in-start-menu-21676d6a-3bc3-439a-aaa3-7463b91cda79)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { build: ">=22631" }
+    effects:
+      - id: phone_companion
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Start\Companions\Microsoft.YourPhone_8wekyb3d8bbwe', name: IsEnabled, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { phone_companion: 0 }
+      - label: "Shown"
+        values: { phone_companion: absent }
+
+  - id: disable_drag_tray
+    name: "Turn off the Drop Tray share overlay"
+    description: "Stop the Drop Tray (originally Drag Tray) share overlay sliding down when you drag a file."
+    info: |
+      **Stops the Drop Tray, the share panel that slides down at the top of the screen when you drag a file, so it no longer gets in the way.**
+
+      ## Requirements
+      - On 24H2, needs build 26100.4202 or newer; earlier builds have no Drop Tray to turn off.
+
+      ## Notes
+      - Normal drag and drop is unaffected; you only lose dragging files to share with nearby devices and apps.
+      - Takes effect immediately.
+
+      ## Sources
+      - [Enable or Disable Drop Tray in Windows 11](https://www.elevenforum.com/t/enable-or-disable-drag-tray-in-windows-11.40485/)
+      - [How to disable Drag Tray](https://www.majorgeeks.com/content/page/how_to_disable_drag_tray.html)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: drag_tray
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\CDP', name: DragTrayEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { drag_tray: 0 }
+      - label: "On"
+        values: { drag_tray: absent }
+
+  # The policy key's enum is 1-based (4 = open windows only). The identically named value under
+  # Explorer\Advanced uses a 0-based enum where 3 means the same thing. Never reuse a number
+  # across the two keys: writing 3 here means "windows plus 3 recent tabs", the opposite intent.
+  - id: alt_tab_hide_browser_tabs
+    name: "Alt+Tab shows windows only"
+    description: "Alt+Tab lists your open windows again instead of filling up with browser tabs."
+    info: |
+      **Makes Alt+Tab list only your open windows, or windows plus a few recent tabs, instead of filling up with browser tabs.**
+
+      ## Notes
+      - Affects every app that puts its tabs in Alt+Tab, not only one browser.
+      - Applies to your account only.
+      - Windows decides removes this policy, so the Alt+Tab choice in Settings > System > Multitasking applies again.
+      - Takes effect after Explorer restarts or a sign-out.
+
+      ## Recommendation
+      Pick Open windows only if you keep many tabs open and Alt+Tab has become hard to use. Skip it if you jump to single tabs with Alt+Tab.
+
+      ## Sources
+      - [Configure the inclusion of app tabs into Alt+Tab (policy reference)](https://admx.help/?Category=Windows_11_2022&Policy=Microsoft.Policies.Multitasking::BrowserAltTabBlowout)
+      - [Policy CSP - Multitasking](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-multitasking)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: alt_tab_filter
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: MultiTaskingAltTabFilter, type: REG_DWORD }
+    options:
+      - label: "Open windows only"
+        values: { alt_tab_filter: 4 }
+      - label: "Windows and 3 most recent tabs"
+        values: { alt_tab_filter: 3 }
+      - label: "Windows and 5 most recent tabs"
+        values: { alt_tab_filter: 2 }
+      - label: "Windows and 20 most recent tabs"
+        values: { alt_tab_filter: 1 }
+      - label: "Windows decides"
+        values: { alt_tab_filter: absent }
+
+  - id: disable_snap_assist
+    name: "Turn off the Snap Assist suggestion picker"
+    description: "Stop Windows suggesting what to put in the empty half after you snap a window."
+    info: |
+      **Stops Windows offering thumbnails of your other windows to fill the empty side after you snap a window.**
+
+      ## Notes
+      - Snapping still works: Win+Arrow, dragging to a screen edge and the layout grid.
+      - Takes effect the next time you snap a window.
+
+      ## Related
+      - **Turn off the snap layouts hover flyout** turns off the layout grid on the maximise button.
+
+      ## Sources
+      - [Enable or Disable Snap Assist in Windows 11](https://www.elevenforum.com/t/enable-or-disable-snap-assist-in-windows-11.1308/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: snap_assist
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: SnapAssist, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { snap_assist: 0 }
+      - label: "On"
+        values: { snap_assist: 1 }
+
+  - id: explorer_expand_to_current_folder
+    name: "Expand the tree to the open folder"
+    description: "The Explorer sidebar tree opens and highlights whatever folder you are currently viewing."
+    info: |
+      **Makes the File Explorer sidebar expand to, and highlight, the folder you are viewing.**
+
+      ## Drawbacks
+      - Deep paths expand long branches, and the sidebar jumps each time you change folders.
+      - Slower on network shares, since each level is read on the way.
+
+      ## Notes
+      - The same as the Expand to open folder option in Folder Options. Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Expand Folder in the Navigation Pane in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-expand-folder-in-navigation-pane-of-file-explorer-in-windows-11.2544/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: expand_to_folder
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: NavPaneExpandToCurrentFolder, type: REG_DWORD }
+    options:
+      - label: "Expand"
+        values: { expand_to_folder: 1 }
+      - label: "Do not expand"
+        values: { expand_to_folder: absent }
+
+  - id: explorer_restore_folders_at_logon
+    name: "Restore Explorer windows at sign-in"
+    description: "Reopen the File Explorer windows you had open when you last signed out."
+    info: |
+      **Reopens the File Explorer windows you had open when you last signed out.**
+
+      ## Drawbacks
+      - Sign-in takes a little longer while the windows open, and your folder names show on screen at sign-in.
+      - Folders on disconnected drives or network shares fail to reopen.
+
+      ## Notes
+      - Starts working from your next sign-out and sign-in.
+
+      ## Sources
+      - [Restore previous folder windows at logon in Windows 11](https://www.elevenforum.com/t/turn-on-or-off-restore-previous-folder-windows-at-logon-in-windows-11.5177/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: persist_browsers
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: PersistBrowsers, type: REG_DWORD }
+    options:
+      - label: "Restore"
+        values: { persist_browsers: 1 }
+      - label: "Do not restore"
+        values: { persist_browsers: absent }
+
+  - id: taskbar_full_date_time
+    name: "Show the full date and time in the tray"
+    description: "Show the full date with the year and an AM/PM marker in the taskbar clock."
+    info: |
+      **Shows the full date with the year, and the AM/PM marker, in the taskbar clock.**
+
+      ## Drawbacks
+      - The clock takes noticeably more taskbar space.
+
+      ## Notes
+      - Applies to your account only.
+      - Nothing changes until you restart, and reverting also needs a restart.
+
+      ## Related
+      - **Show seconds in the tray clock** adds seconds; the two combine.
+
+      ## Sources
+      - [Show shortened time and date on the taskbar in Windows 11](https://www.elevenforum.com/t/enable-or-disable-show-shortened-time-and-date-on-taskbar-in-windows-11.26235/)
+      - [Show the full date in the Windows 11 taskbar](https://winaero.com/taskbar-full-date-time/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    windows: { build: ">=22621" }
+    effects:
+      - id: full_date_time
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: TurnOffAbbreviatedDateTimeFormat, type: REG_DWORD }
+    options:
+      - label: "Full format"
+        values: { full_date_time: 1 }
+      - label: "Abbreviated"
+        values: { full_date_time: absent }
+
+  - id: hide_recently_added_apps
+    name: "Hide recently added apps in Start"
+    description: "Remove the \"Recently added\" list of newly installed apps from the Start menu."
+    info: |
+      **Removes the Recently added list of newly installed apps from the Start menu.**
+
+      ## Requirements
+      - Home edition is not in Microsoft's supported list for this policy.
+
+      ## Notes
+      - Applies to your account only.
+      - The matching switch in Settings is greyed out while this is on.
+      - Takes effect after a restart; reverting also needs one.
+
+      ## Sources
+      - [Policy CSP - Start](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-start)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: hide_recently_added
+        registry: { key: 'HKCU\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: HideRecentlyAddedApps, type: REG_DWORD }
+    options:
+      - label: "Hidden"
+        values: { hide_recently_added: 1 }
+      - label: "Shown"
+        values: { hide_recently_added: absent }
+
+  - id: taskbar_last_active_click
+    name: "Focus the last active window on click"
+    description: "Clicking a grouped taskbar button jumps straight to the window you used last."
+    info: |
+      **When an app's windows share one taskbar button, clicking it goes straight to the window you used last instead of showing thumbnails to pick from.**
+
+      ## Notes
+      - Hover the button to see the thumbnails and pick a different window.
+      - Only matters while taskbar buttons are combined.
+      - Takes effect after Explorer restarts.
+
+      ## Sources
+      - [Always Use Last Active Click on Taskbar in Windows 11](https://www.elevenforum.com/t/enable-or-disable-always-use-last-active-click-on-taskbar-in-windows-11.6360/)
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: last_active_click
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: LastActiveClick, type: REG_DWORD }
+    options:
+      - label: "Focus the last active window"
+        values: { last_active_click: 1 }
+      - label: "Show the thumbnail chooser"
+        values: { last_active_click: absent }
+
+  - id: disable_notification_center
+    name: "Remove the Notification Center"
+    description: "Remove the Notification Center panel and its taskbar entry point entirely."
+    info: |
+      **Removes the Notification Center panel and its taskbar button for every account. Pop-up notifications still appear, but anything you miss cannot be reviewed later.**
+
+      ## Caveats
+      - On Windows 11 the calendar shares this panel and is likely to disappear too; Microsoft does not document this either way.
+
+      ## Notes
+      - Takes effect after a restart; reverting also needs one.
+
+      ## Related
+      - **Turn off toast notifications** silences the pop-ups instead.
+
+      ## Recommendation
+      Suited to kiosks and locked-down PCs. On a normal desktop, use Do Not Disturb when you want quiet.
+
+      ## Sources
+      - [Policy CSP - ADMX Taskbar](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-taskbar)
+      - [Remove Notifications and Action Center (policy reference)](https://admx.help/?Category=Windows_10_2016&Policy=Microsoft.Policies.TaskBar2::DisableNotificationCenter)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: notification_center
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: DisableNotificationCenter, type: REG_DWORD }
+    options:
+      - label: "Removed"
+        values: { notification_center: 1 }
+      - label: "Shown"
+        values: { notification_center: absent }

@@ -1,0 +1,25 @@
+category:
+  id: shared_unclaimed_undetectable
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A single option whose only effect is an unclaimed shared reference has zero detectable signal (spec §8.6) — no pairwise guard catches a single-option tweak either."
+
+tweaks:
+  - id: shared_unclaimed_tweak
+    name: "Shared Unclaimed"
+    description: "The only effect is a shared reference left unclaimed; nothing here is ever detectable."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: telemetry
+        shared: telemetry_off_unclaimed_only
+    options:
+      - label: "Leaves It"
+        values:
+          telemetry: unclaimed
+
+shared:
+  - id: telemetry_off_unclaimed_only
+    registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
+    value: 0

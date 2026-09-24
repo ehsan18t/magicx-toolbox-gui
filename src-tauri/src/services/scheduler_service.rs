@@ -1,15 +1,10 @@
 //! Windows Task Scheduler service for managing scheduled tasks.
 //!
-//! Uses the Task Scheduler 2.0 COM API (via the `windows` crate) rather than parsing
-//! `schtasks.exe` text output. `IRegisteredTask::State()` returns a numeric `TASK_STATE`, which is
-//! the actual fix for the locale class: the old code parsed the localized "Status:" line, so it
-//! silently misread state on non-English Windows.
-//!
-//! Supports both exact task names and regex patterns for matching multiple tasks.
+//! Task Scheduler 2.0 COM API, not `schtasks.exe` text: `IRegisteredTask::State()` is a numeric
+//! `TASK_STATE`, while the "Status:" text is localized and misreads on non-English Windows.
 
 use crate::error::Error;
-use crate::models::tweak::SchedulerAction;
-use regex_lite::Regex;
+use crate::models::win_types::SchedulerAction;
 use std::cell::Cell;
 use std::sync::Mutex;
 
@@ -18,7 +13,7 @@ use windows::Win32::Foundation::{VARIANT_FALSE, VARIANT_TRUE};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
-use windows::Win32::System::TaskScheduler::{ITaskService, TaskScheduler, TASK_ENUM_HIDDEN};
+use windows::Win32::System::TaskScheduler::{ITaskService, TaskScheduler};
 use windows::Win32::System::Variant::VARIANT;
 
 // TASK_STATE numeric values (the locale-free source of truth).
@@ -30,6 +25,7 @@ const TASK_STATE_RUNNING: i32 = 4;
 // "Not found" HRESULTs (ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND as HRESULT).
 const HRESULT_FILE_NOT_FOUND: u32 = 0x8007_0002;
 const HRESULT_PATH_NOT_FOUND: u32 = 0x8007_0003;
+const HRESULT_ELEMENT_NOT_FOUND: u32 = 0x8007_0490;
 
 /// State of a scheduled task.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,36 +42,8 @@ pub enum TaskState {
     Unknown(String),
 }
 
-impl TaskState {
-    pub fn as_str(&self) -> &str {
-        match self {
-            TaskState::Ready => "Ready",
-            TaskState::Disabled => "Disabled",
-            TaskState::Running => "Running",
-            TaskState::NotFound => "NotFound",
-            TaskState::Unknown(s) => s,
-        }
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
-            "ready" => TaskState::Ready,
-            "disabled" => TaskState::Disabled,
-            "running" => TaskState::Running,
-            _ => TaskState::Unknown(s.to_string()),
-        }
-    }
-}
-
-/// Represents a task found in a folder.
-#[derive(Debug, Clone)]
-pub struct TaskInfo {
-    pub name: String,
-    pub state: TaskState,
-}
-
 fn com_err(e: windows::core::Error) -> Error {
-    Error::CommandExecution(format!("Task Scheduler COM error: {}", e))
+    Error::win32(format!("Task Scheduler COM error: {e}"), e.code().0 as u32)
 }
 
 fn is_not_found(e: &windows::core::Error) -> bool {
@@ -169,9 +137,30 @@ fn set_task_enabled(task_path: &str, task_name: &str, enabled: bool) -> Result<(
     with_task_service(|service| unsafe {
         let folder = service.GetFolder(&BSTR::from(task_path)).map_err(com_err)?;
         let task = folder.GetTask(&BSTR::from(task_name)).map_err(com_err)?;
-        task.SetEnabled(flag).map_err(com_err)?;
+        if let Err(e) = task.SetEnabled(flag) {
+            let stored = folder
+                .GetTask(&BSTR::from(task_name))
+                .and_then(|fresh| fresh.Enabled());
+            if !toggle_landed(e.code().0 as u32, stored.is_ok_and(|now| now == flag)) {
+                return Err(com_err(e));
+            }
+            log::warn!(
+                "Task Scheduler reported not-found toggling {task_path}\\{task_name}, but the change is in place"
+            );
+        }
         Ok(())
     })
+}
+
+/// SetEnabled flips the flag and then fails with ERROR_NOT_FOUND (0x80070490) on the
+/// UpdateOrchestrator task StartOobeAppsScanAfterUpdate on 26100, observed as SYSTEM in both
+/// directions. Only that code, and only with the stored flag re-read as requested, counts as done.
+fn toggle_landed(code: u32, stored_as_requested: bool) -> bool {
+    stored_as_requested
+        && matches!(
+            code,
+            HRESULT_ELEMENT_NOT_FOUND | HRESULT_FILE_NOT_FOUND | HRESULT_PATH_NOT_FOUND
+        )
 }
 
 /// Enable a scheduled task.
@@ -186,23 +175,6 @@ pub fn disable_task(task_path: &str, task_name: &str) -> Result<(), Error> {
     set_task_enabled(task_path, task_name, false)
 }
 
-/// Delete a scheduled task. A task (or folder) that is already gone is treated as success.
-pub fn delete_task(task_path: &str, task_name: &str) -> Result<(), Error> {
-    log::info!("Deleting scheduled task: {}\\{}", task_path, task_name);
-    with_task_service(|service| unsafe {
-        let folder = match service.GetFolder(&BSTR::from(task_path)) {
-            Ok(f) => f,
-            Err(e) if is_not_found(&e) => return Ok(()),
-            Err(e) => return Err(com_err(e)),
-        };
-        match folder.DeleteTask(&BSTR::from(task_name), 0) {
-            Ok(()) => Ok(()),
-            Err(e) if is_not_found(&e) => Ok(()),
-            Err(e) => Err(com_err(e)),
-        }
-    })
-}
-
 /// Apply a scheduler change based on the action type.
 pub fn apply_scheduler_change(
     task_path: &str,
@@ -212,108 +184,22 @@ pub fn apply_scheduler_change(
     match action {
         SchedulerAction::Enable => enable_task(task_path, task_name),
         SchedulerAction::Disable => disable_task(task_path, task_name),
-        SchedulerAction::Delete => delete_task(task_path, task_name),
     }
-}
-
-/// List all tasks directly in a folder path. A missing folder yields an empty list.
-pub fn list_tasks_in_folder(task_path: &str) -> Result<Vec<TaskInfo>, Error> {
-    // The collection is 1-indexed per the Task Scheduler contract.
-    with_task_service(|service| unsafe {
-        let folder = match service.GetFolder(&BSTR::from(task_path)) {
-            Ok(f) => f,
-            Err(e) if is_not_found(&e) => return Ok(Vec::new()),
-            Err(e) => return Err(com_err(e)),
-        };
-        let tasks = folder.GetTasks(TASK_ENUM_HIDDEN.0).map_err(com_err)?;
-        let count = tasks.Count().map_err(com_err)?;
-
-        let mut result = Vec::with_capacity(count.max(0) as usize);
-        for i in 1..=count {
-            let item = tasks.get_Item(&VARIANT::from(i)).map_err(com_err)?;
-            let name = item.Name().map_err(com_err)?.to_string();
-            let state = task_state_from_com(item.State().map_err(com_err)?.0);
-            result.push(TaskInfo { name, state });
-        }
-        Ok(result)
-    })
-}
-
-/// Find tasks matching a regex pattern in a folder.
-pub fn find_tasks_by_pattern(task_path: &str, pattern: &str) -> Result<Vec<TaskInfo>, Error> {
-    let regex = Regex::new(pattern).map_err(|e| {
-        Error::CommandExecution(format!("Invalid regex pattern '{}': {}", pattern, e))
-    })?;
-
-    let all_tasks = list_tasks_in_folder(task_path)?;
-    let matching: Vec<TaskInfo> = all_tasks
-        .into_iter()
-        .filter(|t| regex.is_match(&t.name))
-        .collect();
-
-    log::debug!(
-        "Found {} tasks matching pattern '{}' in '{}'",
-        matching.len(),
-        pattern,
-        task_path
-    );
-
-    Ok(matching)
-}
-
-/// Apply action to multiple tasks found by pattern.
-/// Returns `(success_count, error_count, errors)`.
-pub fn apply_action_to_pattern(
-    task_path: &str,
-    pattern: &str,
-    action: SchedulerAction,
-    ignore_not_found: bool,
-) -> Result<(usize, usize, Vec<String>), Error> {
-    let tasks = find_tasks_by_pattern(task_path, pattern)?;
-
-    if tasks.is_empty() {
-        if ignore_not_found {
-            log::warn!(
-                "No tasks found matching pattern '{}' in '{}' (ignore_not_found=true)",
-                pattern,
-                task_path
-            );
-            return Ok((0, 0, Vec::new()));
-        } else {
-            return Err(Error::CommandExecution(format!(
-                "No tasks found matching pattern '{}' in '{}'",
-                pattern, task_path
-            )));
-        }
-    }
-
-    let mut success_count = 0;
-    let mut error_count = 0;
-    let mut errors = Vec::new();
-
-    for task in tasks {
-        log::info!(
-            "Applying {:?} to task '{}\\{}'",
-            action,
-            task_path,
-            task.name
-        );
-
-        match apply_scheduler_change(task_path, &task.name, action) {
-            Ok(()) => success_count += 1,
-            Err(e) => {
-                error_count += 1;
-                errors.push(format!("{}\\{}: {}", task_path, task.name, e));
-            }
-        }
-    }
-
-    Ok((success_count, error_count, errors))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_toggle_counts_only_with_a_not_found_code_and_the_flag_in_place() {
+        assert!(toggle_landed(HRESULT_ELEMENT_NOT_FOUND, true));
+        assert!(!toggle_landed(HRESULT_ELEMENT_NOT_FOUND, false));
+        assert!(
+            !toggle_landed(0x8007_0005, true),
+            "access denied never counts"
+        );
+    }
 
     #[test]
     fn task_state_from_com_maps_numeric_states() {
@@ -327,37 +213,17 @@ mod tests {
         assert!(matches!(task_state_from_com(0), TaskState::Unknown(_)));
     }
 
-    #[test]
-    fn task_state_from_str_parses_known_states() {
-        assert_eq!(TaskState::from_str("Ready"), TaskState::Ready);
-        assert_eq!(TaskState::from_str("Disabled"), TaskState::Disabled);
-        assert_eq!(TaskState::from_str("Running"), TaskState::Running);
-        assert_eq!(TaskState::from_str("  READY  "), TaskState::Ready);
-    }
-
-    // NOTE: the two tests below activate the live Task Scheduler COM service. Under libtest's
+    // NOTE: the test below activates the live Task Scheduler COM service. Under libtest's
     // parallel harness (a thread spawned per test), `CoCreateInstance(TaskScheduler)` intermittently
     // faults with a STATUS_ACCESS_VIOLATION — a race between COM/RPC activation and the harness's
     // rapid thread churn, not a defect in this code (it reproduces with per-call, thread-local, and
-    // balanced-uninit COM alike, and production drives these through a stable thread pool). They are
-    // #[ignore]d so the default gate is deterministic; run them with `cargo test -- --ignored`.
+    // balanced-uninit COM alike, and production drives these through a stable thread pool). It is
+    // #[ignore]d so the default gate is deterministic; run it with `cargo test -- --ignored`.
     #[test]
     #[ignore = "activates live Task Scheduler COM; races libtest thread-churn — run with --ignored"]
     fn nonexistent_task_reports_not_found() {
         // The root folder exists; the task does not.
         let s = get_task_state("\\", "MagicXNoSuchTask_zzq").unwrap();
         assert_eq!(s, TaskState::NotFound);
-    }
-
-    #[test]
-    #[ignore = "activates live Task Scheduler COM; races libtest thread-churn — run with --ignored"]
-    fn listing_root_folder_succeeds() {
-        // Exercises Connect -> GetFolder -> GetTasks -> Count/Item/Name/State without needing a
-        // specific task to exist. Root may hold zero or more tasks; either way it must not error.
-        let tasks = list_tasks_in_folder("\\").expect("listing root tasks folder should succeed");
-        // Every returned task has a non-empty name and a mapped state.
-        for t in &tasks {
-            assert!(!t.name.is_empty());
-        }
     }
 }

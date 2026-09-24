@@ -7,15 +7,18 @@
   import MdiAccountCircle from "~icons/mdi/account-circle";
   import MdiAlert from "~icons/mdi/alert";
   import MdiAlertCircle from "~icons/mdi/alert-circle";
+  import MdiAlertCircleOutline from "~icons/mdi/alert-circle-outline";
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
   import MdiArrowLeft from "~icons/mdi/arrow-left";
   import MdiArrowRight from "~icons/mdi/arrow-right";
   import MdiArrowRightCircle from "~icons/mdi/arrow-right-circle";
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
   import MdiBackupRestore from "~icons/mdi/backup-restore";
+  import MdiBroom from "~icons/mdi/broom";
   import MdiBug from "~icons/mdi/bug";
   import MdiCalendar from "~icons/mdi/calendar";
   import MdiCalendarClock from "~icons/mdi/calendar-clock";
+  import MdiCancel from "~icons/mdi/cancel";
   import MdiChartBar from "~icons/mdi/chart-bar";
   import MdiCheck from "~icons/mdi/check";
   import MdiCheckAll from "~icons/mdi/check-all";
@@ -26,7 +29,9 @@
   import MdiCircle from "~icons/mdi/circle";
   import MdiCircleHalfFull from "~icons/mdi/circle-half-full";
   import MdiCircleOutline from "~icons/mdi/circle-outline";
+  import MdiCircleSmall from "~icons/mdi/circle-small";
   import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";
+  import MdiClockOutline from "~icons/mdi/clock-outline";
   import MdiClose from "~icons/mdi/close";
   import MdiCloseCircle from "~icons/mdi/close-circle";
   import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
@@ -34,11 +39,13 @@
   import MdiCogOutline from "~icons/mdi/cog-outline";
   import MdiCogs from "~icons/mdi/cogs";
   import MdiConsole from "~icons/mdi/console";
+  import MdiContentCopy from "~icons/mdi/content-copy";
   import MdiCpu64Bit from "~icons/mdi/cpu-64-bit";
   import MdiDatabase from "~icons/mdi/database";
   import MdiDatabaseCogOutline from "~icons/mdi/database-cog-outline";
   import MdiDatabaseExport from "~icons/mdi/database-export";
   import MdiDelete from "~icons/mdi/delete";
+  import MdiDeleteOutline from "~icons/mdi/delete-outline";
   import MdiDesktopTowerMonitor from "~icons/mdi/desktop-tower-monitor";
   import MdiDownload from "~icons/mdi/download";
   import MdiEmail from "~icons/mdi/email";
@@ -52,13 +59,17 @@
   import MdiFileImport from "~icons/mdi/file-import";
   import MdiFileMultiple from "~icons/mdi/file-multiple";
   import MdiFileSearchOutline from "~icons/mdi/file-search-outline";
+  import MdiFlaskOutline from "~icons/mdi/flask-outline";
   import MdiFolder from "~icons/mdi/folder";
   import MdiFolderOpen from "~icons/mdi/folder-open";
+  import MdiFolderOutline from "~icons/mdi/folder-outline";
   import MdiGamepadVariant from "~icons/mdi/gamepad-variant";
   import MdiGithub from "~icons/mdi/github";
   import MdiHarddisk from "~icons/mdi/harddisk";
   import MdiHarddiskPlus from "~icons/mdi/harddisk-plus";
+  import MdiHammerWrench from "~icons/mdi/hammer-wrench";
   import MdiHelpCircle from "~icons/mdi/help-circle";
+  import MdiHelpCircleOutline from "~icons/mdi/help-circle-outline";
   import MdiHistory from "~icons/mdi/history";
   import MdiImport from "~icons/mdi/import";
   import MdiInformation from "~icons/mdi/information";
@@ -67,11 +78,14 @@
   import MdiLaptop from "~icons/mdi/laptop";
   import MdiLicense from "~icons/mdi/license";
   import MdiLightbulbOutline from "~icons/mdi/lightbulb-outline";
+  import MdiLan from "~icons/mdi/lan";
   import MdiLightningBolt from "~icons/mdi/lightning-bolt";
+  import MdiLinkVariant from "~icons/mdi/link-variant";
   import MdiLoading from "~icons/mdi/loading";
   import MdiMagicStaff from "~icons/mdi/magic-staff";
   import MdiMagnify from "~icons/mdi/magnify";
   import MdiMemory from "~icons/mdi/memory";
+  import MdiMonitor from "~icons/mdi/monitor";
   import MdiMicrosoftWindows from "~icons/mdi/microsoft-windows";
   import MdiOpenInNew from "~icons/mdi/open-in-new";
   import MdiPackageVariant from "~icons/mdi/package-variant";
@@ -85,6 +99,7 @@
   import MdiRestart from "~icons/mdi/restart";
   import MdiRestartAlert from "~icons/mdi/restart-alert";
   import MdiRestore from "~icons/mdi/restore";
+  import MdiRobotOutline from "~icons/mdi/robot-outline";
   import MdiSecurity from "~icons/mdi/security";
   import MdiServer from "~icons/mdi/server";
   import MdiSettingsOutline from "~icons/mdi/settings-outline";
@@ -94,10 +109,12 @@
   import MdiShieldCheck from "~icons/mdi/shield-check";
   import MdiShieldKey from "~icons/mdi/shield-key";
   import MdiShieldLock from "~icons/mdi/shield-lock";
+  import MdiShieldLockOutline from "~icons/mdi/shield-lock-outline";
   import MdiSpeedometer from "~icons/mdi/speedometer";
   import MdiStar from "~icons/mdi/star";
   import MdiStarOff from "~icons/mdi/star-off";
   import MdiStarOutline from "~icons/mdi/star-outline";
+  import MdiStop from "~icons/mdi/stop";
   import MdiTextSearch from "~icons/mdi/text-search";
   import MdiTimerOutline from "~icons/mdi/timer-outline";
   import MdiToggleSwitch from "~icons/mdi/toggle-switch";
@@ -111,14 +128,25 @@
   import MdiWeb from "~icons/mdi/web";
   import MdiWidgets from "~icons/mdi/widgets";
   import MdiWifi from "~icons/mdi/wifi";
+  // Effect-detail icons (per-option change breakdown in the tweak details modal)
+  import MdiArrowDownBold from "~icons/mdi/arrow-down-bold";
+  import MdiArrowUpBold from "~icons/mdi/arrow-up-bold";
+  import MdiFileDocumentOutline from "~icons/mdi/file-document-outline";
+  import MdiMinusCircle from "~icons/mdi/minus-circle";
+  import MdiPlusCircle from "~icons/mdi/plus-circle";
+  import MdiShieldOutline from "~icons/mdi/shield-outline";
   import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
   import TablerAppWindow from "~icons/tabler/app-window";
   import TablerArrowBarToDown from "~icons/tabler/arrow-bar-to-down";
+  import TablerAlertTriangle from "~icons/tabler/alert-triangle";
   import TablerBug from "~icons/tabler/bug";
+  import TablerCircleCheck from "~icons/tabler/circle-check";
+  import TablerCircleX from "~icons/tabler/circle-x";
   import TablerCopy from "~icons/tabler/copy";
   import TablerFileSearch from "~icons/tabler/file-search";
+  import TablerInfoCircle from "~icons/tabler/info-circle";
   import TablerLoader2 from "~icons/tabler/loader-2";
   import TablerMinus from "~icons/tabler/minus";
   import TablerMoon from "~icons/tabler/moon";
@@ -140,6 +168,7 @@
     // MDI icons
     "mdi:loading": MdiLoading,
     "mdi:alert-circle": MdiAlertCircle,
+    "mdi:alert-circle-outline": MdiAlertCircleOutline,
     "mdi:refresh": MdiRefresh,
     "mdi:magic-staff": MdiMagicStaff,
     "mdi:tune-vertical": MdiTuneVertical,
@@ -150,6 +179,9 @@
     "mdi:check": MdiCheck,
     "mdi:close": MdiClose,
     "mdi:cog-outline": MdiCogOutline,
+    "mdi:broom": MdiBroom,
+    "mdi:lan": MdiLan,
+    "mdi:monitor": MdiMonitor,
     "mdi:console": MdiConsole,
     "mdi:database": MdiDatabase,
     "mdi:shield-account-outline": MdiShieldAccountOutline,
@@ -158,6 +190,7 @@
     "mdi:powershell": MdiPowershell,
     "mdi:restart": MdiRestart,
     "mdi:restart-alert": MdiRestartAlert,
+    "mdi:robot-outline": MdiRobotOutline,
     "mdi:information-outline": MdiInformationOutline,
     "mdi:database-cog-outline": MdiDatabaseCogOutline,
     "mdi:settings-outline": MdiSettingsOutline,
@@ -189,6 +222,8 @@
     "mdi:server": MdiServer,
     "mdi:folder": MdiFolder,
     "mdi:folder-open": MdiFolderOpen,
+    "mdi:folder-outline": MdiFolderOutline,
+    "mdi:hammer-wrench": MdiHammerWrench,
     "mdi:file-document": MdiFileDocument,
     "mdi:check-all": MdiCheckAll,
     "mdi:undo-variant": MdiUndoVariant,
@@ -207,6 +242,12 @@
     "mdi:arrow-up-circle": MdiArrowUpCircle,
     "mdi:arrow-right": MdiArrowRight,
     "mdi:arrow-left": MdiArrowLeft,
+    "mdi:arrow-down-bold": MdiArrowDownBold,
+    "mdi:arrow-up-bold": MdiArrowUpBold,
+    "mdi:file-document-outline": MdiFileDocumentOutline,
+    "mdi:minus-circle": MdiMinusCircle,
+    "mdi:plus-circle": MdiPlusCircle,
+    "mdi:shield-outline": MdiShieldOutline,
     "mdi:calendar": MdiCalendar,
     "mdi:calendar-clock": MdiCalendarClock,
     "mdi:bug": MdiBug,
@@ -228,6 +269,13 @@
     "mdi:clipboard-check-outline": MdiClipboardCheckOutline,
     "mdi:close-circle": MdiCloseCircle,
     "mdi:history": MdiHistory,
+    "mdi:cancel": MdiCancel,
+    "mdi:circle-small": MdiCircleSmall,
+    "mdi:clock-outline": MdiClockOutline,
+    "mdi:delete-outline": MdiDeleteOutline,
+    "mdi:help-circle-outline": MdiHelpCircleOutline,
+    "mdi:link-variant": MdiLinkVariant,
+    "mdi:shield-lock-outline": MdiShieldLockOutline,
 
     // Category icons (used in sidebar/navigation)
     "mdi:view-dashboard": MdiViewDashboard,
@@ -256,6 +304,10 @@
     "tabler:sun": TablerSun,
     "tabler:copy": TablerCopy,
     "tabler:minus": TablerMinus,
+    "tabler:info-circle": TablerInfoCircle,
+    "tabler:alert-triangle": TablerAlertTriangle,
+    "tabler:circle-x": TablerCircleX,
+    "tabler:circle-check": TablerCircleCheck,
 
     // Fluent icons
     "fluent:minimize-20-filled": MdiMinimize20Filled,
@@ -273,6 +325,9 @@
     "mdi:file-multiple": MdiFileMultiple,
     "mdi:file-cog": MdiFileCog,
     "mdi:play": MdiPlay,
+    "mdi:stop": MdiStop,
+    "mdi:flask-outline": MdiFlaskOutline,
+    "mdi:content-copy": MdiContentCopy,
     "mdi:plus": MdiPlus,
     "mdi:delete": MdiDelete,
     "mdi:lightning-bolt": MdiLightningBolt,

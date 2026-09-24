@@ -24,19 +24,23 @@ src-tauri/
 
 ### 1. Application Entry Point (`main.rs`)
 
-The simplest file in your project. It just calls the `run()` function from your library:
+The simplest file in your project. It routes an elevated broker launch, then starts the GUI:
 
 ```rust
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    if let Some(code) = app_lib::run_broker_if_requested() {
+        std::process::exit(code);
+    }
     app_lib::run();
 }
 ```
 
 **Key Points:**
 - The `windows_subsystem` attribute prevents a console window from appearing on Windows in release builds
-- All the real work happens in `lib.rs`
+- `run_broker_if_requested` handles `--broker` in `argv[1]` (the TrustedInstaller child) before any GUI initialization
+- All the real work happens in `lib.rs`. `run()` first takes a per-session named mutex (`services/single_instance.rs`): a second launch brings the running window forward and exits, and a launch with `--after-restart` (Restart as administrator) waits for its predecessor to exit instead
 
 ### 2. Core Application (`lib.rs`)
 

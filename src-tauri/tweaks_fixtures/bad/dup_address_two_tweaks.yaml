@@ -1,0 +1,40 @@
+category:
+  id: dup_address_two_tweaks
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two different tweaks both directly own the same registry address."
+
+tweaks:
+  - id: tweak_a
+    name: "Tweak A"
+    description: "Owns the widget toggle."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: shared_slot
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          shared_slot: 1
+      - label: "Off"
+        values:
+          shared_slot: 0
+
+  - id: tweak_b
+    name: "Tweak B"
+    description: "Also owns the widget toggle — this is the violation."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: same_slot
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          same_slot: 1
+      - label: "Off"
+        values:
+          same_slot: 0

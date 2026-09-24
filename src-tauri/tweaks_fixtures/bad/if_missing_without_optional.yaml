@@ -1,0 +1,21 @@
+category:
+  id: if_missing_without_optional
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Declares if_missing without optional: true (Half A structural guard, spec §5.4)."
+
+tweaks:
+  - id: bad_if_missing_tweak
+    name: "Bad If Missing"
+    description: "some_effect sets if_missing but never declares optional."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: some_effect
+        service: { name: SomeSvc }
+        if_missing: disabled
+    options:
+      - label: "On"
+        values:
+          some_effect: automatic

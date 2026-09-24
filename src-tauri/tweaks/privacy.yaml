@@ -1,1710 +1,1140 @@
-# Privacy Tweaks - Disable telemetry, tracking, and advertising features
-
 category:
   id: privacy
-  name: "Privacy"
-  description: "Reduce telemetry, tracking, and data collection"
+  name: "Privacy & Telemetry"
   icon: "mdi:shield-lock"
-  order: 1
+  description: "Windows telemetry, diagnostic data, advertising, and content-suggestion controls. Group-policy and per-user privacy settings, reversible from snapshots."
 
+# Several tweaks here author a single option deliberately. An option is a state we drive the machine
+# to, so every literal in one has to be sourced. Where a state is unresolved or consent-derived (a
+# scheduled task's <Enabled> element, a service start type, a value that only materialises when the
+# user answers a prompt), authoring a second option would mean inventing a literal and driving the
+# machine to a state it may never have been in. One option leaves the way back to Restore Snapshot.
 tweaks:
-  - id: disable_recall_ai
-    name: "Disable Windows Recall AI"
-    description: "Disable Windows Recall AI screenshot capture feature"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+  - id: disable_diagnostic_data
+    name: "Limit diagnostic data to the Required level"
+    description: "Cap Windows diagnostic data at the Required level instead of the full optional level."
     info: |
-      ## What This Does
-      Completely disables Windows Recall, the AI feature that captures screenshots of your activity every few seconds.
+      **Caps Windows diagnostic data at the Required level for every account, so optional data such as app usage and inking samples is no longer sent, and Settings can no longer raise it.**
 
-      ## Privacy Concerns
-      - **Screen recording**: Recall captures everything on your screen including passwords, banking info, and private messages
-      - **Local storage**: Screenshots are stored locally and indexed by AI
-      - **Data exposure**: Sensitive data could be exposed if your device is compromised
+      ## Drawbacks
+      - The diagnostic data switch in Settings is greyed out until you revert.
 
-      ## Availability
-      Available on Windows 11 24H2+ with compatible NPU (Neural Processing Unit). If your device doesn't have Recall, this tweak has no effect.
+      ## Caveats
+      - Required diagnostic data is still sent: this is a cap, not an off switch, and the telemetry service keeps running.
+      - Windows Insider builds raise the level again regardless of this setting.
+
+      ## Notes
+      - User's choice removes the policy, so the Settings switch works again.
+      - Takes effect immediately.
+
+      ## Related
+      - **Disable User Experiences and Telemetry (DiagTrack)** (Services) stops the service that sends the data.
 
       ## Recommendation
-      Strongly recommended for privacy. Disable unless you specifically need Recall's features.
+      Worth applying on any personal PC. Hold off while Microsoft support is helping you with an update or crash problem.
+
+      ## Sources
+      - [Policy CSP - System](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-system)
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: allow_telemetry
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowTelemetry, type: REG_DWORD }
     options:
-      - label: "Recall Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
-            value_name: "DisableAIDataAnalysis"
-            value_type: "REG_DWORD"
-            value: 1
-            windows_versions: [11]
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-            value_name: "EnableSnapshots"
-            value_type: "REG_DWORD"
-            value: 0
-            windows_versions: [11]
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
-            value_name: "TurnOffWindowsAI"
-            value_type: "REG_DWORD"
-            value: 1
-            windows_versions: [11]
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
-            value_name: "DisableSavingSnapshots"
-            value_type: "REG_DWORD"
-            value: 1
-            windows_versions: [11]
-      - label: "Recall Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
-            value_name: "DisableAIDataAnalysis"
-            action: delete_value
-            windows_versions: [11]
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-            value_name: "EnableSnapshots"
-            value_type: "REG_DWORD"
-            value: 1
-            windows_versions: [11]
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
-            value_name: "TurnOffWindowsAI"
-            value_type: "REG_DWORD"
-            value: 0
-            windows_versions: [11]
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\WindowsAI"
-            value_name: "DisableSavingSnapshots"
-            value_type: "REG_DWORD"
-            value: 0
-            windows_versions: [11]
+      - label: "Required only"
+        values: { allow_telemetry: 1 }
+      - label: "User's choice"
+        values: { allow_telemetry: absent }
 
-  - id: disable_telemetry
-    name: "Disable Telemetry"
-    description: "Disable Windows telemetry and diagnostic data collection"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+  - id: disable_ceip_tasks
+    name: "Disable the Customer Experience Improvement Program"
+    description: "Opt out of the Customer Experience Improvement Program and disable its upload tasks."
     info: |
-      ## What This Does
-      Disables the DiagTrack (Connected User Experiences and Telemetry) service which collects and sends diagnostic data to Microsoft.
+      **Opts this PC out of the Customer Experience Improvement Program, an older Microsoft data program, and disables its scheduled upload tasks.**
 
-      ## Data Collected by DiagTrack
-      - Hardware configuration and capabilities
-      - Software inventory and usage patterns
-      - Application crashes and errors
-      - Device performance metrics
+      ## Mechanism
+      - Sets the opt-out policy and disables the program's Consolidator and USB tasks, the older kernel task where it exists, and the Sqm-Tasks collector that gathers TPM and Secure Boot data.
 
-      ## Impact
-      - Windows Insider features may not work
-      - Some troubleshooting features may be limited
-      - Windows will still function normally for most users
+      ## Caveats
+      - This is not a control for modern Windows telemetry, which is sent by a different service.
+      - On a PC that never joined the program, the tasks already do nothing, so only the opt-out policy matters.
 
-      ## Recommendation
-      Safe for most users. Recommended for privacy-conscious users.
+      ## Notes
+      - A feature update may turn the tasks back on; the opt-out policy stays.
+      - Reverting restores each task's previous state; it does not force them on.
+
+      ## Related
+      - **Disable Autochk Proxy task** (Services) covers another uploader for this program.
+      - **Limit diagnostic data to the Required level** is the control for modern diagnostic data.
+
+      ## Sources
+      - [CEIPEnable (Microsoft)](https://learn.microsoft.com/en-us/windows/win32/devnotes/ceipenable)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: ceip_enable
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\SQMClient\Windows', name: CEIPEnable, type: REG_DWORD }
+      - id: task_consolidator
+        task: { path: '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator' }
+      - id: task_usbceip
+        task: { path: '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip' }
+      - id: task_kernelceip
+        task: { path: '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask' }
+        optional: true
+        if_missing: disabled
+      - id: task_sqm_pi
+        task: { path: '\Microsoft\Windows\PI\Sqm-Tasks' }
+        optional: true
+        if_missing: disabled
     options:
       - label: "Disabled"
-        registry_missing_is_match: true
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\DiagTrack"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-            windows_versions: [10]
-            skip_validation: true
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "AllowDeviceNameInDiagnosticData"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "LimitDiagnosticLogCollection"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "LimitDumpCollection"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "DisableOneSettingsDownloads"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\DiagTrack"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-            windows_versions: [10]
-            skip_validation: true
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "AllowDeviceNameInDiagnosticData"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "LimitDiagnosticLogCollection"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "LimitDumpCollection"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "DisableOneSettingsDownloads"
-            value_type: "REG_DWORD"
-            value: 0
+        values:
+          ceip_enable: 0
+          task_consolidator: disabled
+          task_usbceip: disabled
+          task_kernelceip: disabled
+          task_sqm_pi: disabled
 
-  - id: disable_advertising_id
-    name: "Disable Advertising ID"
-    description: "Disable advertising ID for personalized ads"
-    risk_level: low
-    requires_reboot: false
+  - id: disable_compat_appraiser
+    name: "Disable Compatibility Appraiser tasks"
+    description: "Stop the Application Experience appraiser and inventory telemetry tasks and their policies."
     info: |
-      ## What This Does
-      Disables your unique advertising ID that Windows shares with apps to show personalized ads.
+      **Stops the Compatibility Appraiser (CompatTelRunner.exe), which regularly scans your installed apps to report upgrade readiness to Microsoft, and turns off its app inventory collection.**
 
-      ## Privacy Benefit
-      - Apps cannot track you using your advertising ID
-      - Reduces targeted advertising across Windows apps
-      - No functional impact on app usage
+      ## Caveats
+      - Windows Update uses this data to hold back feature updates that would break an app or driver, so such problems are less likely to be caught first.
+      - Feature updates turn the tasks back on; the switch then shows System Default until you apply it again.
+      - The compatibility database update task in the same folder is left alone: it keeps app compatibility fixes current and is not telemetry.
+
+      ## Notes
+      - The often-reported CPU and disk savings have not been measured by Microsoft or any benchmark.
+      - Do not delete CompatTelRunner.exe yourself: Windows restores it, and removing it has broken updates.
+
+      ## Related
+      - **Disable app and device inventory collectors** covers the newer 24H2 collectors.
 
       ## Recommendation
-      Strongly recommended. No downside to disabling this.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
-            value_name: "Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo"
-            value_name: "Enabled"
-            value_type: "REG_DWORD"
-            value: 1
+      Apply it on a PC you keep on its current Windows version. Hold off before a feature upgrade, when these checks work in your favour.
 
-  - id: disable_activity_history
-    name: "Disable Activity History"
-    description: "Disable Windows activity history and timeline tracking"
+      ## Sources
+      - [DISA STIG V-253385: Application Compatibility Program Inventory](https://www.stigviewer.com/stigs/microsoft_windows_11/2022-06-24/finding/V-253385)
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
     risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows from collecting and syncing your activity history, including:
-      - Apps you use and when
-      - Files you open
-      - Websites you visit in Edge
-      - Clipboard history
-
-      ## Timeline Feature
-      This data powers the Task View Timeline feature. Disabling removes cross-device activity sync.
-
-      ## Recommendation
-      Recommended for privacy. Timeline is rarely used by most people.
+    elevation: admin
+    reversible: true
+    effects:
+      - id: ait_enable
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: AITEnable, type: REG_DWORD }
+      - id: disable_inventory
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableInventory, type: REG_DWORD }
+      - id: task_appraiser
+        task: { path: '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser' }
+      - id: task_appraiser_exp
+        task: { path: '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser Exp' }
+        optional: true
+        if_missing: disabled
+      # ProgramDataUpdater does not exist on 26100; it survives only for the Windows 10 surface.
+      - id: task_progdata
+        task: { path: '\Microsoft\Windows\Application Experience\ProgramDataUpdater' }
+        optional: true
+        if_missing: disabled
+      - id: task_startup
+        task: { path: '\Microsoft\Windows\Application Experience\StartupAppTask' }
+      # Runs the appraiser's scheduled telemetry pass. PcaPatchDbTask in the same folder is left alone:
+      # it updates the compatibility shim database, which is not telemetry.
+      - id: task_marebackup
+        task: { path: '\Microsoft\Windows\Application Experience\MareBackup' }
+        optional: true
+        if_missing: disabled
     options:
       - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "PublishUserActivities"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "UploadUserActivities"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "EnableActivityFeed"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "PublishUserActivities"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "UploadUserActivities"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "EnableActivityFeed"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_location_tracking
-    name: "Disable Location Tracking"
-    description: "Disable location tracking services"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables location sensor permissions, preventing apps from accessing your location.
-
-      ## Privacy Benefits
-      - No location data shared with apps
-      - Windows won't track your physical location
-      - Improved privacy for sensitive locations
-
-      ## What Gets Disabled
-      - GPS and Wi-Fi based location
-      - Location-aware app features
-      - Maps and weather location detection
-
-      ## Note
-      Some apps may not work correctly without location access (maps, weather, find my device).
-
-      ## Recommendation
-      Enable if you prioritize privacy over location-based features.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
-            value_name: "SensorPermissionState"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
-            value_name: "DisableLocation"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
-            value_name: "DisableWindowsLocationProvider"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
-            value_name: "DisableLocationScripting"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows NT\\CurrentVersion\\Sensors\\Overrides\\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
-            value_name: "SensorPermissionState"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
-            value_name: "DisableLocation"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
-            value_name: "DisableWindowsLocationProvider"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\LocationAndSensors"
-            value_name: "DisableLocationScripting"
-            value_type: "REG_DWORD"
-            value: 0
+        values:
+          ait_enable: 0
+          disable_inventory: 1
+          task_appraiser: disabled
+          task_appraiser_exp: disabled
+          task_progdata: disabled
+          task_startup: disabled
+          task_marebackup: disabled
 
   - id: disable_feedback_notifications
-    name: "Disable Feedback Notifications"
-    description: "Disable Windows feedback and suggestion notifications"
-    risk_level: low
-    requires_reboot: false
+    name: "Turn off feedback request notifications"
+    description: "Stop Windows from prompting you with periodic feedback surveys."
     info: |
-      ## What This Does
-      Stops Windows from asking you to provide feedback about your experience.
+      **Stops Windows showing Feedback Hub survey prompts, for every account.**
 
-      ## What Gets Disabled
-      - "How likely are you to recommend Windows?" prompts
-      - Feedback Hub notifications
-      - Windows Insider feedback requests
+      ## Notes
+      - Only the prompts stop: diagnostic data is unchanged, and you can still open Feedback Hub yourself.
+      - Takes effect immediately.
 
-      ## What Still Works
-      - You can still submit feedback manually via Feedback Hub
-      - Windows Update and other notifications remain
+      ## Related
+      - **Set feedback prompt frequency to Never** does the same for one account and adds nothing while this is applied.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: feedback_notif
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: DoNotShowFeedbackNotifications, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { feedback_notif: 1 }
+      - label: "On"
+        values: { feedback_notif: absent }
+
+  - id: disable_feedback_frequency
+    name: "Set feedback prompt frequency to Never"
+    description: "Set the per-user Windows feedback prompt schedule to never."
+    info: |
+      **Sets how often Windows asks your account for feedback to Never, the same as the Feedback frequency choice in Settings.**
+
+      ## Notes
+      - Only your account changes, and Settings can change it back.
+      - Automatic returns to Windows' own schedule.
+
+      ## Related
+      - **Turn off feedback request notifications** does this for every account and locks it; with it applied, this adds nothing.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: num_siuf
+        registry: { key: 'HKCU\Software\Microsoft\Siuf\Rules', name: NumberOfSIUFInPeriod, type: REG_DWORD }
+      - id: period_ns
+        registry: { key: 'HKCU\Software\Microsoft\Siuf\Rules', name: PeriodInNanoSeconds, type: REG_DWORD }
+    options:
+      # Microsoft's documented mapping for "Never" is the pair (0, 0); 0 with the period deleted is not
+      # one of the five states it publishes.
+      - label: "Never"
+        values: { num_siuf: 0, period_ns: 0 }
+      - label: "Automatic"
+        values: { num_siuf: absent, period_ns: absent }
+
+  - id: disable_onesettings_downloads
+    name: "Block OneSettings config downloads"
+    description: "Stop Windows downloading configuration from Microsoft's OneSettings service."
+    info: |
+      **Stops Windows downloading configuration and feature settings from Microsoft's OneSettings service between updates.**
+
+      ## Caveats
+      - Microsoft warns that apps using this service "may stop working".
+      - Configuration-only fixes Microsoft delivers this way will not reach this PC.
+
+      ## Notes
+      - Not a telemetry control: the amount of diagnostic data sent is unchanged.
 
       ## Recommendation
-      Safe to disable unless you actively participate in Windows feedback programs.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Siuf\\Rules"
-            value_name: "NumberOfSIUFInPeriod"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Siuf\\Rules"
-            value_name: "PeriodInNanoSeconds"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        # Delete the value to restore default behavior (Windows prompts for feedback)
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Siuf\\Rules"
-            value_name: "NumberOfSIUFInPeriod"
-            action: delete_value
-          - hive: HKCU
-            key: "Software\\Microsoft\\Siuf\\Rules"
-            value_name: "PeriodInNanoSeconds"
-            action: delete_value
+      Skip it on a PC where Store or Microsoft 365 apps must be reliable.
 
-  - id: disable_inking_data
-    name: "Disable Inking & Typing Data"
-    description: "Disable collection of inking and typing data for personalization"
+      ## Sources
+      - [Policy CSP - System](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-system)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
     risk_level: low
-    requires_reboot: false
+    elevation: admin
+    reversible: true
+    windows: { build: ">=22000" }
+    effects:
+      - id: onesettings
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: DisableOneSettingsDownloads, type: REG_DWORD }
+    options:
+      - label: "Blocked"
+        values: { onesettings: 1 }
+      - label: "Allowed"
+        values: { onesettings: absent }
+
+  - id: disable_device_name_in_telemetry
+    name: "Exclude the device name from telemetry"
+    description: "Pin the device-name exclusion so diagnostic data never carries your computer name."
     info: |
-      ## What This Does
-      Prevents Windows from collecting your handwriting and typing patterns for personalization.
+      **Records, as a policy, that your computer name is never included in Windows diagnostic data. Windows already leaves it out by default, so nothing visible changes.**
 
-      ## Privacy Benefits
-      - Your typing patterns aren't analyzed
-      - Handwriting samples not collected
-      - Reduced data sent to Microsoft
+      ## Notes
+      - Not configured removes the policy; the name is still left out, because that is Windows' default.
+      - A policy pushed later by an organisation (Intune or a domain) still wins.
 
-      ## Trade-off
-      - Slightly less accurate autocomplete
-      - Handwriting recognition may be less personalized
+      ## Related
+      - **Limit diagnostic data to the Required level** actually reduces what is sent.
 
-      ## Recommendation
-      Recommended for privacy. The personalization benefits are minimal for most users.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\InputPersonalization"
-            value_name: "RestrictImplicitInkCollection"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\InputPersonalization"
-            value_name: "RestrictImplicitTextCollection"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\InputPersonalization\\TrainedDataStore"
-            value_name: "HarvestContacts"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\InputPersonalization"
-            value_name: "RestrictImplicitInkCollection"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\InputPersonalization"
-            value_name: "RestrictImplicitTextCollection"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\InputPersonalization\\TrainedDataStore"
-            value_name: "HarvestContacts"
-            value_type: "REG_DWORD"
-            value: 1
-
-  # NOTE: disable_app_launch_tracking removed - duplicate of disable_activity_history (same registry keys)
-
-  - id: disable_suggested_content
-    name: "Disable Suggested Content"
-    description: "Disable suggested apps and content in Start menu and Settings"
+      ## Sources
+      - [Policy CSP - System](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-system)
     risk_level: low
-    requires_reboot: false
+    elevation: admin
+    reversible: true
+    effects:
+      # The policy is named AllowDeviceNameInDiagnosticData but its valueName is AllowDeviceNameInTelemetry.
+      # "Correcting" the spelling produces a silently ignored write.
+      - id: device_name
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: AllowDeviceNameInTelemetry, type: REG_DWORD }
+    options:
+      - label: "Excluded"
+        values: { device_name: 0 }
+      - label: "Not configured"
+        values: { device_name: absent }
+
+  - id: disable_activity_history
+    name: "Disable Activity History and Timeline"
+    description: "Stop Windows collecting and publishing your activity history."
     info: |
-      ## What This Does
-      Stops Windows from showing suggested apps and sponsored content.
+      **Stops Windows recording a history of what you do on this PC, and stops it publishing or uploading that history to your account, for every account.**
 
-      ## What Gets Removed
-      - Suggested apps in Start menu
-      - Promoted content in Settings
-      - "You might like" recommendations
+      ## Notes
+      - On Windows 11, Timeline and cloud upload of activity history are already gone, so the change is small. On Windows 10, Timeline stops working.
+      - History already stored is not deleted; clear it in Settings > Privacy & security > Activity history.
+      - The Settings switches are locked while this is applied. Takes effect immediately.
 
-      ## Privacy Impact
-      - Reduces tracking for personalized suggestions
-      - Less data used for content recommendations
-
-      ## Recommendation
-      Recommended. Removes promotional content from Windows interface.
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: enable_feed
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name: EnableActivityFeed, type: REG_DWORD }
+      - id: publish_activities
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name: PublishUserActivities, type: REG_DWORD }
+      - id: upload_activities
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name: UploadUserActivities, type: REG_DWORD }
     options:
       - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "ContentDeliveryAllowed"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SoftLandingEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "FeatureManagementEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-353694Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-353696Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-88000326Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338393Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-353698Enabled"
-            value_type: "REG_DWORD"
-            value: 0
+        values: { enable_feed: 0, publish_activities: 0, upload_activities: 0 }
       - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "ContentDeliveryAllowed"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SoftLandingEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "FeatureManagementEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-353694Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-353696Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-88000326Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338393Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-353698Enabled"
-            value_type: "REG_DWORD"
-            value: 1
+        values: { enable_feed: absent, publish_activities: absent, upload_activities: absent }
 
-  - id: disable_tailored_experiences
-    name: "Disable Tailored Experiences"
-    description: "Disable tailored experiences based on your data"
-    risk_level: low
-    requires_reboot: false
+  - id: disable_cloud_clipboard
+    name: "Disable the cross-device cloud clipboard"
+    description: "Stop clipboard contents syncing to the Microsoft cloud and other devices."
     info: |
-      ## What This Does
-      Prevents Microsoft from using your diagnostic data to personalize tips, ads, and recommendations.
+      **Stops what you copy being uploaded to Microsoft's cloud to sync with your other devices. Clipboard history (Win+V) on this PC keeps working.**
 
-      ## What Changes
-      - No personalized tips based on your usage
-      - Generic rather than targeted suggestions
-      - Less data analysis of your behavior
+      ## Drawbacks
+      - Copying on this PC and pasting on another device signed into the same account stops working, including clipboard sharing with a phone through Phone Link.
 
-      ## Diagnostic Data Still Collected
-      - This only affects how data is USED, not if it's collected
-      - Use "Set Diagnostic Data to Minimum" to reduce collection
+      ## Notes
+      - Applies to every account. Takes effect immediately.
 
-      ## Recommendation
-      Recommended for privacy. Stops Microsoft from profiling your usage patterns.
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - System](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-system)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: cross_device_clip
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\System', name: AllowCrossDeviceClipboard, type: REG_DWORD }
     options:
       - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
-            value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
-            value_type: "REG_DWORD"
-            value: 0
+        values: { cross_device_clip: 0 }
       - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Privacy"
-            value_name: "TailoredExperiencesWithDiagnosticDataEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_diagnostic_data
-    name: "Set Diagnostic Data to Minimum"
-    description: "Set Windows diagnostic data level to basic"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Minimum"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "AllowDiagnosticData"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Full"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\DataCollection"
-            value_name: "AllowDiagnosticData"
-            value_type: "REG_DWORD"
-            value: 3
-
-  - id: disable_timeline
-    name: "Disable Timeline/Activity History"
-    description: "Disable Windows Timeline feature"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "EnableActivityFeed"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "EnableActivityFeed"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_clipboard_sync
-    name: "Disable Cloud Clipboard Sync"
-    description: "Disable syncing clipboard content to cloud"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Clipboard"
-            value_name: "EnableCloudSync"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Clipboard"
-            value_name: "EnableClipboardHistory"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "AllowCrossDeviceClipboard"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Clipboard"
-            value_name: "EnableCloudSync"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Clipboard"
-            value_name: "EnableClipboardHistory"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\System"
-            value_name: "AllowCrossDeviceClipboard"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_store_app_suggestions
-    name: "Disable Store App Auto Install"
-    description: "Prevent Windows from automatically installing suggested apps from the Store"
-    risk_level: low
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SilentInstalledAppsEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SilentInstalledAppsEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_windows_welcome_experience
-    name: "Disable Windows Welcome Experience"
-    description: "Disable Windows welcome experience after updates"
-    risk_level: low
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-310093Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-310093Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_windows_spotlight
-    name: "Disable Windows Spotlight Ads"
-    description: "Disable Windows Spotlight lockscreen tips and advertisements"
-    risk_level: low
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "RotatingLockScreenOverlayEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338387Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "RotatingLockScreenOverlayEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338387Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_tips_about_windows
-    name: "Disable Tips About Windows"
-    description: "Disable 'Show me tips about Windows' notifications"
-    risk_level: low
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338389Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338389Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_start_suggestions
-    name: "Disable Start Menu Suggestions"
-    description: "Disable suggestions in Start menu"
-    risk_level: low
-    requires_reboot: false
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338388Enabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SystemPaneSuggestionsEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SubscribedContent-338388Enabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "SystemPaneSuggestionsEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_handwriting_data
-    name: "Disable Handwriting Data Sharing"
-    description: "Prevent sharing handwriting data with Microsoft"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows from sending handwriting samples to Microsoft for recognition improvement.
-
-      ## Privacy Benefits
-      - Your handwriting isn't uploaded to Microsoft servers
-      - Sensitive handwritten content stays private
-      - Reduced data collection
-
-      ## Impact
-      - Handwriting recognition still works using local data
-      - No impact on everyday tablet/pen usage
-
-      ## Recommendation
-      Recommended for privacy, especially for tablet users.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\TabletPC"
-            value_name: "PreventHandwritingDataSharing"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\TabletPC"
-            value_name: "PreventHandwritingDataSharing"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: disable_handwriting_errors
-    name: "Disable Handwriting Error Reports"
-    description: "Prevent sending handwriting error reports to Microsoft"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Stops Windows from sending handwriting recognition errors to Microsoft.
-
-      ## What Gets Blocked
-      - Reports when handwriting is misrecognized
-      - Error data used to improve recognition
-
-      ## Privacy Benefit
-      - Your handwritten content isn't sent even when misrecognized
-      - No analysis of your writing patterns
-
-      ## Recommendation
-      Safe to disable for privacy. Minimal benefit to users from error reporting.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports"
-            value_name: "PreventHandwritingErrorReports"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports"
-            value_name: "PreventHandwritingErrorReports"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: disable_thumbsdb_network
-    name: "Disable Thumbs.db on Network Drives"
-    description: "Prevent creation of thumbs.db files on network folders"
-    risk_level: low
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows from creating Thumbs.db thumbnail cache files on network drives.
-
-      ## Why Disable
-      - Thumbs.db files can leak information about folder contents
-      - They cause "file in use" errors when deleting folders
-      - Network drives may have permission issues with these files
-
-      ## What Still Works
-      - Thumbnails still displayed (cached in memory)
-      - Local Thumbs.db files unaffected
-
-      ## Recommendation
-      Recommended, especially in shared network environments.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
-            value_name: "DisableThumbsDBOnNetworkFolders"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Policies\\Microsoft\\Windows\\Explorer"
-            value_name: "DisableThumbsDBOnNetworkFolders"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: disable_consumer_features
-    name: "Disable Windows Consumer Features"
-    description: "Prevent automatic installation of third-party apps and game suggestions"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: "Disables Windows Consumer Features which automatically install apps from the Windows Store. Some default apps like Phone Link may become inaccessible."
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
-            value_name: "DisableWindowsConsumerFeatures"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
-            value_name: "DisableCloudOptimizedContent"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
-            value_name: "DisableThirdPartySuggestions"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
-            value_name: "DisableWindowsConsumerFeatures"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
-            value_name: "DisableCloudOptimizedContent"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\CloudContent"
-            value_name: "DisableThirdPartySuggestions"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: disable_oem_preinstalled_apps
-    name: "Disable OEM Pre-installed Apps"
-    description: "Prevent pre-installed OEM apps from appearing in Start menu"
-    risk_level: low
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows from promoting or silently installing manufacturer (OEM) apps.
-
-      ## What Gets Blocked
-      - Automatic app installations from PC manufacturer
-      - OEM app suggestions in Start menu
-      - Pre-installed trial software promotions
-
-      ## Note
-      - Already installed OEM apps remain until uninstalled
-      - This prevents NEW installations only
-
-      ## Recommendation
-      Recommended. Reduces bloatware from PC manufacturers.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "OemPreInstalledAppsEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "PreInstalledAppsEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "PreInstalledAppsEverEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "OemPreInstalledAppsEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "PreInstalledAppsEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
-            value_name: "PreInstalledAppsEverEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_finish_setup_reminders
-    name: "Disable Finish Setup Reminders"
-    description: "Disable 'Let's finish setting up your device' reminders"
-    risk_level: low
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Stops Windows from nagging you to complete device setup tasks.
-
-      ## What Gets Disabled
-      - "Let's finish setting up your device" notifications
-      - Sign in with Microsoft account prompts
-      - OneDrive and other setup reminders
-
-      ## What You Skip
-      - Microsoft account linking suggestions
-      - OneDrive backup prompts
-      - Phone Link setup
-
-      ## Recommendation
-      Safe to disable once you've configured Windows how you want it.
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement"
-            value_name: "ScoobeSystemSettingEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement"
-            value_name: "ScoobeSystemSettingEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_remote_assistance
-    name: "Disable Remote Assistance"
-    description: "Disable Remote Assistance connections to this computer"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: "Prevents users from requesting Remote Assistance help"
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Remote Assistance"
-            value_name: "fAllowToGetHelp"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Control\\Remote Assistance"
-            value_name: "fAllowToGetHelp"
-            value_type: "REG_DWORD"
-            value: 1
-
-  # NOTE: disable_people_bar moved to ui.yaml (taskbar UI customization)
-  # NOTE: disable_meet_now moved to ui.yaml (taskbar UI customization)
-  # NOTE: disable_news_interests moved to ui.yaml (taskbar UI customization)
-
-  - id: disable_ad_info_reporting
-    name: "Disable Advertising Info Reporting"
-    description: "Disable sending advertising ID to apps"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Applies Group Policy to disable Windows Advertising ID sharing with apps.
-
-      ## Difference from Disable Advertising ID
-      - This uses Group Policy (machine-level)
-      - More comprehensive than user-level setting
-      - Enforces the setting for all users
-
-      ## Privacy Impact
-      - Apps can't use your unique advertising ID
-      - Reduces cross-app ad tracking
-      - Less personalized but more private advertising
-
-      ## Recommendation
-      Recommended for maximum privacy. Use alongside "Disable Advertising ID".
-    options:
-      - label: "Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
-            value_name: "DisabledByGroupPolicy"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Control Panel\\International\\User Profile"
-            value_name: "HttpAcceptLanguageOptOut"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AdvertisingInfo"
-            value_name: "DisabledByGroupPolicy"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Control Panel\\International\\User Profile"
-            value_name: "HttpAcceptLanguageOptOut"
-            value_type: "REG_DWORD"
-            value: 0
-
-  # --- Services related to privacy (moved from services.yaml) ---
-
-  - id: disable_geolocation_service
-    name: "Disable Geolocation Service"
-    description: "Disable Windows Geolocation service for location tracking"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables the Windows Geolocation service which tracks your physical location.
-
-      ## Privacy Benefits
-      - No location data collected by Windows
-      - Apps cannot access your location
-      - Reduces data sent to Microsoft
-
-      ## What You Lose
-      - Weather app location features
-      - Maps app current location
-      - Find My Device feature
-      - Location-based Cortana features
-
-      ## Recommendation
-      Disable for maximum privacy. Keep enabled if you rely on location-aware apps.
-    options:
-      - label: "Geolocation Disabled"
-        registry_missing_is_match: true
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\lfsvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-            skip_validation: true
-      - label: "Geolocation Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\lfsvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
-            skip_validation: true
-
-  - id: disable_dmwappushservice
-    name: "Disable WAP Push Service"
-    description: "Disable Device Management WAP Push message service"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables the WAP Push Message Routing Service used for telemetry and push notifications.
-
-      ## Privacy Benefits
-      - Reduces telemetry data transmission
-      - Blocks certain Microsoft push notifications
-      - Part of comprehensive telemetry reduction
-
-      ## Technical Details
-      This service routes messages from Windows to various services and is part of the telemetry infrastructure.
-
-      ## Recommendation
-      Safe to disable for privacy-focused users.
-    options:
-      - label: "WAP Push Disabled"
-        registry_missing_is_match: true
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-            skip_validation: true
-      - label: "WAP Push Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\dmwappushservice"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 3
-            skip_validation: true
-
-  - id: disable_cdpusersvc
-    name: "Disable Connected Devices Platform"
-    description: "Disable device synchronization and activity tracking service"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: true
-    info: |
-      ## What This Does
-      Disables the Connected Devices Platform User Service which handles device sync and timeline features.
-
-      ## Privacy Benefits
-      - Stops cross-device activity synchronization
-      - Disables timeline data collection
-      - Reduces cloud sync of activity data
-
-      ## What You Lose
-      - Phone Link / Your Phone features
-      - Cross-device clipboard sync
-      - Activity history across devices
-      - "Continue where you left off" features
-
-      ## Recommendation
-      Disable for privacy. Keep enabled if you use Microsoft's cross-device features.
-    options:
-      - label: "CDP Service Disabled"
-        registry_missing_is_match: true
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 4
-            skip_validation: true
-      - label: "CDP Service Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "System\\CurrentControlSet\\Services\\CDPUserSvc"
-            value_name: "Start"
-            value_type: "REG_DWORD"
-            value: 2
-            skip_validation: true
-
-  # --- Additional privacy tweaks ---
+        values: { cross_device_clip: absent }
 
   - id: disable_online_speech_recognition
-    name: "Disable Online Speech Recognition"
-    description: "Disable online speech recognition and input personalization"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+    name: "Turn off online speech recognition"
+    description: "Turn off cloud speech processing for your account."
     info: |
-      ## What This Does
-      Disables online speech recognition which sends voice data to Microsoft servers for processing.
+      **Stops your voice being sent to Microsoft's cloud speech service. Dictation and voice typing fall back to recognition on the device.**
 
-      ## Privacy Impact
-      - Voice data is no longer sent to Microsoft cloud
-      - Local speech recognition still works
-      - Cortana voice features may be limited
+      ## Drawbacks
+      - Dictation is less accurate and supports fewer languages.
+      - Voice features in apps that rely on Microsoft's cloud speech stop responding.
+
+      ## Notes
+      - Only your account changes.
+      - On removes the setting so Windows asks you again, rather than recording consent you never gave.
+
+      ## Related
+      - **Disable inking and typing personalization** also turns online speech off for every account and locks it.
+      - **Block voice activation and wake words** covers apps listening for a wake word.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: speech_accepted
+        registry: { key: 'HKCU\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy', name: HasAccepted, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { speech_accepted: 0 }
+      # The value is consent-derived and absent until the user answers. Writing 1 here would fabricate a
+      # cloud-speech consent that was never granted, so the stock state is deletion.
+      - label: "On"
+        values: { speech_accepted: absent }
+
+  - id: disable_inking_typing_personalization
+    name: "Disable inking and typing personalization"
+    description: "Stop Windows harvesting your typing and handwriting to build a personal language model."
+    info: |
+      **Stops Windows collecting samples of your typing and handwriting to build a personal dictionary and language model. It also turns online speech recognition off for every account.**
+
+      ## Drawbacks
+      - Autocorrect, text suggestions and handwriting recognition stop learning from you.
+      - Cloud dictation stops working for every account on the PC.
+
+      ## Notes
+      - What Windows has already learned is not erased.
+      - Two of the values it writes (the consent flag and contact name collection) are documented by the community, not by Microsoft.
+
+      ## Related
+      - **Turn off online speech recognition** is the per-account version of the speech part.
 
       ## Recommendation
-      Safe to disable unless you actively use cloud-based speech features.
+      Skip it if you rely on pen input getting better over time, or if anyone on the PC uses dictation.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: accepted_privacy
+        registry: { key: 'HKCU\Software\Microsoft\Personalization\Settings', name: AcceptedPrivacyPolicy, type: REG_DWORD }
+      - id: restrict_text
+        registry: { key: 'HKCU\Software\Microsoft\InputPersonalization', name: RestrictImplicitTextCollection, type: REG_DWORD }
+      - id: restrict_ink
+        registry: { key: 'HKCU\Software\Microsoft\InputPersonalization', name: RestrictImplicitInkCollection, type: REG_DWORD }
+      - id: harvest_contacts
+        registry: { key: 'HKCU\Software\Microsoft\InputPersonalization\TrainedDataStore', name: HarvestContacts, type: REG_DWORD }
+      # Globalization.admx "Allow users to enable online speech recognition services". The key is right
+      # for that policy; it is a speech lock, not an inking control.
+      - id: allow_input_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\InputPersonalization', name: AllowInputPersonalization, type: REG_DWORD }
     options:
-      - label: "Speech Recognition Disabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy"
-            value_name: "HasAccepted"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\InputPersonalization"
-            value_name: "AllowInputPersonalization"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Speech Recognition Enabled"
-        registry_changes:
-          - hive: HKCU
-            key: "Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy"
-            value_name: "HasAccepted"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\InputPersonalization"
-            value_name: "AllowInputPersonalization"
-            value_type: "REG_DWORD"
-            value: 1
+      - label: "Disabled"
+        values:
+          accepted_privacy: 0
+          restrict_text: 1
+          restrict_ink: 1
+          harvest_contacts: 0
+          allow_input_policy: 0
+
+  - id: disable_advertising_id
+    name: "Turn off the advertising ID"
+    description: "Turn off the advertising ID that Store apps use to track you across sessions."
+    info: |
+      **Turns off the advertising ID that apps use to recognise you across apps and sessions for targeted ads, and locks the switch in Settings.**
+
+      ## Notes
+      - Ads still appear; they are just less targeted.
+      - A few Store apps that expect the ID may behave oddly.
+      - Covers every account, including accounts created later.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: adv_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo', name: DisabledByGroupPolicy, type: REG_DWORD }
+      - id: adv_machine_enabled
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo', name: Enabled, type: REG_DWORD }
+      - id: adv_enabled
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { adv_policy: 1, adv_machine_enabled: 0, adv_enabled: 0 }
+
+  - id: disable_tailored_experiences
+    name: "Turn off tailored experiences"
+    description: "Stop Windows using your diagnostic data to target tips, ads, and recommendations."
+    info: |
+      **Stops Windows using your diagnostic data to choose the tips, ads and recommendations it shows your account. The suggestions become generic rather than stopping.**
+
+      ## Notes
+      - Only your account changes; apply it on each account that wants it.
+      - Has nothing left to do if Windows Spotlight is fully turned off.
+      - Takes effect immediately.
+
+      ## Related
+      - **Turn off all Windows Spotlight features** (Debloat) turns off the content this tweak personalises.
+
+      ## Sources
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: tailored_user
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Privacy', name: TailoredExperiencesWithDiagnosticDataEnabled, type: REG_DWORD }
+      # CloudContent.admx declares this policy class="User", so HKCU is the only hive Group Policy refreshes.
+      - id: tailored_policy
+        registry: { key: 'HKCU\Software\Policies\Microsoft\Windows\CloudContent', name: DisableTailoredExperiencesWithDiagnosticData, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { tailored_user: 0, tailored_policy: 1 }
+
+  - id: disable_location_tracking
+    name: "Turn off location tracking"
+    description: "Turn off the Windows location platform and deny app location access."
+    info: |
+      **Turns off location for the whole PC, so neither Windows nor any app can find where you are, and locks the Location page in Settings.**
+
+      ## Drawbacks
+      - Automatic time zone stops working, so the clock can be wrong after you travel.
+      - Find My Device can no longer locate the PC.
+      - Weather, Maps and other location apps need you to enter a place by hand.
+
+      ## Notes
+      - Takes effect immediately; reopen Settings to see the change.
+
+      ## Related
+      - **Turn off Find My Device** has nothing left to do while this is applied.
+      - **Disable Geolocation Service (lfsvc)** (Services) stops the service behind location.
+
+      ## Recommendation
+      Suits a desktop that never needs its location. Skip it on a laptop you travel with.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: location_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors', name: DisableLocation, type: REG_DWORD }
+      - id: location_apps_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy', name: LetAppsAccessLocation, type: REG_DWORD }
+      - id: location_consent
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location', name: Value, type: REG_SZ }
+    options:
+      - label: "Off"
+        values: { location_policy: 1, location_apps_policy: 2, location_consent: "Deny" } # 2 = Force Deny
+
+  - id: disable_app_diagnostics
+    name: "Block app diagnostic access"
+    description: "Block Store apps from reading diagnostic info about other running apps."
+    info: |
+      **Blocks Store apps from reading information about the other apps running on your PC, including your account name.**
+
+      ## Drawbacks
+      - Store monitoring or accessibility apps that need this lose their data.
+
+      ## Caveats
+      - Only Store (packaged) apps are blocked; regular desktop programs such as Task Manager still see everything.
+
+      ## Notes
+      - Applies to apps started after the change; restart apps that are already open.
+
+      ## Sources
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: appdiag_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy', name: LetAppsGetDiagnosticInfo, type: REG_DWORD }
+      - id: appdiag_consent
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\appDiagnostics', name: Value, type: REG_SZ }
+    options:
+      - label: "Denied"
+        values: { appdiag_policy: 2, appdiag_consent: "Deny" } # 2 = Force Deny
 
   - id: disable_find_my_device
-    name: "Disable Find My Device"
-    description: "Disable Find My Device location tracking feature"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+    name: "Turn off Find My Device"
+    description: "Turn off the periodic location reporting used to locate a lost device."
     info: |
-      ## What This Does
-      Disables the Find My Device feature which periodically sends your device location to Microsoft.
+      **Stops Windows regularly reporting this PC's location to your Microsoft account, for every account.**
 
-      ## Privacy Impact
-      - Device location no longer sent to Microsoft
-      - Cannot remotely locate or lock device
-      - Reduces background location usage
+      ## Drawbacks
+      - You can no longer locate or remotely lock this PC from your Microsoft account if it is lost or stolen.
 
-      ## When to Keep Enabled
-      - Laptops that travel frequently
-      - High-theft risk environments
+      ## Notes
+      - Takes effect immediately; the Settings switch is locked while this is applied.
 
       ## Recommendation
-      Disable on desktops. Consider keeping on laptops for theft recovery.
+      Fine for a desktop that never leaves home. Skip it on a laptop or tablet.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: fmd
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\FindMyDevice', name: AllowFindMyDevice, type: REG_DWORD }
     options:
-      - label: "Find My Device Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\FindMyDevice"
-            value_name: "AllowFindMyDevice"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Microsoft\\Settings\\FindMyDevice"
-            value_name: "LocationSyncEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Find My Device Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\FindMyDevice"
-            value_name: "AllowFindMyDevice"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Microsoft\\Settings\\FindMyDevice"
-            value_name: "LocationSyncEnabled"
-            value_type: "REG_DWORD"
-            value: 1
+      - label: "Off"
+        values: { fmd: 0 }
+      - label: "On"
+        values: { fmd: absent }
 
   - id: disable_settings_sync
-    name: "Disable Settings Sync"
-    description: "Disable syncing Windows settings across devices"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+    name: "Disable settings sync"
+    description: "Stop Windows syncing settings and saved passwords to your Microsoft account."
     info: |
-      ## What This Does
-      Prevents Windows from syncing your settings (theme, passwords, language preferences, etc.) across devices using your Microsoft account.
+      **Stops your settings, themes, language preferences and saved passwords syncing to your Microsoft account, for every account, and locks the sync switch in Settings.**
 
-      ## Privacy Impact
-      - Settings data no longer uploaded to Microsoft cloud
-      - Each device maintains independent settings
-      - Reduces Microsoft account data collection
+      ## Drawbacks
+      - Another Windows device signed into your account no longer picks up your setup.
+
+      ## Notes
+      - Microsoft documents no restart for this; the app asks for one to be safe.
+
+      ## Related
+      - **Disable Windows Backup and cloud restore** covers the Windows 11 backup feature, which overlaps with sync but is separate.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: disable_sync
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\SettingSync', name: DisableSettingSync, type: REG_DWORD }
+      - id: disable_sync_override
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\SettingSync', name: DisableSettingSyncUserOverride, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { disable_sync: 2, disable_sync_override: 1 } # DisableSettingSync 2 = disabled, not user-overridable
+      - label: "Enabled"
+        values: { disable_sync: absent, disable_sync_override: absent }
+
+  - id: disable_error_reporting
+    name: "Disable Windows Error Reporting"
+    description: "Stop crash and error reports being generated and sent to Microsoft."
+    info: |
+      **Stops Windows creating crash and error reports and sending them to Microsoft.**
+
+      ## Drawbacks
+      - Local crash records go too: the report queue, app crash dumps and Reliability Monitor entries, which support usually asks for first.
+      - Some third-party crash handlers behave differently.
+
+      ## Notes
+      - Full system crash dumps (MEMORY.DMP) are not affected.
+      - At the Required diagnostic data level, crash dumps are not sent anyway, so the privacy gain is smaller than it looks.
+
+      ## Related
+      - **Disable the Windows Error Reporting service** stops the service itself.
 
       ## Recommendation
-      Disable for privacy. Enable if you use multiple Windows devices with the same Microsoft account.
-    options:
-      - label: "Sync Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
-            value_name: "DisableSettingSync"
-            value_type: "REG_DWORD"
-            value: 2
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
-            value_name: "DisableSettingSyncUserOverride"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync"
-            value_name: "SyncPolicy"
-            value_type: "REG_DWORD"
-            value: 5
-      - label: "Sync Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
-            value_name: "DisableSettingSync"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\SettingSync"
-            value_name: "DisableSettingSyncUserOverride"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKCU
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync"
-            value_name: "SyncPolicy"
-            value_type: "REG_DWORD"
-            value: 1
+      Use it on a stable PC. Leave it off while you are chasing crashes.
 
-  - id: disable_app_telemetry
-    name: "Disable Application Telemetry"
-    description: "Disable application compatibility telemetry and CEIP"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+      ## Sources
+      - [WER settings (Microsoft)](https://learn.microsoft.com/en-us/windows/win32/wer/wer-settings)
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    effects:
+      - id: wer_disabled
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting', name: Disabled, type: REG_DWORD }
+      - id: wer_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting', name: Disabled, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { wer_disabled: 1, wer_policy: 1 }
+      - label: "Enabled"
+        values: { wer_disabled: absent, wer_policy: absent }
+
+  - id: disable_suggested_content_settings
+    name: "Turn off suggested content in Settings"
+    description: "Remove the promotional suggested-content cards shown inside the Settings app."
     info: |
-      ## What This Does
-      Disables several application telemetry systems:
-      - **AITAgent**: Application Impact Telemetry that monitors program compatibility
-      - **CEIP**: Customer Experience Improvement Program data collection
-      - **UAR**: User Account Reporting
-      - **Inventory Collector**: Collects installed application information
+      **Removes the promotional suggestion cards Microsoft shows inside the Settings app, for your account.**
 
-      ## Performance Benefit
-      - Reduces background CPU and disk usage from telemetry agents
-      - Fewer scheduled tasks running periodically
+      ## Caveats
+      - Major Windows updates are widely reported to turn the cards back on.
 
-      ## Recommendation
-      Safe to disable. These telemetry systems provide no user benefit.
+      ## Notes
+      - Microsoft does not document these values; they rest on several independent community sources.
+      - Takes effect immediately; reopen Settings to see it.
+
+      ## Sources
+      - [Enable or Disable Suggested Content in Settings in Windows 11](https://www.elevenforum.com/t/enable-or-disable-suggested-content-in-settings-in-windows-11.3791/)
+      - [privacy.sexy](https://github.com/undergroundwires/privacy.sexy)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: content_338393
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-338393Enabled, type: REG_DWORD }
+      - id: content_353694
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-353694Enabled, type: REG_DWORD }
+      - id: content_353696
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-353696Enabled, type: REG_DWORD }
+      - id: content_353698
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-353698Enabled, type: REG_DWORD }
     options:
-      - label: "App Telemetry Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
-            value_name: "AITEnable"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
-            value_name: "DisableUAR"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
-            value_name: "DisableInventory"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\SQMClient\\Windows"
-            value_name: "CEIPEnable"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "App Telemetry Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
-            value_name: "AITEnable"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
-            value_name: "DisableUAR"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\AppCompat"
-            value_name: "DisableInventory"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\SQMClient\\Windows"
-            value_name: "CEIPEnable"
-            value_type: "REG_DWORD"
-            value: 1
+      - label: "Off"
+        values: { content_338393: 0, content_353694: 0, content_353696: 0, content_353698: 0 }
+      # No SubscribedContent-* value exists in the shipped Default user hive, so the stock state is deletion.
+      - label: "On"
+        values: { content_338393: absent, content_353694: absent, content_353696: absent, content_353698: absent }
+
+  - id: disable_start_app_suggestions
+    name: "Turn off Start menu app suggestions"
+    description: "Stop promoted apps appearing among your Start menu entries."
+    info: |
+      **Stops promoted Store apps appearing in your Start menu's app list, for your account.**
+
+      ## Notes
+      - It does not clear the Windows 11 Recommended section, which has its own tweaks.
+      - Major Windows updates are widely reported to turn suggestions back on.
+      - Takes effect immediately in most cases; signing out makes sure.
+
+      ## Related
+      - **Turn off Start menu app promotions** (Debloat) covers the other half of the same Start suggestion slot; apply both.
+      - **Turn off promoted recommendations in Start** and **Hide the Recommended section in Start** (Interface) cover the Recommended section.
+
+      ## Sources
+      - [Turn On or Off App Suggestions in Start](https://www.tenforums.com/tutorials/24117-turn-off-app-suggestions-start-windows-10-a.html)
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: pane_suggestions
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SystemPaneSuggestionsEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { pane_suggestions: 0 }
+      # Genuinely seeded: present with data 1 in the shipped Default user hive on 26100.
+      - label: "On"
+        values: { pane_suggestions: 1 }
+
+  - id: disable_app_launch_tracking
+    name: "Turn off app launch tracking"
+    description: "Stop Windows recording which apps you launch to rank Start and search results."
+    info: |
+      **Stops Windows counting which apps you open, the data behind the Most used list in Start and part of search ranking.**
+
+      ## Drawbacks
+      - The Most used list stops updating, and search ranks results less by your habits.
+
+      ## Notes
+      - This data never leaves your PC, so turning it off only guards against someone looking at this PC.
+      - Only your account changes. Takes effect immediately.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: track_progs
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', name: Start_TrackProgs, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { track_progs: 0 }
+      - label: "On"
+        values: { track_progs: absent }
+
+  - id: disable_lockscreen_spotlight_ads
+    name: "Turn off lock screen ads and fun facts"
+    description: "Strip the ads, tips, and fun facts off the Spotlight lock screen while keeping the pictures."
+    info: |
+      **Keeps the Windows Spotlight pictures on your lock screen but removes the ads, tips and fun facts shown over them.**
+
+      ## Drawbacks
+      - The captions saying where a photo was taken go too.
+
+      ## Notes
+      - Only matters when your lock screen uses Windows Spotlight. Takes effect at the next lock screen.
+      - Major Windows updates are widely reported to turn these back on.
+
+      ## Related
+      - **Turn off all Windows Spotlight features** (Debloat) removes Spotlight entirely, pictures included.
+
+      ## Sources
+      - [Facts, Tips, and Tricks on Lock Screen in Windows 11](https://www.elevenforum.com/t/enable-or-disable-facts-tips-and-tricks-on-lock-screen-in-windows-11.7079/)
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: rotating_lock
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: RotatingLockScreenOverlayEnabled, type: REG_DWORD }
+      - id: content_338387
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-338387Enabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { rotating_lock: 0, content_338387: 0 }
+      # Split default: the overlay value is seeded with 1 in the Default user hive, the subscription value is not.
+      - label: "On"
+        values: { rotating_lock: 1, content_338387: absent }
+
+  - id: disable_tips_and_suggestions
+    name: "Turn off Windows tips and suggestions"
+    description: "Stop the tip, trick, and suggestion notifications Windows pops while you work."
+    info: |
+      **Stops the "tips, tricks and suggestions" notifications Windows shows while you use it.**
+
+      ## Caveats
+      - The machine-wide policy part works only on Enterprise, Education and IoT editions. On Home and Pro only your own account's setting changes, which still stops the tips for you.
+      - Major Windows updates are widely reported to turn the per-account setting back on.
+
+      ## Notes
+      - Takes effect immediately.
+
+      ## Related
+      - **Disable Settings app online tips** stops a different kind of tip: help content that Settings downloads.
+
+      ## Sources
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+      - [Registry tweaks to disable ads, suggestions and tips](https://www.askvg.com/registry-tweaks-to-disable-ads-suggestions-and-tips-in-windows-10/)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: soft_landing_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name: DisableSoftLanding, type: REG_DWORD }
+      - id: soft_landing_pref
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SoftLandingEnabled, type: REG_DWORD }
+      - id: content_338389
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager', name: SubscribedContent-338389Enabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { soft_landing_policy: 1, soft_landing_pref: 0, content_338389: 0 }
+
+  - id: disable_consumer_features
+    name: "Disable Windows consumer features"
+    description: "Turn off Microsoft consumer experiences by policy (honored on Enterprise, Education, and IoT only)."
+    info: |
+      **Turns off Microsoft's consumer extras by policy: apps installed automatically after setup, promoted Start tiles and membership notifications.**
+
+      ## Requirements
+      - Works only on Enterprise, Education and IoT Enterprise (including LTSC). On Home and Pro it does nothing at all.
+
+      ## Related
+      - **Turn off auto-installed sponsored apps** (Debloat) is the way to stop sponsored installs on Home and Pro.
+
+      ## Sources
+      - [Policy CSP - Experience](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: consumer_features_policy
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent', name: DisableWindowsConsumerFeatures, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { consumer_features_policy: 1 }
+      - label: "Enabled"
+        values: { consumer_features_policy: absent }
 
   - id: disable_edge_telemetry
-    name: "Disable Edge Telemetry"
-    description: "Disable Microsoft Edge telemetry and usage reporting"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
+    name: "Turn off Microsoft Edge telemetry"
+    description: "Stop Edge using your browsing for personalization and reporting third-party searches."
     info: |
-      ## What This Does
-      Disables telemetry collection by Microsoft Edge browser including:
-      - Usage metrics reporting
-      - Site information sharing
-      - Personalization reporting
-      - Diagnostic data collection
+      **Stops Microsoft Edge using your browsing history, favourites and usage to personalise ads, search and news, and stops it capturing searches you make on Google or other search engines.**
 
-      ## Impact
-      - No functional impact on browsing
-      - Edge still receives updates
-      - Only data collection is disabled
+      ## Notes
+      - Not a full Edge telemetry switch: Edge's diagnostic data follows the Windows diagnostic data setting.
+      - Does nothing on a PC without Edge. The search part applies at once; restart Edge for the rest.
+      - Edge shows "managed by your organization" in its settings while any Edge policy is set.
+
+      ## Related
+      - **Limit diagnostic data to the Required level** also lowers Edge's diagnostic data.
+
+      ## Sources
+      - [PersonalizationReportingEnabled (Edge policy)](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/personalizationreportingenabled)
+      - [Edge3PSerpTelemetryEnabled (Edge policy)](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/edge3pserptelemetryenabled)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: edge_personalization
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: PersonalizationReportingEnabled, type: REG_DWORD }
+      - id: edge_3pserp
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Edge', name: Edge3PSerpTelemetryEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { edge_personalization: 0, edge_3pserp: 0 }
+      - label: "On"
+        values: { edge_personalization: absent, edge_3pserp: absent }
+
+  - id: disable_language_list_access
+    name: "Block website access to your language list"
+    description: "Stop Windows handing your full language list to web content."
+    info: |
+      **Stops Windows telling websites which languages you have set up, one small signal used to fingerprint your browser.**
+
+      ## Notes
+      - Modern browsers send their own language list, so the effect is mostly on web content built into Windows.
+      - Some multilingual sites may stop picking your language automatically.
+      - Only your account changes. Browsers pick it up the next time they start.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: lang_optout
+        registry: { key: 'HKCU\Control Panel\International\User Profile', name: HttpAcceptLanguageOptOut, type: REG_DWORD }
+    options:
+      - label: "Blocked"
+        values: { lang_optout: 1 }
+      - label: "Allowed"
+        values: { lang_optout: absent }
+
+  - id: disable_explorer_cloud_recommendations
+    name: "Disable File Explorer cloud recommendations"
+    description: "Stop File Explorer calling Microsoft's cloud for file recommendations."
+    info: |
+      **Stops File Explorer asking Microsoft's cloud for file suggestions based on your account activity, such as recent OneDrive and SharePoint files, for every account.**
+
+      ## Drawbacks
+      - Shortcuts to recently used cloud files disappear from Home, and the Details pane stops showing activity for cloud files.
+
+      ## Notes
+      - Your local recent files are a separate setting and are not affected.
+      - Takes effect immediately; restart File Explorer to refresh Home.
+
+      ## Related
+      - **Hide recent files and folders in Explorer** (Interface) hides the local recent list.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { build: ">=22621" }
+    effects:
+      - id: graph_recent_items
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: DisableGraphRecentItems, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { graph_recent_items: 1 }
+      - label: "Enabled"
+        values: { graph_recent_items: absent }
+
+  - id: disable_app_device_inventory
+    name: "Disable app and device inventory collectors"
+    description: "Turn off the four app and device inventory collectors added in Windows 11 24H2."
+    info: |
+      **Turns off four background collectors added in Windows 11 24H2: install tracing, API sampling, app file and registry sampling, and the compatibility scan for apps restored from backup.**
+
+      ## Drawbacks
+      - Restoring your apps from Windows Backup on a new PC loses its compatibility scan.
+      - Microsoft has less to go on if you hit an app compatibility problem.
+
+      ## Related
+      - **Disable Compatibility Appraiser tasks** covers the older inventory collectors.
 
       ## Recommendation
-      Safe to disable for all Edge users. No impact on functionality.
-    options:
-      - label: "Edge Telemetry Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "MetricsReportingEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "SendSiteInfoToImproveServices"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "PersonalizationReportingEnabled"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "DiagnosticData"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Edge Telemetry Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "MetricsReportingEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "SendSiteInfoToImproveServices"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "PersonalizationReportingEnabled"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Edge"
-            value_name: "DiagnosticData"
-            value_type: "REG_DWORD"
-            value: 2
+      Skip it if you plan to restore your apps from Windows Backup on a new PC.
 
-  - id: disable_cortana
-    name: "Disable Cortana"
-    description: "Disable Cortana voice assistant via Group Policy"
+      ## Sources
+      - [Configure Windows diagnostic data in your organization](https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization)
     risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables Cortana via Group Policy, preventing it from running on the device.
+    elevation: admin
+    reversible: true
+    windows: { build: ">=26100" }
+    effects:
+      - id: install_tracing
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableInstallTracing, type: REG_DWORD }
+      # "Samping" is Microsoft's own misspelling in AppDeviceInventory.admx. Do not correct it.
+      - id: api_sampling
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableAPISamping, type: REG_DWORD }
+      - id: application_footprint
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableApplicationFootprint, type: REG_DWORD }
+      - id: win32_app_backup
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableWin32AppBackup, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { install_tracing: 1, api_sampling: 1, application_footprint: 1, win32_app_backup: 1 }
+      - label: "Enabled"
+        values: { install_tracing: absent, api_sampling: absent, application_footprint: absent, win32_app_backup: absent }
 
-      ## What Changes
-      - Cortana cannot be launched or used
-      - Cortana above lock screen is disabled
-      - Windows Search still works normally
+  - id: disable_search_history
+    name: "Turn off device search history"
+    description: "Stop Windows keeping a history of what you have searched for on this device."
+    info: |
+      **Stops Windows saving what you search for on this device for your account, so recent searches no longer appear when you open search.**
+
+      ## Notes
+      - This history stays on your PC, so turning it off only guards against someone using this PC.
+      - Microsoft does not document this value; the search app itself and independent tools confirm it.
+      - Takes effect immediately.
+
+      ## Sources
+      - [privacy.sexy](https://github.com/undergroundwires/privacy.sexy)
+      - [Win11Debloat](https://github.com/Raphire/Win11Debloat)
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: device_search_history
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\SearchSettings', name: IsDeviceSearchHistoryEnabled, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { device_search_history: 0 }
+      - label: "On"
+        values: { device_search_history: absent }
+
+  - id: disable_cloud_content_search
+    name: "Disable cloud content in search"
+    description: "Stop taskbar search querying your OneDrive, SharePoint, and Outlook content."
+    info: |
+      **Stops Windows search sending what you type to Microsoft to look through your OneDrive, SharePoint and Outlook content, for personal and work accounts. Search then shows local results only.**
+
+      ## Drawbacks
+      - OneDrive, SharePoint and Outlook items no longer show up in taskbar search.
+
+      ## Notes
+      - Searching your local files and apps is unaffected.
+      - Takes effect immediately.
+
+      ## Sources
+      - [Policy CSP - Search](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-search)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: allow_cloud_search
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search', name: AllowCloudSearch, type: REG_DWORD }
+      - id: msa_cloud_search
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\SearchSettings', name: IsMSACloudSearchEnabled, type: REG_DWORD }
+      - id: aad_cloud_search
+        registry: { key: 'HKCU\Software\Microsoft\Windows\CurrentVersion\SearchSettings', name: IsAADCloudSearchEnabled, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { allow_cloud_search: 0, msa_cloud_search: 0, aad_cloud_search: 0 }
+      - label: "Enabled"
+        values: { allow_cloud_search: absent, msa_cloud_search: absent, aad_cloud_search: absent }
+
+  - id: disable_voice_activation
+    name: "Block voice activation and wake words"
+    description: "Block apps from listening for a wake word, including above the lock screen."
+    info: |
+      **Blocks every app from listening for a wake word to start a voice assistant, including while the PC is locked, for every account.**
+
+      ## Drawbacks
+      - Voice assistants you do use, including third-party ones, stop answering their wake word.
+
+      ## Notes
+      - Push-to-talk and voice input you start yourself still work.
+      - Settings cannot turn it back on while this is applied. An app already running may need a restart.
+
+      ## Related
+      - **Turn off online speech recognition** covers cloud speech processing.
+
+      ## Sources
+      - [Policy CSP - Privacy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: voice_activation
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy', name: LetAppsActivateWithVoice, type: REG_DWORD }
+      - id: voice_activation_lock
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy', name: LetAppsActivateWithVoiceAboveLock, type: REG_DWORD }
+    options:
+      - label: "Blocked"
+        values: { voice_activation: 2, voice_activation_lock: 2 } # 2 = Force Deny
+      - label: "Allowed"
+        values: { voice_activation: absent, voice_activation_lock: absent }
+
+  - id: disable_windows_backup
+    name: "Disable Windows Backup and cloud restore"
+    description: "Lock periodic Windows Backup and cloud restore off by policy."
+    info: |
+      **Locks periodic Windows Backup off by policy, so setup screens, Settings prompts or updates cannot switch it on later.**
+
+      ## Drawbacks
+      - You give up automatic cloud restore of your setup on a new PC or after a reinstall.
+
+      ## Notes
+      - Per Microsoft, periodic backup does not run while this policy is unset either, so there may be no visible change today.
+      - You can still run the Windows Backup app by hand.
+      - The Enabled option removes the policy; it does not turn backup on.
+
+      ## Related
+      - **Disable settings sync** covers the older settings roaming, a separate feature.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: enable_windows_backup
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\SettingSync', name: EnableWindowsBackup, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { enable_windows_backup: 0 }
+      - label: "Enabled"
+        values: { enable_windows_backup: absent }
+
+  - id: disable_online_tips
+    name: "Disable Settings app online tips"
+    description: "Stop the Settings app fetching help and tip content from Microsoft."
+    info: |
+      **Stops the Settings app downloading help and tips from Microsoft; it shows only the help built into Windows.**
+
+      ## Notes
+      - The built-in help can be out of date, and fixes Microsoft publishes later do not appear.
+      - Applies to every account. Takes effect immediately.
+
+      ## Related
+      - **Turn off Windows tips and suggestions** stops tip notifications, a different feature.
+      - **Turn off suggested content in Settings** removes the promotional cards in Settings.
+
+      ## Sources
+      - [Manage connections from Windows to Microsoft services](https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services)
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      # ControlPanel.admx puts this under CurrentVersion\Policies\Explorer, not under Software\Policies.
+      - id: allow_online_tips
+        registry: { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer', name: AllowOnlineTips, type: REG_DWORD }
+    options:
+      - label: "Disabled"
+        values: { allow_online_tips: 0 }
+      - label: "Enabled"
+        values: { allow_online_tips: absent }
+
+  - id: disable_wer_service
+    name: "Disable the Windows Error Reporting service"
+    description: "Disable the Windows Error Reporting service so crash reports are never collected."
+    info: |
+      **Disables the Windows Error Reporting service, so crash and hang reports are not collected, queued or sent at all.**
+
+      ## Drawbacks
+      - Reliability Monitor's crash history goes quiet, and some third-party crash handlers behave differently.
+      - It does not make Windows faster.
+
+      ## Notes
+      - A running instance keeps running until the next restart.
+      - Reverting restores the service's previous start type.
+
+      ## Related
+      - **Disable Windows Error Reporting** sets the reporting policy; the natural pair.
+      - **Disable Windows Error Reporting QueueReporting task** (Services) stops queued reports being uploaded.
 
       ## Recommendation
-      Safe to disable. Cortana is deprecated in Windows 11 and provides limited functionality.
+      Use it on a stable PC. Leave it alone while you are troubleshooting crashes.
+
+      ## Sources
+      - [WER settings (Microsoft)](https://learn.microsoft.com/en-us/windows/win32/wer/wer-settings)
+    risk_level: medium
+    elevation: admin
+    reversible: true
+    requires_reboot: true
+    effects:
+      - id: wer_service
+        service: { name: WerSvc }
     options:
-      - label: "Cortana Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowCortana"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowCortanaAboveLock"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Cortana Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowCortana"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowCortanaAboveLock"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_cloud_search
-    name: "Disable Cloud Search"
-    description: "Disable cloud and web search integration in Windows Search"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Disables cloud-based search features including:
-      - Cloud search results (OneDrive, Outlook, etc.)
-      - Web results in Windows Search
-      - Search location usage
-
-      ## Benefits
-      - Faster local-only search results
-      - No data sent to Microsoft for search queries
-      - Reduced network usage during searches
-
-      ## Recommendation
-      Safe to disable. Local search continues to work perfectly.
-    options:
-      - label: "Cloud Search Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowCloudSearch"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "ConnectedSearchUseWeb"
-            value_type: "REG_DWORD"
-            value: 0
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowSearchToUseLocation"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Cloud Search Enabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowCloudSearch"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "ConnectedSearchUseWeb"
-            value_type: "REG_DWORD"
-            value: 1
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Windows Search"
-            value_name: "AllowSearchToUseLocation"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_auto_signin_after_update
-    name: "Disable Auto Sign-in After Update"
-    description: "Prevent Windows from automatically signing in after updates"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows from using your credentials to automatically sign in and finish setting up your device after an update or restart.
-
-      ## Security Benefit
-      - Credentials not cached for automatic restart sign-on
-      - Must manually enter password after updates
-      - Better security for shared or sensitive environments
-
-      ## Recommendation
-      Enable for better security. Disable if convenience is preferred.
-    options:
-      - label: "Auto Sign-in Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-            value_name: "DisableAutomaticRestartSignOn"
-            value_type: "REG_DWORD"
-            value: 1
-      - label: "Auto Sign-in Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System"
-            value_name: "DisableAutomaticRestartSignOn"
-            value_type: "REG_DWORD"
-            value: 0
-
-  - id: disable_message_sync
-    name: "Disable Message Sync"
-    description: "Disable text message cloud syncing across devices"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Windows from syncing text messages between your phone and PC via the cloud.
-
-      ## Privacy Impact
-      - Messages not uploaded to Microsoft cloud
-      - Phone Link messaging still works via direct connection
-
-      ## Recommendation
-      Safe to disable for privacy-focused users.
-    options:
-      - label: "Message Sync Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Messaging"
-            value_name: "AllowMessageSync"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Message Sync Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Policies\\Microsoft\\Windows\\Messaging"
-            value_name: "AllowMessageSync"
-            value_type: "REG_DWORD"
-            value: 1
-
-  - id: disable_experimentation
-    name: "Disable A/B Experiments"
-    description: "Prevent Microsoft from running A/B experiments on your device"
-    risk_level: low
-    requires_admin: true
-    requires_reboot: false
-    info: |
-      ## What This Does
-      Prevents Microsoft from remotely enabling or disabling features on your device for A/B testing purposes.
-
-      ## What Microsoft Experiments Do
-      - Remotely toggle features on/off to test user engagement
-      - Change UI elements for testing
-      - May enable features you didn't request
-
-      ## Recommendation
-      Always disable. There is no benefit to being a test subject for Microsoft's experiments.
-    options:
-      - label: "Experiments Disabled"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\PolicyManager\\current\\device\\System"
-            value_name: "AllowExperimentation"
-            value_type: "REG_DWORD"
-            value: 0
-      - label: "Experiments Enabled (Default)"
-        registry_changes:
-          - hive: HKLM
-            key: "Software\\Microsoft\\PolicyManager\\current\\device\\System"
-            value_name: "AllowExperimentation"
-            value_type: "REG_DWORD"
-            value: 1
+      - label: "Disabled"
+        values: { wer_service: disabled }

@@ -1,0 +1,34 @@
+category:
+  id: action_timeout_out_of_range
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Action timeouts below and above the accepted range."
+
+tweaks:
+  - id: timeout_tweak
+    name: "Out Of Range Timeouts"
+    description: "One timeout of zero, one of over half an hour."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+      - id: too_short
+        action:
+          apply: "echo apply"
+          undo: "echo undo"
+          shell: cmd
+          timeout: 0
+      - id: too_long
+        action:
+          apply: "echo apply"
+          undo: "echo undo"
+          shell: cmd
+          timeout: 1801
+    options:
+      - label: "On"
+        values:
+          marker: 1
+          too_short: run
+          too_long: run

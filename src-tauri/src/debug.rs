@@ -6,17 +6,9 @@ use tauri::{AppHandle, Emitter};
 /// Global debug mode flag
 static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// The handle used to emit debug events to the frontend, set once during setup.
-///
-/// This is held here rather than threaded through the apply chain as a parameter.
-/// It was previously passed down through 11 signatures and ~13 call sites purely to
-/// reach `emit_debug_log`, which is a no-op unless the user has switched debug mode
-/// on; nothing in that chain ever touched the handle for anything else. Carrying it
-/// made `apply_all_changes_atomically` and everything beneath it impossible to call
-/// from a test, because `AppHandle` is `AppHandle<Wry>` and cannot be constructed
-/// outside a running app.
-///
-/// When unset -- which is the case in every test -- emitting is a silent no-op.
+/// The handle used to emit debug events to the frontend, set once during setup. Held here rather
+/// than threaded through the apply chain: `AppHandle` is `AppHandle<Wry>` and cannot be constructed
+/// outside a running app, so any signature carrying it is uncallable from a test.
 static DEBUG_APP: OnceLock<AppHandle> = OnceLock::new();
 
 /// Debug log level
@@ -54,10 +46,7 @@ pub fn set_debug_app(app: AppHandle) {
     let _ = DEBUG_APP.set(app);
 }
 
-/// Send a debug log to the frontend via Tauri event.
-///
-/// A no-op when debug mode is off, and also when no handle has been registered --
-/// the latter is the normal state under `cargo test`.
+/// A no-op when debug mode is off, and when no handle is registered (the state under `cargo test`).
 pub fn emit_debug_log(level: DebugLevel, message: &str, context: Option<&str>) {
     if !is_debug_enabled() {
         return;
