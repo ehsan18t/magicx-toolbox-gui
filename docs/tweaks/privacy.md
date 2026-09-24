@@ -361,7 +361,7 @@ Apply it if you cannot or do not want to set a machine-wide policy. If you have 
 
 ### Block OneSettings config downloads
 
-`disable_onesettings_downloads` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_onesettings_downloads` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: build >= 22000 · Reversible: yes
 
 **Stops Windows periodically downloading configuration from Microsoft's OneSettings service.**
 
@@ -384,7 +384,7 @@ This is the Group Policy "Disable OneSettings Downloads", defined in the shipped
 
 This is a remote-configuration control, not a telemetry control: it does not change how much diagnostic data is collected, which is governed by `AllowTelemetry` and the Connected User Experiences and Telemetry service. What it stops is configuration and feature-flag delivery between updates.
 
-The Policy CSP applicability for this setting is Windows 11 21H2 (build 22000) and later. The tweak has no build gate, so on Windows 10 (including LTSC 2021) the value is still written, but that is outside Microsoft's documented applicability and nothing is documented to read it there.
+The Policy CSP applicability for this setting is Windows 11 21H2 (build 22000) and later. The tweak is gated to build 22000 and newer, so it is hidden on Windows 10 (including LTSC 2021), where nothing is documented to read the value.
 
 #### Benefits
 - Windows components keep the configuration they shipped with.
@@ -397,7 +397,7 @@ The Policy CSP applicability for this setting is Windows 11 21H2 (build 22000) a
 - Configuration-only mitigations Microsoft ships through OneSettings will not reach the machine.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 21H2 (build 22000) and newer per Microsoft, so all of the primary platform. On Windows 10 and LTSC 2021 the value is written but is outside the documented range.
+- **Applies to**: Windows 11 21H2 (build 22000) and newer per Microsoft, so all of the primary platform; hidden on Windows 10 and LTSC 2021.
 - **Takes effect**: immediately.
 - **Reverting**: "Allowed" deletes the value, restoring the Windows default.
 
@@ -408,7 +408,7 @@ The Policy CSP applicability for this setting is Windows 11 21H2 (build 22000) a
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The mechanism was correct; the corrections were that the documented floor is Windows 11 21H2 and that the policy is a configuration-download control, not a way to stop Windows re-toggling telemetry (nothing sources that claim).
 - **Confidence**: Microsoft-documented: Policy CSP, the connections article and the shipped ADMX and ADML all agree.
-- **Reasoning**: the adversarial pass attacked the headline "can silently re-toggle telemetry" benefit and found no source; it was dropped. Key, value, type, polarity and the absent default survived. Open point: the research asked for either a `windows:` gate at build 22000 or a stated floor; the tweak states the floor and has no gate.
+- **Reasoning**: the adversarial pass attacked the headline "can silently re-toggle telemetry" benefit and found no source; it was dropped. Key, value, type, polarity and the absent default survived. The research asked for a `windows:` gate at build 22000 or a stated floor; the tweak is gated at 22000.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
@@ -1623,7 +1623,7 @@ Apply it; the cost is one convenience that most people never notice. Skip it if 
 
 ### Disable File Explorer cloud recommendations
 
-`disable_explorer_cloud_recommendations` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_explorer_cloud_recommendations` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: build >= 22621 · Reversible: yes
 
 **Stops File Explorer calling Microsoft's cloud for file recommendations and account-based insights.**
 
@@ -1646,7 +1646,7 @@ The shipped `Explorer.admx` on 26100 defines `DisableGraphRecentItems` as `class
 
 It is a network control, not a display toggle. The 26100 ADML: "Turning off this setting will prevent File Explorer from requesting cloud file metadata and displaying it in the homepage and other views in File Explorer. Any insights and files available based on account activity will be stopped in views such as Recent, Recommended, Favorites, Details pane, etc." The request to Microsoft Graph is not made at all. Local recent files are a separate setting and are not affected.
 
-The tweak has no build gate. On Windows 10 and LTSC 2021 the policy does not exist and the value is written but ignored.
+The tweak is gated to build 22621 (Windows 11 22H2) and newer, so it is hidden on Windows 10 and LTSC 2021, where the policy does not exist.
 
 #### Benefits
 - Stops the Graph request itself, not just the display.
@@ -1656,7 +1656,6 @@ The tweak has no build gate. On Windows 10 and LTSC 2021 the policy does not exi
 #### Drawbacks
 - If you work from OneDrive or SharePoint, shortcuts to recently touched cloud files disappear.
 - The Details pane stops showing activity information for a selected cloud file.
-- Inert on Windows 10 and LTSC 2021.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 and newer, client editions only, so all of the primary platform; not LTSC 2021.
@@ -1684,7 +1683,7 @@ Apply it on a machine that does not use OneDrive or SharePoint for daily work, w
 
 ### Disable app and device inventory collectors
 
-`disable_app_device_inventory` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`disable_app_device_inventory` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: build >= 26100 · Reversible: yes
 
 **Turns off the four app and device inventory collectors Microsoft added in Windows 11 24H2.**
 
@@ -1717,7 +1716,7 @@ All four are in the shipped `AppDeviceInventory.admx` on 26100, in their own "Ap
 
 Two spelling traps. The value name really is `DisableAPISamping`: a search for the correct spelling `DisableAPISampling` across every ADMX on 26100 returns nothing, so correcting it would produce a value nothing reads. And the ADMX policy names (`TurnOffInstallTracing`, `TurnOffAPISamping`, `TurnOffApplicationFootprint`, `TurnOffWin32AppBackup`) are not registry value names and must not be written.
 
-The tweak has no build gate. On Windows 10, LTSC 2021 and pre-24H2 Windows 11 the values are written but nothing reads them.
+The tweak is gated to build 26100 and newer, so it is hidden on Windows 10, LTSC 2021 and pre-24H2 Windows 11, where nothing reads the values.
 
 #### Benefits
 - Four separate sampling agents, each with its own shipped binary, are turned off.
@@ -1727,7 +1726,6 @@ The tweak has no build gate. On Windows 10, LTSC 2021 and pre-24H2 Windows 11 th
 #### Drawbacks
 - `DisableWin32AppBackup` turns off the compatibility scan that runs when restoring applications from Windows Backup.
 - Microsoft has less to work with if you hit an app compatibility problem.
-- Inert before 24H2: on Windows 10 and LTSC 2021 nothing reads the values.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 (build 26100) and newer only; not LTSC 2021 or pre-24H2 Windows 11.
@@ -1741,7 +1739,7 @@ The tweak has no build gate. On Windows 10, LTSC 2021 and pre-24H2 Windows 11 th
 #### Validation
 - **Verdict**: VERIFIED. No correction was needed; the misspelled value name was confirmed genuine.
 - **Confidence**: Microsoft-documented: shipped ADMX and ADML on 26100, with binary evidence that each value is read by its own collector.
-- **Reasoning**: the adversarial pass attacked the odd spelling (genuine), whether anything reads the values (each by a binary named for its collector, the decisive result), polarity (ADML confirms 1 = collector off) and duplication with the appraiser tweak (distinct family). All survived; the research rated this the best-evidenced addition in its batch. The verification pass recommended a build gate at 26100; the tweak has none, so it is offered but inert on older builds.
+- **Reasoning**: the adversarial pass attacked the odd spelling (genuine), whether anything reads the values (each by a binary named for its collector, the decisive result), polarity (ADML confirms 1 = collector off) and duplication with the appraiser tweak (distinct family). All survived; the research rated this the best-evidenced addition in its batch. The verification pass recommended a build gate at 26100, which the tweak has.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation

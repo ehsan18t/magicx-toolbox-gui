@@ -332,6 +332,7 @@ tweaks:
     risk_level: low
     elevation: admin
     reversible: true
+    windows: { build: ">=22000" }
     effects:
       - id: onesettings
         registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection', name: DisableOneSettingsDownloads, type: REG_DWORD }
@@ -1441,6 +1442,7 @@ tweaks:
     risk_level: low
     elevation: admin
     reversible: true
+    windows: { build: ">=22621" }
     effects:
       - id: graph_recent_items
         registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer', name: DisableGraphRecentItems, type: REG_DWORD }
@@ -1493,6 +1495,7 @@ tweaks:
     risk_level: low
     elevation: admin
     reversible: true
+    windows: { build: ">=26100" }
     effects:
       - id: install_tracing
         registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat', name: DisableInstallTracing, type: REG_DWORD }
