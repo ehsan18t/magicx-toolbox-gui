@@ -9,7 +9,7 @@ This category collects the Windows AI controls in one place: Recall (snapshot po
 | [Disable Windows Recall snapshots](#disable-windows-recall-snapshots) | `disable_recall_snapshots` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Recall feature component](#recall-feature-component) | `remove_recall_component` | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable the Click to Do overlay](#disable-the-click-to-do-overlay) | `disable_click_to_do` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Copilot app](#remove-the-copilot-app) | `remove_copilot_app` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the Copilot app](#remove-the-copilot-app) | `remove_copilot_app` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable the Recall optional feature](#disable-the-recall-optional-feature) | `remove_recall_feature` | Switch (2 options) | medium | admin | yes | INCORRECT (corrected form ships) |
 | [Hide the Copilot taskbar button](#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](#disable-notepad-ai-features) | `disable_notepad_ai` | Switch (2 options) | low | admin | no | VERIFIED |
@@ -221,7 +221,7 @@ Apply it on a Copilot+ PC if you have no use for the overlay, and pair it with t
 
 ### Remove the Copilot app
 
-`remove_copilot_app` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: build >= 26100 · Reversible: yes
+`remove_copilot_app` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: build >= 26100 · Reversible: yes
 
 **Uninstalls the Copilot app so it stops appearing in Start, on the taskbar, and in your program list.**
 
@@ -229,15 +229,13 @@ Apply it on a Copilot+ PC if you have no use for the overlay, and pair it with t
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry (app state marker) | `HKCU\Software\MagicXToolbox\Debloat`, value `Copilot`, `REG_DWORD` |
-| `app` | action (PowerShell, timeout 600 s) | apply: `Get-AppxPackage -AllUsers 'Microsoft.Copilot' \| Remove-AppxPackage -AllUsers`, then `Get-AppxProvisionedPackage -Online \| Where-Object { $_.PackageName -like 'Microsoft.Copilot*' } \| Remove-AppxProvisionedPackage -Online`; undo: `winget install --id 9NHT9RB2F4HD -e --accept-source-agreements --accept-package-agreements`; probe: exits 0 (removed) when neither an installed `Microsoft.Copilot` package for any user nor a provisioned `Microsoft.Copilot*` package exists, otherwise exits 1 |
+| `app` | action (PowerShell, timeout 600 s) | apply (with `$ErrorActionPreference = 'Stop'`): `Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot' \| Remove-AppxPackage -AllUsers`, then remove every provisioned package whose `DisplayName` is `Microsoft.Copilot`; undo: exits 0 if `Microsoft.Copilot` is still installed for any user, otherwise `winget install --id 9NHT9RB2F4HD -e --accept-source-agreements --accept-package-agreements` and returns winget's exit code; probe: `appx_absent: [Microsoft.Copilot]` (present when no installed or provisioned `Microsoft.Copilot` package remains) |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run (apply the removal; probe must report removed) |
-| Installed | `0` | not run (probe must report present, so selecting it from Removed runs the undo, a winget install) |
+| Option | `app` |
+|---|---|
+| Removed | run (apply the removal; probe must report removed) |
 
-System Default: shown whenever the marker does not match an option, which includes every stock machine (the marker value does not exist until the app writes it) and any machine where the marker and the actual package state disagree. Selecting it restores the snapshot: the marker is put back as captured and the action's undo runs if the snapshot recorded the app as present. Stock Windows 11 24H2 and 25H2 ship the Copilot app installed and provisioned.
+System Default: shown whenever the package is installed or provisioned, which includes a stock machine. Selecting it after applying restores the snapshot, which runs the winget reinstall. Detection reads the real package state for every account, so a machine without the app reads as "Removed" without any apply. Stock Windows 11 24H2 and 25H2 ship the Copilot app installed and provisioned.
 
 #### How it works
 
@@ -247,7 +245,7 @@ The removal does not touch `Microsoft.Windows.Ai.Copilot.Provider`, the separate
 
 A second Store listing, `XP9CXNGPPJ97XX` "Microsoft Copilot", now exists. Microsoft's Store catalog returns it with no package family name at all, which indicates a non-Appx delivery path; this tweak targets only the Appx app and does not remove that one. Copilot's packaging has changed repeatedly (sidebar, then PWA, then a WebView2 build, then a native WinUI app, and in 2026 a WebView-based build that bundles its own copy of Edge), so the target needs re-checking with each release.
 
-The marker value `HKCU\Software\MagicXToolbox\Debloat\Copilot` is the app's own record of which option was chosen; it makes the two options detectably distinct. Because it lives in HKCU, the app's different-account guard applies: if the app is elevated with another account's credentials, the tweak is disabled rather than writing the wrong user's hive.
+The probe is the app's shared package enumeration (`Get-AppxPackage -AllUsers` plus the provisioned list, one query for every package probe). It fails closed: if the enumeration cannot run, for example without elevation, the tweak reads Unknown rather than Removed. The undo skips winget when the package is still installed, which a rollback of a partly failed removal can meet, because winget's exit code for an already-installed package is not established.
 
 On Enterprise, Education and IoT Enterprise running 24H2 or later, Microsoft's managed alternative is the `RemoveMicrosoftCopilotApp` policy, which only acts when both Copilot and Microsoft 365 Copilot are installed, the app was not user-installed, and it has not been launched in the last 28 days. The inbox-app removal policy `RemoveDefaultMicrosoftStorePackages` (ApplicationManagement CSP) also lists `Copilot`.
 
@@ -262,23 +260,21 @@ On Enterprise, Education and IoT Enterprise running 24H2 or later, Microsoft's m
 - A feature update can re-provision the app, so it may need applying again.
 - The second, non-Appx Store listing for Copilot is not covered.
 - Copilot's packaging is a moving target.
-- Reinstalling (the Installed option or a revert) needs winget and an internet connection; if the install cannot complete, the revert surfaces as Needs Attention.
-- The probe treats "the package query returned nothing" as removed. The repository's probe-fail-open audit notes that `Get-AppxPackage -AllUsers` errors are non-terminating, so a failed query (for example when the probe runs without elevation) evaluates the same as "not installed" and reports Removed.
+- Reinstalling (a revert) needs winget and an internet connection; if the install cannot complete, the revert surfaces as Needs Attention.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer (the app also exists on 23H2 / 22631, below this project's gate). The app is not present on Windows 10 LTSC 2021.
 - **Takes effect**: immediately; no reboot.
-- **Reverting**: System Default restores the captured marker and, when the snapshot recorded the app as present, runs the winget reinstall. The reinstall comes from the Microsoft Store, so it needs connectivity.
+- **Reverting**: turning the switch off (System Default) after applying runs the winget reinstall. The reinstall comes from the Microsoft Store, so it needs connectivity. A machine that never had the app reads as "Removed" and has nothing to revert.
 
 #### Interactions
 - [Hide the Copilot taskbar button](#hide-the-copilot-taskbar-button) only hides the entry point; with this tweak applied it has nothing left to hide. Microsoft names removing `Microsoft.Copilot` as a supported replacement for that deprecated policy.
 - [Disable the Click to Do overlay](#disable-the-click-to-do-overlay) governs the separate `Microsoft.Windows.Ai.Copilot.Provider` surface, which this tweak leaves alone.
-- The same HKCU marker key (`HKCU\Software\MagicXToolbox\Debloat`) is used by [Disable the Recall optional feature](#disable-the-recall-optional-feature) and by debloat tweaks, each under its own value name; there is no overlap.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The package identity and undo are correct. The research established that removing only the installed package leaves the provisioned copy staged (so the app returns for new profiles and after feature updates) and that a probe checking only installed packages would report Removed while the provisioned copy remains; the shipped apply removes both and the shipped probe checks both.
 - **Confidence**: Microsoft-documented (Manage Windows Copilot, Policy CSP, `Remove-AppxProvisionedPackage` reference), plus direct Store catalog lookups for both product ids.
-- **Reasoning**: Store catalog lookups tied `9NHT9RB2F4HD` to `Microsoft.Copilot_8wekyb3d8bbwe`; the second listing's missing package family name is the basis for the non-Appx caveat. The 24H2 re-scope audit kept the tweak as the primary Copilot control. The probe-fail-open audit's finding (a failed `Get-AppxPackage` reads as removed) still applies to the shipped probe shape, which has no `$ErrorActionPreference = 'Stop'` / `catch` guard.
+- **Reasoning**: Store catalog lookups tied `9NHT9RB2F4HD` to `Microsoft.Copilot_8wekyb3d8bbwe`; the second listing's missing package family name is the basis for the non-Appx caveat. The 24H2 re-scope audit kept the tweak as the primary Copilot control. The probe-fail-open audit found that a script probe built on `Get-AppxPackage` reads a failed query as removed; the shipped tweak uses the shared `appx_absent` enumeration instead, which reports Unknown when the query fails.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
@@ -292,7 +288,7 @@ Apply it if you do not use Copilot; it is the cleanest way to get rid of the app
 5. Microsoft Store catalog, product `XP9CXNGPPJ97XX` "Microsoft Copilot": no package family name returned (tier A, primary observation)
 6. Policy-based inbox app removal, `RemoveDefaultMicrosoftStorePackages`, `Copilot` in the supported list, https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal (from the repository's 24H2 re-scope audit)
 7. "New Copilot for Windows 11 includes a full Microsoft Edge package", Windows Latest, packaging history only, https://www.windowslatest.com/2026/04/05/new-copilot-for-windows-11-includes-a-full-microsoft-edge-package-uses-more-ram/ (tier D)
-8. Repository probe-fail-open audit: non-terminating `Get-AppxPackage` errors make this probe shape report Removed when the query fails (internal analysis)
+8. Repository probe-fail-open audit: non-terminating `Get-AppxPackage` errors make a script probe report Removed when the query fails, which is why the tweak uses the fail-closed `appx_absent` probe (internal analysis)
 
 ### Disable the Recall optional feature
 

@@ -213,23 +213,25 @@ tweaks:
     reversible: true
     windows: { build: ">=26100" }
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: Copilot, type: REG_DWORD }
       - id: app
         action:
           apply: |
-            Get-AppxPackage -AllUsers 'Microsoft.Copilot' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like 'Microsoft.Copilot*' } | Remove-AppxProvisionedPackage -Online
-          undo: "winget install --id 9NHT9RB2F4HD -e --accept-source-agreements --accept-package-agreements"
-          probe: |
-            if ((Get-AppxPackage -AllUsers 'Microsoft.Copilot') -or (Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like 'Microsoft.Copilot*' })) { exit 1 } else { exit 0 }
+            $ErrorActionPreference = 'Stop'
+            Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot' | Remove-AppxPackage -AllUsers
+            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.Copilot' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot') { exit 0 }
+            winget install --id 9NHT9RB2F4HD -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
+          probe:
+            appx_absent: [Microsoft.Copilot]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_recall_feature
     name: "Disable the Recall optional feature"

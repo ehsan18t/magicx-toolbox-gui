@@ -814,7 +814,6 @@ tweaks:
       - label: "On"
         values: { sidebar: absent, collections: absent }
 
-  # ---- App removals (state marker + undo-carrying, probeable action) ----
   # Every removal below removes the installed package for all users AND the provisioned package
   # registered against the image, and every probe is fail-closed: an unelevated or failing
   # Get-AppxPackage exits non-zero ("not removed") instead of reporting a removal that never
@@ -866,24 +865,25 @@ tweaks:
     reversible: true
     windows: { products: [11] }
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: Teams, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'MSTeams' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MSTeams' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'MSTeams') { exit 0 }
+            winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [MSTeams]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_clipchamp
     name: "Remove Clipchamp"
@@ -927,24 +927,25 @@ tweaks:
     reversible: true
     windows: { products: [11] }
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: Clipchamp, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Clipchamp.Clipchamp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp') { exit 0 }
+            winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [Clipchamp.Clipchamp]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_quick_assist
     name: "Remove Quick Assist"
@@ -989,24 +990,25 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: QuickAssist, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MicrosoftCorporationII.QuickAssist' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist') { exit 0 }
+            winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [MicrosoftCorporationII.QuickAssist]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_bing_news_weather
     name: "Remove Bing News and Weather"
@@ -1050,8 +1052,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: BingNewsWeather, type: REG_DWORD }
       - id: app
         action:
           # Get-AppxPackage -Name is System.String, not String[]: passing both names as an array is a
@@ -1064,16 +1064,23 @@ tweaks:
               Get-AppxPackage -AllUsers -Name $name | Remove-AppxPackage -AllUsers
               Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $name } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
             }
-          undo: "winget install --id 9WZDNCRFHVFW -e --accept-source-agreements --accept-package-agreements && winget install --id 9WZDNCRFJ3Q2 -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # One install per package: Windows PowerShell 5.1 rejects `&&`.
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            foreach ($app in @(@('Microsoft.BingNews', '9WZDNCRFHVFW'), @('Microsoft.BingWeather', '9WZDNCRFJ3Q2'))) {
+              if (Get-AppxPackage -AllUsers -Name $app[0]) { continue }
+              winget install --id $app[1] -e --accept-source-agreements --accept-package-agreements
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            exit 0
           probe:
             appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_solitaire
     name: "Remove Solitaire Collection"
@@ -1116,8 +1123,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: Solitaire, type: REG_DWORD }
       - id: app
         action:
           apply: |
@@ -1134,9 +1139,7 @@ tweaks:
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_get_help
     name: "Remove the Get Help app"
@@ -1183,24 +1186,25 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: GetHelp, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.GetHelp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp') { exit 0 }
+            winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [Microsoft.GetHelp]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_getstarted_tips
     name: "Remove Tips (Get Started)"
@@ -1245,8 +1249,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: GetStarted, type: REG_DWORD }
       - id: app
         action:
           apply: |
@@ -1261,9 +1263,7 @@ tweaks:
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_feedback_hub
     name: "Remove Feedback Hub"
@@ -1307,24 +1307,25 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: FeedbackHub, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.WindowsFeedbackHub' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub') { exit 0 }
+            winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [Microsoft.WindowsFeedbackHub]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_phone_link
     name: "Remove Phone Link"
@@ -1369,24 +1370,25 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: PhoneLink, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.YourPhone' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone') { exit 0 }
+            winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [Microsoft.YourPhone]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_outlook_new
     name: "Remove the New Outlook app"
@@ -1432,24 +1434,25 @@ tweaks:
     reversible: true
     windows: { products: [11] }
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: OutlookNew, type: REG_DWORD }
       - id: app
         action:
           apply: |
             $ErrorActionPreference = 'Stop'
             Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.OutlookforWindows' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows') { exit 0 }
+            winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [Microsoft.OutlookforWindows]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_xbox_game_bar
     name: "Remove Xbox Game Bar"
@@ -1496,8 +1499,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: XboxGameBar, type: REG_DWORD }
       - id: app
         action:
           apply: |
@@ -1505,16 +1506,19 @@ tweaks:
             Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
             Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' | Remove-AppxPackage -AllUsers
             Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.XboxGamingOverlay' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: "winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
+            if (Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay') { exit 0 }
+            winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe:
             appx_absent: [Microsoft.XboxGamingOverlay]
           shell: powershell
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, app: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { app: run }
 
   - id: remove_onedrive
     name: "Remove OneDrive"
@@ -1560,8 +1564,6 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      - id: state
-        registry: { key: 'HKCU\Software\MagicXToolbox\Debloat', name: OneDrive, type: REG_DWORD }
       - id: onedrive
         action:
           # Per-machine OneDrive (OneDriveSetup.exe /allusers, what Microsoft 365 and modern imaging
@@ -1588,7 +1590,16 @@ tweaks:
               if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
             }
             exit 0
-          undo: "winget install --id Microsoft.OneDrive -e --accept-source-agreements --accept-package-agreements"
+          undo: |
+            $ErrorActionPreference = 'Stop'
+            # Skip an existing install (a rollback of a partial removal): winget's exit code for one is unverified.
+            $paths = @("$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe")
+            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+              if ($root) { $paths += (Join-Path $root 'Microsoft OneDrive\OneDrive.exe') }
+            }
+            foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { exit 0 } }
+            winget install --id Microsoft.OneDrive -e --accept-source-agreements --accept-package-agreements
+            exit $LASTEXITCODE
           probe: |
             $ErrorActionPreference = 'Stop'
             try {
@@ -1604,6 +1615,4 @@ tweaks:
           timeout: 600
     options:
       - label: "Removed"
-        values: { state: 1, onedrive: run }
-      - label: "Installed"
-        values: { state: 0 }
+        values: { onedrive: run }

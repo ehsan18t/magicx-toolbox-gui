@@ -2,7 +2,7 @@
 
 This category removes preinstalled consumer apps and turns off Microsoft's promotional surfaces: Start menu suggestions, silently installed sponsored apps, post-update and post-sign-in nag screens, Spotlight content, account upsells, advertising toasts, Widgets, web results in Start search, and three Microsoft Edge nuisances. The primary platform is Windows 11 24H2 (build 26100) and newer, including 25H2 (26200); the secondary platform is Windows 10 IoT Enterprise LTSC 2021 (build 19044), where every Store app removal is inert because LTSC images ship no Store app set and no Microsoft Store.
 
-Two things apply across the whole page. First, every app removal writes a small state marker under `HKCU\Software\MagicXToolbox\Debloat` alongside a PowerShell action that removes the app for all users and removes its provisioned (image) copy, and the app decides whether the app is gone with a shared, fail-closed package enumeration (`Get-AppxPackage -AllUsers` plus `Get-AppxProvisionedPackage -Online`): that enumeration needs administrator rights, so while the app runs unelevated those tweaks read as Unknown rather than guessing, and a failed enumeration is reported as "cannot tell", never as "removed". Second, per-user (HKCU) effects always run in-process as the signed-in user even inside an `admin` tweak, so they land in your hive and not the elevated account's; if a different account's credentials were used to elevate the app, every tweak that touches HKCU is disabled as "Different account" instead of writing the wrong hive.
+Two things apply across the whole page. First, every app removal is a single PowerShell action that removes the app for all users and removes its provisioned (image) copy, and the tweak's state is read from the machine itself: a shared, fail-closed package enumeration (`Get-AppxPackage -AllUsers` plus `Get-AppxProvisionedPackage -Online`): that enumeration needs administrator rights, so while the app runs unelevated those tweaks read as Unknown rather than guessing, and a failed enumeration is reported as "cannot tell", never as "removed". An app that is not installed reads as "Removed" for every account without any apply, so a revert never installs an app the PC did not have. Second, per-user (HKCU) effects always run in-process as the signed-in user even inside an `admin` tweak, so they land in your hive and not the elevated account's; if a different account's credentials were used to elevate the app, every tweak that touches HKCU is disabled as "Different account" instead of writing the wrong hive.
 
 ## Index
 
@@ -23,18 +23,18 @@ Two things apply across the whole page. First, every app removal writes a small 
 | [Turn off the Edge first-run experience](#turn-off-the-edge-first-run-experience) | `disable_edge_first_run` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge startup boost](#turn-off-edge-startup-boost) | `disable_edge_startup_boost` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off the Edge sidebar and Collections](#turn-off-the-edge-sidebar-and-collections) | `disable_edge_sidebar` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Microsoft Teams app](#remove-the-microsoft-teams-app) | `remove_teams_consumer_app` | Switch (2 options) | low | admin | no | INCORRECT (corrected form ships) |
-| [Remove Clipchamp](#remove-clipchamp) | `remove_clipchamp` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Quick Assist](#remove-quick-assist) | `remove_quick_assist` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Bing News and Weather](#remove-bing-news-and-weather) | `remove_bing_news_weather` | Switch (2 options) | low | admin | no | INCORRECT (corrected form ships) |
-| [Remove Solitaire Collection](#remove-solitaire-collection) | `remove_solitaire` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Get Help app](#remove-the-get-help-app) | `remove_get_help` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Tips (Get Started)](#remove-tips-get-started) | `remove_getstarted_tips` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Feedback Hub](#remove-feedback-hub) | `remove_feedback_hub` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Phone Link](#remove-phone-link) | `remove_phone_link` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the New Outlook app](#remove-the-new-outlook-app) | `remove_outlook_new` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Xbox Game Bar](#remove-xbox-game-bar) | `remove_xbox_game_bar` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove OneDrive](#remove-onedrive) | `remove_onedrive` | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the Microsoft Teams app](#remove-the-microsoft-teams-app) | `remove_teams_consumer_app` | Switch | low | admin | no | INCORRECT (corrected form ships) |
+| [Remove Clipchamp](#remove-clipchamp) | `remove_clipchamp` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Quick Assist](#remove-quick-assist) | `remove_quick_assist` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Bing News and Weather](#remove-bing-news-and-weather) | `remove_bing_news_weather` | Switch | low | admin | no | INCORRECT (corrected form ships) |
+| [Remove Solitaire Collection](#remove-solitaire-collection) | `remove_solitaire` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the Get Help app](#remove-the-get-help-app) | `remove_get_help` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Tips (Get Started)](#remove-tips-get-started) | `remove_getstarted_tips` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Feedback Hub](#remove-feedback-hub) | `remove_feedback_hub` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Phone Link](#remove-phone-link) | `remove_phone_link` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the New Outlook app](#remove-the-new-outlook-app) | `remove_outlook_new` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Xbox Game Bar](#remove-xbox-game-bar) | `remove_xbox_game_bar` | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove OneDrive](#remove-onedrive) | `remove_onedrive` | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
 
 Every tweak here authors two options, so each shows as a dropdown with a third, computed "System Default" position.
 
@@ -924,7 +924,7 @@ Apply it if the sidebar is noise and you do not use Collections. If you use Coll
 
 ### Remove the Microsoft Teams app
 
-`remove_teams_consumer_app` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: Windows 11 only (`products: [11]`) · Reversible: yes
+`remove_teams_consumer_app` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: Windows 11 only (`products: [11]`) · Reversible: yes
 
 **Uninstalls the preinstalled Microsoft Teams app, which on current Windows is one app for personal, work and school.**
 
@@ -934,19 +934,17 @@ The app shows a warning on this tweak: removing it removes your work or school T
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `Teams`, `REG_DWORD` (the app's own state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'MSTeams' \| Remove-AppxPackage -AllUsers`, then `Remove-AppxProvisionedPackage -Online` for every provisioned package whose `DisplayName` is `MSTeams`, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [MSTeams]` (present when no installed or provisioned `MSTeams` package remains) |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'MSTeams' \| Remove-AppxPackage -AllUsers`, then `Remove-AppxProvisionedPackage -Online` for every provisioned package whose `DisplayName` is `MSTeams`, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `MSTeams` is still installed for any user, otherwise runs `winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [MSTeams]` (present when no installed or provisioned `MSTeams` package remains) |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state: the marker value does not exist until the tweak is first applied, so a machine that has never used this tweak matches neither option. Selecting System Default restores the snapshot taken before the first apply, which deletes the marker and, if the app was present then, runs the undo to reinstall it.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
-Since Windows 11 23H2 Microsoft ships one unified Teams package, `MSTeams` (package family `MSTeams_8wekyb3d8bbwe`, Store listing `XP8BT8DW290MPQ`, title "Microsoft Teams"), for personal, work and school use; it replaced the Chat-era consumer package `MicrosoftTeams`, which does not ship on 24H2. `MSTeams` is the id Microsoft lists in its policy-based inbox app removal list for 24H2 and 25H2. `Remove-AppxPackage -AllUsers` removes the installed package for every existing user; `Remove-AppxProvisionedPackage -Online` removes the copy registered against the Windows image, which would otherwise reinstall the app for each new user profile. The apply runs elevated (admin); the marker is a per-user value written as you. The probe is answered from one shared enumeration of installed and provisioned packages that fails closed: if enumeration fails, or the app is unelevated, the status is Unknown rather than "Removed". Selecting "Installed" while the app is removed drives the action's undo.
+Since Windows 11 23H2 Microsoft ships one unified Teams package, `MSTeams` (package family `MSTeams_8wekyb3d8bbwe`, Store listing `XP8BT8DW290MPQ`, title "Microsoft Teams"), for personal, work and school use; it replaced the Chat-era consumer package `MicrosoftTeams`, which does not ship on 24H2. `MSTeams` is the id Microsoft lists in its policy-based inbox app removal list for 24H2 and 25H2. `Remove-AppxPackage -AllUsers` removes the installed package for every existing user; `Remove-AppxProvisionedPackage -Online` removes the copy registered against the Windows image, which would otherwise reinstall the app for each new user profile. The probe is answered from one shared enumeration of installed and provisioned packages that fails closed: if enumeration fails, or the app is unelevated, the status is Unknown rather than "Removed".
 
 #### Benefits
 - One less preinstalled app on disk and in the app list.
@@ -962,7 +960,7 @@ Since Windows 11 23H2 Microsoft ships one unified Teams package, `MSTeams` (pack
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 (the gate); the package exists on 23H2 and later, so on the 24H2 floor it is normally present.
 - **Takes effect**: immediately; the app is uninstalled on apply.
-- **Reverting**: "Installed" or System Default runs `winget install --id XP8BT8DW290MPQ`, which needs internet access and a working `winget`. If the reinstall fails, the tweak surfaces Needs Attention and keeps the snapshot.
+- **Reverting**: turning the switch off (System Default) runs `winget install --id XP8BT8DW290MPQ`, which needs internet access and a working `winget`. If the reinstall fails, the tweak surfaces Needs Attention and keeps the snapshot.
 
 #### Interactions
 - None known in the shipped corpus. The old Chat taskbar controls (`remove_teams_chat_taskbar`, `interface:disable_chat_taskbar`) are not shipped; see Considered and not shipped.
@@ -985,7 +983,7 @@ Remove it only on a personal machine where nobody uses Teams for work or school.
 
 ### Remove Clipchamp
 
-`remove_clipchamp` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: Windows 11 only (`products: [11]`) · Reversible: yes
+`remove_clipchamp` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: Windows 11 only (`products: [11]`) · Reversible: yes
 
 **Uninstalls the bundled Clipchamp video editor.**
 
@@ -993,15 +991,13 @@ Remove it only on a personal machine where nobody uses Teams for work or school.
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `Clipchamp`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package whose `DisplayName` is `Clipchamp.Clipchamp`, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [Clipchamp.Clipchamp]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package whose `DisplayName` is `Clipchamp.Clipchamp`, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `Clipchamp.Clipchamp` is still installed for any user, otherwise runs `winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [Clipchamp.Clipchamp]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, which deletes the marker and, if Clipchamp was present before the first apply, reinstalls it.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1020,7 +1016,7 @@ Clipchamp is a consumer video editor Microsoft acquired and bundles with Windows
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 (the gate). Windows 10 LTSC 2021 ships no Store apps and is excluded by the gate.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall; a failed reinstall surfaces as Needs Attention with the snapshot kept.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall; a failed reinstall surfaces as Needs Attention with the snapshot kept.
 
 #### Interactions
 None known.
@@ -1042,7 +1038,7 @@ Remove it if you have never opened it, which is most people. Keep it if you edit
 
 ### Remove Quick Assist
 
-`remove_quick_assist` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_quick_assist` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls Quick Assist, the remote-help tool that tech-support scammers lean on.**
 
@@ -1050,15 +1046,13 @@ Remove it if you have never opened it, which is most people. Keep it if you edit
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `QuickAssist`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist' \| Remove-AppxPackage -AllUsers`, then remove the matching provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [MicrosoftCorporationII.QuickAssist]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist' \| Remove-AppxPackage -AllUsers`, then remove the matching provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `MicrosoftCorporationII.QuickAssist` is still installed for any user, otherwise runs `winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [MicrosoftCorporationII.QuickAssist]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling Quick Assist if it was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1077,7 +1071,7 @@ Quick Assist lets another person view or control your PC after you read them a c
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer. The tweak is not gated, but on Windows 10 IoT Enterprise LTSC 2021 it is inert: that image ships the legacy Win32 Quick Assist, which this does not touch, so the apply finds no package and the tweak reports the Appx package as absent.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall (needs internet and `winget`; LTSC has neither the Store nor, typically, `winget`). A failed reinstall surfaces as Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall (needs internet and `winget`; LTSC has neither the Store nor, typically, `winget`). A failed reinstall surfaces as Needs Attention.
 
 #### Interactions
 None known.
@@ -1098,7 +1092,7 @@ Remove it on a personal machine that never receives remote assistance, especiall
 
 ### Remove Bing News and Weather
 
-`remove_bing_news_weather` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_bing_news_weather` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls the MSN News and Weather apps, cutting one MSN content and notification channel.**
 
@@ -1106,15 +1100,13 @@ Remove it on a personal machine that never receives remote assistance, especiall
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `BingNewsWeather`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply, with `$ErrorActionPreference = 'Stop'`, for each of `Microsoft.BingNews` and `Microsoft.BingWeather`: `Get-AppxPackage -AllUsers -Name $name -PackageTypeFilter Bundle \| Remove-AppxPackage -AllUsers`, then `Get-AppxPackage -AllUsers -Name $name \| Remove-AppxPackage -AllUsers`, then remove the provisioned package with that `DisplayName`. Undo: `winget install --id 9WZDNCRFHVFW -e ... && winget install --id 9WZDNCRFJ3Q2 -e ...` (both with `--accept-source-agreements --accept-package-agreements`). Probe: `appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]` (present only when both are gone) |
+| `app` | action (PowerShell, timeout 600 s) | Apply, with `$ErrorActionPreference = 'Stop'`, for each of `Microsoft.BingNews` and `Microsoft.BingWeather`: `Get-AppxPackage -AllUsers -Name $name -PackageTypeFilter Bundle \| Remove-AppxPackage -AllUsers`, then `Get-AppxPackage -AllUsers -Name $name \| Remove-AppxPackage -AllUsers`, then remove the provisioned package with that `DisplayName`. Undo, with `$ErrorActionPreference = 'Stop'`, for each of the two packages in turn: skip it if it is still installed for any user, otherwise `winget install --id 9WZDNCRFHVFW` (News) or `--id 9WZDNCRFJ3Q2` (Weather) with `-e --accept-source-agreements --accept-package-agreements`, stopping with winget's exit code if an install fails. Probe: `appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]` (present only when both are gone) |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the apps are currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and running the undo if the apps were present before the first apply.
+System Default is shown while either app is installed or provisioned for any account, which is the stock state wherever they ship; selecting it after applying restores the snapshot, which reinstalls them (see Reverting). Detection reads the real package state, so a machine without them (for example an LTSC image, or after removing them by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1129,12 +1121,12 @@ These are the standalone MSN apps: News (`Microsoft.BingNews`, family `Microsoft
 - Widgets still show weather through their own host; use `disable_widgets` for that.
 - Nothing in Windows replaces the standalone Weather app.
 - A feature update may re-provision either package.
-- The undo, as shipped, chains the two installs with `&&`. The app runs actions in Windows PowerShell 5.1, which rejects `&&` as a parse error ("The token '&&' is not a valid statement separator in this version"), so the command-line reinstall is expected to fail and the tweak to show Needs Attention; reinstall both apps from the Microsoft Store by hand if you revert.
+- Reinstalling needs `winget` and internet access; if either install fails, the revert surfaces as Needs Attention.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer. Not gated, but inert on Windows 10 IoT Enterprise LTSC 2021: Microsoft names News and Weather on the LTSC excluded-app list, so there is nothing to remove.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the undo above; see the drawback on `&&`. When the reinstall cannot be verified the snapshot is kept and the tweak shows Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the undo above, one install per app. When the reinstall cannot be verified the snapshot is kept and the tweak shows Needs Attention.
 
 #### Interactions
 - `disable_widgets` turns off the Widgets board, the other MSN surface; complementary, no overlap.
@@ -1142,7 +1134,7 @@ These are the standalone MSN apps: News (`Microsoft.BingNews`, family `Microsoft
 #### Validation
 - **Verdict**: INCORRECT as researched; the shipped tweak implements the research's corrected form. The research graded the two-names-at-once form INCORRECT (a binding error that removed nothing while reporting success) and specified the per-name loop, bundle filter, provisioned removal and fail-closed probe this tweak ships.
 - **Confidence**: Microsoft-documented (inbox app removal list, Store catalog, `Remove-AppxPackage` reference), with the binding error reproduced on Windows PowerShell 5.1.26100.4061 and PowerShell 7.
-- **Reasoning**: both package names and Store ids are correct. The research recommended `&&` to stop the first install's failure being masked, but that operator does not exist in Windows PowerShell 5.1, the shell the app uses; this is an open defect in the undo, not in the removal (running `echo a && echo b` through `powershell.exe` 5.1 returns that parse error).
+- **Reasoning**: both package names and Store ids are correct. The research recommended `&&` to stop the first install's failure being masked, but that operator does not exist in Windows PowerShell 5.1, the shell the app uses; so the shipped undo runs one install per package and stops on the first non-zero exit code instead (running `echo a && echo b` through `powershell.exe` 5.1 returns a parse error).
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
@@ -1158,7 +1150,7 @@ Remove them if you get news and weather elsewhere, which is most people. Keep th
 
 ### Remove Solitaire Collection
 
-`remove_solitaire` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_solitaire` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls the ad-supported Microsoft Solitaire Collection.**
 
@@ -1166,15 +1158,13 @@ Remove them if you get news and weather elsewhere, which is most people. Keep th
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `Solitaire`, `REG_DWORD` (state marker) |
 | `app` | action (PowerShell, timeout 600 s) | Apply, with `$ErrorActionPreference = 'Stop'`: bundle pass `Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection' -PackageTypeFilter Bundle \| Remove-AppxPackage -AllUsers`, then the same without the filter, then remove the provisioned package. Undo: `Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRFHWD2'` (opens the Store product page). Probe: `appx_absent: [Microsoft.MicrosoftSolitaireCollection]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and running the undo (opening the Store page) if the app was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which opens the Store page (see Reverting). Detection reads the real package state, so a machine without the app reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1187,13 +1177,13 @@ The collection (`Microsoft.MicrosoftSolitaireCollection`, family `Microsoft.Micr
 
 #### Drawbacks
 - Klondike, Spider and the rest are gone, with no in-box replacement.
-- Reverting opens the Store rather than reinstalling; until you install it there, the app cannot confirm the "Installed" state and the tweak may show Needs Attention.
+- Reverting opens the Store rather than reinstalling; until you install it there, the app cannot confirm the revert and the tweak shows Needs Attention.
 - A feature update may re-provision it.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer. Not gated, but inert on LTSC 2021 (no Store apps); also absent on Enterprise images where consumer experiences are suppressed.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default opens `ms-windows-store://pdp/?ProductId=9WZDNCRFHWD2`; install from there.
+- **Reverting**: turning the switch off (System Default) opens `ms-windows-store://pdp/?ProductId=9WZDNCRFHWD2`; install from there.
 
 #### Interactions
 None known.
@@ -1215,7 +1205,7 @@ Remove it unless you play these games. If you do play them, decide before applyi
 
 ### Remove the Get Help app
 
-`remove_get_help` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_get_help` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls the Get Help support app.**
 
@@ -1223,15 +1213,13 @@ Remove it unless you play these games. If you do play them, decide before applyi
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `GetHelp`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [Microsoft.GetHelp]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `Microsoft.GetHelp` is still installed for any user, otherwise runs `winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [Microsoft.GetHelp]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling Get Help if it was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1250,7 +1238,7 @@ Get Help (`Microsoft.GetHelp`, family `Microsoft.GetHelp_8wekyb3d8bbwe`, Store i
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer where present; presence on a stock 24H2 image is unconfirmed. Not gated, but inert on LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall; failure surfaces as Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall; failure surfaces as Needs Attention.
 
 #### Interactions
 None known.
@@ -1271,7 +1259,7 @@ Remove it if you troubleshoot Windows yourself or with a search engine. Keep it 
 
 ### Remove Tips (Get Started)
 
-`remove_getstarted_tips` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_getstarted_tips` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls the Tips app, which exists to show onboarding and promotional content.**
 
@@ -1279,15 +1267,13 @@ Remove it if you troubleshoot Windows yourself or with a search engine. Keep it 
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `GetStarted`, `REG_DWORD` (state marker) |
 | `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: `Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRDTBJJ'` (opens the Store product page). Probe: `appx_absent: [Microsoft.Getstarted]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and opening the Store page if the app was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which opens the Store page (see Reverting). Detection reads the real package state, so a machine without the app reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1300,13 +1286,13 @@ The app (`Microsoft.Getstarted`, lowercase "s", family `Microsoft.Getstarted_8we
 
 #### Drawbacks
 - Guided tip walkthroughs go.
-- Reverting opens the Store rather than reinstalling; the tweak may show Needs Attention until you install it there.
+- Reverting opens the Store rather than reinstalling; the tweak shows Needs Attention until you install it there.
 - A feature update may re-provision it.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer where present; presence unconfirmed. Not gated, but inert on LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default opens `ms-windows-store://pdp/?ProductId=9WZDNCRDTBJJ`; install from there.
+- **Reverting**: turning the switch off (System Default) opens `ms-windows-store://pdp/?ProductId=9WZDNCRDTBJJ`; install from there.
 
 #### Interactions
 - `disable_windows_spotlight_all` and `privacy:disable_tips_and_suggestions` cover Spotlight and soft-landing tips, a separate surface.
@@ -1329,7 +1315,7 @@ Remove it. It is deprecated, purely promotional, and nothing depends on it.
 
 ### Remove Feedback Hub
 
-`remove_feedback_hub` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_feedback_hub` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls Feedback Hub, the app for sending feedback and diagnostic traces to Microsoft.**
 
@@ -1337,15 +1323,13 @@ Remove it. It is deprecated, purely promotional, and nothing depends on it.
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `FeedbackHub`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [Microsoft.WindowsFeedbackHub]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `Microsoft.WindowsFeedbackHub` is still installed for any user, otherwise runs `winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [Microsoft.WindowsFeedbackHub]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling Feedback Hub if it was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1364,7 +1348,7 @@ Feedback Hub (`Microsoft.WindowsFeedbackHub`, family `Microsoft.WindowsFeedbackH
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer. Not gated, but inert on LTSC 2021 (not shipped there).
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall; failure surfaces as Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall; failure surfaces as Needs Attention.
 
 #### Interactions
 - `privacy:disable_feedback_notifications` (`DoNotShowFeedbackNotifications`) stops Windows asking for feedback; a separate surface that works with or without the app.
@@ -1386,7 +1370,7 @@ Remove it on a stable, non-Insider machine that never files feedback. Keep it on
 
 ### Remove Phone Link
 
-`remove_phone_link` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_phone_link` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls Phone Link, the companion app that mirrors an Android phone or iPhone on the PC.**
 
@@ -1394,15 +1378,13 @@ Remove it on a stable, non-Insider machine that never files feedback. Keep it on
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `PhoneLink`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [Microsoft.YourPhone]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `Microsoft.YourPhone` is still installed for any user, otherwise runs `winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [Microsoft.YourPhone]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling Phone Link if it was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1421,7 +1403,7 @@ Phone Link keeps its original package name, `Microsoft.YourPhone` (family `Micro
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer where present; presence unconfirmed. Not gated, but inert on LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall; failure surfaces as Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall; failure surfaces as Needs Attention.
 
 #### Interactions
 - `interface:disable_phone_companion_start` hides the phone panel in Start (`Start\Companions\Microsoft.YourPhone_8wekyb3d8bbwe\IsEnabled` = 0) while keeping the app; use it instead if you only want the panel gone. After this removal, that tweak's revert restores what the package declares, which is nothing while the app is absent.
@@ -1443,7 +1425,7 @@ Remove it if you never connect a phone to this PC. If you only dislike the Start
 
 ### Remove the New Outlook app
 
-`remove_outlook_new` · Switch (2 options) · Risk: low · Elevation: admin · Reboot: no · Windows: Windows 11 only (`products: [11]`) · Reversible: yes
+`remove_outlook_new` · Switch · Risk: low · Elevation: admin · Reboot: no · Windows: Windows 11 only (`products: [11]`) · Reversible: yes
 
 **Uninstalls the preinstalled new Outlook for Windows, leaving classic Outlook untouched.**
 
@@ -1451,15 +1433,13 @@ Remove it if you never connect a phone to this PC. If you only dislike the Start
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `OutlookNew`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: `winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [Microsoft.OutlookforWindows]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply: `Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows' \| Remove-AppxPackage -AllUsers`, then remove the provisioned package, with `$ErrorActionPreference = 'Stop'`. Undo: exits 0 if `Microsoft.OutlookforWindows` is still installed for any user, otherwise runs `winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [Microsoft.OutlookforWindows]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling the app if it was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1478,7 +1458,7 @@ The new Outlook (`Microsoft.OutlookforWindows`, lowercase "f", family `Microsoft
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 (the gate). The app has also been pushed to Windows 10 22H2, which is out of scope and excluded by the gate.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall; failure surfaces as Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall; failure surfaces as Needs Attention.
 
 #### Interactions
 None known.
@@ -1499,7 +1479,7 @@ Remove it if you use classic Outlook, a browser or another mail client. Keep it 
 
 ### Remove Xbox Game Bar
 
-`remove_xbox_game_bar` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_xbox_game_bar` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls the Win+G Game Bar overlay, without touching Game Mode or any GPU feature.**
 
@@ -1507,15 +1487,13 @@ Remove it if you use classic Outlook, a browser or another mail client. Keep it 
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `XboxGameBar`, `REG_DWORD` (state marker) |
-| `app` | action (PowerShell, timeout 600 s) | Apply, with `$ErrorActionPreference = 'Stop'`: bundle pass `Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' -PackageTypeFilter Bundle \| Remove-AppxPackage -AllUsers`, then the same without the filter, then remove the provisioned package. Undo: `winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements`. Probe: `appx_absent: [Microsoft.XboxGamingOverlay]` |
+| `app` | action (PowerShell, timeout 600 s) | Apply, with `$ErrorActionPreference = 'Stop'`: bundle pass `Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' -PackageTypeFilter Bundle \| Remove-AppxPackage -AllUsers`, then the same without the filter, then remove the provisioned package. Undo: exits 0 if `Microsoft.XboxGamingOverlay` is still installed for any user, otherwise runs `winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe: `appx_absent: [Microsoft.XboxGamingOverlay]` |
 
-| Option | `state` | `app` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if the app is currently removed) |
+| Option | `app` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling Game Bar if it was present before the first apply.
+System Default is shown while the app is installed or provisioned for any account, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls it (see Reverting). Detection reads the real package state, so a machine without the app (for example an LTSC image, or after removing it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1535,7 +1513,7 @@ System Default is the stock state (no marker yet); selecting it restores the sna
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer. Not gated, but inert on LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs the `winget` reinstall; failure surfaces as Needs Attention.
+- **Reverting**: turning the switch off (System Default) runs the `winget` reinstall; failure surfaces as Needs Attention.
 
 #### Interactions
 - `performance:disable_gamedvr_capture` turns off background capture (`GameDVR_Enabled`, `AppCaptureEnabled`, `AllowGameDVR`) without removing anything; a much smaller change if recording is your only concern. Its `AppCaptureEnabled` value is also one of the values the research suggested for suppressing the `ms-gamingoverlay` prompt.
@@ -1557,7 +1535,7 @@ Remove it only if you never press Win+G and can live with the occasional `ms-gam
 
 ### Remove OneDrive
 
-`remove_onedrive` · Switch (2 options) · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
+`remove_onedrive` · Switch · Risk: medium · Elevation: admin · Reboot: no · Windows: all supported builds · Reversible: yes
 
 **Uninstalls the OneDrive client so it stops syncing and stops asking to back up your folders.**
 
@@ -1565,15 +1543,13 @@ Remove it only if you never press Win+G and can live with the occasional `ms-gam
 
 | Effect | Kind | Target |
 |---|---|---|
-| `state` | registry | `HKCU\Software\MagicXToolbox\Debloat`, value `OneDrive`, `REG_DWORD` (state marker) |
-| `onedrive` | action (PowerShell, timeout 600 s) | Apply: collect every uninstaller present: `%SystemRoot%\SysWOW64\OneDriveSetup.exe` and `%SystemRoot%\System32\OneDriveSetup.exe` (run with `/uninstall`), and each versioned `OneDriveSetup.exe` under `%ProgramFiles%\Microsoft OneDrive\` and `%ProgramFiles(x86)%\Microsoft OneDrive\` (run with `/uninstall /allusers`); exit 1 if none is found; run each with `-Wait` and exit with the first non-zero exit code. Undo: `winget install --id Microsoft.OneDrive -e --accept-source-agreements --accept-package-agreements`. Probe (script): not removed if a `OneDrive` process is running or `OneDrive.exe` exists at `%LOCALAPPDATA%\Microsoft\OneDrive\`, `%ProgramFiles%\Microsoft OneDrive\` or `%ProgramFiles(x86)%\Microsoft OneDrive\`; any error also reads as not removed |
+| `onedrive` | action (PowerShell, timeout 600 s) | Apply: collect every uninstaller present: `%SystemRoot%\SysWOW64\OneDriveSetup.exe` and `%SystemRoot%\System32\OneDriveSetup.exe` (run with `/uninstall`), and each versioned `OneDriveSetup.exe` under `%ProgramFiles%\Microsoft OneDrive\` and `%ProgramFiles(x86)%\Microsoft OneDrive\` (run with `/uninstall /allusers`); exit 1 if none is found; run each with `-Wait` and exit with the first non-zero exit code. Undo: exits 0 if `OneDrive.exe` still exists at any of the probe's three paths, otherwise runs `winget install --id Microsoft.OneDrive -e --accept-source-agreements --accept-package-agreements` and returns its exit code. Probe (script): not removed if a `OneDrive` process is running or `OneDrive.exe` exists at `%LOCALAPPDATA%\Microsoft\OneDrive\`, `%ProgramFiles%\Microsoft OneDrive\` or `%ProgramFiles(x86)%\Microsoft OneDrive\`; any error also reads as not removed |
 
-| Option | `state` | `onedrive` |
-|---|---|---|
-| Removed | `1` | run |
-| Installed | `0` | not run (undo runs if OneDrive is currently removed) |
+| Option | `onedrive` |
+|---|---|
+| Removed | run |
 
-System Default is the stock state (no marker yet); selecting it restores the snapshot, deleting the marker and reinstalling OneDrive if it was present before the first apply.
+System Default is shown while OneDrive is installed or running, which is the stock state wherever it ships; selecting it after applying restores the snapshot, which reinstalls OneDrive (see Reverting). Detection reads the real install state, so a machine without OneDrive (a clean LTSC image, or one where you removed it by hand) reads as "Removed" and has nothing to revert.
 
 #### How it works
 
@@ -1591,9 +1567,9 @@ OneDrive is not a Store app; it ships as a Win32 setup payload. The in-box per-u
 - A feature update can reinstall the stub.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 24H2 and newer and Windows 10, including LTSC 2021 where OneDrive was installed separately; the only removal in this category still meaningful on the secondary platform. LTSC and IoT LTSC images do not ship OneDrive at all (neither stub exists on Windows 11 IoT Enterprise LTSC 26100.4061), so on a clean LTSC image the apply fails with "no installer found".
+- **Applies to**: Windows 11 24H2 and newer and Windows 10, including LTSC 2021 where OneDrive was installed separately; the only removal in this category still meaningful on the secondary platform. LTSC and IoT LTSC images do not ship OneDrive at all (neither stub exists on Windows 11 IoT Enterprise LTSC 26100.4061), so a clean LTSC image already reads as "Removed" and there is nothing to apply.
 - **Takes effect**: immediately.
-- **Reverting**: "Installed" or System Default runs `winget install --id Microsoft.OneDrive`, which needs internet access and `winget`; failure surfaces as Needs Attention. Reinstalling does not re-link your account or restore folder redirection.
+- **Reverting**: turning the switch off (System Default) runs `winget install --id Microsoft.OneDrive`, which needs internet access and `winget`; failure surfaces as Needs Attention. Reinstalling does not re-link your account or restore folder redirection.
 
 #### Interactions
 - `disable_explorer_sync_ads` removes OneDrive upsell banners in Explorer without uninstalling.

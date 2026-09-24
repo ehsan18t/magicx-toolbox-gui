@@ -121,7 +121,7 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Disable Windows Recall snapshots](ai.md#disable-windows-recall-snapshots) | `disable_recall_snapshots` | AI & Copilot tweaks | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Recall feature component](ai.md#recall-feature-component) | `remove_recall_component` | AI & Copilot tweaks | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable the Click to Do overlay](ai.md#disable-the-click-to-do-overlay) | `disable_click_to_do` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Copilot app](ai.md#remove-the-copilot-app) | `remove_copilot_app` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the Copilot app](ai.md#remove-the-copilot-app) | `remove_copilot_app` | AI & Copilot tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable the Recall optional feature](ai.md#disable-the-recall-optional-feature) | `remove_recall_feature` | AI & Copilot tweaks | Switch (2 options) | medium | admin | yes | INCORRECT (corrected form ships) |
 | [Hide the Copilot taskbar button](ai.md#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](ai.md#disable-notepad-ai-features) | `disable_notepad_ai` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED |
@@ -143,18 +143,18 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Turn off the Edge first-run experience](debloat.md#turn-off-the-edge-first-run-experience) | `disable_edge_first_run` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge startup boost](debloat.md#turn-off-edge-startup-boost) | `disable_edge_startup_boost` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off the Edge sidebar and Collections](debloat.md#turn-off-the-edge-sidebar-and-collections) | `disable_edge_sidebar` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Microsoft Teams app](debloat.md#remove-the-microsoft-teams-app) | `remove_teams_consumer_app` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | INCORRECT (corrected form ships) |
-| [Remove Clipchamp](debloat.md#remove-clipchamp) | `remove_clipchamp` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Quick Assist](debloat.md#remove-quick-assist) | `remove_quick_assist` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Bing News and Weather](debloat.md#remove-bing-news-and-weather) | `remove_bing_news_weather` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | INCORRECT (corrected form ships) |
-| [Remove Solitaire Collection](debloat.md#remove-solitaire-collection) | `remove_solitaire` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Get Help app](debloat.md#remove-the-get-help-app) | `remove_get_help` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Tips (Get Started)](debloat.md#remove-tips-get-started) | `remove_getstarted_tips` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Feedback Hub](debloat.md#remove-feedback-hub) | `remove_feedback_hub` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Phone Link](debloat.md#remove-phone-link) | `remove_phone_link` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the New Outlook app](debloat.md#remove-the-new-outlook-app) | `remove_outlook_new` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Xbox Game Bar](debloat.md#remove-xbox-game-bar) | `remove_xbox_game_bar` | Debloat & Consumer tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove OneDrive](debloat.md#remove-onedrive) | `remove_onedrive` | Debloat & Consumer tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the Microsoft Teams app](debloat.md#remove-the-microsoft-teams-app) | `remove_teams_consumer_app` | Debloat & Consumer tweaks | Switch | low | admin | no | INCORRECT (corrected form ships) |
+| [Remove Clipchamp](debloat.md#remove-clipchamp) | `remove_clipchamp` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Quick Assist](debloat.md#remove-quick-assist) | `remove_quick_assist` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Bing News and Weather](debloat.md#remove-bing-news-and-weather) | `remove_bing_news_weather` | Debloat & Consumer tweaks | Switch | low | admin | no | INCORRECT (corrected form ships) |
+| [Remove Solitaire Collection](debloat.md#remove-solitaire-collection) | `remove_solitaire` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the Get Help app](debloat.md#remove-the-get-help-app) | `remove_get_help` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Tips (Get Started)](debloat.md#remove-tips-get-started) | `remove_getstarted_tips` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Feedback Hub](debloat.md#remove-feedback-hub) | `remove_feedback_hub` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Phone Link](debloat.md#remove-phone-link) | `remove_phone_link` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove the New Outlook app](debloat.md#remove-the-new-outlook-app) | `remove_outlook_new` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove Xbox Game Bar](debloat.md#remove-xbox-game-bar) | `remove_xbox_game_bar` | Debloat & Consumer tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
+| [Remove OneDrive](debloat.md#remove-onedrive) | `remove_onedrive` | Debloat & Consumer tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn on dark mode](interface.md#turn-on-dark-mode) | `enable_dark_mode` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off transparency effects](interface.md#turn-off-transparency-effects) | `disable_transparency` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off window animations](interface.md#turn-off-window-animations) | `disable_ui_animations` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
