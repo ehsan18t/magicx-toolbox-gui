@@ -561,16 +561,16 @@ All twelve effects are `REG_DWORD` except the three `*_log_path` values, which a
 | `domain_log_path` | registry | same key, `LogFilePath` (`REG_SZ`) |
 | `domain_log_size` | registry | same key, `LogFileSize` |
 | `domain_merge` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile`, `AllowLocalPolicyMerge` |
-| `private_log_dropped` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging`, `LogDroppedPackets` |
+| `private_log_dropped` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile\Logging`, `LogDroppedPackets` |
 | `private_log_path` | registry | same key, `LogFilePath` (`REG_SZ`) |
 | `private_log_size` | registry | same key, `LogFileSize` |
-| `private_merge` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile`, `AllowLocalPolicyMerge` |
+| `private_merge` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile`, `AllowLocalPolicyMerge` |
 | `public_log_dropped` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging`, `LogDroppedPackets` |
 | `public_log_path` | registry | same key, `LogFilePath` (`REG_SZ`) |
 | `public_log_size` | registry | same key, `LogFileSize` |
 | `public_merge` | registry | `HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile`, `AllowLocalPolicyMerge` |
 
-Per profile (the same pattern for Domain, Private/`StandardProfile` and Public; `<p>` is `domain`, `private` or `public`):
+Per profile (the same pattern for Domain, Private and Public; `<p>` is `domain`, `private` or `public`):
 
 | Option | `LogDroppedPackets` | `LogFilePath` | `LogFileSize` | `AllowLocalPolicyMerge` |
 |---|---|---|---|---|
@@ -586,7 +586,7 @@ The logging values are the registry form of the Windows Firewall "Allow logging"
 
 `AllowLocalPolicyMerge` is documented by Microsoft's Firewall CSP (`MdmStore/<Profile>/AllowLocalPolicyMerge`, Default Value: true, "If this value is false, firewall rules from the local store are ignored and not enforced", Windows 10 1709 and later, Pro, Enterprise, Education, IoT Enterprise and IoT Enterprise LTSC). It is not in any of the 218 shipped ADMX files; the registry path is corroborated by CIS check text. With merge off, only policy-delivered rules apply: the rules applications create for themselves (including the ones created when you answer the "Windows Defender Firewall has blocked some features of this app" prompt) are ignored, and that prompt never appears. On a standalone PC there is no policy rule set to replace them, so inbound connections to games, servers and sharing simply fail, silently.
 
-Profile subkey names: the shipped legacy `WindowsFirewall.admx` on this platform defines logging policies only for `DomainProfile\Logging` and `StandardProfile\Logging`; it has no Public logging policy. The tweak writes the private profile under `StandardProfile`, while the sibling [security] tweak `firewall_all_profiles` writes its private-profile values under `PrivateProfile`. The July 2026 security research established that under `SOFTWARE\Policies\Microsoft\WindowsFirewall` the private profile's subkey is `PrivateProfile` (matching DISA's Windows Defender Firewall STIG check path), and that `StandardProfile` is the subkey name used only under the non-policy `SharedAccess\Parameters\FirewallPolicy` path, so the modern firewall does not read it for the private profile. The private-profile `AllowLocalPolicyMerge` value written here is therefore expected to have no effect. The private-profile logging values have one possible route: the legacy `WindowsFirewall.admx` policy `WF_Logging_Name_2` still writes `StandardProfile\Logging`, but whether the modern firewall applies that legacy setting to the Private profile is unverified.
+Profile subkey names: under `SOFTWARE\Policies\Microsoft\WindowsFirewall` the Windows Defender Firewall with Advanced Security policy subkeys are `DomainProfile`, `PrivateProfile` and `PublicProfile` (the July 2026 security research, matching DISA's Windows Defender Firewall STIG check path, V-241990), so the tweak writes the private profile under `PrivateProfile`, as the sibling [security] tweak `firewall_all_profiles` does. `StandardProfile` is the name used under the non-policy `SharedAccess\Parameters\FirewallPolicy` path and by the legacy `WindowsFirewall.admx`, which on this platform defines logging policies only for `DomainProfile\Logging` and `StandardProfile\Logging` and has no Public logging policy; the tweak does not write `StandardProfile`.
 
 #### Benefits
 - Blocked inbound traffic is recorded per profile instead of vanishing, which makes "why can't X connect" diagnosable.
@@ -607,13 +607,13 @@ Profile subkey names: the shipped legacy `WindowsFirewall.admx` on this platform
 - **Reverting**: "No dropped-packet logging" deletes all twelve values, returning to default logging (off, 4 MB) and re-enabling local rule merge. Restore Snapshot puts back each captured value, including any the machine had from an earlier configuration.
 
 #### Interactions
-- [security] `firewall_all_profiles` writes `EnableFirewall` and `DefaultInboundAction` in the same profile policy keys (different values, no ownership conflict). It uses `PrivateProfile` for the private profile, this tweak uses `StandardProfile`. The research rejected merging the two: turning the firewall on is something almost everyone wants, while disabling local merge is a foot-gun.
+- [security] `firewall_all_profiles` writes `EnableFirewall` and `DefaultInboundAction` in the same profile policy keys (different values, no ownership conflict). The research rejected merging the two: turning the firewall on is something almost everyone wants, while disabling local merge is a foot-gun.
 - Domain Group Policy for the same values overrides this on refresh.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The corrections concerned completeness and warning: `LogFilePath` and `LogFileSize` must be written together with `LogDroppedPackets` (all three are required elements), the values must be DWORDs, and the merge-off failure mode must be stated plainly as a separate option. The shipped tweak does all three.
 - **Confidence**: Microsoft-documented for the logging values (shipped 26100 ADMX) and for `AllowLocalPolicyMerge` semantics (Firewall CSP); the `AllowLocalPolicyMerge` registry path is corroborated by CIS check text, not by an ADMX.
-- **Reasoning**: value names, types and the 16384 size (inside the 128 to 32767 range) were confirmed against the shipped ADMX. Open questions: the research states the ADMX has one logging policy per profile including Public, but the shipped `WindowsFirewall.admx` defines only Domain and Standard logging policies, so the `PublicProfile\Logging` values and all three `AllowLocalPolicyMerge` values rest on the CSP and CIS rather than an ADMX. The research also cites `firewall_all_profiles` as corroborating the profile paths, but that tweak uses `PrivateProfile`, and the security research found `StandardProfile` is not the private profile's policy subkey. The private-profile `AllowLocalPolicyMerge` value is therefore expected to be inert, and the private-profile logging values rest only on the legacy `WF_Logging_Name_2` policy, whose effect on the modern Private profile is unverified.
+- **Reasoning**: value names, types and the 16384 size (inside the 128 to 32767 range) were confirmed against the shipped ADMX. Open questions: the research states the ADMX has one logging policy per profile including Public, but the shipped `WindowsFirewall.admx` defines only Domain and Standard logging policies, so the `PublicProfile\Logging` values and all three `AllowLocalPolicyMerge` values rest on the CSP and CIS rather than an ADMX. The category research wrote the private profile as `StandardProfile`; the security research found that is not the private profile's policy subkey, so the shipped tweak writes `PrivateProfile`, matching `firewall_all_profiles` and the STIG check path.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
@@ -624,6 +624,7 @@ Choose "Log dropped packets" on any machine where you want to diagnose blocked c
 2. Firewall CSP, `MdmStore/<Profile>/AllowLocalPolicyMerge`: Default Value true, "If this value is false, firewall rules from the local store are ignored and not enforced", Windows 10 1709 and later, edition list, https://learn.microsoft.com/en-us/windows/client-management/mdm/firewall-csp (tier A)
 3. Configure the Windows Firewall log, the default log path and the 4096 KB default size, https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure-logging (tier A)
 4. CIS Windows 11 v4.0.0 Level 1, firewall logging and local policy merge recommendations for all three profiles (tier B; no URL recorded in the research)
+5. DISA Windows Defender Firewall STIG V-241990, the `PrivateProfile` policy check path, https://www.stigviewer.com/stigs/microsoft_windows_defender_firewall_with_advanced_security/2023-08-23/finding/V-241990 (tier B)
 
 ### Disable NIC power management
 

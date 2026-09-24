@@ -521,13 +521,13 @@ tweaks:
       - id: domain_merge
         registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
       - id: private_log_dropped
-        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
       - id: private_log_path
-        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogFilePath, type: REG_SZ }
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile\Logging', name: LogFilePath, type: REG_SZ }
       - id: private_log_size
-        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile\Logging', name: LogFileSize, type: REG_DWORD }
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile\Logging', name: LogFileSize, type: REG_DWORD }
       - id: private_merge
-        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
+        registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PrivateProfile', name: AllowLocalPolicyMerge, type: REG_DWORD }
       - id: public_log_dropped
         registry: { key: 'HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\PublicProfile\Logging', name: LogDroppedPackets, type: REG_DWORD }
       - id: public_log_path
