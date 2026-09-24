@@ -54,6 +54,9 @@ tweaks:
     info: |
       **Opts this PC out of the Customer Experience Improvement Program, an older Microsoft data program, and disables its scheduled upload tasks.**
 
+      ## Mechanism
+      - Sets the opt-out policy and disables the program's Consolidator and USB tasks, the older kernel task where it exists, and the Sqm-Tasks collector that gathers TPM and Secure Boot data.
+
       ## Caveats
       - This is not a control for modern Windows telemetry, which is sent by a different service.
       - On a PC that never joined the program, the tasks already do nothing, so only the opt-out policy matters.
@@ -83,6 +86,10 @@ tweaks:
         task: { path: '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask' }
         optional: true
         if_missing: disabled
+      - id: task_sqm_pi
+        task: { path: '\Microsoft\Windows\PI\Sqm-Tasks' }
+        optional: true
+        if_missing: disabled
     options:
       - label: "Disabled"
         values:
@@ -90,6 +97,7 @@ tweaks:
           task_consolidator: disabled
           task_usbceip: disabled
           task_kernelceip: disabled
+          task_sqm_pi: disabled
 
   - id: disable_compat_appraiser
     name: "Disable Compatibility Appraiser tasks"
@@ -100,6 +108,7 @@ tweaks:
       ## Caveats
       - Windows Update uses this data to hold back feature updates that would break an app or driver, so such problems are less likely to be caught first.
       - Feature updates turn the tasks back on; the switch then shows System Default until you apply it again.
+      - The compatibility database update task in the same folder is left alone: it keeps app compatibility fixes current and is not telemetry.
 
       ## Notes
       - The often-reported CPU and disk savings have not been measured by Microsoft or any benchmark.
@@ -135,6 +144,12 @@ tweaks:
         if_missing: disabled
       - id: task_startup
         task: { path: '\Microsoft\Windows\Application Experience\StartupAppTask' }
+      # Runs the appraiser's scheduled telemetry pass. PcaPatchDbTask in the same folder is left alone:
+      # it updates the compatibility shim database, which is not telemetry.
+      - id: task_marebackup
+        task: { path: '\Microsoft\Windows\Application Experience\MareBackup' }
+        optional: true
+        if_missing: disabled
     options:
       - label: "Disabled"
         values:
@@ -144,6 +159,7 @@ tweaks:
           task_appraiser_exp: disabled
           task_progdata: disabled
           task_startup: disabled
+          task_marebackup: disabled
 
   - id: disable_feedback_notifications
     name: "Turn off feedback request notifications"

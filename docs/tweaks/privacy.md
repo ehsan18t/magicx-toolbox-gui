@@ -123,10 +123,11 @@ Apply it on any personal machine; the cost is diagnostic reach that benefits Mic
 | `task_consolidator` | task | `\Microsoft\Windows\Customer Experience Improvement Program\Consolidator` | required |
 | `task_usbceip` | task | `\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip` | required |
 | `task_kernelceip` | task | `\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask` | `optional: true`, `if_missing: disabled` |
+| `task_sqm_pi` | task | `\Microsoft\Windows\PI\Sqm-Tasks` | `optional: true`, `if_missing: disabled` |
 
-| Option | `ceip_enable` | `task_consolidator` | `task_usbceip` | `task_kernelceip` |
-|---|---|---|---|---|
-| Disabled | `0` | disabled | disabled | disabled |
+| Option | `ceip_enable` | `task_consolidator` | `task_usbceip` | `task_kernelceip` | `task_sqm_pi` |
+|---|---|---|---|---|---|
+| Disabled | `0` | disabled | disabled | disabled | disabled |
 
 This is a toggle: the other position is System Default, which restores the snapshot (the previous `CEIPEnable` value, usually absent, and each task's previous enabled state). The stock state of `CEIPEnable` is value-absent. The shipped enabled state of the three tasks is unresolved: enabling or disabling a task rewrites the `<Enabled>` element in its own XML under `C:\Windows\System32\Tasks`, so no live machine is evidence of the shipped state, which is why no "Enabled" option is authored.
 
@@ -134,7 +135,7 @@ This is a toggle: the other position is System Default, which restores the snaps
 
 `CEIPEnable` is the Group Policy "Turn off Windows Customer Experience Improvement Program" from `ICM.admx`, defined at `Software\Policies\Microsoft\SQMClient\Windows` with `enabledValue` 0 and `disabledValue` 1. So 0 is the policy's "Enabled" state, meaning CEIP is turned off. The same value appears a second time in the shipped `ICM.admx`, inside the `InternetManagement_RestrictCommunication` policy's enabled list, at the same key with the same 0, which corroborates both key and polarity from within the shipped file.
 
-The scheduled tasks are the Software Quality Metrics (SQM) collectors and uploaders. Microsoft's own task descriptions, read from the shipped binaries, make the task half conditional: `wsqmcons.exe,-107` for `Consolidator` says "If the user has consented to participate ... this job collects and sends usage data to Microsoft", and `usbceip.dll,-602` for `UsbCeip` says "If the user has not consented ... this task does not do anything." The policy value is therefore the part that actually stops participation; disabling the tasks removes the scheduled wake-ups. `KernelCeipTask` is a Windows 7 and 8 era task; an enumeration of the CEIP task folder on build 26100 returned only `Consolidator` and `UsbCeip`, so the effect is optional and a machine without it counts as disabled for detection (and applying is a verified no-op for that effect).
+The scheduled tasks are the Software Quality Metrics (SQM) collectors and uploaders. Microsoft's own task descriptions, read from the shipped binaries, make the task half conditional: `wsqmcons.exe,-107` for `Consolidator` says "If the user has consented to participate ... this job collects and sends usage data to Microsoft", and `usbceip.dll,-602` for `UsbCeip` says "If the user has not consented ... this task does not do anything." The policy value is therefore the part that actually stops participation; disabling the tasks removes the scheduled wake-ups. `KernelCeipTask` is a Windows 7 and 8 era task; an enumeration of the CEIP task folder on build 26100 returned only `Consolidator` and `UsbCeip`, so the effect is optional and a machine without it counts as disabled for detection (and applying is a verified no-op for that effect). `\Microsoft\Windows\PI\Sqm-Tasks` is a further SQM collector outside the CEIP folder; its shipped description on 26100 reads "This task gathers information about the Trusted Platform Module (TPM), Secure Boot, and Measured Boot". It is included as optional too, in case a build lacks it.
 
 #### Benefits
 - The `CEIPEnable` policy opts the machine out of CEIP; that is the part that does the work.
@@ -159,8 +160,8 @@ The scheduled tasks are the Software Quality Metrics (SQM) collectors and upload
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The registry effect was correct from the start; the corrections were that the task half only matters on a machine that consented to CEIP, that the tasks' shipped enabled state is unresolved (so revert restores the snapshot rather than writing "enabled"), and that the Autochk Proxy uploader lives outside this task folder.
 - **Confidence**: Microsoft-documented. `CEIPEnable` is documented on Microsoft Learn and in the shipped `ICM.admx`; the task behaviour comes from Microsoft's own shipped task description strings.
-- **Reasoning**: the adversarial pass challenged the benefit of disabling the tasks (it survives only as "fewer wake-ups", since the tasks are consent-gated), and the presence of `KernelCeipTask` on 26100 (absent there, handled by `optional`). The polarity and key survived, corroborated twice inside the shipped ADMX. A separate verification pass suggested adding `\Microsoft\Windows\PI\Sqm-Tasks` to this tweak; that task is not part of it. Open question: the shipped enabled state of the tasks on a clean 26100 image.
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Reasoning**: the adversarial pass challenged the benefit of disabling the tasks (it survives only as "fewer wake-ups", since the tasks are consent-gated), and the presence of `KernelCeipTask` on 26100 (absent there, handled by `optional`). The polarity and key survived, corroborated twice inside the shipped ADMX. A separate verification pass suggested adding `\Microsoft\Windows\PI\Sqm-Tasks` to this tweak, which it now includes. Open question: the shipped enabled state of the tasks on a clean 26100 image.
+- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 `PI\Sqm-Tasks` exists and an administrator can disable and re-enable it.
 
 #### Recommendation
 Apply it; the cost is nil and the policy opt-out is durable. Do not treat it as a telemetry control: if reducing outbound diagnostics is the goal, use the diagnostic data level tweak and consider the DiagTrack service tweak.
@@ -188,10 +189,11 @@ Apply it; the cost is nil and the policy opt-out is durable. Do not treat it as 
 | `task_appraiser_exp` | task | `\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser Exp` | `optional: true`, `if_missing: disabled` |
 | `task_progdata` | task | `\Microsoft\Windows\Application Experience\ProgramDataUpdater` | `optional: true`, `if_missing: disabled` |
 | `task_startup` | task | `\Microsoft\Windows\Application Experience\StartupAppTask` | required |
+| `task_marebackup` | task | `\Microsoft\Windows\Application Experience\MareBackup` | `optional: true`, `if_missing: disabled` |
 
-| Option | `ait_enable` | `disable_inventory` | `task_appraiser` | `task_appraiser_exp` | `task_progdata` | `task_startup` |
-|---|---|---|---|---|---|---|
-| Disabled | `0` | `1` | disabled | disabled | disabled | disabled |
+| Option | `ait_enable` | `disable_inventory` | `task_appraiser` | `task_appraiser_exp` | `task_progdata` | `task_startup` | `task_marebackup` |
+|---|---|---|---|---|---|---|---|
+| Disabled | `0` | `1` | disabled | disabled | disabled | disabled | disabled |
 
 This is a toggle: the other position is System Default, which restores the snapshot. The stock state of both policy values is value-absent; the shipped enabled state of the tasks is not fixed by any source, so no "Enabled" option is authored and the snapshot carries the way back.
 
@@ -199,7 +201,7 @@ This is a toggle: the other position is System Default, which restores the snaps
 
 Both registry values are shipped Group Policy settings in `AppCompat.admx` on build 26100. `AppCompatTurnOffApplicationImpactTelemetry` writes `AITEnable` with `enabledValue` 0, turning off Application Impact Telemetry. `AppCompatTurnOffProgramInventory` writes `DisableInventory` with no explicit value pair, meaning the ADMX default of 1 when enabled, turning off the Application Compatibility Program Inventory; DISA STIG finding V-253385 independently specifies `DisableInventory` = 1 at the same key.
 
-The scheduled tasks under `\Microsoft\Windows\Application Experience\` run `CompatTelRunner.exe` and feed the inventory. A full enumeration of that folder on build 26100 returns exactly six tasks: `MareBackup`, `Microsoft Compatibility Appraiser`, `Microsoft Compatibility Appraiser Exp`, `PcaPatchDbTask`, `SdbinstMergeDbTask` and `StartupAppTask`. `ProgramDataUpdater` does not exist on 26100 and survives here only for the Windows 10 surface, hence `optional`. `Microsoft Compatibility Appraiser Exp` exists and is Ready on 26100 and runs appraiser work, so it is included, also as optional because it is not present on every build. `SdbinstMergeDbTask` is application-compatibility shim database maintenance, not telemetry, and is deliberately left enabled; `PcaPatchDbTask` and `MareBackup` are not part of this tweak.
+The scheduled tasks under `\Microsoft\Windows\Application Experience\` run `CompatTelRunner.exe` and feed the inventory. A full enumeration of that folder on build 26100 returns exactly six tasks: `MareBackup`, `Microsoft Compatibility Appraiser`, `Microsoft Compatibility Appraiser Exp`, `PcaPatchDbTask`, `SdbinstMergeDbTask` and `StartupAppTask`. `ProgramDataUpdater` does not exist on 26100 and survives here only for the Windows 10 surface, hence `optional`. `Microsoft Compatibility Appraiser Exp` exists and is Ready on 26100 and runs appraiser work, so it is included, also as optional because it is not present on every build. `MareBackup` is included (optional, as older builds may lack it): on 26100 its actions run the inventory update, the appraiser's `DoScheduledTelemetryRun` and the app-backup data pass, all through `CompatTelRunner.exe`. `SdbinstMergeDbTask` ("Merges shim databases that are pending merge") and `PcaPatchDbTask` ("Updates compatibility database", run through `PcaSvc.dll`) are application-compatibility shim database maintenance, not telemetry, and are deliberately left enabled.
 
 The appraiser's data feeds Microsoft's upgrade-readiness and safeguard-hold logic: it is how Windows Update learns that an installed app or driver would break on the next feature update.
 
@@ -226,8 +228,8 @@ The appraiser's data feeds Microsoft's upgrade-readiness and safeguard-hold logi
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The registry half was correct; the corrections were about the task set: `ProgramDataUpdater` does not exist on 26100 (so it must be optional), and `Microsoft Compatibility Appraiser Exp` exists and runs appraiser work.
 - **Confidence**: Microsoft-documented for the policy values (shipped ADMX, with DISA STIG corroboration); task presence is from direct enumeration on build 26100.
-- **Reasoning**: the adversarial pass enumerated the task folder and found one targeted task missing and one appraiser task uncovered; both are handled. The performance claim was attacked and downgraded to "widely reported, not measured". A later gap-verification pass rejected a separate task-only appraiser tweak as a duplicate of this one and noted `PcaPatchDbTask` and `MareBackup` as further candidates; they are not included. The tasks' shipped enabled state remains open.
-- **Tested**: Build validation (schema, ownership and conflict checks).
+- **Reasoning**: the adversarial pass enumerated the task folder and found one targeted task missing and one appraiser task uncovered; both are handled. The performance claim was attacked and downgraded to "widely reported, not measured". A later gap-verification pass rejected a separate task-only appraiser tweak as a duplicate of this one and noted `PcaPatchDbTask` and `MareBackup` as further candidates. `MareBackup` is included because it runs the appraiser's telemetry pass; `PcaPatchDbTask` is not, because its shipped description and action show it only updates the compatibility database. The tasks' shipped enabled state remains open.
+- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 `MareBackup` exists and an administrator can disable and re-enable it.
 
 #### Recommendation
 Apply it on a machine you keep on its current Windows version. Hold off if you are about to run a feature upgrade and want Microsoft's compatibility checks working in your favour.
