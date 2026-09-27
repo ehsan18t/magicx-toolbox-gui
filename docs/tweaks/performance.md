@@ -77,7 +77,7 @@ The Performance Options dialog (System Properties > Advanced > Performance > Set
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: possibly immediately for some effects, if the unverified parameter refresh works; reliably after sign-out.
-- **Reverting**: System Default restores the snapshot, including deleting `VisualFXSetting` if it was absent before. Choosing "Full visual effects" instead writes the observed stock mask and list-view values.
+- **Reverting**: the Restore button restores the snapshot, including deleting `VisualFXSetting` if it was absent before. Choosing "Full visual effects" instead writes the observed stock mask and list-view values.
 
 #### Interactions
 `interface:disable_ui_animations` ("Turn off window animations") owns `MinAnimate` and `TaskbarAnimations`, the two remaining pieces of the "Adjust for best performance" profile. Apply both for the complete profile. The two tweaks share no address, so they never conflict.
@@ -135,7 +135,7 @@ System Default appears when `WSearch` is in any other start type, such as Manual
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: the start type is written immediately, but the app does not stop a running service, so the indexer keeps running until the next restart; the tweak is flagged as needing a reboot for that reason.
-- **Reverting**: System Default restores the start type captured in the snapshot. "Automatic, Delayed" writes the confirmed stock start type. The index rebuilds from scratch after the service returns, which takes a while on a large profile.
+- **Reverting**: the Restore button restores the start type captured in the snapshot. "Automatic, Delayed" writes the confirmed stock start type. The index rebuilds from scratch after the service returns, which takes a while on a large profile.
 
 #### Interactions
 `security:no_index_encrypted_files` ("Do not index encrypted files") sets a Windows Search policy that is moot while this tweak has the indexer disabled, because there is no index at all. `privacy:` tweaks that set Windows Search policies (such as cloud search) are likewise irrelevant while the service is off.
@@ -193,7 +193,7 @@ This is the registry backing of the Group Policy "Let Windows apps run in the ba
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: immediately; each app picks it up at its next background-task registration.
-- **Reverting**: "User in control" deletes the policy value, returning control to Settings. System Default restores whatever the snapshot captured.
+- **Reverting**: "User in control" deletes the policy value, returning control to Settings. The Restore button restores whatever the snapshot captured.
 
 #### Interactions
 `privacy:disable_app_diagnostics` writes to the same `AppPrivacy` policy key family (a different value), so the two never conflict. None known otherwise.
@@ -250,7 +250,7 @@ System Default appears when `SysMain` is in any other start type (Manual, Automa
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: the start type is written immediately, but the app does not stop a running service, so `SysMain` keeps running until the next restart; the tweak is flagged as needing a reboot for that reason. Choosing Automatic likewise starts the service only at the next boot.
-- **Reverting**: System Default restores the start type captured in the snapshot, which is the safest path because it is your machine's real prior state. "Automatic" writes the published default; treat it as best effort, since it has not been confirmed on a clean 24H2 image.
+- **Reverting**: the Restore button restores the start type captured in the snapshot, which is the safest path because it is your machine's real prior state. "Automatic" writes the published default; treat it as best effort, since it has not been confirmed on a clean 24H2 image.
 
 #### Interactions
 `disable_memory_compression` ("Disable RAM memory compression") is a separate MMAgent feature; applying one does not apply the other. None known otherwise.
@@ -306,7 +306,7 @@ The Multimedia Class Scheduler Service (MMCSS, `mmcss.sys`) boosts the priority 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Reserve 20 percent" writes 20, the shipped value; the value is never deleted, because Windows ships it present. System Default restores the snapshot.
+- **Reverting**: "Reserve 20 percent" writes 20, the shipped value; the value is never deleted, because Windows ships it present. The Restore button restores the snapshot.
 
 #### Interactions
 `network_throttling_index` ("Lift the multimedia network throttling cap") writes a sibling value under the same `SystemProfile` key. They are independent; the research considered merging them and recommended keeping them separate so each can be set on its own.
@@ -361,7 +361,7 @@ System Default appears when the value is absent or holds anything else. Whether 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: at the next game launch.
-- **Reverting**: System Default restores the snapshot, which is the only way back to an absent value. "Off" writes 0 rather than deleting it.
+- **Reverting**: the Restore button restores the snapshot, which is the only way back to an absent value. "Off" writes 0 rather than deleting it.
 
 #### Interactions
 `debloat:remove_xbox_game_bar` uninstalls the Game Bar overlay app but does not touch Game Mode; the two are independent. `disable_gamedvr_capture` and `disable_fullscreen_optimizations` write other values in `GameConfigStore`, not this one.
@@ -418,7 +418,7 @@ System Default appears only for an unusual value such as an explicit 0. The fact
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, on a GPU with a WDDM 2.7 or newer driver.
 - **Takes effect**: after a reboot.
-- **Reverting**: System Default restores the value captured in the snapshot, which is the correct way back to your factory state. If you are unsure of that state, prefer the snapshot or Settings over picking an option. A GPU driver reinstall may rewrite the value independently.
+- **Reverting**: the Restore button restores the value captured in the snapshot, which is the correct way back to your factory state. If you are unsure of that state, prefer the snapshot or Settings over picking an option. A GPU driver reinstall may rewrite the value independently.
 
 #### Interactions
 None known in the corpus.
@@ -478,7 +478,7 @@ Fullscreen Optimizations is the Desktop Window Manager path that runs a game whi
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the `GameConfigStore` key exists from Windows 10 1703 onward).
 - **Takes effect**: at the next game launch.
-- **Reverting**: "Fullscreen optimizations on" writes the observed stock 0 / 0 / 0. System Default restores the snapshot.
+- **Reverting**: "Fullscreen optimizations on" writes the observed stock 0 / 0 / 0. The Restore button restores the snapshot.
 
 #### Interactions
 `disable_gamedvr_capture` writes `GameDVR_Enabled` in the same `GameConfigStore` key (a different value). `variable_refresh_rate` and `optimizations_windowed_games` configure features this tweak disables in practice (VRR and the flip-model path), so forcing exclusive fullscreen undermines both. Windows' own per-game profile data in `GameConfigStore` is untouched.
@@ -537,7 +537,7 @@ Multi-Plane Overlay lets the Desktop Window Manager hand independent content lay
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build; 24H2 and newer use `DisableOverlays`, older builds (LTSC 2021) use the `Dwm` pair.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Enabled" deletes the values, which is the stock state on both paths. System Default restores the snapshot.
+- **Reverting**: "Enabled" deletes the values, which is the stock state on both paths. The Restore button restores the snapshot.
 
 #### Interactions
 None known in the corpus.
@@ -594,7 +594,7 @@ System Default appears only when the field holds some other value. An unparseabl
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, with a WDDM 2.6 or newer driver and an adaptive-sync display. Behaviour on LTSC 2021 was not separately researched.
 - **Takes effect**: at the next game launch.
-- **Reverting**: System Default restores the field captured in the snapshot, leaving the other fields in the string untouched. "Driver decides" removes the field.
+- **Reverting**: the Restore button restores the field captured in the snapshot, leaving the other fields in the string untouched. "Driver decides" removes the field.
 
 #### Interactions
 `optimizations_windowed_games` edits the `SwapEffectUpgradeEnable` field of the same string, and Auto HDR (set in Settings) lives there too. Because both tweaks address fields rather than the whole value, they coexist safely. `disable_fullscreen_optimizations` forces the exclusive path that bypasses the compositor, which undermines OS-level VRR for affected games.
@@ -650,7 +650,7 @@ Microsoft: "Optimizations for windowed games improves gaming performance for Dir
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 (build 22621) and newer, including all 24H2 and 25H2 builds; unavailable on LTSC 2021.
 - **Takes effect**: at the next game launch.
-- **Reverting**: "Off" removes the field; System Default restores the field captured in the snapshot. Other fields in the string are never touched.
+- **Reverting**: "Off" removes the field; the Restore button restores the field captured in the snapshot. Other fields in the string are never touched.
 
 #### Interactions
 `variable_refresh_rate` edits the `VRROptimizeEnable` field of the same string; Auto HDR (set in Settings) lives there too and overrides this one. Field-level editing lets both tweaks coexist. `disable_fullscreen_optimizations` pushes games to the exclusive path instead.
@@ -709,7 +709,7 @@ Three layers control Game DVR. `AppCaptureEnabled` is the per-user switch for Ga
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition (the ADMX ships from the Windows 10 RTM templates onward).
 - **Takes effect**: at the next game session.
-- **Reverting**: "Enabled" writes 1 to both per-user values and deletes the machine policy. System Default restores the snapshot, which is the more faithful path if your per-user values were absent before.
+- **Reverting**: "Enabled" writes 1 to both per-user values and deletes the machine policy. The Restore button restores the snapshot, which is the more faithful path if your per-user values were absent before.
 
 #### Interactions
 `debloat:remove_xbox_game_bar` uninstalls the overlay app; this tweak disables capture but keeps the overlay. `disable_fullscreen_optimizations` writes other values in `HKCU\System\GameConfigStore`. `enable_game_mode` is unaffected.
@@ -825,7 +825,7 @@ Power Throttling (Windows 10 1709 and later) places processes Windows judges uni
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, on hardware with Intel Speed Shift or an equivalent hardware P-state implementation; inert without it.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Windows managed" deletes the value, which is the stock state. The empty `PowerThrottling` subkey may remain, which is harmless. System Default restores the snapshot.
+- **Reverting**: "Windows managed" deletes the value, which is the stock state. The empty `PowerThrottling` subkey may remain, which is harmless. The Restore button restores the snapshot.
 
 #### Interactions
 `ultimate_performance_power_plan` keeps cores at high performance states regardless, so combined with it this tweak has even less left to remove. None conflicting.
@@ -885,7 +885,7 @@ While a thread has registered an MMCSS multimedia task (audio or video playback)
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Throttled (index 10)" writes 10 back, the value Windows ships; the value is never deleted, because deleting a value Windows ships present would itself be a revert bug. System Default restores the snapshot.
+- **Reverting**: "Throttled (index 10)" writes 10 back, the value Windows ships; the value is never deleted, because deleting a value Windows ships present would itself be a revert bug. The Restore button restores the snapshot.
 
 #### Interactions
 `system_responsiveness` writes `SystemResponsiveness` under the same `SystemProfile` key. Setting `SystemResponsiveness` to 100 disables MMCSS entirely, in which case this cap never binds either.
@@ -943,7 +943,7 @@ System Default appears only if the policy holds 1 (Enabled, forced on). The poli
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build; Pro, Enterprise, Education and IoT Enterprise are documented, Home reads the value in practice but is unverified.
 - **Takes effect**: immediately.
-- **Reverting**: "Allowed" deletes the policy, returning control to Settings; your per-user Storage Sense setting, which the tweak never touched, takes over again. System Default restores the snapshot.
+- **Reverting**: "Allowed" deletes the policy, returning control to Settings; your per-user Storage Sense setting, which the tweak never touched, takes over again. The Restore button restores the snapshot.
 
 #### Interactions
 None known in the corpus.
@@ -1000,7 +1000,7 @@ When a file is deleted, NTFS can send the storage device a delete notification (
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, on SSD or NVMe drives that report TRIM support; NTFS volumes only.
 - **Takes effect**: immediately, at the next delete.
-- **Reverting**: System Default restores the snapshot. "TRIM enabled" writes 0, the shipped value; it never deletes the value, because Windows ships it present.
+- **Reverting**: the Restore button restores the snapshot. "TRIM enabled" writes 0, the shipped value; it never deletes the value, because Windows ships it present.
 
 #### Interactions
 None known in the corpus.
@@ -1065,7 +1065,7 @@ In System Managed mode the NTFS driver decides at boot: updates are enabled when
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the four-state encoding exists from Windows 10 1803 onward).
 - **Takes effect**: after a reboot.
-- **Reverting**: "System managed" writes `0x80000002`, the value Windows ships; the value is never deleted. System Default restores the snapshot.
+- **Reverting**: "System managed" writes `0x80000002`, the value Windows ships; the value is never deleted. The Restore button restores the snapshot.
 
 #### Interactions
 None known in the corpus.
@@ -1176,7 +1176,7 @@ Fast Startup (hiberboot, Windows 8 and later) turns Shut Down into a hybrid oper
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition, where hibernation is available.
 - **Takes effect**: at your next shutdown. A Restart does not exercise this setting.
-- **Reverting**: "Enabled" writes 1, the value Windows ships; the value is never deleted. System Default restores the snapshot.
+- **Reverting**: "Enabled" writes 1, the value Windows ships; the value is never deleted. The Restore button restores the snapshot.
 
 #### Interactions
 `network:disable_hibernation` ("Disable hibernation") runs `powercfg /hibernate off`, which removes `hiberfil.sys` and makes Fast Startup unavailable regardless of this value. With hibernation disabled, this tweak has no effect.
@@ -1235,7 +1235,7 @@ Virtualization-Based Security (VBS) uses the hypervisor to create an isolated vi
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build; memory integrity is on by default only on clean Windows 11 installs meeting the hardware bar. Has no effect under UEFI lock.
 - **Takes effect**: after a reboot.
-- **Reverting**: System Default restores the snapshot, which is the right path on an upgraded machine where both values were absent. "Memory integrity enabled" deletes `EnableVirtualizationBasedSecurity` and sets `Enabled` = 1, which turns memory integrity on even if your machine never had it; check driver compatibility before choosing it.
+- **Reverting**: the Restore button restores the snapshot, which is the right path on an upgraded machine where both values were absent. "Memory integrity enabled" deletes `EnableVirtualizationBasedSecurity` and sets `Enabled` = 1, which turns memory integrity on even if your machine never had it; check driver compatibility before choosing it.
 
 #### Interactions
 Directly conflicts with `security:enable_credential_guard` ("Enable Credential Guard"). Credential Guard is hosted by VBS; that tweak sets `LsaCfgFlags` under `Control\Lsa` and requires platform security features, and this tweak removes the protection it relies on. Never apply both; neither snapshot knows about the other. The research considered merging this tweak with `disable_spectre_meltdown` into one "CPU security mitigations" control and recommended against it, because the two revert paths differ (memory integrity can also be changed from Windows Security; the Spectre overrides only from the registry).
@@ -1294,7 +1294,7 @@ Windows mitigates speculative-execution side channels in the kernel. CVE-2017-57
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; the largest effect is on older CPUs without silicon-level fixes.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Enabled" deletes both values, the stock state, which also deletes any unrelated override that was there before. System Default restores the snapshot, which puts back whatever was there, including an administrator's own override. On a managed machine, check the current value before applying and prefer System Default when reverting.
+- **Reverting**: "Enabled" deletes both values, the stock state, which also deletes any unrelated override that was there before. The Restore button restores the snapshot, which puts back whatever was there, including an administrator's own override. On a managed machine, check the current value before applying and prefer System Default when reverting.
 
 #### Interactions
 `disable_vbs_hvci` is the other critical CPU-security-for-throughput trade in this category; the research recommended keeping them separate. No other tweak in the corpus writes `FeatureSettingsOverride`.
@@ -1353,7 +1353,7 @@ These are the classic Windows pointer ballistics parameters, the registry backin
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition.
 - **Takes effect**: after you sign out and back in.
-- **Reverting**: "Acceleration on" writes the defaults 1 / 6 / 10; System Default restores the snapshot, which is more faithful if you had custom values. Sign out afterwards.
+- **Reverting**: "Acceleration on" writes the defaults 1 / 6 / 10; the Restore button restores the snapshot, which is more faithful if you had custom values. Sign out afterwards.
 
 #### Interactions
 None known in the corpus.

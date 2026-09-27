@@ -85,7 +85,7 @@ The engine writes the start type through the Service Control Manager and never s
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021, all editions.
 - **Takes effect**: at the next reboot, because changing a start type never stops an already running service.
-- **Reverting**: choosing "Automatic" writes the stock start type; System Default restores whatever start type the snapshot captured. A feature update may also re-enable it on its own.
+- **Reverting**: choosing "Automatic" writes the stock start type; the Restore button restores whatever start type the snapshot captured. A feature update may also re-enable it on its own.
 
 #### Interactions
 - **Privacy: Limit diagnostic data to the Required level** (`disable_diagnostic_data`) caps the level by policy; it cannot stop the transmitter on Home or Pro. The two are complementary.
@@ -146,7 +146,7 @@ The spooler has produced a sustained run of remote-code-execution and privilege-
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021, all editions. Unsupported by Microsoft on a domain controller or a print server.
 - **Takes effect**: at the next reboot; the spooler keeps running (and printing keeps working) until then.
-- **Reverting**: choosing "Automatic" writes the stock start type; System Default restores the snapshot's captured start type.
+- **Reverting**: choosing "Automatic" writes the stock start type; the Restore button restores the snapshot's captured start type.
 
 #### Interactions
 - **Security: Turn off the spooler's remote RPC endpoint** (`spooler_remote_rpc_off`) and **Security: Restrict printer-driver install to admins** (`printnightmare_point_and_print`) harden a spooler that keeps running. They are the middle ground for a machine that still prints; with this tweak applied they have nothing left to protect.
@@ -204,7 +204,7 @@ Two authoring details make the tweak behave on every Windows 10 image. The `fax`
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 (the `products: [10]` gate), which for this app means Windows 10 IoT Enterprise LTSC 2021. Not offered on Windows 11.
 - **Takes effect**: at the next reboot, because changing a start type never stops an already running service.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot (marker removed, captured start type restored).
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot (marker removed, captured start type restored).
 
 #### Interactions
 None known.
@@ -265,7 +265,7 @@ On 24H2 the `\Microsoft\Windows\Application Experience\PcaPatchDbTask` scheduled
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: choose "Automatic (Delayed)" on Windows 11 or "Manual" on Windows 10 to return to stock, or select System Default to restore the snapshot, which includes the delayed-start flag.
+- **Reverting**: choose "Automatic (Delayed)" on Windows 11 or "Manual" on Windows 10 to return to stock, or press Restore to return to the snapshot, which includes the delayed-start flag.
 
 #### Interactions
 - **Privacy: Disable Compatibility Appraiser tasks** (`disable_compat_appraiser`) and **Privacy: Disable app and device inventory collectors** (`disable_app_device_inventory`) act on the same Application Experience family (appraiser tasks and AppCompat policy values). They do not touch `PcaSvc` itself, and this tweak does not touch them.
@@ -325,7 +325,7 @@ Microsoft's Server guidance lists the service as Desktop Experience only, Automa
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Automatic" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Automatic" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 None known.
@@ -380,7 +380,7 @@ The service supports Retail Demo Experience, the scripted demonstration mode a r
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 None known.
@@ -435,7 +435,7 @@ System Default: the status shown when `WalletService` is at a start type other t
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable Payments and NFC/SE Manager (SEMgrSvc)** (`disable_payments_nfc`, this page) is the other half of the same payment stack. The research proposed merging the two into one tweak, since no user sensibly wants one without the other; they ship as two tweaks, so apply both for the full effect.
@@ -495,7 +495,7 @@ The `optional`/`if_missing` pair and the `state` marker work as described for th
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 (the `products: [10]` gate), which for this app means Windows 10 IoT Enterprise LTSC 2021. Not offered on Windows 11.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot (marker removed, captured start type restored).
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot (marker removed, captured start type restored).
 
 #### Interactions
 None known.
@@ -557,7 +557,7 @@ System Default: the status shown when the three services do not all match one op
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot; Bluetooth keeps working until then.
-- **Reverting**: "Manual" writes the stock start type on all three; System Default restores the snapshot. If you have no wired input device after the reboot you cannot revert from inside Windows without one.
+- **Reverting**: "Manual" writes the stock start type on all three; the Restore button restores the snapshot. If you have no wired input device after the reboot you cannot revert from inside Windows without one.
 
 #### Interactions
 - **Xbox Live Services** (`disable_xbox_services`, this page): Xbox controllers connected over Bluetooth need this stack as well as the Xbox accessory service.
@@ -616,7 +616,7 @@ The optional service effect and the per-user marker behave as described for the 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 (the `products: [10]` gate), which for this app means Windows 10 IoT Enterprise LTSC 2021. Not offered on Windows 11.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 None known.
@@ -673,7 +673,7 @@ System Default: the status shown when `PhoneSvc` is at a start type other than D
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 - **Debloat: Remove Phone Link** (`remove_phone_link`) and **Interface: Hide the mobile device panel in Start** (`disable_phone_companion_start`) concern Phone Link, which this service does not serve. Phone Link depends on the Connected Devices Platform instead (see `disable_cdpsvc` on this page).
@@ -733,7 +733,7 @@ Neither service is trigger-started. On a machine that casts or streams they are 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type on both; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type on both; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable Media Player Network Sharing (WMPNetworkSvc)** (`disable_wmp_network_sharing`, this page): library serving over DLNA needs this discovery transport. This tweak alone already breaks DLNA serving; the WMP tweak alone stops serving a library while keeping discovery up. The research proposed a single three-option tweak covering both; they ship as two independent tweaks.
@@ -788,7 +788,7 @@ System Default: the status shown when `wisvc` is at a start type other than Disa
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot. Revert this first if you later decide to join the Insider Program.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot. Revert this first if you later decide to join the Insider Program.
 
 #### Interactions
 - **Windows Update: Block Insider preview builds by policy** (`block_insider_builds_policy`) is a separate, policy-based lever (`ManagePreviewBuildsPolicyValue`, Pro and above). The research judged keeping both sound: the policy blocks preview builds by management intent, while this tweak removes the enrolment service itself.
@@ -845,7 +845,7 @@ The feature is winding down: Microsoft states that Maps is no longer preinstalle
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021. Maps is not preinstalled from 24H2.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Automatic (Delayed)" writes the stock start type including the delayed flag; System Default restores the snapshot.
+- **Reverting**: "Automatic (Delayed)" writes the stock start type including the delayed flag; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable Offline Maps update tasks** (`task_maps_update`, this page) is the task half of the same subsystem. With `MapsBroker` disabled, `MapsToastTask` cannot fire at all, and a manual map update is only possible while the service is enabled. The research proposed merging the two into one three-option tweak; they ship separately, so apply both for the full effect.
@@ -904,7 +904,7 @@ The service is trigger-started with 4 trigger registrations on build 26100, so o
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 - **Privacy: Turn off location tracking** (`disable_location_tracking`) turns location off by policy and consent; this tweak removes the provider underneath. Either alone stops apps from getting a location; together they are belt and braces.
@@ -969,7 +969,7 @@ Microsoft's Server guidance rates `XblAuthManager` and `XblGameSave` "Should be 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type on all four; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type on all four; the Restore button restores the snapshot.
 
 #### Interactions
 - **Debloat: Remove Xbox Game Bar** (`remove_xbox_game_bar`) and **Performance: Disable Xbox Game Bar capture (Game DVR)** (`disable_gamedvr_capture`) cover the Game Bar app and capture; this tweak covers the Live services underneath.
@@ -1029,7 +1029,7 @@ The per-user companion service `CDPUserSvc_*` is Automatic and is not touched by
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Automatic (Delayed)" writes the stock start type including the delayed flag; System Default restores the snapshot.
+- **Reverting**: "Automatic (Delayed)" writes the stock start type including the delayed flag; the Restore button restores the snapshot.
 
 #### Interactions
 - **Privacy: Disable the cross-device cloud clipboard** (`disable_cloud_clipboard`) turns off the clipboard sync by policy; this tweak removes the platform under it and more.
@@ -1087,7 +1087,7 @@ System Default: the status shown when `WbioSrvc` is at a start type other than D
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable Smart Card Services** (`disable_smartcard`, this page) also removes an alternate credential provider. The research explicitly rejected merging the two: losing biometrics falls back to PIN or password, while losing smart card can remove the only sign-in path, so their risk levels differ (medium versus high).
@@ -1148,7 +1148,7 @@ System Default: the status shown when the three services do not match one option
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot; a card keeps working until then.
-- **Reverting**: "Manual" writes the stock start types; System Default restores the snapshot. If smart card was the only sign-in path, revert is only possible from outside Windows (for example recovery media or another admin account with a password). Confirm a working password or PIN sign-in first, and never apply it remotely.
+- **Reverting**: "Manual" writes the stock start types; the Restore button restores the snapshot. If smart card was the only sign-in path, revert is only possible from outside Windows (for example recovery media or another admin account with a password). Confirm a working password or PIN sign-in first, and never apply it remotely.
 
 #### Interactions
 - **Disable Windows Biometric Service** (`disable_biometrics`, this page) removes a different credential provider; the research rejected merging the two because their lockout risk differs.
@@ -1210,7 +1210,7 @@ All three are trigger-started, and `SensorService` carries 8 trigger registratio
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start types; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start types; the Restore button restores the snapshot.
 
 #### Interactions
 None known.
@@ -1269,7 +1269,7 @@ This is the one tweak on the page whose misuse harms someone other than the pers
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 None known.
@@ -1325,7 +1325,7 @@ System Default: the status shown when `SEMgrSvc` is at a start type other than D
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type; System Default restores the snapshot.
+- **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable Wallet Service (WalletService)** (`disable_wallet_service`, this page) is the front-end half. The research proposed merging the two; they ship separately, so apply both for the full effect.
@@ -1384,7 +1384,7 @@ The effect is therefore `optional` with `if_missing: disabled`. On an image with
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021, but it changes something only where Windows Media Player Legacy is installed.
 - **Takes effect**: at the next reboot.
-- **Reverting**: "Manual" writes the stock start type where the service exists; System Default restores the snapshot (marker removed, captured start type restored).
+- **Reverting**: "Manual" writes the stock start type where the service exists; the Restore button restores the snapshot (marker removed, captured start type restored).
 
 #### Interactions
 - **Disable Network Device Discovery (SSDPSRV/upnphost)** (`disable_ssdp_upnp`, this page) removes the discovery transport that DLNA rides on. Applying that tweak already breaks DLNA serving; this tweak stops serving a library while keeping discovery. The research proposed a single three-option tweak; they ship as two.
@@ -1443,7 +1443,7 @@ The upload is gated on CEIP consent by Microsoft's own description, so on a mach
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: immediately, for the next boot-triggered run.
-- **Reverting**: "Enabled" re-enables the task; System Default restores the snapshot's captured state.
+- **Reverting**: "Enabled" re-enables the task; the Restore button restores the snapshot's captured state.
 
 #### Interactions
 - **Privacy: Disable the Customer Experience Improvement Program** (`disable_ceip_tasks`) sets the CEIP policy this task honours and disables the `Consolidator`, `UsbCeip` and `KernelCeipTask` tasks, but does not cover this task, even though Microsoft's string makes it a CEIP SQM uploader. Use both for full CEIP coverage.
@@ -1505,7 +1505,7 @@ With the telemetry service (`DiagTrack`) disabled, these tasks have no working u
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Enabled" re-enables both tasks; System Default restores the snapshot.
+- **Reverting**: "Enabled" re-enables both tasks; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable User Experiences and Telemetry (DiagTrack)** (`disable_diagtrack`, this page) removes the transport these tasks would use.
@@ -1563,7 +1563,7 @@ Windows Error Reporting queues crash reports that could not be sent at the time 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Enabled" re-enables the task; System Default restores the snapshot.
+- **Reverting**: "Enabled" re-enables the task; the Restore button restores the snapshot.
 
 #### Interactions
 - **Privacy: Disable the Windows Error Reporting service** (`disable_wer_service`) stops reports being generated in the first place, and **Privacy: Disable Windows Error Reporting** (`disable_error_reporting`) turns WER off by policy. This task tweak is the narrowest of the three: it only stops the queued upload.
@@ -1623,7 +1623,7 @@ Microsoft states that Maps is no longer preinstalled with Windows starting with 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: switch the toggle back to System Default to restore the snapshot, which returns each task to its captured state. There is no authored "Enabled" state.
+- **Reverting**: press Restore to return to the snapshot, which returns each task to its captured state. There is no authored "Enabled" state.
 
 #### Interactions
 - **Disable Downloaded Maps Manager (MapsBroker)** (`disable_maps_broker`, this page) is the service half. With the service disabled `MapsToastTask` cannot fire at all. The research proposed one three-option "Offline Maps" tweak (on, background updates off, fully off), blocked on the same unknown stock state; they ship as two tweaks.
@@ -1631,7 +1631,7 @@ Microsoft states that Maps is no longer preinstalled with Windows starting with 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research found that a stock "Enabled" value for `MapsUpdateTask` has no established provenance (the claim that it ships disabled rested on a modified machine and was withdrawn), and that `MapsToastTask` has no trigger of its own. The shipped tweak authors only the Disabled state and relies on the snapshot for the way back.
 - **Confidence**: Community-corroborated for the task paths (independent tooling); tier A for the empty trigger set on `MapsToastTask` and for the Maps deprecation and 24H2 preinstall change.
-- **Reasoning**: Under the research's harmful-revert rule, a revert value must come from evidence about Windows, not assumption, and because System Default is a selectable state a wrong literal would be written on the path a cautious user takes. Open: `MapsUpdateTask`'s shipped enabled state on a clean image.
+- **Reasoning**: Under the research's harmful-revert rule, a revert value must come from evidence about Windows, not assumption, and an authored revert option is the path a cautious user takes, so a wrong literal there would be written to the machine; Restore puts back the captured state instead. Open: `MapsUpdateTask`'s shipped enabled state on a clean image.
 - **Tested**: Build validation (schema, ownership and conflict checks).
 
 #### Recommendation
@@ -1683,7 +1683,7 @@ The sibling task `Microsoft-Windows-DiskDiagnosticResolver` in the same folder i
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: switch the toggle back to System Default to restore the snapshot. There is no authored "Enabled" state.
+- **Reverting**: press Restore to return to the snapshot. There is no authored "Enabled" state.
 
 #### Interactions
 - **Disable Autochk Proxy task** (`task_autochk_proxy`, this page) and **Privacy: Disable the Customer Experience Improvement Program** (`disable_ceip_tasks`) cover other CEIP uploaders. The research proposed grouping the CEIP tasks; they ship separately.
@@ -1743,7 +1743,7 @@ This does not block Windows Update; it removes an input to how updates are targe
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 IoT Enterprise LTSC 2021; `Device User` is not present on every build.
 - **Takes effect**: immediately.
-- **Reverting**: "Enabled" re-enables both tasks where they exist; System Default restores the snapshot.
+- **Reverting**: "Enabled" re-enables both tasks where they exist; the Restore button restores the snapshot.
 
 #### Interactions
 - **Disable User Experiences and Telemetry (DiagTrack)** (`disable_diagtrack`, this page) and this tweak both feed Windows Update for Business reports and Update Compliance. The research suggested keeping the census standalone rather than folding it into a CEIP task group, because it is the data source those enterprise reports depend on.

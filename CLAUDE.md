@@ -116,7 +116,8 @@ explicitly with `cargo test -- --ignored`.
   it (ADR-0001). "Atomic" means *attempted atomically, with failure surfaced*.
 - **A snapshot is deleted only by a verified restore or an explicit user decision**
   (`keep_current_state`) — never on a failure path. `let _ = restore(...)` is a bug (ADR-0002).
-- **System Default is a selectable state = a Revert** whenever a snapshot exists (ADR-0003).
+- **System Default is a computed status, never a target** (ADR-0003): the live surface matches no
+  authored option. The only way back is Restore Snapshot, which walks the snapshot history.
 - Snapshots: one JSON file per tweak in a portable `snapshots/` directory next to the executable;
   written atomically (temp file + rename); stamped with a schema version and the machine's
   `MachineGuid`.

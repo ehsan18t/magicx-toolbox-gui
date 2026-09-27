@@ -87,7 +87,7 @@ The ADMX declares the policy `class="Both"`, so it could legally be written unde
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1507 and later, every edition (with value 1). Covers LTSC 2021.
 - **Takes effect**: immediately; the Settings page reflects it the next time it is opened.
-- **Reverting**: choosing "User's choice" deletes the value, returning to the Windows default and giving the Settings toggle back to the user. System Default restores whatever the snapshot captured, which on a stock machine is also value-absent.
+- **Reverting**: choosing "User's choice" deletes the value, returning to the Windows default and giving the Settings toggle back to the user. The Restore button restores whatever the snapshot captured, which on a stock machine is also value-absent.
 
 #### Interactions
 - `disable_diagtrack` (Services, "Disable User Experiences and Telemetry (DiagTrack)") stops the service that transmits diagnostic data; this tweak only lowers the level it collects. The two are complementary.
@@ -150,7 +150,7 @@ The scheduled tasks are the Software Quality Metrics (SQM) collectors and upload
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 22H2. `KernelCeipTask` is usually absent on modern builds and is skipped there.
 - **Takes effect**: immediately; the tasks are disabled on apply.
-- **Reverting**: System Default restores the previous policy value and each task's previous enabled state from the snapshot; it does not force the tasks to "enabled" unless that is what was captured.
+- **Reverting**: the Restore button restores the previous policy value and each task's previous enabled state from the snapshot; it does not force the tasks to "enabled" unless that is what was captured.
 
 #### Interactions
 - `task_autochk_proxy` (Services, "Disable Autochk Proxy task") covers the Autochk CEIP uploader this tweak leaves alone, and honours the `CEIPEnable` policy this tweak sets.
@@ -219,7 +219,7 @@ The appraiser's data feeds Microsoft's upgrade-readiness and safeguard-hold logi
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 22H2. On 26100 `ProgramDataUpdater` is absent and is skipped.
 - **Takes effect**: immediately; the tasks are disabled on apply.
-- **Reverting**: System Default restores the previous policy values (normally absent) and each task's previous enabled state from the snapshot.
+- **Reverting**: the Restore button restores the previous policy values (normally absent) and each task's previous enabled state from the snapshot.
 
 #### Interactions
 - `disable_app_device_inventory` writes four other values under the same `AppCompat` policy key (the 24H2 collector family). Different values, no conflict; the two together cover both the legacy and the 24H2 inventory surfaces.
@@ -342,7 +342,7 @@ Settings > Privacy and security > Diagnostics and feedback > Feedback frequency 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and all supported Windows 10 versions including LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: "Automatic" deletes both values, returning the schedule to Automatically. System Default restores whatever pair the snapshot captured.
+- **Reverting**: "Automatic" deletes both values, returning the schedule to Automatically. The Restore button restores whatever pair the snapshot captured.
 
 #### Interactions
 - `disable_feedback_notifications` is the machine-wide, locked equivalent; with it applied this tweak adds nothing.
@@ -631,7 +631,7 @@ The machine-wide lock for the same feature is the Group Policy "Allow users to e
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1809 and later, so LTSC 2021 is covered.
 - **Takes effect**: immediately; the Settings toggle reflects it at once.
-- **Reverting**: "On" deletes the value so Windows returns to asking you, rather than recording a consent. System Default restores the snapshot, which puts back a 1 only if you had genuinely accepted before the first apply.
+- **Reverting**: "On" deletes the value so Windows returns to asking you, rather than recording a consent. The Restore button restores the snapshot, which puts back a 1 only if you had genuinely accepted before the first apply.
 
 #### Interactions
 - `disable_inking_typing_personalization` writes `AllowInputPersonalization` = 0, the machine-wide policy that disables online speech recognition for every account. With that tweak applied, this per-user value is moot and the Settings control is locked.
@@ -697,7 +697,7 @@ The fifth effect is not an inking control. `AllowInputPersonalization` under `HK
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and all supported Windows 10 versions including LTSC 2021.
 - **Takes effect**: immediately.
-- **Reverting**: System Default restores all five values from the snapshot, including deleting `AllowInputPersonalization` if it was absent before.
+- **Reverting**: the Restore button restores all five values from the snapshot, including deleting `AllowInputPersonalization` if it was absent before.
 
 #### Interactions
 - `disable_online_speech_recognition` sets the per-user speech consent; this tweak's `AllowInputPersonalization` = 0 is the machine-wide lock for the same feature and overrides it.
@@ -2090,7 +2090,7 @@ This is the service-level companion to the WER `Disabled` values (`disable_error
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and all supported Windows 10 versions including LTSC 2021.
 - **Takes effect**: the start type changes on apply; a `WerSvc` instance that is already running is not stopped and keeps running until it exits or the machine restarts, so the tweak is flagged as needing a reboot.
-- **Reverting**: System Default restores the previous start type from the snapshot rather than writing a fixed value.
+- **Reverting**: the Restore button restores the previous start type from the snapshot rather than writing a fixed value.
 
 #### Interactions
 - `disable_error_reporting` sets the WER `Disabled` product and policy values; the natural pairing.

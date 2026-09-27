@@ -14,14 +14,14 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 - Detect current system state by comparing live Windows state against tweak options.
 - Capture internal snapshots before first apply for rollback.
 - Revert tweaks from snapshots; a partial revert enters "Needs Attention" (snapshot kept for retry or explicit keep-current-state).
-- Select "System Default" to revert whenever a snapshot exists.
+- Press Restore to return to the most recent snapshot; each Restore steps one entry further back.
 - Display Windows/system/hardware details.
 - Check for GitHub releases and launch official installers.
 - Debug panel and progress/toast feedback for long operations.
 
 ## Tweak System
 
-Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One authored option renders as a toggle; two or more render as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option (ADR-0003).
+Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One or two authored options render as a segmented switch; three or more render as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option (ADR-0003).
 
 Effect kinds:
 

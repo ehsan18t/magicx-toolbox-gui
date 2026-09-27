@@ -133,7 +133,7 @@ As with the snapshot policy, Microsoft's applicability is Windows 11 24H2 with K
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 build 26100.3915 (KB5055627) and newer, including 25H2; Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC; Copilot+ hardware. Not present on Windows 10 LTSC 2021.
 - **Takes effect**: after a reboot, which Microsoft requires for the component removal.
-- **Reverting**: System Default restores the captured value from the snapshot. On a stock machine that is the not-configured state, where Recall is present but disabled. Reverting never restores the payload removed by Removed on its own, and never restores deleted snapshots.
+- **Reverting**: the Restore button restores the captured value from the snapshot. On a stock machine that is the not-configured state, where Recall is present but disabled. Reverting never restores the payload removed by Removed on its own, and never restores deleted snapshots.
 
 #### Interactions
 - [Disable Windows Recall snapshots](#disable-windows-recall-snapshots) writes `DisableAIDataAnalysis` under the same key. With this tweak at Available, the snapshot policy still decides whether snapshots are saved; with this tweak at Removed, the snapshot policy has nothing to act on.
@@ -675,7 +675,7 @@ The marker in HKCU records the chosen option and is subject to the app's differe
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 from about build 26100.3624, and 25H2. The service does not exist on Windows 10 (the tweak is hidden there by its build gate).
 - **Takes effect**: after a reboot, since only the start type changes.
-- **Reverting**: System Default restores the captured start type (Automatic on a stock machine) and the captured marker.
+- **Reverting**: the Restore button restores the captured start type (Automatic on a stock machine) and the captured marker.
 
 #### Interactions
 None known. `WSAIFabricSvc` appears in no other tweak, including the services category.

@@ -66,7 +66,7 @@ The tweak changes only the mode. It does not disable `DoSvc`, which the Store de
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1511 and later including LTSC 2021; all editions including Home.
 - **Takes effect**: immediately; `DoSvc` picks up the policy without a reboot.
-- **Reverting**: "Peering allowed" deletes the value, returning to Windows' unconfigured behaviour; System Default restores whatever the snapshot captured.
+- **Reverting**: "Peering allowed" deletes the value, returning to Windows' unconfigured behaviour; the Restore button restores whatever the snapshot captured.
 
 #### Interactions
 - [Block the Windows Update pipeline](#block-the-windows-update-pipeline) leaves `DoSvc` alone, but its `DoNotConnectToWindowsUpdateInternetLocations` value is documented by Microsoft as possibly causing Delivery Optimization to stop working.
@@ -128,7 +128,7 @@ Windows Update client policies are documented for Pro (including Pro for Worksta
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. Windows Home ignores it.
 - **Takes effect**: at the next Windows Update scan; no reboot.
-- **Reverting**: "No deferral" deletes both values; System Default restores the snapshot.
+- **Reverting**: "No deferral" deletes both values; the Restore button restores the snapshot.
 
 #### Interactions
 - Works together with [Pin Windows feature version](#pin-windows-feature-version); the research explicitly rejected merging the two because a quality deferral plus a version pin is a supported combination.
@@ -194,7 +194,7 @@ The same ADMX policy also owns `PauseFeatureUpdatesStartTime` (`REG_SZ`), which 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. Windows Home ignores it. (LTSC does not receive annual feature updates through Windows Update, so the deferral has little to act on there.)
 - **Takes effect**: at the next Windows Update scan.
-- **Reverting**: "No deferral" deletes both values; System Default restores the snapshot. A pause set from Settings is untouched either way.
+- **Reverting**: "No deferral" deletes both values; the Restore button restores the snapshot. A pause set from Settings is untouched either way.
 
 #### Interactions
 - **Mutually exclusive in effect with [Pin Windows feature version](#pin-windows-feature-version)**: with a pin applied, this tweak writes its values but no deferral happens. The research recommended merging the two into one control; they ship separately with a warning on each.
@@ -263,7 +263,7 @@ Applicability: `TargetReleaseVersion` needs Windows 10 2004 or later (or older b
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 2004 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. Windows Home ignores it.
 - **Takes effect**: at the next Windows Update scan.
-- **Reverting**: "Not pinned" deletes all three values, restoring the normal upgrade path; System Default restores the snapshot. A feature update already installed because of the pin is not rolled back.
+- **Reverting**: "Not pinned" deletes all three values, restoring the normal upgrade path; the Restore button restores the snapshot. A feature update already installed because of the pin is not rolled back.
 
 #### Interactions
 - **Makes [Defer feature updates](#defer-feature-updates) fully inert.** Pick one.
@@ -333,7 +333,7 @@ The two halves have different floors: temporary feature control needs Windows 11
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC (both halves). Windows 10 21H2 build 19044.3757 and later, including a patched LTSC 2021: optional-content half only. Windows Home ignores both.
 - **Takes effect**: at the next Windows Update scan.
-- **Reverting**: "Windows decides" deletes all three values; System Default restores the snapshot. Features already turned on are not turned off again by reverting the permissive option.
+- **Reverting**: "Windows decides" deletes all three values; the Restore button restores the snapshot. Features already turned on are not turned off again by reverting the permissive option.
 
 #### Interactions
 - [Defer quality updates](#defer-quality-updates) or [Pin Windows feature version](#pin-windows-feature-version) make the device update-managed, which is what activates the temporary-feature-control half.
@@ -393,7 +393,7 @@ Policy CSP documents the setting on a different 0 to 3 scale (0 disable, 1 disab
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. Windows Home ignores it.
 - **Takes effect**: immediately (policy is read on the next Windows Update and Insider check).
-- **Reverting**: "Preview builds allowed" deletes the value, returning the choice to the user; System Default restores the snapshot. A machine already enrolled in a preview channel before the block is not moved back by reverting.
+- **Reverting**: "Preview builds allowed" deletes the value, returning the choice to the user; the Restore button restores the snapshot. A machine already enrolled in a preview channel before the block is not moved back by reverting.
 
 #### Interactions
 - `disable_windows_insider` in the Services category disables the `wisvc` Insider service. The research recommended keeping both: the service is the weaker lever (it can be restarted), the policy cannot be bypassed from Settings.
@@ -454,7 +454,7 @@ System Default: anything else, which on almost every machine is the starting sta
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021; all editions.
 - **Takes effect**: immediately.
-- **Reverting**: System Default restores the previous hours from the snapshot and removes `SmartActiveHoursState` if it was absent before.
+- **Reverting**: the Restore button restores the previous hours from the snapshot and removes `SmartActiveHoursState` if it was absent before.
 
 #### Interactions
 - Microsoft states active hours has no effect when "No auto-restart with logged on users" or "Always automatically restart at scheduled time" is enabled, so this and [Block auto-restart while signed in](#block-auto-restart-while-signed-in) partly cancel each other (only when the reboot block is actually active, that is with [Windows Update mode](#windows-update-mode) on Automatic).
@@ -517,7 +517,7 @@ Microsoft's own caveats on the same page: "In Group Policy this policy doesn't w
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, on Pro, Education, Enterprise and IoT Enterprise. Windows Home does not honour it.
 - **Takes effect**: at the next scheduled install cycle.
-- **Reverting**: "Allowed" deletes the value; System Default restores the snapshot.
+- **Reverting**: "Allowed" deletes the value; the Restore button restores the snapshot.
 
 #### Interactions
 - **Requires [Windows Update mode](#windows-update-mode) on "Automatic: download and install"** to do anything; every other mode makes it inert.
@@ -577,7 +577,7 @@ Microsoft's scope limit: "This policy won't apply to updates to drivers provided
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1607 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. Windows Home ignores it.
 - **Takes effect**: at the next Windows Update scan.
-- **Reverting**: "Included" deletes the value; System Default restores the snapshot. Drivers held back meanwhile are offered again at the next scan.
+- **Reverting**: "Included" deletes the value; the Restore button restores the snapshot. Drivers held back meanwhile are offered again at the next scan.
 
 #### Interactions
 - Pairs with [Disable automatic driver installation](#disable-automatic-driver-installation), which stops the device-install driver search; together they give end-to-end driver control. The research proposed merging them; they ship separately.
@@ -637,7 +637,7 @@ These policy keys take precedence over the Control Panel "Device Installation Se
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021. The metadata policy is documented in Policy CSP for Pro and above; the driver search-order policy is an ordinary machine policy. Home behaviour for these policy keys is not documented.
 - **Takes effect**: on the next device installation; reboot advised.
-- **Reverting**: "Enabled" deletes both policy values, returning control to the Device Installation Settings store; System Default restores the snapshot. Devices that went undriven meanwhile are not retried automatically until they are re-enumerated.
+- **Reverting**: "Enabled" deletes both policy values, returning control to the Device Installation Settings store; the Restore button restores the snapshot. Devices that went undriven meanwhile are not retried automatically until they are re-enumerated.
 
 #### Interactions
 - Pairs with [Exclude driver updates from Windows Update](#exclude-driver-updates-from-windows-update). The research proposed merging them and noted the metadata value could instead live in a privacy category; they ship as written here.
@@ -694,7 +694,7 @@ Microsoft's privacy guidance says directly: create a `REG_DWORD` named `AutoDown
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1507 and later including LTSC 2021 (where the Store is installed). Policy CSP lists Pro, Enterprise, Education and IoT Enterprise; the privacy guide gives the registry form with no edition caveat.
 - **Takes effect**: immediately.
-- **Reverting**: "Enabled" deletes the value, restoring automatic Store updates; System Default restores the snapshot.
+- **Reverting**: "Enabled" deletes the value, restoring automatic Store updates; the Restore button restores the snapshot.
 
 #### Interactions
 - [Block the Windows Update pipeline](#block-the-windows-update-pipeline) deliberately leaves the Store's `InstallService` tasks alone, but see its entry: disabling `wuauserv` and the WSUS redirect may affect Store downloads.
@@ -753,7 +753,7 @@ So writing 0 does not change whether a stock machine downloads over a metered li
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 1709 and later including LTSC 2021, on Pro, Education, Enterprise, IoT Enterprise and IoT Enterprise LTSC. Windows Home ignores it.
 - **Takes effect**: at the next Windows Update scan.
-- **Reverting**: "Allowed" deletes the value, returning the decision to the Settings toggle; System Default restores the snapshot.
+- **Reverting**: "Allowed" deletes the value, returning the decision to the Settings toggle; the Restore button restores the snapshot.
 
 #### Interactions
 - The research proposed merging this with [Disable Delivery Optimization P2P](#disable-delivery-optimization-p2p) as a bandwidth posture; they ship separately and combine freely.
@@ -828,7 +828,7 @@ On Windows 11, a current Windows Central how-to walks through the same Group Pol
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, on Pro, Education, Enterprise and IoT Enterprise. Windows Home ignores it.
 - **Takes effect**: immediately; the Windows Update client reads the policy at its next scan.
-- **Reverting**: System Default restores the values captured in the snapshot; a machine that had no policy returns to having none and to the user's own Settings preferences.
+- **Reverting**: the Restore button restores the values captured in the snapshot; a machine that had no policy returns to having none and to the user's own Settings preferences.
 
 #### Interactions
 - [Block auto-restart while signed in](#block-auto-restart-while-signed-in) works only with "Automatic: download and install".
@@ -950,7 +950,7 @@ The tweak carries a UI warning: it stops all Windows security updates until reve
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 and Windows 10, all editions; the policy layers only on Pro and above. Tasks absent on a build (for example `sih`/`sihboot` on 24H2, present on 19045) are no-ops.
 - **Takes effect**: start types and task states immediately for new starts; fully after a restart, because a running Medic, USO or Update service keeps running until then.
-- **Reverting**: System Default restores all 30 effects to the snapshot. A reboot is advised after reverting too: a re-enabled task with a WNF (Windows Notification Facility) trigger may not re-arm until its service restarts or Windows reboots. On 26100 the task `StartOobeAppsScanAfterUpdate` returns `ERROR_NOT_FOUND` (0x80070490) from `SetEnabled` although the change lands; the app re-reads the task and accepts the result.
+- **Reverting**: the Restore button restores all 30 effects to the snapshot. A reboot is advised after reverting too: a re-enabled task with a WNF (Windows Notification Facility) trigger may not re-arm until its service restarts or Windows reboots. On 26100 the task `StartOobeAppsScanAfterUpdate` returns `ERROR_NOT_FOUND` (0x80070490) from `SetEnabled` although the change lands; the app re-reads the task and accepts the result.
 
 #### Interactions
 - **Supersedes the other Windows Update tweaks while applied**: deferrals, pins, content control, driver exclusion, metered policy and active hours have nothing to act on. They keep their values and take effect again when the block is reverted, so applying [Defer feature updates](#defer-feature-updates) and [Defer quality updates](#defer-quality-updates) beforehand controls what happens when the block is lifted.

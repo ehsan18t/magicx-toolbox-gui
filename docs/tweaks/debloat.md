@@ -76,7 +76,7 @@ System Default is any state that matches neither option, for example an explicit
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; the key exists on Windows 10 1607 and later and on all Windows 11 builds.
 - **Takes effect**: immediately; Start may need a sign-out to redraw.
-- **Reverting**: selecting "On" deletes the value, returning the profile to its shipped state. Selecting System Default restores whatever the snapshot recorded before the first apply.
+- **Reverting**: selecting "On" deletes the value, returning the profile to its shipped state. The Restore button restores whatever the snapshot recorded before the first apply.
 
 #### Interactions
 - `interface:disable_start_recommendations` owns `Start_IrisRecommendations`, the Windows 11 recommendations row. Pair the two if that row is what bothers you.
@@ -142,7 +142,7 @@ These three values gate the silent post-setup installation of promoted Store app
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 1607 and later and all Windows 11 builds, all editions; per user.
 - **Takes effect**: immediately, for any install that has not already started.
-- **Reverting**: "On" writes the shipped value of 1 to all three. System Default restores the snapshot.
+- **Reverting**: "On" writes the shipped value of 1 to all three. The Restore button restores the snapshot.
 
 #### Interactions
 - `privacy:disable_consumer_features` (`DisableWindowsConsumerFeatures`, HKLM policy) is the stronger machine-wide block, but only on Enterprise, Education and IoT Enterprise; it is a no-op on Home and Pro.
@@ -204,7 +204,7 @@ System Default is any other state, such as an explicit `1` written when the Sett
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 1703 and later and all Windows 11 builds, all editions; per user.
 - **Takes effect**: immediately, from the next update onward.
-- **Reverting**: "On" deletes the value, returning the profile to its shipped state. System Default restores the snapshot.
+- **Reverting**: "On" deletes the value, returning the profile to its shipped state. The Restore button restores the snapshot.
 
 #### Interactions
 - `disable_scoobe_nag` covers the separate "finish setting up your device" screen.
@@ -264,7 +264,7 @@ SCOOBE is the "second chance out-of-box experience": the full-screen post-sign-i
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 1803 and later and all Windows 11 builds, all editions; per user.
 - **Takes effect**: immediately, from the next sign-in onward.
-- **Reverting**: "On" deletes the value (the now-empty key may remain). System Default restores the snapshot.
+- **Reverting**: "On" deletes the value (the now-empty key may remain). The Restore button restores the snapshot.
 
 #### Interactions
 - `disable_welcome_experience` covers the separate post-update "what's new" page.
@@ -304,7 +304,7 @@ Apply it. The screen offers nothing you cannot reach from Settings and it interr
 | Off | `0` |
 | On | `1` |
 
-System Default is any state other than 0 or 1. On a fresh profile the value is absent, which Windows treats exactly like 1 (see below), so a stock machine shows System Default while behaving as "On"; selecting System Default restores the snapshot.
+System Default is any state other than 0 or 1. On a fresh profile the value is absent, which Windows treats exactly like 1 (see below), so a stock machine shows System Default while behaving as "On"; the Restore button restores the snapshot.
 
 #### How it works
 
@@ -323,7 +323,7 @@ This is the backing value for the File Explorer folder option "Show sync provide
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 1703 and later and all Windows 11 builds, all editions; per user.
 - **Takes effect**: on the next Explorer window, or after restarting Explorer.
-- **Reverting**: "On" writes 1, which is identical in behaviour to the absent stock value because Windows declares `DefaultValue` = 1. System Default restores the snapshot (usually "absent").
+- **Reverting**: "On" writes 1, which is identical in behaviour to the absent stock value because Windows declares `DefaultValue` = 1. The Restore button restores the snapshot (usually "absent").
 
 #### Interactions
 - `remove_onedrive` removes the OneDrive client entirely.
@@ -386,7 +386,7 @@ System Default is any mix that matches neither option, for example the policy at
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a reboot; a sign-out or restarting Explorer and the search host also works.
-- **Reverting**: "On" deletes all three values, returning the machine to its shipped state. System Default restores the snapshot.
+- **Reverting**: "On" deletes all three values, returning the machine to its shipped state. The Restore button restores the snapshot.
 
 #### Interactions
 - `interface:disable_search_highlights` (`IsDynamicSearchBoxEnabled`), `privacy:disable_search_history` (`IsDeviceSearchHistoryEnabled`) and `privacy:disable_cloud_content_search` (`AllowCloudSearch` and the `SearchSettings` cloud values) are related search controls on different values; they combine without conflict.
@@ -449,7 +449,7 @@ Microsoft documents this exactly. The NewsAndInterests Policy CSP maps `AllowNew
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 21H2 and later, confirmed current on 24H2 and 25H2; not shown on Windows 10, including LTSC 2021.
 - **Takes effect**: after a sign-out or reboot, when the taskbar drops the entry point.
-- **Reverting**: "On" deletes the policy value, restoring the shipped default of allowed. System Default restores the snapshot.
+- **Reverting**: "On" deletes the policy value, restoring the shipped default of allowed. The Restore button restores the snapshot.
 
 #### Interactions
 - `remove_bing_news_weather` removes the standalone News and Weather apps; widgets pull weather through their own host, so the two are complementary.
@@ -504,7 +504,7 @@ The shipped `AccountNotifications.admx` on build 26100 declares `DisableAccountN
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 2004 and later (including LTSC 2021) and all Windows 11 builds; user scope; not edition-gated. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: immediately, as the ADML states.
-- **Reverting**: "On" deletes the policy value, restoring shipped behaviour. System Default restores the snapshot.
+- **Reverting**: "On" deletes the policy value, restoring shipped behaviour. The Restore button restores the snapshot.
 
 #### Interactions
 - The Settings toggle for account notifications writes `Start_AccountNotifications`; both are honoured, and this tweak does not own that value.
@@ -562,7 +562,7 @@ The shipped `CloudContent.admx` on 26100 declares `DisableConsumerAccountStateCo
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 21H2 (22000) and later on Enterprise, Education, IoT Enterprise and IoT Enterprise LTSC. Not Windows 10, including LTSC 2021.
 - **Takes effect**: immediately; sign out and back in if a card is still on screen.
-- **Reverting**: "On" deletes the policy value. System Default restores the snapshot.
+- **Reverting**: "On" deletes the policy value. The Restore button restores the snapshot.
 
 #### Interactions
 - `privacy:disable_consumer_features` (`DisableWindowsConsumerFeatures`) lives in the same key with the same edition gate; different value, no conflict.
@@ -620,7 +620,7 @@ The shipped `CloudContent.admx` on 26100 declares `DisableWindowsSpotlightFeatur
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 (including LTSC 2021) and all Windows 11 builds, all editions; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a sign-out, when the lock screen and tip surfaces refresh.
-- **Reverting**: "On" deletes the policy value and the individual tweaks resume controlling their own surfaces. System Default restores the snapshot.
+- **Reverting**: "On" deletes the policy value and the individual tweaks resume controlling their own surfaces. The Restore button restores the snapshot.
 
 #### Interactions
 - Overlaps, without clobbering: `privacy:disable_lockscreen_spotlight_ads` (`RotatingLockScreenOverlayEnabled`, `SubscribedContent-338387Enabled`), `privacy:disable_tips_and_suggestions` (`SoftLandingEnabled`, `SubscribedContent-338389Enabled`, `DisableSoftLanding`) and `privacy:disable_consumer_features` (`DisableWindowsConsumerFeatures`). Each keeps its own snapshot, so revert stays correct.
@@ -680,7 +680,7 @@ The shipped `CloudContent.admx` on 26100 declares `DisableSpotlightCollectionOnD
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 and all Windows 11 builds, all editions; per user. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after a sign-out, when the wallpaper provider falls back.
-- **Reverting**: "On" deletes the policy value so Spotlight is selectable again. System Default restores the snapshot.
+- **Reverting**: "On" deletes the policy value so Spotlight is selectable again. The Restore button restores the snapshot.
 
 #### Interactions
 - Strict subset of `disable_windows_spotlight_all`; applying both is harmless (separate values, separate snapshots) but changes nothing extra.
@@ -737,7 +737,7 @@ System Default is any mix that matches neither option (for example one channel s
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 10 and all Windows 11 builds, all editions; per user.
 - **Takes effect**: immediately, from the next toast.
-- **Reverting**: "On" deletes both values, returning the platform to its default. System Default restores the snapshot.
+- **Reverting**: "On" deletes both values, returning the platform to its default. The Restore button restores the snapshot.
 
 #### Interactions
 - `interface:disable_toast_notifications` (`ToastEnabled` = 0) silences all toasts; the two are alternatives, not companions.
@@ -794,7 +794,7 @@ System Default is any other value (for example `0` set by an administrator); sel
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build with Microsoft Edge 80 or later. Windows 10 IoT Enterprise LTSC 2021 does not include Edge, so the policy is inert there unless Edge was installed separately.
 - **Takes effect**: on the next Edge launch.
-- **Reverting**: "On" deletes the policy value, restoring Edge's own default. System Default restores the snapshot.
+- **Reverting**: "On" deletes the policy value, restoring Edge's own default. The Restore button restores the snapshot.
 
 #### Interactions
 - `disable_edge_startup_boost` and `disable_edge_sidebar` write other values under the same Edge policy key; `privacy:disable_edge_telemetry` and `ai:disable_edge_ai_features` do too. All are distinct values and combine without conflict.
@@ -849,7 +849,7 @@ System Default is any mix that matches neither option; selecting it restores the
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build with Edge 88 or later (`StartupBoostEnabled`) and Edge 77 or later (`BackgroundModeEnabled`). Inert on LTSC 2021 unless Edge was installed separately.
 - **Takes effect**: at the next sign-in or Edge restart.
-- **Reverting**: "On" deletes both values, restoring Edge's defaults (both on). System Default restores the snapshot.
+- **Reverting**: "On" deletes both values, restoring Edge's defaults (both on). The Restore button restores the snapshot.
 
 #### Interactions
 - Shares the Edge policy key with `disable_edge_first_run`, `disable_edge_sidebar`, `privacy:disable_edge_telemetry` and `ai:disable_edge_ai_features`; all distinct values.
@@ -904,7 +904,7 @@ System Default is any mix that matches neither option; selecting it restores the
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build with Edge 99 or later (`HubsSidebarEnabled`) and Edge 78 or later (`EdgeCollectionsEnabled`). Inert on LTSC 2021 unless Edge was installed separately.
 - **Takes effect**: on the next Edge restart.
-- **Reverting**: "On" deletes both values, restoring Edge's defaults; collections become reachable again. System Default restores the snapshot.
+- **Reverting**: "On" deletes both values, restoring Edge's defaults; collections become reachable again. The Restore button restores the snapshot.
 
 #### Interactions
 - Shares the Edge policy key with the other Edge tweaks and `ai:disable_edge_ai_features`; distinct values.

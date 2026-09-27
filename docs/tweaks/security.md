@@ -2311,7 +2311,7 @@ This tweak does not change `AllowLocalPolicyMerge`, so locally created allow rul
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately; the firewall service picks up policy changes without a reboot.
-- **Reverting**: "User's choice" deletes all six values, which returns control to the user and lets the firewall fall back to its non-policy (local) state. System Default restores exactly the captured values.
+- **Reverting**: "User's choice" deletes all six values, which returns control to the user and lets the firewall fall back to its non-policy (local) state. The Restore button restores exactly the captured values.
 
 #### Interactions
 - `network:firewall_logging_and_merge`: writes logging values and `AllowLocalPolicyMerge` under the same `WindowsFirewall` profile policy keys, including `PrivateProfile`. Different value names, so there is no ownership conflict.
@@ -2479,7 +2479,7 @@ Apply it on laptops and any PC used in shared or public spaces. On a physically 
 | Enabled | `2` | `1` |
 | Off | `0` | `absent` |
 
-System Default is shown when the two values match neither option. On many machines `LsaCfgFlags` is absent, so the tweak reads as System Default; on eligible Windows 11 22H2 and later installs Credential Guard may be on by default regardless. Selecting System Default restores the captured values (deleting any that did not exist). Note that "Off" is not the Windows default: `LsaCfgFlags` = 0 explicitly disables Credential Guard, including on machines where Windows had turned it on by default. To return to the Windows default, use System Default. Credential Guard is on by default on eligible Windows 11 22H2 and later installs.
+System Default is shown when the two values match neither option. On many machines `LsaCfgFlags` is absent, so the tweak reads as System Default; on eligible Windows 11 22H2 and later installs Credential Guard may be on by default regardless. The Restore button restores the captured values (deleting any that did not exist). Note that "Off" is not the Windows default: `LsaCfgFlags` = 0 explicitly disables Credential Guard, including on machines where Windows had turned it on by default. To return to the Windows default, use System Default. Credential Guard is on by default on eligible Windows 11 22H2 and later installs.
 
 #### How it works
 
@@ -2509,7 +2509,7 @@ Hardware and edition requirements: 64-bit Windows, Secure Boot, CPU virtualizati
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer and Windows 10 (including IoT Enterprise LTSC 2021), Enterprise and Education (and Pro under some licensing); not Home. Requires 64-bit, Secure Boot, virtualization extensions and VBS.
 - **Takes effect**: after a reboot; LSA and the isolated process start at boot.
-- **Reverting**: "Off" writes `LsaCfgFlags` = 0 and deletes `RequirePlatformSecurityFeatures`, and needs a reboot. System Default restores the captured values. Because the tweak uses value 2, no UEFI variable is written and the revert is complete after the reboot.
+- **Reverting**: "Off" writes `LsaCfgFlags` = 0 and deletes `RequirePlatformSecurityFeatures`, and needs a reboot. The Restore button restores the captured values. Because the tweak uses value 2, no UEFI variable is written and the revert is complete after the reboot.
 
 #### Interactions
 - `performance:disable_vbs_hvci`: writes `EnableVirtualizationBasedSecurity` = 0 in the same `Control\DeviceGuard` key. Credential Guard is hosted by VBS and cannot run once that tweak is applied. Never enable both; both tweaks carry warnings saying so.
@@ -2588,7 +2588,7 @@ Everything here requires Microsoft Defender Antivirus to be the active antivirus
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. Requires Microsoft Defender Antivirus as the active antivirus. No edition restriction in the sources.
 - **Takes effect**: immediately; Defender picks up policy changes without a reboot.
-- **Reverting**: "User's choice" deletes all five values, returning Defender to its own defaults and unlocking the Windows Security controls. System Default restores the captured values. Files already uploaded to Microsoft are not recalled.
+- **Reverting**: "User's choice" deletes all five values, returning Defender to its own defaults and unlocking the Windows Security controls. The Restore button restores the captured values. Files already uploaded to Microsoft are not recalled.
 
 #### Interactions
 - [Defender Network Protection](#defender-network-protection): depends on cloud-delivered protection.
@@ -2660,7 +2660,7 @@ A companion policy, `BlockNTLMServerExceptionList` (REG_MULTI_SZ, same key, one 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 (build 26100) and newer, and Windows Server 2025; the tweak is hidden on older builds, including Windows 10 IoT Enterprise LTSC 2021. No edition restriction in the sources.
 - **Takes effect**: immediately for new SMB connections; no reboot.
-- **Reverting**: "Allowed" deletes the value, restoring stock behaviour. System Default restores the captured value. The exception list is never touched.
+- **Reverting**: "Allowed" deletes the value, restoring stock behaviour. The Restore button restores the captured value. The exception list is never touched.
 
 #### Interactions
 - [Disable SMB insecure guest logons](#disable-smb-insecure-guest-logons) and [Require SMB signing](#require-smb-signing): research merge candidate 5 (SMB client hardening). All three can break the same home NAS setups. This tweak shares the `LanmanWorkstation` policy key with the guest-logon tweak but writes a different value.
@@ -2743,7 +2743,7 @@ On a consumer machine, `ServiceEnabled` and `NotifyMalicious` are already effect
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 and newer (24H2 and 25H2 included), editions Pro, Enterprise, Education, IoT Enterprise and IoT Enterprise LTSC per the Policy CSP. The component does not exist on Windows 10, and the tweak is hidden there.
 - **Takes effect**: immediately; no reboot.
-- **Reverting**: "Not configured" deletes all five values, restoring the shipped behaviour and unlocking the Windows Security toggle. System Default restores the captured values. Screenshots already uploaded are not recalled.
+- **Reverting**: "Not configured" deletes all five values, restoring the shipped behaviour and unlocking the Windows Security toggle. The Restore button restores the captured values. Screenshots already uploaded are not recalled.
 
 #### Interactions
 - [Enforce SmartScreen (apps and Edge)](#enforce-smartscreen-apps-and-edge): configures SmartScreen's app and Edge checks; Enhanced Phishing Protection is a separate SmartScreen component that tweak does not touch.
@@ -2814,7 +2814,7 @@ Neither rule needs cloud-delivered protection. Both need Defender to be the acti
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; `56a863a9` also on Windows 10 1709 and later and `e6db77e5` on Windows 10 1903 and later, so both work on Windows 10 IoT Enterprise LTSC 2021. Requires Microsoft Defender Antivirus as the active antivirus. Home is not confirmed.
 - **Takes effect**: immediately; no reboot.
-- **Reverting**: "Off" deletes both rule values and releases the shared parent claim; the parent value is restored to its original only when no other ASR tweak still claims it. System Default restores the captured rule values.
+- **Reverting**: "Off" deletes both rule values and releases the shared parent claim; the parent value is restored to its original only when no other ASR tweak still claims it. The Restore button restores the captured rule values.
 
 #### Interactions
 - [Block LSASS credential theft (ASR rule)](#block-lsass-credential-theft-asr-rule): the third standard protection rule, in its own tweak.
@@ -2966,7 +2966,7 @@ PowerShell 7 (`pwsh.exe`) reads its own `HKLM\SOFTWARE\Policies\Microsoft\PowerS
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions. Covers Windows PowerShell 5.1.
 - **Takes effect**: immediately for new PowerShell sessions; no reboot.
-- **Reverting**: "Off" deletes all five values; "Module logging only" deletes the three transcription values. System Default restores the captured values. Transcript files already written stay on disk, and the now-empty `ModuleNames`, `ModuleLogging` and `Transcription` keys remain. They are harmless: PowerShell treats a missing `EnableModuleLogging` or `EnableTranscripting` value as off. A `registry_key` effect cannot remove `ModuleNames`, because the build rejects deleting a key that holds one of the tweak's own values.
+- **Reverting**: "Off" deletes all five values; "Module logging only" deletes the three transcription values. The Restore button restores the captured values. Transcript files already written stay on disk, and the now-empty `ModuleNames`, `ModuleLogging` and `Transcription` keys remain. They are harmless: PowerShell treats a missing `EnableModuleLogging` or `EnableTranscripting` value as off. A `registry_key` effect cannot remove `ModuleNames`, because the build rejects deleting a key that holds one of the tweak's own values.
 
 #### Interactions
 - [Enable PowerShell script-block logging](#enable-powershell-script-block-logging): complementary; that tweak also writes the `PowerShellCore` key for PowerShell 7.
@@ -3031,7 +3031,7 @@ This is a different control from anonymous-enumeration hardening. `RestrictAnony
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 1607 and later, including Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately for new remote SAM calls; no reboot.
-- **Reverting**: "Not configured" deletes the value, restoring Windows' built-in default descriptor (administrators only on 1607 and later). System Default restores the captured value.
+- **Reverting**: "Not configured" deletes the value, restoring Windows' built-in default descriptor (administrators only on 1607 and later). The Restore button restores the captured value.
 
 #### Interactions
 - [Restrict anonymous enumeration](#restrict-anonymous-enumeration): same `Lsa` key, different values, different attack (anonymous rather than authenticated callers). Additive, not a duplicate.
@@ -3092,7 +3092,7 @@ Writing `0` cannot break a working installer: a legitimate installation never de
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately for the next installer run; no reboot.
-- **Reverting**: "Not configured" deletes both values, which is the shipped state. System Default restores the captured values, including a 1 if one was present before the first apply.
+- **Reverting**: "Not configured" deletes both values, which is the shipped state. The Restore button restores the captured values, including a 1 if one was present before the first apply.
 
 #### Interactions
 None known. No other tweak in the corpus writes the Windows Installer policy key.
@@ -3160,7 +3160,7 @@ The tweak cannot lock you out: the internal keyboard, display and storage are no
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer and Windows 10 1809 (build 17763) and later, including Windows 10 IoT Enterprise LTSC 2021; Pro, Enterprise, Education, IoT Enterprise and IoT Enterprise LTSC. Not Home (the tweak is gated by build only, so it is offered on Home but does nothing there). Requires a platform shipped with Kernel DMA Protection.
 - **Takes effect**: after a reboot, as the Policy CSP requires.
-- **Reverting**: "Not configured" deletes both values so the Windows default ("Only while logged in") applies again; it never writes 2. System Default restores the captured values. A reboot completes either.
+- **Reverting**: "Not configured" deletes both values so the Windows default ("Only while logged in") applies again; it never writes 2. The Restore button restores the captured values. A reboot completes either.
 
 #### Interactions
 - [Prevent automatic device encryption](#prevent-automatic-device-encryption): `DisableExternalDMAUnderLock` is only enforced with BitLocker or device encryption on, so preventing automatic device encryption can leave that half of this tweak inert.
@@ -3245,7 +3245,7 @@ Rules are written under the Policies hive, which is the Group Policy surface Def
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (Windows 11 24H2 build 26100 and newer, Windows 10 IoT Enterprise LTSC 2021 build 19044); Windows 10 is covered by the ASR reference too. Requires Microsoft Defender Antivirus as the active antivirus, and AMSI for `d3e037e1` and `92e97fa1`. ASR enforcement on Windows 11 Home is not confirmed or denied by any tier A source the research found, so treat Home as unsupported.
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Off" deletes all six rule values and releases this tweak's claim on `ExploitGuard_ASR_Rules`; the parent value is restored to its captured original only when no other ASR tweak still claims it (otherwise it is left in place, "held by" the other tweaks). Selecting System Default restores the six values captured in the snapshot, including `absent` for values that did not exist.
+- **Reverting**: "Off" deletes all six rule values and releases this tweak's claim on `ExploitGuard_ASR_Rules`; the parent value is restored to its captured original only when no other ASR tweak still claims it (otherwise it is left in place, "held by" the other tweaks). The Restore button restores the six values captured in the snapshot, including `absent` for values that did not exist.
 
 #### Interactions
 - Shares `ExploitGuard_ASR_Rules` with [Block LSASS credential theft (ASR rule)](#block-lsass-credential-theft-asr-rule), [ASR rules: block Office/script malware vectors](#asr-rules-block-officescript-malware-vectors) and [ASR standard protection rules](#asr-standard-protection-rules) through the shared setting `defender_asr_policy_enabled`. The research lists these four as a merge candidate (thirteen GUIDs across the four tweaks, one key, one value type, one set of prerequisites; Microsoft's deployment guidance is per mode, not per rule).
@@ -3322,7 +3322,7 @@ Minimum session security: `NtlmMinClientSec` governs NTLM SSP sessions this PC o
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (Windows 11 24H2 and newer; Windows 10 22H2 and LTSC 2021). Every edition, since these are LSA settings rather than edition-gated policies.
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Allow all" deletes all four values, returning to Allow all and the effective `0x20000000` session-security default. Selecting System Default restores whatever the snapshot captured, including a pre-existing value set by other tooling.
+- **Reverting**: "Allow all" deletes all four values, returning to Allow all and the effective `0x20000000` session-security default. The Restore button restores whatever the snapshot captured, including a pre-existing value set by other tooling.
 
 #### Interactions
 - [Block NTLM on the SMB client](#block-ntlm-on-the-smb-client) blocks NTLM for SMB only; this tweak is the OS-wide control. Both break NTLM-only NAS devices.
@@ -3401,7 +3401,7 @@ The ADMX `supportedOn` for all five is `SUPPORTED_WindowsXP` / `SUPPORTED_Window
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build. The host-side settings matter only where the Remote Desktop host is available, which the YAML states as Pro and above; the ADMX `supportedOn` reaches back to Windows XP.
 - **Takes effect**: immediately, on the next connection.
-- **Reverting**: "Not hardened" deletes all five values, restoring the shipped defaults. Selecting System Default restores the values captured in the snapshot.
+- **Reverting**: "Not hardened" deletes all five values, restoring the shipped defaults. The Restore button restores the values captured in the snapshot.
 
 #### Interactions
 - [Disable Remote Desktop (RDP)](#disable-remote-desktop-rdp) is the opposite posture: with the listener off, these five do nothing. Pick one.
@@ -3462,7 +3462,7 @@ Normal UAC elevation of the same user does not go through Secondary Logon, so th
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (Windows 11 24H2 and newer; Windows 10 22H2 and LTSC 2021).
 - **Takes effect**: new starts are blocked immediately; an instance that is already running keeps running until it stops or the machine restarts. The tweak is flagged as needing a reboot, since only a restart guarantees no instance is left running.
-- **Reverting**: selecting System Default restores the start type captured in the snapshot, exactly (including delayed-start). The tweak never hardcodes a stock start type.
+- **Reverting**: the Restore button restores the start type captured in the snapshot, exactly (including delayed-start). The tweak never hardcodes a stock start type.
 
 #### Interactions
 - None known in this corpus: `services.yaml` ships no tweak targeting `seclogon`. Same-user UAC elevation, including [Raise UAC to always notify](#raise-uac-to-always-notify), is unaffected.
@@ -3528,7 +3528,7 @@ Early Launch Antimalware (ELAM) lets an antimalware vendor's ELAM driver start b
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows 8 and later). The policy acts on the classifications an ELAM driver reports at boot.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Windows decides" deletes the value, which is the shipped state. Selecting System Default restores the snapshot value. Either takes effect at the next boot.
+- **Reverting**: "Windows decides" deletes the value, which is the shipped state. The Restore button restores the snapshot value. Either takes effect at the next boot.
 
 #### Interactions
 - [Enable the Microsoft vulnerable-driver blocklist](#enable-the-microsoft-vulnerable-driver-blocklist) is a separate driver-loading control; the two are complementary.
@@ -3591,7 +3591,7 @@ Microsoft's KB records "May 8, 2018. An update to change the default setting fro
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows Vista and later), every edition.
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Mitigated" deletes the value, returning to the Mitigated default. Selecting System Default restores the snapshot value.
+- **Reverting**: "Mitigated" deletes the value, returning to the Mitigated default. The Restore button restores the snapshot value.
 
 #### Interactions
 - [Harden RDP (NLA + TLS)](#harden-rdp-nla--tls) requires Network Level Authentication, which runs over CredSSP; this tweak hardens that layer.
@@ -3652,7 +3652,7 @@ The registry value and automatic device encryption long predate 24H2; what 24H2 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build. Most relevant on Windows 11 24H2 and newer, where automatic device encryption is common; the value is also read on Windows 10 and LTSC 2021.
 - **Takes effect**: immediately, but only for encryption that has not started yet.
-- **Reverting**: "Automatic encryption allowed" deletes the value, allowing automatic device encryption again. Selecting System Default restores the snapshot value. Neither re-encrypts or decrypts anything by itself.
+- **Reverting**: "Automatic encryption allowed" deletes the value, allowing automatic device encryption again. The Restore button restores the snapshot value. Neither re-encrypts or decrypts anything by itself.
 
 #### Interactions
 - None known in this corpus.
@@ -3716,7 +3716,7 @@ These are physical-presence protections: they change what someone at the screen 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build. `EnumerateAdministrators` is supported from Windows Vista and `DisablePasswordReveal` from Windows 8.
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Shown" deletes all three values, including the per-user copy. Selecting System Default restores the snapshot values.
+- **Reverting**: "Shown" deletes all three values, including the per-user copy. The Restore button restores the snapshot values.
 
 #### Interactions
 - [Hide last signed-in username](#hide-last-signed-in-username) covers `DontDisplayLastUserName`, a different value on the sign-in screen; the two are complementary.
@@ -3788,7 +3788,7 @@ The per-channel default size when no policy is set is not established by any sou
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build.
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Windows decides" deletes the three values, returning each channel to its own default size. Selecting System Default restores the snapshot values.
+- **Reverting**: "Windows decides" deletes the three values, returning each channel to its own default size. The Restore button restores the snapshot values.
 
 #### Interactions
 - Pairs with [Enable logon/credential auditing](#enable-logoncredential-auditing), [Log command lines in process-creation events](#log-command-lines-in-process-creation-events), [Enable PowerShell script-block logging](#enable-powershell-script-block-logging) and [PowerShell module logging and transcription](#powershell-module-logging-and-transcription), which are what fill the logs.
@@ -3857,7 +3857,7 @@ This uses a different audit subcategory from the logon-auditing tweak (`{0CCE921
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows 8.1 and later).
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Off" deletes the policy value and runs the action's undo, which restores the Process Creation subcategory to the setting stashed at apply time. Selecting System Default restores the registry value from the snapshot; the audit subcategory is restored by the action's undo.
+- **Reverting**: "Off" deletes the policy value and runs the action's undo, which restores the Process Creation subcategory to the setting stashed at apply time. The Restore button restores the registry value from the snapshot; the audit subcategory is restored by the action's undo.
 
 #### Interactions
 - [Enable logon/credential auditing](#enable-logoncredential-auditing) uses the same `auditpol` pattern on a different subcategory and its own stash value; no collision.
@@ -3921,7 +3921,7 @@ The result is a middle position between disabling the Print Spooler service (no 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX `supportedOn` is `SUPPORTED_WindowsNET`), every edition.
 - **Takes effect**: after the Print Spooler service restarts (or the next reboot).
-- **Reverting**: "Client connections allowed" deletes both values, restoring the shipped accept-connections behaviour after the next spooler restart. Selecting System Default restores the snapshot values.
+- **Reverting**: "Client connections allowed" deletes both values, restoring the shipped accept-connections behaviour after the next spooler restart. The Restore button restores the snapshot values.
 
 #### Interactions
 - `services:disable_print_spooler` disables the spooler entirely, which is stronger and makes this tweak moot.
@@ -3960,7 +3960,7 @@ Apply it on any machine that prints but never receives print jobs or shares prin
 | Filtered | `0` |
 | Not filtered | `1` |
 
-There is deliberately no `absent` option: an absent value behaves exactly as `0`, so an option that deleted the value would be labelled for a state it cannot reach. On a stock machine the value is absent, which matches neither option, so the tweak shows System Default even though the behaviour is "Filtered". Selecting System Default restores the snapshot captured before the first apply (including `absent` if the value did not exist).
+There is deliberately no `absent` option: an absent value behaves exactly as `0`, so an option that deleted the value would be labelled for a state it cannot reach. On a stock machine the value is absent, which matches neither option, so the tweak shows System Default even though the behaviour is "Filtered". The Restore button restores the snapshot captured before the first apply (including `absent` if the value did not exist).
 
 #### How it works
 
@@ -3990,7 +3990,7 @@ The value is absent by default, but it is set to `1` by many "fix my network sha
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, every edition; local accounts only.
 - **Takes effect**: immediately for new network logons, no reboot.
-- **Reverting**: selecting System Default restores the value captured in the snapshot (usually `absent`, which behaves as `0`). If the value was `1` before you applied the tweak, reverting puts `1` back.
+- **Reverting**: the Restore button restores the value captured in the snapshot (usually `absent`, which behaves as `0`). If the value was `1` before you applied the tweak, reverting puts `1` back.
 
 #### Interactions
 - [Apply UAC to built-in Administrator](#apply-uac-to-built-in-administrator) writes `FilterAdministratorToken` in the same key; the research lists it, [Raise UAC to always notify](#raise-uac-to-always-notify) and this tweak as a UAC merge candidate, and warns that the two similar names are easy to confuse.
@@ -4052,7 +4052,7 @@ It is a direct registry write per the DISA STIG check text, not a Group Policy: 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build, x64.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Not configured" deletes the value, which behaves the same as `0` on a healthy machine. Selecting System Default restores the snapshot value. Either takes effect at the next boot.
+- **Reverting**: "Not configured" deletes the value, which behaves the same as `0` on a healthy machine. The Restore button restores the snapshot value. Either takes effect at the next boot.
 
 #### Interactions
 - None known in this corpus.
@@ -4111,7 +4111,7 @@ It is a Security Options setting: it appears in none of the 218 shipped ADMX fil
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the policy exists from Windows 10 1607). Matters most on standalone and workgroup PCs; domain-joined member machines already default to Disabled.
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Allowed" deletes the value, restoring the default enabled behaviour on a client. Selecting System Default restores the snapshot value.
+- **Reverting**: "Allowed" deletes the value, restoring the default enabled behaviour on a client. The Restore button restores the snapshot value.
 
 #### Interactions
 - None known in this corpus.
@@ -4171,7 +4171,7 @@ Only EFS (per-file) encryption is involved; BitLocker whole-volume encryption is
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Vista and later).
 - **Takes effect**: immediately, followed by a full index rebuild.
-- **Reverting**: "Not configured" deletes the value, returning control to the Control Panel setting, and triggers another full rebuild. Selecting System Default restores the snapshot value.
+- **Reverting**: "Not configured" deletes the value, returning control to the Control Panel setting, and triggers another full rebuild. The Restore button restores the snapshot value.
 
 #### Interactions
 - `performance:disable_search_indexing` disables the Windows Search service (`WSearch`); with it applied there is no index and this tweak is moot.
@@ -4233,7 +4233,7 @@ The DISA STIG has three rules in this AutoPlay family; [Disable AutoRun/AutoPlay
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows 7 and later).
 - **Takes effect**: after sign-out or an Explorer restart, no reboot.
-- **Reverting**: "Allowed" deletes both values, restoring the shipped AutoPlay behaviour. Selecting System Default restores the snapshot values.
+- **Reverting**: "Allowed" deletes both values, restoring the shipped AutoPlay behaviour. The Restore button restores the snapshot values.
 
 #### Interactions
 - [Disable AutoRun/AutoPlay on all drives](#disable-autorunautoplay-on-all-drives) writes `NoAutorun` and `NoDriveTypeAutoRun` for drive-letter volumes; the two together cover every AutoPlay path. The research recommends folding this value into that tweak as a third effect.
