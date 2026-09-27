@@ -731,11 +731,11 @@ pub fn child_job_object(cx: &Ctx) -> Verdict {
     };
     if o.in_job {
         Verdict::info(format!(
-            "The broker child IS in a job object. Check whether its limits (for example kill-on-close) could end a batch early before adding a job of our own; see review F60.{caveat}"
+            "The broker child IS in a job object. Check whether its limits (for example kill-on-close) could end a batch early before adding a job of our own.{caveat}"
         ))
     } else {
         Verdict::info(format!(
-            "The broker child is NOT in a job object; it does not inherit TrustedInstaller's job. F60 is settled.{caveat}"
+            "The broker child is NOT in a job object; it does not inherit TrustedInstaller's job.{caveat}"
         ))
     }
 }
@@ -747,7 +747,7 @@ pub fn system_only_environment(cx: &Ctx) -> Verdict {
     });
     if verdict.status == super::runner::Status::Pass {
         verdict.summary = format!(
-            "{} The scheduler COM calls worked without the user's environment, so a system-only block is viable (C5).",
+            "{} The scheduler COM calls worked without the user's environment, so a system-only block is viable.",
             verdict.summary
         );
     }
@@ -765,7 +765,7 @@ pub fn systemtemp_transport(cx: &Ctx) -> Verdict {
         cx.info(format!("SystemTemp = {}", system_temp.display()));
         if !system_temp.exists() {
             return Err(Verdict::info(
-                "SystemTemp does not exist on this build, so the transport cannot move here. F62 stays open.",
+                "SystemTemp does not exist on this build, so the broker transport falls back to %TEMP% here (known issue 2).",
             ));
         }
         probe_admin_can_write(&system_temp).map_err(|e| {
@@ -780,7 +780,7 @@ pub fn systemtemp_transport(cx: &Ctx) -> Verdict {
     });
     if verdict.status == super::runner::Status::Pass {
         verdict.summary = format!(
-            "{} The TrustedInstaller child read and wrote in SystemTemp, so the transport can move there (F62).",
+            "{} The TrustedInstaller child read and wrote in SystemTemp, so this build gets the protected transport.",
             verdict.summary
         );
     }

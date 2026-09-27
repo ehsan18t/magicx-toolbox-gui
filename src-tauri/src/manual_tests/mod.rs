@@ -64,7 +64,7 @@ pub const TESTS: &[ManualTest] = &[
     ManualTest {
         id: "debug_privilege_needed",
         title: "SeDebugPrivilege needed?",
-        description: "Spawns a no-op TrustedInstaller child with SeDebugPrivilege disabled, to learn whether opening the TI process needs it (review A3.4).",
+        description: "Spawns a no-op TrustedInstaller child with SeDebugPrivilege disabled, to learn whether opening the TI process needs it.",
         changes: "Nothing persistent. Starts the TrustedInstaller service and spawns a no-op elevated child.",
         changes_system: false,
         minutes: None,
@@ -73,7 +73,7 @@ pub const TESTS: &[ManualTest] = &[
     ManualTest {
         id: "child_job_object",
         title: "Broker child job object",
-        description: "Spawns a no-op TrustedInstaller child and checks whether it inherits a job object via IsProcessInJob (review F60).",
+        description: "Spawns a no-op TrustedInstaller child and checks whether it inherits a job object via IsProcessInJob.",
         changes: "Nothing persistent. Starts the TrustedInstaller service and spawns a no-op elevated child.",
         changes_system: false,
         minutes: None,
@@ -82,7 +82,7 @@ pub const TESTS: &[ManualTest] = &[
     ManualTest {
         id: "system_only_environment",
         title: "System-only environment",
-        description: "Applies block_update_pipeline with the child launched under a minimal machine-only environment (review C5), verifies the scheduler COM calls still work, then restores.",
+        description: "Applies block_update_pipeline with the child launched under a minimal machine-only environment, verifies the scheduler COM calls still work, then restores.",
         changes: "Blocks Windows Update for a few seconds under a system-only environment, then restores every effect from the snapshot.",
         changes_system: true,
         minutes: None,
@@ -91,7 +91,7 @@ pub const TESTS: &[ManualTest] = &[
     ManualTest {
         id: "systemtemp_transport",
         title: "SystemTemp transport",
-        description: "Applies block_update_pipeline with the broker request and response routed through %SystemRoot%\\SystemTemp (review F62), then restores.",
+        description: "Applies block_update_pipeline with the broker request and response routed through %SystemRoot%\\SystemTemp, then restores.",
         changes: "Blocks Windows Update for a few seconds using SystemTemp for the broker transport, then restores every effect from the snapshot.",
         changes_system: true,
         minutes: None,
