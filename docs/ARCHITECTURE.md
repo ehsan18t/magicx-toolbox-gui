@@ -127,7 +127,7 @@ src/lib/components/
 ### Core Features
 
 > The tweak engine was rebuilt around a single typed representation. This section summarizes it;
-> [TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md) is the full architecture reference and
+> [architecture/tweak/](./architecture/tweak/README.md) is the full architecture reference and
 > [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md) is the authoring guide.
 
 #### 1. Effect-centric tweaks
@@ -187,7 +187,7 @@ The tweak schema is **effect-centric** and defined by the compiled model in
 `src-tauri/src/tweaks/model.rs`. A tweak declares its managed surface once (`effects:`) and each option
 is a flat value-map over it. The full schema (every effect kind, value literal, presence/shared/version
 semantics, and the build guards) is documented in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**; the
-one-representation model and lifecycle in **[TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md)**.
+one-representation model and lifecycle in **[architecture/tweak/](./architecture/tweak/README.md)**.
 
 ```yaml
 # See TWEAK_AUTHORING.md for the full schema; the eight files in src-tauri/tweaks/ are the corpus.
@@ -237,7 +237,7 @@ Worked examples for every effect kind live in
 shipping corpus is the nine category files in [`src-tauri/tweaks/`](../src-tauri/tweaks/). In the effect-centric model there is no fixed
 change-list execution order: a tweak declares its `effects:` once, and applying an option **drives each
 effect to its desired value in declaration order** (capture → persist snapshot + WAL → drive → verify
-per effect), with atomic rollback on any failure (see [TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md)).
+per effect), with atomic rollback on any failure (see [apply-and-restore.md](./architecture/tweak/apply-and-restore.md)).
 
 ---
 

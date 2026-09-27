@@ -2,7 +2,7 @@
 
 The complete reference for every tweak MagicX Toolbox ships. Each entry is meant to be enough on its own: the exact change the tweak makes, what that does to the machine, the benefits and drawbacks, when it applies, how it reverts, how it was validated, and the sources behind it. If you find yourself searching the web to understand a tweak, its entry is missing something; fix the entry.
 
-Tweaks are authored as YAML in `src-tauri/tweaks/`, one file per category. The YAML is deliberately lean, carrying what the app needs at runtime. This wiki carries everything else. How to write a tweak is covered in [`../TWEAK_AUTHORING.md`](../TWEAK_AUTHORING.md), and how the engine runs one in [`../TWEAK_SYSTEM.md`](../TWEAK_SYSTEM.md).
+Tweaks are authored as YAML in `src-tauri/tweaks/`, one file per category. The YAML is deliberately lean, carrying what the app needs at runtime. This wiki carries everything else. How to write a tweak is covered in [`../TWEAK_AUTHORING.md`](../TWEAK_AUTHORING.md), and how the engine runs one in [`../architecture/tweak/`](../architecture/tweak/README.md).
 
 **Supported platform:** Windows 11 24H2 (build 26100) and newer, including 25H2 (26200), primary. Windows 10 IoT Enterprise LTSC 2021 (build 19044), secondary. Windows 10 22H2 consumer and Windows 11 21H2 through 23H2 are out of scope.
 

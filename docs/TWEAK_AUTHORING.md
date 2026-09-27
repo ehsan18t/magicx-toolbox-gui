@@ -10,11 +10,7 @@ If you only read one thing: a tweak declares the **surface of state it manages o
 each **option** is a flat value-map over that surface. That is the whole mental model. Everything else
 is detail.
 
-For the engine architecture see [TWEAK_SYSTEM.md](./TWEAK_SYSTEM.md); for the design rationale see the
-spec at
-[`docs/superpowers/specs/2026-07-21-tweak-system-redesign-design.md`](./superpowers/specs/2026-07-21-tweak-system-redesign-design.md)
-and the decision records under [`docs/adr/`](./adr/). This guide is **self-contained** (you never need
-to open the spec to author a tweak) but it cites `spec §N` / `ADR-000N` throughout so you can go deeper.
+For the engine architecture see [architecture/tweak/](./architecture/tweak/README.md); for the reasoning behind the key decisions see the decision records under [`docs/adr/`](./adr/). This guide is **self-contained**: you never need another document to author a tweak. Its `ADR-000N` citations lead to the decision records; its `spec §N` citations name sections of a design spec that is not in the repository.
 
 ### Where tweaks live and how they compile
 
