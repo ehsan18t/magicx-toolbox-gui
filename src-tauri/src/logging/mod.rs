@@ -231,10 +231,21 @@ impl RateLimit {
             (false, report)
         }
     }
+
+    /// What a finished window dropped, once: a burst followed by silence is still reported.
+    fn take_expired(&mut self, now: Instant) -> u64 {
+        if self
+            .window
+            .is_some_and(|w| now.duration_since(w) >= Duration::from_secs(1))
+        {
+            std::mem::take(&mut self.dropped)
+        } else {
+            0
+        }
+    }
 }
 
-pub fn push_ui(level: Level, msg: &str) {
-    let (admit, dropped) = lock(&UI_RATE).admit(Instant::now());
+fn report_ui_drops(dropped: u64) {
     if dropped > 0 {
         push(
             Level::Warn,
@@ -245,12 +256,23 @@ pub fn push_ui(level: Level, msg: &str) {
             ),
         );
     }
+}
+
+pub fn push_ui(level: Level, msg: &str) {
+    let (admit, dropped) = lock(&UI_RATE).admit(Instant::now());
+    report_ui_drops(dropped);
     if admit {
         push(level, Source::Ui, UI_TARGET, msg);
     }
 }
 
+fn flush_ui_drops() {
+    let dropped = lock(&UI_RATE).take_expired(Instant::now());
+    report_ui_drops(dropped);
+}
+
 pub fn tail(since: u64) -> (Vec<Entry>, u64) {
+    flush_ui_drops();
     PIPELINE.get().map(|p| p.tail(since)).unwrap_or_default()
 }
 
@@ -358,9 +380,20 @@ pub fn delete_logs() -> std::io::Result<Status> {
     }
 }
 
-/// `header`, then every kept session file oldest first, then this session's ring when it is not
-/// being saved. The files are already redacted; the header is redacted here.
+/// The heading for this session's ring when the files do not hold all of it: saving off, or the
+/// file stopped (write failure, hard cap, failed attach).
+fn unsaved_heading(persist: bool, writing: bool) -> Option<&'static str> {
+    match (persist, writing) {
+        (false, _) => Some("this session (not saved to disk)"),
+        (true, false) => Some("this session (not fully saved to disk)"),
+        (true, true) => None,
+    }
+}
+
+/// `header`, then every kept session file oldest first, then this session's ring when the files do
+/// not hold all of it. The files are already redacted; the header is redacted here.
 pub fn export(dest: &Path, header: &str) -> std::io::Result<()> {
+    flush_ui_drops();
     let mut c = lock(&CONTROL);
     let Some(p) = PIPELINE.get() else {
         return Err(std::io::Error::other("the logger is not running"));
@@ -376,8 +409,8 @@ pub fn export(dest: &Path, header: &str) -> std::io::Result<()> {
             }
         }
     }
-    if !c.persist {
-        out.push_str("\n===== this session (not saved to disk) =====\n");
+    if let Some(heading) = unsaved_heading(c.persist, p.file_state().0) {
+        out.push_str(&format!("\n===== {heading} =====\n"));
         out.push_str(&p.ring_text());
     }
     std::fs::write(dest, out)?;
@@ -409,5 +442,32 @@ mod tests {
         let t1 = t0 + Duration::from_secs(1);
         assert_eq!(rate.admit(t1), (true, 2));
         assert_eq!(rate.admit(t1), (true, 0));
+    }
+
+    #[test]
+    fn a_burst_followed_by_silence_is_still_reported() {
+        let mut rate = RateLimit {
+            window: None,
+            count: 0,
+            dropped: 0,
+        };
+        let t0 = Instant::now();
+        for _ in 0..UI_PER_SECOND + 3 {
+            rate.admit(t0);
+        }
+        assert_eq!(rate.take_expired(t0 + Duration::from_millis(500)), 0);
+        assert_eq!(rate.take_expired(t0 + Duration::from_secs(1)), 3);
+        assert_eq!(rate.take_expired(t0 + Duration::from_secs(2)), 0);
+        assert_eq!(rate.admit(t0 + Duration::from_secs(2)), (true, 0));
+    }
+
+    #[test]
+    fn the_export_carries_the_ring_whenever_the_file_does_not_hold_it_all() {
+        assert!(unsaved_heading(false, false).is_some());
+        assert_eq!(
+            unsaved_heading(true, false),
+            Some("this session (not fully saved to disk)")
+        );
+        assert_eq!(unsaved_heading(true, true), None);
     }
 }

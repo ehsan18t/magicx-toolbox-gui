@@ -81,19 +81,15 @@ impl TweakEngineState {
             Ok(ids) => ids.join(", "),
             Err(e) => format!("could not be read ({e})"),
         };
-        let history: Vec<&str> = corpus
-            .tweaks
-            .iter()
-            .filter(|t| {
-                self.snapshots
-                    .list(&t.id, corpus, self.machine_guid.as_deref(), build)
-                    .is_ok_and(|entries| !entries.is_empty())
-            })
-            .map(|t| t.id.as_str())
-            .collect();
+        let history = history_line(corpus.tweaks.iter().map(|t| {
+            let listed = self
+                .snapshots
+                .list(&t.id, corpus, self.machine_guid.as_deref(), build);
+            (t.id.as_str(), listed.map(|entries| !entries.is_empty()))
+        }));
         vec![
             format!("Needs Attention: {attention}"),
-            format!("Snapshot history: {}", history.join(", ")),
+            format!("Snapshot history: {history}"),
         ]
     }
 
@@ -119,6 +115,29 @@ impl TweakEngineState {
             );
         }
     }
+}
+
+/// An unreadable history is named, never dropped as "no history"; the class carries no path.
+fn history_line<'a>(
+    listed: impl IntoIterator<Item = (&'a str, std::result::Result<bool, SnapshotError>)>,
+) -> String {
+    let named: Vec<String> = listed
+        .into_iter()
+        .filter_map(|(id, has_entries)| match has_entries {
+            Ok(true) => Some(id.to_owned()),
+            Ok(false) => None,
+            Err(e) => {
+                let class = match e {
+                    SnapshotError::Io(io) => io.kind().to_string(),
+                    SnapshotError::ExeDir => "no app folder".to_owned(),
+                    SnapshotError::Corrupt { .. } => "corrupt".to_owned(),
+                    _ => "inconsistent".to_owned(),
+                };
+                Some(format!("{id} (unreadable: {class})"))
+            }
+        })
+        .collect();
+    named.join(", ")
 }
 
 // Zero-sized, stateless dispatchers (see their own docs: "trivially Send + Sync and cheap to
@@ -1506,6 +1525,17 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
+
+    #[test]
+    fn an_unreadable_snapshot_history_is_named_in_the_diagnostics() {
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let line = history_line([
+            ("kept", Ok(true)),
+            ("none", Ok(false)),
+            ("locked", Err(SnapshotError::Io(denied))),
+        ]);
+        assert_eq!(line, "kept, locked (unreadable: permission denied)");
+    }
 
     // --- minimal mocks (mirrors engine::apply's own test-harness pattern; kept local since those
     // fixtures are `#[cfg(test)]`-private to that module) ---------------------------------------

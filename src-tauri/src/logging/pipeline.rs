@@ -23,14 +23,28 @@ thread_local! {
     pub(super) static IN_LOGGER: Cell<bool> = const { Cell::new(false) };
 }
 
+struct InLogger;
+
+impl Drop for InLogger {
+    fn drop(&mut self) {
+        IN_LOGGER.set(false);
+    }
+}
+
 /// A record raised while this thread is already inside the logger is dropped, never recursed into.
+/// The flag resets on unwind too: a caught panic must not silence the thread.
 pub(super) fn guarded(f: impl FnOnce()) {
     if IN_LOGGER.get() {
         return;
     }
     IN_LOGGER.set(true);
+    let _reset = InLogger;
     f();
-    IN_LOGGER.set(false);
+}
+
+/// Debug builds echo for `pnpm tauri dev`; `eprint!` panics when stderr is gone.
+fn echo(line: &str) {
+    let _ = std::io::Write::write_all(&mut std::io::stderr(), line.as_bytes());
 }
 
 pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -91,17 +105,6 @@ fn timestamp() -> String {
     chrono::Local::now()
         .format("%Y-%m-%dT%H:%M:%S%.3f%:z")
         .to_string()
-}
-
-fn floor_boundary(s: &str, max: usize) -> usize {
-    if max >= s.len() {
-        return s.len();
-    }
-    let mut at = max;
-    while !s.is_char_boundary(at) {
-        at -= 1;
-    }
-    at
 }
 
 #[derive(Default)]
@@ -190,7 +193,8 @@ impl Pipeline {
 
     fn ingest(&self, level: Level, source: Source, target: &str, raw: &str) {
         let ts = timestamp();
-        let room = RECORD_CAP.saturating_sub(prefix(&ts, level, source, target).len());
+        // The trailing newline is part of the line.
+        let room = RECORD_CAP.saturating_sub(prefix(&ts, level, source, target).len() + 1);
         let entry = Entry {
             seq: 0,
             ts,
@@ -201,21 +205,30 @@ impl Pipeline {
         };
         let line = entry.line();
         if self.echo {
-            // The one sanctioned stderr write: debug builds echo for `pnpm tauri dev`.
-            eprint!("{line}");
+            echo(&line);
         }
         let seq = lock(&self.ring).push(entry);
         self.write(seq, level, &line);
     }
 
+    /// `room` is for the formatted line, where each `\n` becomes `\n\t`.
     fn prepare(&self, raw: &str, room: usize) -> String {
         let input = raw.get(..cut_end(raw, INPUT_CAP)).unwrap_or_default();
         let msg = self.redactor.redact(input);
         let cut = raw.len() - input.len();
-        if cut == 0 && msg.len() <= room {
+        let width = |c: char| if c == '\n' { 2 } else { c.len_utf8() };
+        if cut == 0 && msg.chars().map(width).sum::<usize>() <= room {
             return msg;
         }
-        let keep = floor_boundary(&msg, room.saturating_sub(MARKER_ROOM));
+        let budget = room.saturating_sub(MARKER_ROOM);
+        let (mut used, mut keep) = (0, 0);
+        for (i, c) in msg.char_indices() {
+            used += width(c);
+            if used > budget {
+                break;
+            }
+            keep = i + c.len_utf8();
+        }
         let dropped = msg.len() - keep + cut;
         format!(
             "{}… [truncated {dropped} bytes]",
@@ -241,7 +254,7 @@ impl Pipeline {
             msg,
         };
         if self.echo {
-            eprint!("{}", entry.line());
+            echo(&entry.line());
         }
         lock(&self.ring).push(entry);
     }
@@ -396,6 +409,15 @@ mod tests {
     }
 
     #[test]
+    fn a_multi_line_record_is_capped_on_the_formatted_line() {
+        let p = pipeline("Alice");
+        log(&p, Level::Info, "app_lib", &"a\n".repeat(RECORD_CAP));
+        let line = p.tail(0).0[0].line();
+        assert!(line.len() <= RECORD_CAP, "{}", line.len());
+        assert!(line.ends_with(" bytes]\n"));
+    }
+
+    #[test]
     fn the_input_cut_never_keeps_a_fragment_of_an_identifier() {
         let p = pipeline("Alice");
         let filler = r"C:\Users\Alice\AppData\Local\Temp ".repeat(INPUT_CAP / 34);
@@ -410,6 +432,15 @@ mod tests {
         let end = &msg[msg.len() - 80..];
         assert!(msg.starts_with("%TEMP%"), "{end}");
         assert!(!msg.contains("6f1d2c3b"), "{end}");
+    }
+
+    #[test]
+    fn a_panic_inside_the_logger_leaves_the_thread_able_to_log() {
+        let p = pipeline("Alice");
+        let caught = std::panic::catch_unwind(|| guarded(|| panic!("inside")));
+        assert!(caught.is_err());
+        log(&p, Level::Error, "app_lib", "after");
+        assert_eq!(msgs(&p), ["after"]);
     }
 
     #[test]

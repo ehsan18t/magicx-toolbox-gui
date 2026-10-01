@@ -14,7 +14,7 @@ flowchart LR
   Level["level check"] --> Format["format"] --> Redact["redact"] --> Cap["cap at 4 KiB"] --> Ring["session buffer<br/>2000 lines"]
   Cap --> File["session file<br/>(when saving is on)"]
   Ring --> Panel["Logs panel"]
-  Ring --> Export["Export diagnostics<br/>(when saving is off)"]
+  Ring --> Export["Export diagnostics<br/>(when the file lacks lines)"]
   File --> Export
 ```
 
@@ -92,7 +92,7 @@ The parent's own lines carry the same number: `TrustedInstaller broker batch #n 
 - **Every outcome** of apply, restore, keep-current-state, app removal and app install: Info `apply 'tweak' -> 'Option': <state> in N ms` on success, Warn `… refused: <ERROR_CODE>` when the request is turned away before anything runs (an availability gate, a change already in flight, the app exiting, an unknown id), Warn `… failed: <ERROR_CODE>: <message>` otherwise. Values read from or written to the registry or the hosts file are never logged.
 - **Failing scripts.** An action or app script that exits non-zero logs the last 2 KiB of its stderr (or stdout when stderr is empty) at Warn. PowerShell under `-EncodedCommand` writes stderr as CLIXML; it is decoded to plain text first. The raw output of every script is also logged at Debug, within the 4 KiB line cap.
 - **Panics** in the main process: message, location and thread name, at Error. A release build aborts right after, so the buffer and the session file are the only record.
-- **Interface errors.** `src/lib/utils/logger.ts` forwards uncaught errors and unhandled promise rejections through `log_frontend` (source `ui`, target `webview`). The client drops a message repeated within 5 seconds and sends at most 5 a second; the backend keeps at most 20 a second and reports how many it dropped in one line.
+- **Interface errors.** `src/lib/utils/logger.ts` forwards uncaught errors and unhandled promise rejections through `log_frontend` (source `ui`, target `webview`). The client drops a message repeated within 5 seconds and sends at most 5 a second; the backend keeps at most 20 a second and reports how many it dropped in one line, written once the second is over (at the next interface message, Logs panel read or export).
 
 ## Commands
 
@@ -107,7 +107,7 @@ The parent's own lines carry the same number: `TrustedInstaller broker batch #n 
 | `open_log_folder()` | Opens the logs folder. |
 | `delete_logs()` | Closes the current file, deletes every session file whose process has ended (this one's included), and starts a new file when saving is on. That new file starts empty: earlier lines of this session are not copied back. |
 
-The export starts with a header (creation time, app version, Windows build and revision, edition, architecture, elevated, the account check result, saving and Detailed on or off, any logging problem, the tweaks in Needs Attention and those with snapshot history), then every kept session file oldest first, each after a `===== <file name> =====` line. When saving is off it ends with this session's buffer. The header is redacted; the files already are.
+The export starts with a header (creation time, app version, Windows build and revision, edition, architecture, elevated, the account check result, saving and Detailed on or off, any logging problem, the tweaks in Needs Attention and those with snapshot history), then every kept session file oldest first, each after a `===== <file name> =====` line. When saving is off it ends with this session's buffer under `===== this session (not saved to disk) =====`; when saving is on but the file is not being written (a write failed, it reached 4 MiB, or it could not be opened), the buffer follows under `===== this session (not fully saved to disk) =====`. The header is redacted; the files already are.
 
 ## In the interface
 
