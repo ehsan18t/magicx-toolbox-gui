@@ -2,13 +2,10 @@
 // COMPONENT BARREL EXPORTS
 // =============================================================================
 
-// Debug components
-export * from "./debug";
-
 // Feedback components (toasts, overlays, banners)
 export * from "./feedback";
 
-// Layout components (sidebar, titlebar, window controls)
+// Layout components (sidebar, titlebar, logs panel, window controls)
 export * from "./layout";
 
 // Modal components (dialogs)

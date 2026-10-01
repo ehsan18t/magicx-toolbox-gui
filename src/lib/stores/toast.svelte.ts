@@ -12,7 +12,15 @@ export interface Toast {
   message: string;
   duration?: number;
   tweakName?: string;
+  action?: ToastAction;
 }
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
+type ToastOptions = { duration?: number; tweakName?: string; action?: ToastAction };
 
 let toasts = $state<Toast[]>([]);
 let idCounter = 0;
@@ -41,7 +49,7 @@ export const toastStore = {
   /**
    * Show a toast notification
    */
-  show(type: ToastType, message: string, options?: { duration?: number; tweakName?: string }) {
+  show(type: ToastType, message: string, options?: ToastOptions) {
     const id = generateId();
     const duration = options?.duration ?? (type === "error" ? 5000 : 3000);
 
@@ -51,6 +59,7 @@ export const toastStore = {
       message,
       duration,
       tweakName: options?.tweakName,
+      action: options?.action,
     };
 
     // Remove oldest toast(s) if at max capacity
@@ -106,19 +115,19 @@ export const toastStore = {
   },
 
   // Convenience methods
-  success(message: string, options?: { duration?: number; tweakName?: string }) {
+  success(message: string, options?: ToastOptions) {
     return this.show("success", message, options);
   },
 
-  error(message: string, options?: { duration?: number; tweakName?: string }) {
+  error(message: string, options?: ToastOptions) {
     return this.show("error", message, options);
   },
 
-  warning(message: string, options?: { duration?: number; tweakName?: string }) {
+  warning(message: string, options?: ToastOptions) {
     return this.show("warning", message, options);
   },
 
-  info(message: string, options?: { duration?: number; tweakName?: string }) {
+  info(message: string, options?: ToastOptions) {
     return this.show("info", message, options);
   },
 };

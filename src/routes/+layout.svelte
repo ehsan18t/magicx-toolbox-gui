@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { DebugPanel } from "$lib/components/debug";
   import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
-  import { TitleBar } from "$lib/components/layout";
+  import { LogsPanel, TitleBar } from "$lib/components/layout";
   import {
     AboutModal,
     ProfileExportModal,
@@ -18,6 +17,7 @@
   import { initializeQuick } from "$lib/stores/tweaksData.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { errorMessage } from "$lib/utils/error";
+  import { installErrorForwarding } from "$lib/utils/logger";
   import "@/app.css";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
@@ -36,6 +36,8 @@
   }
 
   onMount(async () => {
+    installErrorForwarding();
+
     // Show the window now that the UI is ready
     try {
       await invoke("show_main_window");
@@ -115,7 +117,7 @@
     {@render children()}
   {/if}
 </main>
-<DebugPanel />
+<LogsPanel />
 
 <!-- Global Modals -->
 <AboutModal />

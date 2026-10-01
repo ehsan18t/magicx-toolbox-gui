@@ -5,6 +5,7 @@ export * from "./components";
 export { appsStore } from "./stores/apps.svelte";
 export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme.svelte";
 export { sidebarStore } from "./stores/layout.svelte";
+export { logsStore } from "./stores/logs.svelte";
 export {
   closeModal,
   modalStore,

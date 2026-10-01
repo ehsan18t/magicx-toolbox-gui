@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ThemeToggle } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
-  import { debugState } from "$lib/stores/debug.svelte";
+  import { LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
   import { errorMessage, isAppExiting } from "$lib/utils/error";
@@ -161,37 +161,19 @@
     </div>
 
     <div class="window-controls flex items-center drag-disable">
-      <!-- Debug Toggle -->
       <button
         type="button"
-        aria-pressed={debugState.enabled}
-        use:tooltip={debugState.enabled
-          ? `Debug ON (${debugState.logCounts.total} logs) - Click to open panel`
-          : "Debug OFF - Click to enable"}
-        onclick={() => {
-          if (debugState.enabled) {
-            debugState.togglePanel();
-          } else {
-            debugState.toggle();
-            debugState.openPanel();
-          }
-        }}
-        oncontextmenu={(e) => {
-          e.preventDefault();
-          debugState.toggle();
-        }}
-        class="relative flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 hover:bg-foreground/10 {debugState.enabled
-          ? 'text-warning'
+        id={LOGS_TOGGLE_ID}
+        aria-label="Logs"
+        aria-expanded={logsStore.isPanelOpen}
+        aria-controls={LOGS_PANEL_ID}
+        use:tooltip={"Logs"}
+        onclick={() => logsStore.togglePanel()}
+        class="relative flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 hover:bg-foreground/10 {logsStore.isPanelOpen
+          ? 'text-accent'
           : 'text-foreground-muted'}"
       >
-        <Icon icon="tabler:bug" width="18" height="18" />
-        {#if debugState.enabled && debugState.logCounts.total > 0}
-          <span
-            class="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-bold text-background"
-          >
-            {debugState.logCounts.total > 99 ? "99+" : debugState.logCounts.total}
-          </span>
-        {/if}
+        <Icon icon="tabler:file-text" width="18" height="18" />
       </button>
 
       <!-- Restart as Admin button (only shown if not running as admin) -->
