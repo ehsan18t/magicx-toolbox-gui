@@ -66,8 +66,9 @@ These are the ideas every component serves. When a change seems to fight one of 
 | Persistence | Snapshot history, Needs Attention records, the action journal, crash recovery, shared claims | `src-tauri/src/tweaks/{snapshot,shared_claims}.rs` | [persistence.md](persistence.md) |
 | Elevation | Privilege levels, routing, the over-the-shoulder guard, the TrustedInstaller broker | `src-tauri/src/tweaks/engine/context.rs`, `src-tauri/src/services/elevation/` | [elevation.md](elevation.md) |
 | Commands and UI | The Tauri command surface, gates, launch sequence, frontend stores, what each state looks like | `src-tauri/src/commands/tweaks.rs`, `src/lib/stores/tweaks*.svelte.ts`, `src/lib/components/tweaks/` | [commands-and-ui.md](commands-and-ui.md) |
+| App items | Removable apps outside the tweak model: presence, Remove, Install, the install route | `src-tauri/src/apps/`, `src-tauri/src/commands/apps.rs`, `src-tauri/src/services/appx_index.rs`, `src/lib/stores/apps.svelte.ts` | [apps.md](apps.md) |
 
-Suggested reading order for someone new: this page, then corpus-and-build, detection, apply-and-restore, persistence, and the rest as needed.
+Suggested reading order for someone new: this page, then corpus-and-build, detection, apply-and-restore, persistence, and the rest as needed. App items share the build pipeline, the action runner and the per-id lock, but nothing else; read [apps.md](apps.md) on its own.
 
 ## The life of one change
 
@@ -99,6 +100,7 @@ Suggested reading order for someone new: this page, then corpus-and-build, detec
 | Elevation level | `user`, `admin` or `ti` (TrustedInstaller). Declared per tweak, refinable per effect, escalate-only. |
 | Milestone | One of the Windows builds the validator proves the corpus against: 19045, 22621, 22631 and 26100. |
 | Residue | An action's effect that is still present but that the active option does not run and cannot undo. Shown, not treated as a mismatch. |
+| App item | A removable app authored under `apps:`. Has a presence (Installed, Absent, Unknown) and Remove and Install actions; no options, no snapshot (ADR-0009). Not a tweak. |
 
 ## Safety decisions
 
@@ -114,6 +116,7 @@ The ADRs record the decisions that hold the system together. Each doc in this fo
 | [0006](../../adr/0006-one-address-one-owner-shared-state-is-declared-and-refcounted.md) | Each Windows address has one owner in the corpus. Genuine sharing is a declared, reference-counted claim. |
 | [0007](../../adr/0007-option-snapshots-are-references-restore-reapplies-the-current-definition.md) | An option snapshot is a reference. Restore re-applies the option as the current corpus defines it. |
 | [0008](../../adr/0008-one-build-line-per-snapshots-folder-downgrades-are-unsupported.md) | One build line per snapshots folder. An older build over a newer folder is unsupported. |
+| [0009](../../adr/0009-app-items-are-outside-the-snapshot-model.md) | Removable apps are app items, not tweaks: presence plus Remove and Install, with no snapshot or Restore. |
 
 ## Related documents
 

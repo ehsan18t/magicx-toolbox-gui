@@ -26,8 +26,11 @@ Run one test at a time (the app refuses a second run while one is going). When a
 | `child_job_object` | No (nothing persists) | Spawns a no-op TrustedInstaller child and reports whether it inherits a job object, via `IsProcessInJob`. |
 | `system_only_environment` | Yes, for a few seconds | Applies `block_update_pipeline` with the child launched under a minimal machine-only environment, checks the scheduler COM calls still verify, then restores. |
 | `systemtemp_transport` | Yes, for a few seconds | Applies `block_update_pipeline` with the broker request and response routed through `%SystemRoot%\SystemTemp`, then restores. |
+| `feedback_hub_round_trip` | Yes, for a minute or two | Removes Feedback Hub through the same path as an app item's Remove button, checks it reads absent, then reinstalls it through winget from the Microsoft Store through the same path as Install, and checks it reads installed. Reports both timings. |
 
 The four tests that apply the tweak refuse to start, before changing anything, if the app is not elevated, if `block_update_pipeline` already has snapshot entries, if it shows Needs Attention, or if it is being changed right now. They ask for confirmation first. `debug_privilege_needed` and `child_job_object` change nothing persistent, but they still need the app to be elevated (they start the TrustedInstaller service and spawn a no-op elevated child).
+
+`feedback_hub_round_trip` carries its own Feedback Hub definition (package `Microsoft.WindowsFeedbackHub`, Store id `9NBLGGH4R32N`), so it runs on any build whatever the corpus holds. It refuses to start, before removing anything, if the app is not elevated, if winget is not available for this account, or if Feedback Hub is not installed. The reinstall lands only in the account running the app; other accounts on the PC, and new accounts, do not get it back. If the reinstall fails, install Feedback Hub from the Microsoft Store by hand.
 
 If a restore fails or leaves an effect different from the baseline, the result says so in capitals and lists every differing effect. The engine keeps the snapshot in that case: open the "Block the Windows Update pipeline" card, which shows Needs Attention, and restore from there. Never delete that snapshot by hand. Closing the app during a watch leaves the tweak applied with its snapshot in place, so the card can restore it the same way.
 
@@ -38,7 +41,7 @@ Everything lives in `src-tauri/src/manual_tests/`, which is compiled only with t
 1. Write the test as a function `fn(&Ctx) -> Verdict`, usually in `cases.rs`. Log each step with `cx.info(...)` and each error with `cx.error(...)`; both reach the log file, the live view and the report. Return `Verdict::pass`, `Verdict::fail` or `Verdict::info`, optionally `.with_details(...)`. A test that loops should check `cx.sleep(...)` or `cx.cancelled()` so Cancel works.
 2. Add one entry to `TESTS` in `src-tauri/src/manual_tests/mod.rs`: `id`, `title`, `description`, `changes` (plain words for the user), `changes_system` (puts Run behind a confirmation), `minutes` (`Some(default)` shows a duration field) and `run`.
 
-The frontend lists whatever `TESTS` holds, so no frontend change is needed. Use the app's production paths only (the engine, the command layer's `apply_gated`/`restore_gated` through `cx.host`, the service modules). Do not add operations or diagnostics to the elevated broker child. For errors, log the typed chain with the helpers in `errors.rs` rather than raw broker text, which can carry temp paths and the transport nonce.
+The frontend lists whatever `TESTS` holds, so no frontend change is needed. Use the app's production paths only (the engine, the command layer's `apply_gated`/`restore_gated` and, for app items, `remove_gated`/`install_gated` through `cx.host`, the service modules). Do not add operations or diagnostics to the elevated broker child. For errors, log the typed chain with the helpers in `errors.rs` rather than raw broker text, which can carry temp paths and the transport nonce.
 
 ## The elevation probes
 

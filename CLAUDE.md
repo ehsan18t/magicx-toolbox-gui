@@ -91,7 +91,7 @@ explicitly with `cargo test -- --ignored`.
   log at entry) and register in `lib.rs` via `generate_handler!`.
 - Errors: `thiserror`, propagate with `?`. Logging: the `log` crate **only** — never
   `println!` / `eprintln!`. Lock mutexes minimally; don't block the main thread or hardcode paths.
-- **Privileged operations run through the typed elevation broker** (`services/elevation/`), never by composing shell strings: `admin` runs in-process in the elevated app; `ti` re-spawns the app under a TrustedInstaller token and runs typed `BrokerOp`s through the same effect services. Registry via `RegSetValueExW`, services via `windows-sys` SCM, scheduler via `windows` COM. `BrokerOp` carries no script variant: PowerShell runs only through the `action` effect kind (`tweaks/kinds/action.rs`), never through the broker.
+- **Privileged operations run through the typed elevation broker** (`services/elevation/`), never by composing shell strings: `admin` runs in-process in the elevated app; `ti` re-spawns the app under a TrustedInstaller token and runs typed `BrokerOp`s through the same effect services. Registry via `RegSetValueExW`, services via `windows-sys` SCM, scheduler via `windows` COM. `BrokerOp` carries no script variant: PowerShell runs only through the `action` effect kind (`tweaks/kinds/action.rs`) and app items (`apps/`, on the same runner), never through the broker.
 - **The "did-it-work" contract:** a failed privileged or effect operation must surface as `Err`, never
   a benign-looking value. Registry reads must distinguish *not-found* from *access-denied*. Never
   `let _ =` a privileged call.
@@ -130,8 +130,9 @@ explicitly with `cargo test -- --ignored`.
   options → segmented switch, 3+ → dropdown; you never author "System Default", it is the computed state when
   the live surface matches no option. `optional: true` (with an optional `if_missing:`) tolerates a
   *missing* resource at capture and detect; it does not weaken the post-apply verify.
+- **Removable apps are app items** (`apps:` beside `tweaks:`, ADR-0009), never a tweak with a removal `action:`: presence plus Remove and Install, no options, no snapshot, no Restore. A script item's `probe` exits 0 installed, 2 absent; anything else is Unknown, so never `exit 2` from a `catch`.
 - **When tweak runtime behavior changes, update `docs/TWEAK_AUTHORING.md`**, the authoritative author guide. `docs/architecture/tweak/` is the architecture reference: update the matching page when a component's behaviour changes.
-- **When a tweak changes (effect, option, value, gate, risk), update its entry in `docs/tweaks/<category>.md` in the same commit.** The wiki is the complete per-tweak reference; the YAML stays lean. Adding a tweak adds an entry and an index row in `docs/tweaks/README.md`; removing one moves it to "Considered and not shipped".
+- **When a tweak changes (effect, option, value, gate, risk), update its entry in `docs/tweaks/<category>.md` in the same commit.** The wiki is the complete per-tweak reference; the YAML stays lean. Adding a tweak adds an entry and an index row in `docs/tweaks/README.md`; removing one moves it to "Considered and not shipped", except a tweak converted to an app item, whose entry moves to its page's Apps section and whose row moves to the app index.
 
 ## Dependencies
 
