@@ -11,8 +11,8 @@
  * - Result caching to avoid redundant searches
  */
 
+import { appsStore } from "$lib/stores/apps.svelte";
 import { tweaksStore } from "$lib/stores/tweaks.svelte";
-import type { TweakWithStatus } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
 import uFuzzy from "@leeoniya/ufuzzy";
 
@@ -20,8 +20,10 @@ import uFuzzy from "@leeoniya/ufuzzy";
 
 /** A search result with match information */
 export interface SearchResult {
-  /** The tweak ID */
-  tweakId: string;
+  /** Apps only render as cards; apply, discard and restore flows read tweak results alone. */
+  kind: "tweak" | "app";
+  /** Tweak or app id (unique across both) */
+  id: string;
   /** Category ID for navigation */
   categoryId: string;
   /** The original haystack index */
@@ -38,8 +40,9 @@ export interface SearchResult {
 interface HaystackEntry {
   /** Combined searchable text: "name | description | info" */
   searchText: string;
-  /** Original tweak reference */
-  tweak: TweakWithStatus;
+  kind: SearchResult["kind"];
+  id: string;
+  categoryId: string;
   /** Pre-computed field boundaries for highlight extraction */
   nameEnd: number;
   descEnd: number;
@@ -90,13 +93,13 @@ const DEBOUNCE_DELAY = 200;
 
 // === Haystack Cache ===
 
-/** Cached haystack data - rebuilt when tweaks change */
+/** Cached haystack data - rebuilt when tweaks or apps change */
 let haystackCache: {
   /** Array of searchable strings for uFuzzy */
   strings: string[];
   /** Parallel array of metadata */
   entries: HaystackEntry[];
-  /** Tweaks list hash to detect changes */
+  /** Tweak and app list hash to detect changes */
   tweaksHash: string;
 } | null = null;
 
@@ -111,7 +114,8 @@ function getHaystack(): { strings: string[]; entries: HaystackEntry[] } {
   // Create a composite hash of length + version to detect any changes
   // version increments on status updates or reloads
   // Use string concatenation to avoid arithmetic collisions (e.g., 10+5 vs 11+4)
-  const tweaksHash = `${tweaks.length}-${tweaksStore.version}`;
+  const apps = appsStore.list;
+  const tweaksHash = `${tweaks.length}-${tweaksStore.version}-${apps.length}-${appsStore.version}`;
 
   // Return cached if still valid
   if (haystackCache && haystackCache.tweaksHash === tweaksHash) {
@@ -122,11 +126,26 @@ function getHaystack(): { strings: string[]; entries: HaystackEntry[] } {
   const strings: string[] = [];
   const entries: HaystackEntry[] = [];
 
-  for (const tweak of tweaks) {
-    const name = tweak.definition.name;
-    const description = tweak.definition.description || "";
-    const info = tweak.definition.info || "";
+  const items = [
+    ...tweaks.map(({ definition: d }) => ({
+      kind: "tweak" as const,
+      id: d.id,
+      categoryId: d.category_id,
+      name: d.name,
+      description: d.description || "",
+      info: d.info || "",
+    })),
+    ...apps.map((a) => ({
+      kind: "app" as const,
+      id: a.id,
+      categoryId: a.category,
+      name: a.name,
+      description: a.description || "",
+      info: a.info || "",
+    })),
+  ];
 
+  for (const { name, description, info, ...item } of items) {
     // Combine fields with separator for single-string search
     // Format: "name | description | info"
     const searchText = `${name} | ${description} | ${info}`;
@@ -134,7 +153,7 @@ function getHaystack(): { strings: string[]; entries: HaystackEntry[] } {
     strings.push(searchText);
     entries.push({
       searchText,
-      tweak,
+      ...item,
       nameEnd: name.length,
       descEnd: name.length + 3 + description.length, // +3 for " | "
     });
@@ -326,8 +345,9 @@ export const searchStore = {
           const fieldRanges = extractFieldRanges(ranges, entry);
 
           searchResults.push({
-            tweakId: entry.tweak.definition.id,
-            categoryId: entry.tweak.definition.category_id,
+            kind: entry.kind,
+            id: entry.id,
+            categoryId: entry.categoryId,
             haystackIndex: haystackIdx,
             ...fieldRanges,
           });
@@ -339,8 +359,9 @@ export const searchStore = {
           const entry = entries[haystackIdx];
 
           searchResults.push({
-            tweakId: entry.tweak.definition.id,
-            categoryId: entry.tweak.definition.category_id,
+            kind: entry.kind,
+            id: entry.id,
+            categoryId: entry.categoryId,
             haystackIndex: haystackIdx,
             nameRanges: [],
             descriptionRanges: [],

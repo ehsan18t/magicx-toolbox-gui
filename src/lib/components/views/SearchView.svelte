@@ -2,8 +2,9 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { TweakCard } from "$lib/components/tweaks";
+  import { AppCard, TweakCard } from "$lib/components/tweaks";
   import { ActionButton, EmptyState, HighlightedText } from "$lib/components/ui";
+  import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -16,8 +17,8 @@
     pendingChangesStore,
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
-  import type { TweakWithStatus } from "$lib/types";
-  import { onDestroy, tick } from "svelte";
+  import type { AppView, TweakWithStatus } from "$lib/types";
+  import { onDestroy, tick, untrack } from "svelte";
 
   // Initialize from store to persist across page changes
   let searchInput = $state(searchStore.query);
@@ -40,47 +41,45 @@
   });
   let isBatchProcessing = $state(false);
 
+  // Results are cached per query, so re-run once the app model lands after a search.
+  $effect(() => {
+    if (appsStore.version > 0) untrack(() => searchStore.isActive && searchStore.search());
+  });
+
   // Search results from store
   const results = $derived(searchStore.results);
   const isSearching = $derived(searchStore.isSearching);
-  const hasResults = $derived(searchStore.hasResults);
-  const resultCount = $derived(searchStore.resultCount);
   const error = $derived(searchStore.error);
   const isActive = $derived(searchStore.isActive);
 
   // Check if tweaks are still loading
   const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
 
-  /** Mapped search result with tweak data and highlight info */
-  interface MappedResult {
-    tweak: TweakWithStatus;
-    categoryName: string;
-    searchResult: SearchResult;
-  }
+  /** Mapped search result with tweak or app data and highlight info */
+  type MappedResult = { categoryName: string; searchResult: SearchResult } & (
+    { kind: "tweak"; tweak: TweakWithStatus } | { kind: "app"; app: AppView }
+  );
 
-  // Map search results to TweakWithStatus for rendering
-  const searchResultTweaks = $derived.by((): MappedResult[] => {
-    if (!results.length) return [];
-
-    const mappedResults: MappedResult[] = [];
-
+  const mappedResults = $derived.by((): MappedResult[] => {
+    const mapped: MappedResult[] = [];
     for (const result of results) {
-      const tweak = tweaksStore.getById(result.tweakId);
-      if (tweak) {
-        const category = categoriesStore.list.find((c) => c.id === result.categoryId);
-        mappedResults.push({
-          tweak,
-          categoryName: category?.name || result.categoryId,
-          searchResult: result,
-        });
+      const categoryName = categoriesStore.getName(result.categoryId);
+      if (result.kind === "tweak") {
+        const tweak = tweaksStore.getById(result.id);
+        if (tweak) mapped.push({ kind: "tweak", tweak, categoryName, searchResult: result });
+      } else if (appsStore.isVisible(result.id)) {
+        const app = appsStore.list.find((a) => a.id === result.id);
+        if (app) mapped.push({ kind: "app", app, categoryName, searchResult: result });
       }
     }
-
-    return mappedResults;
+    return mapped;
   });
 
-  // Get all tweaks from search results for stats
-  const resultTweaks = $derived(searchResultTweaks.map((r) => r.tweak));
+  const hasResults = $derived(mappedResults.length > 0);
+  const resultCount = $derived(mappedResults.length);
+
+  // Apply, discard and restore act on tweak results only.
+  const resultTweaks = $derived(mappedResults.flatMap((r) => (r.kind === "tweak" ? [r.tweak] : [])));
 
   // Tweaks with snapshots (can be restored)
   const tweaksWithSnapshots = $derived(resultTweaks.filter((t) => t.status.has_backup));
@@ -120,10 +119,10 @@
     searchStore.clear();
   }
 
-  // Navigate to tweak's category and scroll to it
-  function navigateToTweak(tweakId: string, categoryId: string) {
+  // Navigate to the item's category and scroll to it
+  function navigateToItem({ kind, id, categoryId }: SearchResult) {
     // Set highlight for visual feedback
-    searchStore.setHighlight(tweakId);
+    searchStore.setHighlight(id);
 
     // Navigate to the category
     navigationStore.navigateToCategory(categoryId);
@@ -140,7 +139,7 @@
 
     scrollRaf = requestAnimationFrame(() => {
       scrollTimer = setTimeout(() => {
-        const element = document.getElementById(`tweak-${tweakId}`);
+        const element = document.getElementById(`${kind}-${id}`);
         if (element) {
           element.scrollIntoView({ behavior: "smooth", block: "center" });
         }
@@ -211,7 +210,7 @@
       </div>
       <div>
         <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Search</h1>
-        <p class="mt-1 mb-0 text-sm text-foreground-muted">Find tweaks by name, description, or info</p>
+        <p class="mt-1 mb-0 text-sm text-foreground-muted">Find tweaks and apps by name, description, or info</p>
       </div>
     </div>
 
@@ -239,7 +238,7 @@
       <input
         bind:this={searchInputRef}
         type="text"
-        placeholder="Search tweaks... (Ctrl+K)"
+        placeholder="Search tweaks and apps... (Ctrl+K)"
         value={searchInput}
         oninput={(e) => handleSearchInput(e.currentTarget.value)}
         class="flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-subtle"
@@ -249,6 +248,7 @@
           type="button"
           class="hover:bg-muted flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:text-foreground"
           onclick={handleClear}
+          aria-label="Clear search"
         >
           <Icon icon="mdi:close" width="16" />
         </button>
@@ -316,7 +316,7 @@
       <EmptyState
         icon="mdi:text-search"
         title="Start Searching"
-        description="Enter a search term to find tweaks across all categories"
+        description="Enter a search term to find tweaks and apps across all categories"
       />
     {:else if isSearching}
       <!-- Searching state -->
@@ -326,44 +326,48 @@
       <EmptyState
         icon="mdi:file-search-outline"
         title="No results found"
-        description={`No tweaks match "${searchStore.query}"`}
+        description={`Nothing matches "${searchStore.query}"`}
         actionText="Clear search"
         onaction={handleClear}
       />
     {:else}
       <!-- Results grid -->
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
-        {#each searchResultTweaks as { tweak, categoryName, searchResult } (tweak.definition.id)}
+        {#each mappedResults as result (result.searchResult.id)}
+          {@const searchResult = result.searchResult}
           <div class="search-result-card flex flex-col">
-            <TweakCard {tweak}>
-              {#snippet titleSlot()}
-                <HighlightedText
-                  text={tweak.definition.name}
-                  ranges={searchResult.nameRanges}
-                  highlightClass="bg-accent/25 dark:text-accent-foreground/90 rounded"
-                />
-              {/snippet}
-              {#snippet descriptionSlot()}
-                <HighlightedText
-                  text={tweak.definition.description || ""}
-                  ranges={searchResult.descriptionRanges}
-                  highlightClass="bg-accent/25 dark:text-accent-foreground/90 font-semibold rounded"
-                />
-              {/snippet}
-            </TweakCard>
+            {#if result.kind === "tweak"}
+              <TweakCard tweak={result.tweak}>
+                {#snippet titleSlot()}
+                  {@render highlightedName(result.tweak.definition.name, searchResult)}
+                {/snippet}
+                {#snippet descriptionSlot()}
+                  {@render highlightedDescription(result.tweak.definition.description, searchResult)}
+                {/snippet}
+              </TweakCard>
+            {:else}
+              <AppCard app={result.app}>
+                {#snippet titleSlot()}
+                  {@render highlightedName(result.app.name, searchResult)}
+                {/snippet}
+                {#snippet descriptionSlot()}
+                  {@render highlightedDescription(result.app.description, searchResult)}
+                {/snippet}
+              </AppCard>
+            {/if}
             <!-- Category badge & navigate button at bottom -->
             <div class="mt-auto flex items-center justify-between gap-2 border-t border-border/30 px-4 py-2.5">
               <span
                 class="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
               >
                 <Icon icon="mdi:folder" width="12" />
-                {categoryName}
+                {result.categoryName}
               </span>
               <button
                 type="button"
                 class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground transition-all duration-200 hover:border-accent hover:bg-accent/10 hover:text-accent"
-                onclick={() => navigateToTweak(tweak.definition.id, tweak.definition.category_id)}
-                use:tooltip={"Navigate to tweak location"}
+                onclick={() => navigateToItem(searchResult)}
+                use:tooltip={"Navigate to location"}
               >
                 <Icon icon="mdi:arrow-right-circle" width="14" />
                 Go to location
@@ -375,6 +379,22 @@
     {/if}
   </div>
 </div>
+
+{#snippet highlightedName(text: string, searchResult: SearchResult)}
+  <HighlightedText
+    {text}
+    ranges={searchResult.nameRanges}
+    highlightClass="bg-accent/25 dark:text-accent-foreground/90 rounded"
+  />
+{/snippet}
+
+{#snippet highlightedDescription(text: string, searchResult: SearchResult)}
+  <HighlightedText
+    text={text || ""}
+    ranges={searchResult.descriptionRanges}
+    highlightClass="bg-accent/25 dark:text-accent-foreground/90 font-semibold rounded"
+  />
+{/snippet}
 
 <!-- Dialogs -->
 <ConfirmDialog

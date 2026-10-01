@@ -2,6 +2,7 @@
 export * from "./components";
 
 // Stores (Svelte 5 runes-based)
+export { appsStore } from "./stores/apps.svelte";
 export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme.svelte";
 export { sidebarStore } from "./stores/layout.svelte";
 export {

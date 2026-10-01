@@ -407,6 +407,36 @@ export interface RestoreOutcome {
   skipped_invalid: EntrySummary[];
 }
 
+/** A curated removable app (`get_apps`). Not a tweak: no options, no snapshot (ADR-0009). */
+export interface AppView {
+  id: string;
+  name: string;
+  description: string;
+  info: string | null;
+  warning: string | null;
+  category: string;
+  risk: BackendRiskLevel;
+  install: { kind: "store" | "winget" | "store_page"; id: string } | null;
+  remove_availability: Availability;
+  install_availability: Availability;
+}
+
+/** Unknown is never Absent: an unreadable app stays visible with its actions disabled. */
+export type AppPresence =
+  | { state: "installed"; provisioned_only: boolean }
+  | { state: "absent" }
+  | { state: "unknown"; reason: string; needs_elevation: boolean };
+
+/** How this machine can reinstall the app; "none" makes a removal permanent. */
+export type InstallRoute = "winget" | "store_page" | "none";
+
+export interface AppStatusView {
+  app_id: string;
+  presence: AppPresence;
+  install_route: InstallRoute;
+  stamp: number;
+}
+
 /** Category definition (derived on the frontend from the tweaks' category strings). */
 export interface CategoryDefinition {
   id: string;
