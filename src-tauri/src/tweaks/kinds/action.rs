@@ -1,45 +1,8 @@
-//! `ActionKind`: apply/undo/probe for imperative `Action` effects (spec §5.5/§7), meaning free-form
-//! `cmd`/`powershell` scripts plus the one structural op, `DeleteTree`. Not an `EffectKind` impl,
-//! because Actions are not `Setting`s (see `kinds/mod.rs` on the `Effect`/`Setting`/`Action` split).
-//!
-//! ## Level gating mirrors every other kind's read/drive split
-//! `run_apply`/`run_undo` mutate state, so they [`guard_level`] and reject `Ti`: no
-//! `BrokerOp` carries a script, so there is nothing to route them to. `run_probe` only observes
-//! state (spec §7: "state-based, never history-based"), so like every `read` it never gates on
-//! `cx.level()` and always runs in-process.
-//!
-//! ## No-undo / no-probe contract
-//! `run_undo` without an `undo`, and `run_probe` without a `probe` (which includes every
-//! `DeleteTree`, since it has no `probe` field), return `Error::Invalid`, never `Ok(())`/
-//! `Ok(false)`. The engine is expected to check presence before calling; if it does not, the call
-//! must still never lie about having done something.
-//!
-//! ## `DeleteTree` reuses the hardened registry delete, verbatim
-//! `run_apply` on `DeleteTree` goes through [`RegistryKind::delete_tree`], guards included. Unlike a
-//! `registry_key` driven absent, it deletes a subtree that holds values: its `undo` owns restoring
-//! them. That `undo` has no `shell` field, so it always runs as PowerShell.
-//!
-//! ## Timeout, and the process tree it actually bounds
-//! Rust's std has no built-in process timeout, so [`wait_with_timeout`] hand-rolls one: poll
-//! `Child::try_wait` up to a bound, then `kill()` + `wait()` (reaping so no orphan remains) on
-//! expiry — a typed [`Error::ActionExecFailed`], never a benign value (spec §14, invariant 2).
-//! stdout/stderr are drained on background threads throughout (logged, never parsed
-//! for success). `kill()` alone only reaches the immediate child's pid, though — a script that
-//! spawns a detached grandchild inheriting the piped stdout/stderr handle could otherwise keep
-//! that drain thread's `read_to_end` blocked well past the bound. Every child is therefore bound
-//! into a fresh [`KillOnCloseJob`] (a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`)
-//! right after spawn; closing it (every exit path — success, timeout, or wait-error — does, before
-//! joining the drain threads) terminates the whole tree, so "bounded" is a real guarantee on
-//! everything the action started, not just what we can see the pid of.
-//!
-//! ## Hardening the Cmd temp-script path against local tampering
-//! A Cmd script must reach disk (`cmd.exe` has no `-EncodedCommand` equivalent), and `%TEMP%` is
-//! writable by every process running as this user. [`ExclusiveTempFile`] is what makes that safe;
-//! see its module docs for the three guards. The value is kept alive until the child has exited,
-//! so the lock covers the whole execution.
-//!
-//! ## Encoding
-//! [`base64_encode`] is local to this file and the only copy.
+//! `ActionKind`: apply/undo/probe for `Action` effects (spec §5.5/§7); not an `EffectKind`, as Actions are not `Setting`s.
+//! Apply/undo [`guard_level`] and reject `Ti` (no `BrokerOp` carries a script); probe is a read and never gates on level.
+//! A missing `undo` or `probe` is `Error::Invalid`, never `Ok`. The exit code is the only success signal; output is logged, never parsed.
+//! `kill()` reaches one pid: every child runs in a [`KillOnCloseJob`], so the timeout bounds the whole tree and the pipe drains end.
+//! A Cmd script reaches `%TEMP%` through [`ExclusiveTempFile`] (user-writable), held until the child exits.
 
 use std::io::Read;
 use std::os::windows::io::AsRawHandle;
@@ -228,16 +191,14 @@ fn readable(stream: &str) -> String {
         .to_string()
 }
 
+/// Starts past a separator: a fragment of a SID or path would slip past redaction.
 fn tail_of(text: &str) -> &str {
-    let mut at = text.len().saturating_sub(TAIL_BYTES);
-    while !text.is_char_boundary(at) {
-        at += 1;
-    }
-    text.get(at..).unwrap_or_default()
+    let at = crate::logging::redact::cut_start(text, text.len().saturating_sub(TAIL_BYTES));
+    text.get(at..).unwrap_or_default().trim_start()
 }
 
-/// Runs one script body to completion (or until `timeout` kills it), returning its raw exit code —
-/// the sole, locale-independent success/failure signal (spec §7). Never interprets stdout.
+/// Runs one script body to completion or until `timeout` kills it. `code` is the sole,
+/// locale-independent success signal (spec §7); output is never interpreted.
 pub(crate) fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
     match shell {
         Shell::PowerShell => wait_with_timeout(spawn_powershell(body)?, timeout),
@@ -298,10 +259,8 @@ fn spawn(mut cmd: Command, args: &[&str]) -> Result<Child, Error> {
     })
 }
 
-/// Waits for `child`, killing + reaping it if `timeout` elapses first — std has no built-in
-/// process timeout (spec §14). stdout/stderr are drained concurrently on background threads
-/// (logged, spec §14's "captured for logging") so a chatty script can never deadlock
-/// against a full OS pipe buffer while the loop below only polls exit status.
+/// Polls `child` until it exits or `timeout` passes, then kills and reaps it (std has no process
+/// timeout, spec §14). The pipes drain on threads, so a chatty script cannot block on a full pipe.
 fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<ScriptRun, Error> {
     // Bind `child` into its kill-on-close job before anything else, so a fast-spawning grandchild
     // cannot start outside it. Either step failing kills the child: fail closed, never unmonitored.
@@ -356,7 +315,6 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<ScriptRun, E
         t.map(|t| t.join().unwrap_or_default()).unwrap_or_default()
     };
     let (stdout, stderr) = (joined(out), joined(err));
-    let stderr = readable(&stderr);
     let shown = if stderr.is_empty() { &stdout } else { &stderr };
     status.map(|s| ScriptRun {
         code: s.code().unwrap_or(-1),
@@ -429,8 +387,8 @@ impl Drop for KillOnCloseJob {
     }
 }
 
-/// Drains a pipe on a background thread, logs it at Debug and returns it -- output is for
-/// diagnostics only, never parsed for success (spec §7/§14: the exit code is the sole signal).
+/// Drains a pipe on a background thread, logs it at Debug and returns it decoded: raw CLIXML glues
+/// `_x000D_` to names and defeats redaction. Never parsed for success (spec §7/§14).
 fn drain_to_log(
     mut pipe: impl Read + Send + 'static,
     stream: &'static str,
@@ -440,7 +398,7 @@ fn drain_to_log(
         if pipe.read_to_end(&mut buf).is_err() {
             return String::new();
         }
-        let text = String::from_utf8_lossy(&buf).trim().to_string();
+        let text = readable(String::from_utf8_lossy(&buf).trim());
         if !text.is_empty() {
             log::debug!("action {stream}: {text}");
         }
@@ -713,6 +671,21 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
         let raw = "#< CLIXML\r\nraw line\r\n<Objs Version=\"1.1.0.1\"><Obj S=\"progress\" RefId=\"0\"><AV>Preparing modules</AV></Obj><S S=\"Error\">bad &lt;x&gt;_x000D__x000A_</S><S S=\"Error\">  + Id : E_x000D__x000A_</S></Objs>";
         assert_eq!(readable(raw), "raw line\r\nbad <x>\r\n  + Id : E");
         assert_eq!(readable("plain"), "plain");
+    }
+
+    #[test]
+    fn the_output_tail_keeps_no_fragment_of_an_identifier() {
+        let text = format!("S-1-5-21-111-222-333-1001\r\n{}", "w ".repeat(1012));
+        assert_eq!(tail_of(&text), "w ".repeat(1012));
+    }
+
+    #[test]
+    fn logged_error_output_is_decoded() {
+        let raw = "#< CLIXML\r\n<Objs Version=\"1.1.0.1\"><S S=\"Error\">no Alice_x000D__x000A_</S></Objs>";
+        let text = drain_to_log(std::io::Cursor::new(raw.as_bytes().to_vec()), "stderr")
+            .join()
+            .unwrap();
+        assert_eq!(text, "no Alice");
     }
 
     #[test]

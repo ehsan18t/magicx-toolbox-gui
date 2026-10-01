@@ -44,18 +44,85 @@ fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+/// PowerShell's CLIXML `_x000D_` escape glued to a name.
+fn is_clixml_escape(s: &[u8]) -> bool {
+    s.len() == 7
+        && s.starts_with(b"_x")
+        && s[6] == b'_'
+        && s[2..6].iter().all(u8::is_ascii_hexdigit)
+}
+
+/// Longest identifier a cut can split: a SID, a GUID, a profile folder.
+pub const FRAGMENT_SPAN: usize = 64;
+
+fn is_separator(c: char) -> bool {
+    c.is_whitespace() || r#"\/"'(),;<>[]{}|="#.contains(c)
+}
+
+fn floor_char(text: &str, at: usize) -> usize {
+    (0..=at.min(text.len()))
+        .rev()
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(0)
+}
+
+fn ceil_char(text: &str, at: usize) -> usize {
+    (at.min(text.len())..=text.len())
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(text.len())
+}
+
+/// Where to end text cut at `at`: after the last separator within [`FRAGMENT_SPAN`] bytes, else
+/// that span earlier, so no fragment of an identifier survives to dodge redaction.
+pub fn cut_end(text: &str, at: usize) -> usize {
+    if at >= text.len() {
+        return text.len();
+    }
+    let at = floor_char(text, at);
+    if text[at..].starts_with(is_separator) {
+        return at;
+    }
+    let from = floor_char(text, at.saturating_sub(FRAGMENT_SPAN));
+    text[from..at]
+        .char_indices()
+        .rev()
+        .find(|(_, c)| is_separator(*c))
+        .map_or(from, |(i, c)| from + i + c.len_utf8())
+}
+
+/// Where to start text cut at `at`: the mirror of [`cut_end`].
+pub fn cut_start(text: &str, at: usize) -> usize {
+    if at == 0 {
+        return 0;
+    }
+    let at = ceil_char(text, at);
+    if text[..at].ends_with(is_separator) {
+        return at;
+    }
+    let to = ceil_char(text, at + FRAGMENT_SPAN);
+    text[at..to]
+        .char_indices()
+        .find(|(_, c)| is_separator(*c))
+        .map_or(to, |(i, c)| at + i + c.len_utf8())
+}
+
 impl Literal {
     fn fits(&self, hay: &str, at: usize) -> bool {
         let end = at + self.lower.len();
+        let bytes = hay.as_bytes();
         let after = || {
-            hay.get(end..)
-                .and_then(|s| s.chars().next())
-                .is_some_and(is_word)
+            !bytes.get(end..end + 7).is_some_and(is_clixml_escape)
+                && hay
+                    .get(end..)
+                    .and_then(|s| s.chars().next())
+                    .is_some_and(is_word)
         };
         let before = || {
-            hay.get(..at)
-                .and_then(|s| s.chars().next_back())
-                .is_some_and(is_word)
+            !(at >= 7 && is_clixml_escape(&bytes[at - 7..at]))
+                && hay
+                    .get(..at)
+                    .and_then(|s| s.chars().next_back())
+                    .is_some_and(is_word)
         };
         match self.kind {
             #[cfg(any(test, feature = "test-build"))]
@@ -111,7 +178,6 @@ impl Identity {
     /// The session account comes from WTS as a string: `LookupAccountNameW` can block on a domain.
     pub fn from_machine() -> Self {
         use crate::tweaks::engine::context::{RealSidProbe, SidProbe};
-        let env = |var: &str| std::env::var(var).ok();
         let mut paths = Vec::new();
         if let Some(dir) = std::env::current_exe()
             .ok()
@@ -119,18 +185,8 @@ impl Identity {
         {
             paths.push((dir, "<app-dir>"));
         }
-        for (var, label) in [
-            ("USERPROFILE", "%USERPROFILE%"),
-            ("LOCALAPPDATA", "%LOCALAPPDATA%"),
-            ("APPDATA", "%APPDATA%"),
-            ("TEMP", "%TEMP%"),
-            ("TMP", "%TEMP%"),
-        ] {
-            paths.extend(env(var).map(|v| (v, label)));
-        }
-        let mut names: Vec<(String, &'static str)> = Vec::new();
-        names.extend(env("USERNAME").map(|v| (v, "<user>")));
-        names.extend(env("COMPUTERNAME").map(|v| (v, "<computer>")));
+        let (env_paths, mut names) = env_literals(&|var| std::env::var(var).ok());
+        paths.extend(env_paths);
         if let Some(account) = RealSidProbe.session_account_name() {
             if let Some((_, user)) = account.rsplit_once('\\') {
                 names.push((user.to_string(), "<user>"));
@@ -144,6 +200,36 @@ impl Identity {
         );
         Self { paths, names, ids }
     }
+}
+
+type Literals = Vec<(String, &'static str)>;
+
+/// A OneDrive folder names the organisation; USERDOMAIN equals COMPUTERNAME on a local account.
+fn env_literals(env: &dyn Fn(&str) -> Option<String>) -> (Literals, Literals) {
+    let mut paths = Vec::new();
+    for (var, label) in [
+        ("USERPROFILE", "%USERPROFILE%"),
+        ("LOCALAPPDATA", "%LOCALAPPDATA%"),
+        ("APPDATA", "%APPDATA%"),
+        ("TEMP", "%TEMP%"),
+        ("TMP", "%TEMP%"),
+        ("OneDrive", "%OneDrive%"),
+        ("OneDriveCommercial", "%OneDrive%"),
+        ("OneDriveConsumer", "%OneDrive%"),
+    ] {
+        paths.extend(env(var).map(|v| (v, label)));
+    }
+    let mut names = Vec::new();
+    names.extend(env("USERNAME").map(|v| (v, "<user>")));
+    let computer = env("COMPUTERNAME");
+    names.extend(env("USERDNSDOMAIN").map(|v| (v, "<domain>")));
+    names.extend(
+        env("USERDOMAIN")
+            .filter(|d| computer.as_ref().is_none_or(|c| !c.eq_ignore_ascii_case(d)))
+            .map(|v| (v, "<domain>")),
+    );
+    names.extend(computer.map(|v| (v, "<computer>")));
+    (paths, names)
 }
 
 pub struct Redactor {
@@ -199,20 +285,29 @@ impl Redactor {
         let regex = |pattern: &str| Regex::new(pattern).expect("constant pattern");
         Self {
             literals,
-            sid: regex(r"(?i)S-1-5-21-\d+-\d+-\d+-\d+|S-1-12-1-\d+-\d+-\d+-\d+"),
+            sid: regex(r"(?i)S-1-5-21-\d+-\d+-\d+(?:-\d+)?|S-1-12-1-\d+-\d+-\d+(?:-\d+)?"),
             email: regex(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"),
-            profile: regex(r#"(?i)[a-z]:(?:\\\\|\\)users(?:\\\\|\\)[^\\\s"']+"#),
+            // Drive, UNC or \Device prefix; the profile name runs to the next separator or quote.
+            profile: regex(
+                r#"(?i)(?:[a-z]:|[\\/]{2,}[^\\/\s"']+|[\\/]+device[\\/]+[^\\/\s"']+)[\\/]+users[\\/]+[^\\/"'\r\n]+"#,
+            ),
         }
     }
 
+    /// Emails first, on the raw text: the name pass would split `smith.alice@contoso.com`. SIDs and
+    /// profiles after the literals, so the user's own profile reads `%USERPROFILE%`.
     pub fn redact(&self, text: &str) -> String {
-        let out = scan(text, &self.literals, false);
+        let text = if text.contains('@') {
+            self.email.replace_all(text, "<email>")
+        } else {
+            std::borrow::Cow::Borrowed(text)
+        };
+        let out = scan(&text, &self.literals, false);
         let lower = out.to_ascii_lowercase();
-        if !(lower.contains("s-1-") || out.contains('@') || lower.contains("\\users\\")) {
+        if !(lower.contains("s-1-") || lower.contains("users\\") || lower.contains("users/")) {
             return out;
         }
         let out = self.sid.replace_all(&out, "<sid>");
-        let out = self.email.replace_all(&out, "<email>");
         self.profile.replace_all(&out, "<profile>").into_owned()
     }
 }
@@ -367,6 +462,111 @@ pub(super) mod tests {
             r#"<profile>\x "<profile>\\y""#
         );
         assert_eq!(redact("Alice", r"C:\Users\Alice\x"), r"%USERPROFILE%\x");
+    }
+
+    #[test]
+    fn an_email_holding_the_user_name_is_redacted_whole() {
+        assert_eq!(
+            redact("Alice", "mail smith.alice@contoso.com and Alice"),
+            "mail <email> and <user>"
+        );
+    }
+
+    #[test]
+    fn a_clixml_escape_is_a_name_boundary() {
+        assert_eq!(
+            redact("Alice", "for Alice_x000D__x000A_ and _x000A_Alice"),
+            "for <user>_x000D__x000A_ and _x000A_<user>"
+        );
+        assert_eq!(redact("Alice", "Alice_x00"), "Alice_x00");
+    }
+
+    #[test]
+    fn other_profiles_are_redacted_in_every_path_form() {
+        for (text, want) in [
+            ("C:/Users/Bob/Documents", "<profile>/Documents"),
+            (r"\\server\Users\Bob\x", r"<profile>\x"),
+            (r"\Device\HarddiskVolume3\Users\Bob\x", r"<profile>\x"),
+            (r"C:\\\\Users\\\\Bob\\\\x", r"<profile>\\\\x"),
+            (r"C:\Users\Bob Jones\x", r"<profile>\x"),
+            (
+                r#"open "C:\Users\Bob Jones" now"#,
+                r#"open "<profile>" now"#,
+            ),
+        ] {
+            assert_eq!(redact("Alice", text), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_machine_sid_without_its_rid_is_redacted() {
+        assert_eq!(
+            redact("Alice", "domain S-1-5-21-9-8-7 and S-1-12-1-1-2-3"),
+            "domain <sid> and <sid>"
+        );
+    }
+
+    #[test]
+    fn onedrive_folders_and_the_domain_are_redacted() {
+        let vars = [
+            ("USERPROFILE", r"C:\Users\Alice"),
+            ("OneDrive", r"C:\Users\Alice\OneDrive - Contoso Ltd"),
+            (
+                "OneDriveCommercial",
+                r"C:\Users\Alice\OneDrive - Contoso Ltd",
+            ),
+            ("OneDriveConsumer", r"C:\Users\Alice\OneDrive"),
+            ("USERNAME", "Alice"),
+            ("COMPUTERNAME", "DESKTOP-K2J9"),
+            ("USERDOMAIN", "CONTOSO"),
+            ("USERDNSDOMAIN", "CORP.CONTOSO.COM"),
+        ];
+        let (paths, names) = env_literals(&|var| {
+            vars.iter()
+                .find(|(k, _)| *k == var)
+                .map(|(_, v)| v.to_string())
+        });
+        let r = Redactor::new(&Identity {
+            paths,
+            names,
+            ids: Vec::new(),
+        });
+        assert_eq!(
+            r.redact(r"C:\Users\Alice\OneDrive - Contoso Ltd\a.docx, C:\Users\Alice\OneDrive\b"),
+            r"%OneDrive%\a.docx, %OneDrive%\b"
+        );
+        assert_eq!(
+            r.redact(r"CONTOSO\x on corp.contoso.com"),
+            r"<domain>\x on <domain>"
+        );
+        let (_, names) = env_literals(&|var| match var {
+            "USERDOMAIN" | "COMPUTERNAME" => Some("DESKTOP-K2J9".into()),
+            _ => None,
+        });
+        assert!(
+            names.iter().all(|(_, label)| *label != "<domain>"),
+            "{names:?}"
+        );
+    }
+
+    #[test]
+    fn a_cut_never_leaves_a_fragment_of_an_identifier() {
+        let text = "x S-1-5-21-111-222-333-1001 y";
+        let at = text.find("333").unwrap();
+        assert_eq!(&text[..cut_end(text, at)], "x ");
+        assert_eq!(&text[cut_start(text, at)..], "y");
+        let path = r"C:\Users\Alice\AppData";
+        assert_eq!(&path[..cut_end(path, 12)], r"C:\Users\");
+        let long = format!("{}tail", "z".repeat(200));
+        assert_eq!(cut_end(&long, 150), 150 - FRAGMENT_SPAN);
+        assert_eq!(cut_start(&long, 50), 50 + FRAGMENT_SPAN);
+        assert_eq!(cut_end("a b", 3), 3);
+        assert_eq!(cut_start("a b", 0), 0);
+        let wide = "ééé ééé";
+        for at in 0..=wide.len() {
+            assert!(wide.is_char_boundary(cut_end(wide, at)));
+            assert!(wide.is_char_boundary(cut_start(wide, at)));
+        }
     }
 
     #[test]

@@ -40,14 +40,18 @@ The identity to remove is read once, before the logger is installed:
 | `LOCALAPPDATA` | `%LOCALAPPDATA%` |
 | `APPDATA` | `%APPDATA%` |
 | `TEMP`, `TMP` | `%TEMP%` |
+| `OneDrive`, `OneDriveCommercial`, `OneDriveConsumer` | `%OneDrive%` |
 | `USERNAME`, the session account name (with and without its domain) | `<user>` |
+| `USERDNSDOMAIN`, and `USERDOMAIN` when it differs from `COMPUTERNAME` | `<domain>` |
 | `COMPUTERNAME` | `<computer>` |
 | The process token's SID | `<sid>` |
 | The MachineGuid | `<machine-guid>` |
 
 - **Paths** match case-insensitively (ASCII folding) in their plain, `\\`-escaped and `/` forms, and only where the next character is not a letter, digit or `_`, so `C:\Users\Tim` leaves `C:\Users\Timothy` alone. Only the matched folder is replaced; the rest of the path stays readable (`%LOCALAPPDATA%\me.ehsankhan.magicx-toolbox\logs`). The longest value wins where two overlap.
 - **Names** match only as a whole word, with letters, digits and `_` counting as word characters, so a user called Tim never breaks "Optimize" and a user called app never breaks `app_lib`. Names shorter than 3 characters, and generic ones (administrator, admin, user, users, default, defaultuser0, public, system, guest, owner, test, dev, pc), are never redacted.
-- **Patterns**, checked only when a line contains `S-1-`, `@` or `\users\`: other accounts' SIDs (`S-1-5-21-…`, `S-1-12-1-…`) become `<sid>`, email addresses `<email>`, and any other user's profile folder (`C:\Users\<name>`) `<profile>`.
+- **Email addresses** become `<email>` first, on the raw line, so a name inside one (`smith.alice@contoso.com`) never splits it.
+- **Patterns**, checked after the values above and only when a line contains `S-1-`, `users\` or `users/`: other SIDs (`S-1-5-21-…` and `S-1-12-1-…`, with or without the final RID) become `<sid>`, and any other user's profile folder becomes `<profile>`. The profile pattern takes a drive, UNC or `\Device\…` prefix, any run of `\` or `/` separators, and a name that may hold spaces, up to the next separator, quote or line end.
+- **Cuts.** Where text is cut before redaction (the 16 KiB input cap, the helper's 512-byte lines, the 2 KiB output tail of a failing script), the cut moves to a separator within 64 bytes, or 64 bytes further, so no fragment of a SID, GUID or path slips past redaction. A PowerShell `_x000D_` escape counts as a word boundary, and a script's CLIXML error output is decoded before it is logged.
 
 Redaction never uses Unicode lowercasing, which changes byte lengths, and never panics: it runs inside the logger. The Manual Tests report uses the same code in a different mode, which replaces each match and the rest of its path with `<redacted>` ([MANUAL_TESTS.md](../MANUAL_TESTS.md)).
 

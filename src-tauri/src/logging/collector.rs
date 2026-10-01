@@ -6,6 +6,7 @@ use std::sync::{Mutex, TryLockError};
 use log::{Level, LevelFilter};
 
 use super::pipeline::{guarded, lock, Source};
+use super::redact::cut_end;
 
 pub const MAX_LINES: usize = 200;
 pub const MAX_LINE: usize = 512;
@@ -97,16 +98,14 @@ pub fn try_drain() -> Vec<String> {
     }
 }
 
-/// Control characters become spaces; the result is cut to [`MAX_LINE`] bytes on a char boundary.
+/// Control characters become spaces; the result is cut to [`MAX_LINE`] bytes, backed off so the
+/// parent never receives an identifier fragment it cannot redact.
 pub fn clean(line: &str) -> String {
-    let mut out = String::with_capacity(line.len().min(MAX_LINE));
-    for c in line.chars() {
-        let c = if c.is_control() { ' ' } else { c };
-        if out.len() + c.len_utf8() > MAX_LINE {
-            break;
-        }
-        out.push(c);
-    }
+    let mut out: String = line
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    out.truncate(cut_end(&out, MAX_LINE));
     out
 }
 
@@ -185,6 +184,13 @@ mod tests {
         assert!(line.len() <= MAX_LINE);
         assert!(!line.chars().any(char::is_control), "{line:?}");
         assert!(line.starts_with("a  b [2J "), "{line:?}");
+    }
+
+    #[test]
+    fn a_cut_line_keeps_no_fragment_of_an_identifier() {
+        let pad = "p".repeat(MAX_LINE - 20);
+        let line = clean(&format!("{pad} S-1-5-21-111-222-333-1001 tail"));
+        assert_eq!(line, format!("{pad} "));
     }
 
     #[test]

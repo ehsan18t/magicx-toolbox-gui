@@ -10,11 +10,12 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use log::{Level, LevelFilter};
 
 use super::files::FileSink;
-use super::redact::Redactor;
+use super::redact::{cut_end, Redactor};
 
 pub const RING_CAPACITY: usize = 2000;
 pub const RECORD_CAP: usize = 4096;
-/// Cut before redaction, so one huge message cannot stall every logging thread.
+/// Cut before redaction, so one huge message cannot stall every logging thread; the cut backs off
+/// to a separator so no identifier fragment slips past redaction.
 const INPUT_CAP: usize = 16 * 1024;
 const MARKER_ROOM: usize = 40;
 
@@ -208,9 +209,7 @@ impl Pipeline {
     }
 
     fn prepare(&self, raw: &str, room: usize) -> String {
-        let input = raw
-            .get(..floor_boundary(raw, INPUT_CAP))
-            .unwrap_or_default();
+        let input = raw.get(..cut_end(raw, INPUT_CAP)).unwrap_or_default();
         let msg = self.redactor.redact(input);
         let cut = raw.len() - input.len();
         if cut == 0 && msg.len() <= room {
@@ -394,6 +393,23 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(kept.len() + dropped, long.len());
+    }
+
+    #[test]
+    fn the_input_cut_never_keeps_a_fragment_of_an_identifier() {
+        let p = pipeline("Alice");
+        let filler = r"C:\Users\Alice\AppData\Local\Temp ".repeat(INPUT_CAP / 34);
+        let pad = "q".repeat(INPUT_CAP - filler.len() - 20);
+        log(
+            &p,
+            Level::Info,
+            "app_lib",
+            &format!("{filler}{pad} 6f1d2c3b-aaaa-4bbb-8ccc-0123456789ab after"),
+        );
+        let msg = &msgs(&p)[0];
+        let end = &msg[msg.len() - 80..];
+        assert!(msg.starts_with("%TEMP%"), "{end}");
+        assert!(!msg.contains("6f1d2c3b"), "{end}");
     }
 
     #[test]
