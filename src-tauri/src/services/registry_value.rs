@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::models::{RegistryHive, RegistryValueType};
-use crate::services::{registry_service, trusted_installer};
+use crate::services::registry_service;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegistryValue {
@@ -10,20 +10,6 @@ pub enum RegistryValue {
     ExpandString(String),
     MultiString(Vec<String>),
     Binary(Vec<u8>),
-}
-
-impl RegistryValue {
-    fn to_json(&self) -> serde_json::Value {
-        match self {
-            RegistryValue::Dword(value) => serde_json::json!(value),
-            RegistryValue::Qword(value) => serde_json::json!(value),
-            RegistryValue::String(value) | RegistryValue::ExpandString(value) => {
-                serde_json::json!(value)
-            }
-            RegistryValue::MultiString(value) => serde_json::json!(value),
-            RegistryValue::Binary(value) => serde_json::json!(value),
-        }
-    }
 }
 
 pub fn parse_registry_value(
@@ -48,46 +34,16 @@ pub fn parse_registry_value(
     }
 }
 
-pub fn registry_values_match(
-    value_type: &RegistryValueType,
-    current_value: &Option<serde_json::Value>,
-    expected_value: &Option<serde_json::Value>,
-) -> Result<bool, Error> {
-    match (current_value, expected_value) {
-        (None, None) => Ok(true),
-        (Some(current), Some(expected)) => {
-            let normalized_current = parse_registry_value(value_type, current)?.to_json();
-            let normalized_expected = parse_registry_value(value_type, expected)?.to_json();
-            Ok(normalized_current == normalized_expected)
-        }
-        _ => Ok(false),
-    }
-}
-
+/// Parses `value` against `value_type` and writes it. Runs at the caller's current privilege: an
+/// elevated write reaches here inside the broker child, which already holds the token.
 pub fn write_registry_json_value(
     hive: &RegistryHive,
     key: &str,
     value_name: &str,
     value_type: &RegistryValueType,
     value: &serde_json::Value,
-    use_system: bool,
 ) -> Result<(), Error> {
-    let parsed = parse_registry_value(value_type, value)?;
-
-    // HKCU is the user's own hive — always writable directly, so no elevation is needed even for a
-    // requires_system tweak (running as SYSTEM would target SYSTEM's own HKCU, not the user's).
-    // Only HKLM under use_system needs the elevated broker (typed RegSetValueExW as SYSTEM).
-    if use_system && matches!(hive, RegistryHive::Hklm) {
-        return trusted_installer::set_registry_value_as_system(
-            *hive,
-            key,
-            value_name,
-            *value_type,
-            value.clone(),
-        );
-    }
-
-    match parsed {
+    match parse_registry_value(value_type, value)? {
         RegistryValue::Dword(value) => registry_service::set_dword(hive, key, value_name, value),
         RegistryValue::Qword(value) => registry_service::set_qword(hive, key, value_name, value),
         RegistryValue::String(value) => registry_service::set_string(hive, key, value_name, &value),
@@ -254,17 +210,5 @@ mod tests {
         let err = parse_registry_value(&RegistryValueType::Binary, &json!("00,GG")).unwrap_err();
 
         assert!(err.to_string().contains("Invalid REG_BINARY byte"));
-    }
-
-    #[test]
-    fn matches_authored_binary_string_to_read_byte_array() {
-        let matches = registry_values_match(
-            &RegistryValueType::Binary,
-            &Some(json!([0, 160, 255])),
-            &Some(json!("00,A0,FF")),
-        )
-        .unwrap();
-
-        assert!(matches);
     }
 }

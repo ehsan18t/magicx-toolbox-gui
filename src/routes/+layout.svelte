@@ -17,6 +17,7 @@
   import { themeStore } from "$lib/stores/theme.svelte";
   import { initializeQuick } from "$lib/stores/tweaksData.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
+  import { errorMessage } from "$lib/utils/error";
   import "@/app.css";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
@@ -52,7 +53,7 @@
     try {
       await initializeQuick();
     } catch (e) {
-      initError = e instanceof Error ? e.message : "Failed to initialize";
+      initError = errorMessage(e);
       console.error("Failed to initialize categories:", e);
     }
 
@@ -64,20 +65,6 @@
     }
 
     if (initError) return;
-
-    // Validate and clean up stale backup snapshots in background
-    invoke("validate_snapshots")
-      .then((removed) => {
-        if (import.meta.env.DEV && removed && typeof removed === "number" && removed > 0) {
-          console.log(`Cleaned up ${removed} stale backup snapshot(s)`);
-        }
-      })
-      .catch((e) => {
-        // Non-critical error, just log it in dev mode
-        if (import.meta.env.DEV) {
-          console.warn("Failed to validate snapshots:", e);
-        }
-      });
 
     // Perform silent background update check if enabled
     const settings = settingsStore.settings;

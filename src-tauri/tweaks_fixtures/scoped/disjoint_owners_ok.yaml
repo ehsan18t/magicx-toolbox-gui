@@ -1,0 +1,40 @@
+category:
+  id: disjoint_owners_ok
+  name: "Fixture"
+  icon: "mdi:check"
+  description: "A Windows 10 tweak and a Windows 11 tweak own the same value; their scopes never overlap."
+
+tweaks:
+  - id: widget_win10
+    name: "Widget (Windows 10)"
+    description: "Owns the widget mode on Windows 10."
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [10] }
+    effects:
+      - id: mode
+        registry: { key: 'HKCU\Software\ExampleCo\Widget', name: Mode, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { mode: 0 }
+      - label: "On"
+        values: { mode: 1 }
+
+  - id: widget_win11
+    name: "Widget (Windows 11)"
+    description: "Owns the same widget mode on Windows 11, with an extra choice."
+    risk_level: low
+    elevation: user
+    reversible: true
+    windows: { products: [11] }
+    effects:
+      - id: mode
+        registry: { key: 'HKCU\Software\ExampleCo\Widget', name: Mode, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { mode: 0 }
+      - label: "On"
+        values: { mode: 1 }
+      - label: "Extra"
+        values: { mode: 3 }

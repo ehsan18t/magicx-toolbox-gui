@@ -1,0 +1,27 @@
+category:
+  id: value_beneath_own_deletable_key
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A tweak owns a registry key it can drive absent and a value beneath it."
+
+tweaks:
+  - id: deletes_own_key
+    name: "Deletes Own Key"
+    description: "The key still holds own_value when driven absent, so the Absent option always fails."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: the_key
+        registry_key: { key: 'HKCU\Software\ExampleCo\Owned' }
+      - id: own_value
+        registry: { key: 'HKCU\Software\ExampleCo\Owned', name: Own, type: REG_DWORD }
+    options:
+      - label: "Present"
+        values:
+          the_key: present
+          own_value: 1
+      - label: "Absent"
+        values:
+          the_key: absent
+          own_value: absent

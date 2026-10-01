@@ -1,0 +1,27 @@
+category:
+  id: whole_vs_field_mix
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "One effect owns a packed value whole while another owns one of its fields."
+
+tweaks:
+  - id: directx_tweak
+    name: "DirectX"
+    description: "Mixes whole-value and field-addressed ownership of the same value."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: whole_value
+        registry: { key: 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences', name: DirectXUserGlobalSettings, type: REG_SZ }
+      - id: swap_effect_field
+        registry: { key: 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences', name: DirectXUserGlobalSettings, type: REG_SZ, field: SwapEffectUpgradeEnable, format: kv_semicolon }
+    options:
+      - label: "A"
+        values:
+          whole_value: "SwapEffectUpgradeEnable=1;"
+          swap_effect_field: "1"
+      - label: "B"
+        values:
+          whole_value: "SwapEffectUpgradeEnable=0;"
+          swap_effect_field: "0"

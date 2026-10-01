@@ -18,14 +18,8 @@
   const updateInfo = $derived(updateStore.updateInfo);
   const error = $derived(updateStore.error);
 
-  let autoCheckUpdates = $state(true);
-  let autoInstallUpdates = $state(false);
-
-  $effect(() => {
-    const settings = settingsStore.settings;
-    autoCheckUpdates = settings.autoCheckUpdates;
-    autoInstallUpdates = settings.autoInstallUpdates;
-  });
+  const autoCheckUpdates = $derived(settingsStore.settings.autoCheckUpdates);
+  const autoInstallUpdates = $derived(settingsStore.settings.autoInstallUpdates);
 
   onMount(async () => {
     try {
@@ -36,13 +30,11 @@
   });
 
   function handleAutoCheckToggle() {
-    autoCheckUpdates = !autoCheckUpdates;
-    settingsStore.setAutoCheckUpdates(autoCheckUpdates);
+    settingsStore.setAutoCheckUpdates(!autoCheckUpdates);
   }
 
   function handleAutoInstallToggle() {
-    autoInstallUpdates = !autoInstallUpdates;
-    settingsStore.setAutoInstallUpdates(autoInstallUpdates);
+    settingsStore.setAutoInstallUpdates(!autoInstallUpdates);
   }
 
   async function checkForUpdate() {
@@ -62,9 +54,11 @@
         try {
           await exit(0);
         } catch {
-          // Exit failed - inform user to restart manually
+          // The installer is already running, and the backend keeps refusing applies until exit.
           closeModal();
-          toastStore.warning("Update downloaded. Please restart the app manually to apply it.");
+          toastStore.warning(
+            "The installer is running, but the app could not close itself. Close the app to finish the update.",
+          );
         }
       }, 1000);
     }

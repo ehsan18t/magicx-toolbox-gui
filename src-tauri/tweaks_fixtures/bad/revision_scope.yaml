@@ -1,0 +1,25 @@
+category:
+  id: revision_scope
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "revision: is authored at tweak, effect, and option-value level; detection cannot honour it."
+
+tweaks:
+  - id: revision_tweak
+    name: "Revision"
+    description: "Every windows: block here sets revision."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    windows: { build: "26100", revision: ">=2314" }
+    effects:
+      - id: flag
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Revision', name: Flag, type: REG_DWORD }
+        windows: { build: "26100", revision: ">=2314" }
+    options:
+      - label: "On"
+        values:
+          flag: { value: 1, windows: { build: "26100", revision: ">=2314" } }
+      - label: "Off"
+        values:
+          flag: 0

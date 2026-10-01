@@ -1,0 +1,48 @@
+category:
+  id: invalid_tweak_id
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Tweak ids that could escape or alias their snapshots/<id>/ folder."
+
+tweaks:
+  - id: 'nested\evil'
+    name: "Path Separator"
+    description: "A backslash would nest the snapshot folder."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: one
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\One', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          one: 1
+
+  - id: up..here
+    name: "Dot Dot"
+    description: "Two dots could climb out of the snapshots folder."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: two
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Two', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          two: 1
+
+  - id: Has-Dash
+    name: "Outside The Charset"
+    description: "Uppercase and a dash are outside a-z, 0-9 and _."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: three
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Three', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          three: 1

@@ -1,0 +1,23 @@
+category:
+  id: bad_path_trailing_backslash
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A registry path ends with a trailing backslash."
+
+tweaks:
+  - id: bad_path_tweak
+    name: "Bad Path"
+    description: "The key ends with a stray backslash."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: bad_effect
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget\', name: Enabled, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          bad_effect: 1
+      - label: "Off"
+        values:
+          bad_effect: 0

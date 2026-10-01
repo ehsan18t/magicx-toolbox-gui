@@ -200,7 +200,7 @@
                 <div class="divide-y divide-border">
                   {#each categoryTweaks as tweak (tweak.definition.id)}
                     {@const isSelected = selectedTweakIds.has(tweak.definition.id)}
-                    {@const currentOption = tweak.definition.options[tweak.status.current_option_index ?? 0]}
+                    {@const currentLabel = tweak.status.activeOption ?? "System Default"}
                     <button
                       type="button"
                       class="hover:bg-muted/50 focus-visible:bg-muted/50 flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors focus-visible:outline-none"
@@ -211,7 +211,7 @@
                       <div class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-medium text-foreground">{tweak.definition.name}</span>
                       </div>
-                      <Badge variant="default" class="shrink-0">{currentOption?.label ?? "Applied"}</Badge>
+                      <Badge variant="default" class="shrink-0">{currentLabel}</Badge>
                     </button>
                   {/each}
                 </div>
@@ -275,8 +275,8 @@
           <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
           <p class="m-0 text-xs leading-relaxed text-foreground-muted">
             Profiles are saved as <code class="bg-muted rounded px-1">.mgx</code> files that can be imported on other machines
-            or after reinstalling Windows. They only contain tweak IDs and settings—actual system changes come from the app's
-            tweak definitions.
+            or after reinstalling Windows. They only store which tweaks you picked and the settings you chose. The actual
+            changes to your system come from the app's built-in tweak definitions.
           </p>
         </div>
       </div>

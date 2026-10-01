@@ -1,4 +1,4 @@
-# Profile v1 (`.mgx`) — format record
+# Profile v1 (`.mgx`) format record
 
 > **Status: historical.** The v1 profile system was deleted in the 2026-07 cleanup and will be rebuilt
 > from scratch. This file records the parts of the format that a future implementation cannot recover by
@@ -11,7 +11,7 @@
 
 Everything about the archive is self-describing except **one thing**: the option content hash. It is
 embedded in stored profiles and used to resolve options that moved index between the profile being
-exported and imported. It cannot be reconstructed from the archive alone — only from the algorithm.
+exported and imported. It cannot be reconstructed from the archive alone, only from the algorithm.
 
 ## Archive layout
 
@@ -26,14 +26,14 @@ A Deflate-compressed ZIP containing up to three entries:
 `manifest.json` carries `format_version: u32`, written as `PROFILE_SCHEMA_VERSION = 1`, plus
 `profile_checksum` and `system_state_checksum`.
 
-Checksums are **SHA-256 over the pretty-printed JSON bytes** — i.e. over the output of
+Checksums are **SHA-256 over the pretty-printed JSON bytes**, that is, over the output of
 `serde_json::to_string_pretty`, not compact JSON. They are verified on read and a mismatch is a hard
 error. They are integrity checks, not signatures: they carry no cryptographic trust.
 
 Known v1 defect for the rebuild to fix: `format_version` was **written but never checked on read**.
 Version gating happened later and separately, via `ConfigurationProfile.schema_version`.
 
-## The option content hash — the part that must be preserved
+## The option content hash: the part that must be preserved
 
 Two algorithms are in play. On import, a stored hash matched **either** of them.
 
@@ -52,7 +52,7 @@ fn hash_option_content(option: &TweakOption) -> String {
 Three details that will silently break a reimplementation:
 
 1. The domain separator `b"profile-option-v2"` is hashed **before** the payload.
-2. The payload is `serde_json::to_vec` — **compact**, whereas the archive checksums use **pretty**.
+2. The payload is `serde_json::to_vec`: **compact**, whereas the archive checksums use **pretty**.
 3. The digest is truncated to the first **32 hex characters**, not the full 64.
 
 This hash is therefore sensitive to `TweakOption`'s serde representation. Any field added, renamed,
@@ -70,13 +70,13 @@ An earlier field-order-dependent variant, retained so older profiles still match
 // no domain separator; same [..32] truncation
 ```
 
-Note it hashed the registry value via `format!("{:?}", v)` — the Rust `Debug` representation of a
+Note it hashed the registry value via `format!("{:?}", v)`, the Rust `Debug` representation of a
 `serde_json::Value`. That is not a stable serialization format and is the main reason v2 replaced it.
 
 ## Carried into the rebuild
 
 - `system_state.json` was exported and **never read**. It was meant for an import-time compatibility
-  check that was never built. That is the same problem the snapshot install-ID solves — see
+  check that was never built. That is the same problem the snapshot install-ID solves; see
   `docs/TWEAK_SYSTEM_PLAN.md`. The rebuilt system should share one machine-identity mechanism rather
   than inventing a second.
 - Per-tweak progress events (`ProfileProgressEvent`, `TweakCompleteEvent`) were modelled and never

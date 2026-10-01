@@ -1,0 +1,28 @@
+category:
+  id: raw_service_registry_shared_and_delayed
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A raw DelayedAutostart effect and a raw Start shared entry both bypass the Service kind."
+
+shared:
+  - id: raw_start
+    registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\BITS', name: Start, type: REG_DWORD }
+    value: 3
+
+tweaks:
+  - id: delayed_raw
+    name: "Delayed Raw"
+    description: "Should use `service: { name: wuauserv }` with automatic_delayed instead."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: raw_delayed
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Services\wuauserv', name: DelayedAutostart, type: REG_DWORD }
+    options:
+      - label: "Delayed"
+        values:
+          raw_delayed: 1
+      - label: "Immediate"
+        values:
+          raw_delayed: 0

@@ -1,0 +1,23 @@
+category:
+  id: options_differ_only_by_scope
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Two options set the same value; only the windows: scope of one differs, which detection never sees."
+
+tweaks:
+  - id: scope_only_tweak
+    name: "Scope Only"
+    description: "Both options write Marker = 1, so detection cannot tell them apart."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: marker
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Widget', name: Marker, type: REG_DWORD }
+    options:
+      - label: "Scoped"
+        values:
+          marker: { value: 1, windows: { build: ">=19045" } }
+      - label: "Unscoped"
+        values:
+          marker: 1

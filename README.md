@@ -54,6 +54,8 @@ If you are a developer looking to contribute or build from source, read the sect
 | `pnpm run dev`          | Starts the Tauri development server with hot-reloading for both frontend and backend. |
 | `pnpm run build`        | Builds and bundles the application for production.                                    |
 | `pnpm run build:debug`  | Creates a debug build of the application.                                             |
+| `pnpm run build:test`   | Builds the test build: the app plus the Manual Tests view (`test-build` feature).     |
+| `pnpm run dev:test`     | Starts the development server with the Manual Tests view enabled.                     |
 |                        |                                                                                       |
 | `pnpm run format`       | Formats all source files with Prettier.                                               |
 | `pnpm run format:check` | Checks for formatting errors without modifying files.                                 |
@@ -64,6 +66,8 @@ If you are a developer looking to contribute or build from source, read the sect
 |                        |                                                                                       |
 | `pnpm run clean`        | Removes all build artifacts and temporary directories.                                |
 | `pnpm run prepare`      | SvelteKit's command to generate types                                                 |
+
+The test build adds a Manual Tests view for checking behaviour on a real machine: build it with `pnpm run build:test` (or run `pnpm run dev:test`), copy the binary to the target PC, run it as administrator, and use the sidebar's Manual Tests entry. A normal build contains none of that code and never shows the view. See [docs/MANUAL_TESTS.md](docs/MANUAL_TESTS.md).
 
 ### Project Structure
 

@@ -13,6 +13,7 @@
 
 import { tweaksStore } from "$lib/stores/tweaks.svelte";
 import type { TweakWithStatus } from "$lib/types";
+import { errorMessage } from "$lib/utils/error";
 import uFuzzy from "@leeoniya/ufuzzy";
 
 // === Types ===
@@ -351,7 +352,7 @@ export const searchStore = {
       results = searchResults;
       cachedQuery = needle;
     } catch (e) {
-      error = e instanceof Error ? e.message : "Search failed";
+      error = errorMessage(e);
       console.error("[search] Search failed:", e);
     } finally {
       isSearching = false;

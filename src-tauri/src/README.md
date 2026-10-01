@@ -9,38 +9,46 @@ src/
 ├── lib.rs              # Application entry point and Tauri setup
 ├── main.rs             # Binary entry point
 ├── error.rs            # Custom error types (thiserror)
-├── state.rs            # Application state management
-├── setup.rs            # Startup initialization
+├── setup.rs            # Startup initialization and managed state
 ├── debug.rs            # Debug logging utilities
+├── window_watchdog.rs  # Shows the window if the frontend never does
 ├── commands/           # Tauri command handlers
-│   ├── general.rs      # Theme and preferences
-│   ├── elevation.rs    # SYSTEM/TI elevation commands
+│   ├── general.rs      # Window display
+│   ├── elevation.rs    # Restart as administrator
 │   ├── update.rs       # App update checking
 │   ├── system.rs       # System info retrieval
-│   ├── backup.rs       # Backup commands
 │   ├── debug.rs        # Debug mode commands
-│   └── tweaks/         # Tweak apply/revert commands
-├── services/           # Business logic
-│   ├── backup_service.rs       # Snapshot-based backup system
+│   └── tweaks.rs       # Tweak query/apply/revert commands
+├── services/           # Windows effect primitives
+│   ├── elevation/              # Typed elevation broker (admin in-process, TrustedInstaller child)
 │   ├── registry_service.rs     # Windows registry operations
-│   ├── trusted_installer.rs    # SYSTEM/TI elevation
-│   ├── service_control.rs      # Windows service management
-│   ├── scheduler_service.rs    # Task scheduler operations
-│   ├── system_info_service.rs  # Hardware/OS info via WMI
-│   └── tweak_loader.rs         # Pre-compiled tweak definitions
+│   ├── registry_value.rs       # Typed registry values
+│   ├── service_control.rs      # Windows service management (SCM)
+│   ├── scheduler_service.rs    # Task Scheduler operations (COM)
+│   ├── hosts_service.rs        # Hosts file entries
+│   ├── firewall_service.rs     # Firewall rules
+│   ├── appx_index.rs           # Installed Appx package index
+│   ├── ti_probe.rs             # Whether TrustedInstaller is reachable
+│   ├── exclusive_temp.rs       # Tamper-proof temp files for elevated readers
+│   ├── system32.rs             # Launch Windows tools by absolute path
+│   └── system_info_service.rs  # Hardware/OS info
+├── tweaks/             # Tweak system
+│   ├── model.rs, parse.rs, schema.rs, validate.rs  # YAML schema, shared with build.rs
+│   ├── engine/         # detect, apply, revert, execution-context routing, locks
+│   ├── kinds/          # Effect kinds: registry (+ registry_key), service, task, hosts, firewall, action
+│   ├── snapshot.rs     # Per-tweak snapshot store
+│   ├── shared_claims.rs  # Claims on shared blocks (the `shared` effect kind)
+│   └── winver.rs       # Running Windows version
 └── models/             # Data structures
-    ├── tweak.rs        # Tweak definitions
     ├── system.rs       # System info models
-    ├── backup.rs       # Backup helper types
-    ├── registry.rs     # Registry types
-    └── tweak_snapshot.rs  # Snapshot models
+    └── win_types.rs    # Shared hive/value/startup types
 ```
 
 ## Key Features
 
-- **Tweak System**: Option-based tweaks with atomic apply/revert
-- **Snapshot Backup**: Capture state before changes for rollback
-- **Privilege Elevation**: SYSTEM and TrustedInstaller support
+- **Tweak System**: Option-based tweaks with apply and revert
+- **Snapshots**: Capture state before changes for rollback
+- **Privilege Elevation**: Administrator and TrustedInstaller support
 - **Pre-compiled Tweaks**: YAML → Rust at build time for performance
 
 ## Testing
@@ -50,8 +58,8 @@ src/
 cargo test --lib
 
 # Run specific module tests
-cargo test --lib backup_service
-cargo test --lib trusted_installer
+cargo test --lib tweaks::engine
+cargo test --lib services::elevation
 ```
 
 ## Code Quality

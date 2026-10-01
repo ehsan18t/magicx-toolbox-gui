@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  // Only the topmost modal handles keys and focus: stacked focus traps pull focus back and forth forever.
+  const openStack: object[] = [];
+</script>
+
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { tick } from "svelte";
@@ -33,6 +38,15 @@
 
   let modalEl = $state<HTMLElement | null>(null);
   let previouslyFocusedEl = $state<HTMLElement | null>(null);
+
+  const stackToken = {};
+  const isTopmost = () => openStack.at(-1) === stackToken;
+
+  $effect(() => {
+    if (!isVisible || isClosing) return;
+    openStack.push(stackToken);
+    return () => void openStack.splice(openStack.indexOf(stackToken), 1);
+  });
 
   function getFocusableElements(root: HTMLElement): HTMLElement[] {
     // Keep selector intentionally conservative to avoid trapping non-interactive elements.
@@ -117,6 +131,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (!isTopmost()) return;
     if (closeOnEscape && e.key === "Escape" && isVisible && !isClosing && onclose) {
       e.stopPropagation();
       onclose();
@@ -162,7 +177,7 @@
 
     function onFocusIn(e: FocusEvent) {
       const target = e.target;
-      if (!(target instanceof HTMLElement)) return;
+      if (!(target instanceof HTMLElement) || !isTopmost()) return;
       if (modalEl && !modalEl.contains(target)) {
         void focusInitialElement();
       }

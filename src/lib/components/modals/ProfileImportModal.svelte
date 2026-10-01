@@ -15,7 +15,7 @@
   import { closeModal, modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { rescanStatuses } from "$lib/stores/tweaks.svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { SvelteSet } from "svelte/reactivity";
 
@@ -182,8 +182,8 @@
   }
 
   async function handleFinish() {
-    // Reload tweaks to reflect changes
-    await tweaksStore.load();
+    // Re-detect statuses to reflect changes
+    await rescanStatuses();
     handleClose();
 
     if (applyResult?.requires_reboot) {

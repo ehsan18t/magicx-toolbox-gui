@@ -25,10 +25,13 @@
 // Data stores
 export {
   categoriesStore,
+  elevationStore,
   getCategoryStats,
   initializeQuick,
-  loadRemainingData,
   loadingStateStore,
+  loadRemainingData,
+  rescanStatuses,
+  stopStatusStream,
   systemStore,
   tweaksStore,
 } from "./tweaksData.svelte";
@@ -46,8 +49,8 @@ export {
   batchRevertTweaks,
   filterStore,
   keepCurrentState,
+  refreshTweakStatus,
   revertTweak,
   stageChange,
-  toggleTweak,
   unstageChange,
 } from "./tweaksActions.svelte";

@@ -1,14 +1,13 @@
 //! Windows Service Control Manager operations (typed, via `windows-sys`).
 //!
 //! Replaces the previous `sc.exe` / `net.exe` / `reg.exe` string-parsing implementation, which was
-//! locale-dependent and swallowed real failures. State and control go through the SCM
-//! (`QueryServiceStatusEx`, `ChangeServiceConfigW`, `StartServiceW`, `ControlService`); the startup
-//! type is read from the service's typed `Start` registry value (a numeric DWORD — locale-free).
+//! locale-dependent and swallowed real failures. State goes through the SCM
+//! (`QueryServiceStatusEx`, `ChangeServiceConfigW`); the startup type is read from the service's
+//! typed `Start` registry value (a numeric DWORD, so locale-free).
 //!
-//! The four public signatures (`get_service_status`, `set_service_startup`, `start_service`,
-//! `stop_service`) are unchanged so callers do not move. `panic = "abort"` in release means `Drop`
-//! does not run on a panic, but the `ScHandle` guard still covers the normal and `?`-early-return
-//! paths — strictly better than manual `CloseServiceHandle`.
+//! `panic = "abort"` in release means `Drop` does not run on a panic, but the `ScHandle` guard
+//! still covers the normal and `?`-early-return paths, strictly better than manual
+//! `CloseServiceHandle`.
 
 use crate::error::Error;
 use crate::models::{RegistryHive, ServiceStartupType};
@@ -19,21 +18,15 @@ use std::ptr;
 
 use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::System::Services::{
-    ChangeServiceConfigW, CloseServiceHandle, ControlService, EnumDependentServicesW,
-    OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, StartServiceW, ENUM_SERVICE_STATUSW,
-    SC_HANDLE, SC_STATUS_PROCESS_INFO, SERVICE_STATUS, SERVICE_STATUS_PROCESS,
+    ChangeServiceConfigW, CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx,
+    SC_HANDLE, SC_STATUS_PROCESS_INFO, SERVICE_STATUS_PROCESS,
 };
 
 // --- Win32 constants (stable ABI values; defined locally to avoid version-specific import churn) ---
 const SC_MANAGER_CONNECT: u32 = 0x0001;
 const SERVICE_QUERY_STATUS: u32 = 0x0004;
 const SERVICE_CHANGE_CONFIG: u32 = 0x0002;
-const SERVICE_START_ACCESS: u32 = 0x0010; // SERVICE_START
-const SERVICE_STOP_ACCESS: u32 = 0x0020; // SERVICE_STOP
-const SERVICE_ENUMERATE_DEPENDENTS: u32 = 0x0008;
 const SERVICE_NO_CHANGE: u32 = 0xffff_ffff;
-const SERVICE_CONTROL_STOP: u32 = 0x0000_0001;
-const SERVICE_ACTIVE: u32 = 0x0000_0001;
 
 // dwCurrentState values
 const SVC_STOPPED: u32 = 1;
@@ -44,14 +37,7 @@ const SVC_CONTINUE_PENDING: u32 = 5;
 const SVC_PAUSE_PENDING: u32 = 6;
 const SVC_PAUSED: u32 = 7;
 
-// GetLastError codes
 const ERROR_SERVICE_DOES_NOT_EXIST: u32 = 1060;
-const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
-const ERROR_SERVICE_NOT_ACTIVE: u32 = 1062;
-const ERROR_MORE_DATA: u32 = 234;
-
-const STOP_TIMEOUT_MS: u128 = 30_000;
-const START_TIMEOUT_MS: u128 = 30_000;
 
 /// Service running state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,15 +82,6 @@ fn wide(s: &str) -> Vec<u16> {
         .collect()
 }
 
-/// SAFETY: `p` must be a valid, NUL-terminated wide string for its whole length.
-unsafe fn wide_to_string(p: *const u16) -> String {
-    let mut len = 0usize;
-    while *p.add(len) != 0 {
-        len += 1;
-    }
-    String::from_utf16_lossy(std::slice::from_raw_parts(p, len))
-}
-
 /// Open the SCM and a service handle. `Ok(None)` means the service does not exist; `Err` is a real
 /// SCM/open failure. The returned SCM guard is kept alive alongside the service guard.
 fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>, Error> {
@@ -112,10 +89,7 @@ fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>,
     unsafe {
         let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
         if scm.is_null() {
-            return Err(Error::ServiceControl(format!(
-                "OpenSCManager failed: {}",
-                GetLastError()
-            )));
+            return Err(Error::win32("OpenSCManager failed", GetLastError()));
         }
         let scm = ScHandle(scm);
 
@@ -126,10 +100,7 @@ fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>,
             if err == ERROR_SERVICE_DOES_NOT_EXIST {
                 return Ok(None);
             }
-            return Err(Error::ServiceControl(format!(
-                "OpenService '{}' failed: {}",
-                name, err
-            )));
+            return Err(Error::win32(format!("OpenService '{name}' failed"), err));
         }
         Ok(Some((scm, ScHandle(svc))))
     }
@@ -173,10 +144,7 @@ fn query_current_state(svc: SC_HANDLE) -> Result<u32, Error> {
             &mut needed,
         );
         if ok == 0 {
-            return Err(Error::ServiceControl(format!(
-                "QueryServiceStatusEx failed: {}",
-                GetLastError()
-            )));
+            return Err(Error::win32("QueryServiceStatusEx failed", GetLastError()));
         }
         Ok(status.dwCurrentState)
     }
@@ -233,7 +201,10 @@ pub fn set_service_startup(
     }
 
     let (_scm, svc) = open_service(service_name, SERVICE_CHANGE_CONFIG)?.ok_or_else(|| {
-        Error::ServiceControl(format!("Service does not exist: {}", service_name))
+        Error::win32(
+            format!("service '{service_name}' does not exist"),
+            crate::error::win32::SERVICE_DOES_NOT_EXIST,
+        )
     })?;
 
     log::info!(
@@ -259,11 +230,10 @@ pub fn set_service_startup(
             ptr::null(),
         );
         if ok == 0 {
-            return Err(Error::ServiceControl(format!(
-                "Failed to set service '{}' startup: {}",
-                service_name,
-                GetLastError()
-            )));
+            return Err(Error::win32(
+                format!("failed to set service '{service_name}' startup"),
+                GetLastError(),
+            ));
         }
     }
 
@@ -273,215 +243,6 @@ pub fn set_service_startup(
         startup_type
     );
     Ok(())
-}
-
-/// Start a Windows service and wait until it is actually RUNNING.
-///
-/// `StartServiceW` only *queues* the start — the service enters START_PENDING and its return says
-/// nothing about whether it reached RUNNING. Without a poll, a service that accepts the request then
-/// fails async init is reported as success (finding B1). So, symmetrically with `stop_service`, we
-/// poll to RUNNING; a fall-back to STOPPED or a timeout is a failure.
-/// `ERROR_SERVICE_ALREADY_RUNNING` is idempotent success (and already running, so no poll needed).
-pub fn start_service(service_name: &str) -> Result<(), Error> {
-    let (_scm, svc) = open_service(service_name, SERVICE_START_ACCESS | SERVICE_QUERY_STATUS)?
-        .ok_or_else(|| {
-            Error::ServiceControl(format!("Service does not exist: {}", service_name))
-        })?;
-
-    log::info!("Starting service '{}'", service_name);
-
-    // SAFETY: `svc` has SERVICE_START access; no start arguments.
-    let already_running = unsafe {
-        let ok = StartServiceW(svc.0, 0, ptr::null());
-        if ok == 0 {
-            let err = GetLastError();
-            if err == ERROR_SERVICE_ALREADY_RUNNING {
-                true
-            } else {
-                return Err(Error::ServiceControl(format!(
-                    "Failed to start service '{}': {}",
-                    service_name, err
-                )));
-            }
-        } else {
-            false
-        }
-    };
-
-    if !already_running {
-        wait_for_running(svc.0)?;
-    }
-
-    log::debug!("Service '{}' is running", service_name);
-    Ok(())
-}
-
-/// Stop a Windows service. Stops active dependents first (as `net stop` did — `ControlService`
-/// alone does not), treats an already-stopped service as success, and polls for `STOPPED`.
-pub fn stop_service(service_name: &str) -> Result<(), Error> {
-    let (_scm, svc) = open_service(
-        service_name,
-        SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS | SERVICE_ENUMERATE_DEPENDENTS,
-    )?
-    .ok_or_else(|| Error::ServiceControl(format!("Service does not exist: {}", service_name)))?;
-
-    if query_current_state(svc.0)? == SVC_STOPPED {
-        log::info!("Service '{}' is not running, skipping stop.", service_name);
-        return Ok(());
-    }
-
-    log::info!("Stopping service '{}'", service_name);
-
-    // Stop active dependents first (best-effort; the target stop below is authoritative).
-    for dep in active_dependents(svc.0)? {
-        if let Some((_s, dsvc)) = open_service(&dep, SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS)? {
-            let _ = send_stop(dsvc.0);
-            let _ = wait_for_stop(dsvc.0);
-        }
-    }
-
-    send_stop(svc.0)?;
-    wait_for_stop(svc.0)?;
-
-    log::debug!("Service '{}' stopped", service_name);
-    Ok(())
-}
-
-/// Send a STOP control. `ERROR_SERVICE_NOT_ACTIVE` is idempotent success.
-fn send_stop(svc: SC_HANDLE) -> Result<(), Error> {
-    // SAFETY: `svc` has SERVICE_STOP access; `status` is a zeroed out-param.
-    unsafe {
-        let mut status: SERVICE_STATUS = std::mem::zeroed();
-        let ok = ControlService(svc, SERVICE_CONTROL_STOP, &mut status);
-        if ok == 0 {
-            let err = GetLastError();
-            if err != ERROR_SERVICE_NOT_ACTIVE {
-                return Err(Error::ServiceControl(format!(
-                    "ControlService(STOP) failed: {}",
-                    err
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Poll until the service reports `STOPPED`, or time out.
-fn wait_for_stop(svc: SC_HANDLE) -> Result<(), Error> {
-    let start = std::time::Instant::now();
-    loop {
-        if query_current_state(svc)? == SVC_STOPPED {
-            return Ok(());
-        }
-        if start.elapsed().as_millis() > STOP_TIMEOUT_MS {
-            return Err(Error::ServiceControl(
-                "Timed out waiting for service to stop".to_string(),
-            ));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-}
-
-/// Classification of a `dwCurrentState` sample while waiting for a service to start.
-#[derive(Debug, PartialEq, Eq)]
-enum StartPoll {
-    /// Reached RUNNING — the start succeeded.
-    Running,
-    /// Fell back to STOPPED — the start was accepted but the service failed to come up.
-    Failed,
-    /// START_PENDING or another transient state — keep polling.
-    Pending,
-}
-
-fn classify_start_state(state: u32) -> StartPoll {
-    match state {
-        SVC_RUNNING => StartPoll::Running,
-        SVC_STOPPED => StartPoll::Failed,
-        _ => StartPoll::Pending,
-    }
-}
-
-/// Poll until the service reports `RUNNING`; fail on a fall-back to `STOPPED` or a timeout.
-fn wait_for_running(svc: SC_HANDLE) -> Result<(), Error> {
-    let start = std::time::Instant::now();
-    loop {
-        match classify_start_state(query_current_state(svc)?) {
-            StartPoll::Running => return Ok(()),
-            StartPoll::Failed => {
-                return Err(Error::ServiceControl(
-                    "Service returned to STOPPED after a start request (start failed)".to_string(),
-                ))
-            }
-            StartPoll::Pending => {}
-        }
-        if start.elapsed().as_millis() > START_TIMEOUT_MS {
-            return Err(Error::ServiceControl(
-                "Timed out waiting for service to start".to_string(),
-            ));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-}
-
-/// Names of a service's currently-active dependent services.
-fn active_dependents(svc: SC_HANDLE) -> Result<Vec<String>, Error> {
-    // SAFETY: two-call sizing pattern; the second buffer is usize-aligned (>= pointer alignment)
-    // and sized to `bytes_needed`, matching what the first call reported.
-    unsafe {
-        let mut bytes_needed: u32 = 0;
-        let mut count: u32 = 0;
-
-        let ok = EnumDependentServicesW(
-            svc,
-            SERVICE_ACTIVE,
-            ptr::null_mut(),
-            0,
-            &mut bytes_needed,
-            &mut count,
-        );
-        if ok != 0 {
-            // Succeeded with a zero-size buffer => no dependents.
-            return Ok(Vec::new());
-        }
-        let err = GetLastError();
-        if err != ERROR_MORE_DATA {
-            return Err(Error::ServiceControl(format!(
-                "EnumDependentServices sizing failed: {}",
-                err
-            )));
-        }
-        if bytes_needed == 0 {
-            return Ok(Vec::new());
-        }
-
-        let words = (bytes_needed as usize).div_ceil(std::mem::size_of::<usize>());
-        let mut buf: Vec<usize> = vec![0usize; words];
-        let entries = buf.as_mut_ptr() as *mut ENUM_SERVICE_STATUSW;
-
-        let ok2 = EnumDependentServicesW(
-            svc,
-            SERVICE_ACTIVE,
-            entries,
-            bytes_needed,
-            &mut bytes_needed,
-            &mut count,
-        );
-        if ok2 == 0 {
-            return Err(Error::ServiceControl(format!(
-                "EnumDependentServices failed: {}",
-                GetLastError()
-            )));
-        }
-
-        let mut names = Vec::with_capacity(count as usize);
-        for i in 0..count as usize {
-            let entry = &*entries.add(i);
-            if !entry.lpServiceName.is_null() {
-                names.push(wide_to_string(entry.lpServiceName as *const u16));
-            }
-        }
-        Ok(names)
-    }
 }
 
 /// Check if a service is disabled.
@@ -510,17 +271,6 @@ mod tests {
             s.startup_type.is_some(),
             "expected a readable Start value for Schedule"
         );
-    }
-
-    #[test]
-    fn start_poll_treats_stopped_as_failure_and_running_as_success() {
-        // B1 regression: StartServiceW only queues the start, so the poll must treat a fall-back to
-        // STOPPED as a failed start (not a spurious success), RUNNING as success, and START_PENDING
-        // as "keep waiting". (Starting a real service mutates the runner — the accepted gap — so the
-        // poll *decision* is what we pin here.)
-        assert_eq!(classify_start_state(SVC_RUNNING), StartPoll::Running);
-        assert_eq!(classify_start_state(SVC_STOPPED), StartPoll::Failed);
-        assert_eq!(classify_start_state(SVC_START_PENDING), StartPoll::Pending);
     }
 
     #[test]

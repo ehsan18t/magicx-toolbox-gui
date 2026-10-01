@@ -1,0 +1,65 @@
+category:
+  id: value_beneath_registry_key
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Another tweak owns a value and a key inside a tweak's registry_key subtree."
+
+tweaks:
+  - id: key_owner
+    name: "Key Owner"
+    description: "Owns the Feature key and can drive it absent, deleting its subtree."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: feature_key
+        registry_key: { key: 'HKCU\Software\ExampleCo\Feature' }
+    options:
+      - label: "Present"
+        values:
+          feature_key: present
+      - label: "Absent"
+        values:
+          feature_key: absent
+
+  - id: value_owner
+    name: "Value Owner"
+    description: "Owns a value inside the other tweak's key; this is one violation."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: nested_value
+        registry: { key: 'HKCU\software\exampleco\FEATURE\Sub', name: Flag, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          nested_value: 1
+
+  - id: subkey_owner
+    name: "Subkey Owner"
+    description: "Owns a key inside the other tweak's key; this is the second violation."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: nested_key
+        registry_key: { key: 'HKCU\Software\ExampleCo\Feature\Child' }
+    options:
+      - label: "Present"
+        values:
+          nested_key: present
+
+  - id: sibling_owner
+    name: "Sibling Owner"
+    description: "FeatureX only shares a name prefix with Feature, so it is not beneath it."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: sibling_value
+        registry: { key: 'HKCU\Software\ExampleCo\FeatureX', name: Flag, type: REG_DWORD }
+    options:
+      - label: "On"
+        values:
+          sibling_value: 1
