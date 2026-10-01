@@ -1,6 +1,5 @@
 mod apps;
 mod commands;
-pub mod debug;
 mod error;
 pub mod logging;
 #[cfg(feature = "test-build")]
@@ -17,7 +16,6 @@ mod generated_corpus {
     include!(concat!(env!("OUT_DIR"), "/generated_corpus.rs"));
 }
 
-pub use debug::{emit_debug_log, is_debug_enabled, set_debug_enabled, DebugLevel, DebugLogEntry};
 pub use error::Error;
 pub use models::*;
 
@@ -99,7 +97,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_prevent_default::debug())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             log::info!("Application starting...");
@@ -119,7 +116,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::general::show_main_window,
             commands::system::get_system_info,
-            commands::debug::set_debug_mode,
             commands::logging::get_log_tail,
             commands::logging::log_frontend,
             commands::logging::get_log_settings,

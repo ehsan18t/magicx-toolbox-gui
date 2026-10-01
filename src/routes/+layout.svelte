@@ -24,6 +24,8 @@
 
   let { children } = $props();
 
+  const RETIRED_DEBUG_MODE_KEY = "magicx-debug-mode";
+
   let initError = $state<string | null>(null);
 
   // Global keyboard shortcuts
@@ -37,6 +39,7 @@
 
   onMount(async () => {
     installErrorForwarding();
+    localStorage.removeItem(RETIRED_DEBUG_MODE_KEY);
 
     // Show the window now that the UI is ready
     try {

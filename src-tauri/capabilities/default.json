@@ -16,7 +16,6 @@
     "opener:allow-open-path",
     { "identifier": "opener:allow-open-url", "allow": [{ "url": "ms-windows-store:*" }] },
     "dialog:default",
-    "fs:default",
     "process:default"
   ]
 }

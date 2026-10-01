@@ -49,7 +49,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-prevent-default = "5"
 tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 
 # Async runtime (for sleep in watchdog, and the engine's per-tweak lock) - minimal features only
