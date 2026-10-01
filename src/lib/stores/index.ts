@@ -8,6 +8,9 @@ export { isSidebarOpen, sidebarStore, sidebarWidthClass, type SidebarState } fro
 export { settingsStore } from "./settings.svelte";
 export { themeStore, type Theme } from "./theme.svelte";
 
+// App items
+export { appsStore } from "./apps.svelte";
+
 // Favorites
 export { favoritesStore } from "./favorites.svelte";
 

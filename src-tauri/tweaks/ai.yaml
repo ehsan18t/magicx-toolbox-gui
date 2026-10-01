@@ -119,54 +119,6 @@ tweaks:
       - label: "Enabled"
         values: { click_to_do: absent }
 
-  - id: remove_copilot_app
-    name: "Remove the Copilot app"
-    description: "Uninstall the Microsoft Copilot app and its provisioned copy so it stops coming back."
-    info: |
-      **Uninstalls the Copilot app for every account and removes the copy Windows keeps for new accounts, so it does not come back for them.**
-
-      ## Caveats
-      - A feature update can put the app back, so check again after each one.
-      - A second Copilot listing in the Microsoft Store is delivered differently and is not removed.
-      - Reverting reinstalls Copilot from the Microsoft Store with winget, so it needs an internet connection.
-
-      ## Notes
-      - Takes effect immediately.
-      - A PC without the app already reads as Removed, and there is nothing to undo.
-      - Click to Do and the right-click AI actions come from a separate component and are not touched.
-
-      ## Related
-      - **Hide the Copilot taskbar button** only hides the button and leaves the app installed.
-
-      ## Sources
-      - [Manage Windows Copilot](https://learn.microsoft.com/en-us/windows/client-management/manage-windows-copilot)
-      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
-      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
-    risk_level: low
-    elevation: admin
-    reversible: true
-    windows: { build: ">=26100" }
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.Copilot' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot') { exit 0 }
-            winget install --id 9NHT9RB2F4HD -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Microsoft.Copilot]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
-
   - id: remove_recall_feature
     name: "Disable the Recall optional feature"
     description: "Disable the Recall optional Windows feature at the component level."
@@ -241,7 +193,7 @@ tweaks:
       - Takes effect after you sign out and back in.
 
       ## Related
-      - **Remove the Copilot app** removes Copilot itself.
+      - **Copilot** (Apps) removes Copilot itself.
 
       ## Sources
       - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
@@ -424,3 +376,33 @@ tweaks:
         values: { state: 1, ai_fabric: manual }
       - label: "Automatic"
         values: { state: 0, ai_fabric: automatic }
+
+apps:
+  - id: copilot
+    name: "Copilot"
+    description: "The Microsoft Copilot app."
+    info: |
+      **Remove uninstalls the Copilot app for every account and removes the copy Windows keeps for new accounts, so it does not come back for them.**
+
+      ## Caveats
+      - A feature update can put the app back, so check again after each one.
+      - A second Copilot listing in the Microsoft Store is delivered differently and is not removed.
+
+      ## Notes
+      - Takes effect immediately.
+      - Click to Do and the right-click AI actions come from a separate component and are not touched.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
+
+      ## Related
+      - **Hide the Copilot taskbar button** only hides the button and leaves the app installed.
+
+      ## Sources
+      - [Manage Windows Copilot](https://learn.microsoft.com/en-us/windows/client-management/manage-windows-copilot)
+      - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+      - [Policy CSP - WindowsAI](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowsai)
+    risk_level: low
+    windows: { build: ">=26100" }
+    appx: [Microsoft.Copilot]
+    install: { store: 9NHT9RB2F4HD }

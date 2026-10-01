@@ -229,14 +229,8 @@ pub enum Shell {
     PowerShell,
 }
 
-/// How an Action's produced state is detected (spec §7: state-based, never history-based).
-///
-/// A script probe costs a process spawn, which measured at 180ms of floor before the script does
-/// any work, and detection runs one per probeable Action on every sweep. The native forms exist so
-/// a check that does not actually need an interpreter does not pay for one: [`Probe::Registry`] is
-/// a direct read, and [`Probe::AppxAbsent`] is answered from a single package enumeration shared by
-/// the whole sweep instead of one spawn per package. [`Probe::Script`] remains the escape hatch for
-/// everything else (powercfg, DISM, auditpol, CIM).
+/// State-based Action detection (spec §7). A script probe costs a 180ms spawn per sweep, so
+/// [`Probe::Registry`] reads directly; [`Probe::Script`] covers the rest (powercfg, DISM, CIM).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Probe {
     /// Run the Action's script under its own `shell`; exit 0 means the state is present.
@@ -250,9 +244,6 @@ pub enum Probe {
         name: String,
         equals: u32,
     },
-    /// Present when NONE of these packages are installed, either per-user or provisioned. Phrased
-    /// as absence because that is what the removal Actions using it produce.
-    AppxAbsent { packages: Vec<String> },
 }
 
 /// An imperative Action (spec §7). `DeleteTree` is the one surviving structural op (spec §5.1);
@@ -419,6 +410,40 @@ pub struct Corpus {
     pub shared: Vec<SharedDef>,
 }
 
+/// A curated removable app: no options, no snapshot (ADR-0009). A sibling of [`Corpus`], not a
+/// field on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub info: Option<String>,
+    pub warning: Option<String>,
+    pub risk_level: RiskLevel,
+    pub windows: Option<WindowsScope>,
+    pub source: AppSource,
+    pub install: Option<InstallSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AppSource {
+    Appx(Vec<String>),
+    /// PowerShell. `probe` exits 0 installed, 2 absent; `timeout` bounds `remove` only.
+    Script {
+        probe: String,
+        remove: String,
+        timeout: Option<u32>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstallSource {
+    Store(String),
+    Winget(String),
+    StorePage(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -486,5 +511,6 @@ mod tests {
         assert_send_sync::<EffectId>();
         assert_send_sync::<SharedId>();
         assert_send_sync::<OptLabel>();
+        assert_send_sync::<AppDef>();
     }
 }

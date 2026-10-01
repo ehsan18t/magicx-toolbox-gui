@@ -1,0 +1,13 @@
+category:
+  id: app_two_install_keys
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An app's install block names two routes; exactly one key is allowed."
+
+apps:
+  - id: two_routes
+    name: "Two Routes"
+    description: "This is the violation."
+    risk_level: low
+    appx: [ExampleCo.App]
+    install: { store: 9NBLGGH4R32N, winget: ExampleCo.App }

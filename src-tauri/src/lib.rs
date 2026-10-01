@@ -1,3 +1,4 @@
+mod apps;
 mod commands;
 pub mod debug;
 mod error;
@@ -89,7 +90,7 @@ pub fn run() {
                     use tauri::Emitter;
                     let _ = window.emit(
                         "close-blocked",
-                        "A tweak is still being changed. Close the window again once it finishes.",
+                        "A tweak or app is still being changed. Close the window again once it finishes.",
                     );
                 }
             }
@@ -186,6 +187,10 @@ pub fn run() {
             commands::tweaks::keep_current_state,
             commands::tweaks::rescan_after_elevation,
             commands::tweaks::get_elevation_state,
+            commands::apps::get_apps,
+            commands::apps::get_app_statuses,
+            commands::apps::remove_app,
+            commands::apps::install_app,
             // Elevation commands
             commands::elevation::restart_as_admin,
             // Update commands

@@ -16,7 +16,6 @@ pub mod revert;
 
 use apply::EngineError;
 
-use crate::services::appx_index::AppxIndex;
 use crate::services::elevation::{
     self, AcquireReason, BrokerOp, BrokerOpError, Elevation, OpFailureClass,
 };
@@ -667,15 +666,9 @@ pub struct Deps<'a> {
 /// Per-session cache of probeable-Action present/absent readings, keyed `(tweak_id, effect_id)`
 /// (spec §7: "cached per session ... detection must not re-spawn PowerShell per status poll").
 /// Interior-mutable so `detect` can populate it on a miss through a shared `&ProbeCache` in `Deps`.
-///
-/// Also owns the shared package enumeration [`AppxIndex`], which is the same idea one level up: a
-/// reading of the machine that many probes want and none should pay for separately. It lives here
-/// so it is invalidated by the same call that invalidates the per-effect readings, since removing
-/// an app is exactly what makes both stale.
 #[derive(Default)]
 pub struct ProbeCache {
     entries: Mutex<ProbeEntries>,
-    appx: AppxIndex,
 }
 
 /// `generation` counts invalidations: a probe that started before one must not cache its reading.
@@ -688,11 +681,6 @@ struct ProbeEntries {
 impl ProbeCache {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// The sweep-wide package enumeration. Built on first ask, then shared.
-    pub(crate) fn appx(&self) -> &AppxIndex {
-        &self.appx
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, ProbeEntries> {
@@ -718,14 +706,10 @@ impl ProbeCache {
         }
     }
 
-    /// Drops every cached probe for `tweak_id`, plus the machine-wide package enumeration: the
-    /// applies that invalidate a probe are the ones that install or remove packages.
     pub fn invalidate(&self, tweak_id: &str) {
         let mut entries = self.lock();
         entries.generation += 1;
         entries.readings.retain(|(t, _), _| t != tweak_id);
-        drop(entries);
-        self.appx.invalidate();
     }
 }
 

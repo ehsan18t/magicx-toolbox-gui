@@ -4,10 +4,11 @@
 //! authorable: a Firewall `shared:` variant and `ActionDef::DeleteTree`.
 
 use super::model::{
-    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr, FwAction, FwDirection,
-    FwProtocol, HostsAddr, KeyAddr, Level, Opt, OptLabel, OptValue, PackedFormat, Probe, RegAddr,
-    RegType, RiskLevel, RuleAddr, ScopedValue, Script, Setting, SharedDef, SharedId, Shell,
-    StartupType, SvcAddr, TaskAddr, Tweak, Value, WindowsScope,
+    ActionDef, AppDef, AppSource, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr,
+    FwAction, FwDirection, FwProtocol, HostsAddr, InstallSource, KeyAddr, Level, Opt, OptLabel,
+    OptValue, PackedFormat, Probe, RegAddr, RegType, RiskLevel, RuleAddr, ScopedValue, Script,
+    Setting, SharedDef, SharedId, Shell, StartupType, SvcAddr, TaskAddr, Tweak, Value,
+    WindowsScope,
 };
 use super::parse::{
     expand_product, parse_build_expr, parse_reg_path, parse_value_literal, validate_windows_scope,
@@ -29,9 +30,53 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 struct CorpusFileRaw {
     category: CategoryRaw,
+    #[serde(default)]
     tweaks: Vec<TweakRaw>,
     #[serde(default)]
     shared: Vec<SharedRaw>,
+    #[serde(default)]
+    apps: Vec<AppRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppRaw {
+    id: String,
+    name: String,
+    description: String,
+    #[serde(default)]
+    info: Option<String>,
+    #[serde(default)]
+    warning: Option<String>,
+    risk_level: RiskLevelRaw,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
+    #[serde(default)]
+    appx: Option<Vec<String>>,
+    #[serde(default)]
+    script: Option<AppScriptRaw>,
+    #[serde(default)]
+    install: Option<InstallRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppScriptRaw {
+    probe: String,
+    remove: String,
+    #[serde(default)]
+    timeout: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstallRaw {
+    #[serde(default)]
+    store: Option<String>,
+    #[serde(default)]
+    winget: Option<String>,
+    #[serde(default)]
+    store_page: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -332,7 +377,6 @@ struct ActionRaw {
 enum ProbeRaw {
     Script(String),
     Registry { registry: RegistryProbeRaw },
-    AppxAbsent { appx_absent: Vec<String> },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -775,9 +819,6 @@ fn convert_probe(raw: Option<&ProbeRaw>) -> Result<Option<Probe>, ParseError> {
                 equals: registry.equals,
             }
         }
-        ProbeRaw::AppxAbsent { appx_absent } => Probe::AppxAbsent {
-            packages: appx_absent.clone(),
-        },
     };
     Ok(Some(probe))
 }
@@ -1092,6 +1133,62 @@ fn convert_shared(raw: &SharedRaw, errors: &mut Vec<ValidationError>) -> Option<
     })
 }
 
+/// Exactly one of `appx`/`script` and at most one install key are checked here: the model cannot
+/// represent the other shapes. Charset and range rules are `validate::validate_apps`'.
+fn convert_app(raw: &AppRaw, category: &str, errors: &mut Vec<ValidationError>) -> Option<AppDef> {
+    let mut fail = |reason: String| {
+        errors.push(ValidationError::InvalidApp {
+            app: raw.id.clone(),
+            reason,
+        });
+    };
+    let source = match (&raw.appx, &raw.script) {
+        (Some(packages), None) => Some(AppSource::Appx(packages.clone())),
+        (None, Some(script)) => Some(AppSource::Script {
+            probe: script.probe.clone(),
+            remove: script.remove.clone(),
+            timeout: script.timeout,
+        }),
+        _ => {
+            fail("declare exactly one of `appx` or `script`".to_string());
+            None
+        }
+    };
+    let install = match &raw.install {
+        None => Some(None),
+        Some(i) => match (&i.store, &i.winget, &i.store_page) {
+            (Some(id), None, None) => Some(Some(InstallSource::Store(id.clone()))),
+            (None, Some(id), None) => Some(Some(InstallSource::Winget(id.clone()))),
+            (None, None, Some(id)) => Some(Some(InstallSource::StorePage(id.clone()))),
+            _ => {
+                fail(
+                    "`install` takes exactly one of `store`, `winget` or `store_page`".to_string(),
+                );
+                None
+            }
+        },
+    };
+    let windows = match raw.windows.as_ref().map(convert_windows_scope).transpose() {
+        Ok(scope) => Some(scope),
+        Err(source) => {
+            fail(format!("windows scope: {source}"));
+            None
+        }
+    };
+    Some(AppDef {
+        id: raw.id.clone(),
+        name: raw.name.clone(),
+        description: raw.description.clone(),
+        category: category.to_string(),
+        info: raw.info.clone(),
+        warning: raw.warning.clone(),
+        risk_level: raw.risk_level.into(),
+        windows: windows?,
+        source: source?,
+        install: install?,
+    })
+}
+
 /// Every `*.yaml`/`*.yml` file directly inside `path`, sorted for deterministic load order — or
 /// `path` itself, if it names a file rather than a directory (lets a single fixture load in
 /// isolation without a wrapping directory per fixture).
@@ -1113,11 +1210,17 @@ fn collect_yaml_files(path: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// [`load_corpus_with_apps`] without the apps.
+#[cfg(test)]
+pub fn load_corpus(dir: &Path) -> Result<Corpus, Vec<ValidationError>> {
+    load_corpus_with_apps(dir).map(|(corpus, _)| corpus)
+}
+
 /// Loads every corpus file under `dir` (or `dir` itself, if it is a single file) into one
 /// [`Corpus`]: categories stamped onto their file's tweaks, shared declarations merged
 /// corpus-wide. Accumulates every load-time problem (bad YAML, bad paths/literals) instead of
 /// stopping at the first — an author sees everything wrong in one run.
-pub fn load_corpus(dir: &Path) -> Result<Corpus, Vec<ValidationError>> {
+pub fn load_corpus_with_apps(dir: &Path) -> Result<(Corpus, Vec<AppDef>), Vec<ValidationError>> {
     if !dir.exists() {
         return Err(vec![ValidationError::Yaml {
             file: dir.display().to_string(),
@@ -1129,6 +1232,7 @@ pub fn load_corpus(dir: &Path) -> Result<Corpus, Vec<ValidationError>> {
     let mut categories = Vec::new();
     let mut tweaks = Vec::new();
     let mut shared = Vec::new();
+    let mut apps = Vec::new();
 
     for file in collect_yaml_files(dir) {
         let file_label = file.display().to_string();
@@ -1170,14 +1274,22 @@ pub fn load_corpus(dir: &Path) -> Result<Corpus, Vec<ValidationError>> {
                 shared.push(shared_def);
             }
         }
+        for app_raw in &raw.apps {
+            if let Some(app) = convert_app(app_raw, &category_id, &mut errors) {
+                apps.push(app);
+            }
+        }
     }
 
     if errors.is_empty() {
-        Ok(Corpus {
-            categories,
-            tweaks,
-            shared,
-        })
+        Ok((
+            Corpus {
+                categories,
+                tweaks,
+                shared,
+            },
+            apps,
+        ))
     } else {
         Err(errors)
     }
@@ -1490,6 +1602,81 @@ mod tests {
             .collect();
         assert!(timeouts.contains(&Some(120)), "{timeouts:?}");
         assert!(timeouts.contains(&None), "{timeouts:?}");
+    }
+
+    #[test]
+    fn apps_load_beside_tweaks_with_their_file_category() {
+        let (corpus, apps) =
+            load_corpus_with_apps(&fixture("good")).expect("the good fixture corpus must load");
+        assert!(!corpus.tweaks.is_empty());
+        assert_eq!(apps.len(), 2, "{apps:?}");
+
+        let appx = apps.iter().find(|a| a.id == "example_appx_app").unwrap();
+        assert_eq!(appx.category, "category_b");
+        assert_eq!(appx.risk_level, RiskLevel::Low);
+        assert_eq!(
+            appx.source,
+            AppSource::Appx(vec![
+                "ExampleCo.StoreApp".to_string(),
+                "ExampleCo.StoreApp.Helper".to_string()
+            ])
+        );
+        assert_eq!(
+            appx.install,
+            Some(InstallSource::Store("9NBLGGH4R32N".to_string()))
+        );
+        assert_eq!(
+            appx.windows.as_ref().and_then(|w| w.products.clone()),
+            Some(vec![11])
+        );
+
+        let script = apps.iter().find(|a| a.id == "example_script_app").unwrap();
+        let AppSource::Script {
+            probe,
+            remove,
+            timeout,
+        } = &script.source
+        else {
+            panic!("expected a script source, got {:?}", script.source);
+        };
+        assert_eq!(probe.trim(), "exit 2");
+        assert_eq!(remove.trim(), "exit 0");
+        assert_eq!(*timeout, Some(600));
+        assert_eq!(script.install, None);
+        assert!(script.warning.is_some());
+    }
+
+    #[test]
+    fn a_file_may_declare_apps_without_tweaks() {
+        let (corpus, apps) =
+            load_corpus_with_apps(&fixture("apps/apps_only.yaml")).expect("must load");
+        assert!(corpus.tweaks.is_empty());
+        assert_eq!(
+            apps[0].install,
+            Some(InstallSource::Winget("ExampleCo.Winget_App-2".to_string()))
+        );
+    }
+
+    #[test]
+    fn an_app_needs_exactly_one_source_and_one_install_key() {
+        for (file, needle) in [
+            (
+                "bad/app_two_sources.yaml",
+                "exactly one of `appx` or `script`",
+            ),
+            (
+                "bad/app_no_source.yaml",
+                "exactly one of `appx` or `script`",
+            ),
+            ("bad/app_two_install_keys.yaml", "exactly one of `store`"),
+        ] {
+            let errors = load_corpus_with_apps(&fixture(file)).expect_err(file);
+            assert_eq!(errors.len(), 1, "{file}: {errors:?}");
+            assert!(
+                matches!(&errors[0], ValidationError::InvalidApp { reason, .. } if reason.contains(needle)),
+                "{file}: {errors:?}"
+            );
+        }
     }
 
     #[test]

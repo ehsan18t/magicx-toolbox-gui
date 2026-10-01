@@ -55,8 +55,8 @@ fn generate_corpus() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=src/tweaks/validate.rs");
     println!("cargo:rerun-if-changed=src/tweaks/schema.rs");
 
-    let corpus = match schema::load_corpus(&tweaks_dir) {
-        Ok(corpus) => corpus,
+    let (corpus, apps) = match schema::load_corpus_with_apps(&tweaks_dir) {
+        Ok(loaded) => loaded,
         Err(errors) => return Err(validation_report("YAML LOAD FAILED", &errors).into()),
     };
 
@@ -68,15 +68,20 @@ fn generate_corpus() -> Result<(), Box<dyn std::error::Error>> {
     if !semantic_errors.is_empty() {
         return Err(validation_report("SEMANTIC VALIDATION FAILED", &semantic_errors).into());
     }
+    let app_errors = validate::validate_apps(&corpus, &apps);
+    if !app_errors.is_empty() {
+        return Err(validation_report("APP VALIDATION FAILED", &app_errors).into());
+    }
 
     let corpus_json = serde_json::to_string(&corpus)?;
     std::fs::write(out_path.join("corpus.json"), corpus_json)?;
+    std::fs::write(out_path.join("apps.json"), serde_json::to_string(&apps)?)?;
 
     let generated_code = r#"// AUTO-GENERATED FILE - DO NOT EDIT
 // Generated from tweaks/*.yaml at build time by build.rs. To modify the corpus, edit the YAML and
 // rebuild.
 
-use crate::tweaks::model::Corpus;
+use crate::tweaks::model::{AppDef, Corpus};
 use std::sync::LazyLock;
 
 /// Raw JSON of the compiled, build-time-validated corpus (embedded at compile time).
@@ -87,17 +92,24 @@ pub const CORPUS_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/corpus.jso
 pub static CORPUS: LazyLock<Corpus> = LazyLock::new(|| {
     serde_json::from_str(CORPUS_JSON).expect("failed to parse embedded corpus JSON")
 });
+
+pub static APPS: LazyLock<Vec<AppDef>> = LazyLock::new(|| {
+    serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/apps.json")))
+        .expect("failed to parse embedded apps JSON")
+});
 "#;
     std::fs::write(out_path.join("generated_corpus.rs"), generated_code)?;
 
     println!(
-        "cargo:warning=✓ Validated and compiled {} categor{}, {} tweak{}, {} shared setting{} from tweaks/",
+        "cargo:warning=✓ Validated and compiled {} categor{}, {} tweak{}, {} shared setting{}, {} app{} from tweaks/",
         corpus.categories.len(),
         if corpus.categories.len() == 1 { "y" } else { "ies" },
         corpus.tweaks.len(),
         if corpus.tweaks.len() == 1 { "" } else { "s" },
         corpus.shared.len(),
         if corpus.shared.len() == 1 { "" } else { "s" },
+        apps.len(),
+        if apps.len() == 1 { "" } else { "s" },
     );
 
     Ok(())

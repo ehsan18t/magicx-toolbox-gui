@@ -25,6 +25,7 @@ For the engine architecture see [architecture/tweak/](./architecture/tweak/READM
   [`src-tauri/tweaks/`](../src-tauri/tweaks/). Every fragment in this guide is a self-contained
   illustration checked against the shipped validator; the `HKCU\Software\MagicXToolboxExample\...`
   addresses in them are deliberate placeholders, not live tweaks.
+- Removable apps are **app items**, not tweaks: they live in the same files under `apps:` and are covered in §20.
 
 ### Table of contents
 
@@ -47,6 +48,7 @@ For the engine architecture see [architecture/tweak/](./architecture/tweak/READM
 17. [Complete worked examples](#17-complete-worked-examples)
 18. [What is gone from the old schema](#18-what-is-gone-from-the-old-schema)
 19. [Authoring checklist / do's & don'ts](#19-authoring-checklist--dos--donts)
+20. [App items](#20-app-items)
 
 ---
 
@@ -171,7 +173,7 @@ learn every other kind, keyword, and rule, but that file is a working tweak.
 
 ## 2. Anatomy of a corpus file
 
-Each YAML file in `src-tauri/tweaks/` is one **corpus file** with exactly three top-level keys:
+Each YAML file in `src-tauri/tweaks/` is one **corpus file** with up to four top-level keys:
 
 ```yaml
 category: # REQUIRED: exactly one, applies to every tweak in this file
@@ -183,7 +185,10 @@ category: # REQUIRED: exactly one, applies to every tweak in this file
 shared: # OPTIONAL: corpus-level shared settings (§9). Omit if you have none.
   - id: ...
 
-tweaks: # REQUIRED: the list of tweaks in this file
+tweaks: # the list of tweaks in this file (may be omitted in a file holding only apps)
+  - id: ...
+
+apps: # OPTIONAL: app items, removable apps that are not tweaks (§20)
   - id: ...
 ```
 
@@ -217,9 +222,13 @@ one address (§9). Omit the key entirely if the file declares none (it defaults 
 
 ### 2.3 The `tweaks:` block
 
-Required. A list of tweaks; each tweak's fields are §3.
+A list of tweaks; each tweak's fields are §3. A file that holds only app items may omit it (it defaults to empty).
 
-### 2.4 One file's full shape (annotated)
+### 2.4 The `apps:` block
+
+Optional. A list of app items: curated apps the user can remove and install back. They are not tweaks and follow their own rules (§20).
+
+### 2.5 One file's full shape (annotated)
 
 ```yaml
 category:
@@ -588,8 +597,8 @@ contract in §12.
 
 > ⚠️ **`apply` and `undo` are inline strings only in v1** (usually a YAML block scalar with `|`).
 > There is **no `apply: { file: … }` filed-script form** in the shipped schema: writing one is a build
-> error. See §12.6. `probe` also accepts the native forms in §12.5, which avoid a process entirely and
-> are what you should reach for first.
+> error. See §12.6. `probe` also accepts the native `registry` form in §12.5, which avoids a process
+> entirely and is what you should reach for first.
 
 ---
 
@@ -1434,26 +1443,7 @@ computes the truth and rejects the lie (`ReversibilityMismatch`, §14/§16).
 
 #### Pick the cheapest form that answers the question
 
-A script probe costs a **process spawn**: roughly 180ms before your script does anything, and every
-probeable action pays it on every status scan. Two forms avoid it. Reach for a script only when
-neither fits.
-
-**`appx_absent`**: present when **none** of the listed packages are installed, per-user or
-provisioned. Phrased as absence because that is what a removal action produces.
-
-```yaml
-probe:
-  appx_absent: [Microsoft.GetHelp]
-# several packages: present only when every one of them is gone
-probe:
-  appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
-```
-
-Names match the way `Get-AppxPackage -Name` and a provisioned package's `DisplayName` spell them, and
-are compared case-insensitively. The whole scan shares **one** package enumeration, so ten tweaks
-asking about ten packages cost one query, not ten. Do not hand-write this as a script: asking about a
-single package costs the same as listing every package (measured: 424ms against 416ms), so a per-tweak
-script pays the full price for an answer the shared enumeration already holds.
+A script probe costs a **process spawn**: roughly 180ms before your script does anything, and every probeable action pays it on every status scan. The `registry` form avoids it; reach for a script only when it does not fit.
 
 **`registry`**: present when a DWORD holds exactly `equals`. A direct read, no process at all.
 
@@ -1479,15 +1469,14 @@ probe: |
   if ($s -eq 'Disabled') { exit 0 } else { exit 1 }
 ```
 
-If you are writing a script whose whole body is one `Get-ItemProperty` comparison, use the `registry`
-form instead. If it is one `Get-AppxPackage` check, use `appx_absent`.
+If you are writing a script whose whole body is one `Get-ItemProperty` comparison, use the `registry` form instead. Removing an app is not an action at all: author it as an app item (§20).
 
 ### 12.6 Inline scripts only (no filed form in v1)
 
 `apply` and `undo` are **plain string bodies**: typically a YAML block scalar (`|`) for multi-line
 scripts, or a quoted one-liner. There is **no `apply: { file: scripts/x.ps1 }` filed-script form in
 the shipped schema**: writing a map there is a build error (`data did not match … EffectRaw`). Put the
-script body inline. (`probe` is the one field that also takes a map, for the native forms in §12.5.)
+script body inline. (`probe` is the one field that also takes a map, for the `registry` form in §12.5.)
 
 > 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by `build.rs`). The **shipped `ActionRaw` schema accepts only a string** (`apply: String`, `undo: Option<String>` in `src-tauri/src/tweaks/schema.rs`), so filed scripts are not available and the spec is wrong on this point. This guide documents the shipped behavior.
 
@@ -1822,6 +1811,8 @@ listing **every** error in that phase (you fix them all in one pass):
 1. **Load** (`schema.rs`): parse YAML, parse paths/literals/scopes. → `YAML LOAD FAILED`
 2. **Structural** (`validate_structural`): ownership, coverage, reversibility, etc. → `STRUCTURAL VALIDATION FAILED`
 3. **Semantic** (`validate_semantic`): detectability & distinctness, **per support-matrix milestone**. → `SEMANTIC VALIDATION FAILED`
+
+App items run a fourth phase after these, `APP VALIDATION FAILED`, with its own two errors; see §20.6.
 
 Below is **every** build-error variant, the message you will see (paraphrased from the validator), what
 triggers it, **why** the rule exists, and a wrong→right fix. The 30 `ValidationError` variants are
@@ -2512,3 +2503,145 @@ Run through this before you commit a tweak.
 - ✅ Build the app (`cargo build` / `pnpm run validate`): the tweak validator runs at compile time and
   must pass on every support-matrix build.
 - ✅ If it fails, find the error variant in §16, apply the wrong→right fix, and rebuild.
+
+---
+
+## 20. App items
+
+An **app item** is a curated app the user can remove, and install back where a source exists. It is **not a tweak** (ADR-0009): it has no options, no `effects:`, no snapshot, no journal, no System Default, no Restore and no Needs Attention. A removed app has no state to capture, and the only way back is to download it again, which a snapshot cannot promise. So an app item has a **presence** (Installed, Absent or Unknown) and two buttons, **Remove** and **Install** (or **Get in Store**), both run immediately and verified by reading presence again.
+
+Never author an app removal as a tweak with an `action:` effect. That model owes the removal a snapshot it cannot restore from and a Restore button that cannot work.
+
+### 20.1 Where app items live
+
+App items go in the same category files as tweaks, in a top-level `apps:` list beside `tweaks:` (§2). An app takes the category of its file. A file may hold only apps; `tweaks:` then defaults to empty.
+
+```yaml
+category:
+  id: examples
+  name: "Examples"
+  icon: "mdi:flask-outline"
+  description: "Demonstration corpus."
+
+apps:
+  - id: example_store_app
+    name: "Example App"
+    description: "What the app is, in one line."
+    info: |
+      **Remove uninstalls Example App for every account on the PC.**
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store.
+    warning: "Removing it also removes the work client."  # optional
+    risk_level: low
+    windows: { products: [11] }  # optional
+    appx: [ExampleCo.ExampleApp]
+    install: { store: 9NBLGGH4R32N }
+
+  - id: example_script_app
+    name: "Example Script App"
+    description: "A Win32 app with no package name."
+    risk_level: medium
+    script:
+      probe: |
+        $ErrorActionPreference = 'Stop'
+        try {
+          if (Test-Path -LiteralPath "$env:ProgramFiles\ExampleCo\Example.exe") { exit 0 }
+        } catch { exit 1 }
+        exit 2
+      remove: |
+        $ErrorActionPreference = 'Stop'
+        $p = Start-Process -FilePath "$env:ProgramFiles\ExampleCo\uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+        exit $p.ExitCode
+      timeout: 600
+    install: { winget: ExampleCo.Example }
+```
+
+### 20.2 Fields
+
+| field | required | meaning |
+| --- | --- | --- |
+| `id` | yes | Same rules as a tweak id (`a-z`, `0-9`, `_`). Tweaks and apps share one id space, compared case-insensitively: an app id may not reuse a tweak id. |
+| `name` | yes | The app's own name ("Clipchamp"), not an action ("Remove Clipchamp"): the card already has the buttons. |
+| `description` | yes | One line saying what the app is. |
+| `info` | no | Markdown, same conventions as a tweak's `info`. Say what Remove does and how to get the app back; never mention reverting, System Default or Needs Attention. |
+| `warning` | no | Shown on the card, as for a tweak. |
+| `risk_level` | yes | `low`, `medium`, `high` or `critical`, as for a tweak. |
+| `windows` | no | The same scope grammar as a tweak (§10). `revision` is rejected. |
+| `appx` | one of `appx` / `script` | AppX package names, as `Get-AppxPackage -Name` and a provisioned package's `DisplayName` spell them. |
+| `script` | one of `appx` / `script` | `probe` and `remove` PowerShell bodies, and an optional `timeout` for `remove`. |
+| `install` | no | At most one of `store`, `winget` or `store_page` (§20.4). |
+
+There is **no** `elevation:`, `reversible:`, `effects:` or `options:` field. Unknown keys are a build error, as everywhere.
+
+### 20.3 Sources and presence
+
+**`appx: [names]`**: the app is installed when any listed package is registered for any account **or** provisioned (Windows installs a provisioned package into every new account). Names may use only `A-Z`, `a-z`, `0-9`, `.` and `-`, and the list may not be empty. Prefer `appx` whenever the app is a package: presence comes from one shared enumeration per scan, and the removal script is generated for you:
+
+- a bundle pass, `Get-AppxPackage -AllUsers -Name <name> -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers`;
+- a plain pass without the filter;
+- `Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq <name> | Remove-AppxProvisionedPackage -Online`;
+
+all inside one `try` with `$ErrorActionPreference = 'Stop'`, whose `catch` exits with the exception's HRESULT so the error names the cause (for example 0x80073CFA). The removal has 600 seconds.
+
+List each package of an app that ships as several; list two apps that have their own Store listings as **two app items**, so each has its own presence and its own install.
+
+**`script: { probe, remove, timeout? }`**: for an app that is not an AppX package (OneDrive is the shipped example). Both bodies are PowerShell and run through the action runner (§12.6).
+
+- **`probe` exit codes: `0` = installed, `2` = absent, anything else = Unknown.** A timeout or a crash is Unknown too. This is **not** the action probe contract (§12.2), where every non-zero code means absent.
+- **Why `1` is not absent:** an uncaught PowerShell error exits `1`. If `1` meant absent, a probe that throws would report an installed app as gone and hide its card. So wrap the checks in `try`, `exit 1` from the `catch`, and reach `exit 2` only after every check has run cleanly. **Never `exit 2` inside a `catch`.**
+- The probe always gets the fixed 30 second probe timeout; keep it quick.
+- `remove` exits `0` on success. Any other exit is a failure, reported with its code. `timeout` bounds `remove` only: 1 to 1800 seconds, default 600. Set it for uninstallers that take minutes.
+- Neither body may be empty.
+
+**Unelevated**, AppX presence can read only the current account's packages: a hit is Installed, a miss is Unknown ("needs administrator"), never Absent. A script probe that exits with an unexpected code while unelevated is also flagged as needing elevation.
+
+### 20.4 Install kinds and the machine route
+
+| `install:` | Meaning | Id format |
+| --- | --- | --- |
+| `{ store: <id> }` | A Microsoft Store product that winget can install: `winget install --id <id> -e --source msstore`. | 12 characters of `A-Z0-9` (`9NBLGGH4R32N`), or 14 starting with `XP` (`XP8BT8DW290MPQ`) |
+| `{ winget: <id> }` | A package in the winget community source: `winget install --id <id> -e --source winget`. | `A-Z`, `a-z`, `0-9`, `.`, `-`, `_` |
+| `{ store_page: <id> }` | A Store product winget **cannot** resolve: the app only opens its Store page. | as `store` |
+| omitted | No way back. | |
+
+Check with `winget show --id <id> --exact` (and `--source msstore` for Store ids) before choosing `store`: an id winget cannot find must be `store_page`, never `store`.
+
+Each scan works out the **route** this machine actually offers:
+
+| Authored | winget available | Store available | Route | Card |
+| --- | --- | --- | --- | --- |
+| `store` | yes | any | `winget` | Install |
+| `store` | no | yes | `store_page` | Get in Store |
+| `winget` | yes | any | `winget` | Install |
+| `store_page` | any | yes | `store_page` | Get in Store |
+| otherwise | | | `none` | Permanent badge |
+
+winget is available when `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` exists for the running account; the Store when the `ms-windows-store` protocol is registered. An install runs as the current account with a 1800 second timeout and must read Installed afterwards. Get in Store is not verified by the app: the card checks presence again when the window regains focus.
+
+### 20.5 Fixed elevation, no snapshot, visibility
+
+- **Elevation is fixed**, not authored: Remove needs `admin`; Install runs at `user`; presence degrades unelevated (§20.3). Install is blocked when the app was elevated with another account's credentials, because the app would land in the wrong account; so is a script removal, whose paths may be per-user, and a script item's presence then reads Unknown without running its probe.
+- **No snapshot** (ADR-0009). Nothing is captured before a removal and there is no Restore. The only way back is the install route, and an app with none is permanent: the card carries a Permanent badge and Remove's confirmation says it cannot be undone. Say so in `info` too.
+- **Visibility:** an app is shown unless it is Absent **and** has no route on this machine. Unknown is always shown, with its buttons disabled. An app whose `windows:` scope excludes the running build is left out of release builds.
+- **Feature updates can re-add apps.** Windows feature updates (and, for some apps, Windows Update) re-provision removed packages. The card then reads Installed again. Say this in `info` for every app it applies to.
+- Favorites, profiles, Apply Changes, the applied counter and Restore Snapshots ignore apps.
+
+### 20.6 Build errors
+
+App rules run as a fourth phase after the tweak phases (§16), reported under `APP VALIDATION FAILED`. Two shape rules are checked earlier, while loading, and fail under `YAML LOAD FAILED`.
+
+| Error | Phase | Trigger |
+| --- | --- | --- |
+| `InvalidApp` | load | Not exactly one of `appx` / `script`, or more than one key under `install:`. |
+| `InvalidApp` | apps | A bad id, `windows:` with `revision`, an empty `appx` list, a package name outside its character set, an empty `probe` or `remove`, a `timeout` outside 1 to 1800, or an install id outside its format. |
+| `DuplicateAppId` | apps | Two apps, or an app and a tweak, share an id (ignoring case). |
+
+### 20.7 Checklist
+
+- ✅ Prefer `appx` whenever the app is a package; use `script` only for non-package apps.
+- ✅ Script `probe`: `exit 0` installed, `exit 2` absent, `exit 1` from the `catch`. ❌ Never `exit 2` from a `catch`.
+- ✅ Choose `store` only for ids `winget show` resolves; otherwise `store_page`.
+- ✅ Name the app, not the action. Write `info` for the app item: what Remove does, how to get it back, whether a feature update can return it.
+- ✅ Give each app with its own Store listing its own item.
+- ✅ Add the app's entry to the Apps section of its `docs/tweaks/<category>.md` page and a row to the app index in `docs/tweaks/README.md`.

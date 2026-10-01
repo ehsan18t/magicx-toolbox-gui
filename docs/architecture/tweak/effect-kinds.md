@@ -58,6 +58,7 @@ Only services and tasks can read `Missing`; a registry value reads `Absent`, and
 - **Results**: exit code 0 is success. Any other exit code is a typed action failure. A spawn failure or a timeout is an error, never a result.
 - **Probes**: a probe script's exit code 0 means "present", anything else means "absent". A probe that cannot run is an error, not "absent".
 - **Levels**: actions run at `user` or `admin`, never at `ti`. The validator rejects an action routed to `ti`, so scripts never reach the elevated broker.
+- **App items** use the same runner for their presence probes, removals and winget installs, with their own exit-code rules and timeouts; see [apps.md](apps.md).
 
 ## The did-it-work contract
 

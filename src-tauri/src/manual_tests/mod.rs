@@ -2,6 +2,7 @@
 //! To add a test, write its `fn(&Ctx) -> Verdict` and add one entry to [`TESTS`].
 //! Production paths only: nothing here runs inside the elevated broker child.
 
+mod apps;
 mod cases;
 mod errors;
 pub(crate) mod probe;
@@ -96,6 +97,15 @@ pub const TESTS: &[ManualTest] = &[
         changes_system: true,
         minutes: None,
         run: cases::systemtemp_transport,
+    },
+    ManualTest {
+        id: "feedback_hub_round_trip",
+        title: "Feedback Hub remove and reinstall",
+        description: "Removes Feedback Hub through the remove_app path, verifies it reads absent, then reinstalls it from the Microsoft Store through the install_app path and verifies it reads installed.",
+        changes: "Removes Feedback Hub for every account, then reinstalls it for this account from the Microsoft Store through winget.",
+        changes_system: true,
+        minutes: None,
+        run: apps::feedback_hub_round_trip,
     },
 ];
 

@@ -68,7 +68,7 @@ Reads run at whatever level the app has right now, never higher. A registry valu
 
 Script probes spawn a process, so their answers are cached for the app session, keyed by tweak and effect.
 
-- Native probes (a registry DWORD check, an "Appx packages absent" check) are answered inside the engine without spawning anything. The installed-package list they use is itself cached and shared.
+- The native registry DWORD probe is answered inside the engine without spawning anything. App presence is not a probe; see [apps.md](apps.md).
 - Apply invalidates the tweak's cached probes before it starts and again when it finishes; restore invalidates them when it finishes.
 - A generation counter prevents a race: a probe that started before an invalidation never stores its (now stale) answer.
 - Apply's own planning and verify probes, rollback and restore probe live, because their decisions must reflect the machine as it is at that moment. Apply's initial detect does go through the cache, immediately after invalidating it, so it also reads live.

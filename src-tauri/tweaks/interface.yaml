@@ -767,7 +767,7 @@ tweaks:
       - Takes effect after Explorer restarts.
 
       ## Related
-      - **Remove OneDrive** (Debloat) uninstalls OneDrive instead.
+      - **OneDrive** (Debloat, Apps) uninstalls OneDrive instead.
 
       ## Sources
       - [Remove the OneDrive icon from File Explorer in Windows 11](https://winaero.com/how-to-remove-onedrive-icon-from-file-explorer-in-windows-11/)
@@ -1064,7 +1064,7 @@ tweaks:
       - Takes effect the next time Start opens.
 
       ## Related
-      - **Remove Phone Link** (Debloat) uninstalls the app instead.
+      - **Phone Link** (Debloat, Apps) uninstalls the app instead.
 
       ## Sources
       - [Mobile device in Start menu (Microsoft Support)](https://support.microsoft.com/en-us/windows/mobile-device-in-start-menu-21676d6a-3bc3-439a-aaa3-7463b91cda79)

@@ -1,8 +1,9 @@
 <script lang="ts">
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { TweakCard } from "$lib/components/tweaks";
+  import { AppCard, TweakCard } from "$lib/components/tweaks";
   import { ActionButton, EmptyState, SkeletonCard } from "$lib/components/ui";
+  import { appsStore } from "$lib/stores/apps.svelte";
   import type { TabDefinition } from "$lib/stores/navigation.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import {
@@ -39,6 +40,18 @@
       (t) => t.definition.name.toLowerCase().includes(query) || t.definition.description.toLowerCase().includes(query),
     );
   });
+
+  const categoryApps = $derived(appsStore.byCategory[tab.id] ?? []);
+  const filteredApps = $derived.by(() => {
+    if (!searchQuery.trim()) return categoryApps;
+    const query = searchQuery.toLowerCase();
+    return categoryApps.filter(
+      (a) => a.name.toLowerCase().includes(query) || a.description.toLowerCase().includes(query),
+    );
+  });
+  const installedAppCount = $derived(
+    categoryApps.filter((a) => appsStore.status(a.id)?.presence.state === "installed").length,
+  );
 
   // Stats
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
@@ -103,7 +116,7 @@
       <Icon icon="mdi:magnify" width="20" class="shrink-0 text-foreground-muted" />
       <input
         type="text"
-        placeholder="Search tweaks..."
+        placeholder="Search tweaks and apps..."
         bind:value={searchQuery}
         class="flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-subtle"
       />
@@ -112,6 +125,7 @@
           type="button"
           class="hover:bg-muted flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:text-foreground"
           onclick={() => (searchQuery = "")}
+          aria-label="Clear search"
         >
           <Icon icon="mdi:close" width="16" />
         </button>
@@ -166,12 +180,12 @@
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if tweaksLoading && categoryTweaks.length === 0}
       <SkeletonCard />
-    {:else if filteredTweaks.length === 0}
+    {:else if filteredTweaks.length === 0 && filteredApps.length === 0}
       {#if searchQuery}
         <EmptyState
           icon="mdi:file-search-outline"
           title="No results found"
-          description={`No tweaks match "${searchQuery}"`}
+          description={`Nothing matches "${searchQuery}"`}
           actionText="Clear search"
           onaction={() => (searchQuery = "")}
         />
@@ -182,12 +196,27 @@
           description="This category has no tweaks for your system"
         />
       {/if}
-    {:else}
+    {:else if filteredTweaks.length > 0}
       <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
         {#each filteredTweaks as tweak (tweak.definition.id)}
           <TweakCard {tweak} />
         {/each}
       </div>
+    {/if}
+
+    {#if filteredApps.length > 0}
+      <section aria-labelledby="apps-heading-{tab.id}" class="pb-4">
+        <h2 id="apps-heading-{tab.id}" class="m-0 mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Icon icon="mdi:package-variant" width="18" class="text-foreground-muted" />
+          Apps
+          <span class="font-normal text-foreground-muted">· {installedAppCount} installed</span>
+        </h2>
+        <div class="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:gap-4">
+          {#each filteredApps as app (app.id)}
+            <AppCard {app} />
+          {/each}
+        </div>
+      </section>
     {/if}
   </div>
 </div>

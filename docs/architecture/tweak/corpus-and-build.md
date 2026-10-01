@@ -52,7 +52,7 @@ An effect is one of three things:
 
 - **Setting**: a readable, drivable address. Six kinds: registry value (optionally one field inside a packed `key=value;` string), registry key presence, service startup type, scheduled task enabled state, hosts file entry, and firewall rule presence. Settings are always detectable and always reversible, because the engine can read the old value and write it back.
 - **Shared**: a reference to a corpus-wide shared setting. Options say `claim` or `unclaimed` for it, never a value. See [persistence.md](persistence.md#shared-claims).
-- **Action**: a script (PowerShell or cmd) with an `apply`, and optionally an `undo` and a `probe`. An action is reversible only if it has an undo, and detectable only if it has a probe. A probe can be a script, a registry DWORD check, or an "these Appx packages are absent" check. An **ephemeral** action (for example "restart Explorer") has neither and exists only to make a change take effect.
+- **Action**: a script (PowerShell or cmd) with an `apply`, and optionally an `undo` and a `probe`. An action is reversible only if it has an undo, and detectable only if it has a probe. A probe can be a script or a registry DWORD check. Removing an app is not an action: it is an [app item](apps.md). An **ephemeral** action (for example "restart Explorer") has neither and exists only to make a change take effect.
 
 ### Values
 
@@ -87,7 +87,9 @@ flowchart TD
   C -->|errors| Y["Build fails"]
   C --> D["Semantic validation<br/>runs per milestone:<br/>19045, 22621, 22631, 26100"]
   D -->|errors| Y
-  D --> E["Emit corpus.json and generated_corpus.rs<br/>into OUT_DIR"]
+  D --> AV["App validation<br/>ids, sources, install ids"]
+  AV -->|errors| Z["Build fails<br/>APP VALIDATION FAILED"]
+  AV --> E["Emit corpus.json, apps.json and generated_corpus.rs<br/>into OUT_DIR"]
   E --> F["Binary embeds the JSON"]
   F --> G["First use at run time:<br/>deserialize once, no re-validation"]
 ```
@@ -135,7 +137,7 @@ flowchart LR
 
 ## Interfaces
 
-- `tweaks::compiled_corpus()` is the single entry point to the loaded corpus. The command layer, the engine, the snapshot classifier and the manual tests all read it.
+- `tweaks::compiled_corpus()` is the single entry point to the loaded corpus. The command layer, the engine, the snapshot classifier and the manual tests all read it. App items are a sibling value, `tweaks::compiled_apps()`, loaded from the same files (see [apps.md](apps.md)).
 - The scope helpers in `validate.rs` (`applicable_surface`, `applicable_value`, `option_unavailable`, `scope_admits`) are shared by the validator, detection, apply and snapshot classification, so "does this apply here" has one answer everywhere.
 - `winver.rs` supplies the running build to the command layer and the engine.
 

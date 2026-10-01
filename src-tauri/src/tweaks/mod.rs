@@ -29,10 +29,162 @@ pub fn compiled_corpus() -> &'static Corpus {
     &crate::generated_corpus::CORPUS
 }
 
+/// The build-time-compiled app items (ADR-0009), from the same YAML files as the corpus.
+pub fn compiled_apps() -> &'static [AppDef] {
+    &crate::generated_corpus::APPS
+}
+
 #[cfg(test)]
 mod compiled_corpus_tests {
     use crate::tweaks::engine::context;
-    use crate::tweaks::model::Level;
+    use crate::tweaks::model::{AppSource, InstallSource, Level};
+
+    #[test]
+    fn the_shipped_app_items_compile_with_their_sources_and_install_routes() {
+        use InstallSource::{Store, StorePage, Winget};
+        let expected: [(&str, &str, &[&str], InstallSource); 14] = [
+            (
+                "teams_consumer",
+                "debloat",
+                &["MSTeams"],
+                Store("XP8BT8DW290MPQ".into()),
+            ),
+            (
+                "clipchamp",
+                "debloat",
+                &["Clipchamp.Clipchamp"],
+                Store("9P1J8S7CCWWT".into()),
+            ),
+            (
+                "quick_assist",
+                "debloat",
+                &["MicrosoftCorporationII.QuickAssist"],
+                Store("9P7BP5VNWKX5".into()),
+            ),
+            (
+                "bing_news",
+                "debloat",
+                &["Microsoft.BingNews"],
+                Store("9WZDNCRFHVFW".into()),
+            ),
+            (
+                "bing_weather",
+                "debloat",
+                &["Microsoft.BingWeather"],
+                Store("9WZDNCRFJ3Q2".into()),
+            ),
+            (
+                "solitaire",
+                "debloat",
+                &["Microsoft.MicrosoftSolitaireCollection"],
+                StorePage("9WZDNCRFHWD2".into()),
+            ),
+            (
+                "get_help",
+                "debloat",
+                &["Microsoft.GetHelp"],
+                Store("9PKDZBMV1H3T".into()),
+            ),
+            (
+                "getstarted_tips",
+                "debloat",
+                &["Microsoft.Getstarted"],
+                StorePage("9WZDNCRDTBJJ".into()),
+            ),
+            (
+                "feedback_hub",
+                "debloat",
+                &["Microsoft.WindowsFeedbackHub"],
+                Store("9NBLGGH4R32N".into()),
+            ),
+            (
+                "phone_link",
+                "debloat",
+                &["Microsoft.YourPhone"],
+                Store("9NMPJ99VJBWV".into()),
+            ),
+            (
+                "outlook_new",
+                "debloat",
+                &["Microsoft.OutlookforWindows"],
+                Store("9NRX63209R7B".into()),
+            ),
+            (
+                "xbox_game_bar",
+                "debloat",
+                &["Microsoft.XboxGamingOverlay"],
+                Store("9NZKPSTSNW4P".into()),
+            ),
+            (
+                "onedrive",
+                "debloat",
+                &[],
+                Winget("Microsoft.OneDrive".into()),
+            ),
+            (
+                "copilot",
+                "ai",
+                &["Microsoft.Copilot"],
+                Store("9NHT9RB2F4HD".into()),
+            ),
+        ];
+        let apps = super::compiled_apps();
+        assert_eq!(apps.len(), expected.len(), "unexpected app item count");
+        for (id, category, packages, install) in expected {
+            let app = apps
+                .iter()
+                .find(|a| a.id == id)
+                .unwrap_or_else(|| panic!("app '{id}' was not compiled"));
+            assert_eq!(app.category, category, "{id}");
+            assert_eq!(app.install.as_ref(), Some(&install), "{id}");
+            match &app.source {
+                AppSource::Appx(names) => assert_eq!(names, packages, "{id}"),
+                AppSource::Script { .. } => assert!(packages.is_empty(), "{id} is a script item"),
+            }
+        }
+    }
+
+    /// Probe exit 2 reads as absent, so a probe that fails must not land there.
+    #[test]
+    fn the_onedrive_probe_never_reports_absent_from_its_catch_block() {
+        let app = super::compiled_apps()
+            .iter()
+            .find(|a| a.id == "onedrive")
+            .expect("onedrive app item");
+        let AppSource::Script { probe, timeout, .. } = &app.source else {
+            panic!("onedrive must be a script item");
+        };
+        assert_eq!(*timeout, Some(600));
+        let catch = probe.find("catch").expect("the probe has a catch block");
+        let open = catch + probe[catch..].find('{').expect("catch opens a block");
+        let mut depth = 0;
+        let close = probe[open..]
+            .char_indices()
+            .find_map(|(i, c)| {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+                (depth == 0).then_some(open + i)
+            })
+            .expect("catch block closes");
+        let body = &probe[open..=close];
+        assert!(!body.contains("exit 2"), "catch block exits 2: {body}");
+        assert!(body.contains("exit 1"), "catch block must exit 1: {body}");
+    }
+
+    #[test]
+    fn embedded_apps_deserialize_in_the_shared_category_space() {
+        let corpus = super::compiled_corpus();
+        for app in super::compiled_apps() {
+            assert!(
+                corpus.categories.iter().any(|c| c.id == app.category),
+                "app '{}' names no compiled category",
+                app.id
+            );
+        }
+    }
 
     #[test]
     fn embedded_corpus_deserializes_and_is_nonempty() {

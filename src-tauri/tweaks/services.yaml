@@ -516,7 +516,7 @@ tweaks:
       - Microsoft's own guidance says the sign-in and game-save services should be disabled where unused, and CIS recommends disabling the accessory service.
 
       ## Related
-      - **Remove Xbox Game Bar** (Debloat) and **Disable Xbox Game Bar capture (Game DVR)** (Performance) cover the app and recording; this covers the services underneath.
+      - **Xbox Game Bar** (Debloat, Apps) and **Disable Xbox Game Bar capture (Game DVR)** (Performance) cover the app and recording; this covers the services underneath.
 
       ## Recommendation
       Choose Disabled on a PC that never uses Xbox, Game Pass or an Xbox controller. If you play with an Xbox controller in any launcher, choose "Xbox Live disabled, accessories kept".
@@ -819,7 +819,7 @@ tweaks:
 
       ## Related
       - With **Disable User Experiences and Telemetry (DiagTrack)** applied, these tasks have no upload path anyway.
-      - **Remove Feedback Hub** (Debloat) removes the app itself.
+      - **Feedback Hub** (Debloat, Apps) removes the app itself.
 
       ## Recommendation
       Apply it if you do not use Feedback Hub. Skip it if you send feedback to Microsoft and want diagnostics attached.

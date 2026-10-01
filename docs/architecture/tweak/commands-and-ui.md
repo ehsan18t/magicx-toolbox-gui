@@ -23,13 +23,15 @@ Code: `src-tauri/src/commands/tweaks.rs` (commands and view types), `src-tauri/s
 | `rescan_after_elevation` | Starts another full scan. | none |
 | `restart_as_admin` | Relaunches the app elevated through UAC. | exit latch |
 
+App items have their own commands (`get_apps`, `get_app_statuses`, `remove_app`, `install_app`), gated by the same availability check and per-id lock; see [apps.md](apps.md#gates).
+
 The test build adds the Manual Tests run, list and cancel commands, which drive the same gated apply and restore paths (`manual_tests_available` exists in every build); see [MANUAL_TESTS.md](../../MANUAL_TESTS.md).
 
 ### Gates
 
 - **Availability**: account guard, then needs elevation, then elevation path unavailable. See [elevation.md](elevation.md#the-availability-gate). Restore is gated like apply; discard and keep current state are not, since they change no Windows state.
 - **Per-tweak lock**: one async lock per tweak, held across the engine call, which runs on a blocking thread.
-- **Exit latch**: closing the window, relaunching as admin and installing an update all refuse while any tweak is locked. A window close attempt emits a `close-blocked` event that the title bar shows as a toast. Once an exit has started, a new apply fails with `APP_EXITING`.
+- **Exit latch**: closing the window, relaunching as admin and installing an update all refuse while any tweak or app item is locked. A window close attempt emits a `close-blocked` event that the title bar shows as a toast. Once an exit has started, a new apply fails with `APP_EXITING`.
 - **Error shaping**: engine errors reach the frontend as a code and a user-facing message with broker details removed. Snapshot store errors reach it as a generic reason.
 
 ## Launch sequence
@@ -105,6 +107,7 @@ sequenceDiagram
 | `tweaksLoading` | Which tweaks are being changed right now, and per-tweak errors. |
 | `tweaksPending` | Staged option changes, and tweaks waiting for a reboot. |
 | `tweaksActions` | Search and filter state, and the apply, restore and keep-current-state actions (single and batch). The details view calls discard directly. |
+| `apps` | App item views, presence statuses, per-app busy and error state, and the Remove, Install and Get in Store actions. Outside pending changes, snapshots and profiles. |
 
 ### What the user sees
 
@@ -136,4 +139,4 @@ The profile system is not wired to the tweak engine. There is no profile backend
 - **The availability check runs before the lock**, and commands call the engine's variants that expect the lock to be held already, so it is never taken twice.
 - **A re-read during another change fails** (the single-tweak status is refused while locked) and shows as "could not be re-read".
 - **Tweaks hidden in a release build can still be applied by id** over IPC; only the catalog and scan events are filtered.
-- **The tweak system uses two events**: `tweak-status` and `close-blocked`.
+- **The tweak system uses two events**: `tweak-status` and `close-blocked`. App statuses are not streamed; `get_app_statuses` returns one scan.

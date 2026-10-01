@@ -22,6 +22,8 @@ import type {
   TweakWithStatus,
 } from "$lib/types";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { appsStore } from "./apps.svelte";
+import { favoritesStore } from "./favorites.svelte";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 // Storage key for cached hardware info
@@ -380,6 +382,7 @@ export const tweaksStore = {
         };
       });
       pendingStatusViews = {};
+      favoritesStore.prune(views.map((v) => v.id));
       tweaksVersion++;
       return tweaks;
     } catch (error) {
@@ -464,6 +467,7 @@ async function startStatusStream(): Promise<void> {
  */
 export async function rescanStatuses(): Promise<void> {
   await elevationStore.load();
+  void appsStore.load();
   await api.rescanAfterElevation();
 }
 
@@ -512,7 +516,11 @@ export async function loadRemainingData(): Promise<void> {
   }
 
   remainingDataPromise = initializeQuick()
-    .then(() => Promise.all([systemStore.load(), elevationStore.load(), startStatusStream()]))
+    .then(() => {
+      // Not awaited: the app presence scan is slow and must not hold up the tweak UI.
+      void appsStore.load();
+      return Promise.all([systemStore.load(), elevationStore.load(), startStatusStream()]);
+    })
     .then(() => {
       initialLoadComplete = true;
     })
