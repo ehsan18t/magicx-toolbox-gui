@@ -1,13 +1,7 @@
-//! One enumeration of installed Appx packages, shared by every probe that asks about one.
+//! One enumeration of installed AppX packages, shared by every app presence check in a scan.
 //!
-//! Asking about a single package costs the same as listing every package: measured, a
-//! `Get-AppxPackage -AllUsers -Name X` is 424ms and a bare `Get-AppxPackage -AllUsers` is 416ms,
-//! because the cost is the module load plus the WinRT enumeration, and both are paid per process.
-//! So a corpus that asks about a dozen packages one spawn at a time pays that dozen times over for
-//! an answer one spawn already contained.
-//!
-//! This builds the answer once and hands it to every asker. The whole enumeration, per-user and
-//! provisioned together, is a single PowerShell run.
+//! Asking about one package costs as much as listing all of them (about 420ms either way: module
+//! load plus WinRT enumeration, paid per process), so a single PowerShell run answers every app.
 
 use std::collections::HashSet;
 use std::io::Read;
@@ -89,12 +83,7 @@ impl AppxIndex {
         }
     }
 
-    /// Whether any of `packages` is installed. Names are compared case-insensitively, matching how
-    /// Windows treats package names and how the corpus spells them.
-    pub fn any_installed(&self, packages: &[String]) -> Result<bool, Error> {
-        self.lookup(packages).map(|l| l.registered || l.provisioned)
-    }
-
+    /// Names compare case-insensitively, as Windows treats package names.
     pub fn lookup(&self, packages: &[String]) -> Result<AppxLookup, Error> {
         let script = if self.all_users {
             ENUMERATE
@@ -119,8 +108,7 @@ impl AppxIndex {
         }
     }
 
-    /// Drops the cached enumeration so the next ask re-observes the machine. Called wherever the
-    /// probe cache is invalidated, since removing an app is exactly what makes this stale.
+    /// Drops the cached enumeration so the next ask re-observes the machine.
     pub fn invalidate(&self) {
         let mut cache = self.lock();
         cache.generation += 1;
@@ -275,16 +263,22 @@ mod tests {
     }
 
     /// A cached failure must surface as `Err`, never as "no packages installed": an empty set would
-    /// make every `AppxAbsent` probe report the app as already removed.
+    /// report every app as already removed.
     #[test]
     fn an_enumeration_failure_is_an_error_not_an_empty_set() {
         let index = AppxIndex::default();
         index.lock().built = Some(Arc::new(Err("winrt unavailable".to_string())));
 
         let err = index
-            .any_installed(&["Microsoft.GetHelp".to_string()])
+            .lookup(&["Microsoft.GetHelp".to_string()])
             .expect_err("a failed enumeration must not read as absent");
         assert!(err.to_string().contains("winrt unavailable"), "got {err}");
+    }
+
+    fn any_installed(index: &AppxIndex, names: &[&str]) -> bool {
+        let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        let found = index.lookup(&names).unwrap();
+        found.registered || found.provisioned
     }
 
     fn registered(names: &[&str]) -> Packages {
@@ -299,12 +293,10 @@ mod tests {
         let index = AppxIndex::default();
         index.lock().built = Some(Arc::new(Ok(registered(&["microsoft.gethelp"]))));
 
-        assert!(index.any_installed(&["Microsoft.GetHelp".into()]).unwrap());
-        assert!(!index.any_installed(&["Microsoft.Absent".into()]).unwrap());
+        assert!(any_installed(&index, &["Microsoft.GetHelp"]));
+        assert!(!any_installed(&index, &["Microsoft.Absent"]));
         assert!(
-            index
-                .any_installed(&["Microsoft.Absent".into(), "MICROSOFT.GETHELP".into()])
-                .unwrap(),
+            any_installed(&index, &["Microsoft.Absent", "MICROSOFT.GETHELP"]),
             "any of the listed packages counts, and case must not matter"
         );
 
@@ -354,10 +346,8 @@ mod tests {
                 provisioned: true
             }
         );
-        assert!(index
-            .any_installed(&["Clipchamp.Clipchamp".into()])
-            .unwrap());
-        assert!(!index.any_installed(&["noise".into()]).unwrap());
+        assert!(any_installed(&index, &["Clipchamp.Clipchamp"]));
+        assert!(!any_installed(&index, &["noise"]));
     }
 
     #[test]

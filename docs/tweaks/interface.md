@@ -1412,7 +1412,7 @@ System Default is shown when the value is absent or holds another number; on a m
 - **Reverting**: restores the captured value, normally `1`.
 
 #### Interactions
-`debloat:remove_onedrive` uninstalls the OneDrive client, after which this tweak has nothing to hide. [Hide Gallery in Explorer](#hide-gallery-in-explorer) and [Hide Home in Explorer](#hide-home-in-explorer) use the same unpinning mechanism.
+The [OneDrive](debloat.md#onedrive) app item (Debloat, Apps) uninstalls the OneDrive client, after which this tweak has nothing to hide. [Hide Gallery in Explorer](#hide-gallery-in-explorer) and [Hide Home in Explorer](#hide-home-in-explorer) use the same unpinning mechanism.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The correction: the stock state is `1` present, written by OneDrive setup, not value-absent.
@@ -1918,7 +1918,7 @@ This is the backing store for Settings > Personalization > Start > "Show mobile 
 - **Reverting**: restores the captured state, normally removing the value. If Phone Link was removed in the meantime, the panel does not come back.
 
 #### Interactions
-`debloat:remove_phone_link` uninstalls the Phone Link app instead, after which this tweak has nothing to act on. `services:disable_cdpsvc` stops the Connected Devices Platform service that Phone Link relies on.
+The [Phone Link](debloat.md#phone-link) app item (Debloat, Apps) uninstalls the app instead, after which this tweak has nothing to act on. `services:disable_cdpsvc` stops the Connected Devices Platform service that Phone Link relies on.
 
 #### Validation
 - **Verdict**: VERIFIED.

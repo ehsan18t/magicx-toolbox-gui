@@ -377,7 +377,6 @@ struct ActionRaw {
 enum ProbeRaw {
     Script(String),
     Registry { registry: RegistryProbeRaw },
-    AppxAbsent { appx_absent: Vec<String> },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -820,9 +819,6 @@ fn convert_probe(raw: Option<&ProbeRaw>) -> Result<Option<Probe>, ParseError> {
                 equals: registry.equals,
             }
         }
-        ProbeRaw::AppxAbsent { appx_absent } => Probe::AppxAbsent {
-            packages: appx_absent.clone(),
-        },
     };
     Ok(Some(probe))
 }

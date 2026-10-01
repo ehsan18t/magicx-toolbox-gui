@@ -452,7 +452,7 @@ tweaks:
       - The Game Bar overlay (Win+G) still opens; it just cannot capture.
 
       ## Related
-      - **Remove Xbox Game Bar** (Debloat) uninstalls the overlay itself.
+      - **Xbox Game Bar** (Debloat, Apps) uninstalls the overlay itself.
 
       ## Recommendation
       Worth applying if you never use Game Bar clips. Skip it if you ever record or stream through Game Bar.

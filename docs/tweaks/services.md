@@ -676,7 +676,7 @@ System Default: the status shown when `PhoneSvc` is at a start type other than D
 - **Reverting**: "Manual" writes the stock start type; the Restore button restores the snapshot.
 
 #### Interactions
-- **Debloat: Remove Phone Link** (`remove_phone_link`) and **Interface: Hide the mobile device panel in Start** (`disable_phone_companion_start`) concern Phone Link, which this service does not serve. Phone Link depends on the Connected Devices Platform instead (see `disable_cdpsvc` on this page).
+- **Debloat: Phone Link** (app item `phone_link`) and **Interface: Hide the mobile device panel in Start** (`disable_phone_companion_start`) concern Phone Link, which this service does not serve. Phone Link depends on the Connected Devices Platform instead (see `disable_cdpsvc` on this page).
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research required the reboot flag and a statement that the service is trigger-started (3 registrations); the name, options, stock start type and the Phone Link clarification were correct. The shipped tweak carries both.
@@ -972,7 +972,7 @@ Microsoft's Server guidance rates `XblAuthManager` and `XblGameSave` "Should be 
 - **Reverting**: "Manual" writes the stock start type on all four; the Restore button restores the snapshot.
 
 #### Interactions
-- **Debloat: Remove Xbox Game Bar** (`remove_xbox_game_bar`) and **Performance: Disable Xbox Game Bar capture (Game DVR)** (`disable_gamedvr_capture`) cover the Game Bar app and capture; this tweak covers the Live services underneath.
+- **Debloat: Xbox Game Bar** (app item `xbox_game_bar`) and **Performance: Disable Xbox Game Bar capture (Game DVR)** (`disable_gamedvr_capture`) cover the Game Bar app and capture; this tweak covers the Live services underneath.
 - **Disable Bluetooth Support Services** (`disable_bluetooth`, this page): a Bluetooth-connected Xbox controller also needs the Bluetooth stack.
 
 #### Validation
@@ -1033,7 +1033,7 @@ The per-user companion service `CDPUserSvc_*` is Automatic and is not touched by
 
 #### Interactions
 - **Privacy: Disable the cross-device cloud clipboard** (`disable_cloud_clipboard`) turns off the clipboard sync by policy; this tweak removes the platform under it and more.
-- **Debloat: Remove Phone Link** (`remove_phone_link`) and **Interface: Hide the mobile device panel in Start** (`disable_phone_companion_start`) touch Phone Link surfaces that stop working once this service is disabled.
+- **Debloat: Phone Link** (app item `phone_link`) and **Interface: Hide the mobile device panel in Start** (`disable_phone_companion_start`) touch Phone Link surfaces that stop working once this service is disabled.
 
 #### Validation
 - **Verdict**: VERIFIED. No correction was needed; the tweak correctly authors the stock state as `automatic_delayed`. The research added the `CDPUserSvc_*` behaviour as context.
@@ -1509,7 +1509,7 @@ With the telemetry service (`DiagTrack`) disabled, these tasks have no working u
 
 #### Interactions
 - **Disable User Experiences and Telemetry (DiagTrack)** (`disable_diagtrack`, this page) removes the transport these tasks would use.
-- **Privacy: Turn off feedback request notifications** (`disable_feedback_notifications`) and **Privacy: Set feedback prompt frequency to Never** (`disable_feedback_frequency`) control the feedback prompts by policy; **Debloat: Remove Feedback Hub** (`remove_feedback_hub`) removes the app.
+- **Privacy: Turn off feedback request notifications** (`disable_feedback_notifications`) and **Privacy: Set feedback prompt frequency to Never** (`disable_feedback_frequency`) control the feedback prompts by policy; **Debloat: Feedback Hub** (app item `feedback_hub`) removes the app.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research found that `DmClient` has an empty trigger set on 26100 (only `DmClientOnScenarioDownload` has a real trigger), so the tweak does not switch off a recurring transmission; the paths and option shape were correct. The shipped copy says so.

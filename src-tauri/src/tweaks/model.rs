@@ -232,10 +232,8 @@ pub enum Shell {
 /// How an Action's produced state is detected (spec §7: state-based, never history-based).
 ///
 /// A script probe costs a process spawn, which measured at 180ms of floor before the script does
-/// any work, and detection runs one per probeable Action on every sweep. The native forms exist so
-/// a check that does not actually need an interpreter does not pay for one: [`Probe::Registry`] is
-/// a direct read, and [`Probe::AppxAbsent`] is answered from a single package enumeration shared by
-/// the whole sweep instead of one spawn per package. [`Probe::Script`] remains the escape hatch for
+/// any work, and detection runs one per probeable Action on every sweep. [`Probe::Registry`] is a
+/// direct read so a check that needs no interpreter does not pay for one; [`Probe::Script`] covers
 /// everything else (powercfg, DISM, auditpol, CIM).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Probe {
@@ -250,9 +248,6 @@ pub enum Probe {
         name: String,
         equals: u32,
     },
-    /// Present when NONE of these packages are installed, either per-user or provisioned. Phrased
-    /// as absence because that is what the removal Actions using it produce.
-    AppxAbsent { packages: Vec<String> },
 }
 
 /// An imperative Action (spec §7). `DeleteTree` is the one surviving structural op (spec §5.1);

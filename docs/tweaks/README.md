@@ -1,6 +1,6 @@
 # Tweak wiki
 
-The complete reference for every tweak MagicX Toolbox ships. Each entry is meant to be enough on its own: the exact change the tweak makes, what that does to the machine, the benefits and drawbacks, when it applies, how it reverts, how it was validated, and the sources behind it. If you find yourself searching the web to understand a tweak, its entry is missing something; fix the entry.
+The complete reference for every tweak and app item MagicX Toolbox ships. Each entry is meant to be enough on its own: the exact change the tweak makes, what that does to the machine, the benefits and drawbacks, when it applies, how it reverts, how it was validated, and the sources behind it. If you find yourself searching the web to understand a tweak, its entry is missing something; fix the entry.
 
 Tweaks are authored as YAML in `src-tauri/tweaks/`, one file per category. The YAML is deliberately lean, carrying what the app needs at runtime. This wiki carries everything else. How to write a tweak is covered in [`../TWEAK_AUTHORING.md`](../TWEAK_AUTHORING.md), and how the engine runs one in [`../architecture/tweak/`](../architecture/tweak/README.md).
 
@@ -8,19 +8,21 @@ Tweaks are authored as YAML in `src-tauri/tweaks/`, one file per category. The Y
 
 ## Pages
 
-| Page | Tweaks |
-|---|---|
-| [AI & Copilot tweaks](ai.md) | 10 |
-| [Debloat & Consumer tweaks](debloat.md) | 27 |
-| [Interface & Explorer tweaks](interface.md) | 43 |
-| [Network & Power tweaks](network.md) | 14 |
-| [Performance & Gaming tweaks](performance.md) | 24 |
-| [Privacy & Telemetry tweaks](privacy.md) | 34 |
-| [Security Hardening tweaks](security.md) | 62 |
-| [Services & Scheduled Tasks tweaks](services.md) | 29 |
-| [Windows Update tweaks](windows_update.md) | 14 |
+| Page | Tweaks | Apps |
+|---|---|---|
+| [AI & Copilot tweaks](ai.md) | 9 | 1 |
+| [Debloat & Consumer tweaks](debloat.md) | 15 | 13 |
+| [Interface & Explorer tweaks](interface.md) | 43 | 0 |
+| [Network & Power tweaks](network.md) | 14 | 0 |
+| [Performance & Gaming tweaks](performance.md) | 24 | 0 |
+| [Privacy & Telemetry tweaks](privacy.md) | 34 | 0 |
+| [Security Hardening tweaks](security.md) | 62 | 0 |
+| [Services & Scheduled Tasks tweaks](services.md) | 29 | 0 |
+| [Windows Update tweaks](windows_update.md) | 14 | 0 |
 
-257 tweaks in total.
+244 tweaks and 14 app items in total.
+
+**App items** are preinstalled apps the app can remove, and install back where a source exists. They are not tweaks: no options, no snapshot, no System Default and no Restore (ADR-0009). Each page that has them lists them in its own Apps section, with the package names, how removal works, the install route and the caveats. The shared rules are on the [Debloat page](debloat.md#apps).
 
 ## How to read an entry
 
@@ -112,7 +114,7 @@ Addresses several tweaks legitimately need with the same value are **shared sett
 
 ## Keeping this wiki current
 
-When a tweak's behaviour changes (an effect, an option, a value, a gate, the risk level), update its entry in the same commit. When a tweak is added, add its entry and its row in the index below; when one is removed, move its entry to its page's "Considered and not shipped" section with the reason.
+When a tweak's behaviour changes (an effect, an option, a value, a gate, the risk level), update its entry in the same commit. When a tweak or app item is added, add its entry and its row in the matching index below; when one is removed, move its entry to its page's "Considered and not shipped" section with the reason. A tweak converted to an app item is not removed: its entry moves to the page's Apps section and its row to the app index.
 
 ## Every tweak
 
@@ -121,7 +123,6 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Disable Windows Recall snapshots](ai.md#disable-windows-recall-snapshots) | `disable_recall_snapshots` | AI & Copilot tweaks | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Recall feature component](ai.md#recall-feature-component) | `remove_recall_component` | AI & Copilot tweaks | Dropdown (3 options) | medium | admin | yes | VERIFIED-WITH-CORRECTION |
 | [Disable the Click to Do overlay](ai.md#disable-the-click-to-do-overlay) | `disable_click_to_do` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Copilot app](ai.md#remove-the-copilot-app) | `remove_copilot_app` | AI & Copilot tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable the Recall optional feature](ai.md#disable-the-recall-optional-feature) | `remove_recall_feature` | AI & Copilot tweaks | Switch | medium | admin | yes | INCORRECT (corrected form ships) |
 | [Hide the Copilot taskbar button](ai.md#hide-the-copilot-taskbar-button) | `disable_copilot_taskbar` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Notepad AI features](ai.md#disable-notepad-ai-features) | `disable_notepad_ai` | AI & Copilot tweaks | Switch (2 options) | low | admin | no | VERIFIED |
@@ -143,18 +144,6 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Turn off the Edge first-run experience](debloat.md#turn-off-the-edge-first-run-experience) | `disable_edge_first_run` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off Edge startup boost](debloat.md#turn-off-edge-startup-boost) | `disable_edge_startup_boost` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off the Edge sidebar and Collections](debloat.md#turn-off-the-edge-sidebar-and-collections) | `disable_edge_sidebar` | Debloat & Consumer tweaks | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Microsoft Teams app](debloat.md#remove-the-microsoft-teams-app) | `remove_teams_consumer_app` | Debloat & Consumer tweaks | Switch | low | admin | no | INCORRECT (corrected form ships) |
-| [Remove Clipchamp](debloat.md#remove-clipchamp) | `remove_clipchamp` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Quick Assist](debloat.md#remove-quick-assist) | `remove_quick_assist` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Bing News and Weather](debloat.md#remove-bing-news-and-weather) | `remove_bing_news_weather` | Debloat & Consumer tweaks | Switch | low | admin | no | INCORRECT (corrected form ships) |
-| [Remove Solitaire Collection](debloat.md#remove-solitaire-collection) | `remove_solitaire` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the Get Help app](debloat.md#remove-the-get-help-app) | `remove_get_help` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Tips (Get Started)](debloat.md#remove-tips-get-started) | `remove_getstarted_tips` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Feedback Hub](debloat.md#remove-feedback-hub) | `remove_feedback_hub` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Phone Link](debloat.md#remove-phone-link) | `remove_phone_link` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove the New Outlook app](debloat.md#remove-the-new-outlook-app) | `remove_outlook_new` | Debloat & Consumer tweaks | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove Xbox Game Bar](debloat.md#remove-xbox-game-bar) | `remove_xbox_game_bar` | Debloat & Consumer tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
-| [Remove OneDrive](debloat.md#remove-onedrive) | `remove_onedrive` | Debloat & Consumer tweaks | Switch | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Turn on dark mode](interface.md#turn-on-dark-mode) | `enable_dark_mode` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off transparency effects](interface.md#turn-off-transparency-effects) | `disable_transparency` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED |
 | [Turn off window animations](interface.md#turn-off-window-animations) | `disable_ui_animations` | Interface & Explorer tweaks | Switch (2 options) | low | none | no | VERIFIED-WITH-CORRECTION |
@@ -375,3 +364,22 @@ When a tweak's behaviour changes (an effect, an option, a value, a gate, the ris
 | [Block auto-download over metered](windows_update.md#block-auto-download-over-metered) | `block_update_over_metered` | Windows Update tweaks | Switch (2 options) | medium | admin | no | VERIFIED-WITH-CORRECTION |
 | [Windows Update mode](windows_update.md#windows-update-mode) | `windows_update_mode` | Windows Update tweaks | Dropdown (4 options) | high | admin | no | VERIFIED |
 | [Block the Windows Update pipeline](windows_update.md#block-the-windows-update-pipeline) | `block_update_pipeline` | Windows Update tweaks | Switch | high | admin (ti for 21 of 30 effects) | yes | VERIFIED (empirically tested; two open questions) |
+
+## Every app item
+
+| App | Id | Category | Source | Install | Risk | Verdict |
+|---|---|---|---|---|---|---|
+| [Copilot](ai.md#copilot) | `copilot` | AI & Copilot tweaks | `Microsoft.Copilot` | store | low | VERIFIED-WITH-CORRECTION |
+| [Microsoft Teams](debloat.md#microsoft-teams) | `teams_consumer` | Debloat & Consumer tweaks | `MSTeams` | store | low | INCORRECT (corrected form ships) |
+| [Clipchamp](debloat.md#clipchamp) | `clipchamp` | Debloat & Consumer tweaks | `Clipchamp.Clipchamp` | store | low | VERIFIED-WITH-CORRECTION |
+| [Quick Assist](debloat.md#quick-assist) | `quick_assist` | Debloat & Consumer tweaks | `MicrosoftCorporationII.QuickAssist` | store | low | VERIFIED-WITH-CORRECTION |
+| [Microsoft News](debloat.md#microsoft-news) | `bing_news` | Debloat & Consumer tweaks | `Microsoft.BingNews` | store | low | INCORRECT (corrected form ships) |
+| [MSN Weather](debloat.md#msn-weather) | `bing_weather` | Debloat & Consumer tweaks | `Microsoft.BingWeather` | store | low | INCORRECT (corrected form ships) |
+| [Microsoft Solitaire Collection](debloat.md#microsoft-solitaire-collection) | `solitaire` | Debloat & Consumer tweaks | `Microsoft.MicrosoftSolitaireCollection` | store_page | low | VERIFIED-WITH-CORRECTION |
+| [Get Help](debloat.md#get-help) | `get_help` | Debloat & Consumer tweaks | `Microsoft.GetHelp` | store | low | VERIFIED-WITH-CORRECTION |
+| [Tips](debloat.md#tips) | `getstarted_tips` | Debloat & Consumer tweaks | `Microsoft.Getstarted` | store_page | low | VERIFIED-WITH-CORRECTION |
+| [Feedback Hub](debloat.md#feedback-hub) | `feedback_hub` | Debloat & Consumer tweaks | `Microsoft.WindowsFeedbackHub` | store | low | VERIFIED-WITH-CORRECTION |
+| [Phone Link](debloat.md#phone-link) | `phone_link` | Debloat & Consumer tweaks | `Microsoft.YourPhone` | store | low | VERIFIED-WITH-CORRECTION |
+| [Outlook (new)](debloat.md#outlook-new) | `outlook_new` | Debloat & Consumer tweaks | `Microsoft.OutlookforWindows` | store | low | VERIFIED-WITH-CORRECTION |
+| [Xbox Game Bar](debloat.md#xbox-game-bar) | `xbox_game_bar` | Debloat & Consumer tweaks | `Microsoft.XboxGamingOverlay` | store | medium | VERIFIED-WITH-CORRECTION |
+| [OneDrive](debloat.md#onedrive) | `onedrive` | Debloat & Consumer tweaks | script | winget | medium | VERIFIED-WITH-CORRECTION |

@@ -2,7 +2,7 @@ category:
   id: debloat
   name: "Debloat & Consumer"
   icon: "mdi:broom"
-  description: "Uninstall preinstalled apps and turn off Microsoft's consumer promotions, suggestions, Spotlight content and nag prompts. App removals reinstall from the Microsoft Store on revert (best effort)."
+  description: "Turn off Microsoft's consumer promotions, suggestions, Spotlight content and nag prompts. The Apps section removes preinstalled apps, and can install them back where a source exists."
 
 tweaks:
   # ---- Suggestions, promotions and nags (per-user) ----
@@ -49,7 +49,7 @@ tweaks:
       **Stops Windows silently installing promoted, preinstalled and OEM apps into your account.**
 
       ## Caveats
-      - Future installs only: apps already on the PC stay; the Remove tweaks in this category handle those.
+      - Future installs only: apps already on the PC stay; the Apps section of this category removes those.
       - A feature update can still bring apps back.
 
       ## Notes
@@ -156,7 +156,7 @@ tweaks:
       - Takes effect in the next Explorer window.
 
       ## Related
-      - **Remove OneDrive** uninstalls the client; **Hide OneDrive in Explorer** (Interface) removes it from the navigation pane.
+      - **OneDrive** (Apps) uninstalls the client; **Hide OneDrive in Explorer** (Interface) removes it from the navigation pane.
 
       ## Recommendation
       Apply it unless you rely on OneDrive status messages inside Explorer.
@@ -244,7 +244,7 @@ tweaks:
       - The Widgets app stays installed; it just stops being offered.
 
       ## Related
-      - **Remove Bing News and Weather** removes the standalone MSN apps; the two complement each other.
+      - **Microsoft News** and **MSN Weather** (Apps) remove the standalone MSN apps; the two complement each other.
 
       ## Sources
       - [Policy CSP - NewsAndInterests](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-newsandinterests)
@@ -528,23 +528,21 @@ tweaks:
       - label: "On"
         values: { sidebar: absent, collections: absent }
 
-  # Every removal below removes the installed package for all users AND the provisioned package
-  # registered against the image, and every probe is fail-closed: an unelevated or failing
-  # Get-AppxPackage exits non-zero ("not removed") instead of reporting a removal that never
-  # happened. Elevation stays at `admin`; action effects are not routed through the elevation
-  # broker at system/ti.
-  - id: remove_teams_consumer_app
-    name: "Remove the Microsoft Teams app"
-    description: "Uninstall the preinstalled Microsoft Teams app, one package shared by personal, work and school."
+apps:
+  - id: teams_consumer
+    name: "Microsoft Teams"
+    description: "The preinstalled Microsoft Teams app, one package shared by personal, work and school."
     info: |
-      **Uninstalls the preinstalled Microsoft Teams app for every account on the PC, including accounts created later.**
+      **Remove uninstalls the preinstalled Microsoft Teams app for every account on the PC, including accounts created later.**
 
       ## Drawbacks
       - Teams meetings open in the browser instead.
 
       ## Caveats
-      - Reverting reinstalls Teams with winget, which needs internet access; if that fails, the tweak shows Needs Attention. The command-line reinstall of this Store listing is unverified.
-      - A feature update may bring the app back; apply again if so.
+      - A feature update may bring the app back; remove it again if so.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead. The command-line install of this Store listing is unverified.
 
       ## Recommendation
       Remove it only on a personal PC where nobody uses Teams for work or school.
@@ -554,84 +552,48 @@ tweaks:
       - [What's new in Windows 11 version 23H2](https://learn.microsoft.com/en-us/windows/whats-new/whats-new-windows-11-version-23h2)
     warning: "On Windows 11 23H2 and newer, personal, work and school Teams are one package. Removing it removes your work or school Teams client too."
     risk_level: low
-    elevation: admin
-    reversible: true
     windows: { products: [11] }
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'MSTeams' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MSTeams' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'MSTeams') { exit 0 }
-            winget install --id XP8BT8DW290MPQ -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [MSTeams]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [MSTeams]
+    install: { store: XP8BT8DW290MPQ }
 
-  - id: remove_clipchamp
-    name: "Remove Clipchamp"
-    description: "Uninstall the bundled Clipchamp video editor."
+  - id: clipchamp
+    name: "Clipchamp"
+    description: "The bundled Clipchamp video editor."
     info: |
-      **Uninstalls the bundled Clipchamp video editor for every account on the PC, including accounts created later.**
+      **Remove uninstalls the bundled Clipchamp video editor for every account on the PC, including accounts created later.**
 
       ## Caveats
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
-      - A feature update may bring it back; apply again if so.
+      - A feature update may bring it back; remove it again if so.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Sources
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: low
-    elevation: admin
-    reversible: true
     windows: { products: [11] }
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Clipchamp.Clipchamp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp') { exit 0 }
-            winget install --id 9P1J8S7CCWWT -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Clipchamp.Clipchamp]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Clipchamp.Clipchamp]
+    install: { store: 9P1J8S7CCWWT }
 
-  - id: remove_quick_assist
-    name: "Remove Quick Assist"
-    description: "Uninstall Quick Assist, the built-in remote-help tool."
+  - id: quick_assist
+    name: "Quick Assist"
+    description: "The built-in remote-help tool that lets someone view or control your PC."
     info: |
-      **Uninstalls Quick Assist, the built-in tool that lets someone view or control your PC after you read them a code, the route tech-support scammers rely on.**
+      **Remove uninstalls Quick Assist, the built-in tool that lets someone view or control your PC after you read them a code, the route tech-support scammers rely on.**
 
       ## Drawbacks
       - A family member who helps you remotely loses their easiest way in.
 
       ## Caveats
       - Friction, not a block: someone could still talk you into reinstalling it.
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
       - A feature update may bring it back.
 
       ## Requirements
-      - Windows 11. On Windows 10 LTSC 2021 the older built-in Quick Assist is untouched, so this does nothing.
+      - Windows 11. On Windows 10 LTSC 2021 the older built-in Quick Assist is a separate component that Remove does not touch.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Recommendation
       Remove it on a PC that never gets remote help, especially one used by someone who might fall for a support call.
@@ -640,136 +602,99 @@ tweaks:
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'MicrosoftCorporationII.QuickAssist' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist') { exit 0 }
-            winget install --id 9P7BP5VNWKX5 -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [MicrosoftCorporationII.QuickAssist]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [MicrosoftCorporationII.QuickAssist]
+    install: { store: 9P7BP5VNWKX5 }
 
-  - id: remove_bing_news_weather
-    name: "Remove Bing News and Weather"
-    description: "Uninstall the preinstalled Microsoft News and MSN Weather apps."
+  - id: bing_news
+    name: "Microsoft News"
+    description: "The preinstalled Microsoft News app (Bing News)."
     info: |
-      **Uninstalls the Microsoft News and MSN Weather apps for every account on the PC.**
+      **Remove uninstalls the Microsoft News app for every account on the PC.**
 
       ## Caveats
-      - Reverting reinstalls both with winget, which needs internet access; if either install fails, the tweak shows Needs Attention.
-      - A feature update may bring them back.
+      - A feature update may bring it back.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
+
+      ## Related
+      - **MSN Weather** (Apps) is the other standalone MSN app.
+      - **Turn off Widgets** removes the MSN feed on the taskbar.
+
+      ## Sources
+      - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
+      - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
+    risk_level: low
+    appx: [Microsoft.BingNews]
+    install: { store: 9WZDNCRFHVFW }
+
+  - id: bing_weather
+    name: "MSN Weather"
+    description: "The preinstalled MSN Weather app (Bing Weather)."
+    info: |
+      **Remove uninstalls the MSN Weather app for every account on the PC.**
+
+      ## Caveats
+      - A feature update may bring it back.
 
       ## Notes
       - Widgets still show weather through their own feed, and nothing in Windows replaces the Weather app.
 
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
+
       ## Related
-      - **Turn off Widgets** removes the other MSN feed.
+      - **Microsoft News** (Apps) is the other standalone MSN app.
+      - **Turn off Widgets** removes the MSN feed on the taskbar.
 
       ## Sources
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          # Get-AppxPackage -Name is System.String, not String[]: passing both names as an array is a
-          # binder error that removes nothing. Iterate instead. Both apps ship as bundles, so the
-          # bundle pass runs first per Microsoft's -PackageTypeFilter guidance.
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            foreach ($name in @('Microsoft.BingNews', 'Microsoft.BingWeather')) {
-              Get-AppxPackage -AllUsers -Name $name -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
-              Get-AppxPackage -AllUsers -Name $name | Remove-AppxPackage -AllUsers
-              Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $name } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-            }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # One install per package: Windows PowerShell 5.1 rejects `&&`.
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            foreach ($app in @(@('Microsoft.BingNews', '9WZDNCRFHVFW'), @('Microsoft.BingWeather', '9WZDNCRFJ3Q2'))) {
-              if (Get-AppxPackage -AllUsers -Name $app[0]) { continue }
-              winget install --id $app[1] -e --accept-source-agreements --accept-package-agreements
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            }
-            exit 0
-          probe:
-            appx_absent: [Microsoft.BingNews, Microsoft.BingWeather]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.BingWeather]
+    install: { store: 9WZDNCRFJ3Q2 }
 
-  - id: remove_solitaire
-    name: "Remove Solitaire Collection"
-    description: "Uninstall the ad-supported Microsoft Solitaire Collection."
+  - id: solitaire
+    name: "Microsoft Solitaire Collection"
+    description: "The ad-supported Microsoft Solitaire Collection games."
     info: |
-      **Uninstalls the ad-supported Microsoft Solitaire Collection for every account on the PC.**
+      **Remove uninstalls the ad-supported Microsoft Solitaire Collection for every account on the PC.**
 
       ## Caveats
-      - Reverting cannot reinstall it for you: it opens the Store page, where you install it yourself (needs internet). Until you do, the tweak shows Needs Attention.
       - A feature update may bring it back.
 
+      ## Getting it back
+      - Get in Store opens its Microsoft Store page, where you install it yourself (needs internet). winget cannot install it.
+
       ## Recommendation
-      Remove it unless you play these games; getting them back means a manual Store install.
+      Remove it unless you play these games.
 
       ## Sources
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection' -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
-            Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.MicrosoftSolitaireCollection' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          # winget cannot resolve 9WZDNCRFHWD2 in any source, so the undo opens the Store product
-          # page instead of pretending a command-line install succeeded.
-          undo: "Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRFHWD2'"
-          probe:
-            appx_absent: [Microsoft.MicrosoftSolitaireCollection]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.MicrosoftSolitaireCollection]
+    # store_page, not store: winget resolves 9WZDNCRFHWD2 in no source.
+    install: { store_page: 9WZDNCRFHWD2 }
 
-  - id: remove_get_help
-    name: "Remove the Get Help app"
-    description: "Uninstall the Get Help support app."
+  - id: get_help
+    name: "Get Help"
+    description: "Microsoft's support and troubleshooting app."
     info: |
-      **Uninstalls Get Help, Microsoft's support and troubleshooting app.**
+      **Remove uninstalls Get Help, Microsoft's support and troubleshooting app.**
 
       ## Drawbacks
       - Troubleshooter links in Settings that open Get Help fail instead.
 
       ## Caveats
       - The Store lists it as a system component: removal works, but Windows expects it to be there.
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
       - A feature update may bring it back.
 
       ## Notes
-      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Install instead of Remove.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Recommendation
       Remove it if you troubleshoot Windows yourself. Keep it if you use the built-in guided troubleshooters.
@@ -778,41 +703,23 @@ tweaks:
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.GetHelp' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp') { exit 0 }
-            winget install --id 9PKDZBMV1H3T -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Microsoft.GetHelp]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.GetHelp]
+    install: { store: 9PKDZBMV1H3T }
 
-  - id: remove_getstarted_tips
-    name: "Remove Tips (Get Started)"
-    description: "Uninstall the deprecated Tips app that shows onboarding and promotional content."
+  - id: getstarted_tips
+    name: "Tips"
+    description: "The deprecated Tips (Get Started) app that shows onboarding and promotional content."
     info: |
-      **Uninstalls the Tips app, which exists to show onboarding and promotional content. Microsoft has deprecated it.**
+      **Remove uninstalls the Tips app, which exists to show onboarding and promotional content. Microsoft has deprecated it.**
 
       ## Caveats
-      - Reverting cannot reinstall it for you: it opens the Store page, where you install it yourself (needs internet). Until you do, the tweak shows Needs Attention.
       - A feature update may bring it back.
 
       ## Notes
-      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Get in Store instead of Remove.
+
+      ## Getting it back
+      - Get in Store opens its Microsoft Store page, where you install it yourself (needs internet). winget cannot install it.
 
       ## Related
       - **Turn off Windows tips and suggestions** (Privacy) covers the tips Windows shows elsewhere, which are separate from this app.
@@ -824,37 +731,24 @@ tweaks:
       - [Deprecated features in Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.Getstarted' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          # winget cannot resolve 9WZDNCRDTBJJ in any source, so the undo opens the Store product page.
-          undo: "Start-Process 'ms-windows-store://pdp/?ProductId=9WZDNCRDTBJJ'"
-          probe:
-            appx_absent: [Microsoft.Getstarted]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.Getstarted]
+    # store_page, not store: winget resolves 9WZDNCRDTBJJ in no source.
+    install: { store_page: 9WZDNCRDTBJJ }
 
-  - id: remove_feedback_hub
-    name: "Remove Feedback Hub"
-    description: "Uninstall Feedback Hub, the app for sending feedback and traces to Microsoft."
+  - id: feedback_hub
+    name: "Feedback Hub"
+    description: "The app for sending feedback and diagnostic traces to Microsoft."
     info: |
-      **Uninstalls Feedback Hub, the app for sending bug reports, suggestions and diagnostic traces to Microsoft.**
+      **Remove uninstalls Feedback Hub, the app for sending bug reports, suggestions and diagnostic traces to Microsoft.**
 
       ## Drawbacks
       - No built-in way to report bugs remains, and Windows Insider feedback needs it.
 
       ## Caveats
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
       - A feature update may bring it back.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Related
       - **Turn off feedback request notifications** (Privacy) stops Windows asking for feedback, with or without the app.
@@ -866,44 +760,26 @@ tweaks:
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Deprecated features in Windows client](https://learn.microsoft.com/en-us/windows/whats-new/deprecated-features)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.WindowsFeedbackHub' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub') { exit 0 }
-            winget install --id 9NBLGGH4R32N -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Microsoft.WindowsFeedbackHub]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.WindowsFeedbackHub]
+    install: { store: 9NBLGGH4R32N }
 
-  - id: remove_phone_link
-    name: "Remove Phone Link"
-    description: "Uninstall Phone Link, the companion app that mirrors a phone on the PC."
+  - id: phone_link
+    name: "Phone Link"
+    description: "The companion app that connects an Android phone or iPhone to the PC."
     info: |
-      **Uninstalls Phone Link, which connects an Android phone or iPhone to the PC. On Windows 11 24H2 and later the phone panel in Start goes with it.**
+      **Remove uninstalls Phone Link, which connects an Android phone or iPhone to the PC. On Windows 11 24H2 and later the phone panel in Start goes with it.**
 
       ## Drawbacks
       - All phone integration (notifications, messages, calls, photos) stops.
 
       ## Caveats
       - Feature updates bring Phone Link back unusually often.
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
 
       ## Notes
-      - It may not be preinstalled on Windows 11 24H2; if it is absent, the tweak already reads as Removed.
+      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Install instead of Remove.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Related
       - **Hide the mobile device panel in Start** (Interface) hides only the Start panel and keeps the app.
@@ -915,84 +791,48 @@ tweaks:
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Mobile device in Start menu](https://support.microsoft.com/en-us/windows/mobile-device-in-start-menu-21676d6a-3bc3-439a-aaa3-7463b91cda79)
     risk_level: low
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.YourPhone' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone') { exit 0 }
-            winget install --id 9NMPJ99VJBWV -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Microsoft.YourPhone]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.YourPhone]
+    install: { store: 9NMPJ99VJBWV }
 
-  - id: remove_outlook_new
-    name: "Remove the New Outlook app"
-    description: "Uninstall the preinstalled new Outlook for Windows, leaving classic Outlook untouched."
+  - id: outlook_new
+    name: "Outlook (new)"
+    description: "The preinstalled new Outlook for Windows. Classic Outlook is a separate app."
     info: |
-      **Uninstalls the preinstalled new Outlook for Windows for every account on the PC. Classic Outlook from Microsoft 365 is not touched.**
+      **Remove uninstalls the preinstalled new Outlook for Windows for every account on the PC. Classic Outlook from Microsoft 365 is not touched.**
 
       ## Drawbacks
       - Windows no longer includes Mail and Calendar, so no built-in mail app remains.
 
       ## Caveats
-      - Microsoft also pushes this app through Windows Update, so it can come back; apply again if so.
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - Microsoft also pushes this app through Windows Update, so it can come back; remove it again if so.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Sources
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
     risk_level: low
-    elevation: admin
-    reversible: true
     windows: { products: [11] }
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.OutlookforWindows' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookforWindows') { exit 0 }
-            winget install --id 9NRX63209R7B -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Microsoft.OutlookforWindows]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.OutlookforWindows]
+    install: { store: 9NRX63209R7B }
 
-  - id: remove_xbox_game_bar
-    name: "Remove Xbox Game Bar"
-    description: "Uninstall the Win+G Game Bar overlay, without touching Game Mode or any GPU feature."
+  - id: xbox_game_bar
+    name: "Xbox Game Bar"
+    description: "The Win+G Game Bar overlay. Game Mode and GPU features are separate."
     info: |
-      **Uninstalls the Xbox Game Bar overlay (Win+G): capture, the performance widget and the Xbox social panels. Game Mode and GPU features are unaffected.**
+      **Remove uninstalls the Xbox Game Bar overlay (Win+G): capture, the performance widget and the Xbox social panels. Game Mode and GPU features are unaffected.**
 
       ## Drawbacks
       - The Win+Alt+R recorder and screenshot shortcuts go with it.
       - Games or Settings that call the overlay show a "You'll need a new app to open this ms-gamingoverlay link" dialog.
 
       ## Caveats
-      - Some builds refuse the removal (error 0x80073CFA); the app then reports the error and rolls back.
-      - Reverting reinstalls it with winget, which needs internet access; if that fails, the tweak shows Needs Attention.
+      - Some builds refuse the removal (error 0x80073CFA); Remove then reports the error and the app stays installed.
       - A feature update may bring it back.
+
+      ## Getting it back
+      - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
 
       ## Related
       - **Disable Xbox Game Bar capture (Game DVR)** (Performance) turns off background recording without removing anything.
@@ -1004,35 +844,14 @@ tweaks:
       - [Policy-based inbox app removal](https://learn.microsoft.com/en-us/windows/configuration/policy-based-inbox-app-removal/policy-based-inbox-app-removal)
       - [Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
     risk_level: medium
-    elevation: admin
-    reversible: true
-    effects:
-      - id: app
-        action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' -PackageTypeFilter Bundle | Remove-AppxPackage -AllUsers
-            Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay' | Remove-AppxPackage -AllUsers
-            Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.XboxGamingOverlay' } | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName | Out-Null }
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an installed package (a rollback of a partial removal): winget's exit code for one is unverified.
-            if (Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay') { exit 0 }
-            winget install --id 9NZKPSTSNW4P -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe:
-            appx_absent: [Microsoft.XboxGamingOverlay]
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { app: run }
+    appx: [Microsoft.XboxGamingOverlay]
+    install: { store: 9NZKPSTSNW4P }
 
-  - id: remove_onedrive
-    name: "Remove OneDrive"
-    description: "Uninstall the OneDrive client, per-user and per-machine, without deleting local files."
+  - id: onedrive
+    name: "OneDrive"
+    description: "The OneDrive sync client, per-user and per-machine installs."
     info: |
-      **Uninstalls the OneDrive client, both per-user and per-machine installs, so it stops syncing and asking to back up your folders. Files already downloaded stay on disk.**
+      **Remove uninstalls the OneDrive client, both per-user and per-machine installs, so it stops syncing and asking to back up your folders. Files already downloaded stay on disk.**
 
       ## Drawbacks
       - Office documents stop saving to the cloud automatically.
@@ -1040,11 +859,13 @@ tweaks:
       ## Caveats
       - Cloud-only files that were never downloaded become unreachable on this PC; download them first.
       - If Desktop, Documents or Pictures were moved into OneDrive, they may end up somewhere unexpected.
-      - Reverting reinstalls OneDrive with winget (needs internet) but does not re-link your account or restore folder redirection; if the reinstall fails, the tweak shows Needs Attention.
       - A feature update can reinstall it.
 
       ## Notes
-      - LTSC images ship without OneDrive, so they already read as Removed.
+      - LTSC images ship without OneDrive, so there the card offers Install instead of Remove.
+
+      ## Getting it back
+      - Install puts it back with winget (needs internet), but does not re-link your account or restore folder redirection.
 
       ## Related
       - **Turn off File Explorer sync-provider ads** removes the upsell banners without uninstalling anything.
@@ -1056,58 +877,41 @@ tweaks:
       - [Turn off, disable, or uninstall OneDrive](https://support.microsoft.com/en-us/office/turn-off-disable-or-uninstall-onedrive-f32a17ce-3336-40fe-9c38-6efb09f944b0)
       - [Install OneDrive per machine](https://learn.microsoft.com/en-us/sharepoint/per-machine-installation)
     risk_level: medium
-    elevation: admin
-    reversible: true
-    effects:
-      - id: onedrive
-        action:
-          # Per-machine OneDrive (OneDriveSetup.exe /allusers, what Microsoft 365 and modern imaging
-          # deploy) lives under Program Files and needs /uninstall /allusers. Finding no installer at
-          # all is a failure, not a silent success, and the child's exit code is propagated.
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            $targets = @()
-            foreach ($p in @("$env:SystemRoot\SysWOW64\OneDriveSetup.exe", "$env:SystemRoot\System32\OneDriveSetup.exe")) {
-              if (Test-Path -LiteralPath $p) { $targets += ,@($p, @('/uninstall')) }
-            }
-            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-              if (-not $root) { continue }
-              $base = Join-Path $root 'Microsoft OneDrive'
-              if (-not (Test-Path -LiteralPath $base)) { continue }
-              foreach ($dir in (Get-ChildItem -LiteralPath $base -Directory)) {
-                $exe = Join-Path $dir.FullName 'OneDriveSetup.exe'
-                if (Test-Path -LiteralPath $exe) { $targets += ,@($exe, @('/uninstall', '/allusers')) }
-              }
-            }
-            if ($targets.Count -eq 0) { exit 1 }
-            foreach ($t in $targets) {
-              $proc = Start-Process -FilePath $t[0] -ArgumentList $t[1] -Wait -PassThru
-              if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
-            }
-            exit 0
-          undo: |
-            $ErrorActionPreference = 'Stop'
-            # Skip an existing install (a rollback of a partial removal): winget's exit code for one is unverified.
-            $paths = @("$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe")
-            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-              if ($root) { $paths += (Join-Path $root 'Microsoft OneDrive\OneDrive.exe') }
-            }
-            foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { exit 0 } }
-            winget install --id Microsoft.OneDrive -e --accept-source-agreements --accept-package-agreements
-            exit $LASTEXITCODE
-          probe: |
-            $ErrorActionPreference = 'Stop'
-            try {
-              if (Get-Process -Name OneDrive -ErrorAction SilentlyContinue) { exit 1 }
-              $paths = @("$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe")
-              foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-                if ($root) { $paths += (Join-Path $root 'Microsoft OneDrive\OneDrive.exe') }
-              }
-              foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { exit 1 } }
-            } catch { exit 1 }
-            exit 0
-          shell: powershell
-          timeout: 600
-    options:
-      - label: "Removed"
-        values: { onedrive: run }
+    script:
+      # An error must exit 1 (Unknown), never 2: 2 reads as absent.
+      probe: |
+        $ErrorActionPreference = 'Stop'
+        try {
+          if (Get-Process -Name OneDrive -ErrorAction SilentlyContinue) { exit 0 }
+          $paths = @("$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe")
+          foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+            if ($root) { $paths += (Join-Path $root 'Microsoft OneDrive\OneDrive.exe') }
+          }
+          foreach ($p in $paths) { if (Test-Path -LiteralPath $p) { exit 0 } }
+        } catch { exit 1 }
+        exit 2
+      # Per-machine OneDrive (OneDriveSetup.exe /allusers, what Microsoft 365 and modern imaging
+      # deploy) lives under Program Files and needs /uninstall /allusers. No installer found is a failure.
+      remove: |
+        $ErrorActionPreference = 'Stop'
+        $targets = @()
+        foreach ($p in @("$env:SystemRoot\SysWOW64\OneDriveSetup.exe", "$env:SystemRoot\System32\OneDriveSetup.exe")) {
+          if (Test-Path -LiteralPath $p) { $targets += ,@($p, @('/uninstall')) }
+        }
+        foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+          if (-not $root) { continue }
+          $base = Join-Path $root 'Microsoft OneDrive'
+          if (-not (Test-Path -LiteralPath $base)) { continue }
+          foreach ($dir in (Get-ChildItem -LiteralPath $base -Directory)) {
+            $exe = Join-Path $dir.FullName 'OneDriveSetup.exe'
+            if (Test-Path -LiteralPath $exe) { $targets += ,@($exe, @('/uninstall', '/allusers')) }
+          }
+        }
+        if ($targets.Count -eq 0) { exit 1 }
+        foreach ($t in $targets) {
+          $proc = Start-Process -FilePath $t[0] -ArgumentList $t[1] -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
+        }
+        exit 0
+      timeout: 600
+    install: { winget: Microsoft.OneDrive }

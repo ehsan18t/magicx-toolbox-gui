@@ -386,9 +386,10 @@ pub fn is_appx_name(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
 }
 
-/// Microsoft Store product id, e.g. `9NBLGGH4R32N`.
+/// Microsoft Store product id: `9NBLGGH4R32N`, or 14 characters with an `XP` prefix for a
+/// Store-listed Win32 app (Teams is `XP8BT8DW290MPQ`).
 pub fn is_store_id(s: &str) -> bool {
-    s.len() == 12
+    (s.len() == 12 || (s.len() == 14 && s.starts_with("XP")))
         && s.bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
 }
@@ -453,7 +454,7 @@ pub fn validate_apps(corpus: &Corpus, apps: &[AppDef]) -> Vec<ValidationError> {
         match &app.install {
             Some(InstallSource::Store(id) | InstallSource::StorePage(id)) if !is_store_id(id) => {
                 fail(format!(
-                    "Store product id {id:?} must be 12 characters of A-Z and 0-9"
+                    "Store product id {id:?} must be 12 characters of A-Z and 0-9, or 14 starting with XP"
                 ))
             }
             Some(InstallSource::Winget(id)) if !is_winget_id(id) => fail(format!(
@@ -2395,15 +2396,26 @@ mod tests {
                 Some(InstallSource::StorePage("9NBLGG".into())),
             ),
             app(
+                "xp",
+                appx(&["A"]),
+                Some(InstallSource::Store("XP8BT8DW290MPQ".into())),
+            ),
+            app(
+                "long_not_xp",
+                appx(&["A"]),
+                Some(InstallSource::Store("9P8BT8DW290MPQ".into())),
+            ),
+            app(
                 "winget",
                 appx(&["A"]),
                 Some(InstallSource::Winget("A&B".into())),
             ),
         ]);
-        assert_eq!(reasons.len(), 3, "{reasons:?}");
+        assert_eq!(reasons.len(), 4, "{reasons:?}");
         assert!(reasons[0].contains("Store product id"));
         assert!(reasons[1].contains("Store product id"));
-        assert!(reasons[2].contains("winget id"));
+        assert!(reasons[2].contains("9P8BT8DW290MPQ"));
+        assert!(reasons[3].contains("winget id"));
     }
 
     #[test]

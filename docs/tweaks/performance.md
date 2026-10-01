@@ -364,7 +364,7 @@ System Default appears when the value is absent or holds anything else. Whether 
 - **Reverting**: the Restore button restores the snapshot, which is the only way back to an absent value. "Off" writes 0 rather than deleting it.
 
 #### Interactions
-`debloat:remove_xbox_game_bar` uninstalls the Game Bar overlay app but does not touch Game Mode; the two are independent. `disable_gamedvr_capture` and `disable_fullscreen_optimizations` write other values in `GameConfigStore`, not this one.
+The [Xbox Game Bar](debloat.md#xbox-game-bar) app item (Debloat, Apps) uninstalls the overlay app but does not touch Game Mode; the two are independent. `disable_gamedvr_capture` and `disable_fullscreen_optimizations` write other values in `GameConfigStore`, not this one.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research established that Game Mode is driven by `AutoGameModeEnabled` alone; a companion value, `AllowAutoGameMode`, sometimes cited alongside it, does not exist on a live 24H2 machine and is not written.
@@ -712,7 +712,7 @@ Three layers control Game DVR. `AppCaptureEnabled` is the per-user switch for Ga
 - **Reverting**: "Enabled" writes 1 to both per-user values and deletes the machine policy. The Restore button restores the snapshot, which is the more faithful path if your per-user values were absent before.
 
 #### Interactions
-`debloat:remove_xbox_game_bar` uninstalls the overlay app; this tweak disables capture but keeps the overlay. `disable_fullscreen_optimizations` writes other values in `HKCU\System\GameConfigStore`. `enable_game_mode` is unaffected.
+The [Xbox Game Bar](debloat.md#xbox-game-bar) app item (Debloat, Apps) uninstalls the overlay app; this tweak disables capture but keeps the overlay. `disable_fullscreen_optimizations` writes other values in `HKCU\System\GameConfigStore`. `enable_game_mode` is unaffected.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research established that `AllowGameDVR` = 0 removes all recording and broadcasting, not only background capture, and that describing the overlay as still working is misleading, because capture through it is gone.

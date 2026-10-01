@@ -133,8 +133,8 @@ impl ActionKind {
                 shell,
                 ..
             } => Ok(run_script(*shell, &body.0, ACTION_TIMEOUT)? == 0),
-            // The native probe forms never reach here: `engine::detect` answers them itself, since
-            // only it holds the shared state they read. Reaching this arm is an engine routing bug.
+            // `engine::detect` answers the native probe forms itself; reaching this arm is an engine
+            // routing bug.
             ActionDef::Script { probe: Some(_), .. } => Err(Error::Invalid(
                 "a native probe must be answered by the engine, not run as a script",
             )),

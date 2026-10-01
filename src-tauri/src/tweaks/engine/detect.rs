@@ -417,10 +417,8 @@ fn has_undo(action: &ActionDef) -> bool {
 /// Runs (or reads the cached) probe for `effect_id` on `tweak_id` — populates the cache on miss,
 /// reads it on hit (spec §7: session-cached, never re-spawned per status poll).
 ///
-/// The native probe forms are answered HERE rather than through `deps.probes`, because only this
-/// layer holds the shared state they need: `Probe::Registry` is a direct read, and
-/// `Probe::AppxAbsent` consults the one package enumeration the whole sweep shares. `deps.probes`
-/// keeps its original job, running the Action's script, and is what a test mocks.
+/// `Probe::Registry` is answered HERE as a direct read; `deps.probes` runs the Action's script and
+/// is what a test mocks.
 fn probe_cached(
     deps: &Deps,
     tweak_id: &str,
@@ -432,7 +430,7 @@ fn probe_cached(
         Ok(cached) => return Ok(cached),
         Err(generation) => generation,
     };
-    let present = answer_probe(deps, action, cx)?;
+    let present = probe_live(deps, action, cx)?;
     deps.probe_cache
         .insert(tweak_id, effect_id, present, generation);
     Ok(present)
@@ -441,11 +439,6 @@ fn probe_cached(
 /// An uncached probe for apply, rollback and restore, which read around their own mutations.
 /// Never `deps.probes` directly: `RealProbe` refuses the native forms.
 pub(crate) fn probe_live(deps: &Deps, action: &ActionDef, cx: &ExecCx) -> Result<bool, KindError> {
-    deps.probe_cache.appx().invalidate();
-    answer_probe(deps, action, cx)
-}
-
-fn answer_probe(deps: &Deps, action: &ActionDef, cx: &ExecCx) -> Result<bool, KindError> {
     Ok(match action {
         ActionDef::Script {
             probe:
@@ -457,14 +450,6 @@ fn answer_probe(deps: &Deps, action: &ActionDef, cx: &ExecCx) -> Result<bool, Ki
                 }),
             ..
         } => registry_probe(*hive, path, name, *equals)?,
-        ActionDef::Script {
-            probe: Some(Probe::AppxAbsent { packages }),
-            ..
-        } => !deps
-            .probe_cache
-            .appx()
-            .any_installed(packages)
-            .map_err(|e| KindError::Backend(e.to_string()))?,
         _ => deps.probes.probe(action, cx)?,
     })
 }
