@@ -70,7 +70,7 @@ pub enum ClaimsError {
     Kind(#[from] KindError),
 
     /// A drive succeeded without error but the read-back did not match — did-it-work (invariant 2).
-    #[error("shared '{shared_id}' drove to {expected:?} but read back {actual:?}")]
+    #[error("shared '{shared_id}' drove to {} but read back {}", .expected.kind(), .actual.kind())]
     VerifyMismatch {
         shared_id: String,
         expected: Value,

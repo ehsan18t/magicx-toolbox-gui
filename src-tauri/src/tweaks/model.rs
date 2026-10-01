@@ -216,6 +216,25 @@ pub enum Value {
     Present(bool),
 }
 
+impl Value {
+    /// What an error may name: registry data is the user's own.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Value::Absent => "absent",
+            Value::Missing => "missing",
+            Value::Reg(TypedRegValue::Dword(_)) => "REG_DWORD",
+            Value::Reg(TypedRegValue::Qword(_)) => "REG_QWORD",
+            Value::Reg(TypedRegValue::Sz(_)) => "REG_SZ",
+            Value::Reg(TypedRegValue::ExpandSz(_)) => "REG_EXPAND_SZ",
+            Value::Reg(TypedRegValue::MultiSz(_)) => "REG_MULTI_SZ",
+            Value::Reg(TypedRegValue::Binary(_)) => "REG_BINARY",
+            Value::Startup(_) => "a startup type",
+            Value::TaskEnabled(_) => "a task state",
+            Value::Present(_) => "a presence",
+        }
+    }
+}
+
 /// The text of a `cmd`/`powershell` script, resolved at build time (inline or filed — spec §7
 /// says filed scripts are "embedded by `build.rs`", so by the compiled-model stage there is only
 /// ever a body string left).

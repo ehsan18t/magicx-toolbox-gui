@@ -1015,6 +1015,36 @@ mod tests {
         assert!(!shown.contains("Present"), "{shown}");
     }
 
+    /// The log line `map_engine_err` writes at Error is this Display: kinds only, never the data.
+    #[test]
+    fn a_verify_mismatch_logs_the_value_kinds_never_the_values() {
+        use crate::tweaks::model::TypedRegValue;
+        let secret = || Value::Reg(TypedRegValue::Sz(r"C:\Users\Alice\secret".into()));
+        let engine = EngineError::VerifyMismatch {
+            effect: EffectId("wu_sih".into()),
+            expected: secret(),
+            actual: Value::Reg(TypedRegValue::Dword(4242)),
+        }
+        .to_string();
+        assert_eq!(
+            engine,
+            "effect 'wu_sih' verify mismatch: drove REG_SZ, read back REG_DWORD"
+        );
+        let claim = EngineError::Claim {
+            shared: SharedId("wu_sih".into()),
+            source: ClaimsError::VerifyMismatch {
+                shared_id: "wu_sih".into(),
+                expected: secret(),
+                actual: Value::Absent,
+            },
+        }
+        .to_string();
+        assert!(
+            !claim.contains("secret") && claim.contains("REG_SZ"),
+            "{claim}"
+        );
+    }
+
     /// The Needs Attention record is persisted and then printed verbatim in the card tooltip and the
     /// details modal, so it is held to the error channel's rule: the structure around the failure,
     /// never the text the failure came with.
