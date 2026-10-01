@@ -1,5 +1,6 @@
 use tauri::{App, Manager};
 
+use crate::apps::AppsState;
 use crate::commands::tweaks::TweakEngineState;
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -14,6 +15,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // `intended && !completed` by a process that crashed mid-apply, before the frontend ever asks.
     tweak_state.scan_startup_crash_residue();
     app.manage(tweak_state);
+    app.manage(AppsState::new());
 
     Ok(())
 }

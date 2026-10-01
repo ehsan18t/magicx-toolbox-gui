@@ -30,7 +30,7 @@ pub enum Error {
     #[error("Update error: {0}")]
     Update(String),
 
-    #[error("A tweak is still being changed. Wait for it to finish, then {0}.")]
+    #[error("A tweak or app is still being changed. Wait for it to finish, then {0}.")]
     ApplyInFlight(&'static str),
 
     #[error(transparent)]
@@ -67,6 +67,14 @@ pub enum Error {
     /// elevation level or SID state (spec §9) -- a typed refusal, never a silent no-op.
     #[error("tweak unavailable: {0}")]
     TweakUnavailable(String),
+
+    /// An app removal or install refused before anything ran.
+    #[error("{0}")]
+    AppUnavailable(String),
+
+    /// An app removal or install that failed, or ran but did not verify.
+    #[error("{0}")]
+    AppFailed(String),
 }
 
 /// Win32 codes (WinError.h) that [`Error::Win32`] carries and the failure classification keys on.
@@ -132,6 +140,8 @@ impl Error {
             Error::Tweak(_) => "TWEAK_ENGINE_ERROR",
             Error::TweakFailed { code, .. } => code.as_str(),
             Error::TweakUnavailable(_) => "TWEAK_UNAVAILABLE",
+            Error::AppUnavailable(_) => "APP_UNAVAILABLE",
+            Error::AppFailed(_) => "APP_FAILED",
             Error::AppExiting(_) => "APP_EXITING",
         }
     }

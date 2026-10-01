@@ -12,7 +12,9 @@ src/
 ├── setup.rs            # Startup initialization and managed state
 ├── debug.rs            # Debug logging utilities
 ├── window_watchdog.rs  # Shows the window if the frontend never does
+├── apps/               # App items: presence, removal and install (ADR-0009)
 ├── commands/           # Tauri command handlers
+│   ├── apps.rs         # App item query/remove/install commands
 │   ├── general.rs      # Window display
 │   ├── elevation.rs    # Restart as administrator
 │   ├── update.rs       # App update checking

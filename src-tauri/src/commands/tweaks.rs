@@ -161,7 +161,7 @@ pub enum Availability {
 
 /// `required` is [`required_level`]. `touches_hkcu` keys the SID guard on the hive, never the level:
 /// an admin-level tweak can still write HKCU.
-fn compute_availability(
+pub(crate) fn compute_availability(
     touches_hkcu: bool,
     required: Level,
     current_level: Level,
@@ -996,7 +996,7 @@ impl RestoreOutcomeView {
 /// so every status is stamped when its reads BEGIN and the frontend drops the older one.
 static STATUS_STAMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-fn next_status_stamp() -> u64 {
+pub(crate) fn next_status_stamp() -> u64 {
     STATUS_STAMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -1110,7 +1110,7 @@ async fn gate(tweak: &'static Tweak) -> Result<()> {
 
 /// Registry, SCM, COM, snapshot I/O and the broker's 30 s child wait all block, so none may run on
 /// an async worker. A `JoinError` maps to `Err`, never a value; release builds abort on panic.
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T> + Send + 'static,
 ) -> Result<T> {
     #[cfg(feature = "test-build")]
@@ -1120,7 +1120,7 @@ async fn blocking<T: Send + 'static>(
 
 /// [`blocking`] under `tweak_id`'s lifecycle lock, taken on the async side and held until `work`
 /// ends. A refused lock is the same `APP_EXITING` error an engine refusal maps to.
-async fn run_locked<T: Send + 'static>(
+pub(crate) async fn run_locked<T: Send + 'static>(
     tweak_id: &str,
     work: impl FnOnce() -> Result<T> + Send + 'static,
 ) -> Result<T> {
@@ -1134,14 +1134,12 @@ async fn run_locked<T: Send + 'static>(
     .await
 }
 
-/// Release builds leave out tweaks this Windows build cannot run at all; debug and test builds list
-/// them, shown as unavailable, so every gate stays reviewable on one machine.
+/// Release builds leave out tweaks and apps this Windows build cannot run at all; debug and test
+/// builds list them, shown as unavailable, so every gate stays reviewable on one machine.
+pub(crate) const SHOW_UNSUPPORTED: bool = cfg!(any(debug_assertions, feature = "test-build"));
+
 fn listed(tweak: &Tweak, winver: &WinVer) -> bool {
-    listed_in(
-        tweak,
-        winver,
-        cfg!(any(debug_assertions, feature = "test-build")),
-    )
+    listed_in(tweak, winver, SHOW_UNSUPPORTED)
 }
 
 fn listed_in(tweak: &Tweak, winver: &WinVer, show_unsupported: bool) -> bool {

@@ -19,31 +19,59 @@ use std::time::{Duration, Instant};
 use crate::error::Error;
 use crate::services::system32::SystemTool;
 
-/// Lists every installed package name, per-user and provisioned, one per line. `-AllUsers` needs
-/// admin; without it the call fails rather than silently reporting only the current user's
-/// packages, which would read as "absent" for anything installed for someone else. That failure
-/// surfaces as `Err`, never as an empty set, so a probe reports "cannot tell" instead of a
-/// confident wrong answer.
+/// Lists every installed package name, per-user (`R:`) and provisioned (`P:`), one per line.
+/// `-AllUsers` needs admin; without it the call fails rather than silently reporting only the
+/// current user's packages, which would read as "absent" for anything installed for someone else.
+/// That failure surfaces as `Err`, never as an empty set.
 const ENUMERATE: &str = r#"
 $ErrorActionPreference = 'Stop'
-Get-AppxPackage -AllUsers | ForEach-Object { $_.Name }
-Get-AppxProvisionedPackage -Online | ForEach-Object { $_.DisplayName }
+Get-AppxPackage -AllUsers | ForEach-Object { 'R:' + $_.Name }
+Get-AppxProvisionedPackage -Online | ForEach-Object { 'P:' + $_.DisplayName }
+"#;
+
+/// The unelevated fallback: only this account's packages, so a miss proves nothing.
+const ENUMERATE_CURRENT_USER: &str = r#"
+$ErrorActionPreference = 'Stop'
+Get-AppxPackage | ForEach-Object { 'R:' + $_.Name }
 "#;
 
 /// A normal run takes about 400ms; past this the spawn is treated as hung and killed.
 const ENUMERATE_TIMEOUT: Duration = Duration::from_secs(60);
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 
-type Built = Result<HashSet<String>, String>;
+/// Lowercased package names.
+#[derive(Debug, Default)]
+struct Packages {
+    registered: HashSet<String>,
+    provisioned: HashSet<String>,
+}
+
+type Built = Result<Packages, String>;
+
+/// Whether any asked-about package is registered for a user, and whether any is provisioned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppxLookup {
+    pub registered: bool,
+    pub provisioned: bool,
+}
 
 /// Lazily-built set of installed package names, lowercased for case-insensitive lookup.
 ///
 /// The build result is cached including its failure: a machine where the enumeration cannot run
 /// would otherwise retry the same failing 400ms spawn once per asking probe. [`Self::invalidate`]
 /// clears it so a later sweep re-observes, which is what makes a removal visible after an apply.
-#[derive(Default)]
 pub struct AppxIndex {
+    all_users: bool,
     cache: Mutex<Cache>,
+}
+
+impl Default for AppxIndex {
+    fn default() -> Self {
+        Self {
+            all_users: true,
+            cache: Mutex::default(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -53,13 +81,38 @@ struct Cache {
 }
 
 impl AppxIndex {
+    /// This account's packages only, with no provisioned list: works without admin.
+    pub fn current_user() -> Self {
+        Self {
+            all_users: false,
+            ..Self::default()
+        }
+    }
+
     /// Whether any of `packages` is installed. Names are compared case-insensitively, matching how
     /// Windows treats package names and how the corpus spells them.
     pub fn any_installed(&self, packages: &[String]) -> Result<bool, Error> {
-        match &*self.built(enumerate) {
-            Ok(names) => Ok(packages
-                .iter()
-                .any(|p| names.contains(&p.to_ascii_lowercase()))),
+        self.lookup(packages).map(|l| l.registered || l.provisioned)
+    }
+
+    pub fn lookup(&self, packages: &[String]) -> Result<AppxLookup, Error> {
+        let script = if self.all_users {
+            ENUMERATE
+        } else {
+            ENUMERATE_CURRENT_USER
+        };
+        match &*self.built(|| enumerate(script)) {
+            Ok(names) => {
+                let any = |set: &HashSet<String>| {
+                    packages
+                        .iter()
+                        .any(|p| set.contains(&p.to_ascii_lowercase()))
+                };
+                Ok(AppxLookup {
+                    registered: any(&names.registered),
+                    provisioned: any(&names.provisioned),
+                })
+            }
             Err(msg) => Err(Error::CommandExecution(format!(
                 "could not enumerate installed packages: {msg}"
             ))),
@@ -80,7 +133,7 @@ impl AppxIndex {
 
     /// Enumerates outside the lock so a slow spawn never blocks `invalidate`; a result that an
     /// `invalidate` overtook is returned to its asker but not cached.
-    fn built(&self, enumerate: impl FnOnce() -> Result<HashSet<String>, Error>) -> Arc<Built> {
+    fn built(&self, enumerate: impl FnOnce() -> Result<Packages, Error>) -> Arc<Built> {
         let generation = {
             let cache = self.lock();
             if let Some(built) = &cache.built {
@@ -97,15 +150,12 @@ impl AppxIndex {
     }
 }
 
-fn enumerate() -> Result<HashSet<String>, Error> {
+fn enumerate(script: &str) -> Result<Packages, Error> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-    let utf16: Vec<u8> = ENUMERATE
-        .encode_utf16()
-        .flat_map(u16::to_le_bytes)
-        .collect();
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let child = SystemTool::PowerShell
         .command()?
         .args([
@@ -131,12 +181,19 @@ fn enumerate() -> Result<HashSet<String>, Error> {
         )));
     }
 
-    Ok(String::from_utf8_lossy(&stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect())
+    Ok(parse_packages(&String::from_utf8_lossy(&stdout)))
+}
+
+fn parse_packages(stdout: &str) -> Packages {
+    let mut packages = Packages::default();
+    for line in stdout.lines().map(str::trim) {
+        if let Some(name) = line.strip_prefix("R:") {
+            packages.registered.insert(name.to_ascii_lowercase());
+        } else if let Some(name) = line.strip_prefix("P:") {
+            packages.provisioned.insert(name.to_ascii_lowercase());
+        }
+    }
+    packages
 }
 
 /// Exit code, stdout and stderr of `child`, or `Err` after killing it once `timeout` passes.
@@ -230,12 +287,17 @@ mod tests {
         assert!(err.to_string().contains("winrt unavailable"), "got {err}");
     }
 
+    fn registered(names: &[&str]) -> Packages {
+        Packages {
+            registered: names.iter().map(|n| n.to_string()).collect(),
+            provisioned: HashSet::new(),
+        }
+    }
+
     #[test]
     fn lookup_is_case_insensitive_and_invalidation_clears_the_cache() {
         let index = AppxIndex::default();
-        index.lock().built = Some(Arc::new(Ok(HashSet::from([
-            "microsoft.gethelp".to_string()
-        ]))));
+        index.lock().built = Some(Arc::new(Ok(registered(&["microsoft.gethelp"]))));
 
         assert!(index.any_installed(&["Microsoft.GetHelp".into()]).unwrap());
         assert!(!index.any_installed(&["Microsoft.Absent".into()]).unwrap());
@@ -259,16 +321,43 @@ mod tests {
         let built = index.built(|| {
             // Deadlocks if the cache lock were held across the enumeration.
             index.invalidate();
-            Ok(HashSet::from(["stale".to_string()]))
+            Ok(registered(&["stale"]))
         });
-        assert!(matches!(&*built, Ok(names) if names.contains("stale")));
+        assert!(matches!(&*built, Ok(names) if names.registered.contains("stale")));
         assert!(
             index.lock().built.is_none(),
             "a result an invalidate overtook must not be cached"
         );
 
-        index.built(|| Ok(HashSet::new()));
+        index.built(|| Ok(Packages::default()));
         assert!(index.lock().built.is_some());
+    }
+
+    #[test]
+    fn output_lines_split_into_registered_and_provisioned() {
+        let packages =
+            parse_packages("R:Microsoft.GetHelp\r\nP:Clipchamp.Clipchamp\r\nnoise\r\n\r\n");
+        let index = AppxIndex::default();
+        index.lock().built = Some(Arc::new(Ok(packages)));
+        let lookup = |n: &str| index.lookup(&[n.to_string()]).unwrap();
+        assert_eq!(
+            lookup("microsoft.gethelp"),
+            AppxLookup {
+                registered: true,
+                provisioned: false
+            }
+        );
+        assert_eq!(
+            lookup("CLIPCHAMP.clipchamp"),
+            AppxLookup {
+                registered: false,
+                provisioned: true
+            }
+        );
+        assert!(index
+            .any_installed(&["Clipchamp.Clipchamp".into()])
+            .unwrap());
+        assert!(!index.any_installed(&["noise".into()]).unwrap());
     }
 
     #[test]

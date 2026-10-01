@@ -7,6 +7,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use super::{ManualTest, TESTS};
+use crate::apps::AppsState;
+use crate::commands::apps::{install_gated, remove_gated, AppStatusView};
 use crate::commands::tweaks::{
     apply_gated, get_tweak_status, restore_gated, ApplyOutcomeView, RestoreOutcomeView,
     TweakEngineState, TweakStatusEvent,
@@ -15,7 +17,7 @@ use crate::error::{Error, Result};
 use crate::services::elevation::Elevation;
 use crate::services::system_info_service;
 use crate::tweaks::engine::apply::EngineError;
-use crate::tweaks::model::Tweak;
+use crate::tweaks::model::{AppDef, Tweak};
 use crate::tweaks::winver::running_winver;
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
@@ -118,6 +120,9 @@ pub trait Host {
     fn engine(&self) -> &TweakEngineState;
     fn apply(&self, tweak: &'static Tweak, option: &str) -> Typed<ApplyOutcomeView>;
     fn restore(&self, tweak: &'static Tweak) -> Typed<RestoreOutcomeView>;
+    fn apps(&self) -> &AppsState;
+    fn remove_app(&self, app: &'static AppDef) -> Result<AppStatusView>;
+    fn install_app(&self, app: &'static AppDef) -> Result<AppStatusView>;
     fn emit_line(&self, test_id: &str, line: &str);
 }
 
@@ -137,6 +142,18 @@ impl Host for AppHandle {
         let outcome = tauri::async_runtime::block_on(restore_gated(self.clone(), tweak));
         publish_status(self, tweak);
         outcome
+    }
+
+    fn apps(&self) -> &AppsState {
+        tauri::Manager::state::<AppsState>(self).inner()
+    }
+
+    fn remove_app(&self, app: &'static AppDef) -> Result<AppStatusView> {
+        tauri::async_runtime::block_on(remove_gated(self.clone(), app))
+    }
+
+    fn install_app(&self, app: &'static AppDef) -> Result<AppStatusView> {
+        tauri::async_runtime::block_on(install_gated(self.clone(), app))
     }
 
     fn emit_line(&self, test_id: &str, line: &str) {

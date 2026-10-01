@@ -64,7 +64,7 @@ use super::registry::RegistryKind;
 use super::{guard_level, Error, ExecCx};
 
 /// Bound for every probe, and for an apply/undo whose action sets no `timeout` (spec §14).
-const ACTION_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// `Child::try_wait` polling granularity — coarse enough to be cheap, fine enough that a timeout
 /// error fires close to the bound rather than one whole interval late.
@@ -161,7 +161,7 @@ fn run_and_require_zero(shell: Shell, body: &str, timeout: Duration) -> Result<(
 
 /// Runs one script body to completion (or until `timeout` kills it), returning its raw exit code —
 /// the sole, locale-independent success/failure signal (spec §7). Never interprets stdout.
-fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<i32, Error> {
+pub(crate) fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<i32, Error> {
     match shell {
         Shell::PowerShell => wait_with_timeout(spawn_powershell(body)?, timeout),
         Shell::Cmd => {
