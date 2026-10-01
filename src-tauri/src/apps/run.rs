@@ -8,7 +8,7 @@ use crate::tweaks::model::{AppDef, AppSource, InstallSource};
 use crate::tweaks::validate::{is_appx_name, is_store_id, is_winget_id};
 
 /// For a removal whose item sets no `timeout`, AppX included.
-const REMOVE_TIMEOUT: Duration = Duration::from_secs(300);
+const REMOVE_TIMEOUT: Duration = Duration::from_secs(600);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(1800);
 
 /// `$_.Exception.HResult` names the deployment failure (0x80073CFA and friends); 0 is remapped so

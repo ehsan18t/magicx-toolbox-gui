@@ -99,10 +99,11 @@
   let showRemoveConfirm = $state(false);
   let showDetails = $state(false);
 
+  const scope = $derived(app.source === "appx" ? "for every account on this PC" : "for your account");
   const confirmMessage = $derived(
     (permanent
-      ? `${app.name} has no install source on this PC, so this cannot be undone. It is removed for every account.`
-      : `${app.name} is removed for every account on this PC. You can reinstall it later from this card.`) +
+      ? `${app.name} is removed ${scope} and has no install source on this PC, so this cannot be undone.`
+      : `${app.name} is removed ${scope}. You can reinstall it later from this card.`) +
       (app.warning ? ` ${app.warning}` : ""),
   );
 

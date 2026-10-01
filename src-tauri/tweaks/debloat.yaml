@@ -691,7 +691,7 @@ apps:
       - A feature update may bring it back.
 
       ## Notes
-      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Install instead of Remove.
+      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Install or Get in Store instead of Remove, or is hidden when neither winget nor the Store is available.
 
       ## Getting it back
       - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
@@ -776,7 +776,7 @@ apps:
       - Feature updates bring Phone Link back unusually often.
 
       ## Notes
-      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Install instead of Remove.
+      - It may not be preinstalled on Windows 11 24H2; if it is missing, the card offers Install or Get in Store instead of Remove, or is hidden when neither winget nor the Store is available.
 
       ## Getting it back
       - Install puts it back with winget from the Microsoft Store (needs internet). Without winget, Get in Store opens its Store page instead.
@@ -862,7 +862,7 @@ apps:
       - A feature update can reinstall it.
 
       ## Notes
-      - LTSC images ship without OneDrive, so there the card offers Install instead of Remove.
+      - LTSC images ship without OneDrive, so there the card offers Install where winget is available and is hidden otherwise.
 
       ## Getting it back
       - Install puts it back with winget (needs internet), but does not re-link your account or restore folder redirection.

@@ -13,10 +13,8 @@ use std::time::{Duration, Instant};
 use crate::error::Error;
 use crate::services::system32::SystemTool;
 
-/// Lists every installed package name, per-user (`R:`) and provisioned (`P:`), one per line.
-/// `-AllUsers` needs admin; without it the call fails rather than silently reporting only the
-/// current user's packages, which would read as "absent" for anything installed for someone else.
-/// That failure surfaces as `Err`, never as an empty set.
+/// Package names, registered (`R:`) and provisioned (`P:`), one per line. `-AllUsers` needs admin
+/// and fails without it, surfacing as `Err`: a current-user-only list would misread as "absent".
 const ENUMERATE: &str = r#"
 $ErrorActionPreference = 'Stop'
 Get-AppxPackage -AllUsers | ForEach-Object { 'R:' + $_.Name }
@@ -51,9 +49,8 @@ pub struct AppxLookup {
 
 /// Lazily-built set of installed package names, lowercased for case-insensitive lookup.
 ///
-/// The build result is cached including its failure: a machine where the enumeration cannot run
-/// would otherwise retry the same failing 400ms spawn once per asking probe. [`Self::invalidate`]
-/// clears it so a later sweep re-observes, which is what makes a removal visible after an apply.
+/// Failures are cached too, so a machine that cannot enumerate pays the 400ms spawn once.
+/// [`Self::invalidate`] clears it so the check after a removal or install re-observes the machine.
 pub struct AppxIndex {
     all_users: bool,
     cache: Mutex<Cache>,

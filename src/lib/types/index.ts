@@ -416,6 +416,8 @@ export interface AppView {
   warning: string | null;
   category: string;
   risk: BackendRiskLevel;
+  /** `appx` removes for every account; `script` acts on the running account. */
+  source: "appx" | "script";
   install: { kind: "store" | "winget" | "store_page"; id: string } | null;
   remove_availability: Availability;
   install_availability: Availability;

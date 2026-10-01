@@ -2582,7 +2582,7 @@ There is **no** `elevation:`, `reversible:`, `effects:` or `options:` field. Unk
 - a plain pass without the filter;
 - `Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq <name> | Remove-AppxProvisionedPackage -Online`;
 
-all inside one `try` with `$ErrorActionPreference = 'Stop'`, whose `catch` exits with the exception's HRESULT so the error names the cause (for example 0x80073CFA). The removal has 300 seconds.
+all inside one `try` with `$ErrorActionPreference = 'Stop'`, whose `catch` exits with the exception's HRESULT so the error names the cause (for example 0x80073CFA). The removal has 600 seconds.
 
 List each package of an app that ships as several; list two apps that have their own Store listings as **two app items**, so each has its own presence and its own install.
 
@@ -2591,7 +2591,7 @@ List each package of an app that ships as several; list two apps that have their
 - **`probe` exit codes: `0` = installed, `2` = absent, anything else = Unknown.** A timeout or a crash is Unknown too. This is **not** the action probe contract (§12.2), where every non-zero code means absent.
 - **Why `1` is not absent:** an uncaught PowerShell error exits `1`. If `1` meant absent, a probe that throws would report an installed app as gone and hide its card. So wrap the checks in `try`, `exit 1` from the `catch`, and reach `exit 2` only after every check has run cleanly. **Never `exit 2` inside a `catch`.**
 - The probe always gets the fixed 30 second probe timeout; keep it quick.
-- `remove` exits `0` on success. Any other exit is a failure, reported with its code. `timeout` bounds `remove` only: 1 to 1800 seconds, default 300. Set it for uninstallers that take minutes.
+- `remove` exits `0` on success. Any other exit is a failure, reported with its code. `timeout` bounds `remove` only: 1 to 1800 seconds, default 600. Set it for uninstallers that take minutes.
 - Neither body may be empty.
 
 **Unelevated**, AppX presence can read only the current account's packages: a hit is Installed, a miss is Unknown ("needs administrator"), never Absent. A script probe that exits with an unexpected code while unelevated is also flagged as needing elevation.
@@ -2621,7 +2621,7 @@ winget is available when `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` exist
 
 ### 20.5 Fixed elevation, no snapshot, visibility
 
-- **Elevation is fixed**, not authored: Remove needs `admin`; Install runs at `user`; presence degrades unelevated (§20.3). Install is blocked when the app was elevated with another account's credentials, because the app would land in the wrong account; so is a script removal, whose paths may be per-user.
+- **Elevation is fixed**, not authored: Remove needs `admin`; Install runs at `user`; presence degrades unelevated (§20.3). Install is blocked when the app was elevated with another account's credentials, because the app would land in the wrong account; so is a script removal, whose paths may be per-user, and a script item's presence then reads Unknown without running its probe.
 - **No snapshot** (ADR-0009). Nothing is captured before a removal and there is no Restore. The only way back is the install route, and an app with none is permanent: the card carries a Permanent badge and Remove's confirmation says it cannot be undone. Say so in `info` too.
 - **Visibility:** an app is shown unless it is Absent **and** has no route on this machine. Unknown is always shown, with its buttons disabled. An app whose `windows:` scope excludes the running build is left out of release builds.
 - **Feature updates can re-add apps.** Windows feature updates (and, for some apps, Windows Update) re-provision removed packages. The card then reads Installed again. Say this in `info` for every app it applies to.

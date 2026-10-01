@@ -414,11 +414,8 @@ fn has_undo(action: &ActionDef) -> bool {
     }
 }
 
-/// Runs (or reads the cached) probe for `effect_id` on `tweak_id` — populates the cache on miss,
-/// reads it on hit (spec §7: session-cached, never re-spawned per status poll).
-///
-/// `Probe::Registry` is answered HERE as a direct read; `deps.probes` runs the Action's script and
-/// is what a test mocks.
+/// Session-cached probe (spec §7): never re-spawned per status poll. `Probe::Registry` is read
+/// directly here; `deps.probes` runs the script and is what a test mocks.
 fn probe_cached(
     deps: &Deps,
     tweak_id: &str,

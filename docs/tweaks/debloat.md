@@ -24,7 +24,7 @@ Per-user (HKCU) effects always run in-process as the signed-in user even inside 
 | [Turn off Edge startup boost](#turn-off-edge-startup-boost) | `disable_edge_startup_boost` | Switch (2 options) | low | admin | no | VERIFIED |
 | [Turn off the Edge sidebar and Collections](#turn-off-the-edge-sidebar-and-collections) | `disable_edge_sidebar` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 
-Every tweak here authors two options, so each shows as a dropdown with a third, computed "System Default" position. The thirteen app items are indexed in [Apps](#apps).
+Every tweak here authors two options, so each shows as a segmented switch; System Default is the computed state when neither option matches. The thirteen app items are indexed in [Apps](#apps).
 
 ## Tweaks
 

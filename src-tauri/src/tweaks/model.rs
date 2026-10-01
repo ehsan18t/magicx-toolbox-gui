@@ -229,12 +229,8 @@ pub enum Shell {
     PowerShell,
 }
 
-/// How an Action's produced state is detected (spec §7: state-based, never history-based).
-///
-/// A script probe costs a process spawn, which measured at 180ms of floor before the script does
-/// any work, and detection runs one per probeable Action on every sweep. [`Probe::Registry`] is a
-/// direct read so a check that needs no interpreter does not pay for one; [`Probe::Script`] covers
-/// everything else (powercfg, DISM, auditpol, CIM).
+/// State-based Action detection (spec §7). A script probe costs a 180ms spawn per sweep, so
+/// [`Probe::Registry`] reads directly; [`Probe::Script`] covers the rest (powercfg, DISM, CIM).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Probe {
     /// Run the Action's script under its own `shell`; exit 0 means the state is present.

@@ -62,7 +62,7 @@ export const favoritesStore = {
     }
   },
 
-  /** Drop ids no longer in the tweak model, so stale ids don't inflate the count. */
+  /** Drop ids the tweak model does not define, so they don't inflate the count. */
   prune(knownIds: string[]): void {
     const kept = favoritesState.value.filter((id) => knownIds.includes(id));
     if (kept.length !== favoritesState.value.length) favoritesState.value = kept;

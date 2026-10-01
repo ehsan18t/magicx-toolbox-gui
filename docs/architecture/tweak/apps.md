@@ -41,7 +41,7 @@ flowchart TB
 ```
 
 - **AppX items** are answered from one shared enumeration (`Get-AppxPackage -AllUsers` plus `Get-AppxProvisionedPackage -Online`), built once per scan and cached with its failure. Asking about one package costs as much as listing all of them, so a scan pays one PowerShell spawn for every app. Unelevated, `-AllUsers` is unavailable, so the index lists only the current account: a hit is Installed, a miss is Unknown with `needs_elevation`, never Absent. An enumeration failure is Unknown.
-- **Script items** run their `probe` through the action runner with the fixed probe timeout. Exit 0 is Installed and exit 2 is Absent. Exit 1 is deliberately not Absent: an uncaught PowerShell error exits 1, and reading that as "absent" would hide an installed app. Any other result is Unknown.
+- **Script items** run their `probe` through the action runner with the fixed probe timeout. Exit 0 is Installed and exit 2 is Absent. Exit 1 is deliberately not Absent: an uncaught PowerShell error exits 1, and reading that as "absent" would hide an installed app. Any other result is Unknown. When another account elevated the app, the probe is not run and presence is Unknown, because its per-user paths would be that account's.
 - **Out-of-scope items** (their `windows:` scope excludes the running build) are left out of release builds; debug and test builds list them with presence Unknown, "Not available on this Windows build".
 - Every scan and every re-check invalidates the index first. The apps module owns its own `AppxIndex`; the tweak engine has none.
 
@@ -59,8 +59,8 @@ Each scan also reports how the app could come back on this machine. winget count
 
 ## Remove and install
 
-- **Remove, AppX.** The backend generates the script from the validated names: for each package a bundle pass (`-PackageTypeFilter Bundle`), a plain pass, then `Remove-AppxProvisionedPackage -Online` for the matching provisioned copy, all with `$ErrorActionPreference = 'Stop'` inside one `try`. The `catch` exits with the exception's HRESULT (0 remapped to 1), so the error names the cause, for example 0x80073CFA. Timeout 300 seconds.
-- **Remove, script.** Runs the authored `remove` with its `timeout` (default 300 seconds).
+- **Remove, AppX.** The backend generates the script from the validated names: for each package a bundle pass (`-PackageTypeFilter Bundle`), a plain pass, then `Remove-AppxProvisionedPackage -Online` for the matching provisioned copy, all with `$ErrorActionPreference = 'Stop'` inside one `try`. The `catch` exits with the exception's HRESULT (0 remapped to 1), so the error names the cause, for example 0x80073CFA. Timeout 600 seconds.
+- **Remove, script.** Runs the authored `remove` with its `timeout` (default 600 seconds).
 - **Install.** Only the `winget` route runs in the backend: `winget install --id <id> -e --source msstore|winget --accept-source-agreements --accept-package-agreements`, timeout 1800 seconds. The `store_page` route is opened by the frontend (`ms-windows-store://pdp/?ProductId=<id>`) and is not verified; the card checks presence again when the window regains focus.
 - **Did it work.** A non-zero exit is an error. Otherwise the index is invalidated and presence read again: after Remove it must be Absent, after Install it must be Installed, or the command fails with the reason. An AppX package still registered after a successful removal usually belongs to another signed-in account, and the error says so.
 
@@ -80,7 +80,7 @@ Each scan also reports how the app could come back on this machine. winget count
 ## Frontend
 
 - Apps render in their own "Apps" section of the category view, after the tweak grid and outside its empty state. The category text filter and the global search cover them.
-- **Remove** asks for confirmation (a danger dialog) and then runs at once; it is never staged into pending changes. **Install** runs at once without confirmation. Each card has its own spinner and the UI never blocks.
+- **Remove** asks for confirmation (a danger dialog that says whether removal covers every account, for AppX items, or only yours, for script items) and then runs at once; it is never staged into pending changes. **Install** runs at once without confirmation. Each card has its own spinner and the UI never blocks.
 - **Visibility**: an app is shown unless it is Absent with no install route. Unknown is always shown, with its buttons disabled, because hiding it would fail open.
 - **Permanent**: an app whose route is `none` carries a Permanent badge, and its Remove confirmation says the change cannot be undone.
 - Favorites, the Overview and sidebar counts, the applied counter, Apply Changes, Restore Snapshots and profiles ignore apps. Favorites drop ids they do not know when they load.

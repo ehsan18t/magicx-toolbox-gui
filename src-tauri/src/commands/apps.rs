@@ -19,6 +19,8 @@ use crate::tweaks::validate::scope_admits;
 use crate::tweaks::winver::{running_winver, WinVer};
 
 const OUT_OF_SCOPE: &str = "Not available on this Windows build";
+const OTHER_ACCOUNT: &str =
+    "Another account elevated this app, so this check would read that account's install";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InstallView {
@@ -35,6 +37,8 @@ pub struct AppView {
     pub warning: Option<String>,
     pub category: String,
     pub risk: RiskLevel,
+    /// `appx` removes for every account; `script` acts on the running account.
+    pub source: &'static str,
     pub install: Option<InstallView>,
     pub remove_availability: Availability,
     pub install_availability: Availability,
@@ -52,15 +56,46 @@ fn in_scope(app: &AppDef, winver: &WinVer) -> bool {
     scope_admits(app.windows.as_ref(), &winver.to_milestone())
 }
 
-/// A script removal can write the running account's hive; an AppX removal is machine-wide.
+/// Script items read and change the running account's profile; AppX removal is machine-wide.
+fn is_script(app: &AppDef) -> bool {
+    matches!(app.source, AppSource::Script { .. })
+}
+
 fn remove_availability(app: &AppDef, level: Level, sid: SidCheck) -> Availability {
-    let touches_hkcu = matches!(app.source, AppSource::Script { .. });
-    compute_availability(touches_hkcu, Level::Admin, level, sid, None)
+    app_wording(compute_availability(
+        is_script(app),
+        Level::Admin,
+        level,
+        sid,
+        None,
+    ))
 }
 
 /// An install lands in the running account, so another account's elevation must block it.
 fn install_availability(level: Level, sid: SidCheck) -> Availability {
-    compute_availability(true, Level::User, level, sid, None)
+    app_wording(compute_availability(true, Level::User, level, sid, None))
+}
+
+fn app_wording(availability: Availability) -> Availability {
+    let reason = |s: &str| s.to_string();
+    match availability {
+        Availability::NeedsElevation { .. } => Availability::NeedsElevation {
+            reason: reason("Restart the app as administrator to remove apps."),
+        },
+        Availability::SidMismatch { .. } => Availability::SidMismatch {
+            reason: reason(
+                "Another account elevated this app, so it would change that account's apps. \
+                 Restart it under your own account.",
+            ),
+        },
+        Availability::SidUnknown { .. } => Availability::SidUnknown {
+            reason: reason(
+                "This app could not confirm which account owns this session, so app changes \
+                 stay off rather than risk changing the wrong account.",
+            ),
+        },
+        other => other,
+    }
 }
 
 fn app_view(app: &AppDef, level: Level, sid: SidCheck) -> AppView {
@@ -72,6 +107,7 @@ fn app_view(app: &AppDef, level: Level, sid: SidCheck) -> AppView {
         warning: app.warning.clone(),
         category: app.category.clone(),
         risk: app.risk_level,
+        source: if is_script(app) { "script" } else { "appx" },
         install: app.install.as_ref().map(|i| match i {
             InstallSource::Store(id) => InstallView {
                 kind: "store",
@@ -105,6 +141,7 @@ fn scan(
     m: &dyn Machine,
     winver: &WinVer,
     show_unsupported: bool,
+    sid: SidCheck,
     is_locked: &(dyn Fn(&str) -> bool + Sync),
 ) -> Vec<AppStatusView> {
     m.invalidate();
@@ -131,13 +168,16 @@ fn scan(
                 log::debug!("skipping app {} in the scan: a change is in flight", app.id);
                 return None;
             }
-            let presence = if in_scope(app, winver) {
-                apps::presence(app, m)
+            let unknown = |reason: &str| AppPresence::Unknown {
+                reason: reason.to_string(),
+                needs_elevation: false,
+            };
+            let presence = if !in_scope(app, winver) {
+                unknown(OUT_OF_SCOPE)
+            } else if is_script(app) && sid.blocks_hkcu() {
+                unknown(OTHER_ACCOUNT)
             } else {
-                AppPresence::Unknown {
-                    reason: OUT_OF_SCOPE.to_string(),
-                    needs_elevation: false,
-                }
+                apps::presence(app, m)
             };
             Some(AppStatusView {
                 app_id: app.id.clone(),
@@ -249,6 +289,7 @@ pub async fn get_app_statuses(app: AppHandle) -> Result<Vec<AppStatusView>> {
             &state.machine(),
             &running_winver(),
             SHOW_UNSUPPORTED,
+            context::sid_check(&RealSidProbe),
             &lifecycle::is_locked,
         ))
     })
@@ -387,7 +428,14 @@ mod tests {
             ..Default::default()
         }
         .with_appx(vec![Ok(lookup(true, false))]);
-        let statuses = scan(&apps, &m, &win11(), false, &|id: &str| id == "busy");
+        let statuses = scan(
+            &apps,
+            &m,
+            &win11(),
+            false,
+            SidCheck::SameUser,
+            &|id: &str| id == "busy",
+        );
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].app_id, "idle");
         assert_eq!(
@@ -404,8 +452,18 @@ mod tests {
     fn an_out_of_scope_app_is_hidden_in_release_and_unknown_otherwise() {
         let apps = [win10_only(app("old", script()))];
         let m = FakeMachine::default();
-        assert!(scan(&apps, &m, &win11(), false, &|_: &str| false).is_empty());
-        let shown = scan(&apps, &m, &win11(), true, &|_: &str| false);
+        assert!(scan(
+            &apps,
+            &m,
+            &win11(),
+            false,
+            SidCheck::SameUser,
+            &|_: &str| false
+        )
+        .is_empty());
+        let shown = scan(&apps, &m, &win11(), true, SidCheck::SameUser, &|_: &str| {
+            false
+        });
         assert!(matches!(
             &shown[0].presence,
             AppPresence::Unknown { reason, .. } if reason == OUT_OF_SCOPE
@@ -423,7 +481,34 @@ mod tests {
             serde_json::json!({ "kind": "store_page", "id": "9NBLGGH4R32N" })
         );
         assert_eq!(json["risk"], "Low");
+        assert_eq!(json["source"], "appx");
         assert_eq!(json["remove_availability"]["state"], "needs_elevation");
         assert_eq!(json["install_availability"]["state"], "available");
+    }
+
+    #[test]
+    fn a_script_item_reads_unknown_when_another_account_elevated_the_app() {
+        let apps = [app("od", script()), app("pkg", appx())];
+        let m = FakeMachine {
+            elevated: true,
+            ..Default::default()
+        }
+        .with_appx(vec![Ok(lookup(true, false))]);
+        let statuses = scan(
+            &apps,
+            &m,
+            &win11(),
+            false,
+            SidCheck::DifferentUser,
+            &|_: &str| false,
+        );
+        let od = statuses.iter().find(|s| s.app_id == "od").unwrap();
+        assert!(matches!(
+            &od.presence,
+            AppPresence::Unknown { reason, .. } if reason == OTHER_ACCOUNT
+        ));
+        assert!(m.ran().is_empty(), "the per-user probe must not run");
+        let pkg = statuses.iter().find(|s| s.app_id == "pkg").unwrap();
+        assert!(matches!(pkg.presence, AppPresence::Installed { .. }));
     }
 }

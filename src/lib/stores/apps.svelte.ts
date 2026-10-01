@@ -16,9 +16,11 @@ let scanError = $state<string | null>(null);
 const statuses = new SvelteMap<string, AppStatusView>();
 const busy = new SvelteSet<string>();
 const errors = new SvelteMap<string, string>();
-/** Opened in the Store, so presence is re-checked when the window regains focus. */
-const awaitingStore = new SvelteSet<string>();
+/** Opened in the Store: id -> focus re-checks left. Each check spawns PowerShell, so it is bounded. */
+const awaitingStore = new SvelteMap<string, number>();
+const STORE_WATCH_CHECKS = 5;
 let loadPromise: Promise<void> | null = null;
+let refreshPromise: Promise<void> | null = null;
 let focusWatched = false;
 
 // Mirrors tweaksData's stamp rule: a scan whose reads began before a removal must not undo it.
@@ -42,21 +44,28 @@ const appsByCategory = $derived.by(() => {
   return byCategory;
 });
 
-async function refreshStatuses(): Promise<void> {
-  try {
-    for (const view of await api.getAppStatuses()) adopt(view);
-    scanError = null;
-  } catch (error) {
-    console.error("Failed to scan app statuses:", error);
-    scanError = errorMessage(error);
-  }
+/** Concurrent callers share one scan: each one invalidates the backend index. */
+function refreshStatuses(): Promise<void> {
+  refreshPromise ??= (async () => {
+    try {
+      for (const view of await api.getAppStatuses()) adopt(view);
+      scanError = null;
+    } catch (error) {
+      console.error("Failed to scan app statuses:", error);
+      scanError = errorMessage(error);
+    }
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
 }
 
 async function onWindowFocus(): Promise<void> {
   if (awaitingStore.size === 0) return;
   await refreshStatuses();
-  for (const id of awaitingStore) {
-    if (statuses.get(id)?.presence.state === "installed") awaitingStore.delete(id);
+  for (const [id, left] of awaitingStore) {
+    if (statuses.get(id)?.presence.state === "installed" || left <= 1) awaitingStore.delete(id);
+    else awaitingStore.set(id, left - 1);
   }
 }
 
@@ -65,11 +74,16 @@ async function run(id: string, op: (id: string) => Promise<AppStatusView>, done:
   busy.add(id);
   errors.delete(id);
   let failed = false;
+  const tweakName = apps.find((a) => a.id === id)?.name;
   try {
     adopt(await op(id));
-    toastStore.success(done, { tweakName: apps.find((a) => a.id === id)?.name });
+    toastStore.success(done, { tweakName });
   } catch (error) {
-    if (isAppExiting(error)) return;
+    // Refused before anything ran, so there is nothing to re-scan.
+    if (isAppExiting(error)) {
+      toastStore.warning(errorMessage(error), { tweakName });
+      return;
+    }
     failed = true;
     errors.set(id, errorMessage(error));
   } finally {
@@ -160,7 +174,7 @@ export const appsStore = {
       errors.set(id, errorMessage(error));
       return;
     }
-    awaitingStore.add(id);
+    awaitingStore.set(id, STORE_WATCH_CHECKS);
     if (!focusWatched) {
       focusWatched = true;
       window.addEventListener("focus", () => void onWindowFocus());
