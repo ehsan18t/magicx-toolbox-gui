@@ -23,7 +23,7 @@ thread_local! {
 }
 
 /// A record raised while this thread is already inside the logger is dropped, never recursed into.
-fn guarded(f: impl FnOnce()) {
+pub(super) fn guarded(f: impl FnOnce()) {
     if IN_LOGGER.get() {
         return;
     }

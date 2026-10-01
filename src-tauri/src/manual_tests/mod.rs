@@ -81,6 +81,15 @@ pub const TESTS: &[ManualTest] = &[
         run: cases::child_job_object,
     },
     ManualTest {
+        id: "ti_helper_log",
+        title: "TrustedInstaller helper log lines",
+        description: "With Detailed logging on for the run, sends a TrustedInstaller batch that reads a missing HKLM key and names a missing service, then checks that the helper's log lines and Windows error 1060 come back to the app's log.",
+        changes: "Nothing persistent. Starts the TrustedInstaller service and spawns an elevated child that touches only a registry key and a service that do not exist.",
+        changes_system: false,
+        minutes: None,
+        run: cases::ti_helper_log,
+    },
+    ManualTest {
         id: "system_only_environment",
         title: "System-only environment",
         description: "Applies block_update_pipeline with the child launched under a minimal machine-only environment, verifies the scheduler COM calls still work, then restores.",

@@ -8,7 +8,7 @@ use super::{errors, probe};
 use crate::commands::tweaks::{build_deps, find_tweak};
 use crate::error::{win32, Error};
 use crate::services::elevation::{
-    run_ops, set_debug_privilege, windows_dir, AcquireReason, BrokerOpError, Elevation,
+    run_ops, set_debug_privilege, windows_dir, AcquireReason, BrokerOp, BrokerOpError, Elevation,
 };
 use crate::services::exclusive_temp::ExclusiveTempFile;
 use crate::services::{scheduler_service, system_info_service};
@@ -740,6 +740,79 @@ pub fn child_job_object(cx: &Ctx) -> Verdict {
     }
 }
 
+fn interpret_helper_log(outcome: &Result<(), BrokerOpError>, helper: Vec<String>) -> Verdict {
+    let code = match outcome {
+        Err(BrokerOpError::OpFailed {
+            index: Some(1),
+            win32,
+            ..
+        }) => *win32,
+        Err(e) => {
+            return Verdict::fail(format!(
+                "The batch did not stop at the missing service as expected: {e}"
+            ))
+            .with_details(helper)
+        }
+        Ok(()) => {
+            return Verdict::fail("The batch succeeded, so the service it names exists here.")
+                .with_details(helper)
+        }
+    };
+    if helper.is_empty() {
+        return Verdict::fail("No helper lines came back from the TrustedInstaller child.");
+    }
+    if code != Some(win32::SERVICE_DOES_NOT_EXIST) {
+        return Verdict::fail(format!(
+            "Expected Windows error {} for the missing service, got {code:?}.",
+            win32::SERVICE_DOES_NOT_EXIST
+        ))
+        .with_details(helper);
+    }
+    Verdict::pass(format!(
+        "{} helper lines and Windows error {} came back from the TrustedInstaller child.",
+        helper.len(),
+        win32::SERVICE_DOES_NOT_EXIST
+    ))
+    .with_details(helper)
+}
+
+pub fn ti_helper_log(cx: &Ctx) -> Verdict {
+    use crate::logging::{self, pipeline::Source};
+    use crate::models::{RegistryHive, ServiceStartupType};
+    if let Some(v) = require_elevated(cx) {
+        return v;
+    }
+    let key = format!(r"Software\MagicXToolboxTest\missing-{}", std::process::id());
+    let service = "MagicXToolboxNoSuchService";
+    cx.info(format!(
+        "Detailed logging on for this run; reading HKLM\\{key} and the service {service}, neither of which exists"
+    ));
+    let was_detailed = logging::set_detailed_unsaved(true);
+    let since = logging::tail(0).0.last().map_or(0, |e| e.seq);
+    let outcome = run_ops(
+        Elevation::TrustedInstaller,
+        vec![
+            BrokerOp::RegDeleteValue {
+                hive: RegistryHive::Hklm,
+                key,
+                value_name: "Missing".into(),
+            },
+            BrokerOp::SvcSetStartup {
+                name: service.into(),
+                startup: ServiceStartupType::Manual,
+            },
+        ],
+    );
+    logging::set_detailed_unsaved(was_detailed);
+    let helper: Vec<String> = logging::tail(since)
+        .0
+        .into_iter()
+        .filter(|e| e.source == Source::Helper)
+        .map(|e| format!("{} {}: {}", e.level, e.target, e.msg))
+        .collect();
+    interpret_helper_log(&outcome, helper)
+}
+
 pub fn system_only_environment(cx: &Ctx) -> Verdict {
     let mut verdict = apply_and_restore(cx, || {
         cx.info("applying under a system-only environment block; the scheduler COM calls must still work");
@@ -909,5 +982,29 @@ mod tests {
         let dir = systemtemp_dir().expect("the Windows folder resolves");
         assert!(dir.ends_with("SystemTemp"), "{}", dir.display());
         assert!(dir.with_file_name("System32").is_dir(), "{}", dir.display());
+    }
+
+    #[test]
+    fn the_helper_log_passes_only_with_lines_and_the_missing_service_code() {
+        use super::super::runner::Status;
+        let failed = |win32| {
+            Err(BrokerOpError::OpFailed {
+                index: Some(1),
+                class: crate::services::elevation::OpFailureClass::NotFound,
+                win32,
+            })
+        };
+        let lines = || vec!["DEBUG app_lib::x: #1 op 1 failed".to_owned()];
+        let status = |outcome, helper| interpret_helper_log(&outcome, helper).status;
+        assert_eq!(
+            status(failed(Some(win32::SERVICE_DOES_NOT_EXIST)), lines()),
+            Status::Pass
+        );
+        assert_eq!(
+            status(failed(Some(win32::SERVICE_DOES_NOT_EXIST)), vec![]),
+            Status::Fail
+        );
+        assert_eq!(status(failed(None), lines()), Status::Fail);
+        assert_eq!(status(Ok(()), lines()), Status::Fail);
     }
 }

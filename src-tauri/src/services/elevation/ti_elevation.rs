@@ -37,7 +37,7 @@ const ERROR_SERVICE_DISABLED: u32 = 1058;
 
 /// Turn the Win32 codes this path actually produces into something a support engineer can act on.
 /// Anything else keeps its bare number, which is still better than nothing.
-fn describe_win32(code: u32) -> String {
+pub(super) fn describe_win32(code: u32) -> String {
     let name = match code {
         5 => "ERROR_ACCESS_DENIED",
         ERROR_SERVICE_DISABLED => "ERROR_SERVICE_DISABLED",

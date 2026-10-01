@@ -1,6 +1,7 @@
 //! On-device logger: every record is redacted before the ring, the Logs panel, the session file or
 //! an export sees it. Opting out of saving stops disk writes only; the session ring keeps working.
 
+pub mod collector;
 pub mod files;
 pub mod panic;
 pub mod pipeline;
@@ -89,6 +90,23 @@ fn level_for(detailed: bool) -> LevelFilter {
 fn set_detailed(p: &Pipeline, detailed: bool) {
     p.set_level(level_for(detailed));
     log::set_max_level(level_for(detailed));
+}
+
+/// Whether Debug records are kept: Detailed logging, or any debug build.
+pub fn detailed() -> bool {
+    PIPELINE
+        .get()
+        .is_some_and(|p| p.level() >= LevelFilter::Debug)
+}
+
+/// Switches Detailed for this session without saving it; returns the previous setting.
+#[cfg(feature = "test-build")]
+pub fn set_detailed_unsaved(detailed: bool) -> bool {
+    let mut c = lock(&CONTROL);
+    if let Some(p) = PIPELINE.get() {
+        set_detailed(p, detailed);
+    }
+    std::mem::replace(&mut c.detailed, detailed)
 }
 
 /// Memory-only until [`start`]. The identity is read here, before `set_logger`: the reads log on
