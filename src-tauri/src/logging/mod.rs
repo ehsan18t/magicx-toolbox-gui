@@ -1,0 +1,395 @@
+//! On-device logger: every record is redacted before the ring, the Logs panel, the session file or
+//! an export sees it. Opting out of saving stops disk writes only; the session ring keeps working.
+
+pub mod files;
+pub mod panic;
+pub mod pipeline;
+pub mod redact;
+pub mod settings;
+
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+use log::{Level, LevelFilter};
+
+use pipeline::{lock, Entry, Pipeline, Source};
+use redact::{Identity, Redactor};
+use settings::Settings;
+
+const UI_TARGET: &str = "webview";
+const UI_PER_SECOND: u32 = 20;
+
+static PIPELINE: OnceLock<Pipeline> = OnceLock::new();
+static CONTROL: Mutex<Control> = Mutex::new(Control {
+    data_dir: None,
+    persist: false,
+    detailed: false,
+    error: None,
+    facts: String::new(),
+    last_export: None,
+});
+static UI_RATE: Mutex<RateLimit> = Mutex::new(RateLimit {
+    window: None,
+    count: 0,
+    dropped: 0,
+});
+
+/// What the settings, the session file and the exports agree on. Lock order: this, then the
+/// pipeline's own locks.
+struct Control {
+    data_dir: Option<PathBuf>,
+    persist: bool,
+    detailed: bool,
+    error: Option<String>,
+    facts: String,
+    last_export: Option<PathBuf>,
+}
+
+impl Control {
+    fn logs_dir(&self) -> Option<PathBuf> {
+        self.data_dir.as_ref().map(|d| d.join("logs"))
+    }
+
+    fn header(&self) -> String {
+        format!(
+            "{}Detailed logging: {}\n\n",
+            self.facts,
+            if self.detailed { "on" } else { "off" }
+        )
+    }
+}
+
+struct Global;
+
+impl log::Log for Global {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        PIPELINE
+            .get()
+            .is_some_and(|p| p.enabled(metadata.level(), metadata.target(), Source::App))
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if let Some(p) = PIPELINE.get() {
+            p.log(record);
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+fn level_for(detailed: bool) -> LevelFilter {
+    if detailed || cfg!(debug_assertions) {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    }
+}
+
+fn set_detailed(p: &Pipeline, detailed: bool) {
+    p.set_level(level_for(detailed));
+    log::set_max_level(level_for(detailed));
+}
+
+/// Memory-only until [`start`]. The identity is read here, before `set_logger`: the reads log on
+/// failure, and nothing may be computed lazily inside the logger.
+pub fn install() {
+    let redactor = Redactor::new(&Identity::from_machine());
+    let pipeline = Pipeline::new(redactor, level_for(false), cfg!(debug_assertions));
+    if PIPELINE.set(pipeline).is_ok() && log::set_logger(&Global).is_ok() {
+        log::set_max_level(level_for(false));
+    }
+}
+
+/// Reads the settings and attaches the session file. `data_dir` is the app-local data folder.
+pub fn start(data_dir: PathBuf) {
+    let Some(p) = PIPELINE.get() else { return };
+    let loaded = settings::load(&data_dir.join(settings::FILE_NAME));
+    let effective = settings::with_overrides(loaded.settings, std::env::args_os().skip(1));
+    let logs = data_dir.join("logs");
+    let facts = facts(p, &logs);
+    let mut c = lock(&CONTROL);
+    c.persist = effective.persist;
+    c.detailed = effective.detailed;
+    c.error = loaded.error;
+    c.facts = facts;
+    c.data_dir = Some(data_dir);
+    set_detailed(p, c.detailed);
+    if files::checked(&logs).is_ok() {
+        files::remove_plugin_files(&logs);
+        if !c.persist {
+            files::retain(&logs, None, &files::pid_is_live);
+        }
+    }
+    if c.persist {
+        p.attach(&logs, &c.header(), true);
+    }
+}
+
+fn facts(p: &Pipeline, logs: &Path) -> String {
+    let winver = crate::tweaks::winver::running_winver();
+    format!(
+        "MagicX Toolbox {} session log\nWindows build {}.{} {}, {}\nElevated: {}, pid {}\nLogs folder: {}\n",
+        env!("CARGO_PKG_VERSION"),
+        winver.build,
+        winver.revision,
+        edition(),
+        machine_arch(),
+        yes_no(crate::services::system_info_service::is_running_as_admin()),
+        std::process::id(),
+        p.redact(&logs.display().to_string()),
+    )
+}
+
+pub fn yes_no(on: bool) -> &'static str {
+    if on {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+pub fn edition() -> String {
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
+    winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", KEY_READ)
+        .and_then(|key| key.get_value::<String, _>("EditionID"))
+        .unwrap_or_else(|_| "unknown edition".into())
+}
+
+/// Machine and process architecture: an x64 build under ARM64 emulation reports both.
+pub fn machine_arch() -> String {
+    use windows_sys::Win32::System::SystemInformation::{
+        IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, IsWow64Process2};
+    let (mut process, mut native) = (0u16, 0u16);
+    // SAFETY: the pseudo-handle needs no closing; both out-params are live locals.
+    let ok = unsafe { IsWow64Process2(GetCurrentProcess(), &mut process, &mut native) } != 0;
+    let native = match (ok, native) {
+        (false, _) => "unknown".to_string(),
+        (true, IMAGE_FILE_MACHINE_AMD64) => "x64".to_string(),
+        (true, IMAGE_FILE_MACHINE_ARM64) => "arm64".to_string(),
+        (true, IMAGE_FILE_MACHINE_I386) => "x86".to_string(),
+        (true, other) => format!("0x{other:04x}"),
+    };
+    format!("machine {native}, process {}", std::env::consts::ARCH)
+}
+
+/// For a source the crate filter must not judge by target: interface and helper lines.
+pub fn push(level: Level, source: Source, target: &str, msg: &str) {
+    if let Some(p) = PIPELINE.get() {
+        p.push(level, source, target, msg);
+    }
+}
+
+fn record_panic(msg: &str) {
+    push(Level::Error, Source::App, "app_lib::panic", msg);
+}
+
+struct RateLimit {
+    window: Option<Instant>,
+    count: u32,
+    dropped: u64,
+}
+
+impl RateLimit {
+    /// Whether to keep this message, and how many the last window dropped, reported once.
+    fn admit(&mut self, now: Instant) -> (bool, u64) {
+        let mut report = 0;
+        if self
+            .window
+            .is_none_or(|w| now.duration_since(w) >= Duration::from_secs(1))
+        {
+            report = std::mem::take(&mut self.dropped);
+            self.window = Some(now);
+            self.count = 0;
+        }
+        if self.count < UI_PER_SECOND {
+            self.count += 1;
+            (true, report)
+        } else {
+            self.dropped += 1;
+            (false, report)
+        }
+    }
+}
+
+pub fn push_ui(level: Level, msg: &str) {
+    let (admit, dropped) = lock(&UI_RATE).admit(Instant::now());
+    if dropped > 0 {
+        push(
+            Level::Warn,
+            Source::Ui,
+            UI_TARGET,
+            &format!(
+                "{dropped} interface messages were dropped (more than {UI_PER_SECOND} a second)"
+            ),
+        );
+    }
+    if admit {
+        push(level, Source::Ui, UI_TARGET, msg);
+    }
+}
+
+pub fn tail(since: u64) -> (Vec<Entry>, u64) {
+    PIPELINE.get().map(|p| p.tail(since)).unwrap_or_default()
+}
+
+/// The effective state, for the settings view and the export header.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Status {
+    pub persist: bool,
+    pub detailed: bool,
+    pub folder: Option<PathBuf>,
+    pub writing: bool,
+    pub error: Option<String>,
+    pub files: u32,
+    pub bytes: u64,
+}
+
+fn status_of(c: &Control) -> Status {
+    let (writing, sink_error) = PIPELINE.get().map(Pipeline::file_state).unwrap_or_default();
+    let folder = c.logs_dir();
+    let listed = folder
+        .as_deref()
+        .filter(|d| files::checked(d).is_ok())
+        .map(files::session_files)
+        .unwrap_or_default();
+    let missing = c
+        .data_dir
+        .is_none()
+        .then(|| "The logs folder could not be located, so logs are kept in memory only.".into());
+    let error = [c.error.clone(), sink_error, missing]
+        .into_iter()
+        .flatten()
+        .reduce(|a, b| format!("{a} {b}"));
+    Status {
+        persist: c.persist,
+        detailed: c.detailed,
+        folder,
+        writing,
+        error,
+        files: u32::try_from(listed.len()).unwrap_or(u32::MAX),
+        bytes: listed.iter().map(|f| f.bytes).sum(),
+    }
+}
+
+pub fn status() -> Status {
+    status_of(&lock(&CONTROL))
+}
+
+/// Saves the choice and applies it now. Saving on opens a new session file; off closes it.
+pub fn set(persist: bool, detailed: bool) -> Status {
+    let mut c = lock(&CONTROL);
+    let Some(p) = PIPELINE.get() else {
+        return status_of(&c);
+    };
+    c.detailed = detailed;
+    set_detailed(p, detailed);
+    c.error = c
+        .data_dir
+        .as_ref()
+        .and_then(|d| settings::save(&d.join(settings::FILE_NAME), Settings { persist, detailed }).err())
+        .map(|e| format!("The logging settings could not be saved ({e}), so they last only until the app closes."));
+    if persist != c.persist {
+        c.persist = persist;
+        match c.logs_dir() {
+            Some(logs) if persist => p.attach(&logs, &c.header(), true),
+            _ => p.detach(),
+        }
+    }
+    status_of(&c)
+}
+
+/// The settings `restart_as_admin` hands the elevated instance.
+pub fn restart_args() -> [String; 2] {
+    let c = lock(&CONTROL);
+    settings::override_args(Settings {
+        persist: c.persist,
+        detailed: c.detailed,
+    })
+}
+
+/// Deletes every session file whose process has ended, this one's included once closed, and
+/// starts a fresh file when saving is on.
+pub fn delete_logs() -> std::io::Result<Status> {
+    let c = lock(&CONTROL);
+    let (Some(p), Some(logs)) = (PIPELINE.get(), c.logs_dir()) else {
+        return Ok(status_of(&c));
+    };
+    p.detach();
+    let own = std::process::id();
+    let mut failed = None;
+    if files::checked(&logs).is_ok() {
+        for file in files::session_files(&logs) {
+            if file.pid != own && files::pid_is_live(file.pid) {
+                continue;
+            }
+            if let Err(e) = std::fs::remove_file(&file.path) {
+                failed.get_or_insert(e);
+            }
+        }
+    }
+    if c.persist {
+        p.attach(&logs, &c.header(), false);
+    }
+    match failed {
+        Some(e) => Err(e),
+        None => Ok(status_of(&c)),
+    }
+}
+
+/// `header`, then every kept session file oldest first, then this session's ring when it is not
+/// being saved. The files are already redacted; the header is redacted here.
+pub fn export(dest: &Path, header: &str) -> std::io::Result<()> {
+    let mut c = lock(&CONTROL);
+    let Some(p) = PIPELINE.get() else {
+        return Err(std::io::Error::other("the logger is not running"));
+    };
+    let mut out = p.redact(header);
+    if let Some(logs) = c.logs_dir().filter(|d| files::checked(d).is_ok()) {
+        for file in files::session_files(&logs) {
+            let name = file.path.file_name().unwrap_or_default().to_string_lossy();
+            out.push_str(&format!("\n===== {name} =====\n"));
+            match std::fs::read(&file.path) {
+                Ok(bytes) => out.push_str(&String::from_utf8_lossy(&bytes)),
+                Err(e) => out.push_str(&format!("(could not be read: {e})\n")),
+            }
+        }
+    }
+    if !c.persist {
+        out.push_str("\n===== this session (not saved to disk) =====\n");
+        out.push_str(&p.ring_text());
+    }
+    std::fs::write(dest, out)?;
+    c.last_export = Some(dest.to_path_buf());
+    Ok(())
+}
+
+pub fn last_export() -> Option<PathBuf> {
+    lock(&CONTROL).last_export.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_interface_rate_limit_reports_what_it_dropped_once() {
+        let mut rate = RateLimit {
+            window: None,
+            count: 0,
+            dropped: 0,
+        };
+        let t0 = Instant::now();
+        for _ in 0..UI_PER_SECOND {
+            assert_eq!(rate.admit(t0), (true, 0));
+        }
+        assert_eq!(rate.admit(t0), (false, 0));
+        assert_eq!(rate.admit(t0 + Duration::from_millis(500)), (false, 0));
+        let t1 = t0 + Duration::from_secs(1);
+        assert_eq!(rate.admit(t1), (true, 2));
+        assert_eq!(rate.admit(t1), (true, 0));
+    }
+}

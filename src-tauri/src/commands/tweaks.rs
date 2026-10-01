@@ -72,6 +72,30 @@ impl TweakEngineState {
         self.report_unreachable_records(corpus);
     }
 
+    /// Tweak ids only, never values: Needs Attention records, then snapshot history.
+    pub(crate) fn diagnostics_lines(&self) -> Vec<String> {
+        let corpus = compiled_corpus();
+        let build = running_winver().build;
+        let attention = match self.snapshots.recorded_tweaks() {
+            Ok(ids) => ids.join(", "),
+            Err(e) => format!("could not be read ({e})"),
+        };
+        let history: Vec<&str> = corpus
+            .tweaks
+            .iter()
+            .filter(|t| {
+                self.snapshots
+                    .list(&t.id, corpus, self.machine_guid.as_deref(), build)
+                    .is_ok_and(|entries| !entries.is_empty())
+            })
+            .map(|t| t.id.as_str())
+            .collect();
+        vec![
+            format!("Needs Attention: {attention}"),
+            format!("Snapshot history: {}", history.join(", ")),
+        ]
+    }
+
     /// A record naming a tweak this build no longer defines has no card to badge and no clear path,
     /// so it is named once here. Never deleted: ADR-0002 releases user data on consent alone.
     fn report_unreachable_records(&self, corpus: &Corpus) {

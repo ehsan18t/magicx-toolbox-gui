@@ -14,6 +14,7 @@ use crate::commands::tweaks::{
     TweakEngineState, TweakStatusEvent,
 };
 use crate::error::{Error, Result};
+use crate::logging::redact::Scrubber;
 use crate::services::elevation::Elevation;
 use crate::services::system_info_service;
 use crate::tweaks::engine::apply::EngineError;
@@ -188,7 +189,7 @@ pub struct Ctx {
     pub minutes: u32,
     started: Instant,
     lines: RefCell<Vec<String>>,
-    scrub: Vec<String>,
+    scrub: Scrubber,
 }
 
 impl Ctx {
@@ -201,7 +202,7 @@ impl Ctx {
     }
 
     fn push(&self, is_error: bool, msg: &str) {
-        let msg = scrub(msg, &self.scrub);
+        let msg = self.scrub.apply(msg);
         if is_error {
             log::error!("[manual-test {}] {msg}", self.test_id);
         } else {
@@ -234,77 +235,6 @@ impl Ctx {
         }
         !self.cancelled()
     }
-}
-
-/// Strings a report must never carry: the account name and profile/temp folders.
-fn scrub_list() -> Vec<String> {
-    let mut list: Vec<String> = ["USERPROFILE", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA"]
-        .iter()
-        .filter_map(|v| std::env::var(v).ok())
-        .collect();
-    if let Ok(user) = std::env::var("USERNAME") {
-        if user.len() >= 3 {
-            list.push(user);
-        }
-    }
-    list.sort_by_key(|s| std::cmp::Reverse(s.len()));
-    list
-}
-
-fn scrub(msg: &str, list: &[String]) -> String {
-    let mut out = msg.to_string();
-    for s in list {
-        if !s.is_empty() {
-            out = replace_ignore_case(&out, s, "<redacted>");
-        }
-    }
-    out
-}
-
-/// A match followed by a path separator takes the rest of that path token with it. ASCII-only
-/// lowercasing keeps every offset a char boundary: this runs between apply and restore, where a
-/// panic aborts the release build and leaves the tweak applied.
-fn replace_ignore_case(hay: &str, needle: &str, with: &str) -> String {
-    let lower_hay = hay.to_ascii_lowercase();
-    let lower_needle = needle.to_ascii_lowercase();
-    let mut out = String::with_capacity(hay.len());
-    let mut rest = 0;
-    for (at, _) in lower_hay.match_indices(&lower_needle) {
-        if at < rest {
-            continue;
-        }
-        out.push_str(hay.get(rest..at).unwrap_or_default());
-        out.push_str(with);
-        let mut end = at + needle.len();
-        let tail = hay.get(end..).unwrap_or_default();
-        if tail.starts_with(['\\', '/']) {
-            end += tail
-                .find(|c: char| c.is_whitespace() || "\"'(),;".contains(c))
-                .unwrap_or(tail.len());
-        }
-        rest = end;
-    }
-    out.push_str(hay.get(rest..).unwrap_or_default());
-    out
-}
-
-/// Machine and process architecture: an x64 build under ARM64 emulation reports both.
-fn machine_arch() -> String {
-    use windows_sys::Win32::System::SystemInformation::{
-        IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_I386,
-    };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, IsWow64Process2};
-    let (mut process, mut native) = (0u16, 0u16);
-    // SAFETY: the pseudo-handle needs no closing; both out-params are live locals.
-    let ok = unsafe { IsWow64Process2(GetCurrentProcess(), &mut process, &mut native) } != 0;
-    let native = match (ok, native) {
-        (false, _) => "unknown".to_string(),
-        (true, IMAGE_FILE_MACHINE_AMD64) => "x64".to_string(),
-        (true, IMAGE_FILE_MACHINE_ARM64) => "arm64".to_string(),
-        (true, IMAGE_FILE_MACHINE_I386) => "x86".to_string(),
-        (true, other) => format!("0x{other:04x}"),
-    };
-    format!("machine {native}, process {}", std::env::consts::ARCH)
 }
 
 struct RunGuard;
@@ -363,7 +293,7 @@ fn execute(app: AppHandle, test: &'static ManualTest, minutes: Option<u32>) -> M
                 "no"
             }
         ),
-        format!("Architecture: {}", machine_arch()),
+        format!("Architecture: {}", crate::logging::machine_arch()),
         format!("Test: {} ({})", test.id, test.title),
     ];
     let cx = Ctx {
@@ -372,7 +302,7 @@ fn execute(app: AppHandle, test: &'static ManualTest, minutes: Option<u32>) -> M
         minutes,
         started: Instant::now(),
         lines: RefCell::new(Vec::new()),
-        scrub: scrub_list(),
+        scrub: Scrubber::for_reports(),
     };
     let started_at = chrono::Local::now();
     for line in &header {
@@ -417,36 +347,15 @@ fn execute(app: AppHandle, test: &'static ManualTest, minutes: Option<u32>) -> M
     ManualTestReport {
         test_id: test.id,
         status: verdict.status,
-        summary: scrub(&verdict.summary, &cx.scrub),
-        details: verdict
-            .details
-            .iter()
-            .map(|d| scrub(d, &cx.scrub))
-            .collect(),
-        report: scrub(&report, &cx.scrub),
+        summary: cx.scrub.apply(&verdict.summary),
+        details: verdict.details.iter().map(|d| cx.scrub.apply(d)).collect(),
+        report: cx.scrub.apply(&report),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn scrubbing_is_case_insensitive_and_takes_the_whole_path() {
-        let list = vec![r"C:\Users\Alice".to_string(), "Alice".to_string()];
-        assert_eq!(
-            scrub(r"read c:\users\alice\x and ALICE", &list),
-            "read <redacted> and <redacted>"
-        );
-        assert_eq!(
-            scrub(
-                r"spawn C:\Users\Alice\Temp\req-9f3a.json (os error 5)",
-                &list
-            ),
-            "spawn <redacted> (os error 5)"
-        );
-        assert_eq!(scrub("é Alice ü", &list), "é <redacted> ü");
-    }
 
     #[test]
     fn an_unarmed_recorder_keeps_nothing() {

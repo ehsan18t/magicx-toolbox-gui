@@ -2,6 +2,7 @@ mod apps;
 mod commands;
 pub mod debug;
 mod error;
+pub mod logging;
 #[cfg(feature = "test-build")]
 mod manual_tests;
 mod models;
@@ -19,7 +20,6 @@ mod generated_corpus {
 pub use debug::{emit_debug_log, is_debug_enabled, set_debug_enabled, DebugLevel, DebugLogEntry};
 pub use error::Error;
 pub use models::*;
-use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 #[derive(Debug, PartialEq)]
 enum Launch<'a> {
@@ -66,18 +66,19 @@ pub fn run_broker_if_requested() -> Option<i32> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::install();
+    logging::panic::install();
     use services::single_instance::{self, Instance};
     let after_restart = std::env::args_os()
         .nth(1)
         .is_some_and(|a| a == single_instance::AFTER_RESTART_ARG);
-    let mut instance = match single_instance::acquire(after_restart) {
+    let _instance = match single_instance::acquire(after_restart) {
         Instance::First(guard) => guard,
         Instance::AlreadyRunning => {
             single_instance::focus_running_instance("MagicX Toolbox");
             return;
         }
     };
-    let instance_note = instance.take_note();
     tauri::Builder::default()
         // Closing mid-apply kills the process while an elevated child may still be driving, and
         // leaves the snapshot entry that was written before the first drive with nothing to undo
@@ -100,65 +101,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .targets([
-                    Target::new(TargetKind::Stdout),
-                    Target::new(TargetKind::Webview),
-                    // The only record that outlives the session. Never log the broker command
-                    // line: it carries the request and response temp paths.
-                    Target::new(TargetKind::LogDir {
-                        file_name: Some("magicx-toolbox".into()),
-                    }),
-                ])
-                // Not the default KeepOne: it deletes the only file at 40,000 bytes.
-                // KeepSome(n) keeps n archives plus the active file: 5 x 2 MiB = 10 MiB cap.
-                .max_file_size(2 * 1024 * 1024)
-                .rotation_strategy(RotationStrategy::KeepSome(4))
-                .level(if cfg!(debug_assertions) {
-                    log::LevelFilter::Debug
-                } else {
-                    log::LevelFilter::Warn
-                })
-                // More verbose for our own crate
-                .level_for(
-                    "app_lib",
-                    if cfg!(debug_assertions) {
-                        log::LevelFilter::Trace
-                    } else {
-                        log::LevelFilter::Info
-                    },
-                )
-                // Use colored output format with ANSI colors
-                .format(|out, message, record| {
-                    // Color codes for different log levels
-                    let color = match record.level() {
-                        log::Level::Error => "\x1b[31m", // Red
-                        log::Level::Warn => "\x1b[33m",  // Yellow
-                        log::Level::Info => "\x1b[32m",  // Green
-                        log::Level::Debug => "\x1b[36m", // Cyan
-                        log::Level::Trace => "\x1b[35m", // Magenta
-                    };
-                    let reset = "\x1b[0m";
-
-                    out.finish(format_args!(
-                        "{}[{}][{}]{}[{}] {}",
-                        color,
-                        chrono::Local::now().format("%Y-%m-%d][%H:%M:%S"),
-                        record.target(),
-                        reset,
-                        record.level(),
-                        message
-                    ))
-                })
-                .build(),
-        )
-        .setup(move |app| {
+        .setup(|app| {
             log::info!("Application starting...");
-            if let Some(note) = instance_note {
-                log::warn!("{note}");
-            }
-            log::debug!("Debug logging enabled");
 
             // Start window visibility watchdog.
             // Dev startup can be slower (tooling, first-load optimization), so use a longer
@@ -176,6 +120,14 @@ pub fn run() {
             commands::general::show_main_window,
             commands::system::get_system_info,
             commands::debug::set_debug_mode,
+            commands::logging::get_log_tail,
+            commands::logging::log_frontend,
+            commands::logging::get_log_settings,
+            commands::logging::set_log_settings,
+            commands::logging::export_diagnostics,
+            commands::logging::reveal_last_export,
+            commands::logging::open_log_folder,
+            commands::logging::delete_logs,
             commands::tweaks::get_tweaks,
             commands::tweaks::get_categories,
             commands::tweaks::get_statuses_stream,

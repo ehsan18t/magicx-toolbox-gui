@@ -4,6 +4,11 @@ use crate::apps::AppsState;
 use crate::commands::tweaks::TweakEngineState;
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    match app.path().app_local_data_dir() {
+        Ok(dir) => crate::logging::start(dir),
+        Err(e) => log::warn!("app data folder unavailable ({e}); logs stay in memory"),
+    }
+
     // Register the handle debug events are emitted through. Held in debug.rs rather
     // than threaded through the apply chain as a parameter -- see the note on
     // DEBUG_APP there. Must happen before anything that might emit.

@@ -497,6 +497,7 @@ fn capture_child_job(pi: &PROCESS_INFORMATION) {
 /// wait for it. The broker's TI launcher; the command line is built by
 /// `broker::run_elevated_broker`, never by a caller.
 pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, SpawnError> {
+    // Never log `command_line`: it carries the request and response temp paths.
     let mut work_dir = system_folder(GetSystemDirectoryW, "System32").map_err(spawn_failed)?;
     work_dir.push(0);
     let mut command_wide = to_wide_string(command_line);

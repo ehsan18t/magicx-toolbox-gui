@@ -47,7 +47,6 @@ tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-t
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-tauri-plugin-log = "2"
 tauri-plugin-prevent-default = "5"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -61,7 +60,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Error handling & logging
-log = "0.4"
+log = { version = "0.4", features = ["std"] }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 

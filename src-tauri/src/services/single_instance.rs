@@ -25,14 +25,6 @@ pub enum Instance {
 
 pub struct InstanceGuard {
     handle: Option<HANDLE>,
-    note: Option<String>,
-}
-
-impl InstanceGuard {
-    /// A warning raised before the log plugin exists, for the setup hook to log.
-    pub fn take_note(&mut self) -> Option<String> {
-        self.note.take()
-    }
 }
 
 impl Drop for InstanceGuard {
@@ -54,15 +46,12 @@ pub fn acquire(after_restart: bool) -> Instance {
 fn owned(handle: HANDLE) -> Instance {
     Instance::First(InstanceGuard {
         handle: Some(handle),
-        note: None,
     })
 }
 
 fn unguarded(note: String) -> Instance {
-    Instance::First(InstanceGuard {
-        handle: None,
-        note: Some(note),
-    })
+    log::warn!("{note}");
+    Instance::First(InstanceGuard { handle: None })
 }
 
 fn acquire_named(name: &str, after_restart: bool, handoff: Duration) -> Instance {
@@ -203,7 +192,7 @@ mod tests {
         let contender = name.clone();
         let second = std::thread::spawn(move || {
             match acquire_named(&contender, true, Duration::from_millis(200)) {
-                Instance::First(mut guard) => guard.handle.is_none() && guard.take_note().is_some(),
+                Instance::First(guard) => guard.handle.is_none(),
                 Instance::AlreadyRunning => false,
             }
         });
