@@ -39,7 +39,11 @@
 
   onMount(async () => {
     installErrorForwarding();
-    localStorage.removeItem(RETIRED_DEBUG_MODE_KEY);
+    try {
+      localStorage.removeItem(RETIRED_DEBUG_MODE_KEY);
+    } catch {
+      // Storage can be unavailable; the window must still be shown.
+    }
 
     // Show the window now that the UI is ready
     try {

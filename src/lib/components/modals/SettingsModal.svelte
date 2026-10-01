@@ -156,7 +156,7 @@
           </div>
 
           {#if logs.error}
-            <p class="m-0 text-xs text-error">Logs could not be saved: {logs.error}</p>
+            <p class="m-0 text-xs text-error">Logging problem: {logs.error}</p>
           {/if}
 
           <div class="text-xs text-foreground-muted">

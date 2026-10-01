@@ -67,7 +67,7 @@ Redaction never uses Unicode lowercasing, which changes byte lengths, and never 
 
 Retention runs whenever a new session file is created, and also at startup when saving is off. Every startup also deletes `magicx-toolbox.log`, `magicx-toolbox_*.log` and `magicx-toolbox*.log.bak` from the same folder: files an older build's log plugin wrote.
 
-A write that fails (disk full, folder gone, access denied) closes the file, records one line in the buffer, and shows "Logs could not be saved: …" in Settings. The app keeps working memory-only and does not retry until saving is turned off and on again or the app restarts.
+A write that fails (disk full, folder gone, access denied) closes the file, records one line in the buffer, and shows "Logging problem: …" in Settings. The app keeps working memory-only and does not retry until saving is turned off and on again or the app restarts.
 
 ## Settings
 
@@ -112,7 +112,7 @@ The export starts with a header (creation time, app version, Windows build and r
 ## In the interface
 
 - **Logs panel.** The Logs button (file icon) in the title bar opens it at the bottom of the content area; Escape closes it and returns focus to the button. It shows this session only ("This session. Earlier sessions: Export or Open folder."), with a Detailed badge when Detailed logging is on. Filters: level (All levels, Info and above, Warnings and errors, Errors only), source (All sources, App, Interface, Helper) and a search box. Buttons: Clear view (empties the view only; saved logs are not changed), Copy visible lines (with a first line naming the app version, Windows build and whether the app is elevated), Export diagnostics, Open logs folder, Close logs. The panel polls about twice a second while it is open and never while it is closed; it keeps the last 2000 lines, and a gap in what it read shows as "N lines skipped".
-- **Settings, Diagnostics.** "Save logs on this PC" and "Detailed logging" switches, the logs folder path, the number and size of the saved files, any problem ("Logs could not be saved: …"), and Open logs folder, Export diagnostics and Delete logs (after a "Delete saved logs?" confirmation). With saving off it notes "Existing log files are kept."
+- **Settings, Diagnostics.** "Save logs on this PC" and "Detailed logging" switches, the logs folder path, the number and size of the saved files, any problem ("Logging problem: …"), and Open logs folder, Export diagnostics and Delete logs (after a "Delete saved logs?" confirmation). With saving off it notes "Existing log files are kept."
 - **Export.** On success a toast says "Diagnostics exported. Check the file before sharing." with a Show in folder button; a cancelled dialog shows nothing.
 
 ## Traps

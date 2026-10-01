@@ -65,6 +65,7 @@
   }
 
   const panel: Attachment<HTMLElement> = (node) => {
+    stuck = true;
     node.focus({ preventScroll: true });
     const onKeydown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;

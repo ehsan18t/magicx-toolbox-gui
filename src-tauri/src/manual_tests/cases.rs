@@ -785,7 +785,7 @@ pub fn ti_helper_log(cx: &Ctx) -> Verdict {
     let key = format!(r"Software\MagicXToolboxTest\missing-{}", std::process::id());
     let service = "MagicXToolboxNoSuchService";
     cx.info(format!(
-        "Detailed logging on for this run; reading HKLM\\{key} and the service {service}, neither of which exists"
+        "Detailed logging on for this run; deleting a value under the missing key HKLM\\{key} (absent counts as success, so nothing changes) and naming the missing service {service}"
     ));
     let was_detailed = logging::set_detailed_unsaved(true);
     let since = logging::tail(0).0.last().map_or(0, |e| e.seq);

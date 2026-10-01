@@ -83,7 +83,7 @@ pub const TESTS: &[ManualTest] = &[
     ManualTest {
         id: "ti_helper_log",
         title: "TrustedInstaller helper log lines",
-        description: "With Detailed logging on for the run, sends a TrustedInstaller batch that reads a missing HKLM key and names a missing service, then checks that the helper's log lines and Windows error 1060 come back to the app's log.",
+        description: "With Detailed logging on for the run, sends a TrustedInstaller batch that deletes a value under a missing HKLM key (absent counts as success, so nothing changes) and names a missing service, then checks that the helper's log lines and Windows error 1060 come back to the app's log.",
         changes: "Nothing persistent. Starts the TrustedInstaller service and spawns an elevated child that touches only a registry key and a service that do not exist.",
         changes_system: false,
         minutes: None,
