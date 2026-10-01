@@ -11,9 +11,9 @@
 //! test-only).
 
 use super::model::{
-    effective_level, ActionDef, BuildExpr, Corpus, Effect, EffectDef, EffectId, Hive, Level, Opt,
-    OptLabel, OptValue, RegType, ScopedValue, Setting, SharedId, StartupType, Tweak, Value,
-    WindowsScope,
+    effective_level, ActionDef, AppDef, AppSource, BuildExpr, Corpus, Effect, EffectDef, EffectId,
+    Hive, InstallSource, Level, Opt, OptLabel, OptValue, RegType, ScopedValue, Setting, SharedId,
+    StartupType, Tweak, Value, WindowsScope,
 };
 use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
@@ -306,6 +306,14 @@ pub enum ValidationError {
         effect: EffectId,
         seconds: u32,
     },
+
+    #[error("app `{app}`: {reason}")]
+    InvalidApp { app: String, reason: String },
+
+    #[error(
+        "app id `{id}` is declared more than once or reuses a tweak id (compared case-insensitively, since tweaks and apps share one id space); rename one of them"
+    )]
+    DuplicateAppId { id: String },
 }
 
 /// Accepted `action: { timeout: }` range, in seconds.
@@ -369,6 +377,95 @@ fn check_tweak_ids(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
             });
         }
     }
+}
+
+/// AppX package name charset.
+pub fn is_appx_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+}
+
+/// Microsoft Store product id, e.g. `9NBLGGH4R32N`.
+pub fn is_store_id(s: &str) -> bool {
+    s.len() == 12
+        && s.bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
+pub fn is_winget_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
+/// Every app rule the model can represent. Generated removal and install scripts embed package
+/// names and install ids verbatim, so these charsets are what keep them injection-free.
+pub fn validate_apps(corpus: &Corpus, apps: &[AppDef]) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+    let mut seen: HashSet<String> = corpus.tweaks.iter().map(|t| t.id.to_lowercase()).collect();
+    for app in apps {
+        let mut fail = |reason: String| {
+            errors.push(ValidationError::InvalidApp {
+                app: app.id.clone(),
+                reason,
+            })
+        };
+        if let Some(problem) = tweak_id_problem(&app.id) {
+            fail(format!("id {problem}; ids may use only a-z, 0-9 and _"));
+        }
+        if app.windows.as_ref().is_some_and(|w| w.revision.is_some()) {
+            fail(
+                "`windows:` sets `revision`, which is not supported; scope by `build` alone".into(),
+            );
+        }
+        match &app.source {
+            AppSource::Appx(packages) if packages.is_empty() => {
+                fail("`appx` lists no package names".into())
+            }
+            AppSource::Appx(packages) => {
+                for name in packages.iter().filter(|n| !is_appx_name(n)) {
+                    fail(format!(
+                        "package name {name:?} may use only A-Z, a-z, 0-9, `.` and `-`"
+                    ));
+                }
+            }
+            AppSource::Script {
+                probe,
+                remove,
+                timeout,
+            } => {
+                if probe.trim().is_empty() {
+                    fail("`script.probe` is empty".into());
+                }
+                if remove.trim().is_empty() {
+                    fail("`script.remove` is empty".into());
+                }
+                if let Some(seconds) = timeout.filter(|t| !ACTION_TIMEOUT_SECS.contains(t)) {
+                    fail(format!(
+                        "`script.timeout: {seconds}` must be {} to {} seconds",
+                        ACTION_TIMEOUT_SECS.start(),
+                        ACTION_TIMEOUT_SECS.end()
+                    ));
+                }
+            }
+        }
+        match &app.install {
+            Some(InstallSource::Store(id) | InstallSource::StorePage(id)) if !is_store_id(id) => {
+                fail(format!(
+                    "Store product id {id:?} must be 12 characters of A-Z and 0-9"
+                ))
+            }
+            Some(InstallSource::Winget(id)) if !is_winget_id(id) => fail(format!(
+                "winget id {id:?} may use only A-Z, a-z, 0-9, `.`, `-` and `_`"
+            )),
+            _ => {}
+        }
+        if !seen.insert(app.id.to_lowercase()) {
+            errors.push(ValidationError::DuplicateAppId { id: app.id.clone() });
+        }
+    }
+    errors
 }
 
 fn check_unique_effect_ids(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
@@ -2143,6 +2240,183 @@ mod tests {
             errors.is_empty(),
             "expected no semantic errors, got {errors:?}"
         );
+    }
+
+    fn good_corpus() -> Corpus {
+        load_corpus(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/good"))
+            .expect("the good fixture corpus must load")
+    }
+
+    fn app(id: &str, source: AppSource, install: Option<InstallSource>) -> AppDef {
+        AppDef {
+            id: id.to_string(),
+            name: "App".to_string(),
+            description: "An app.".to_string(),
+            category: "category_a".to_string(),
+            info: None,
+            warning: None,
+            risk_level: super::super::model::RiskLevel::Low,
+            windows: None,
+            source,
+            install,
+        }
+    }
+
+    fn appx(names: &[&str]) -> AppSource {
+        AppSource::Appx(names.iter().map(|n| n.to_string()).collect())
+    }
+
+    fn script(probe: &str, remove: &str, timeout: Option<u32>) -> AppSource {
+        AppSource::Script {
+            probe: probe.to_string(),
+            remove: remove.to_string(),
+            timeout,
+        }
+    }
+
+    fn app_reasons(apps: &[AppDef]) -> Vec<String> {
+        validate_apps(&good_corpus(), apps)
+            .iter()
+            .map(|e| match e {
+                ValidationError::InvalidApp { reason, .. } => reason.clone(),
+                other => panic!("expected InvalidApp, got {other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn good_corpus_apps_validate_clean() {
+        let (corpus, apps) = super::super::schema::load_corpus_with_apps(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tweaks_fixtures/good"),
+        )
+        .expect("the good fixture corpus must load");
+        assert_eq!(validate_apps(&corpus, &apps).len(), 0);
+    }
+
+    #[test]
+    fn well_formed_apps_pass() {
+        let apps = [
+            app(
+                "clipchamp",
+                appx(&["Clipchamp.Clipchamp"]),
+                Some(InstallSource::Store("9P1J8S7CCWWT".into())),
+            ),
+            app(
+                "scripted",
+                script("exit 2", "exit 0", Some(1800)),
+                Some(InstallSource::Winget("Vendor.App_x-1".into())),
+            ),
+            app(
+                "paged",
+                appx(&["Vendor.App-2"]),
+                Some(InstallSource::StorePage("9NBLGGH4R32N".into())),
+            ),
+        ];
+        assert_eq!(app_reasons(&apps), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_app_id_follows_the_tweak_id_rules() {
+        let reasons = app_reasons(&[app("Bad-Id", appx(&["A.B"]), None)]);
+        assert_eq!(reasons.len(), 1, "{reasons:?}");
+        assert!(reasons[0].contains("a-z, 0-9 and _"), "{reasons:?}");
+    }
+
+    #[test]
+    fn app_ids_are_unique_across_apps_and_tweaks_ignoring_case() {
+        let errors = validate_apps(
+            &good_corpus(),
+            &[
+                app("same_app", appx(&["A.B"]), None),
+                app("same_APP", appx(&["A.B"]), None),
+                app("DISABLE_TELEMETRY", appx(&["A.B"]), None),
+            ],
+        );
+        let ids: Vec<&str> = errors
+            .iter()
+            .map(|e| match e {
+                ValidationError::DuplicateAppId { id } => id.as_str(),
+                ValidationError::InvalidApp { .. } => "",
+                other => panic!("expected DuplicateAppId, got {other:?}"),
+            })
+            .filter(|id| !id.is_empty())
+            .collect();
+        assert_eq!(ids, vec!["same_APP", "DISABLE_TELEMETRY"]);
+    }
+
+    #[test]
+    fn an_appx_source_needs_valid_package_names() {
+        let reasons = app_reasons(&[
+            app("empty", appx(&[]), None),
+            app(
+                "quoted",
+                appx(&["Good.Name", "Bad'; Remove-Item", "Spa ce", ""]),
+                None,
+            ),
+        ]);
+        assert_eq!(reasons.len(), 4, "{reasons:?}");
+        assert!(reasons[0].contains("no package names"));
+        assert!(reasons[1..].iter().all(|r| r.contains("package name")));
+    }
+
+    #[test]
+    fn a_script_source_needs_both_scripts_and_a_bounded_timeout() {
+        let reasons = app_reasons(&[
+            app("no_probe", script("  ", "exit 0", None), None),
+            app(
+                "no_remove",
+                script(
+                    "exit 0", "
+", None,
+                ),
+                None,
+            ),
+            app("zero", script("exit 0", "exit 0", Some(0)), None),
+            app("too_long", script("exit 0", "exit 0", Some(1801)), None),
+        ]);
+        assert_eq!(reasons.len(), 4, "{reasons:?}");
+        assert!(reasons[0].contains("script.probe"));
+        assert!(reasons[1].contains("script.remove"));
+        assert!(reasons[2].contains("timeout: 0"));
+        assert!(reasons[3].contains("timeout: 1801"));
+    }
+
+    #[test]
+    fn install_ids_follow_their_route_charset() {
+        let reasons = app_reasons(&[
+            app(
+                "lower",
+                appx(&["A"]),
+                Some(InstallSource::Store("9nblggh4r32n".into())),
+            ),
+            app(
+                "short",
+                appx(&["A"]),
+                Some(InstallSource::StorePage("9NBLGG".into())),
+            ),
+            app(
+                "winget",
+                appx(&["A"]),
+                Some(InstallSource::Winget("A&B".into())),
+            ),
+        ]);
+        assert_eq!(reasons.len(), 3, "{reasons:?}");
+        assert!(reasons[0].contains("Store product id"));
+        assert!(reasons[1].contains("Store product id"));
+        assert!(reasons[2].contains("winget id"));
+    }
+
+    #[test]
+    fn an_app_scope_rejects_revision() {
+        let mut scoped = app("scoped", appx(&["A"]), None);
+        scoped.windows = Some(super::super::model::WindowsScope {
+            products: None,
+            build: Some(BuildExpr::Exact(26100)),
+            revision: Some(BuildExpr::Min(1)),
+        });
+        let reasons = app_reasons(&[scoped]);
+        assert_eq!(reasons.len(), 1, "{reasons:?}");
+        assert!(reasons[0].contains("revision"));
     }
 
     #[test]

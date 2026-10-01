@@ -29,10 +29,27 @@ pub fn compiled_corpus() -> &'static Corpus {
     &crate::generated_corpus::CORPUS
 }
 
+/// The build-time-compiled app items (ADR-0009), from the same YAML files as the corpus.
+pub fn compiled_apps() -> &'static [AppDef] {
+    &crate::generated_corpus::APPS
+}
+
 #[cfg(test)]
 mod compiled_corpus_tests {
     use crate::tweaks::engine::context;
     use crate::tweaks::model::Level;
+
+    #[test]
+    fn embedded_apps_deserialize_in_the_shared_category_space() {
+        let corpus = super::compiled_corpus();
+        for app in super::compiled_apps() {
+            assert!(
+                corpus.categories.iter().any(|c| c.id == app.category),
+                "app '{}' names no compiled category",
+                app.id
+            );
+        }
+    }
 
     #[test]
     fn embedded_corpus_deserializes_and_is_nonempty() {

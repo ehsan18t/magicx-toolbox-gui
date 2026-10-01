@@ -1,0 +1,15 @@
+category:
+  id: app_two_sources
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An app declares both appx and script; exactly one source is allowed."
+
+apps:
+  - id: both_sources
+    name: "Both"
+    description: "This is the violation."
+    risk_level: low
+    appx: [ExampleCo.App]
+    script:
+      probe: "exit 0"
+      remove: "exit 0"

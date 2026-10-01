@@ -1,0 +1,11 @@
+category:
+  id: app_no_source
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An app declares neither appx nor script; exactly one source is required."
+
+apps:
+  - id: no_source
+    name: "None"
+    description: "This is the violation."
+    risk_level: low

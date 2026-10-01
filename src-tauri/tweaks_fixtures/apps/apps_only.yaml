@@ -1,0 +1,13 @@
+category:
+  id: apps_only
+  name: "Apps Only"
+  icon: "mdi:apps"
+  description: "A category file with apps and no tweaks key."
+
+apps:
+  - id: winget_app
+    name: "Winget App"
+    description: "Installed back through winget."
+    risk_level: low
+    appx: [ExampleCo.WingetApp]
+    install: { winget: ExampleCo.Winget_App-2 }

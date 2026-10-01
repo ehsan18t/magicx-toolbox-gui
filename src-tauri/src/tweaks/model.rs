@@ -419,6 +419,40 @@ pub struct Corpus {
     pub shared: Vec<SharedDef>,
 }
 
+/// A curated removable app: no options, no snapshot (ADR-0009). A sibling of [`Corpus`], not a
+/// field on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub info: Option<String>,
+    pub warning: Option<String>,
+    pub risk_level: RiskLevel,
+    pub windows: Option<WindowsScope>,
+    pub source: AppSource,
+    pub install: Option<InstallSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AppSource {
+    Appx(Vec<String>),
+    /// PowerShell. `probe` exits 0 installed, 2 absent; `timeout` bounds `remove` only.
+    Script {
+        probe: String,
+        remove: String,
+        timeout: Option<u32>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstallSource {
+    Store(String),
+    Winget(String),
+    StorePage(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -486,5 +520,6 @@ mod tests {
         assert_send_sync::<EffectId>();
         assert_send_sync::<SharedId>();
         assert_send_sync::<OptLabel>();
+        assert_send_sync::<AppDef>();
     }
 }

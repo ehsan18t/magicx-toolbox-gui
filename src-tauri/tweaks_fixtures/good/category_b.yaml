@@ -139,3 +139,24 @@ tweaks:
           primary_setting: 0
           modern_only_setting: 0
           legacy_service: disabled
+
+apps:
+  - id: example_appx_app
+    name: "Example AppX App"
+    description: "A packaged app removed by package name and installed back from the Store."
+    risk_level: low
+    windows: { products: [11] }
+    appx: [ExampleCo.StoreApp, ExampleCo.StoreApp.Helper]
+    install: { store: 9NBLGGH4R32N }
+
+  - id: example_script_app
+    name: "Example Script App"
+    description: "An app with no package name, probed and removed by its own scripts."
+    warning: "Removing it cannot be undone."
+    risk_level: medium
+    script:
+      probe: |
+        exit 2
+      remove: |
+        exit 0
+      timeout: 600
