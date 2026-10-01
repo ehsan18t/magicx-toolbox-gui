@@ -117,11 +117,13 @@ The ADRs record the decisions that hold the system together. Each doc in this fo
 | [0007](../../adr/0007-option-snapshots-are-references-restore-reapplies-the-current-definition.md) | An option snapshot is a reference. Restore re-applies the option as the current corpus defines it. |
 | [0008](../../adr/0008-one-build-line-per-snapshots-folder-downgrades-are-unsupported.md) | One build line per snapshots folder. An older build over a newer folder is unsupported. |
 | [0009](../../adr/0009-app-items-are-outside-the-snapshot-model.md) | Removable apps are app items, not tweaks: presence plus Remove and Install, with no snapshot or Restore. |
+| [0010](../../adr/0010-logs-are-local-redacted-at-write-and-opt-out-stops-disk-writes.md) | Logs stay on the PC and are redacted before any sink; opting out stops disk writes only; the TrustedInstaller child's log lines return in its response. |
 
 ## Related documents
 
 - [TWEAK_AUTHORING.md](../../TWEAK_AUTHORING.md): how to write a tweak, the full YAML schema and every validator rule.
 - [Tweak wiki](../../tweaks/README.md): one entry per shipped tweak, with its effects, options, risks and sources.
+- [Logging](../logging.md): the on-device logger, redaction, session files, the Logs panel and how the TrustedInstaller child's log lines reach the app.
 - [MANUAL_TESTS.md](../../MANUAL_TESTS.md): the test build's on-device checks for behaviour only a real Windows machine can show.
 - [KNOWN_ISSUES.md](../../KNOWN_ISSUES.md): confirmed open defects with their diagnosis.
 - [TEST_MATRIX.md](../../TEST_MATRIX.md): what CI covers, what it cannot, and the signing plan.

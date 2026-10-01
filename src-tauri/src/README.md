@@ -10,16 +10,16 @@ src/
 ├── main.rs             # Binary entry point
 ├── error.rs            # Custom error types (thiserror)
 ├── setup.rs            # Startup initialization and managed state
-├── debug.rs            # Debug logging utilities
 ├── window_watchdog.rs  # Shows the window if the frontend never does
 ├── apps/               # App items: presence, removal and install (ADR-0009)
+├── logging/            # On-device logger: redaction, session buffer and files, settings (ADR-0010)
 ├── commands/           # Tauri command handlers
 │   ├── apps.rs         # App item query/remove/install commands
 │   ├── general.rs      # Window display
 │   ├── elevation.rs    # Restart as administrator
 │   ├── update.rs       # App update checking
 │   ├── system.rs       # System info retrieval
-│   ├── debug.rs        # Debug mode commands
+│   ├── logging.rs      # Logs panel and Diagnostics commands
 │   └── tweaks.rs       # Tweak query/apply/revert commands
 ├── services/           # Windows effect primitives
 │   ├── elevation/              # Typed elevation broker (admin in-process, TrustedInstaller child)
@@ -52,6 +52,7 @@ src/
 - **Snapshots**: Capture state before changes for rollback
 - **Privilege Elevation**: Administrator and TrustedInstaller support
 - **Pre-compiled Tweaks**: YAML → Rust at build time for performance
+- **On-device Logging**: redacted session log, the Logs panel and the diagnostics export (`logging/`, ADR-0010)
 
 ## Testing
 
