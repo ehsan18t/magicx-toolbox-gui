@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::commands::logging::log_outcome;
 use crate::error::{Error, Result};
 use crate::services::system_info_service;
 use crate::services::ti_probe;
@@ -1280,6 +1281,20 @@ pub(crate) async fn restore_gated(
     .await
 }
 
+/// For the outcome line: the state a tweak was left in.
+fn state_summary(status: &TweakStatusView) -> String {
+    let state = match &status.state {
+        TweakStateView::Active { option } => format!("active '{option}'"),
+        TweakStateView::SystemDefault => "system default".into(),
+        TweakStateView::Unavailable { .. } => "unavailable".into(),
+        TweakStateView::Unknown { .. } => "unknown".into(),
+    };
+    match status.attention {
+        Some(_) => format!("{state}, needs attention"),
+        None => state,
+    }
+}
+
 #[tauri::command]
 pub async fn apply_tweak(
     app: AppHandle,
@@ -1287,19 +1302,36 @@ pub async fn apply_tweak(
     option_label: String,
 ) -> Result<ApplyOutcomeView> {
     log::info!("apply_tweak: '{tweak_id}' -> '{option_label}'");
-    let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
-    apply_gated(app, tweak, option_label)
-        .await?
-        .map_err(|e| map_engine_err(&tweak.id, Phase::Apply, e))
+    let (started, what) = (
+        std::time::Instant::now(),
+        format!("apply '{tweak_id}' -> '{option_label}'"),
+    );
+    let result = async {
+        let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
+        apply_gated(app, tweak, option_label)
+            .await?
+            .map_err(|e| map_engine_err(&tweak.id, Phase::Apply, e))
+    }
+    .await;
+    log_outcome(&what, started, &result, |v| state_summary(&v.status));
+    result
 }
 
 #[tauri::command]
 pub async fn restore_tweak(app: AppHandle, tweak_id: String) -> Result<RestoreOutcomeView> {
     log::info!("restore_tweak: '{tweak_id}'");
-    let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
-    restore_gated(app, tweak)
-        .await?
-        .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
+    let started = std::time::Instant::now();
+    let result = async {
+        let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
+        restore_gated(app, tweak)
+            .await?
+            .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
+    }
+    .await;
+    log_outcome(&format!("restore '{tweak_id}'"), started, &result, |v| {
+        state_summary(&v.status)
+    });
+    result
 }
 
 /// One tweak's fresh status, so a failed apply or restore shows the Needs Attention it left.
@@ -1419,21 +1451,32 @@ fn release_snapshot(
 #[tauri::command]
 pub async fn keep_current_state(app: AppHandle, tweak_id: String) -> Result<TweakStatusView> {
     log::info!("keep_current_state: '{tweak_id}'");
-    let corpus = compiled_corpus();
-    let tweak = find_tweak(corpus, &tweak_id)?;
-    // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
-    run_locked(&tweak_id, move || {
-        let state = app.state::<TweakEngineState>();
-        release_snapshot(
-            &state.snapshots,
-            &tweak.id,
-            corpus,
-            state.machine_guid.as_deref(),
-            running_winver().build,
-        )?;
-        Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
-    })
-    .await
+    let started = std::time::Instant::now();
+    let result = async {
+        let corpus = compiled_corpus();
+        let tweak = find_tweak(corpus, &tweak_id)?;
+        // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
+        run_locked(&tweak_id, move || {
+            let state = app.state::<TweakEngineState>();
+            release_snapshot(
+                &state.snapshots,
+                &tweak.id,
+                corpus,
+                state.machine_guid.as_deref(),
+                running_winver().build,
+            )?;
+            Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
+        })
+        .await
+    }
+    .await;
+    log_outcome(
+        &format!("keep current state '{tweak_id}'"),
+        started,
+        &result,
+        state_summary,
+    );
+    result
 }
 
 #[tauri::command]

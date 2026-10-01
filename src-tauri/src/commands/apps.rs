@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::apps::{self, install_route, AppPresence, AppsState, InstallRoute, Machine};
+use crate::commands::logging::log_outcome;
 use crate::commands::tweaks::{
     blocking, compute_availability, current_app_level, next_status_stamp, run_locked, Availability,
     SHOW_UNSUPPORTED,
@@ -296,16 +297,47 @@ pub async fn get_app_statuses(app: AppHandle) -> Result<Vec<AppStatusView>> {
     .await
 }
 
+/// For the outcome line: what the app was left as.
+fn presence_summary(view: &AppStatusView) -> String {
+    match view.presence {
+        AppPresence::Installed {
+            provisioned_only: false,
+        } => "installed",
+        AppPresence::Installed {
+            provisioned_only: true,
+        } => "provisioned only",
+        AppPresence::Absent => "absent",
+        AppPresence::Unknown { .. } => "unknown",
+    }
+    .to_string()
+}
+
 #[tauri::command]
 pub async fn remove_app(app: AppHandle, app_id: String) -> Result<AppStatusView> {
     log::info!("remove_app: '{app_id}'");
-    remove_gated(app, find_app(&app_id)?).await
+    let started = std::time::Instant::now();
+    let result = async { remove_gated(app, find_app(&app_id)?).await }.await;
+    log_outcome(
+        &format!("remove '{app_id}'"),
+        started,
+        &result,
+        presence_summary,
+    );
+    result
 }
 
 #[tauri::command]
 pub async fn install_app(app: AppHandle, app_id: String) -> Result<AppStatusView> {
     log::info!("install_app: '{app_id}'");
-    install_gated(app, find_app(&app_id)?).await
+    let started = std::time::Instant::now();
+    let result = async { install_gated(app, find_app(&app_id)?).await }.await;
+    log_outcome(
+        &format!("install '{app_id}'"),
+        started,
+        &result,
+        presence_summary,
+    );
+    result
 }
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
 //! The Logs panel and Settings > Diagnostics. `get_log_tail` and `log_frontend` do not log at entry:
 //! the panel polls the first, and the second is itself a log line.
 
+use std::time::Instant;
+
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -175,6 +177,43 @@ pub async fn export_diagnostics(app: AppHandle) -> Result<Option<String>> {
     .await
 }
 
+/// The one line every apply, restore, keep-current-state, removal and install leaves. Error text is
+/// the frontend's own, which never carries a registry or hosts value.
+pub(crate) fn log_outcome<T>(
+    what: &str,
+    started: Instant,
+    result: &Result<T>,
+    done: impl FnOnce(&T) -> String,
+) {
+    let (level, line) = outcome_line(what, started.elapsed().as_millis(), result, done);
+    log::log!(level, "{line}");
+}
+
+fn outcome_line<T>(
+    what: &str,
+    ms: u128,
+    result: &Result<T>,
+    done: impl FnOnce(&T) -> String,
+) -> (log::Level, String) {
+    match result {
+        Ok(value) => (
+            log::Level::Info,
+            format!("{what}: {} in {ms} ms", done(value)),
+        ),
+        Err(
+            e @ (Error::TweakUnavailable(_)
+            | Error::AppUnavailable(_)
+            | Error::ApplyInFlight(_)
+            | Error::AppExiting(_)
+            | Error::NotFound(_)),
+        ) => (log::Level::Warn, format!("{what} refused: {}", e.code())),
+        Err(e) => (
+            log::Level::Warn,
+            format!("{what} failed: {}: {e}", e.code()),
+        ),
+    }
+}
+
 fn diagnostics_header(app: &AppHandle) -> String {
     use crate::tweaks::engine::context::{sid_check, RealSidProbe};
     let winver = crate::tweaks::winver::running_winver();
@@ -202,4 +241,44 @@ fn diagnostics_header(app: &AppHandle) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tweaks::engine::lifecycle::AppExiting;
+
+    #[test]
+    fn an_outcome_names_its_state_a_refusal_its_code_and_a_failure_its_message() {
+        let ok: Result<&str> = Ok("absent");
+        assert_eq!(
+            outcome_line("remove 'app'", 12, &ok, |v| v.to_string()),
+            (log::Level::Info, "remove 'app': absent in 12 ms".into())
+        );
+        for refused in [
+            Error::TweakUnavailable("needs admin".into()),
+            Error::AppUnavailable("needs admin".into()),
+            Error::ApplyInFlight("retry"),
+            Error::AppExiting(AppExiting::Final),
+            Error::NotFound("tweak 'x'".into()),
+        ] {
+            let code = refused.code();
+            let (level, line) = outcome_line(
+                "apply 'x' -> 'On'",
+                1,
+                &Err::<(), _>(refused),
+                |_| unreachable!(),
+            );
+            assert_eq!(level, log::Level::Warn);
+            assert_eq!(line, format!("apply 'x' -> 'On' refused: {code}"));
+        }
+        let failed: Result<()> = Err(Error::AppFailed("Removing X failed (exit code 1).".into()));
+        assert_eq!(
+            outcome_line("remove 'x'", 1, &failed, |_| unreachable!()),
+            (
+                log::Level::Warn,
+                "remove 'x' failed: APP_FAILED: Removing X failed (exit code 1).".into()
+            )
+        );
+    }
 }

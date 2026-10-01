@@ -19,9 +19,10 @@ const EXIT_ON_ERROR: &str = "} catch {\n    $h = $_.Exception.HResult\n    if ($
 pub(crate) fn presence(app: &AppDef, m: &dyn Machine) -> AppPresence {
     let presence = match &app.source {
         AppSource::Appx(packages) => appx_presence(m.appx(packages), m.elevated()),
-        AppSource::Script { probe, .. } => {
-            script_presence(m.powershell(probe, ACTION_TIMEOUT), m.elevated())
-        }
+        AppSource::Script { probe, .. } => script_presence(
+            m.powershell(probe, ACTION_TIMEOUT).map(|r| r.code),
+            m.elevated(),
+        ),
     };
     if let AppPresence::Unknown { reason, .. } = &presence {
         log::warn!("app '{}': presence unknown: {reason}", app.id);
@@ -92,12 +93,13 @@ pub(crate) fn remove(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Error
             timeout.map_or(REMOVE_TIMEOUT, |s| Duration::from_secs(s.into())),
         ),
     };
-    let code = m.powershell(&body, timeout).map_err(|e| {
+    let run = m.powershell(&body, timeout).map_err(|e| {
         log::error!("removing app '{}': {e}", app.id);
         Error::AppFailed(format!("Removing {} did not finish: {e}", app.name))
     })?;
+    let code = run.code;
     if code != 0 {
-        log::error!("removing app '{}' exited with {code}", app.id);
+        run.warn_on_failure(&format!("removing app '{}'", app.id));
         return Err(Error::AppFailed(format!(
             "Removing {} failed ({}).",
             app.name,
@@ -140,14 +142,15 @@ pub(crate) fn install(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Erro
             )))
         }
     };
-    let code = m
+    let run = m
         .powershell(&winget_install_script(id, source)?, INSTALL_TIMEOUT)
         .map_err(|e| {
             log::error!("installing app '{}': {e}", app.id);
             Error::AppFailed(format!("Installing {} did not finish: {e}", app.name))
         })?;
+    let code = run.code;
     if code != 0 {
-        log::error!("installing app '{}': winget exited with {code}", app.id);
+        run.warn_on_failure(&format!("installing app '{}' with winget", app.id));
         return Err(Error::AppFailed(format!(
             "Installing {} failed: winget ended with {}.",
             app.name,
