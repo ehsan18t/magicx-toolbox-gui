@@ -24,6 +24,8 @@ let loadingSavedProfiles = $state(false);
 let savedProfilesError = $state<string | null>(null);
 let isDeleting = $state(false);
 let deleteError = $state<string | null>(null);
+// Drops a saved-profiles response superseded by a later directory change.
+let loadSeq = 0;
 
 // Persistent store for profile directory
 const currentProfileDirStore = new PersistentStore<string | null>("magicx_profile_dir", null);
@@ -164,15 +166,18 @@ export const profileStore = {
    * Load the list of saved profiles.
    */
   async loadSavedProfiles() {
+    const mine = ++loadSeq;
     loadingSavedProfiles = true;
     savedProfilesError = null;
     try {
-      savedProfiles = await profileApi.getSavedProfiles(currentProfileDirStore.value);
+      const list = await profileApi.getSavedProfiles(currentProfileDirStore.value);
+      if (mine === loadSeq) savedProfiles = list;
     } catch (error) {
+      if (mine !== loadSeq) return;
       console.error("Failed to load saved profiles:", error);
       savedProfilesError = errorMessage(error);
     } finally {
-      loadingSavedProfiles = false;
+      if (mine === loadSeq) loadingSavedProfiles = false;
     }
   },
 
