@@ -69,7 +69,7 @@
       {appVersion ? `Version ${appVersion}` : "Version unknown"}
     </p>
 
-    <p class="m-0 mt-6 max-w-[42ch] text-[15px] leading-relaxed">
+    <p class="m-0 mt-6 text-[15px] leading-relaxed">
       Curated Windows tweaks you can apply, check against the live system, and undo from snapshots.
     </p>
 
