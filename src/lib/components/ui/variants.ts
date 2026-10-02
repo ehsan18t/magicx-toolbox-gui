@@ -9,7 +9,7 @@ import { tv, type VariantProps } from "tailwind-variants";
 // =============================================================================
 
 /**
- * Base button variant - used by Button, ActionButton, LinkButton
+ * Base button variant - used by Button
  */
 export const button = tv({
   base: "inline-flex items-center justify-center gap-2 rounded-md border-0 font-medium transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
@@ -42,68 +42,6 @@ export const button = tv({
 export type ButtonVariants = VariantProps<typeof button>;
 
 /**
- * Action button variant - toolbar buttons with icon + optional badge
- * Used in CategoryTab, FavoritesTab, SnapshotsTab, SearchTab toolbars
- */
-export const actionButton = tv({
-  base: "flex cursor-pointer items-center gap-2 rounded-md border bg-secondary text-[13px] font-medium text-foreground transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
-  variants: {
-    intent: {
-      default: "border-border hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5",
-      apply:
-        "border-border hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success",
-      discard: "border-border hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5",
-      restore:
-        "border-border hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error",
-      accent:
-        "border-border hover:not-disabled:border-accent hover:not-disabled:bg-accent/15 hover:not-disabled:text-accent",
-      danger:
-        "border-border hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error",
-    },
-    size: {
-      sm: "h-8 px-3",
-      md: "h-8 px-3",
-    },
-    active: {
-      true: "",
-      false: "",
-    },
-  },
-  compoundVariants: [
-    {
-      intent: "apply",
-      active: true,
-      class: "border-warning bg-warning/15 text-warning",
-    },
-  ],
-  defaultVariants: {
-    intent: "default",
-    size: "md",
-    active: false,
-  },
-});
-
-export type ActionButtonVariants = VariantProps<typeof actionButton>;
-
-/**
- * Link button variant - styled links/buttons for AboutModal, etc.
- */
-export const linkButton = tv({
-  base: "flex items-center justify-center gap-2 rounded-md border border-border bg-secondary text-foreground transition-colors hover:bg-secondary-hover",
-  variants: {
-    size: {
-      sm: "px-2.5 py-2 text-xs",
-      md: "px-3 py-2.5 text-sm",
-    },
-  },
-  defaultVariants: {
-    size: "md",
-  },
-});
-
-export type LinkButtonVariants = VariantProps<typeof linkButton>;
-
-/**
  * Icon button variant - small icon-only buttons
  */
 export const iconButton = tv({
@@ -130,29 +68,6 @@ export type IconButtonVariants = VariantProps<typeof iconButton>;
 // =============================================================================
 // BADGE VARIANTS
 // =============================================================================
-
-/**
- * Status pill/badge variant - for risk level, permission, reboot required, etc.
- */
-export const statusBadge = tv({
-  base: "inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase transition-colors duration-150",
-  variants: {
-    variant: {
-      success: "bg-success/8 text-success hover:bg-success/15",
-      warning: "bg-warning/8 text-warning hover:bg-warning/15",
-      error: "bg-error/8 text-error hover:bg-error/15",
-      orange: "bg-orange-500/8 text-orange-500 hover:bg-orange-500/15",
-      info: "bg-info/8 text-info hover:bg-info/15",
-      muted: "bg-muted/50 text-foreground-muted hover:bg-muted hover:text-foreground-muted",
-      accent: "bg-accent/10 text-accent",
-    },
-  },
-  defaultVariants: {
-    variant: "muted",
-  },
-});
-
-export type StatusBadgeVariants = VariantProps<typeof statusBadge>;
 
 /**
  * Counter badge - small round badge for counts
