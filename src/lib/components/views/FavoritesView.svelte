@@ -44,32 +44,34 @@
 <PageLayout title="Favorites" description="Quick access to the tweaks you starred.">
   {#snippet aside()}
     {#if favoriteTweaks.length > 0}
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div class="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
         <p class="m-0 text-xs text-foreground-muted">
           <span class="font-semibold text-foreground tabular-nums">{favoriteTweaks.length}</span> starred ·
           <span class="font-semibold text-foreground tabular-nums">{appliedCount}</span> applied
         </p>
-        {#if restorable.length > 0}
+        <div class="ml-auto flex flex-wrap gap-2">
+          {#if restorable.length > 0}
+            <button
+              type="button"
+              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={loadingStore.busy}
+              onclick={restoreAll}
+            >
+              <Icon icon="mdi:history" width="16" />
+              Restore all
+              <span class="text-xs text-foreground-subtle tabular-nums">{restorable.length}</span>
+            </button>
+          {/if}
           <button
             type="button"
-            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             disabled={loadingStore.busy}
-            onclick={restoreAll}
+            onclick={clearAll}
           >
-            <Icon icon="mdi:history" width="16" />
-            Restore all
-            <span class="text-xs text-foreground-subtle tabular-nums">{restorable.length}</span>
+            <Icon icon="mdi:star-off" width="16" />
+            Clear favorites
           </button>
-        {/if}
-        <button
-          type="button"
-          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={loadingStore.busy}
-          onclick={clearAll}
-        >
-          <Icon icon="mdi:star-off" width="16" />
-          Clear favorites
-        </button>
+        </div>
       </div>
     {/if}
   {/snippet}

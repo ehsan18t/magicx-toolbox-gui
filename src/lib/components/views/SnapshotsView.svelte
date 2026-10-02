@@ -32,14 +32,14 @@
 >
   {#snippet aside()}
     {#if snapshotTweaks.length > 0}
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div class="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
         <p class="m-0 text-xs text-foreground-muted">
           <span class="font-semibold text-foreground tabular-nums">{snapshotTweaks.length}</span> with snapshots ·
           <span class="font-semibold text-foreground tabular-nums">{appliedCount}</span> currently applied
         </p>
         <button
           type="button"
-          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+          class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
           disabled={loadingStore.busy || restorable.length === 0}
           onclick={restoreAll}
         >
