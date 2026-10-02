@@ -23,6 +23,7 @@
   import MdiCheck from "~icons/mdi/check";
   import MdiCheckAll from "~icons/mdi/check-all";
   import MdiCheckCircle from "~icons/mdi/check-circle";
+  import MdiCheckCircleOutline from "~icons/mdi/check-circle-outline";
   import MdiChevronDown from "~icons/mdi/chevron-down";
   import MdiChevronRight from "~icons/mdi/chevron-right";
   import MdiChevronUp from "~icons/mdi/chevron-up";
@@ -154,6 +155,7 @@
     "mdi:refresh": MdiRefresh,
     "mdi:tune-vertical": MdiTuneVertical,
     "mdi:check-circle": MdiCheckCircle,
+    "mdi:check-circle-outline": MdiCheckCircleOutline,
     "mdi:circle": MdiCircle,
     "mdi:circle-half-full": MdiCircleHalfFull,
     "mdi:circle-outline": MdiCircleOutline,
