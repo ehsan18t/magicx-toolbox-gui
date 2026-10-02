@@ -1,9 +1,10 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon, MarkdownText } from "$lib/components/shared";
-  import { Button, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
+  import { Button, HighlightedText, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
+  import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import type { AppView, RiskLevel } from "$lib/types";
   import { permissionInfoFor, RISK_INFO } from "$lib/types";
   import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
@@ -21,6 +22,7 @@
   let { app, titleSlot, descriptionSlot, context }: Props = $props();
 
   const status = $derived(appsStore.status(app.id));
+  const filterMatch = $derived(titleSlot ? null : pageFilterStore.match(app.id));
   const presence = $derived(status?.presence);
   const busy = $derived(appsStore.isBusy(app.id));
   const appError = $derived(appsStore.error(app.id));
@@ -124,7 +126,7 @@
 <article
   id="app-{app.id}"
   bind:this={rowEl}
-  class="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {highlight.active
+  class="@container relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {highlight.active
     ? 'tweak-highlight'
     : ''}"
   aria-busy={busy}
@@ -137,19 +139,20 @@
   ></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2.5">
-      <div class="min-w-0 flex-1 basis-60">
-        <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
-          {#if titleSlot}{@render titleSlot()}{:else}{app.name}{/if}
-        </h3>
-        <p class="m-0 mt-0.5 text-[13px] leading-snug text-foreground-muted">
-          {#if descriptionSlot}{@render descriptionSlot()}{:else}{app.description}{/if}
-        </p>
-      </div>
+    <div
+      class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 @max-[520px]:grid-cols-1 @max-[520px]:gap-y-2"
+    >
+      <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
+        {#if titleSlot}{@render titleSlot()}{:else if filterMatch}<HighlightedText
+            text={app.name}
+            ranges={filterMatch.nameRanges}
+            highlightClass="rounded-sm bg-accent/25 text-foreground"
+          />{:else}{app.name}{/if}
+      </h3>
 
       {#if action}
         {@const config = actionConfig[action.kind]}
-        <div class="shrink-0" use:tooltip={action.disabledReason}>
+        <div class="justify-self-start" use:tooltip={action.disabledReason}>
           <Button
             variant="secondary"
             size="md"
@@ -164,6 +167,14 @@
           </Button>
         </div>
       {/if}
+
+      <p class="col-span-full m-0 text-[13px] leading-snug text-foreground-muted">
+        {#if descriptionSlot}{@render descriptionSlot()}{:else if filterMatch}<HighlightedText
+            text={app.description}
+            ranges={filterMatch.descriptionRanges}
+            highlightClass="rounded-sm bg-accent/25 text-foreground"
+          />{:else}{app.description}{/if}
+      </p>
     </div>
 
     {#if app.warning && warningOpen}

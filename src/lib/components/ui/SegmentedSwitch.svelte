@@ -9,6 +9,8 @@
     /** Iconify name, e.g. 'mdi:check' */
     icon?: string;
     disabled?: boolean;
+    /** Tooltip in place of the label, e.g. why the segment is disabled. */
+    tip?: string;
   }
 
   interface Props {
@@ -123,7 +125,7 @@
             ),
       )}
       onclick={() => handleClick(opt.value)}
-      use:tooltip={opt.label}
+      use:tooltip={opt.tip ?? opt.label}
     >
       {#if loading && isSelected}
         <Icon icon="mdi:loading" width={currentSize.icon} class="shrink-0 animate-spin" />

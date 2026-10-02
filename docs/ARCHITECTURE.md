@@ -126,7 +126,7 @@ The navigation pane docks expanded at a window width of 1008px and above (the ti
 - **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts,
   firewall, shared, action) once; each **option** is a flat value-map over that surface.
 - **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 option
-  renders as an on/off switch, 2 as a segmented switch, 3 or more as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also
+  renders as a System default | option switch, 2 as a segmented switch, 3 or more as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also
   computed, never authored.
 - **Windows scoping**: `windows: { products, build, revision }` at tweak/effect/option-value level.
 

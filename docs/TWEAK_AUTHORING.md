@@ -118,11 +118,11 @@ the author never defined that exact state, or the machine drifted out of every d
 
 You author **only the real states you offer.** The app supplies the rest of the story:
 
-- **1 authored option → an on/off switch** (on applies A, off restores the snapshot).
+- **1 authored option → a segmented switch of System default / A** (System default restores the snapshot).
 - **2 authored options → a segmented switch** (A / B).
 - **3 or more authored options → a dropdown** (A / B / C / …).
 
-System Default never appears in the control: the row's state line names it and the control shows no selection.
+Beyond that one-option pairing, System Default never appears in the control: the row's state line names it and the control shows no selection.
 
 The "Default" position in the UI is always this computed status, never a target you write. Returning
 toward a previous state happens only through **Restore Snapshot**, which walks the tweak's captured
@@ -828,9 +828,9 @@ describes.
 
 The UI shape follows the option count (spec §6.1, ADR-0003):
 
-- **1 authored option → an on/off switch**; **2 → a segmented switch** (A / B).
+- **1 authored option → a segmented switch of System default / A**; **2 → a segmented switch** (A / B).
 - **3 or more → a dropdown** (A / B / C / …).
-- System Default never joins a control; the row's state line shows it.
+- Except beside a lone option, System Default never joins a control; the row's state line shows it.
 
 You never author "System Default": it is the computed status when the live surface matches no option
 (§1.3, §15). So a **1-option** tweak is a switch between "the one state you defined" and "whatever the

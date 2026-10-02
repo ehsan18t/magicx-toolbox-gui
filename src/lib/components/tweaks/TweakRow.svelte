@@ -1,9 +1,10 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { SegmentedSwitch, Select, Switch } from "$lib/components/ui";
+  import { HighlightedText, SegmentedSwitch, Select } from "$lib/components/ui";
   import { confirm } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
+  import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { openTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import {
     errorStore,
@@ -37,6 +38,7 @@
   const tweakError = $derived(errorStore.getError(def.id));
   const isSelected = $derived(tweakDetailsModalStore.tweakId === def.id);
   const summary = $derived(stateSummary(status));
+  const filterMatch = $derived(titleSlot ? null : pageFilterStore.match(def.id));
 
   const unknownTip = $derived.by(() => {
     if (status.state !== "unknown") return "";
@@ -79,17 +81,34 @@
   const activeOption = $derived(status.activeOption);
   const optionLabels = $derived(def.optionLabels);
 
-  // ADR-0003: System Default is a computed state, never a choice, so no control offers it;
-  // the state line names it and Restore is the only way back.
   const selectValue = $derived(pendingChange?.optionLabel ?? activeOption);
 
-  const segments = $derived(
-    optionLabels.map((label, i) => {
+  // ADR-0003: System Default joins a control only beside a lone option, where choosing it restores
+  // the snapshot; elsewhere the state line names it and Restore is the way back.
+  const SYSTEM_DEFAULT = "__system_default__";
+  const onlyOption = $derived(optionLabels.length === 1 ? optionLabels[0] : null);
+  const defaultBlocked = $derived(onlyOption !== null && activeOption === onlyOption && !hasPending && !hasSnapshot);
+  const segments = $derived.by(() => {
+    const options: { target: string; label: string; disabled: boolean; tip?: string }[] = optionLabels.map((label) => {
       const unavailable = status.unavailableOptions.some((u) => u.label === label);
-      return { value: i, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
-    }),
+      return { target: label, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
+    });
+    if (onlyOption !== null) {
+      options.unshift({
+        target: SYSTEM_DEFAULT,
+        label: "System default",
+        disabled: defaultBlocked,
+        tip: defaultBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : undefined,
+      });
+    }
+    return options.map((o, i) => ({ ...o, value: i }));
+  });
+  const segmentValue = $derived(
+    segments.findIndex(
+      (s) => s.target === (selectValue ?? (status.state === "system_default" ? SYSTEM_DEFAULT : null)),
+    ),
   );
-  const selectOptions = $derived(segments.map((s, i) => ({ ...s, value: optionLabels[i] })));
+  const selectOptions = $derived(segments.map((s) => ({ ...s, value: s.target })));
   const selectPlaceholder = $derived(
     status.state === "system_default"
       ? "System default"
@@ -100,26 +119,20 @@
           : "Unknown",
   );
 
-  // A single-option tweak is a switch: on stages the option, off restores the snapshot.
-  const onlyOption = $derived(optionLabels.length === 1 ? optionLabels[0] : null);
-  const switchOn = $derived(onlyOption !== null && selectValue === onlyOption);
-  const switchOffBlocked = $derived(switchOn && !hasPending && !hasSnapshot);
-
   function selectTarget(target: string) {
-    if (target === activeOption) unstageChange(def.id);
+    if (target === SYSTEM_DEFAULT) {
+      if (hasPending) unstageChange(def.id);
+      // Every other segment only stages; this one changes the system at once, so it always asks.
+      else if (hasSnapshot) void restore(true);
+    } else if (target === activeOption) unstageChange(def.id);
     else stageChange(def.id, { tweakId: def.id, optionLabel: target });
   }
 
-  function toggleOnly(on: boolean) {
-    if (onlyOption === null) return;
-    if (on) selectTarget(onlyOption);
-    else if (hasPending) unstageChange(def.id);
-    else if (hasSnapshot) void handleRestoreClick();
-  }
+  const handleRestoreClick = () => restore(highRisk);
 
-  async function handleRestoreClick() {
+  async function restore(ask: boolean) {
     if (
-      highRisk &&
+      ask &&
       !(await confirm({
         title: `Restore ${def.name}?`,
         message: `This ${def.risk_level}-risk tweak steps back to the state saved before its last change.`,
@@ -163,6 +176,10 @@
   );
 </script>
 
+{#snippet marked(text: string, ranges: number[])}
+  <HighlightedText {text} {ranges} highlightClass="rounded-sm bg-accent/25 text-foreground" />
+{/snippet}
+
 {#snippet metaItem(icon: string, label: string, tone: string, tip?: string | null, spin?: boolean)}
   <span class="inline-flex max-w-full items-center gap-1 {tone}" use:tooltip={tip ?? null}>
     <Icon {icon} width="13" class="shrink-0 {spin ? 'animate-spin' : ''}" />
@@ -198,53 +215,31 @@
   <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {stripe}" aria-hidden="true"></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="flex items-start gap-x-6 gap-y-2.5 @max-[520px]:flex-col">
-      <div class="min-w-0 flex-1">
-        <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
-          {#if titleSlot}{@render titleSlot()}{:else}{def.name}{/if}
-        </h3>
-        <p class="m-0 mt-0.5 text-[13px] leading-snug text-foreground-muted">
-          {#if descriptionSlot}{@render descriptionSlot()}{:else}{def.description}{/if}
-        </p>
-      </div>
+    <div
+      class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 @max-[520px]:grid-cols-1 @max-[520px]:gap-y-2"
+    >
+      <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
+        {#if titleSlot}{@render titleSlot()}{:else if filterMatch}{@render marked(
+            def.name,
+            filterMatch.nameRanges,
+          )}{:else}{def.name}{/if}
+      </h3>
 
       <div
-        class="max-w-[45%] min-w-0 shrink-0 @max-[520px]:max-w-full {optionLabels.length > 2
+        class="max-w-[45cqw] min-w-0 @max-[520px]:max-w-full {optionLabels.length > 2
           ? 'w-fit min-w-44 @max-[520px]:w-full'
           : ''}"
-        use:tooltip={controlDisabledReason ??
-          (switchOffBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : null)}
+        use:tooltip={controlDisabledReason}
       >
-        {#if onlyOption !== null}
-          <div class="flex items-center gap-2.5">
-            <span
-              use:tooltip={onlyOption}
-              class="min-w-0 truncate text-[13px] {switchOn
-                ? hasPending
-                  ? 'text-warning'
-                  : 'text-foreground'
-                : 'text-foreground-muted'}"
-            >
-              {onlyOption}
-            </span>
-            <Switch
-              checked={switchOn}
-              pending={hasPending}
-              loading={isLoading}
-              disabled={controlDisabled || switchOffBlocked}
-              ariaLabel="{def.name}: {onlyOption}"
-              onchange={toggleOnly}
-            />
-          </div>
-        {:else if optionLabels.length === 2}
+        {#if optionLabels.length <= 2}
           <SegmentedSwitch
-            value={segments.findIndex((_, i) => optionLabels[i] === selectValue)}
+            value={segmentValue}
             options={segments}
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}
             label={def.name}
-            onchange={(i) => selectTarget(optionLabels[i])}
+            onchange={(i) => selectTarget(segments[i].target)}
           />
         {:else}
           <Select
@@ -259,6 +254,13 @@
           />
         {/if}
       </div>
+
+      <p class="col-span-full m-0 text-[13px] leading-snug text-foreground-muted">
+        {#if descriptionSlot}{@render descriptionSlot()}{:else if filterMatch}{@render marked(
+            def.description,
+            filterMatch.descriptionRanges,
+          )}{:else}{def.description}{/if}
+      </p>
     </div>
 
     {#if def.warning && warningOpen}

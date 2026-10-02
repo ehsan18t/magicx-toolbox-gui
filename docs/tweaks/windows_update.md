@@ -2,7 +2,7 @@
 
 This category controls how Windows Update behaves on the machine: Delivery Optimization peering, quality and feature update deferral, version pinning, mid-cycle feature control, Insider enrolment, active hours and restarts, driver delivery, Microsoft Store app updates, metered downloads, the automatic-update mode, and a full block of the update pipeline. The primary platform is Windows 11 24H2 (build 26100) and newer; Windows 10 IoT Enterprise LTSC 2021 (build 19044) is a secondary target and is called out per tweak only where it differs. Most tweaks here are Windows Update client policies under `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate`, which Microsoft documents for Pro, Education, Enterprise and IoT Enterprise only: **Windows Home ignores them**. The exceptions are Delivery Optimization, active hours, the Store policy (Home undocumented) and the services-and-tasks half of the pipeline block, which do not depend on edition.
 
-"Switch" means one authored option (an on/off switch) or two (a segmented switch); "Dropdown" means three or more. The computed **System Default** state (the machine matches no authored option) shows on the row's state line, never in the control; Restore walks back through the snapshot.
+"Switch" means one authored option (shown as System default | option) or two (a segmented switch); "Dropdown" means three or more. The computed **System Default** state (the machine matches no authored option) shows on the row's state line; only a one-option switch offers it, and choosing it restores the snapshot.
 
 ## Index
 

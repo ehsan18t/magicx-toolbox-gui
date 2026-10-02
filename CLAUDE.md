@@ -135,7 +135,7 @@ explicitly with `cargo test -- --ignored`.
 - Tweaks are YAML in `src-tauri/tweaks/`, compiled at build time by `build.rs` (the schema types are
   shared with the runtime via `src/tweaks/{model,parse,schema,validate}.rs`, so drift is a compile
   error). Category is **per file**, not per tweak: one `category:` header per YAML file. 1 authored
-  option → on/off switch, 2 → segmented switch, 3+ → dropdown; you never author "System Default", it is the computed state when
+  option → System default | option switch, 2 → segmented switch, 3+ → dropdown; you never author "System Default", it is the computed state when
   the live surface matches no option. `optional: true` (with an optional `if_missing:`) tolerates a
   *missing* resource at capture and detect; it does not weaken the post-apply verify.
 - **Removable apps are app items** (`apps:` beside `tweaks:`, ADR-0009), never a tweak with a removal `action:`: presence plus Remove and Install, no options, no snapshot, no Restore. A script item's `probe` exits 0 installed, 2 absent; anything else is Unknown, so never `exit 2` from a `catch`.

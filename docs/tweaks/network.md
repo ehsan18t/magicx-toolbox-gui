@@ -21,7 +21,7 @@ This category covers network hardening (encrypted DNS, the three broadcast name-
 | [Disable wake timers](#disable-wake-timers) | `disable_wake_timers` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Modern Standby (force S3)](#disable-modern-standby-force-s3) | `disable_modern_standby` | Switch (2 options) | high | admin | yes | VERIFIED |
 
-A note on the Control column: in this app one authored option renders as an on/off switch, two as a segmented switch and three or more as a dropdown. System Default is never written and never offered by a control; it is what the row's state line shows when the live machine matches none of the authored options, and Restore walks back through the tweak's snapshot rather than writing a guessed "default" value.
+A note on the Control column: in this app one authored option renders as a System default | option switch, two as a segmented switch and three or more as a dropdown. System Default is never written, and only a one-option switch offers it (as a Restore); it is what the row's state line shows when the live machine matches none of the authored options, and Restore walks back through the tweak's snapshot rather than writing a guessed "default" value.
 
 ## Tweaks
 
