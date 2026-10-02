@@ -24,6 +24,17 @@
     return 0;
   }
 
+  const footerItems = $derived([
+    {
+      label: updateStore.isAvailable ? "Update available" : "Updates",
+      icon: "mdi:update",
+      open: openUpdateModal,
+      dot: updateStore.isAvailable,
+    },
+    { label: "Settings", icon: "mdi:cog-outline", open: openSettingsModal, dot: false },
+    { label: "About", icon: "mdi:information-outline", open: openAboutModal, dot: false },
+  ]);
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key !== "Escape" || !sidebarStore.isOverlay) return;
     e.preventDefault();
@@ -141,43 +152,32 @@
       {/if}
     </div>
 
-    <div class="flex shrink-0 flex-col gap-0.5 border-t border-border px-1.5 py-1.5">
-      {@render navItem(
-        updateStore.isAvailable ? "Update available" : "Updates",
-        "mdi:update",
-        false,
-        () => {
-          sidebarStore.closeOverlay();
-          openUpdateModal();
-        },
-        "",
-        "",
-        updateStore.isAvailable ? "bg-success" : null,
-      )}
-      {@render navItem(
-        "Settings",
-        "mdi:cog-outline",
-        false,
-        () => {
-          sidebarStore.closeOverlay();
-          openSettingsModal();
-        },
-        "",
-        "",
-        null,
-      )}
-      {@render navItem(
-        "About",
-        "mdi:information-outline",
-        false,
-        () => {
-          sidebarStore.closeOverlay();
-          openAboutModal();
-        },
-        "",
-        "",
-        null,
-      )}
+    <div
+      class="flex shrink-0 gap-0.5 border-t border-border px-1.5 py-1.5 {isOpen
+        ? 'flex-row justify-around'
+        : 'flex-col'}"
+    >
+      {#each footerItems as item (item.label)}
+        <button
+          type="button"
+          class="relative flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground {isOpen
+            ? 'flex-1'
+            : 'w-full'}"
+          aria-label={item.label}
+          use:tooltip={item.label}
+          onclick={() => {
+            sidebarStore.closeOverlay();
+            item.open();
+          }}
+        >
+          <Icon icon={item.icon} width="18" />
+          {#if item.dot}
+            <span
+              class="absolute top-1.5 right-1/2 h-2 w-2 translate-x-3 rounded-full bg-success ring-2 ring-background"
+            ></span>
+          {/if}
+        </button>
+      {/each}
     </div>
   </div>
 </nav>
