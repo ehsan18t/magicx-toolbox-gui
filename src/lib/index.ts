@@ -6,14 +6,7 @@ export { appsStore } from "./stores/apps.svelte";
 export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./stores/colorScheme.svelte";
 export { sidebarStore } from "./stores/layout.svelte";
 export { logsStore } from "./stores/logs.svelte";
-export {
-  closeModal,
-  modalStore,
-  openAboutModal,
-  openSettingsModal,
-  openUpdateModal,
-  type ModalType,
-} from "./stores/modal.svelte";
+export { closeModal, modalStore, openAboutModal, openUpdateModal, type ModalType } from "./stores/modal.svelte";
 export { settingsStore } from "./stores/settings.svelte";
 export { themeStore, type Theme } from "./stores/theme.svelte";
 export {

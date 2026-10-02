@@ -10,6 +10,7 @@
     OverviewView,
     ProfileManager,
     SearchView,
+    SettingsView,
     SnapshotsView,
   } from "$lib/components/views";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
@@ -96,6 +97,8 @@
                 <SnapshotsView />
               {:else if activeTab === "profiles"}
                 <ProfileManager />
+              {:else if activeTab === "settings"}
+                <SettingsView />
               {:else if activeTab === "manual-tests"}
                 <ManualTestsView />
               {:else if currentCategoryTab}

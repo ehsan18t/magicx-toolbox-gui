@@ -1,14 +1,7 @@
 <script lang="ts">
   import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
   import { LogsPanel, TitleBar } from "$lib/components/layout";
-  import {
-    AboutModal,
-    ConfirmHost,
-    ProfileExportModal,
-    ProfileImportModal,
-    SettingsModal,
-    UpdateModal,
-  } from "$lib/components/modals";
+  import { AboutModal, ConfirmHost, ProfileExportModal, ProfileImportModal, UpdateModal } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
@@ -128,7 +121,6 @@
 </div>
 
 <AboutModal />
-<SettingsModal />
 <UpdateModal />
 <ProfileExportModal />
 <ProfileImportModal />

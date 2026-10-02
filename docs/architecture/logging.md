@@ -2,7 +2,7 @@
 
 The app keeps one on-device log. Every line is redacted as it is recorded, kept in an in-memory session buffer that the Logs panel reads, and, unless the user turns saving off, written to a session file on this PC. Nothing is uploaded; the only way a log leaves the PC is Export diagnostics, which the user starts. The TrustedInstaller helper's lines come back inside its response and join the same log.
 
-Code: `src-tauri/src/logging/` (`mod.rs` the global logger and its control state, `pipeline.rs` the record pipeline, `redact.rs`, `files.rs` the session files, `settings.rs`, `panic.rs`, `collector.rs` the helper's logger and the parent's re-log), `src-tauri/src/commands/logging.rs`, `src-tauri/src/services/elevation/broker.rs`, `src/lib/stores/logs.svelte.ts`, `src/lib/components/layout/LogsPanel.svelte`, `src/lib/components/modals/SettingsModal.svelte` (Diagnostics), `src/lib/utils/logger.ts`. Related decision: [ADR-0010](../adr/0010-logs-are-local-redacted-at-write-and-opt-out-stops-disk-writes.md).
+Code: `src-tauri/src/logging/` (`mod.rs` the global logger and its control state, `pipeline.rs` the record pipeline, `redact.rs`, `files.rs` the session files, `settings.rs`, `panic.rs`, `collector.rs` the helper's logger and the parent's re-log), `src-tauri/src/commands/logging.rs`, `src-tauri/src/services/elevation/broker.rs`, `src/lib/stores/logs.svelte.ts`, `src/lib/components/layout/LogsPanel.svelte`, `src/lib/components/views/SettingsView.svelte` (Diagnostics), `src/lib/utils/logger.ts`. Related decision: [ADR-0010](../adr/0010-logs-are-local-redacted-at-write-and-opt-out-stops-disk-writes.md).
 
 ## The record pipeline
 

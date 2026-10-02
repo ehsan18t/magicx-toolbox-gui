@@ -3,7 +3,7 @@
   import { Icon } from "$lib/components/shared";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { sidebarStore } from "$lib/stores/layout.svelte";
-  import { openAboutModal, openSettingsModal, openUpdateModal } from "$lib/stores/modal.svelte";
+  import { openAboutModal, openUpdateModal } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { categoriesStore, getCategoryStats, pendingChangesStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
@@ -39,9 +39,16 @@
       icon: "mdi:update",
       open: openUpdateModal,
       dot: updateStore.isAvailable,
+      active: false,
     },
-    { label: "Settings", icon: "mdi:cog-outline", open: openSettingsModal, dot: false },
-    { label: "About", icon: "mdi:information-outline", open: openAboutModal, dot: false },
+    {
+      label: "Settings",
+      icon: "mdi:cog-outline",
+      open: () => navigationStore.navigateToTab("settings"),
+      dot: false,
+      active: activeTab === "settings",
+    },
+    { label: "About", icon: "mdi:information-outline", open: openAboutModal, dot: false, active: false },
   ]);
 
   function handleKeydown(e: KeyboardEvent) {
@@ -173,10 +180,11 @@
       {#each footerItems as item (item.label)}
         <button
           type="button"
-          class="relative flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground {isOpen
+          class="relative flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-muted hover:text-foreground {isOpen
             ? 'flex-1'
-            : 'w-full'}"
+            : 'w-full'} {item.active ? 'bg-muted text-accent' : 'text-foreground-muted'}"
           aria-label={item.label}
+          aria-current={item.active ? "page" : undefined}
           use:tooltip={item.label}
           onclick={() => {
             sidebarStore.closeOverlay();

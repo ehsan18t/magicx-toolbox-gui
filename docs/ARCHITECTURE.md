@@ -102,10 +102,10 @@ src/lib/components/
 │   ├── GroupedTweakList.svelte  # Rows grouped by category (Favorites, Snapshots)
 │   ├── AppRow.svelte            # One app item as a row
 │   └── details/                 # Registry, service, scheduler, hosts, firewall change items; CommandList
-├── views/                # Overview, Category, Search, Favorites, Snapshots, Manual Tests
+├── views/                # Overview, Category, Search, Favorites, Snapshots, Settings, Manual Tests
 ├── layout/               # TitleBar (search box, Ctrl+K), Sidebar (navigation pane), LogsPanel, PageLayout
 ├── feedback/             # PendingBar (staged changes, Apply, Discard), RebootBanner, ApplyingOverlay, toasts
-├── modals/               # About, Settings (theme and accent under Appearance), Update, profile dialogs, ConfirmDialog
+├── modals/               # About, Update, profile dialogs, ConfirmDialog
 ├── profile/              # ProfileManager
 ├── settings/             # ThemeToggle, ColorSchemePicker
 └── shared/               # Icon, ExternalLink, MarkdownText

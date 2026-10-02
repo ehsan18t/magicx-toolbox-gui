@@ -1,7 +1,7 @@
 // Modal state store for managing modal visibility
 // Using Svelte 5 runes for reactive state
 
-export type ModalType = "about" | "settings" | "update" | "profileExport" | "profileImport" | null;
+export type ModalType = "about" | "update" | "profileExport" | "profileImport" | null;
 
 // Reactive state
 let currentModal = $state<ModalType>(null);
@@ -32,10 +32,6 @@ export const modalStore = {
 // Convenience functions
 export function openAboutModal() {
   modalStore.open("about");
-}
-
-export function openSettingsModal() {
-  modalStore.open("settings");
 }
 
 export function openUpdateModal() {

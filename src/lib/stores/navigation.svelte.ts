@@ -126,6 +126,7 @@ const isOnCategoryTab = $derived(
     activeTab !== "favorites" &&
     activeTab !== "snapshots" &&
     activeTab !== "profiles" &&
+    activeTab !== "settings" &&
     activeTab !== "manual-tests",
 );
 

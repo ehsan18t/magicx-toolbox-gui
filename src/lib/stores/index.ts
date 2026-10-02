@@ -24,7 +24,6 @@ export {
   openAboutModal,
   openProfileExportModal,
   openProfileImportModal,
-  openSettingsModal,
   openUpdateModal,
   type ModalType,
 } from "./modal.svelte";
