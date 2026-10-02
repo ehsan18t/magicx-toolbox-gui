@@ -116,6 +116,10 @@ explicitly with `cargo test -- --ignored`.
 - No direct `fetch` to local files — go through Tauri commands. External links use the `ExternalLink`
   component. Include aria labels, keep focus styles, and don't block the UI on long-running calls.
 - After editing a component, the official Svelte MCP `svelte-autofixer` is the expected check.
+- **Motion and z-index are tokens** (`@theme static` in `src/app.css`, `docs/ARCHITECTURE.md` § Motion): no
+  literal `duration-150`, `ms`, `cubic-bezier` or `z-1000`. Enter-only motion is an `animate-*` class; exit or
+  height motion uses `$lib/utils/motion` presets, never `svelte/transition` directly (those ignore reduced
+  motion). Never animate per item in lists that re-render on keystrokes or rescans.
 
 ## Safety model & ADRs — `docs/adr/`
 

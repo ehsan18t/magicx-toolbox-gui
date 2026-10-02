@@ -111,7 +111,15 @@ src/lib/components/
 └── shared/               # Icon, ExternalLink, MarkdownText
 ```
 
-The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. The Logs panel docks under the content and is rendered by `src/routes/+layout.svelte`, so it is reachable from error screens too. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.
+The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. The Logs panel docks under the content column, beside the navigation pane rather than under it. `src/routes/+page.svelte` renders it, and the error screens of `+page.svelte` and `+layout.svelte` render their own, so it stays reachable when loading fails. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.
+
+### Motion
+
+Motion follows Windows 11 Fluent timing: entrances decelerate, exits accelerate and run one step faster, and nothing waits on an animation before taking input. Every timing value is a token in the `@theme static` block of `src/app.css`: durations (`fast` 100ms for hover and press, `normal` 150ms for small elements and toggles, `slow` 200ms for pages, dialogs and toasts, `slower` 300ms for progress values), delays (`reveal`, `settle`, `tooltip`, `feedback`), easing curves, travel distances and the z-index layers. Tailwind turns them into utilities such as `duration-normal`, `ease-out`, `animate-rise-in` and `z-modal`.
+
+Use a CSS class (`animate-fade-in`, `animate-rise-in`, `animate-pop-in`, `animate-reveal`) for an element that only animates in. Use the presets in `src/lib/utils/motion.ts` (`fade`, `shift`, `pop`, `expand`, and `reflow` for `animate:`) when Svelte has to keep an element mounted for its exit or measure its height. The presets read the same tokens at runtime, and they honour the Windows "Animation effects" setting (`prefers-reduced-motion`), which Svelte's own transitions would otherwise ignore. A timer that has to match an animation reads `duration()` or `delay()` from that module, never a number.
+
+Lists that change on every keystroke or status rescan (tweak rows, search results, log lines) never animate per item; their container fades in once when it first appears. A control repeated on every row pays nothing at mount: the segmented switch draws its selection as a CSS pseudo-element, and only the switch that changes runs `glide()` to slide it over. A per-row observer or anchor-positioned thumb measured about 75% slower page mounts.
 
 ---
 
