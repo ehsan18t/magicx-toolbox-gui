@@ -233,6 +233,20 @@ impl Value {
             Value::Present(_) => "a presence",
         }
     }
+
+    /// A read-back that did not match `driven`, by kind only: "a different REG_DWORD value" when
+    /// the kinds agree.
+    pub fn read_back_kind(&self, driven: &Value) -> std::borrow::Cow<'static, str> {
+        let kind = self.kind();
+        if kind != driven.kind() {
+            return kind.into();
+        }
+        match (self, kind.strip_prefix("a ")) {
+            (Value::Reg(_), _) => format!("a different {kind} value").into(),
+            (_, Some(noun)) => format!("a different {noun}").into(),
+            _ => kind.into(),
+        }
+    }
 }
 
 /// The text of a `cmd`/`powershell` script, resolved at build time (inline or filed — spec §7

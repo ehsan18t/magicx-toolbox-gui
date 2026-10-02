@@ -70,7 +70,7 @@ pub enum EngineError {
     ResourceMissing(EffectId),
 
     /// Step 4: a Setting's read-back did not match what was driven (invariant 2).
-    #[error("effect '{effect}' verify mismatch: drove {}, read back {}", .expected.kind(), .actual.kind())]
+    #[error("effect '{effect}' verify mismatch: drove {}, read back {}", .expected.kind(), .actual.read_back_kind(.expected))]
     VerifyMismatch {
         effect: EffectId,
         expected: Value,

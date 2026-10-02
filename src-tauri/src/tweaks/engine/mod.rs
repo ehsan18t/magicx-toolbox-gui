@@ -1045,6 +1045,47 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_verify_mismatch_of_one_kind_says_the_value_differed() {
+        use crate::tweaks::model::TypedRegValue;
+        let engine = |expected, actual| {
+            EngineError::VerifyMismatch {
+                effect: EffectId("e".into()),
+                expected,
+                actual,
+            }
+            .to_string()
+        };
+        assert_eq!(
+            engine(
+                Value::Reg(TypedRegValue::Dword(4242)),
+                Value::Reg(TypedRegValue::Dword(1717))
+            ),
+            "effect 'e' verify mismatch: drove REG_DWORD, read back a different REG_DWORD value"
+        );
+        assert_eq!(
+            engine(
+                Value::Startup(StartupType::Disabled),
+                Value::Startup(StartupType::Manual)
+            ),
+            "effect 'e' verify mismatch: drove a startup type, read back a different startup type"
+        );
+        assert!(engine(Value::TaskEnabled(false), Value::TaskEnabled(true))
+            .ends_with("drove a task state, read back a different task state"));
+        assert!(engine(Value::Present(false), Value::Present(true))
+            .ends_with("drove a presence, read back a different presence"));
+        let claim = ClaimsError::VerifyMismatch {
+            shared_id: "s".into(),
+            expected: Value::Reg(TypedRegValue::Sz("4242".into())),
+            actual: Value::Reg(TypedRegValue::Sz("1717".into())),
+        }
+        .to_string();
+        assert_eq!(
+            claim,
+            "shared 's' drove to REG_SZ but read back a different REG_SZ value"
+        );
+    }
+
     /// The Needs Attention record is persisted and then printed verbatim in the card tooltip and the
     /// details modal, so it is held to the error channel's rule: the structure around the failure,
     /// never the text the failure came with.
