@@ -206,7 +206,7 @@
 {#if isVisible}
   <div
     class="fixed inset-0 z-1000 flex items-center justify-center p-4
-      {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/40'}"
+      backdrop-blur-xs {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/40'}"
     role="presentation"
     onclick={handleBackdropClick}
   >
