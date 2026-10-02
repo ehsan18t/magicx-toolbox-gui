@@ -8,24 +8,15 @@
 
     <script>
       (function () {
-        // Hardcoded theme config to avoid "ReferenceError: __APP_CONFIG__ is not defined"
-        // if Vite replacement fails in HTML.
-        const config = {
-          default: "dark",
-          storageKey: "theme",
-          followSystem: true,
-        };
-
-        const storedTheme = localStorage.getItem(config.storageKey);
-
-        if (storedTheme) {
-          document.documentElement.setAttribute("data-theme", storedTheme);
-        } else if (config.followSystem) {
-          const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          document.documentElement.setAttribute("data-theme", systemPrefersDark ? "dark" : "light");
-        } else {
-          document.documentElement.setAttribute("data-theme", config.default);
+        // Mirrors theme.svelte.ts: the stored theme is JSON, and anything else follows the system.
+        let theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        try {
+          const stored = JSON.parse(localStorage.getItem("theme"));
+          if (stored === "light" || stored === "dark") theme = stored;
+        } catch {
+          // Unreadable storage follows the system.
         }
+        document.documentElement.setAttribute("data-theme", theme);
 
         // Mirrors COLOR_SCHEMES in colorScheme.svelte.ts: the saved accent applies before first paint.
         const schemes = {
