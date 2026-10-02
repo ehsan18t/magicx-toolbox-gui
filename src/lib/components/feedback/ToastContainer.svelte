@@ -64,6 +64,19 @@
             <div class="text-xs font-medium text-foreground-muted">{toast.tweakName}</div>
           {/if}
           <div class="text-sm text-foreground">{toast.message}</div>
+          {#if toast.action}
+            {@const action = toast.action}
+            <button
+              type="button"
+              class="mt-1.5 cursor-pointer rounded border-0 bg-transparent p-0 text-sm font-medium text-accent underline-offset-2 hover:underline"
+              onclick={() => {
+                action.run();
+                dismiss(toast.id);
+              }}
+            >
+              {action.label}
+            </button>
+          {/if}
         </div>
         <button
           class="shrink-0 cursor-pointer rounded border-0 bg-transparent p-1 text-foreground-muted transition-colors hover:bg-surface hover:text-foreground"

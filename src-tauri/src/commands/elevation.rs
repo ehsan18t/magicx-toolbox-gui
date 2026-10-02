@@ -53,10 +53,15 @@ fn launch_elevated() -> Result<()> {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
-    let params: Vec<u16> = OsStr::new(crate::services::single_instance::AFTER_RESTART_ARG)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
+    // The elevated instance may run under another account, whose own settings file would apply.
+    let [persist, detailed] = crate::logging::restart_args();
+    let params: Vec<u16> = OsStr::new(&format!(
+        "{} {persist} {detailed}",
+        crate::services::single_instance::AFTER_RESTART_ARG
+    ))
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect();
 
     // SAFETY: ShellExecuteW is called with valid null-terminated wide strings.
     // The operation is "runas" which triggers UAC elevation. Return value > 32

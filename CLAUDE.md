@@ -96,6 +96,14 @@ explicitly with `cargo test -- --ignored`.
   a benign-looking value. Registry reads must distinguish *not-found* from *access-denied*. Never
   `let _ =` a privileged call.
 
+### Logging — `src-tauri/src/logging/` (ADR-0010, `docs/architecture/logging.md`)
+
+- Redaction lives in the logger: every line is redacted before the ring, the panel, the file or an export. Don't redact at call sites, and never log values read from the user's registry, hosts file or other files (redaction knows paths and names, not data).
+- `get_log_tail` (polled) and `log_frontend` (itself a log line) are the only commands exempt from log-at-entry.
+- Never call `log::` from inside `logging/`: the re-entrancy guard silently drops it. Nothing there may panic.
+- The stderr echo in `pipeline.rs` runs only in debug builds; it and the broker child's panic hook are the only sanctioned stderr writes.
+- The broker child never redacts or writes files: its lines return in the response and the parent re-logs them only after validation. Never log the broker command line (temp paths).
+
 ## Frontend (Svelte 5) — `src/`
 
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`) — never legacy `export let`, and never `$store`

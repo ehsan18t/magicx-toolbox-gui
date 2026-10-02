@@ -44,7 +44,7 @@ src/lib/stores/
 ├── layout.svelte.ts      # Sidebar expanded/pinned state (sidebarStore)
 ├── colorScheme.svelte.ts # Accent color scheme selection
 ├── settings.svelte.ts    # App settings with localStorage persistence
-├── debug.svelte.ts       # Debug panel and logging state
+├── logs.svelte.ts        # Logs panel lines, polling, logging settings and export
 ├── navigation.svelte.ts  # Tab navigation state
 ├── update.svelte.ts      # Update checking state
 ├── tweakDetailsModal.svelte.ts # Tweak details modal state
@@ -61,7 +61,7 @@ src/lib/stores/
 - `sidebarStore` - Sidebar expanded/pinned state
 - `colorSchemeStore` - Accent color scheme selection
 - `settingsStore` - App settings with localStorage persistence
-- `debugState` - Debug panel and logging state
+- `logsStore` - Logs panel lines, polling, logging settings and export
 - `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
 - `updateStore` - Update info and checking state
 - `tweakDetailsModalStore` - Tweak details modal state
@@ -300,6 +300,12 @@ per effect), with atomic rollback on any failure (see [apply-and-restore.md](./a
 - Admin privilege check
 - CPU/RAM information
 
+### 9. `logging` - On-device logger
+- One `log::Log` implementation installed first thing in `run()`: every line is redacted before it reaches the in-memory session buffer (2000 lines, read by the Logs panel), the session file, or an export
+- Session files in `%LOCALAPPDATA%\me.ehsankhan.magicx-toolbox\logs`, size-capped and pruned to the newest 10 within 10 MiB; "Save logs on this PC" off stops disk writes only (ADR-0010)
+- The TrustedInstaller child's log lines come back inside its response and are re-logged by the app under the `helper` source
+- See [architecture/logging.md](./architecture/logging.md) for the full reference
+
 ---
 
 ## Commands (Tauri IPC)
@@ -333,7 +339,18 @@ per effect), with atomic rollback on any failure (see [apply-and-restore.md](./a
 | --------------------- | --------------------------------------------- |
 | `get_system_info()`   | Get Windows version, admin status, build info |
 | `get_categories()`    | Get all tweak categories                      |
-| `toggle_debug_mode()` | Enable/disable debug logging                  |
+
+### Logging Operations (`commands/logging.rs`)
+| Command                               | Description                                                        |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `get_log_tail(since)`                 | Session buffer lines after `since`, plus how many were evicted     |
+| `log_frontend(level, message)`        | Record an interface error in the session log                       |
+| `get_log_settings()`                  | Saving, Detailed, logs folder, file count and size, any problem    |
+| `set_log_settings(persist, detailed)` | Save and apply the logging settings; returns the effective state   |
+| `export_diagnostics()`                | Write one redacted diagnostics text file where the user chooses    |
+| `reveal_last_export()`                | Show the last exported file in Explorer                            |
+| `open_log_folder()`                   | Open the logs folder                                               |
+| `delete_logs()`                       | Delete the saved session files no running process is writing      |
 
 ---
 
@@ -381,6 +398,8 @@ build-time and runtime validation are the same code, so schema drift is a compil
 | `src-tauri/src/services/`               | Reused low-level primitives + the elevation broker    |
 | `src-tauri/src/models/`                 | Data structures                                       |
 | `snapshots/` (next to the executable)   | Per-tweak snapshot history + per-machine claims files |
+| `src-tauri/src/logging/`                | On-device logger, redaction, session files, logging settings |
+| `%LOCALAPPDATA%\me.ehsankhan.magicx-toolbox\logs` | Session log files (`magicx-YYYYMMDD-HHMMSS-<pid>.log`); `logging.json` sits one folder up |
 
 ### Tweak Engine Module Structure
 
@@ -404,6 +423,7 @@ src-tauri/src/tweaks/
 2. **Snapshot integrity**: a snapshot is deleted only by a verified restore or explicit consent; invalid entries are kept and surfaced (ADR-0002)
 3. **Atomic rollback**: any apply failure restores the captured state; an incomplete rollback surfaces as **Needs Attention**, never hidden (ADR-0001)
 4. **No remote code**: All tweaks are compiled into the binary; no external downloads
+5. **Local logs**: logs never leave the PC on their own; personal details are redacted before any line is stored, and the user exports a diagnostics file deliberately (ADR-0010)
 
 ---
 

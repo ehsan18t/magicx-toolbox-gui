@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::commands::logging::log_outcome;
 use crate::error::{Error, Result};
 use crate::services::system_info_service;
 use crate::services::ti_probe;
@@ -72,6 +73,26 @@ impl TweakEngineState {
         self.report_unreachable_records(corpus);
     }
 
+    /// Tweak ids only, never values: Needs Attention records, then snapshot history.
+    pub(crate) fn diagnostics_lines(&self) -> Vec<String> {
+        let corpus = compiled_corpus();
+        let build = running_winver().build;
+        let attention = match self.snapshots.recorded_tweaks() {
+            Ok(ids) => ids.join(", "),
+            Err(e) => format!("could not be read ({e})"),
+        };
+        let history = history_line(corpus.tweaks.iter().map(|t| {
+            let listed = self
+                .snapshots
+                .list(&t.id, corpus, self.machine_guid.as_deref(), build);
+            (t.id.as_str(), listed.map(|entries| !entries.is_empty()))
+        }));
+        vec![
+            format!("Needs Attention: {attention}"),
+            format!("Snapshot history: {history}"),
+        ]
+    }
+
     /// A record naming a tweak this build no longer defines has no card to badge and no clear path,
     /// so it is named once here. Never deleted: ADR-0002 releases user data on consent alone.
     fn report_unreachable_records(&self, corpus: &Corpus) {
@@ -94,6 +115,29 @@ impl TweakEngineState {
             );
         }
     }
+}
+
+/// An unreadable history is named, never dropped as "no history"; the class carries no path.
+fn history_line<'a>(
+    listed: impl IntoIterator<Item = (&'a str, std::result::Result<bool, SnapshotError>)>,
+) -> String {
+    let named: Vec<String> = listed
+        .into_iter()
+        .filter_map(|(id, has_entries)| match has_entries {
+            Ok(true) => Some(id.to_owned()),
+            Ok(false) => None,
+            Err(e) => {
+                let class = match e {
+                    SnapshotError::Io(io) => io.kind().to_string(),
+                    SnapshotError::ExeDir => "no app folder".to_owned(),
+                    SnapshotError::Corrupt { .. } => "corrupt".to_owned(),
+                    _ => "inconsistent".to_owned(),
+                };
+                Some(format!("{id} (unreadable: {class})"))
+            }
+        })
+        .collect();
+    named.join(", ")
 }
 
 // Zero-sized, stateless dispatchers (see their own docs: "trivially Send + Sync and cheap to
@@ -1256,6 +1300,20 @@ pub(crate) async fn restore_gated(
     .await
 }
 
+/// For the outcome line: the state a tweak was left in.
+fn state_summary(status: &TweakStatusView) -> String {
+    let state = match &status.state {
+        TweakStateView::Active { option } => format!("active '{option}'"),
+        TweakStateView::SystemDefault => "system default".into(),
+        TweakStateView::Unavailable { .. } => "unavailable".into(),
+        TweakStateView::Unknown { .. } => "unknown".into(),
+    };
+    match status.attention {
+        Some(_) => format!("{state}, needs attention"),
+        None => state,
+    }
+}
+
 #[tauri::command]
 pub async fn apply_tweak(
     app: AppHandle,
@@ -1263,19 +1321,36 @@ pub async fn apply_tweak(
     option_label: String,
 ) -> Result<ApplyOutcomeView> {
     log::info!("apply_tweak: '{tweak_id}' -> '{option_label}'");
-    let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
-    apply_gated(app, tweak, option_label)
-        .await?
-        .map_err(|e| map_engine_err(&tweak.id, Phase::Apply, e))
+    let (started, what) = (
+        std::time::Instant::now(),
+        format!("apply '{tweak_id}' -> '{option_label}'"),
+    );
+    let result = async {
+        let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
+        apply_gated(app, tweak, option_label)
+            .await?
+            .map_err(|e| map_engine_err(&tweak.id, Phase::Apply, e))
+    }
+    .await;
+    log_outcome(&what, started, &result, |v| state_summary(&v.status));
+    result
 }
 
 #[tauri::command]
 pub async fn restore_tweak(app: AppHandle, tweak_id: String) -> Result<RestoreOutcomeView> {
     log::info!("restore_tweak: '{tweak_id}'");
-    let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
-    restore_gated(app, tweak)
-        .await?
-        .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
+    let started = std::time::Instant::now();
+    let result = async {
+        let tweak = find_tweak(compiled_corpus(), &tweak_id)?;
+        restore_gated(app, tweak)
+            .await?
+            .map_err(|e| map_engine_err(&tweak.id, Phase::Restore, e))
+    }
+    .await;
+    log_outcome(&format!("restore '{tweak_id}'"), started, &result, |v| {
+        state_summary(&v.status)
+    });
+    result
 }
 
 /// One tweak's fresh status, so a failed apply or restore shows the Needs Attention it left.
@@ -1395,21 +1470,32 @@ fn release_snapshot(
 #[tauri::command]
 pub async fn keep_current_state(app: AppHandle, tweak_id: String) -> Result<TweakStatusView> {
     log::info!("keep_current_state: '{tweak_id}'");
-    let corpus = compiled_corpus();
-    let tweak = find_tweak(corpus, &tweak_id)?;
-    // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
-    run_locked(&tweak_id, move || {
-        let state = app.state::<TweakEngineState>();
-        release_snapshot(
-            &state.snapshots,
-            &tweak.id,
-            corpus,
-            state.machine_guid.as_deref(),
-            running_winver().build,
-        )?;
-        Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
-    })
-    .await
+    let started = std::time::Instant::now();
+    let result = async {
+        let corpus = compiled_corpus();
+        let tweak = find_tweak(corpus, &tweak_id)?;
+        // Serialized with the tweak's apply/restore on its snapshot head (ADR-0002); refused mid-exit.
+        run_locked(&tweak_id, move || {
+            let state = app.state::<TweakEngineState>();
+            release_snapshot(
+                &state.snapshots,
+                &tweak.id,
+                corpus,
+                state.machine_guid.as_deref(),
+                running_winver().build,
+            )?;
+            Ok(scan_one(tweak, corpus, &build_deps(state.inner())).status)
+        })
+        .await
+    }
+    .await;
+    log_outcome(
+        &format!("keep current state '{tweak_id}'"),
+        started,
+        &result,
+        state_summary,
+    );
+    result
 }
 
 #[tauri::command]
@@ -1439,6 +1525,17 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
+
+    #[test]
+    fn an_unreadable_snapshot_history_is_named_in_the_diagnostics() {
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let line = history_line([
+            ("kept", Ok(true)),
+            ("none", Ok(false)),
+            ("locked", Err(SnapshotError::Io(denied))),
+        ]);
+        assert_eq!(line, "kept, locked (unreadable: permission denied)");
+    }
 
     // --- minimal mocks (mirrors engine::apply's own test-harness pattern; kept local since those
     // fixtures are `#[cfg(test)]`-private to that module) ---------------------------------------

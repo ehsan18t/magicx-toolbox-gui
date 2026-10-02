@@ -80,10 +80,12 @@ pub(crate) fn probe_reads_hkcu(effect: &EffectDef) -> bool {
 /// structurally, by inspecting the `Setting`'s own `RegAddr`/`KeyAddr.hive` field -- not by any
 /// separate flag. `corpus` is needed only to resolve an `Effect::Shared` to the block it names.
 pub fn route(effect: &EffectDef, tweak: &Tweak, corpus: &Corpus) -> ExecCx {
-    if effect_is_hkcu(effect, corpus) {
-        return ExecCx::new(Level::User);
-    }
-    ExecCx::new(effective_level(tweak.elevation, effect.elevation))
+    let level = if effect_is_hkcu(effect, corpus) {
+        Level::User
+    } else {
+        effective_level(tweak.elevation, effect.elevation)
+    };
+    ExecCx::new(level).for_effect(&effect.id)
 }
 
 /// Routes one effect's READ to its execution context (spec §9, invariant 24: "reads run at

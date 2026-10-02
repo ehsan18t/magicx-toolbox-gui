@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::error::Error;
 use crate::services::appx_index::{AppxIndex, AppxLookup};
 use crate::services::system_info_service;
-use crate::tweaks::kinds::action::run_script;
+use crate::tweaks::kinds::action::{run_script, ScriptRun};
 use crate::tweaks::model::{InstallSource, Shell};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -41,7 +41,7 @@ pub(crate) trait Machine: Sync {
     fn elevated(&self) -> bool;
     fn appx(&self, packages: &[String]) -> Result<AppxLookup, Error>;
     fn invalidate(&self);
-    fn powershell(&self, body: &str, timeout: Duration) -> Result<i32, Error>;
+    fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error>;
     fn winget_available(&self) -> bool;
     fn store_available(&self) -> bool;
 }
@@ -85,7 +85,7 @@ impl Machine for RealMachine<'_> {
         self.0.appx.invalidate();
     }
 
-    fn powershell(&self, body: &str, timeout: Duration) -> Result<i32, Error> {
+    fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
         run_script(Shell::PowerShell, body, timeout)
             .map_err(|e| Error::CommandExecution(e.to_string()))
     }
@@ -191,12 +191,15 @@ pub(crate) mod fake {
         fn invalidate(&self) {
             self.invalidations.fetch_add(1, Ordering::SeqCst);
         }
-        fn powershell(&self, body: &str, timeout: Duration) -> Result<i32, Error> {
+        fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
             self.scripts
                 .lock()
                 .unwrap()
                 .push((body.to_string(), timeout));
-            next(&self.exits)
+            next(&self.exits).map(|code| ScriptRun {
+                code,
+                tail: String::new(),
+            })
         }
         fn winget_available(&self) -> bool {
             self.winget

@@ -139,14 +139,8 @@
 
   // Tabler Icons
   import TablerAppWindow from "~icons/tabler/app-window";
-  import TablerArrowBarToDown from "~icons/tabler/arrow-bar-to-down";
-  import TablerAlertTriangle from "~icons/tabler/alert-triangle";
-  import TablerBug from "~icons/tabler/bug";
-  import TablerCircleCheck from "~icons/tabler/circle-check";
-  import TablerCircleX from "~icons/tabler/circle-x";
   import TablerCopy from "~icons/tabler/copy";
-  import TablerFileSearch from "~icons/tabler/file-search";
-  import TablerInfoCircle from "~icons/tabler/info-circle";
+  import TablerFileText from "~icons/tabler/file-text";
   import TablerLoader2 from "~icons/tabler/loader-2";
   import TablerMinus from "~icons/tabler/minus";
   import TablerMoon from "~icons/tabler/moon";
@@ -154,7 +148,6 @@
   import TablerShieldUp from "~icons/tabler/shield-up";
   import TablerShieldX from "~icons/tabler/shield-x";
   import TablerSun from "~icons/tabler/sun";
-  import TablerTrash from "~icons/tabler/trash";
   import TablerX from "~icons/tabler/x";
 
   // Fluent Icons
@@ -290,11 +283,7 @@
     "mdi:widgets": MdiWidgets,
 
     // Tabler icons
-    "tabler:bug": TablerBug,
-    "tabler:arrow-bar-to-down": TablerArrowBarToDown,
-    "tabler:trash": TablerTrash,
     "tabler:x": TablerX,
-    "tabler:file-search": TablerFileSearch,
     "tabler:app-window": TablerAppWindow,
     "tabler:shield-check-filled": TablerShieldCheckFilled,
     "tabler:shield-x": TablerShieldX,
@@ -303,11 +292,8 @@
     "tabler:moon": TablerMoon,
     "tabler:sun": TablerSun,
     "tabler:copy": TablerCopy,
+    "tabler:file-text": TablerFileText,
     "tabler:minus": TablerMinus,
-    "tabler:info-circle": TablerInfoCircle,
-    "tabler:alert-triangle": TablerAlertTriangle,
-    "tabler:circle-x": TablerCircleX,
-    "tabler:circle-check": TablerCircleCheck,
 
     // Fluent icons
     "fluent:minimize-20-filled": MdiMinimize20Filled,

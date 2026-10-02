@@ -40,6 +40,14 @@ MagicX Toolbox is a modern, safe, and easy-to-use application designed to help y
 3. **Apply**: Toggle the switch to apply a tweak. The app will automatically create a restore point.
 4. **Revert**: If you change your mind, simply toggle the switch off to revert the change or restore a snapshot from the "Backups" section.
 
+## Reporting a problem
+
+1. Press **Export diagnostics**, either in the Logs panel (the Logs button in the title bar) or in **Settings > Diagnostics**, and save the file.
+2. Open the file and check it before sharing. Personal details such as your user folder, account name, computer name and Windows account ID are replaced with placeholders, but read it anyway.
+3. [Open an issue on GitHub](https://github.com/ehsan18t/magicx-toolbox-gui/issues), describe what happened, and attach the file.
+
+Logs stay on your PC and nothing is uploaded. To stop saving them to disk, turn off **Save logs on this PC** in **Settings > Diagnostics**. If you are asked for more detail, turn on **Detailed logging** there, repeat what went wrong, and export again.
+
 ---
 
 ## For Developers and Contributors

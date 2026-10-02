@@ -26,7 +26,7 @@ pub mod task;
 
 use crate::error::Error as BackendError;
 use crate::services::elevation::{AcquireReason, OpFailureClass};
-use crate::tweaks::model::{Level, RegType, Setting, Value};
+use crate::tweaks::model::{EffectId, Level, RegType, Setting, Value};
 use crate::tweaks::parse::ParseError;
 
 /// Errors an [`EffectKind`] can return. Every case a caller must act on differently gets its own
@@ -129,15 +129,29 @@ pub enum Error {
 /// decision is made (not here).
 pub struct ExecCx {
     level: Level,
+    effect: Option<EffectId>,
 }
 
 impl ExecCx {
     pub fn new(level: Level) -> Self {
-        Self { level }
+        Self {
+            level,
+            effect: None,
+        }
+    }
+
+    /// Names the effect in a failing script's log line.
+    pub fn for_effect(mut self, effect: &EffectId) -> Self {
+        self.effect = Some(effect.clone());
+        self
     }
 
     pub fn level(&self) -> Level {
         self.level
+    }
+
+    pub fn effect(&self) -> Option<&EffectId> {
+        self.effect.as_ref()
     }
 }
 

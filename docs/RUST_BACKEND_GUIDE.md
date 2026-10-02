@@ -112,27 +112,22 @@ Handles one-time initialization when the app starts:
 
 ```rust
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(debug_assertions)]
-    {
-        // Setup logging for development
-        let log_plugin = LogBuilder::new()
-            .targets([
-                Target::new(TargetKind::Webview),
-                Target::new(TargetKind::Stdout),
-                Target::new(TargetKind::LogDir { file_name: None }),
-            ])
-            .level(log::LevelFilter::Info)
-            .build();
-        app.handle().plugin(log_plugin)?;
+    match app.path().app_local_data_dir() {
+        Ok(dir) => crate::logging::start(dir),
+        Err(e) => log::warn!("app data folder unavailable ({e}); logs stay in memory"),
     }
+    let tweak_state = TweakEngineState::new()?;
+    tweak_state.scan_startup_crash_residue();
+    app.manage(tweak_state);
+    app.manage(AppsState::new());
     Ok(())
 }
 ```
 
 **Key Points:**
 - Only runs once when the application starts
-- Perfect place for database connections, configuration loading, etc.
-- The example sets up logging for debug builds
+- The logger itself is installed earlier, first thing in `run()`, and keeps lines in memory until `logging::start` reads the logging settings and attaches the session file
+- Managed state (the tweak engine, app items) is created here
 
 ## 🚀 Working with Commands
 
@@ -296,7 +291,7 @@ Rust and JavaScript types are automatically converted:
 
 ### Using Logs
 
-The template includes logging setup. Use these macros in your Rust code:
+The app has its own logger (`src/logging/`, see [architecture/logging.md](./architecture/logging.md)). Use the `log` crate's macros, never `println!` or `eprintln!`:
 
 ```rust
 log::error!("Something went wrong: {}", error_message);
@@ -305,10 +300,17 @@ log::info!("Operation completed: {}", details);
 log::debug!("Debug info: {:?}", complex_data);
 ```
 
+- Info and above are recorded by default; Debug only with Detailed logging on (Settings > Diagnostics) or in a debug build.
+- Records from other crates are kept only at Warn and above.
+- Every line is redacted (profile and app data paths, account and computer names, SIDs, the MachineGuid, email addresses) before it is stored, but never log values read from the user's registry or files: redaction does not know them.
+- Every command logs at entry, except `get_log_tail` and `log_frontend`.
+- Never call `log::` from inside `src/logging/`: the logger drops a record raised while it is running.
+
 ### Viewing Logs
 
-- **Development:** Logs appear in your terminal and browser console
-- **Production:** Logs are written to files in the app's log directory
+- **Development:** a debug build also echoes every line to the terminal running `pnpm tauri dev`
+- **In the app:** the Logs button in the title bar shows this session's lines
+- **On disk:** session files in `%LOCALAPPDATA%\me.ehsankhan.magicx-toolbox\logs`, one per run, unless "Save logs on this PC" is off; Export diagnostics bundles them into one text file
 
 ### Common Debugging Scenarios
 

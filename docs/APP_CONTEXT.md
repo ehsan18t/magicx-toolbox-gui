@@ -17,7 +17,8 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 - Press Restore to return to the most recent snapshot; each Restore steps one entry further back.
 - Display Windows/system/hardware details.
 - Check for GitHub releases and launch official installers.
-- Debug panel and progress/toast feedback for long operations.
+- Progress and toast feedback for long operations.
+- An on-device log: the Logs panel in the title bar shows this session, Settings > Diagnostics controls saving and Detailed logging, and Export diagnostics writes one redacted text file for a bug report. Nothing is uploaded (ADR-0010, `docs/architecture/logging.md`).
 
 ## Tweak System
 
@@ -69,6 +70,8 @@ The profile system (`.mgx` export/import) was removed in the current build and i
 - `src-tauri/src/tweaks/shared_claims.rs`: refcounted claims on shared blocks (ADR-0006).
 - `src-tauri/src/services/registry_value.rs`: canonical registry JSON parsing, writing, and comparison.
 - `src-tauri/src/services/elevation/`: TrustedInstaller execution through the typed broker.
+- `src-tauri/src/logging/`: the on-device logger (redaction, session buffer, session files, logging settings, the broker child's log collector).
+- `src-tauri/src/commands/logging.rs`: Logs panel and Diagnostics commands.
 - `src-tauri/src/services/system_info_service.rs`: lightweight runtime context and full WMI-backed system information.
 
 ## Frontend Map

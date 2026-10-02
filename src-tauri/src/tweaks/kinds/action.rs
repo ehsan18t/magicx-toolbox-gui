@@ -1,54 +1,19 @@
-//! `ActionKind`: apply/undo/probe for imperative `Action` effects (spec §5.5/§7), meaning free-form
-//! `cmd`/`powershell` scripts plus the one structural op, `DeleteTree`. Not an `EffectKind` impl,
-//! because Actions are not `Setting`s (see `kinds/mod.rs` on the `Effect`/`Setting`/`Action` split).
-//!
-//! ## Level gating mirrors every other kind's read/drive split
-//! `run_apply`/`run_undo` mutate state, so they [`guard_level`] and reject `Ti`: no
-//! `BrokerOp` carries a script, so there is nothing to route them to. `run_probe` only observes
-//! state (spec §7: "state-based, never history-based"), so like every `read` it never gates on
-//! `cx.level()` and always runs in-process.
-//!
-//! ## No-undo / no-probe contract
-//! `run_undo` without an `undo`, and `run_probe` without a `probe` (which includes every
-//! `DeleteTree`, since it has no `probe` field), return `Error::Invalid`, never `Ok(())`/
-//! `Ok(false)`. The engine is expected to check presence before calling; if it does not, the call
-//! must still never lie about having done something.
-//!
-//! ## `DeleteTree` reuses the hardened registry delete, verbatim
-//! `run_apply` on `DeleteTree` goes through [`RegistryKind::delete_tree`], guards included. Unlike a
-//! `registry_key` driven absent, it deletes a subtree that holds values: its `undo` owns restoring
-//! them. That `undo` has no `shell` field, so it always runs as PowerShell.
-//!
-//! ## Timeout, and the process tree it actually bounds
-//! Rust's std has no built-in process timeout, so [`wait_with_timeout`] hand-rolls one: poll
-//! `Child::try_wait` up to a bound, then `kill()` + `wait()` (reaping so no orphan remains) on
-//! expiry — a typed [`Error::ActionExecFailed`], never a benign value (spec §14, invariant 2).
-//! stdout/stderr are drained on background threads throughout (`log::debug!` only, never parsed
-//! for success). `kill()` alone only reaches the immediate child's pid, though — a script that
-//! spawns a detached grandchild inheriting the piped stdout/stderr handle could otherwise keep
-//! that drain thread's `read_to_end` blocked well past the bound. Every child is therefore bound
-//! into a fresh [`KillOnCloseJob`] (a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`)
-//! right after spawn; closing it (every exit path — success, timeout, or wait-error — does, before
-//! joining the drain threads) terminates the whole tree, so "bounded" is a real guarantee on
-//! everything the action started, not just what we can see the pid of.
-//!
-//! ## Hardening the Cmd temp-script path against local tampering
-//! A Cmd script must reach disk (`cmd.exe` has no `-EncodedCommand` equivalent), and `%TEMP%` is
-//! writable by every process running as this user. [`ExclusiveTempFile`] is what makes that safe;
-//! see its module docs for the three guards. The value is kept alive until the child has exited,
-//! so the lock covers the whole execution.
-//!
-//! ## Encoding
-//! [`base64_encode`] is local to this file and the only copy.
+//! `ActionKind`: apply/undo/probe for `Action` effects (spec §5.5/§7); not an `EffectKind`, as Actions are not `Setting`s.
+//! Apply/undo [`guard_level`] and reject `Ti` (no `BrokerOp` carries a script); probe is a read and never gates on level.
+//! A missing `undo` or `probe` is `Error::Invalid`, never `Ok`. The exit code is the only success signal; output is logged, never parsed.
+//! `kill()` reaches one pid: every child runs in a [`KillOnCloseJob`], so the timeout bounds the whole tree and the pipe drains end.
+//! A Cmd script reaches `%TEMP%` through [`ExclusiveTempFile`] (user-writable), held until the child exits.
 
 use std::io::Read;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use regex_lite::Regex;
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
@@ -87,7 +52,7 @@ impl ActionKind {
                 ..
             } => {
                 guard_level(cx)?;
-                run_and_require_zero(*shell, &apply.0, script_timeout(*timeout))
+                run_and_require_zero(*shell, &apply.0, script_timeout(*timeout), cx)
             }
             ActionDef::DeleteTree { key, .. } => RegistryKind.delete_tree(key, cx),
         }
@@ -104,7 +69,7 @@ impl ActionKind {
                 ..
             } => {
                 guard_level(cx)?;
-                run_and_require_zero(*shell, &undo.0, script_timeout(*timeout))
+                run_and_require_zero(*shell, &undo.0, script_timeout(*timeout), cx)
             }
             ActionDef::Script { undo: None, .. } => Err(Error::Invalid(
                 "this action has no undo script -- it is one-way (spec §7)",
@@ -113,7 +78,7 @@ impl ActionKind {
                 undo: Some(undo), ..
             } => {
                 guard_level(cx)?;
-                run_and_require_zero(Shell::PowerShell, &undo.0, ACTION_TIMEOUT)
+                run_and_require_zero(Shell::PowerShell, &undo.0, ACTION_TIMEOUT, cx)
             }
             ActionDef::DeleteTree { undo: None, .. } => Err(Error::Invalid(
                 "this delete-tree has no undo script -- it is one-way unless the author supplies one (spec §7)",
@@ -132,7 +97,7 @@ impl ActionKind {
                 probe: Some(Probe::Script(body)),
                 shell,
                 ..
-            } => Ok(run_script(*shell, &body.0, ACTION_TIMEOUT)? == 0),
+            } => Ok(run_script(*shell, &body.0, ACTION_TIMEOUT)?.code == 0),
             // `engine::detect` answers the native probe forms itself; reaching this arm is an engine
             // routing bug.
             ActionDef::Script { probe: Some(_), .. } => Err(Error::Invalid(
@@ -152,16 +117,94 @@ fn script_timeout(seconds: Option<u32>) -> Duration {
     seconds.map_or(ACTION_TIMEOUT, |s| Duration::from_secs(s.into()))
 }
 
-fn run_and_require_zero(shell: Shell, body: &str, timeout: Duration) -> Result<(), Error> {
-    match run_script(shell, body, timeout)? {
+fn run_and_require_zero(
+    shell: Shell,
+    body: &str,
+    timeout: Duration,
+    cx: &ExecCx,
+) -> Result<(), Error> {
+    let run = run_script(shell, body, timeout)?;
+    let id = cx.effect().map_or("?", |e| e.0.as_str());
+    run.warn_on_failure(&format!("action '{id}'"));
+    match run.code {
         0 => Ok(()),
         code => Err(Error::ActionFailed(code)),
     }
 }
 
-/// Runs one script body to completion (or until `timeout` kills it), returning its raw exit code —
-/// the sole, locale-independent success/failure signal (spec §7). Never interprets stdout.
-pub(crate) fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<i32, Error> {
+/// End of a script's output kept for the log when it fails.
+const TAIL_BYTES: usize = 2048;
+
+/// A script that ran to its end. `code` is the sole success signal; `tail` is for the log only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ScriptRun {
+    pub code: i32,
+    /// The end of stderr, or of stdout when stderr is empty.
+    pub tail: String,
+}
+
+impl ScriptRun {
+    pub(crate) fn warn_on_failure(&self, who: &str) {
+        if self.code != 0 {
+            let output = if self.tail.is_empty() {
+                "(no output)"
+            } else {
+                &self.tail
+            };
+            log::warn!("{who} exited with {}; output:\n{output}", self.code);
+        }
+    }
+}
+
+/// powershell.exe under `-EncodedCommand` writes stderr as CLIXML whatever `-OutputFormat` says:
+/// keep the plain text and the error strings, drop the progress records.
+fn readable(stream: &str) -> String {
+    if !stream.contains("#< CLIXML") {
+        return stream.to_string();
+    }
+    static BLOCK: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?s)<Objs[^>]*>.*?</Objs>").expect("constant pattern"));
+    static STRING: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"(?s)<S S="[^"]*">(.*?)</S>"#).expect("constant pattern"));
+    static ESCAPE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"_x([0-9A-Fa-f]{4})_").expect("constant pattern"));
+    let (block, string, escape) = (&*BLOCK, &*STRING, &*ESCAPE);
+    let mut out = String::new();
+    let mut last = 0;
+    for objs in block.find_iter(stream) {
+        out.push_str(stream.get(last..objs.start()).unwrap_or_default());
+        for s in string.captures_iter(objs.as_str()) {
+            out.push_str(&s[1]);
+        }
+        last = objs.end();
+    }
+    out.push_str(stream.get(last..).unwrap_or_default());
+    let out = escape.replace_all(&out, |c: &regex_lite::Captures<'_>| {
+        u32::from_str_radix(&c[1], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(String::from)
+            .unwrap_or_default()
+    });
+    out.replace("#< CLIXML", "")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+        .trim()
+        .to_string()
+}
+
+/// Starts past a separator: a fragment of a SID or path would slip past redaction.
+fn tail_of(text: &str) -> &str {
+    let at = crate::logging::cut_start(text, text.len().saturating_sub(TAIL_BYTES));
+    text.get(at..).unwrap_or_default().trim_start()
+}
+
+/// Runs one script body to completion or until `timeout` kills it. `code` is the sole,
+/// locale-independent success signal (spec §7); output is never interpreted.
+pub(crate) fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
     match shell {
         Shell::PowerShell => wait_with_timeout(spawn_powershell(body)?, timeout),
         Shell::Cmd => {
@@ -221,11 +264,9 @@ fn spawn(mut cmd: Command, args: &[&str]) -> Result<Child, Error> {
     })
 }
 
-/// Waits for `child`, killing + reaping it if `timeout` elapses first — std has no built-in
-/// process timeout (spec §14). stdout/stderr are drained concurrently on background threads
-/// (`log::debug!` only, spec §14's "captured for logging") so a chatty script can never deadlock
-/// against a full OS pipe buffer while the loop below only polls exit status.
-fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<i32, Error> {
+/// Polls `child` until it exits or `timeout` passes, then kills and reaps it (std has no process
+/// timeout, spec §14). The pipes drain on threads, so a chatty script cannot block on a full pipe.
+fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<ScriptRun, Error> {
     // Bind `child` into its kill-on-close job before anything else, so a fast-spawning grandchild
     // cannot start outside it. Either step failing kills the child: fail closed, never unmonitored.
     let job = match KillOnCloseJob::new() {
@@ -275,13 +316,15 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<i32, Error> 
     // inherited stdout/stderr pipe, so the pipe reaches EOF and the joins cannot hang past the bound.
     drop(job);
 
-    if let Some(t) = out {
-        let _ = t.join();
-    }
-    if let Some(t) = err {
-        let _ = t.join();
-    }
-    status.map(|s| s.code().unwrap_or(-1))
+    let joined = |t: Option<thread::JoinHandle<String>>| {
+        t.map(|t| t.join().unwrap_or_default()).unwrap_or_default()
+    };
+    let (stdout, stderr) = (joined(out), joined(err));
+    let shown = if stderr.is_empty() { &stdout } else { &stderr };
+    status.map(|s| ScriptRun {
+        code: s.code().unwrap_or(-1),
+        tail: tail_of(shown).to_string(),
+    })
 }
 
 /// A Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: the child and every descendant die when
@@ -349,17 +392,22 @@ impl Drop for KillOnCloseJob {
     }
 }
 
-/// Drains a pipe to the `log` crate on a background thread -- output is captured for diagnostics
-/// only, never parsed for success (spec §7/§14: the exit code is the sole signal).
+/// Drains a pipe on a background thread, logs it at Debug and returns it decoded: raw CLIXML glues
+/// `_x000D_` to names and defeats redaction. Never parsed for success (spec §7/§14).
 fn drain_to_log(
     mut pipe: impl Read + Send + 'static,
     stream: &'static str,
-) -> thread::JoinHandle<()> {
+) -> thread::JoinHandle<String> {
     thread::spawn(move || {
         let mut buf = Vec::new();
-        if pipe.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
-            log::debug!("action {stream}: {}", String::from_utf8_lossy(&buf).trim());
+        if pipe.read_to_end(&mut buf).is_err() {
+            return String::new();
         }
+        let text = readable(String::from_utf8_lossy(&buf).trim());
+        if !text.is_empty() {
+            log::debug!("action {stream}: {text}");
+        }
+        text
     })
 }
 
@@ -577,7 +625,8 @@ mod tests {
         let body = r#"$s = 'a $b "c" d'
 if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
         let code = run_script(Shell::PowerShell, body, ACTION_TIMEOUT)
-            .expect("script must run to completion");
+            .expect("script must run to completion")
+            .code;
         assert_eq!(
             code, 0,
             "special characters must round-trip through the encoded command intact"
@@ -586,8 +635,71 @@ if ($s -eq 'a $b "c" d') { exit 0 } else { exit 1 }"#;
 
     #[test]
     fn cmd_shell_runs_via_a_temp_script_file() {
-        assert_eq!(run_script(Shell::Cmd, "exit 0", ACTION_TIMEOUT).unwrap(), 0);
-        assert_eq!(run_script(Shell::Cmd, "exit 3", ACTION_TIMEOUT).unwrap(), 3);
+        assert_eq!(
+            run_script(Shell::Cmd, "exit 0", ACTION_TIMEOUT)
+                .unwrap()
+                .code,
+            0
+        );
+        assert_eq!(
+            run_script(Shell::Cmd, "exit 3", ACTION_TIMEOUT)
+                .unwrap()
+                .code,
+            3
+        );
+    }
+
+    #[test]
+    fn a_failing_script_keeps_the_end_of_its_error_output() {
+        let run = run_script(
+            Shell::PowerShell,
+            "Write-Output 'ignored'; [Console]::Error.WriteLine('boom'); exit 3",
+            ACTION_TIMEOUT,
+        )
+        .unwrap();
+        assert_eq!((run.code, run.tail.as_str()), (3, "boom"));
+        let run = run_script(
+            Shell::PowerShell,
+            "Write-Error 'a <b> & c'; exit 5",
+            ACTION_TIMEOUT,
+        )
+        .unwrap();
+        assert_eq!(run.code, 5);
+        assert!(run.tail.contains("a <b> & c"), "{}", run.tail);
+        assert!(!run.tail.contains("<Objs"), "{}", run.tail);
+        let run = run_script(Shell::Cmd, "@echo only stdout\r\n@exit 4", ACTION_TIMEOUT).unwrap();
+        assert_eq!((run.code, run.tail.as_str()), (4, "only stdout"));
+    }
+
+    #[test]
+    fn clixml_error_output_is_made_readable() {
+        let raw = "#< CLIXML\r\nraw line\r\n<Objs Version=\"1.1.0.1\"><Obj S=\"progress\" RefId=\"0\"><AV>Preparing modules</AV></Obj><S S=\"Error\">bad &lt;x&gt;_x000D__x000A_</S><S S=\"Error\">  + Id : E_x000D__x000A_</S></Objs>";
+        assert_eq!(readable(raw), "raw line\r\nbad <x>\r\n  + Id : E");
+        assert_eq!(readable("plain"), "plain");
+    }
+
+    #[test]
+    fn the_output_tail_keeps_no_fragment_of_an_identifier() {
+        let text = format!("S-1-5-21-111-222-333-1001\r\n{}", "w ".repeat(1012));
+        assert_eq!(tail_of(&text), "w ".repeat(1012));
+    }
+
+    #[test]
+    fn logged_error_output_is_decoded() {
+        let raw = "#< CLIXML\r\n<Objs Version=\"1.1.0.1\"><S S=\"Error\">no Alice_x000D__x000A_</S></Objs>";
+        let text = drain_to_log(std::io::Cursor::new(raw.as_bytes().to_vec()), "stderr")
+            .join()
+            .unwrap();
+        assert_eq!(text, "no Alice");
+    }
+
+    #[test]
+    fn the_output_tail_is_cut_on_a_char_boundary() {
+        let text = format!("head{}", "é".repeat(TAIL_BYTES));
+        let tail = tail_of(&text);
+        assert!(tail.len() <= TAIL_BYTES);
+        assert!(tail.chars().all(|c| c == 'é'));
+        assert_eq!(tail_of("short"), "short");
     }
 
     // The temp-script guards themselves (exclusive create, the held share-mode lock, delete on

@@ -13,11 +13,14 @@
 //! to do is "run this string".
 
 use crate::error::Error;
+use crate::logging::collector;
 use crate::models::{RegistryHive, RegistryValueType, SchedulerAction, ServiceStartupType};
 use crate::services::exclusive_temp::{self, ExclusiveTempFile};
 use crate::services::{registry_service, registry_value, scheduler_service, service_control};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
 };
@@ -66,7 +69,7 @@ pub enum BrokerOp {
 
 /// Bump on any change to the wire types or exit codes (`the_wire_format_is_pinned`): after an
 /// update, parent and child are separate builds.
-const WIRE_VERSION: u32 = 3;
+const WIRE_VERSION: u32 = 4;
 
 /// A batch of operations for one broker invocation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -78,6 +81,8 @@ pub struct BrokerRequest {
     /// reused pid) is detected rather than read as a fresh success.
     #[serde(default)]
     pub nonce: u64,
+    /// Whether the child keeps its Debug lines: the parent's own level.
+    pub detailed: bool,
     pub ops: Vec<BrokerOp>,
 }
 
@@ -86,6 +91,7 @@ impl BrokerRequest {
         Self {
             version: WIRE_VERSION,
             nonce: 0,
+            detailed: false,
             ops,
         }
     }
@@ -97,11 +103,12 @@ impl BrokerRequest {
 pub struct OpFailure {
     pub index: usize,
     pub class: OpFailureClass,
+    pub win32: Option<u32>,
 }
 
-/// All the parent, its log and the user interface may learn about an op the child refused: the
-/// child sends this classification and never its error text, which quotes the key, the value or the
-/// path. The op index and the effect id are what join a report back to the tweak's YAML.
+/// All the parent and the user interface learn about an op the child refused. Its error text quotes
+/// the key, the value or the path, so it crosses only as a Debug log line the parent redacts
+/// (ADR-0010). The op index and the effect id join a report back to the tweak's YAML.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OpFailureClass {
@@ -183,6 +190,33 @@ pub struct BrokerResponse {
     pub attempted: usize,
     /// The first op that failed. `None` alongside a full `attempted` count is the only success.
     pub failure: Option<OpFailure>,
+    /// The child's log lines; the parent re-logs them only once the response validates.
+    pub log: Vec<String>,
+}
+
+/// What a panicking child leaves at the response path. Never passed to [`check_response`]: a panic
+/// stays outcome-unknown whatever the report says.
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct PanicReport {
+    version: u32,
+    nonce: u64,
+    log: Vec<String>,
+    panic: String,
+}
+
+/// Registry errors keep only io's text, which ends in "(os error N)".
+fn win32_code(e: &Error) -> Option<u32> {
+    match e {
+        Error::Win32 { code, .. } => Some(*code),
+        Error::RegistryAccessDenied(text) => text
+            .strip_suffix(')')?
+            .rsplit_once("(os error ")?
+            .1
+            .parse()
+            .ok(),
+        _ => None,
+    }
 }
 
 /// Map registry "not found" into success for delete operations (deleting an absent thing is done).
@@ -233,9 +267,12 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
     for (index, op) in request.ops.iter().enumerate() {
         attempted += 1;
         if let Err(e) = execute_op(op) {
+            // Debug only: the text quotes the key, the value or the path (ADR-0010).
+            log::debug!("op {index} failed: {e}");
             failure = Some(OpFailure {
                 index,
                 class: OpFailureClass::of(&e),
+                win32: win32_code(&e),
             });
             break;
         }
@@ -245,6 +282,7 @@ pub fn execute_request(request: &BrokerRequest) -> BrokerResponse {
         nonce: request.nonce,
         attempted,
         failure,
+        log: Vec::new(),
     }
 }
 
@@ -309,15 +347,25 @@ pub fn malformed_argv_exit_code() -> i32 {
     EXIT_UNREADABLE_REQUEST
 }
 
-/// The real child's entrypoint. The panic hook is process-wide, so tests call [`serve_request`].
+/// The real child's entrypoint. The logger and the panic hook are process-wide, so tests call
+/// [`serve_request`].
 pub fn run_broker(req_path: &str, resp_path: &str, req_identity: &str) -> i32 {
+    collector::install();
     install_panic_exit_hook();
-    serve_request(req_path, resp_path, req_identity)
+    serve_request(req_path, resp_path, req_identity, collector::drain)
 }
 
-/// Read a request file, execute it, write a response file. 0 means the batch ran and a response
-/// was written; non-zero is a transport failure, distinct from op failures inside the response.
-fn serve_request(req_path: &str, resp_path: &str, req_identity: &str) -> i32 {
+/// The response path and nonce of the request being served, for the panic hook.
+static PANIC_REPORT_TO: OnceLock<(String, u64)> = OnceLock::new();
+
+/// Read a request file, execute it, write a response file carrying `drain`'s lines. 0 means the
+/// batch ran and a response was written; non-zero is a transport failure, distinct from op failures.
+fn serve_request(
+    req_path: &str,
+    resp_path: &str,
+    req_identity: &str,
+    drain: impl FnOnce() -> Vec<String>,
+) -> i32 {
     let bytes = match read_own_request(req_path, req_identity) {
         Ok(bytes) => bytes,
         Err(code) => return code,
@@ -327,7 +375,11 @@ fn serve_request(req_path: &str, resp_path: &str, req_identity: &str) -> i32 {
         Err(WireReject::Version(_)) => return EXIT_WIRE_VERSION_MISMATCH,
         Err(WireReject::Malformed(_)) => return EXIT_UNPARSEABLE_REQUEST,
     };
-    let Ok(out) = serde_json::to_vec(&execute_request(&request)) else {
+    PANIC_REPORT_TO.get_or_init(|| (resp_path.to_owned(), request.nonce));
+    collector::set_detailed(request.detailed);
+    let mut response = execute_request(&request);
+    response.log = drain();
+    let Ok(out) = serde_json::to_vec(&response) else {
         return EXIT_UNSERIALIZABLE_RESPONSE;
     };
     if write_response(resp_path, &out).is_err() {
@@ -360,11 +412,23 @@ fn read_own_request(req_path: &str, req_identity: &str) -> Result<Vec<u8>, i32> 
 }
 
 /// Under release `panic = "abort"` a child panic otherwise reads as the catch-all exit, like an
-/// antivirus kill; the hook runs first and claims `EXIT_PANICKED`. The exit code is the child's
-/// only channel; stderr serves the manual run from an elevated shell.
+/// antivirus kill; the hook runs first and claims `EXIT_PANICKED`. No `log::` here, and no second
+/// panic: that aborts with another code. Stderr serves the manual run from an elevated shell.
 fn install_panic_exit_hook() {
     std::panic::set_hook(Box::new(|info| {
         eprintln!("broker panicked: {info}");
+        if let Some((path, nonce)) = PANIC_REPORT_TO.get() {
+            let report = PanicReport {
+                version: WIRE_VERSION,
+                nonce: *nonce,
+                log: collector::try_drain(),
+                panic: collector::clean(&info.to_string()),
+            };
+            match serde_json::to_vec(&report) {
+                Ok(out) if write_response(path, &out).is_ok() => {}
+                _ => eprintln!("broker could not write its panic report"),
+            }
+        }
         std::process::exit(EXIT_PANICKED);
     }));
 }
@@ -414,6 +478,33 @@ fn classify_spawn(e: SpawnError) -> BrokerOpError {
 
 /// Monotonic counter mixed into the per-invocation transport nonce.
 static BROKER_SEQ: AtomicU64 = AtomicU64::new(0);
+/// Numbers elevated batches as `#n`, joining the parent's lines to the helper's.
+static BATCH: AtomicU64 = AtomicU64::new(0);
+
+/// 200 log lines of 512 bytes, escaped, fit with room to spare; anything larger is not ours.
+const RESPONSE_CAP: u64 = 256 * 1024;
+
+fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(RESPONSE_CAP + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > RESPONSE_CAP {
+        return Err(std::io::Error::other(format!(
+            "it is larger than {RESPONSE_CAP} bytes"
+        )));
+    }
+    Ok(bytes)
+}
+
+/// Missing, oversized, unparseable or foreign: nothing, silently.
+fn read_panic_report(path: &Path, nonce: u64) -> Option<PanicReport> {
+    let bytes = read_capped(path).ok()?;
+    parse_wire(&bytes, |r: &PanicReport| r.version)
+        .ok()
+        .filter(|r| r.nonce == nonce)
+}
 
 /// A per-invocation transport nonce. Mixes wall-clock, a process-local counter, and the pid so two
 /// invocations get distinct nonces even across a process restart that reuses our pid and resets the
@@ -471,6 +562,7 @@ fn system_temp() -> Option<std::path::PathBuf> {
 /// response be forged, and the in-process read-back turns that into a false failure (KNOWN_ISSUES #2).
 fn run_elevated_broker(
     level: Elevation,
+    batch: u64,
     ops: Vec<BrokerOp>,
     spawn: impl FnOnce(&str) -> Result<i32, SpawnError>,
 ) -> Result<BrokerResponse, BrokerOpError> {
@@ -490,6 +582,7 @@ fn run_elevated_broker(
     let nonce = next_nonce();
     let wire = BrokerRequest {
         nonce,
+        detailed: crate::logging::detailed(),
         ..BrokerRequest::new(ops)
     };
     let req_json = serde_json::to_vec(&wire)
@@ -515,7 +608,7 @@ fn run_elevated_broker(
             Some((Ok(file), dir)) => (Ok(file), dir),
             other => {
                 if let Some((Err(e), _)) = other {
-                    log::warn!("broker transport falls back to %TEMP%: SystemTemp refused the request ({})", e.kind());
+                    log::warn!("broker batch #{batch} transport falls back to %TEMP%: SystemTemp refused the request ({})", e.kind());
                 }
                 let temp = std::env::temp_dir();
                 (create(&temp), temp)
@@ -548,9 +641,14 @@ fn run_elevated_broker(
     // the machine is untouched, so every failure is classified, never collapsed.
     let read = spawned.map_err(classify_spawn).and_then(|exit| {
         if exit != 0 {
+            if exit == EXIT_PANICKED {
+                if let Some(report) = read_panic_report(resp_guard.path(), nonce) {
+                    collector::relog_panic(batch, &report.log, &report.panic);
+                }
+            }
             // The only place that owns both the code and its meaning, and both are ours.
             let why = describe_broker_exit(exit);
-            log::warn!("The broker child exited with {exit:#x}: {why}");
+            log::warn!("The broker child of batch #{batch} exited with {exit:#x}: {why}");
             return Err(classify_exit(
                 exit,
                 Error::ServiceControl(format!("broker process exited with code {exit:#x}: {why}")),
@@ -558,14 +656,16 @@ fn run_elevated_broker(
         }
         // Exit 0 means the batch ran AND the response was written, so a read failure here is
         // about the response, not about whether anything happened.
-        std::fs::read(resp_guard.path()).map_err(|e| {
+        read_capped(resp_guard.path()).map_err(|e| {
             BrokerOpError::Indeterminate(Error::ServiceControl(format!(
                 "broker completed but its response could not be read: {e}"
             )))
         })
     });
 
-    validate_response(&read?, nonce)
+    let response = validate_response(&read?, nonce)?;
+    collector::relog(batch, &response.log);
+    Ok(response)
 }
 
 /// How a batch fails (spec §9, ADR-0005 as amended; invariant 24). Each aborts and rolls back at
@@ -586,6 +686,7 @@ pub enum BrokerOpError {
     OpFailed {
         index: Option<usize>,
         class: OpFailureClass,
+        win32: Option<u32>,
     },
     /// A child was created, so ops may have run: a timeout, a failed wait or exit-code query, a
     /// panic, or a lost or invalid response. As `CouldNotAcquire`, a verified rollback would delete
@@ -654,19 +755,23 @@ fn run_ops_with(
     spawn: impl FnOnce(&str) -> Result<i32, SpawnError>,
 ) -> Result<(), BrokerOpError> {
     let sent = ops.len();
-    if level.is_elevated() {
-        log::info!("{level:?} broker batch started: {sent} ops");
-    }
+    let batch = if level.is_elevated() {
+        let batch = BATCH.fetch_add(1, Ordering::Relaxed) + 1;
+        log::info!("{level:?} broker batch #{batch} started: {sent} ops");
+        batch
+    } else {
+        0
+    };
     let started = std::time::Instant::now();
-    let outcome =
-        run_elevated_broker(level, ops, spawn).and_then(|response| check_response(sent, &response));
+    let outcome = run_elevated_broker(level, batch, ops, spawn)
+        .and_then(|response| check_response(sent, &response));
     let elapsed_ms = started.elapsed().as_millis();
     match &outcome {
         Ok(()) if level.is_elevated() => {
-            log::info!("{level:?} broker batch finished: {sent} ops in {elapsed_ms} ms");
+            log::info!("{level:?} broker batch #{batch} finished: {sent} ops in {elapsed_ms} ms");
         }
         Ok(()) => {}
-        Err(e) => log_failure(level, e, elapsed_ms),
+        Err(e) => log_failure(level, batch, e, elapsed_ms),
     }
     #[cfg(feature = "test-build")]
     if level.is_elevated() {
@@ -676,25 +781,33 @@ fn run_ops_with(
 }
 
 /// The parent's record of a failed elevated batch: the level and what the failure means for the
-/// machine, built only from values the parent itself produced. An error's own text can carry a
-/// path, a nonce, or the registry key an op wrote, so none of it crosses into a log line.
-fn failure_summary(level: Elevation, e: &BrokerOpError) -> String {
+/// machine, built only from values the parent produced and the child's numeric Win32 code. An
+/// error's own text can carry a path, a nonce, or the registry key an op wrote, so none of it crosses.
+fn failure_summary(level: Elevation, batch: u64, e: &BrokerOpError) -> String {
     let what = match e {
         BrokerOpError::CouldNotAcquire(reason, _) => {
             format!("could not acquire the child ({reason}), so nothing ran")
         }
         BrokerOpError::OpFailed {
-            index: Some(index),
+            index,
             class,
-        } => format!("operation {index} was refused in the child: {class}"),
-        BrokerOpError::OpFailed { index: None, class } => {
-            format!("an operation was refused in the child: {class}")
+            win32,
+        } => {
+            let which =
+                index.map_or_else(|| "an operation".to_owned(), |i| format!("operation {i}"));
+            let code = win32.map_or_else(String::new, |code| {
+                format!(
+                    " (Windows error {})",
+                    super::ti_elevation::describe_win32(code)
+                )
+            });
+            format!("{which} was refused in the child: {class}{code}")
         }
         BrokerOpError::Indeterminate(_) => {
             "the child ran but its outcome is unknown, so the machine may have changed".to_owned()
         }
     };
-    format!("{level:?} broker batch failed: {what}")
+    format!("{level:?} broker batch #{batch} failed: {what}")
 }
 
 /// `None` for an in-process batch, which is not the broker's to report: its caller sees the same
@@ -709,9 +822,13 @@ fn failure_log_level(level: Elevation, e: &BrokerOpError) -> Option<log::Level> 
     })
 }
 
-fn log_failure(level: Elevation, e: &BrokerOpError, elapsed_ms: u128) {
+fn log_failure(level: Elevation, batch: u64, e: &BrokerOpError, elapsed_ms: u128) {
     if let Some(at) = failure_log_level(level, e) {
-        log::log!(at, "{} after {elapsed_ms} ms", failure_summary(level, e));
+        log::log!(
+            at,
+            "{} after {elapsed_ms} ms",
+            failure_summary(level, batch, e)
+        );
     }
 }
 
@@ -734,6 +851,7 @@ fn check_response(sent: usize, response: &BrokerResponse) -> Result<(), BrokerOp
         return Err(BrokerOpError::OpFailed {
             index: Some(failure.index),
             class: failure.class,
+            win32: failure.win32,
         });
     }
     // Fewer ops attempted than sent, yet no failure named: the executor cannot produce that, so
@@ -783,6 +901,7 @@ mod tests {
         let req = BrokerRequest {
             version: WIRE_VERSION,
             nonce: 0xDEAD_BEEF,
+            detailed: true,
             ops: vec![
                 BrokerOp::RegSet {
                     hive: RegistryHive::Hklm,
@@ -857,6 +976,7 @@ mod tests {
             nonce: 1,
             attempted,
             failure: None,
+            log: Vec::new(),
         };
         check_response(3, &clean(3)).expect("all three attempted, none failed");
 
@@ -890,11 +1010,35 @@ mod tests {
             failure: Some(OpFailure {
                 index: 1,
                 class: OpFailureClass::AccessDenied,
+                win32: Some(5),
             }),
+            log: Vec::new(),
         };
         let err = check_response(3, &response).expect_err("a named failure must fail the batch");
         assert!(err.to_string().contains("op 1"), "got {err}");
         assert!(err.to_string().contains("access denied"), "got {err}");
+        let summary = failure_summary(Elevation::TrustedInstaller, 7, &err);
+        assert!(summary.contains("batch #7"), "{summary}");
+        assert!(summary.contains("5 (ERROR_ACCESS_DENIED)"), "{summary}");
+    }
+
+    #[test]
+    fn a_failed_op_carries_its_windows_code_where_it_has_one() {
+        use crate::error::win32;
+        let denied = std::io::Error::from_raw_os_error(5).to_string();
+        for (e, code) in [
+            (
+                Error::win32("op", win32::SERVICE_DOES_NOT_EXIST),
+                Some(1060),
+            ),
+            (Error::win32("task", 0x8007_0002), Some(0x8007_0002)),
+            (Error::RegistryAccessDenied(denied), Some(5)),
+            (Error::RegistryAccessDenied("no code".into()), None),
+            (Error::RequiresAdmin, None),
+            (Error::ValidationError("bad (os error 5)".into()), None),
+        ] {
+            assert_eq!(win32_code(&e), code, "{e:?}");
+        }
     }
 
     /// A failure the executor could never have produced -- an op past the batch, or one the attempt
@@ -909,7 +1053,9 @@ mod tests {
             failure: Some(OpFailure {
                 index,
                 class: OpFailureClass::AccessDenied,
+                win32: None,
             }),
+            log: Vec::new(),
         };
         for (index, attempted) in [(99, 100), (5, 6), (1, 3), (3, 1)] {
             let err = check_response(5, &named(index, attempted))
@@ -927,15 +1073,16 @@ mod tests {
         );
     }
 
-    /// The child classifies its own error and sends only that: nothing an op carried -- the key, the
-    /// value name, the value -- may reach the parent, its log, or the user interface. Driven
-    /// through `execute_request`, the child's real entry point, so re-adding a message fails here.
+    /// Nothing an op carried (the key, the value name, the value) may reach the classification, the
+    /// parent's own lines, or the user interface; the text travels only as a Debug log line the
+    /// parent redacts. Driven through `execute_request`, which serves the in-process path too.
     #[test]
     fn the_child_never_sends_its_own_error_text() {
         let scratch = Scratch::new();
         let request = BrokerRequest {
             version: WIRE_VERSION,
             nonce: 1,
+            detailed: false,
             ops: vec![BrokerOp::RegSet {
                 hive: RegistryHive::Hkcu,
                 key: scratch.key.clone(),
@@ -948,7 +1095,7 @@ mod tests {
         let response = execute_request(&request);
         let wire = serde_json::to_string(&response).unwrap();
         let err = check_response(1, &response).expect_err("a named failure must fail the batch");
-        let summary = failure_summary(Elevation::TrustedInstaller, &err);
+        let summary = failure_summary(Elevation::TrustedInstaller, 1, &err);
         for leaked in [scratch.key.as_str(), "LeakCanarySecret", "not-a-number"] {
             assert!(!wire.contains(leaked), "the wire names {leaked}: {wire}");
             assert!(!err.to_string().contains(leaked), "{err} names {leaked}");
@@ -956,6 +1103,7 @@ mod tests {
         }
         assert!(wire.contains("invalid_data"), "{wire}");
         assert!(summary.contains("invalid data"), "{summary}");
+        assert!(response.log.is_empty(), "only `serve_request` drains lines");
     }
 
     /// Every class comes off a code the effect services really report, so a service or a task
@@ -993,6 +1141,7 @@ mod tests {
         let req = BrokerRequest {
             version: WIRE_VERSION,
             nonce: 0,
+            detailed: false,
             ops: vec![
                 BrokerOp::RegCreateKey {
                     hive: RegistryHive::Hkcu,
@@ -1031,6 +1180,7 @@ mod tests {
         let req = BrokerRequest {
             version: WIRE_VERSION,
             nonce: 0,
+            detailed: false,
             ops: vec![
                 BrokerOp::RegCreateKey {
                     hive: RegistryHive::Hkcu,
@@ -1051,12 +1201,14 @@ mod tests {
             req_path.to_str().unwrap(),
             resp_path.to_str().unwrap(),
             &identity_of(&req_path),
+            || vec!["INFO app_lib::x: drained after the ops ran".to_owned()],
         );
         assert_eq!(code, 0);
 
         let resp: BrokerResponse =
             serde_json::from_slice(&std::fs::read(&resp_path).unwrap()).unwrap();
         assert_eq!((resp.attempted, resp.failure), (2, None));
+        assert_eq!(resp.log, ["INFO app_lib::x: drained after the ops ran"]);
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "Flag").unwrap(),
             Some(9)
@@ -1078,7 +1230,7 @@ mod tests {
             value: serde_json::json!(5),
         }];
         let resp =
-            run_elevated_broker(Elevation::None, ops, |_| panic!("None never spawns")).unwrap();
+            run_elevated_broker(Elevation::None, 0, ops, |_| panic!("None never spawns")).unwrap();
         assert_eq!((resp.attempted, resp.failure), (1, None));
         assert_eq!(
             registry_service::read_dword(&RegistryHive::Hkcu, &scratch.key, "N").unwrap(),
@@ -1091,6 +1243,7 @@ mod tests {
         let resp = execute_request(&BrokerRequest {
             version: WIRE_VERSION,
             nonce: 0xABCD_1234,
+            detailed: false,
             ops: vec![],
         });
         assert_eq!(resp.nonce, 0xABCD_1234);
@@ -1122,6 +1275,7 @@ mod tests {
             nonce,
             attempted,
             failure: None,
+            log: Vec::new(),
         }
     }
 
@@ -1183,6 +1337,7 @@ mod tests {
         let req = BrokerRequest {
             version: WIRE_VERSION,
             nonce: 0,
+            detailed: false,
             ops: vec![
                 BrokerOp::RegSet {
                     hive: RegistryHive::Hkcu,
@@ -1256,6 +1411,7 @@ mod tests {
         serde_json::to_value(BrokerRequest {
             version: WIRE_VERSION,
             nonce: 0,
+            detailed: false,
             ops: vec![BrokerOp::RegSet {
                 hive: RegistryHive::Hkcu,
                 key: key.into(),
@@ -1281,6 +1437,7 @@ mod tests {
             req_path.to_str().unwrap(),
             resp_path.to_str().unwrap(),
             &identity_of(&req_path),
+            Vec::new,
         );
         let responded = resp_path.exists();
         let _ = std::fs::remove_file(&req_path);
@@ -1355,6 +1512,7 @@ mod tests {
             missing.to_str().unwrap(),
             resp_path.to_str().unwrap(),
             "0-0",
+            Vec::new,
         );
         assert_eq!(code, EXIT_UNREADABLE_REQUEST);
         assert!(!resp_path.exists());
@@ -1454,9 +1612,10 @@ mod tests {
     #[test]
     fn the_wire_format_is_pinned() {
         // Changing any byte below, or any exit code, needs a WIRE_VERSION bump.
-        const REQUEST: &str = r#"{"version":3,"nonce":7,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
-        const RESPONSE: &str = r#"{"version":3,"nonce":7,"attempted":2,"failure":{"index":1,"class":"access_denied"}}"#;
-        assert_eq!(WIRE_VERSION, 3);
+        const REQUEST: &str = r#"{"version":4,"nonce":7,"detailed":true,"ops":[{"RegSet":{"hive":"HKLM","key":"K","value_name":"V","value_type":"REG_DWORD","value":1}},{"RegDeleteValue":{"hive":"HKCU","key":"K","value_name":"V"}},{"RegDeleteKey":{"hive":"HKCU","key":"K"}},{"RegCreateKey":{"hive":"HKCU","key":"K"}},{"SvcSetStartup":{"name":"S","startup":"manual"}},{"Scheduler":{"task_path":"P","task_name":"T","action":"disable"}}]}"#;
+        const RESPONSE: &str = r#"{"version":4,"nonce":7,"attempted":2,"failure":{"index":1,"class":"access_denied","win32":5},"log":["DEBUG app_lib::x: m"]}"#;
+        const PANIC: &str = r#"{"version":4,"nonce":7,"log":["INFO app_lib::x: m"],"panic":"p"}"#;
+        assert_eq!(WIRE_VERSION, 4);
         // Every class name is on the wire too: renaming one needs the same bump.
         for (class, name) in [
             (OpFailureClass::AccessDenied, r#""access_denied""#),
@@ -1483,6 +1642,7 @@ mod tests {
         let (hive, key, value_name) = (RegistryHive::Hkcu, "K".to_owned(), "V".to_owned());
         let request = BrokerRequest {
             nonce: 7,
+            detailed: true,
             ..BrokerRequest::new(vec![
                 BrokerOp::RegSet {
                     hive: RegistryHive::Hklm,
@@ -1519,10 +1679,20 @@ mod tests {
             failure: Some(OpFailure {
                 index: 1,
                 class: OpFailureClass::AccessDenied,
+                win32: Some(5),
             }),
+            log: vec!["DEBUG app_lib::x: m".into()],
+        };
+        let panic = PanicReport {
+            version: WIRE_VERSION,
+            nonce: 7,
+            log: vec!["INFO app_lib::x: m".into()],
+            panic: "p".into(),
         };
         assert_eq!(serde_json::to_string(&request).unwrap(), REQUEST);
         assert_eq!(serde_json::to_string(&response).unwrap(), RESPONSE);
+        assert_eq!(serde_json::to_string(&panic).unwrap(), PANIC);
+        assert_eq!(serde_json::from_str::<PanicReport>(PANIC).unwrap(), panic);
         assert_eq!(
             serde_json::from_str::<BrokerRequest>(REQUEST).unwrap(),
             request
@@ -1607,7 +1777,7 @@ mod tests {
     }
 
     fn serve(req: &str, resp: &str, identity: &str) -> Result<i32, SpawnError> {
-        Ok(serve_request(req, resp, identity))
+        Ok(serve_request(req, resp, identity, Vec::new))
     }
 
     /// Parses the request as the real child does, then writes a success response, edited by
@@ -1654,6 +1824,100 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_request_carries_the_parents_detailed_setting() {
+        let expected = crate::logging::detailed();
+        run_with_child(
+            vec![],
+            respond_with(move |r, _| assert_eq!(r.detailed, expected)),
+        )
+        .expect("an empty batch is Ok");
+    }
+
+    /// The log rides in the response, so forging it must never change the outcome, and a response
+    /// past the read cap is not ours.
+    #[test]
+    fn a_forged_log_never_changes_the_outcome_and_an_oversized_response_is_unknown() {
+        let forged = |lines: usize, bytes: usize| {
+            respond_with(move |_, body| {
+                body["log"] = serde_json::json!(vec!["x".repeat(bytes); lines]);
+            })
+        };
+        run_with_child(vec![], forged(collector::MAX_LINES * 2, 600))
+            .expect("a long log under the read cap still validates");
+        let got = run_with_child(vec![], forged(600, 1000));
+        assert!(
+            matches!(&got, Err(BrokerOpError::Indeterminate(e)) if e.to_string().contains("larger than")),
+            "{got:?}"
+        );
+    }
+
+    /// The child's side of a panic: a report at the response path, then `exit`.
+    fn panic_report_then(exit: i32) -> impl FnOnce(&str, &str, &str) -> Result<i32, SpawnError> {
+        move |req, resp, _| {
+            let Ok(request) =
+                parse_wire(&std::fs::read(req).unwrap(), |r: &BrokerRequest| r.version)
+            else {
+                panic!("the child refused the request");
+            };
+            let report = PanicReport {
+                version: WIRE_VERSION,
+                nonce: request.nonce,
+                log: vec!["INFO app_lib::x: before the panic".into()],
+                panic: "boom".into(),
+            };
+            write_response(resp, &serde_json::to_vec(&report).unwrap()).unwrap();
+            Ok(exit)
+        }
+    }
+
+    #[test]
+    fn a_panic_report_never_reads_as_a_completed_batch() {
+        let scratch = Scratch::new();
+        for exit in [EXIT_PANICKED, 0] {
+            let got = run_with_child(scratch_ops(&scratch.key), panic_report_then(exit));
+            assert!(
+                matches!(got, Err(BrokerOpError::Indeterminate(_))),
+                "exit {exit:#x}: {got:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_unparseable_or_foreign_panic_report_is_ignored_silently() {
+        let path = temp_path("panic");
+        assert_eq!(read_panic_report(&path, 7), None);
+
+        write_response(path.to_str().unwrap(), b"\x00 not a report").unwrap();
+        assert_eq!(read_panic_report(&path, 7), None);
+        std::fs::remove_file(&path).unwrap();
+
+        let report = PanicReport {
+            version: WIRE_VERSION,
+            nonce: 7,
+            log: Vec::new(),
+            panic: "boom".into(),
+        };
+        write_response(
+            path.to_str().unwrap(),
+            &serde_json::to_vec(&report).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            read_panic_report(&path, 8),
+            None,
+            "another request's report"
+        );
+        assert_eq!(read_panic_report(&path, 7), Some(report));
+        std::fs::remove_file(&path).unwrap();
+
+        let got = run_with_child(vec![], |_, _, _| Ok(EXIT_PANICKED));
+        assert!(
+            matches!(got, Err(BrokerOpError::Indeterminate(_))),
+            "{got:?}"
+        );
+    }
+
     /// The real transport under a real TrustedInstaller token, with the built app exe as the child and
     /// an empty batch, so nothing on the machine changes.
     #[test]
@@ -1677,7 +1941,7 @@ mod tests {
             patched
         };
 
-        let served = run_elevated_broker(Elevation::TrustedInstaller, vec![], |cmdline| {
+        let served = run_elevated_broker(Elevation::TrustedInstaller, 0, vec![], |cmdline| {
             if system_temp().is_some() {
                 assert!(
                     cmdline.contains("SystemTemp"),
@@ -1689,7 +1953,7 @@ mod tests {
         .expect("the real child serves its own request");
         assert_eq!(served.attempted, 0);
 
-        let refused = run_elevated_broker(Elevation::TrustedInstaller, vec![], |cmdline| {
+        let refused = run_elevated_broker(Elevation::TrustedInstaller, 0, vec![], |cmdline| {
             let (head, _identity) = cmdline.rsplit_once(' ').unwrap();
             crate::services::elevation::ti_elevation::spawn_as_trusted_installer(&as_app(&format!(
                 "{head} 0-0"
@@ -1720,7 +1984,7 @@ mod tests {
         )
         .unwrap();
         let got = run_with_child(vec![], |_, resp, identity| {
-            let code = serve_request(forged.path().to_str().unwrap(), resp, identity);
+            let code = serve_request(forged.path().to_str().unwrap(), resp, identity, Vec::new);
             assert_eq!(code, EXIT_FOREIGN_REQUEST);
             assert!(
                 !std::path::Path::new(resp).exists(),
@@ -1775,7 +2039,7 @@ mod tests {
             0xC000_0409_u32 as i32,
         ] {
             let got = run_with_child(scratch_ops(&scratch.key), |req, resp, identity| {
-                assert_eq!(serve_request(req, resp, identity), 0);
+                assert_eq!(serve_request(req, resp, identity, Vec::new), 0);
                 Ok(code)
             });
             assert!(
@@ -1802,7 +2066,7 @@ mod tests {
         );
 
         let got = run_with_child(scratch_ops(&scratch.key), |req, resp, identity| {
-            assert_eq!(serve_request(req, resp, identity), 0);
+            assert_eq!(serve_request(req, resp, identity, Vec::new), 0);
             Err(SpawnError::ChildRan(detail("timed out")))
         });
         assert!(
@@ -1819,7 +2083,7 @@ mod tests {
 
     /// Summarises `e` and fails if any part of [`HOSTILE_DETAIL`] survived into the line.
     fn hostile_summary(e: BrokerOpError) -> String {
-        let summary = failure_summary(Elevation::TrustedInstaller, &e);
+        let summary = failure_summary(Elevation::TrustedInstaller, 1, &e);
         for leaked in [
             "C:\\Users",
             "magicx-broker",
@@ -1842,7 +2106,7 @@ mod tests {
         });
         let err = got.expect_err("a nothing-ran exit fails the batch");
 
-        let summary = failure_summary(Elevation::TrustedInstaller, &err);
+        let summary = failure_summary(Elevation::TrustedInstaller, 1, &err);
         assert!(summary.contains("TrustedInstaller"), "{summary}");
         assert!(summary.contains("nothing ran"), "{summary}");
         for path in handed {
@@ -1900,12 +2164,14 @@ mod tests {
         let op = hostile_summary(BrokerOpError::OpFailed {
             index: Some(2),
             class: OpFailureClass::AccessDenied,
+            win32: None,
         });
         assert!(op.contains("operation 2"), "{op}");
 
         let unplaced = hostile_summary(BrokerOpError::OpFailed {
             index: None,
             class: OpFailureClass::AccessDenied,
+            win32: None,
         });
         assert!(unplaced.contains("an operation was refused"), "{unplaced}");
     }
@@ -1941,6 +2207,7 @@ mod tests {
                 BrokerOpError::OpFailed {
                     index: None,
                     class: OpFailureClass::AccessDenied,
+                    win32: None,
                 }
             ),
             Some(log::Level::Warn)
