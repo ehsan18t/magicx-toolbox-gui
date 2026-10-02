@@ -1,25 +1,18 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { HighlightedText, SegmentedSwitch, Select } from "$lib/components/ui";
-  import { confirm } from "$lib/stores/confirm.svelte";
+  import { HighlightedText } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { openTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import {
-    errorStore,
-    keepCurrentState,
-    loadingStore,
-    pendingChangesStore,
-    revertTweak,
-    stageChange,
-    unstageChange,
-  } from "$lib/stores/tweaks.svelte";
+  import { errorStore, loadingStore, pendingChangesStore, unstageChange } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
   import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
+  import { keepWithConfirm, restoreTweak } from "$lib/utils/tweakActions";
   import { availabilityLabel, isHighRisk, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
+  import TweakControl from "./TweakControl.svelte";
 
   interface Props {
     tweak: TweakWithStatus;
@@ -47,13 +40,6 @@
     return status.needsElevation ? `${base} Restart as administrator to resolve.` : base;
   });
 
-  const controlDisabledReason = $derived.by(() => {
-    if (status.state === "unavailable") return status.unavailableReason ?? "Not available on this system";
-    if (availability.state !== "available") return availability.reason;
-    return null;
-  });
-  const controlDisabled = $derived(isLoading || controlDisabledReason !== null);
-
   let rowEl = $state<HTMLElement | null>(null);
   const highlight = searchHighlight(
     () => def.id,
@@ -78,84 +64,10 @@
   // Hidden until asked for, but staging a change is when it matters, so that opens it too.
   let warningToggled = $state(false);
   const warningOpen = $derived(warningToggled || hasPending);
-  const activeOption = $derived(status.activeOption);
   const optionLabels = $derived(def.optionLabels);
 
-  const selectValue = $derived(pendingChange?.optionLabel ?? activeOption);
-
-  // ADR-0003: System Default joins a control only beside a lone option, where choosing it restores
-  // the snapshot; elsewhere the state line names it and Restore is the way back.
-  const SYSTEM_DEFAULT = "__system_default__";
-  const onlyOption = $derived(optionLabels.length === 1 ? optionLabels[0] : null);
-  const defaultBlocked = $derived(onlyOption !== null && activeOption === onlyOption && !hasPending && !hasSnapshot);
-  const segments = $derived.by(() => {
-    const options: { target: string; label: string; disabled: boolean; tip?: string }[] = optionLabels.map((label) => {
-      const unavailable = status.unavailableOptions.some((u) => u.label === label);
-      return { target: label, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
-    });
-    if (onlyOption !== null) {
-      options.unshift({
-        target: SYSTEM_DEFAULT,
-        label: "System default",
-        disabled: defaultBlocked,
-        tip: defaultBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : undefined,
-      });
-    }
-    return options.map((o, i) => ({ ...o, value: i }));
-  });
-  const segmentValue = $derived(
-    segments.findIndex(
-      (s) => s.target === (selectValue ?? (status.state === "system_default" ? SYSTEM_DEFAULT : null)),
-    ),
-  );
-  const selectOptions = $derived(segments.map((s) => ({ ...s, value: s.target })));
-  const selectPlaceholder = $derived(
-    status.state === "system_default"
-      ? "System default"
-      : status.state === "loading"
-        ? "Checking…"
-        : status.state === "unavailable"
-          ? "Unavailable"
-          : "Unknown",
-  );
-
-  function selectTarget(target: string) {
-    if (target === SYSTEM_DEFAULT) {
-      if (hasPending) unstageChange(def.id);
-      // Every other segment only stages; this one changes the system at once, so it always asks.
-      else if (hasSnapshot) void restore(true);
-    } else if (target === activeOption) unstageChange(def.id);
-    else stageChange(def.id, { tweakId: def.id, optionLabel: target });
-  }
-
-  const handleRestoreClick = () => restore(highRisk);
-
-  async function restore(ask: boolean) {
-    if (
-      ask &&
-      !(await confirm({
-        title: `Restore ${def.name}?`,
-        message: `This ${def.risk_level}-risk tweak steps back to the state saved before its last change.`,
-        confirmText: "Restore",
-        variant: "warning",
-      }))
-    )
-      return;
-    // A second restore while one is in flight would walk back to the next-older snapshot.
-    if (loadingStore.isLoading(def.id)) return;
-    await revertTweak(def.id, { showToast: true, tweakName: def.name });
-  }
-
-  async function handleKeepCurrentState() {
-    const ok = await confirm({
-      title: "Keep the current state?",
-      message:
-        "This accepts the current state as-is and releases the saved snapshot, so the earlier state can no longer be restored for this tweak.",
-      confirmText: "Keep current state",
-      variant: "danger",
-    });
-    if (ok) await keepCurrentState(def.id, { showToast: true, tweakName: def.name });
-  }
+  const handleRestoreClick = () => restoreTweak(def, highRisk);
+  const handleKeepCurrentState = () => keepWithConfirm(def);
 
   function handleRowClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -225,35 +137,10 @@
           )}{:else}{def.name}{/if}
       </h3>
 
-      <div
-        class="max-w-[45cqw] min-w-0 @max-[520px]:max-w-full {optionLabels.length > 2
-          ? 'w-fit min-w-44 @max-[520px]:w-full'
-          : ''}"
-        use:tooltip={controlDisabledReason}
-      >
-        {#if optionLabels.length <= 2}
-          <SegmentedSwitch
-            value={segmentValue}
-            options={segments}
-            pending={hasPending}
-            loading={isLoading}
-            disabled={controlDisabled}
-            label={def.name}
-            onchange={(i) => selectTarget(segments[i].target)}
-          />
-        {:else}
-          <Select
-            value={selectValue}
-            options={selectOptions}
-            placeholder={selectPlaceholder}
-            pending={hasPending}
-            loading={isLoading}
-            disabled={controlDisabled}
-            label={def.name}
-            onchange={(v) => selectTarget(String(v))}
-          />
-        {/if}
-      </div>
+      <TweakControl
+        {tweak}
+        class="max-w-[45cqw] @max-[520px]:max-w-full {optionLabels.length > 2 ? '@max-[520px]:w-full' : ''}"
+      />
 
       <p class="col-span-full m-0 text-[13px] leading-snug text-foreground-muted">
         {#if descriptionSlot}{@render descriptionSlot()}{:else if filterMatch}{@render marked(

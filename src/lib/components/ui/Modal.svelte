@@ -10,7 +10,7 @@
   interface Props {
     open: boolean;
     onclose?: () => void;
-    size?: "sm" | "md" | "lg" | "xl";
+    size?: "sm" | "md" | "lg" | "xl" | "full";
     closeOnBackdrop?: boolean;
     closeOnEscape?: boolean;
     class?: string;
@@ -52,6 +52,7 @@
     // Keep selector intentionally conservative to avoid trapping non-interactive elements.
     const selector = [
       "a[href]",
+      "summary",
       "button:not([disabled])",
       "input:not([disabled])",
       "select:not([disabled])",
@@ -111,7 +112,9 @@
     if (isVisible) return;
     if (!previouslyFocusedEl) return;
     try {
-      previouslyFocusedEl.focus();
+      // The opener can be gone (a discarded entry): fall back to the dialog still open beneath.
+      const fallback = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')].at(-1);
+      (previouslyFocusedEl.isConnected ? previouslyFocusedEl : fallback)?.focus();
     } finally {
       previouslyFocusedEl = null;
     }
@@ -122,6 +125,7 @@
     md: "w-full max-w-[520px]",
     lg: "w-full max-w-[680px]",
     xl: "w-full max-w-[920px]",
+    full: "h-full w-full max-w-[1200px]",
   };
 
   function handleBackdropClick(e: MouseEvent) {
@@ -131,7 +135,8 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (!isTopmost()) return;
+    // A control inside (an open dropdown) already used this key.
+    if (e.defaultPrevented || !isTopmost()) return;
     if (closeOnEscape && e.key === "Escape" && isVisible && !isClosing && onclose) {
       e.stopPropagation();
       onclose();
@@ -211,6 +216,7 @@
       ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'} {className}"
       bind:this={modalEl}
       {role}
+      tabindex="-1"
       aria-modal="true"
       aria-labelledby={labelledBy}
       onanimationend={handleAnimationEnd}

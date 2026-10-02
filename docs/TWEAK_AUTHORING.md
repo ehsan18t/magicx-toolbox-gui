@@ -275,7 +275,7 @@ accepts, whether it is required, its default, its legal values, and its gotchas.
 | `name`            | **yes**  | string                                    | –                 | display name                                                    |
 | `description`     | **yes**  | string                                    | –                 | one-line description shown in the UI                            |
 | `info`            | no       | string                                    | _(none)_          | optional longer explanation                                     |
-| `warning`         | no       | string                                    | _(none)_          | caution callout in the details panel; on the row behind a Warning toggle, opened automatically while a change is staged     |
+| `warning`         | no       | string                                    | _(none)_          | caution callout in the details window; on the row behind a Warning toggle, opened automatically while a change is staged     |
 | `risk_level`      | **yes**  | `low` \| `medium` \| `high` \| `critical` | –                 | advisory only; never changes behavior                           |
 | `elevation`       | **yes**  | `user` \| `admin` \| `ti`                 | –                 | the privilege **floor** for the whole tweak (§13)               |
 | `reversible`      | **yes**  | `true` \| `false`                         | –                 | declared **and** build-checked against the computed value (§14) |

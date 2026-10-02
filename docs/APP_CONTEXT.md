@@ -79,7 +79,7 @@ The profile system (`.mgx` export/import) was removed in the current build and i
 - `src/lib/api/`: Tauri invoke wrappers.
 - `src/lib/stores/*.svelte.ts`: Svelte 5 rune stores.
 - `src/lib/components/ui/`: shared UI primitives.
-- `src/lib/components/tweaks/`: tweak and app rows, the tweak details panel, the At a glance pane, and the details sub-components.
+- `src/lib/components/tweaks/`: tweak and app rows, the shared option control, the tweak details window and the At a glance pane.
 - `src/lib/components/modals/`: profile, settings, update, about and confirm dialogs.
 - `src/lib/components/views/`: main app views.
 

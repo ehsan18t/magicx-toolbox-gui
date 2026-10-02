@@ -47,7 +47,7 @@ src/lib/stores/
 ├── logs.svelte.ts        # Logs panel lines, polling, logging settings and export
 ├── navigation.svelte.ts  # Tab navigation state
 ├── update.svelte.ts      # Update checking state
-├── tweakDetailsModal.svelte.ts # Which tweak the details panel shows
+├── tweakDetailsModal.svelte.ts # Which tweak the details window shows
 └── tweaks.svelte.ts      # Barrel export for tweaks system
     ├── tweaksData.svelte.ts    # System info, categories, tweaks list
     ├── tweaksLoading.svelte.ts # Loading/error state with SvelteSet/SvelteMap
@@ -64,7 +64,7 @@ src/lib/stores/
 - `logsStore` - Logs panel lines, polling, logging settings and export
 - `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
 - `updateStore` - Update info and checking state
-- `tweakDetailsModalStore` - Which tweak the details panel shows (also the selected row)
+- `tweakDetailsModalStore` - Which tweak the details window shows (also the selected row)
 
 **Tweaks system stores:**
 - `systemStore` - Windows system info (.info getter)
@@ -96,8 +96,9 @@ src/lib/components/
 ├── ui/                   # Reusable primitives (Button, Badge, Card, Modal*, Select, SegmentedSwitch, FilterChips, ...)
 ├── tweaks/
 │   ├── TweakRow.svelte          # One tweak as a full-width row: text, callouts, meta line, control
-│   ├── TweakDetailsPanel.svelte # Details side panel: docked at 1040px+ content width, else an overlay dialog
-│   ├── SummaryPanel.svelte      # "At a glance" pane at 1400px+ content width while no tweak is selected
+│   ├── TweakControl.svelte      # The option switch or dropdown, shared by the row and the details window
+│   ├── TweakDetailsModal.svelte # Details window: header control, option comparison table, snapshot history
+│   ├── SummaryPanel.svelte      # "At a glance" pane at 1400px+ content width
 │   ├── GroupedTweakList.svelte  # Rows grouped by category (Favorites, Snapshots)
 │   ├── AppRow.svelte            # One app item as a row
 │   └── details/                 # Registry, service, scheduler, hosts, firewall change items; CommandList

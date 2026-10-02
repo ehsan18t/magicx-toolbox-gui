@@ -95,8 +95,8 @@ sequenceDiagram
 
 ### Restore, discard, keep
 
-- **Restore** (the row's Restore action, shown when a history exists and the tweak does not need attention; while it does, the row's Needs Attention callout and the details panel carry Restore instead; disabled unless the tweak is available) calls `restore_tweak` and adopts the returned status. On failure the store re-reads the status; when a `restore_failed` record was written, the button becomes "Retry restore" and the tweak needs attention.
-- **Details panel** (opened from a row's Details action or by clicking the row; docked beside the list when the content area is at least 1040px wide, otherwise an overlay dialog) lists the snapshot entries (valid and invalid, with reasons) and lets the user discard one, after confirmation.
+- **Restore** (the row's Restore action, shown when a history exists and the tweak does not need attention; while it does, the row's Needs Attention callout and the details window carry Restore instead; disabled unless the tweak is available) calls `restore_tweak` and adopts the returned status. On failure the store re-reads the status; when a `restore_failed` record was written, the button becomes "Retry restore" and the tweak needs attention.
+- **Details window** (a large dialog opened from a row's Details action or by clicking the row) carries the same option control as the row, Restore and the favourite star in its header. Its body compares the options in a table: one row per setting the tweak touches, grouped by kind, one column per option with the current one highlighted and a staged one marked Pending, and at System Default a This PC now column with the live values and which options each one matches. Scripts sit in collapsible sections below the table. It also lists the snapshot entries (valid and invalid, with reasons) and lets the user discard one, after confirmation.
 - **Keep current state** appears only while the tweak needs attention, and asks for confirmation.
 
 ## Frontend state
@@ -106,7 +106,7 @@ sequenceDiagram
 | `tweaksData` | The catalog with each tweak's status, category metadata, system info, elevation state, status stamps and buffered early statuses. |
 | `tweaksLoading` | Which tweaks are being changed right now, and per-tweak errors. |
 | `tweaksPending` | Staged option changes, and tweaks waiting for a reboot. |
-| `tweaksActions` | Search and filter state, and the apply, restore and keep-current-state actions (single and batch). The details panel calls discard directly. |
+| `tweaksActions` | Search and filter state, and the apply, restore and keep-current-state actions (single and batch). The details window calls discard directly. |
 | `apps` | App item views, presence statuses, per-app busy and error state, and the Remove, Install and Get in Store actions. Outside pending changes, snapshots and profiles. |
 
 ### What the user sees
@@ -115,7 +115,7 @@ sequenceDiagram
 | --- | --- |
 | Checking | "Checking" with a spinner on the row's meta line, nothing selected, until the first status arrives. |
 | Active | The option is selected and named on the meta line; accent stripe on the row's left edge. |
-| System Default | A "System Default" position appears on the switch (between the two options, or before a single option) or at the top of the dropdown, **only while it is the detected state**. The details panel shows the observed values. |
+| System Default | The state line says System default and the control selects nothing, except a one-option switch, whose System default segment is selected. The details window shows the observed values in its This PC now column. |
 | Unknown | "Unknown" in warning colour on the meta line ("Unknown, needs admin" when elevation is the cause), the unreadable effects in its tooltip, nothing selected. |
 | Unavailable | "Unavailable" on the meta line; control disabled, the reason in its tooltip. |
 | Unavailable option | The option is labelled "(unavailable)" and cannot be chosen. |
@@ -127,7 +127,7 @@ sequenceDiagram
 
 **Switch or dropdown.** One authored option renders as a segmented switch of System default and the option: the option stages it, System default unstages it or, once applied, restores the snapshot after a confirmation, since unlike every other segment it changes the system at once (disabled when no snapshot exists). Two render as a segmented switch, three or more as a dropdown.
 
-**Rows and panes.** Every view lists tweaks as full-width rows, one per line. A row shows the title, the description, then a meta line (state, pending target, risk, a Warning toggle when the tweak authors a `warning:`, permission level, Restart, availability, Residue, Shared) ending in Restore, the favourite star and Details. The warning callout stays hidden until the toggle opens it or a change to that tweak is staged; the details panel always shows it. The title and the control share the first line, the control capped at 45% of the row, and the description spans the full row beneath them; below 520px the control moves under the title, above the description. A switch label that does not fit truncates with an ellipsis and shows in full on hover; only the longest label, or one over 16 characters, gives up width. At 1400px of content width and above, category, Favorites and Snapshots views show an At a glance pane while no tweak is selected: applied progress by state, and lists of tweaks that need attention, are ready to apply, have an unknown state or wait for a restart, each opening the details panel.
+**Rows and panes.** Every view lists tweaks as full-width rows, one per line. A row shows the title, the description, then a meta line (state, pending target, risk, a Warning toggle when the tweak authors a `warning:`, permission level, Restart, availability, Residue, Shared) ending in Restore, the favourite star and Details. The warning callout stays hidden until the toggle opens it or a change to that tweak is staged; the details window always shows it. The title and the control share the first line, the control capped at 45% of the row, and the description spans the full row beneath them; below 520px the control moves under the title, above the description. A switch label that does not fit truncates with an ellipsis and shows in full on hover; only the longest label, or one over 16 characters, gives up width. At 1400px of content width and above, category, Favorites and Snapshots views show an At a glance pane: applied progress by state, and lists of tweaks that need attention, are ready to apply, have an unknown state or wait for a restart, each opening the details window.
 
 **System Default is never a target.** Only the one-option switch offers it, as a Restore; elsewhere the control shows no selection at System Default and the state line names it. A staged change is undone from the row's Undo link or the pending bar. The only way back to an earlier state is Restore (ADR-0003), which steps back one snapshot entry.
 

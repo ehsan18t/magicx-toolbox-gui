@@ -2,7 +2,7 @@
   import { PendingBar, RebootBanner } from "$lib/components/feedback";
   import { Sidebar } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { SummaryPanel, TweakDetailsPanel } from "$lib/components/tweaks";
+  import { SummaryPanel, TweakDetailsModal } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
@@ -14,13 +14,11 @@
   } from "$lib/components/views";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { loadRemainingData, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
 
-  const PANEL_DOCK_MIN_WIDTH = 1040;
   const SUMMARY_MIN_WIDTH = 1400;
 
   let error = $state<string | null>(null);
@@ -107,11 +105,11 @@
           {/key}
           <PendingBar />
         </div>
-        <TweakDetailsPanel docked={workspaceWidth >= PANEL_DOCK_MIN_WIDTH} />
-        {#if summary && workspaceWidth >= SUMMARY_MIN_WIDTH && !tweakDetailsModalStore.isOpen}
+        {#if summary && workspaceWidth >= SUMMARY_MIN_WIDTH}
           <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />
         {/if}
       </div>
     </main>
   </div>
+  <TweakDetailsModal />
 {/if}
