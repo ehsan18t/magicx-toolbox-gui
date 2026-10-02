@@ -5,7 +5,6 @@
   import { Icon } from "$lib/components/shared";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { settingsStore } from "$lib/stores/settings.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { initializeQuick } from "$lib/stores/tweaksData.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
@@ -67,25 +66,7 @@
 
     if (initError) return;
 
-    // Perform silent background update check if enabled
-    const settings = settingsStore.settings;
-    if (settings.autoCheckUpdates) {
-      // Check if enough time has passed since last check (at least 1 hour)
-      const lastCheck = settings.lastUpdateCheck;
-      const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
-
-      const shouldCheck = !lastCheck || now - new Date(lastCheck).getTime() > oneHour;
-
-      if (shouldCheck) {
-        // Silent check - don't show errors to user
-        updateStore.checkForUpdate(true).then((result) => {
-          if (result) {
-            settingsStore.setLastUpdateCheck(new Date().toISOString());
-          }
-        });
-      }
-    }
+    updateStore.autoCheckIfDue();
   });
 </script>
 

@@ -8,7 +8,6 @@ const SETTINGS_STORAGE_KEY = "magicx-app-settings";
 const defaultSettings: AppSettings = {
   autoCheckUpdates: true,
   autoInstallUpdates: false,
-  checkUpdateInterval: 24, // hours
   lastUpdateCheck: null,
   showUnsupported: false,
   includePrereleases: false,
@@ -20,7 +19,6 @@ const settingsState = new PersistentStore<AppSettings>(SETTINGS_STORAGE_KEY, def
 // Derived values for convenience
 const autoCheckUpdates = $derived(settingsState.value.autoCheckUpdates);
 const autoInstallUpdates = $derived(settingsState.value.autoInstallUpdates);
-const checkUpdateInterval = $derived(settingsState.value.checkUpdateInterval);
 const lastUpdateCheck = $derived(settingsState.value.lastUpdateCheck);
 // Settings stored before this key existed read as undefined, which keeps them hidden.
 const showUnsupported = $derived(settingsState.value.showUnsupported === true);
@@ -37,10 +35,6 @@ export const settingsStore = {
 
   get autoInstallUpdates() {
     return autoInstallUpdates;
-  },
-
-  get checkUpdateInterval() {
-    return checkUpdateInterval;
   },
 
   get lastUpdateCheck() {

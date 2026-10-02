@@ -783,8 +783,6 @@ export interface AppSettings {
   autoCheckUpdates: boolean;
   /** Whether to automatically install updates when available */
   autoInstallUpdates: boolean;
-  /** Interval in hours between update checks */
-  checkUpdateInterval: number;
   /** Last time an update check was performed (ISO 8601) */
   lastUpdateCheck: string | null;
   /** List tweaks and apps this Windows build cannot run, shown as unavailable. */

@@ -26,17 +26,14 @@
     }
   });
 
-  async function checkForUpdate() {
-    if (isChecking) return;
-    updateStore.clearError();
-    const result = await updateStore.checkForUpdate(false);
-    if (result) settingsStore.setLastUpdateCheck(new Date().toISOString());
+  function checkForUpdate() {
+    void updateStore.checkForUpdate(false);
   }
 
   function setIncludePrereleases(include: boolean) {
     settingsStore.setIncludePrereleases(include);
     // A result read under the old setting would offer the wrong release.
-    if (updateInfo) void checkForUpdate();
+    if (updateInfo || isChecking) checkForUpdate();
   }
 
   async function installUpdate() {

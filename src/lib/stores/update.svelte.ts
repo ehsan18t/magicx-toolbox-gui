@@ -31,6 +31,15 @@ let lastCheckWasSilent = $state(false);
 // Derived: is update available
 const isAvailable = $derived(updateInfo?.available ?? false);
 
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+// Overlapping checks (startup, manual, pre-release toggle) finish out of order; only the latest writes.
+let checkSeq = 0;
+
+function stampLastCheck(): void {
+  settingsStore.setLastUpdateCheck(new Date().toISOString());
+}
+
 // === Export ===
 
 export const updateStore = {
@@ -69,6 +78,7 @@ export const updateStore = {
    * @param silent If true, errors won't be stored (for background checks)
    */
   async checkForUpdate(silent: boolean = false): Promise<UpdateInfo | null> {
+    const seq = ++checkSeq;
     isChecking = true;
     if (!silent) {
       error = null;
@@ -85,22 +95,33 @@ export const updateStore = {
       };
 
       const result = await invoke<UpdateInfo>("check_for_update", { config });
-      updateInfo = result;
-      error = null;
+      stampLastCheck();
+      if (seq === checkSeq) {
+        updateInfo = result;
+        error = null;
+      }
       return result;
     } catch (err) {
       const message = errorMessage(err);
       console.error("Update check failed:", message);
 
       // Only store error for non-silent checks
-      if (!silent) {
+      if (!silent && seq === checkSeq) {
         error = message;
       }
 
       return null;
     } finally {
-      isChecking = false;
+      if (seq === checkSeq) isChecking = false;
     }
+  },
+
+  /** Silent background check, at most once per `UPDATE_CHECK_INTERVAL_MS`, when enabled. */
+  autoCheckIfDue() {
+    if (!settingsStore.autoCheckUpdates) return;
+    const lastCheck = settingsStore.lastUpdateCheck;
+    const due = !lastCheck || Date.now() - Date.parse(lastCheck) > UPDATE_CHECK_INTERVAL_MS;
+    if (due) void updateStore.checkForUpdate(true);
   },
 
   /**
@@ -140,6 +161,7 @@ export const updateStore = {
 
   /** Reset the store to initial state */
   reset() {
+    checkSeq++;
     isChecking = false;
     isInstalling = false;
     updateInfo = null;
