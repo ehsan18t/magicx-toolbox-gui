@@ -194,10 +194,6 @@ export const adminAvailability: Record<string, Availability> = {
     reason:
       "The Windows Modules Installer (TrustedInstaller) service is disabled on this PC, so tweaks that need it cannot run. Set its startup type to Manual to enable them.",
   },
-  update_feature_control: {
-    state: "needs_elevation",
-    reason: "Restart the app as administrator to enable this tweak.",
-  },
 };
 
 export const appAdminAvailability: Record<string, Availability> = {

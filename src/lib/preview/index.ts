@@ -355,7 +355,8 @@ export function installPreview(admin: boolean): void {
         if (result !== undefined) return result;
       }
       console.warn(`[preview] unmocked command: ${cmd}`, args);
-      return null;
+      // A silent null would read as success, which the real backend never fakes.
+      return fail("unmocked", `Preview does not mock "${cmd}"`);
     },
     { shouldMockEvents: true },
   );
