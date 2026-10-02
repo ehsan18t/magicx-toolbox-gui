@@ -19,6 +19,7 @@
     openProfileImportModal,
     openUpdateModal,
   } from "$lib/stores/modal.svelte";
+  import { settingsStore } from "$lib/stores/settings.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import type { Snippet } from "svelte";
@@ -90,6 +91,20 @@
   {#snippet accentControl()}<ColorSchemePicker size="md" />{/snippet}
   {@render row("Theme", "", themeControl)}
   {@render row("Accent colour", "Used for selections, applied states and progress.", accentControl)}
+{/snippet}
+{#snippet tweaks()}
+  {#snippet unsupportedControl()}
+    <Switch
+      checked={settingsStore.showUnsupported}
+      ariaLabel="Show tweaks this PC cannot run"
+      onchange={(show) => settingsStore.setShowUnsupported(show)}
+    />
+  {/snippet}
+  {@render row(
+    "Show tweaks this PC cannot run",
+    "List tweaks and apps made for other Windows versions, greyed out as unavailable.",
+    unsupportedControl,
+  )}
 {/snippet}
 {#snippet updates()}
   {#snippet updateControl()}
@@ -190,6 +205,8 @@
 
   <ModalBody class="space-y-5">
     {@render section("Appearance", appearance)}
+
+    {@render section("Tweaks", tweaks)}
 
     {@render section("Updates", updates)}
 

@@ -124,15 +124,17 @@ An empty surface on a milestone is skipped, not an error: the tweak simply does 
 ```mermaid
 flowchart LR
   V["RtlGetVersion + UBR<br/>build and revision"] --> S{"Applicable surface<br/>on this build empty?"}
-  S -->|"yes, release build"| H["Hidden from the catalog<br/>and from scan events"]
-  S -->|"yes, debug or test build"| U["Listed, status Unavailable"]
+  S -->|yes| U["Listed with supported: false,<br/>status Unavailable"]
+  U --> H{"Show tweaks this<br/>PC cannot run?"}
+  H -->|"off (default)"| HH["Hidden in the UI"]
+  H -->|on| HS["Shown as unavailable"]
   S -->|no| O{"Per option:<br/>anything left to drive?"}
   O -->|no| OU["Option shown as unavailable"]
   O -->|yes| OK["Option selectable"]
 ```
 
 - The build number comes from `RtlGetVersion`, never `GetVersionEx`, whose compatibility shim under-reports the version to an unmanifested process. The revision comes from the `UBR` registry value. If either read fails the value is 0.
-- Release builds hide a tweak whose surface is empty on the running build. Debug builds and the test build list it so it can be inspected; detection then reports it as Unavailable. Categories are not filtered.
+- The catalog lists every tweak, flagging one whose surface is empty on the running build as `supported: false`; detection reports it as Unavailable. The UI hides unsupported tweaks and apps unless Settings > Tweaks > Show tweaks this PC cannot run is on, so lists, counts and search leave them out; lookups by id still find them. Categories are not filtered.
 - The engine repeats the check: apply on an unavailable tweak fails before touching anything, and the effects it drives are computed with the full scope rules for the running build.
 
 ## Interfaces
@@ -145,7 +147,7 @@ flowchart LR
 
 - **`revision` scopes are parsed but rejected.** The runtime honours them, but the validator refuses every use, so none ship. Enabling them needs validator and test work, not just YAML.
 - **Only four builds are proven.** On a build outside the milestone list (for example a newer Insider build), option-level scope gaps can make options unavailable even though the corpus passed every guard.
-- **Build 0 hides product-scoped tweaks.** If `RtlGetVersion` fails, a release build hides every tweak scoped to Windows 10 or 11.
+- **Build 0 hides product-scoped tweaks.** If `RtlGetVersion` fails, every tweak scoped to Windows 10 or 11 is flagged unsupported and hidden by default.
 - **Some model variants are not authorable.** The model and engine support a `DeleteTree` action and a firewall rule as a shared setting, but the YAML schema has no spelling for either.
 - **Hosts and firewall ownership keys are case-sensitive**, unlike registry, service and task keys.
 - **Hidden tweaks remain reachable by id.** The release-build filter applies to the catalog and scan events only. Commands such as `apply_tweak` look tweaks up in the whole corpus.

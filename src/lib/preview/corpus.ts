@@ -1,8 +1,8 @@
 // Verbatim from src-tauri/tweaks/*.yaml, projected the way get_tweaks and get_apps project it.
 import type { AppView, CategoryMeta, TweakView } from "$lib/types";
 
-export type CorpusTweak = Omit<TweakView, "availability"> & { surface: { id: string; name: string }[] };
-export type CorpusApp = Omit<AppView, "remove_availability" | "install_availability">;
+export type CorpusTweak = Omit<TweakView, "availability" | "supported"> & { surface: { id: string; name: string }[] };
+export type CorpusApp = Omit<AppView, "remove_availability" | "install_availability" | "supported">;
 
 export const categories: CategoryMeta[] = [
   {

@@ -394,6 +394,8 @@ pub struct TweakView {
     /// to name the level used (ADR-0005).
     pub required_level: Level,
     pub availability: Availability,
+    /// False when this Windows build can run none of its effects; the UI hides it unless asked.
+    pub supported: bool,
 }
 
 /// One option projected as the exact per-address changes it makes. The `*_changes` shapes mirror
@@ -721,6 +723,7 @@ fn tweak_view(
             .map(|o| option_view(t, o, corpus))
             .collect(),
         required_level: required_level(t, corpus, winver),
+        supported: supported(t, winver),
         availability: tweak_availability(
             t,
             corpus,
@@ -1114,11 +1117,7 @@ fn spawn_full_scan(app: AppHandle) {
         let state = app.state::<TweakEngineState>();
         let deps = build_deps(state.inner());
         let corpus = compiled_corpus();
-        let winver = running_winver();
         scan_and_emit(corpus, &deps, |event| {
-            if !find_tweak(corpus, &event.tweak_id).is_ok_and(|t| listed(t, &winver)) {
-                return;
-            }
             if let Err(e) = app.emit("tweak-status", &event) {
                 log::warn!(
                     "tweak status scan: failed to emit for '{}': {e}",
@@ -1180,16 +1179,8 @@ pub(crate) async fn run_locked<T: Send + 'static>(
     .await
 }
 
-/// Release builds leave out tweaks and apps this Windows build cannot run at all; debug and test
-/// builds list them, shown as unavailable, so every gate stays reviewable on one machine.
-pub(crate) const SHOW_UNSUPPORTED: bool = cfg!(any(debug_assertions, feature = "test-build"));
-
-fn listed(tweak: &Tweak, winver: &WinVer) -> bool {
-    listed_in(tweak, winver, SHOW_UNSUPPORTED)
-}
-
-fn listed_in(tweak: &Tweak, winver: &WinVer, show_unsupported: bool) -> bool {
-    show_unsupported || !applicable_surface(tweak, &winver.to_milestone()).is_empty()
+fn supported(tweak: &Tweak, winver: &WinVer) -> bool {
+    !applicable_surface(tweak, &winver.to_milestone()).is_empty()
 }
 
 // --- commands -------------------------------------------------------------------------------------
@@ -1205,7 +1196,6 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
         Ok(corpus
             .tweaks
             .iter()
-            .filter(|t| listed(t, &winver))
             .map(|t| tweak_view(t, corpus, &winver, level, sid_check))
             .collect())
     })
@@ -2418,7 +2408,7 @@ mod tests {
     }
 
     #[test]
-    fn release_builds_leave_out_tweaks_this_windows_build_cannot_run() {
+    fn a_tweak_this_windows_build_cannot_run_is_flagged_unsupported() {
         let mut win11_only = tweak("win11_only", vec![opt("On", StartupType::Manual)]);
         win11_only.windows = Some(crate::tweaks::model::WindowsScope {
             products: Some(vec![11]),
@@ -2427,12 +2417,8 @@ mod tests {
         });
         let everywhere = tweak("everywhere", vec![opt("On", StartupType::Manual)]);
         // WINVER is Windows 10 (19045).
-        assert!(!listed_in(&win11_only, &WINVER, false));
-        assert!(listed_in(&everywhere, &WINVER, false));
-        assert!(
-            listed_in(&win11_only, &WINVER, true),
-            "debug and test builds list every tweak"
-        );
+        assert!(!supported(&win11_only, &WINVER));
+        assert!(supported(&everywhere, &WINVER));
     }
 
     #[test]

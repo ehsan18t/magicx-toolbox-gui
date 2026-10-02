@@ -42,7 +42,7 @@ flowchart TB
 
 - **AppX items** are answered from one shared enumeration (`Get-AppxPackage -AllUsers` plus `Get-AppxProvisionedPackage -Online`), built once per scan and cached with its failure. Asking about one package costs as much as listing all of them, so a scan pays one PowerShell spawn for every app. Unelevated, `-AllUsers` is unavailable, so the index lists only the current account: a hit is Installed, a miss is Unknown with `needs_elevation`, never Absent. An enumeration failure is Unknown.
 - **Script items** run their `probe` through the action runner with the fixed probe timeout. Exit 0 is Installed and exit 2 is Absent. Exit 1 is deliberately not Absent: an uncaught PowerShell error exits 1, and reading that as "absent" would hide an installed app. Any other result is Unknown. When another account elevated the app, the probe is not run and presence is Unknown, because its per-user paths would be that account's.
-- **Out-of-scope items** (their `windows:` scope excludes the running build) are left out of release builds; debug and test builds list them with presence Unknown, "Not available on this Windows build".
+- **Out-of-scope items** (their `windows:` scope excludes the running build) are listed with `supported: false` and presence Unknown, "Not available on this Windows build"; the UI hides them unless Settings > Tweaks > Show tweaks this PC cannot run is on.
 - Every scan and every re-check invalidates the index first. The apps module owns its own `AppxIndex`; the tweak engine has none.
 
 ## Install route
@@ -68,7 +68,7 @@ Each scan also reports how the app could come back on this machine. winget count
 
 | Command | Purpose | Gating |
 | --- | --- | --- |
-| `get_apps` | The app items as view types, with each one's install source and the availability of Remove and Install. Release builds leave out items this Windows build excludes. | none |
+| `get_apps` | The app items as view types, with each one's install source and the availability of Remove and Install. Items this Windows build excludes carry `supported: false`. | none |
 | `get_app_statuses` | One presence scan, with the install route and a status stamp per app. Apps whose lock is held are left out. | none |
 | `remove_app` | Removes one app and returns its new status. | Windows scope, availability (`admin`), then the app's lock |
 | `install_app` | Installs one app through winget and returns its new status. | Windows scope, availability (`user`), then the app's lock |

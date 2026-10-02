@@ -238,6 +238,8 @@ export interface TweakView {
   /** The level the engine will actually run the tweak at, not its declared floor (ADR-0005). */
   required_level: Level;
   availability: Availability;
+  /** False when this Windows build can run none of its effects. */
+  supported: boolean;
 }
 
 /** Why one applicable effect could not be read (spec §8.4). */
@@ -423,6 +425,8 @@ export interface AppView {
   install: { kind: "store" | "winget" | "store_page"; id: string } | null;
   remove_availability: Availability;
   install_availability: Availability;
+  /** False when this Windows build is outside the app's scope. */
+  supported: boolean;
 }
 
 /** Unknown is never Absent: an unreadable app stays visible with its actions disabled. */
@@ -475,6 +479,7 @@ export interface TweakDefinition {
   required_level: Level;
   /** Whether the tweak can be applied/restored right now (spec §9). */
   availability: Availability;
+  supported: boolean;
   /** Authored option labels, in order. Apply targets are addressed by label, not index. */
   optionLabels: string[];
   /** Each option with the concrete per-effect changes it drives, for the Details modal breakdown. */
@@ -782,6 +787,8 @@ export interface AppSettings {
   checkUpdateInterval: number;
   /** Last time an update check was performed (ISO 8601) */
   lastUpdateCheck: string | null;
+  /** List tweaks and apps this Windows build cannot run, shown as unavailable. */
+  showUnsupported: boolean;
 }
 
 /** Tweak snapshot for export - captures current registry state */

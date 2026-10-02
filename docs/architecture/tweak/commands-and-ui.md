@@ -10,7 +10,7 @@ Code: `src-tauri/src/commands/tweaks.rs` (commands and view types), `src-tauri/s
 
 | Command | Purpose | Gating |
 | --- | --- | --- |
-| `get_tweaks` | The catalog as view types, with each tweak's required level and availability computed at call time. Release builds leave out tweaks this Windows build cannot run. | none |
+| `get_tweaks` | The catalog as view types, with each tweak's required level and availability computed at call time, and `supported: false` on tweaks this Windows build cannot run. | none |
 | `get_categories` | Category metadata. | none |
 | `get_statuses_stream` | Starts the full background scan and returns at once. Statuses arrive as events. | none |
 | `apply_tweak` | Applies one option to one tweak. Returns the outcome and the new status. | availability, then the tweak's lock |
@@ -144,5 +144,5 @@ The profile system is not wired to the tweak engine. There is no profile backend
 - **Availability is computed when the catalog loads** and is not refreshed by a rescan. Elevation changes are covered because Elevate relaunches the app.
 - **The availability check runs before the lock**, and commands call the engine's variants that expect the lock to be held already, so it is never taken twice.
 - **A re-read during another change fails** (the single-tweak status is refused while locked) and shows as "could not be re-read".
-- **Tweaks hidden in a release build can still be applied by id** over IPC; only the catalog and scan events are filtered.
+- **Unsupported tweaks are hidden only in the UI.** The catalog and scan events carry them; the engine refuses to apply one, since its surface is empty.
 - **The tweak system uses two events**: `tweak-status` and `close-blocked`. App statuses are not streamed; `get_app_statuses` returns one scan.

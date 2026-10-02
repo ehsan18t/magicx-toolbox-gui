@@ -3,6 +3,7 @@
  * Remove and Install run immediately, never through pending changes, snapshots or profiles.
  */
 
+import { settingsStore } from "$lib/stores/settings.svelte";
 import * as api from "$lib/api/apps";
 import type { AppStatusView, AppView } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
@@ -32,6 +33,7 @@ function adopt(view: AppStatusView): void {
 
 /** Absent with no way back on this machine is hidden; Unknown never is (hiding it would fail open). */
 function isVisible(app: AppView): boolean {
+  if (!app.supported && !settingsStore.showUnsupported) return false;
   const status = statuses.get(app.id);
   return !status || status.presence.state !== "absent" || status.install_route !== "none";
 }

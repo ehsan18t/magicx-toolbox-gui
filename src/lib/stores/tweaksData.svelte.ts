@@ -7,6 +7,7 @@
  * System hardware info is cached in localStorage since it rarely changes.
  */
 
+import { settingsStore } from "$lib/stores/settings.svelte";
 import * as api from "$lib/api/tweaks";
 import type {
   CachedSystemInfo,
@@ -63,6 +64,7 @@ function mapView(view: TweakView): TweakDefinition {
     requires_reboot: view.requires_reboot,
     required_level: view.required_level,
     availability: view.availability,
+    supported: view.supported,
     optionLabels: view.options.map((o) => o.label),
     options: view.options,
     info: view.info ?? undefined,
@@ -122,13 +124,16 @@ let pendingStatusViews: Record<string, TweakStatusView> = {};
 /** Highest stamp adopted per tweak, so an older reading can never replace a newer one. */
 let statusStamps: Record<string, number> = {};
 
+// Lookups by id read the full list: a pending change or a status event can name a hidden tweak.
+const visibleTweaks = $derived(settingsStore.showUnsupported ? tweaks : tweaks.filter((t) => t.definition.supported));
+
 // Derived: tweaks grouped by category
 const tweaksByCategory = $derived.by(() => {
   const byCategory: Record<string, TweakWithStatus[]> = {};
   for (const cat of categories) {
     byCategory[cat.id] = [];
   }
-  for (const tweak of tweaks) {
+  for (const tweak of visibleTweaks) {
     const categoryId = tweak.definition.category_id;
     if (byCategory[categoryId]) {
       byCategory[categoryId].push(tweak);
@@ -163,9 +168,9 @@ const categories = $derived.by((): CategoryDefinition[] => {
 
 // Derived: overall stats
 const stats = $derived({
-  total: tweaks.length,
-  applied: tweaks.filter((t) => t.status.is_applied).length,
-  pending: tweaks.filter((t) => !t.status.is_applied).length,
+  total: visibleTweaks.length,
+  applied: visibleTweaks.filter((t) => t.status.is_applied).length,
+  pending: visibleTweaks.filter((t) => !t.status.is_applied).length,
 });
 
 // Derived: stats per category
@@ -355,7 +360,7 @@ export const categoriesStore = {
 
 export const tweaksStore = {
   get list() {
-    return tweaks;
+    return visibleTweaks;
   },
 
   get byCategory() {

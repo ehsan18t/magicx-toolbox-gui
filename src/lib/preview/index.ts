@@ -64,7 +64,8 @@ function tweakAvailability(t: CorpusTweak, admin: boolean): Availability {
 
 function toView(t: CorpusTweak, admin: boolean): TweakView {
   const { surface: _surface, ...view } = t;
-  return { ...view, availability: tweakAvailability(t, admin) };
+  const supported = scenarios[t.id]?.state?.state !== "unavailable";
+  return { ...view, availability: tweakAvailability(t, admin), supported };
 }
 
 function appView(a: (typeof apps)[number], admin: boolean): AppView {
@@ -77,6 +78,7 @@ function appView(a: (typeof apps)[number], admin: boolean): AppView {
     ...a,
     remove_availability: override ?? (admin ? { state: "available" } : elevate),
     install_availability: override ?? { state: "available" },
+    supported: true,
   };
 }
 
@@ -233,7 +235,8 @@ async function restore(id: string) {
 }
 
 async function appOp(id: string, removing: boolean): Promise<AppStatusView> {
-  await wait(1_200);
+  // Installs run long enough to show the activity bar and its timer.
+  await wait(removing ? 1_200 : 4_000);
   const prev = appStatuses.get(id);
   if (!prev) return fail("APP_NOT_FOUND", `Unknown app '${id}'`);
   const next: AppStatusView = {

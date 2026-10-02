@@ -9,7 +9,6 @@ use crate::apps::{self, install_route, AppPresence, AppsState, InstallRoute, Mac
 use crate::commands::logging::log_outcome;
 use crate::commands::tweaks::{
     blocking, compute_availability, current_app_level, next_status_stamp, run_locked, Availability,
-    SHOW_UNSUPPORTED,
 };
 use crate::error::{Error, Result};
 use crate::tweaks::compiled_apps;
@@ -43,6 +42,8 @@ pub struct AppView {
     pub install: Option<InstallView>,
     pub remove_availability: Availability,
     pub install_availability: Availability,
+    /// False when this Windows build is outside the app's scope; the UI hides it unless asked.
+    pub supported: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -99,7 +100,7 @@ fn app_wording(availability: Availability) -> Availability {
     }
 }
 
-fn app_view(app: &AppDef, level: Level, sid: SidCheck) -> AppView {
+fn app_view(app: &AppDef, level: Level, sid: SidCheck, winver: &WinVer) -> AppView {
     AppView {
         id: app.id.clone(),
         name: app.name.clone(),
@@ -108,6 +109,7 @@ fn app_view(app: &AppDef, level: Level, sid: SidCheck) -> AppView {
         warning: app.warning.clone(),
         category: app.category.clone(),
         risk: app.risk_level,
+        supported: in_scope(app, winver),
         source: if is_script(app) { "script" } else { "appx" },
         install: app.install.as_ref().map(|i| match i {
             InstallSource::Store(id) => InstallView {
@@ -136,23 +138,18 @@ fn route(app: &AppDef, m: &dyn Machine) -> InstallRoute {
     )
 }
 
-/// One status per listed app, skipping any mid-removal or mid-install: its presence is changing.
+/// One status per app, skipping any mid-removal or mid-install: its presence is changing.
 fn scan(
     apps: &[AppDef],
     m: &dyn Machine,
     winver: &WinVer,
-    show_unsupported: bool,
     sid: SidCheck,
     is_locked: &(dyn Fn(&str) -> bool + Sync),
 ) -> Vec<AppStatusView> {
     m.invalidate();
     let (winget, store) = (m.winget_available(), m.store_available());
-    let listed: Vec<&AppDef> = apps
-        .iter()
-        .filter(|a| show_unsupported || in_scope(a, winver))
-        .collect();
     // Build the index once up front: concurrent first lookups would each spawn an enumeration.
-    if listed
+    if apps
         .iter()
         .any(|a| in_scope(a, winver) && matches!(a.source, AppSource::Appx(_)))
     {
@@ -160,8 +157,7 @@ fn scan(
             log::warn!("app scan: {e}");
         }
     }
-    listed
-        .par_iter()
+    apps.par_iter()
         .filter_map(|app| {
             // Stamped before the check: a removal that locks after it stamps higher and wins.
             let stamp = next_status_stamp();
@@ -273,8 +269,7 @@ pub async fn get_apps() -> Result<Vec<AppView>> {
         let winver = running_winver();
         Ok(compiled_apps()
             .iter()
-            .filter(|a| SHOW_UNSUPPORTED || in_scope(a, &winver))
-            .map(|a| app_view(a, level, sid))
+            .map(|a| app_view(a, level, sid, &winver))
             .collect())
     })
     .await
@@ -289,7 +284,6 @@ pub async fn get_app_statuses(app: AppHandle) -> Result<Vec<AppStatusView>> {
             compiled_apps(),
             &state.machine(),
             &running_winver(),
-            SHOW_UNSUPPORTED,
             context::sid_check(&RealSidProbe),
             &lifecycle::is_locked,
         ))
@@ -460,14 +454,9 @@ mod tests {
             ..Default::default()
         }
         .with_appx(vec![Ok(lookup(true, false))]);
-        let statuses = scan(
-            &apps,
-            &m,
-            &win11(),
-            false,
-            SidCheck::SameUser,
-            &|id: &str| id == "busy",
-        );
+        let statuses = scan(&apps, &m, &win11(), SidCheck::SameUser, &|id: &str| {
+            id == "busy"
+        });
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].app_id, "idle");
         assert_eq!(
@@ -481,21 +470,10 @@ mod tests {
     }
 
     #[test]
-    fn an_out_of_scope_app_is_hidden_in_release_and_unknown_otherwise() {
+    fn an_out_of_scope_app_reads_unknown_without_probing() {
         let apps = [win10_only(app("old", script()))];
         let m = FakeMachine::default();
-        assert!(scan(
-            &apps,
-            &m,
-            &win11(),
-            false,
-            SidCheck::SameUser,
-            &|_: &str| false
-        )
-        .is_empty());
-        let shown = scan(&apps, &m, &win11(), true, SidCheck::SameUser, &|_: &str| {
-            false
-        });
+        let shown = scan(&apps, &m, &win11(), SidCheck::SameUser, &|_: &str| false);
         assert!(matches!(
             &shown[0].presence,
             AppPresence::Unknown { reason, .. } if reason == OUT_OF_SCOPE
@@ -507,7 +485,8 @@ mod tests {
     fn app_view_carries_the_wire_shape() {
         let mut def = app("a", appx());
         def.install = Some(InstallSource::StorePage("9NBLGGH4R32N".into()));
-        let json = serde_json::to_value(app_view(&def, Level::User, SidCheck::SameUser)).unwrap();
+        let json = serde_json::to_value(app_view(&def, Level::User, SidCheck::SameUser, &win11()))
+            .unwrap();
         assert_eq!(
             json["install"],
             serde_json::json!({ "kind": "store_page", "id": "9NBLGGH4R32N" })
@@ -516,6 +495,9 @@ mod tests {
         assert_eq!(json["source"], "appx");
         assert_eq!(json["remove_availability"]["state"], "needs_elevation");
         assert_eq!(json["install_availability"]["state"], "available");
+        assert_eq!(json["supported"], true);
+        let old = win10_only(app("old", script()));
+        assert!(!app_view(&old, Level::User, SidCheck::SameUser, &win11()).supported);
     }
 
     #[test]
@@ -526,14 +508,9 @@ mod tests {
             ..Default::default()
         }
         .with_appx(vec![Ok(lookup(true, false))]);
-        let statuses = scan(
-            &apps,
-            &m,
-            &win11(),
-            false,
-            SidCheck::DifferentUser,
-            &|_: &str| false,
-        );
+        let statuses = scan(&apps, &m, &win11(), SidCheck::DifferentUser, &|_: &str| {
+            false
+        });
         let od = statuses.iter().find(|s| s.app_id == "od").unwrap();
         assert!(matches!(
             &od.presence,
