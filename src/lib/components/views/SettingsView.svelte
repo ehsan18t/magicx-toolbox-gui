@@ -143,7 +143,7 @@
 {/snippet}
 
 <PageLayout title="Settings" description="How MagicX Toolbox looks, which tweaks it lists, and what it logs.">
-  <div class="flex max-w-3xl flex-col gap-6">
+  <div class="mt-2 flex flex-col gap-6">
     {@render section("Appearance", appearance)}
     {@render section("Tweaks", tweaks)}
     {@render section("Diagnostics", diagnostics)}
