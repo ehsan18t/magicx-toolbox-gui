@@ -1,12 +1,11 @@
 //! Update commands for checking and installing app updates from GitHub Releases
 
-use crate::Error;
+use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::io::Read;
 use std::process::Command;
 
-/// GitHub Release asset information
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitHubAsset {
     pub name: String,
@@ -17,15 +16,11 @@ pub struct GitHubAsset {
     pub digest: Option<String>,
 }
 
-/// GitHub Release information from API
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)] // Fields available for future use/debugging
 pub struct GitHubRelease {
     pub tag_name: String,
-    pub name: Option<String>,
     pub body: Option<String>,
     pub published_at: Option<String>,
-    pub html_url: String,
     pub assets: Vec<GitHubAsset>,
     #[serde(default)]
     pub prerelease: bool,
@@ -33,42 +28,53 @@ pub struct GitHubRelease {
     pub draft: bool,
 }
 
-/// Update information returned to the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
-    /// Whether an update is available
     pub available: bool,
-    /// Current app version
     pub current_version: String,
-    /// Latest version available (if update available)
     pub latest_version: Option<String>,
-    /// Release notes for the update
     pub release_notes: Option<String>,
-    /// Download URL for the update asset
     pub download_url: Option<String>,
-    /// When the update was published
     pub published_at: Option<String>,
-    /// Asset file name
     pub asset_name: Option<String>,
-    /// Asset size in bytes
     pub asset_size: Option<u64>,
     pub asset_digest: Option<String>,
     /// The offered release is marked pre-release on GitHub.
     pub prerelease: bool,
 }
 
-/// Update check configuration
+impl UpdateInfo {
+    fn none(current_version: String) -> Self {
+        Self {
+            available: false,
+            current_version,
+            latest_version: None,
+            release_notes: None,
+            download_url: None,
+            published_at: None,
+            asset_name: None,
+            asset_size: None,
+            asset_digest: None,
+            prerelease: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConfig {
-    /// GitHub releases API URL
     pub releases_api_url: String,
-    /// Regex pattern to match asset name
     pub asset_pattern: String,
     /// Offer releases GitHub marks pre-release; off, only stable releases count.
     #[serde(default)]
     pub include_prereleases: bool,
+}
+
+const RELEASES_PER_PAGE: u32 = 30;
+
+fn strip_v_prefix(version: &str) -> &str {
+    version.trim_start_matches(['v', 'V'])
 }
 
 /// `major.minor.patch[-pre]`; an empty `pre` is a release, which outranks every pre-release of it.
@@ -79,7 +85,7 @@ struct Version {
 }
 
 fn parse_version(version: &str) -> Option<Version> {
-    let version = version.trim().trim_start_matches(['v', 'V']);
+    let version = strip_v_prefix(version.trim());
     let version = version.split('+').next().unwrap_or(version);
     let (core, pre) = version.split_once('-').unwrap_or((version, ""));
     let num = |s: &str| s.parse::<u64>().ok();
@@ -129,7 +135,6 @@ impl PartialOrd for Version {
     }
 }
 
-/// Compare two versions, returns true if latest > current
 fn is_newer_version(current: &str, latest: &str) -> bool {
     match (parse_version(current), parse_version(latest)) {
         (Some(curr), Some(lat)) => lat > curr,
@@ -150,16 +155,15 @@ fn newest_release(
         .map(|(_, r)| r)
 }
 
-/// Check for available updates from GitHub Releases
-///
-/// This command fetches the latest release from GitHub and checks if it's newer
-/// than the current version. It also finds the appropriate asset based on the
-/// provided regex pattern.
 #[tauri::command]
-pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<UpdateInfo, Error> {
+pub async fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<UpdateInfo> {
     log::info!("Checking for updates from GitHub...");
-
     let current_version = app.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || check_for_update_in(current_version, config))
+        .await?
+}
+
+fn check_for_update_in(current_version: String, config: UpdateConfig) -> Result<UpdateInfo> {
     log::debug!("Current version: {}", current_version);
 
     let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -170,7 +174,7 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
 
     // `/releases/latest` never returns a pre-release, so read the list and choose here.
     let list_url = format!(
-        "{}?per_page=30",
+        "{}?per_page={RELEASES_PER_PAGE}",
         config.releases_api_url.trim_end_matches("/latest")
     );
     let mut response = agent
@@ -199,18 +203,7 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
         }
         404 => {
             log::warn!("No releases found");
-            return Ok(UpdateInfo {
-                available: false,
-                current_version,
-                latest_version: None,
-                release_notes: None,
-                download_url: None,
-                published_at: None,
-                asset_name: None,
-                asset_size: None,
-                asset_digest: None,
-                prerelease: false,
-            });
+            return Ok(UpdateInfo::none(current_version));
         }
         code => {
             return Err(Error::Update(format!(
@@ -226,35 +219,22 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
     })?;
     let Some(release) = newest_release(releases, config.include_prereleases) else {
         log::info!("Update check complete: no published release to offer");
-        return Ok(UpdateInfo {
-            available: false,
-            current_version,
-            latest_version: None,
-            release_notes: None,
-            download_url: None,
-            published_at: None,
-            asset_name: None,
-            asset_size: None,
-            asset_digest: None,
-            prerelease: false,
-        });
+        return Ok(UpdateInfo::none(current_version));
     };
 
     log::debug!("Latest release: {}", release.tag_name);
 
-    // Parse asset pattern regex
     let asset_regex = regex_lite::Regex::new(&config.asset_pattern).map_err(|e| {
         log::error!("Invalid asset pattern regex: {}", e);
         Error::Update(format!("Invalid asset pattern: {}", e))
     })?;
 
-    // Find matching asset
     let matching_asset = release
         .assets
         .iter()
         .find(|asset| asset_regex.is_match(&asset.name));
 
-    let latest_version = release.tag_name.trim_start_matches('v').to_string();
+    let latest_version = strip_v_prefix(&release.tag_name).to_string();
     let is_update_available = is_newer_version(&current_version, &latest_version);
 
     log::info!(
@@ -302,7 +282,7 @@ fn is_trusted_download_url(url: &str, asset_name: &str) -> bool {
     matches!(rest.split_once('/'), Some((tag, name)) if plain(tag) && name == asset_name)
 }
 
-fn sha256(bytes: &[u8]) -> Result<[u8; 32], Error> {
+fn sha256(bytes: &[u8]) -> Result<[u8; 32]> {
     use windows_sys::Win32::Security::Cryptography::{BCryptHash, BCRYPT_SHA256_ALG_HANDLE};
     let len = u32::try_from(bytes.len())
         .map_err(|_| Error::Update("The update is too large to verify".into()))?;
@@ -328,7 +308,7 @@ fn sha256(bytes: &[u8]) -> Result<[u8; 32], Error> {
 }
 
 /// `expected` is GitHub's `sha256:<hex>`; anything else is refused rather than skipped.
-fn verify_digest(expected: &str, bytes: &[u8]) -> Result<(), Error> {
+fn verify_digest(expected: &str, bytes: &[u8]) -> Result<()> {
     let hex = expected
         .strip_prefix("sha256:")
         .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
@@ -381,7 +361,7 @@ fn stage_installer(
     dir: &std::path::Path,
     bytes: &[u8],
     asset_name: &str,
-) -> Result<(std::path::PathBuf, std::fs::File), Error> {
+) -> Result<(std::path::PathBuf, std::fs::File)> {
     use std::io::Write;
     use std::os::windows::fs::OpenOptionsExt;
     use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
@@ -437,7 +417,7 @@ fn is_reserved_device(stem: &str) -> bool {
         || numbered(b"LPT")
 }
 
-fn validate_asset_name(name: &str) -> Result<(), Error> {
+fn validate_asset_name(name: &str) -> Result<()> {
     // ASCII only: bidi/zero-width characters disguise a name and superscript digits open COM¹.
     // ':' is a drive prefix or an ADS; `join` replaces the whole base on "C:x.exe".
     let allowed = |c: char| matches!(c, ' '..='~') && !r#"<>:"/\|?*"#.contains(c);
@@ -466,7 +446,7 @@ pub async fn install_update(
     download_url: String,
     asset_name: String,
     asset_digest: Option<String>,
-) -> Result<(), Error> {
+) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || {
         install_update_in(
             crate::tweaks::engine::lifecycle::gate(),
@@ -483,7 +463,7 @@ fn install_update_in(
     download_url: String,
     asset_name: String,
     asset_digest: Option<String>,
-) -> Result<(), Error> {
+) -> Result<()> {
     log::info!("Starting update download: {:?}", asset_name);
 
     // Latched through the download and kept once the installer runs, until the frontend exits: the
@@ -578,10 +558,6 @@ fn install_update_in(
 mod tests {
     use super::*;
 
-    // ========================================================================
-    // parse_version tests
-    // ========================================================================
-
     fn core(v: &str) -> Option<(u64, u64, u64)> {
         parse_version(v).map(|v| v.core)
     }
@@ -653,10 +629,8 @@ mod tests {
     fn release(tag: &str, prerelease: bool, draft: bool) -> GitHubRelease {
         GitHubRelease {
             tag_name: tag.into(),
-            name: None,
             body: None,
             published_at: None,
-            html_url: String::new(),
             assets: Vec::new(),
             prerelease,
             draft,
@@ -682,10 +656,6 @@ mod tests {
         );
         assert!(newest_release(Vec::new(), true).is_none());
     }
-
-    // ========================================================================
-    // is_newer_version tests
-    // ========================================================================
 
     #[test]
     fn test_is_newer_version_major() {
