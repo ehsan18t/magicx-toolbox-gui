@@ -6,6 +6,7 @@
   import { closeModal, modalStore } from "$lib/stores/modal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { delay } from "$lib/utils/motion";
   import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
 
@@ -43,7 +44,7 @@
     try {
       await navigator.clipboard.writeText(text);
       copied = true;
-      setTimeout(() => (copied = false), 1500);
+      setTimeout(() => (copied = false), delay("feedback"));
     } catch {
       toastStore.error("Could not copy to the clipboard");
     }
@@ -87,7 +88,11 @@
           onclick={copyDetails}
           use:tooltip={"Copy the version and system details for a bug report"}
         >
-          <Icon icon={copied ? "mdi:check" : "mdi:content-copy"} width="15" class={copied ? "text-success" : ""} />
+          <Icon
+            icon={copied ? "mdi:check" : "mdi:content-copy"}
+            width="15"
+            class={copied ? "animate-pop-in text-success" : ""}
+          />
           {copied ? "Copied" : "Copy details"}
         </button>
       </div>

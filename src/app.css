@@ -258,6 +258,7 @@
   --transition-delay-reveal: 150ms;
   --transition-delay-settle: 250ms;
   --transition-delay-tooltip: 400ms;
+  --transition-delay-feedback: 1500ms;
 
   --ease-out: cubic-bezier(0, 0, 0, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);

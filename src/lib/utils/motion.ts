@@ -6,7 +6,7 @@ import type { AnimationConfig } from "svelte/animate";
 import { slide, type EasingFunction, type TransitionConfig } from "svelte/transition";
 
 export type Speed = "fast" | "normal" | "slow" | "slower" | "highlight";
-export type Delay = "reveal" | "settle" | "tooltip";
+export type Delay = "reveal" | "settle" | "tooltip" | "feedback";
 export type Curve = "in" | "out" | "in-out" | "overshoot";
 export type Distance = "sm" | "md" | "lg";
 type Direction = "above" | "below" | "left" | "right";
