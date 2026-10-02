@@ -158,7 +158,7 @@
           <Icon icon="mdi:folder-open" width="16" />
           Open folder
         </Button>
-        <Button variant="primary" onclick={() => modalStore.open("profileExport")}>
+        <Button variant="primary" disabled title="Unavailable while profiles are rebuilt">
           <Icon icon="mdi:plus" width="16" />
           New profile
         </Button>
@@ -186,8 +186,6 @@
         icon="mdi:folder-outline"
         title="No saved profiles"
         description="Profiles you export are kept here for quick access."
-        actionText="Create profile"
-        onaction={() => modalStore.open("profileExport")}
       />
     {:else}
       <div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
