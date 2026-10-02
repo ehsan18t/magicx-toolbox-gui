@@ -143,7 +143,7 @@
   id="app-{app.id}"
   bind:this={rowEl}
   class="@container relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {highlight.active
-    ? 'tweak-highlight'
+    ? 'animate-highlight'
     : ''}"
   aria-busy={busy}
 >

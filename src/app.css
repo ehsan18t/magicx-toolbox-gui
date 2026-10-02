@@ -158,8 +158,8 @@
     inset: 0;
     background: inherit;
     pointer-events: none;
-    z-index: 99999;
-    animation: theme-fade 150ms ease-out forwards;
+    z-index: var(--z-index-theme-fade);
+    animation: theme-fade var(--transition-duration-normal) var(--ease-out) forwards;
   }
 
   button,
@@ -167,8 +167,8 @@
   [role="button"],
   .theme-toggle {
     transition-property: background-color, border-color, color, fill, stroke, box-shadow, transform, opacity;
-    transition-duration: 150ms;
-    transition-timing-function: cubic-bezier(0, 0, 0, 1);
+    transition-duration: var(--transition-duration-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   @keyframes theme-fade {
@@ -225,13 +225,52 @@
   --color-warning-foreground: hsl(var(--warning-foreground));
   --color-error: hsl(var(--error));
   --color-info: hsl(var(--info));
+}
 
-  --animate-modal-in: modal-in 0.2s cubic-bezier(0, 0, 0, 1);
-  --animate-modal-out: modal-out 0.15s ease-in forwards;
-  --animate-fade-in: fade-in 0.2s ease-out;
-  --animate-fade-out: fade-out 0.15s ease-in forwards;
-  --animate-slide-in-up: slide-in-up 0.2s cubic-bezier(0, 0, 0, 1);
-  --animate-slide-in-right: slide-in-right 0.25s cubic-bezier(0, 0, 0, 1);
+/* Motion and layering tokens. Static: $lib/utils/motion reads them at runtime, so they must always be emitted.
+   Fluent timing: entrances decelerate (ease-out), exits accelerate (ease-in) and run one step faster. */
+@theme static {
+  --transition-duration-fast: 100ms;
+  --transition-duration-normal: 150ms;
+  --transition-duration-slow: 200ms;
+  --transition-duration-slower: 300ms;
+  --transition-duration-highlight: 1500ms;
+
+  --transition-delay-reveal: 150ms;
+  --transition-delay-settle: 250ms;
+  --transition-delay-tooltip: 400ms;
+
+  --ease-out: cubic-bezier(0, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --default-transition-duration: var(--transition-duration-fast);
+  --default-transition-timing-function: var(--ease-out);
+
+  --motion-distance-sm: 4px;
+  --motion-distance-md: 8px;
+  --motion-distance-lg: 16px;
+  --motion-scale-delta: 0.04;
+
+  --animate-fade-in: fade-in var(--transition-duration-slow) var(--ease-out);
+  --animate-fade-out: fade-out var(--transition-duration-normal) var(--ease-in) forwards;
+  --animate-rise-in: rise-in var(--transition-duration-slow) var(--ease-out);
+  --animate-pop-in: pop-in var(--transition-duration-normal) var(--ease-out);
+  --animate-modal-in: modal-in var(--transition-duration-slow) var(--ease-out);
+  --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
+  --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
+  --animate-activity: activity-slide 1.4s var(--ease-in-out) infinite;
+
+  --z-index-raised: 10;
+  --z-index-dock: 30;
+  --z-index-scrim: 40;
+  --z-index-drawer: 50;
+  --z-index-modal: 1000;
+  --z-index-busy: 1050;
+  --z-index-toast: 1100;
+  --z-index-popover: 1200;
+  --z-index-theme-fade: 9000;
 }
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -253,69 +292,48 @@
   scrollbar-color: hsl(var(--foreground) / 0.28) transparent;
 }
 
-@keyframes modal-in {
-  from {
-    opacity: 0;
-    transform: scale(1.04);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes modal-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(1.02);
-  }
-}
-
-@keyframes fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;
   }
+}
+
+@keyframes fade-out {
   to {
-    opacity: 1;
+    opacity: 0;
   }
 }
 
-@keyframes slide-in-up {
+@keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateY(var(--motion-distance-md));
   }
 }
 
-@keyframes slide-in-right {
+@keyframes pop-in {
   from {
     opacity: 0;
-    transform: translateX(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+    transform: scale(calc(1 - var(--motion-scale-delta)));
   }
 }
 
-@keyframes tweak-highlight-pulse {
+/* Dialogs settle from slightly larger, Fluent's ContentDialog entrance. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(calc(1 + var(--motion-scale-delta)));
+  }
+}
+
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: scale(calc(1 + var(--motion-scale-delta) / 2));
+  }
+}
+
+@keyframes highlight-pulse {
   0%,
   100% {
     box-shadow: 0 0 0 0 hsl(var(--accent) / 0);
@@ -324,10 +342,6 @@
   70% {
     box-shadow: 0 0 0 3px hsl(var(--accent) / 0.45);
   }
-}
-
-.tweak-highlight {
-  animation: tweak-highlight-pulse 1.5s ease-in-out;
 }
 
 @keyframes activity-slide {
@@ -340,18 +354,20 @@
 }
 
 .activity-bar {
-  animation: activity-slide 1.4s ease-in-out infinite;
+  animation: var(--animate-activity);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* One iteration too: a near-zero infinite loop (spinners, pulses) flickers. */
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 
-  /* A near-zero infinite animation would flicker: hold a static, dimmed full bar instead. */
+  /* One pass ends off-track: hold a static, dimmed full bar. */
   .activity-bar {
     width: 100%;
     animation: none;

@@ -130,7 +130,7 @@
 >
   <div
     class="flex h-full flex-col {sidebarStore.isOverlay
-      ? 'absolute inset-y-0 left-0 z-50 w-72 animate-slide-in-up rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
+      ? 'absolute inset-y-0 left-0 z-50 w-72 animate-rise-in rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
       : 'w-full'}"
   >
     <div class="relative flex min-h-0 flex-1 flex-col">

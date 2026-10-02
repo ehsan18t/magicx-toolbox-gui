@@ -2,6 +2,7 @@
 // Using Svelte 5 runes for reactive state
 
 import { browser } from "$app/environment";
+import { duration } from "$lib/utils/motion";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { APP_CONFIG } from "@/lib/config/app";
 
@@ -12,17 +13,13 @@ const themeState = new PersistentStore<Theme>(APP_CONFIG.theme.storageKey, "dark
 
 function applyTheme(theme: Theme) {
   if (browser) {
-    // Add transitioning class for smooth fade
     document.documentElement.classList.add("theme-transitioning");
 
     themeState.value = theme;
     document.documentElement.setAttribute("data-theme", theme);
 
-    // Remove class after transition completes
-    // Timeout matches the CSS animation duration (150ms) plus a small buffer
-    setTimeout(() => {
-      document.documentElement.classList.remove("theme-transitioning");
-    }, 200);
+    // The theme-fade overlay in app.css runs for the same token.
+    setTimeout(() => document.documentElement.classList.remove("theme-transitioning"), duration("normal"));
   }
 }
 

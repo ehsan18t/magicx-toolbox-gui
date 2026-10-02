@@ -1,4 +1,5 @@
 import { searchStore } from "$lib/stores/search.svelte";
+import { duration } from "$lib/utils/motion";
 
 /** Consumes a search "Go to" highlight once, so it cannot replay when the row mounts again elsewhere. */
 export function searchHighlight(id: () => string, el: () => HTMLElement | null) {
@@ -13,7 +14,7 @@ export function searchHighlight(id: () => string, el: () => HTMLElement | null) 
     // After a frame: rows above are still settling their height on first render.
     frame = requestAnimationFrame(() => el()?.scrollIntoView({ block: "center" }));
     clearTimeout(timer);
-    timer = setTimeout(() => (active = false), 1500);
+    timer = setTimeout(() => (active = false), duration("highlight"));
   });
 
   $effect(() => () => {

@@ -2,6 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { themeStore } from "$lib/stores/theme.svelte";
+  import { duration } from "$lib/utils/motion";
 
   let isAnimating = $state(false);
 
@@ -9,10 +10,7 @@
     if (isAnimating) return;
     isAnimating = true;
     themeStore.toggle();
-    // Reset animation state after transition completes
-    setTimeout(() => {
-      isAnimating = false;
-    }, 300);
+    setTimeout(() => (isAnimating = false), duration("slow"));
   };
 </script>
 
@@ -47,8 +45,8 @@
     background: transparent;
     cursor: pointer;
     transition:
-      background-color 150ms ease,
-      transform 150ms ease;
+      background-color var(--transition-duration-fast) var(--ease-out),
+      transform var(--transition-duration-fast) var(--ease-out);
   }
 
   .theme-toggle:hover {
@@ -57,7 +55,7 @@
 
   .theme-toggle:active,
   .theme-toggle.is-animating {
-    transform: scale(0.9);
+    transform: scale(calc(1 - 2 * var(--motion-scale-delta)));
   }
 
   .icon-wrapper {
@@ -76,9 +74,9 @@
     opacity: 0;
     transform: rotate(-90deg) scale(0.5);
     transition:
-      opacity 200ms ease,
-      transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      color 150ms ease;
+      opacity var(--transition-duration-normal) var(--ease-out),
+      transform var(--transition-duration-slow) var(--ease-overshoot),
+      color var(--transition-duration-fast) var(--ease-out);
   }
 
   .icon.active {

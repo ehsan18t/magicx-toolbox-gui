@@ -59,11 +59,10 @@
       console.error("Failed to initialize categories:", e);
     }
 
-    // Hide the initial HTML loader now that Svelte is ready
     const initialLoader = document.getElementById("initial-loader");
     if (initialLoader) {
+      initialLoader.addEventListener("animationend", (e) => e.target === initialLoader && initialLoader.remove());
       initialLoader.classList.add("fade-out");
-      setTimeout(() => initialLoader.remove(), 200);
     }
 
     if (initError) return;

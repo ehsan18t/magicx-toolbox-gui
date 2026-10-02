@@ -121,7 +121,7 @@
     ? 'border-accent/70'
     : hasPending
       ? 'border-warning/45'
-      : 'border-border hover:border-border-hover'} {highlight.active ? 'tweak-highlight' : ''}"
+      : 'border-border hover:border-border-hover'} {highlight.active ? 'animate-highlight' : ''}"
   onclick={handleRowClick}
 >
   <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {stripe}" aria-hidden="true"></span>

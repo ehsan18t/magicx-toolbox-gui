@@ -60,15 +60,15 @@
         /* Dark theme default */
         background: #0a0f1c;
         z-index: 9999;
-        transition: opacity 0.2s ease-out;
       }
       /* Light theme support */
       [data-theme="light"] #initial-loader {
         background: #eef1f6;
       }
+      /* Added once app.css has loaded, so the motion token resolves. */
       #initial-loader.fade-out {
-        opacity: 0;
         pointer-events: none;
+        animation: var(--animate-fade-out);
       }
       .initial-spinner {
         width: 40px;
