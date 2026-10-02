@@ -1,10 +1,11 @@
+import { STORAGE_KEYS } from "$lib/config/app";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { innerWidth } from "svelte/reactivity/window";
 
 /** Window width at which the navigation pane docks expanded (WinUI NavigationView's threshold). */
 const EXPANDED_MIN_WIDTH = 1008;
 
-const collapsedState = new PersistentStore("magicx-nav-collapsed", false);
+const collapsedState = new PersistentStore(STORAGE_KEYS.navCollapsed, false);
 
 let overlayOpen = $state(false);
 

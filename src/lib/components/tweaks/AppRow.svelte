@@ -1,15 +1,15 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon, MarkdownText } from "$lib/components/shared";
-  import { Button, HighlightedText, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
+  import { Button, HighlightedText, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
-  import { confirm } from "$lib/stores/confirm.svelte";
+  import { confirmStore } from "$lib/stores/confirm.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
-  import type { AppView, RiskLevel } from "$lib/types";
-  import { permissionInfoFor, RISK_INFO } from "$lib/types";
+  import type { AppView } from "$lib/types";
+  import { APP_OPERATION_LABEL } from "$lib/utils/appPresentation";
   import { expand } from "$lib/utils/motion";
   import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
-  import { RISK_TONE, TONE_TEXT } from "$lib/utils/tweakPresentation";
+  import { permissionInfoFor, RISK_INFO, RISK_TONE, TONE_TEXT, toRiskLevel } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -25,11 +25,12 @@
   const status = $derived(appsStore.status(app.id));
   const filterMatch = $derived(titleSlot ? null : pageFilterStore.match(app.id));
   const presence = $derived(status?.presence);
-  const busy = $derived(appsStore.isBusy(app.id));
+  const operation = $derived(appsStore.operation(app.id));
+  const busy = $derived(operation !== undefined);
   const appError = $derived(appsStore.error(app.id));
   const permanent = $derived(status?.install_route === "none" && presence?.state !== "absent");
 
-  const riskLevel = $derived(app.risk.toLowerCase() as RiskLevel);
+  const riskLevel = $derived(toRiskLevel(app.risk));
   const riskInfo = $derived(RISK_INFO[riskLevel]);
 
   const chip = $derived.by((): { label: string; tip: string; icon: string; tone: string; spin?: boolean } => {
@@ -110,27 +111,31 @@
   async function handleAction() {
     if (!action || action.disabledReason !== null) return;
     if (action.kind === "install") {
-      busyLabel = "Installing";
       void appsStore.install(app.id);
     } else if (action.kind === "store") void appsStore.openStorePage(app.id);
     else if (
-      await confirm({ title: `Remove ${app.name}?`, message: confirmMessage, confirmText: "Remove", variant: "danger" })
+      await confirmStore.ask({
+        title: `Remove ${app.name}?`,
+        message: confirmMessage,
+        confirmText: "Remove",
+        variant: "danger",
+      })
     ) {
-      busyLabel = "Removing";
       void appsStore.remove(app.id);
     }
   }
 
   // winget reports no usable progress to a redirected script, so this shows activity and elapsed time.
-  let busyLabel = $state("Working");
-  let elapsed = $state(0);
+  // Timed from the store's start, so a remounted row keeps counting.
+  let now = $state(Date.now());
   $effect(() => {
-    if (!busy) return;
-    const start = Date.now();
-    elapsed = 0;
-    const timer = setInterval(() => (elapsed = Math.floor((Date.now() - start) / 1000)), 1000);
+    if (!operation) return;
+    now = Date.now();
+    const timer = setInterval(() => (now = Date.now()), 1000);
     return () => clearInterval(timer);
   });
+  const busyLabel = $derived(operation ? APP_OPERATION_LABEL[operation.kind] : "");
+  const elapsed = $derived(operation ? Math.max(0, Math.floor((now - operation.startedAt) / 1000)) : 0);
   const elapsedText = $derived(`${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`);
 
   let rowEl = $state<HTMLElement | null>(null);
@@ -161,7 +166,6 @@
         {#if titleSlot}{@render titleSlot()}{:else if filterMatch}<HighlightedText
             text={app.name}
             ranges={filterMatch.nameRanges}
-            highlightClass="rounded-sm bg-accent/25 text-foreground"
           />{:else}{app.name}{/if}
       </h3>
 
@@ -187,7 +191,6 @@
         {#if descriptionSlot}{@render descriptionSlot()}{:else if filterMatch}<HighlightedText
             text={app.description}
             ranges={filterMatch.descriptionRanges}
-            highlightClass="rounded-sm bg-accent/25 text-foreground"
           />{:else}{app.description}{/if}
       </p>
     </div>
@@ -288,12 +291,13 @@
 </article>
 
 <Modal open={showDetails} onclose={() => (showDetails = false)} size="lg" labelledBy="app-details-{app.id}">
-  <ModalHeader id="app-details-{app.id}">
+  <ModalHeader onclose={() => (showDetails = false)}>
     <div class="min-w-0">
-      <h2 class="m-0 font-display text-lg font-semibold wrap-break-word text-foreground">{app.name}</h2>
+      <h2 id="app-details-{app.id}" class="m-0 font-display text-lg font-semibold wrap-break-word text-foreground">
+        {app.name}
+      </h2>
       <p class="m-0 mt-1 text-sm text-foreground-muted">{app.description}</p>
     </div>
-    <IconButton icon="mdi:close" onclick={() => (showDetails = false)} aria-label="Close" />
   </ModalHeader>
   <ModalBody class="flex flex-col gap-4">
     {#if app.warning}

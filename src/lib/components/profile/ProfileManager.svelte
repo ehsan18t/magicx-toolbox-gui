@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { PageLayout } from "$lib/components/layout";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { PageLayout } from "$lib/components/layout";
   import { Badge, Button, EmptyState } from "$lib/components/ui";
+  import { PROFILE_EXT } from "$lib/config/app";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -13,7 +14,7 @@
   import { onMount } from "svelte";
 
   const profiles = $derived(profileStore.savedProfiles);
-  const isLoading = $derived(profileStore.loadingSavedProfiles);
+  const isLoading = $derived(profileStore.isLoadingSavedProfiles);
   const currentProfileDir = $derived(profileStore.currentProfileDir);
   let profileToDelete = $state<string | null>(null);
   let deletingProfile = $state<string | null>(null);
@@ -46,7 +47,7 @@
       }
 
       const safeName = name.replace(/[^a-z0-9\-_]/gi, "");
-      const path = await join(profilesDir, `${safeName}.mgx`);
+      const path = await join(profilesDir, `${safeName}.${PROFILE_EXT}`);
 
       const success = await profileStore.importProfileFromPath(path);
       if (success) {
@@ -100,7 +101,7 @@
   onMount(() =>
     // No loadSavedProfiles(): it errors until the profile backend returns (docs/spec/profile-v1.md).
     listenFileDrop({
-      extension: ".mgx",
+      extension: `.${PROFILE_EXT}`,
       onOver: () => (isDragOver = !importModalOpen()),
       onLeave: () => (isDragOver = false),
       onDrop: (path) => {
@@ -186,7 +187,7 @@
                   {profile.description || "No description"}
                 </p>
               </div>
-              <Badge class="shrink-0 text-xs">v{profile.app_version}</Badge>
+              <Badge class="shrink-0">v{profile.app_version}</Badge>
             </div>
             <div class="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
               <span class="text-xs text-foreground-muted">

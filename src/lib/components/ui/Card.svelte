@@ -1,37 +1,17 @@
 <script lang="ts">
+  import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
+  import type { HTMLAttributes } from "svelte/elements";
 
-  type Variant = "default" | "elevated" | "outlined" | "ghost";
-
-  interface Props {
-    variant?: Variant;
-    hover?: boolean;
-    padding?: "none" | "sm" | "md" | "lg";
+  interface Props extends Omit<HTMLAttributes<HTMLElement>, "class"> {
     class?: string;
+    as?: "div" | "section";
     children: Snippet;
   }
 
-  let { variant = "default", hover = false, padding = "md", class: className = "", children }: Props = $props();
-
-  const baseClasses = "rounded-lg border transition duration-normal";
-
-  const variantClasses: Record<Variant, string> = {
-    default: "border-border bg-card",
-    elevated: "border-border bg-elevated shadow-md",
-    outlined: "border-border bg-transparent",
-    ghost: "border-transparent bg-transparent",
-  };
-
-  const hoverClasses = $derived(hover ? "hover:border-border-hover hover:shadow-md" : "");
-
-  const paddingClasses: Record<string, string> = {
-    none: "",
-    sm: "p-2",
-    md: "p-4",
-    lg: "p-6",
-  };
+  let { as = "div", class: className, children, ...rest }: Props = $props();
 </script>
 
-<div class="{baseClasses} {variantClasses[variant]} {hoverClasses} {paddingClasses[padding]} {className}">
+<svelte:element this={as} class={cn("rounded-lg border border-border bg-card", className)} {...rest}>
   {@render children()}
-</div>
+</svelte:element>

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
-  import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
+  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
+  import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { attentionCause } from "$lib/types";
   import { expand, fade, reducedMotion } from "$lib/utils/motion";
+  import { attentionCause } from "$lib/utils/tweakPresentation";
 
   interface Props {
     /** Names the pane for assistive tech, e.g. "Security at a glance". */
@@ -14,7 +14,7 @@
 
   let { label, tweaks }: Props = $props();
   const count = (state: string) => tweaks.filter((t) => t.status.state === state).length;
-  const applied = $derived(tweaks.filter((t) => t.status.is_applied).length);
+  const applied = $derived(tweaks.filter((t) => t.status.state === "active").length);
   const breakdown = $derived(
     [
       { label: "Applied", value: applied, tone: "bg-accent" },
@@ -34,7 +34,7 @@
   );
 
   function reveal(id: string) {
-    openTweakDetailsModal(id);
+    tweakDetailsModalStore.open(id);
     document.getElementById(`tweak-${id}`)?.scrollIntoView({
       block: "nearest",
       behavior: reducedMotion() ? "auto" : "smooth",

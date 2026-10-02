@@ -1,6 +1,4 @@
-/**
- * Manual Tests store (test build only). `available` stays false in a normal build, which hides the view.
- */
+// Test build only: `available` stays false in a normal build, which hides the view.
 
 import {
   cancelManualTest,
@@ -12,9 +10,10 @@ import {
   type ManualTestReport,
 } from "$lib/api/manualTests";
 import { errorMessage } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
 
 let available = $state(false);
-let tests = $state<ManualTest[]>([]);
+let tests = $state.raw<ManualTest[]>([]);
 let runningId = $state<string | null>(null);
 let cancelling = $state(false);
 let logs = $state<Record<string, string[]>>({});
@@ -23,7 +22,7 @@ let failures = $state<Record<string, string>>({});
 let initialized = false;
 
 export const manualTestsStore = {
-  get available() {
+  get isAvailable() {
     return available;
   },
   get tests() {
@@ -32,16 +31,16 @@ export const manualTestsStore = {
   get runningId() {
     return runningId;
   },
-  get cancelling() {
+  get isCancelling() {
     return cancelling;
   },
-  logFor(id: string): string[] {
+  log(id: string): string[] {
     return logs[id] ?? [];
   },
-  resultFor(id: string): ManualTestReport | undefined {
+  result(id: string): ManualTestReport | undefined {
     return results[id];
   },
-  failureFor(id: string): string | undefined {
+  failure(id: string): string | undefined {
     return failures[id];
   },
 
@@ -56,7 +55,7 @@ export const manualTestsStore = {
         (logs[test_id] ??= []).push(line);
       });
     } catch (e) {
-      console.error("Manual tests unavailable:", e);
+      logError("Manual tests unavailable", e);
       available = false;
     }
   },
@@ -85,12 +84,12 @@ export const manualTestsStore = {
       await cancelManualTest();
     } catch (e) {
       cancelling = false;
-      console.error("Cancel failed:", e);
+      logError("Cancel failed", e);
     }
   },
 
   /** The backend's plain-text report, or the streamed log when the run never produced one. */
-  reportFor(id: string): string {
+  report(id: string): string {
     const result = results[id];
     if (result) return result.report;
     const lines = [`Test: ${id}`, `Error: ${failures[id] ?? "no result"}`, "", "Log:", ...(logs[id] ?? [])];

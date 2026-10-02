@@ -1,4 +1,7 @@
+import { toastStore } from "$lib/stores/toast.svelte";
 import type { Level, TweakFailureCode } from "$lib/types";
+import { logError } from "$lib/utils/logger";
+import { ELEVATE_HINT } from "$lib/utils/tweakPresentation";
 
 /** Tauri rejects with the backend's serialized `{ code, message }` object, not an `Error`. */
 export function errorMessage(error: unknown): string {
@@ -15,7 +18,7 @@ export function isAppExiting(error: unknown): boolean {
 export function tweakFailureAdvice(error: unknown, level: Level): string | null {
   switch ((error as { code?: TweakFailureCode } | null | undefined)?.code) {
     case "TWEAK_ACCESS_DENIED":
-      return level === "User" ? "Restart as administrator to resolve." : null;
+      return level === "User" ? ELEVATE_HINT : null;
     case "TWEAK_ELEVATION_UNAVAILABLE":
       return "TrustedInstaller is unavailable on this PC right now.";
     case "TWEAK_OUTCOME_UNKNOWN":
@@ -25,4 +28,13 @@ export function tweakFailureAdvice(error: unknown, level: Level): string | null 
     default:
       return null;
   }
+}
+
+/** Logs and toasts a failed action; an exit refusal ran nothing, so it is a warning. Returns the message. */
+export function reportFailure(context: string, error: unknown): string {
+  const message = errorMessage(error);
+  logError(context, error);
+  if (isAppExiting(error)) toastStore.warning(message);
+  else toastStore.error(message);
+  return message;
 }

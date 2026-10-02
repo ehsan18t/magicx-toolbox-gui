@@ -1,280 +1,133 @@
-/**
- * Navigation Store - Svelte 5 Runes
- *
- * Manages tab-based UI navigation between Overview, Search, Favorites, Snapshots, and category tabs.
- */
-
-import type { CategoryDefinition } from "$lib/types";
 import { manualTestsStore } from "./manualTests.svelte";
+import { searchStore } from "./search.svelte";
 import { categoriesStore } from "./tweaksData.svelte";
 
-/** Tab types - "overview", "search", "favorites", "snapshots", "profiles", or category ID */
-export type TabId = "overview" | "search" | "favorites" | "snapshots" | "profiles" | string;
+export const PAGE_IDS = [
+  "overview",
+  "search",
+  "favorites",
+  "snapshots",
+  "profiles",
+  "settings",
+  "manual-tests",
+] as const;
 
-/** Tab definition for navigation */
+export type PageId = (typeof PAGE_IDS)[number];
+
+/** A fixed page, or a category id (any string the corpus defines). */
+export type TabId = PageId | (string & {});
+
 export interface TabDefinition {
   id: TabId;
   name: string;
   icon: string;
   description?: string;
-  /** Whether this is a permanent/fixed tab (Overview, Search) vs dynamic category tab */
-  isPermanent?: boolean;
 }
 
-// === State ===
+const isPageId = (tab: TabId): tab is PageId => (PAGE_IDS as readonly string[]).includes(tab);
+
 let activeTab = $state<TabId>("overview");
-/** Signal to focus the search input - incremented each time focus is requested */
 let focusSearchSignal = $state(0);
-let attentionFilterRequested = false;
 // Bumped on every page change, so per-page UI state can tell a revisit from staying put.
 let visit = $state(0);
+let attentionVisit = -1;
 
 function go(tab: TabId) {
   if (tab === activeTab) return;
+  // Leaving Search clears the query; setQuery keeps a go-to-location highlight.
+  if (activeTab === "search") searchStore.setQuery("");
   activeTab = tab;
   visit++;
 }
 
-// Overview tab definition (static)
-const overviewTab: TabDefinition = {
-  id: "overview",
-  name: "Overview",
-  icon: "mdi:view-dashboard",
-  description: "System information and statistics",
-  isPermanent: true,
-};
+const PAGE_TABS: TabDefinition[] = [
+  { id: "overview", name: "Overview", icon: "mdi:view-dashboard", description: "System information and statistics" },
+  { id: "search", name: "Search", icon: "mdi:magnify", description: "Search tweaks by name, description, or info" },
+  { id: "favorites", name: "Favorites", icon: "mdi:star", description: "Quick access to your saved tweaks" },
+  {
+    id: "snapshots",
+    name: "Snapshots",
+    icon: "mdi:history",
+    description: "View and manage tweaks with saved snapshots",
+  },
+  { id: "profiles", name: "Profiles", icon: "mdi:file-multiple", description: "Manage saved configuration profiles" },
+];
 
-// Search tab definition (static)
-const searchTab: TabDefinition = {
-  id: "search",
-  name: "Search",
-  icon: "mdi:magnify",
-  description: "Search tweaks by name, description, or info",
-  isPermanent: true,
-};
-
-// Favorites tab definition (static)
-const favoritesTab: TabDefinition = {
-  id: "favorites",
-  name: "Favorites",
-  icon: "mdi:star",
-  description: "Quick access to your saved tweaks",
-  isPermanent: true,
-};
-
-// Snapshots tab definition (static)
-const snapshotsTab: TabDefinition = {
-  id: "snapshots",
-  name: "Snapshots",
-  icon: "mdi:history", // Changed from backup-restore to distinguish from Profiles
-  description: "View and manage tweaks with saved snapshots",
-  isPermanent: true,
-};
-
-// Profiles tab definition (static)
-const profilesTab: TabDefinition = {
-  id: "profiles",
-  name: "Profiles",
-  icon: "mdi:file-multiple",
-  description: "Manage saved configuration profiles",
-  isPermanent: true,
-};
-
-// Manual Tests tab: listed only in a test build
-const manualTestsTab: TabDefinition = {
+const MANUAL_TESTS_TAB: TabDefinition = {
   id: "manual-tests",
   name: "Manual Tests",
   icon: "mdi:flask-outline",
   description: "Real-machine checks for this test build",
-  isPermanent: true,
 };
 
-// Derived: All tabs from categories
-const allTabs = $derived.by((): TabDefinition[] => {
-  const categoryTabs: TabDefinition[] = categoriesStore.list.map((cat: CategoryDefinition) => ({
+const fixedTabs = $derived(manualTestsStore.isAvailable ? [...PAGE_TABS, MANUAL_TESTS_TAB] : PAGE_TABS);
+
+const categoryTabs = $derived(
+  categoriesStore.list.map((cat): TabDefinition => ({
     id: cat.id,
     name: cat.name,
     icon: cat.icon,
     description: cat.description,
-    isPermanent: false,
-  }));
-
-  const fixed = [overviewTab, searchTab, favoritesTab, snapshotsTab, profilesTab];
-  if (manualTestsStore.available) fixed.push(manualTestsTab);
-  return [...fixed, ...categoryTabs];
-});
-
-// Derived: Fixed/permanent tabs (Overview, Search)
-const fixedTabs = $derived.by((): TabDefinition[] => {
-  return allTabs.filter((tab) => tab.isPermanent === true);
-});
-
-// Derived: Category tabs (dynamic from YAML)
-const categoryTabs = $derived.by((): TabDefinition[] => {
-  return allTabs.filter((tab) => tab.isPermanent !== true);
-});
-
-// Derived: Current tab definition
-const currentTab = $derived.by((): TabDefinition | undefined => {
-  return allTabs.find((tab) => tab.id === activeTab);
-});
-
-// Derived: Is on a category tab (not overview, search, favorites, snapshots, or profiles)
-const isOnCategoryTab = $derived(
-  activeTab !== "overview" &&
-    activeTab !== "search" &&
-    activeTab !== "favorites" &&
-    activeTab !== "snapshots" &&
-    activeTab !== "profiles" &&
-    activeTab !== "settings" &&
-    activeTab !== "manual-tests",
+  })),
 );
 
-// Derived: Is on search tab
-const isOnSearchTab = $derived(activeTab === "search");
+const allTabs = $derived([...fixedTabs, ...categoryTabs]);
 
-// Derived: Is on favorites tab
-const isOnFavoritesTab = $derived(activeTab === "favorites");
-
-// Derived: Is on snapshots tab
-const isOnSnapshotsTab = $derived(activeTab === "snapshots");
-
-// Derived: Is on profiles tab
-const isOnProfilesTab = $derived(activeTab === "profiles");
+const isOnCategoryTab = $derived(!isPageId(activeTab));
 
 // List pages whose rows the title-bar search can filter in place.
-const isScopable = $derived(isOnCategoryTab || isOnFavoritesTab || isOnSnapshotsTab);
-
-// === Export ===
+const isScopable = $derived(isOnCategoryTab || activeTab === "favorites" || activeTab === "snapshots");
 
 export const navigationStore = {
-  /** Get the current active tab ID */
   get activeTab() {
     return activeTab;
   },
 
-  /** Get all available tabs */
   get allTabs() {
     return allTabs;
   },
 
-  /** Get fixed/permanent tabs (Overview, Search) */
   get fixedTabs() {
     return fixedTabs;
   },
 
-  /** Get category tabs (dynamic from YAML) */
   get categoryTabs() {
     return categoryTabs;
   },
 
-  /** Get the current tab definition */
-  get currentTab() {
-    return currentTab;
-  },
-
-  /** Check if currently on a category tab */
   get isOnCategoryTab() {
     return isOnCategoryTab;
-  },
-
-  /** Check if currently on the search tab */
-  get isOnSearchTab() {
-    return isOnSearchTab;
-  },
-
-  /** Check if currently on the favorites tab */
-  get isOnFavoritesTab() {
-    return isOnFavoritesTab;
-  },
-
-  /** Check if currently on the snapshots tab */
-  get isOnSnapshotsTab() {
-    return isOnSnapshotsTab;
   },
 
   get isScopable() {
     return isScopable;
   },
 
-  /** Check if currently on the profiles tab */
-  get isOnProfilesTab() {
-    return isOnProfilesTab;
-  },
-
-  /** Get the overview tab definition */
-  get overviewTab() {
-    return overviewTab;
-  },
-
-  /** Get the search tab definition */
-  get searchTab() {
-    return searchTab;
-  },
-
-  /** Get the favorites tab definition */
-  get favoritesTab() {
-    return favoritesTab;
-  },
-
-  /** Get the snapshots tab definition */
-  get snapshotsTab() {
-    return snapshotsTab;
-  },
-
-  /** Navigate to a specific tab by ID */
-  navigateToTab(tabId: TabId) {
-    go(tabId);
-  },
-
-  /** Opens a category already filtered to its Needs Attention tweaks. */
-  navigateToAttention(categoryId: TabId) {
-    attentionFilterRequested = true;
-    go(categoryId);
-  },
-
-  /** Read once by the category view as it mounts. */
-  takeAttentionFilter(): boolean {
-    const requested = attentionFilterRequested;
-    attentionFilterRequested = false;
-    return requested;
-  },
-
-  /** Navigate to the overview tab */
-  navigateToOverview() {
-    go("overview");
-  },
-
-  /** Navigate to the search tab */
-  navigateToSearch() {
-    go("search");
-  },
-
-  /** Navigate to the favorites tab */
-  navigateToFavorites() {
-    go("favorites");
-  },
-
-  /** Navigate to the snapshots tab */
-  navigateToSnapshots() {
-    go("snapshots");
-  },
-
-  /** Navigate to a specific category */
-  navigateToCategory(categoryId: string) {
-    go(categoryId);
-  },
-
-  /** Signal to focus the title bar search box. */
   get visit() {
     return visit;
   },
 
+  /** Bumped to ask the title bar search box for focus. */
   get focusSearchSignal() {
     return focusSearchSignal;
   },
 
-  /** Focus the search input; a list page keeps it scoped to itself, any other page goes to Search. */
+  navigateToTab: go,
+
+  /** Opens a category already filtered to its Needs Attention tweaks. */
+  navigateToAttention(categoryId: string) {
+    go(categoryId);
+    attentionVisit = visit;
+  },
+
+  /** Read once by the category view as it mounts. */
+  takeAttentionFilter(): boolean {
+    const requested = attentionVisit === visit;
+    attentionVisit = -1;
+    return requested;
+  },
+
+  /** A list page keeps the search scoped to itself; any other page goes to Search. */
   focusSearch() {
     if (!isScopable) go("search");
     focusSearchSignal++;

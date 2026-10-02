@@ -1,29 +1,38 @@
-type DateInput = string | number | Date;
-
 const KIB = 1024;
 const MIB = KIB * KIB;
+
+export interface DateFormat {
+  month?: "numeric" | "short" | "long";
+  /** "seconds" matches a bare `toLocaleString()`. */
+  time?: "minutes" | "seconds";
+}
+
+export function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function toDate(value: DateInput): Date | null {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+/** Empty for missing, zero or unparseable input, never "Invalid Date" or 1970. */
+export function formatDate(
+  value: string | number | Date | null | undefined,
+  { month = "numeric", time }: DateFormat = {},
+): string {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month,
+    day: "numeric",
+    ...(time && { hour: "numeric", minute: "2-digit", ...(time === "seconds" && { second: "2-digit" }) }),
+  });
 }
 
-/** Unparseable input comes back as is, never as "Invalid Date". */
-export function formatDate(value: DateInput, month: "long" | "short" | "numeric" = "numeric"): string {
-  const date = toDate(value);
-  return date ? date.toLocaleDateString(undefined, { year: "numeric", month, day: "numeric" }) : String(value);
-}
-
-export function formatDateTime(value: DateInput, dateStyle?: "long"): string {
-  const date = toDate(value);
-  if (!date) return String(value);
-  return dateStyle ? date.toLocaleString(undefined, { dateStyle, timeStyle: "short" }) : date.toLocaleString();
-}
-
+/** Empty for negative or non-finite input. */
 export function formatBytes(bytes: number): string {
-  return bytes >= MIB ? `${(bytes / MIB).toFixed(1)} MB` : `${Math.ceil(bytes / KIB)} KB`;
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  const kib = Math.ceil(bytes / KIB);
+  return kib >= KIB ? `${(bytes / MIB).toFixed(1)} MB` : `${kib} KB`;
 }

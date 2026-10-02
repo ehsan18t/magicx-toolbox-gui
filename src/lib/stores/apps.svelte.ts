@@ -1,25 +1,34 @@
-/**
- * App items: the curated removable apps and their live presence (ADR-0009).
- * Remove and Install run immediately, never through pending changes, snapshots or profiles.
- */
+// App items: the curated removable apps and their live presence (ADR-0009). Remove and Install run
+// immediately, never through pending changes, snapshots or profiles.
 
-import { settingsStore } from "$lib/stores/settings.svelte";
 import * as api from "$lib/api/apps";
 import type { AppStatusView, AppView } from "$lib/types";
+import type { AppOperationKind } from "$lib/utils/appPresentation";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import { SvelteMap } from "svelte/reactivity";
+import { settingsStore } from "./settings.svelte";
 import { toastStore } from "./toast.svelte";
 
-let apps = $state<AppView[]>([]);
+export interface AppOperation {
+  kind: AppOperationKind;
+  startedAt: number;
+}
+
+const STORE_PAGE_URL = "ms-windows-store://pdp/?ProductId=";
+const STORE_WATCH_CHECKS = 5;
+
+let apps = $state.raw<AppView[]>([]);
 let appsVersion = $state(0);
 let scanError = $state<string | null>(null);
 const statuses = new SvelteMap<string, AppStatusView>();
-const busy = new SvelteSet<string>();
+// Store-side, so a row that remounts mid-operation keeps its label and elapsed time.
+const operations = new SvelteMap<string, AppOperation>();
 const errors = new SvelteMap<string, string>();
 /** Opened in the Store: id -> focus re-checks left. Each check spawns PowerShell, so it is bounded. */
-const awaitingStore = new SvelteMap<string, number>();
-const STORE_WATCH_CHECKS = 5;
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const awaitingStore = new Map<string, number>();
 let loadPromise: Promise<void> | null = null;
 let refreshPromise: Promise<void> | null = null;
 let focusWatched = false;
@@ -38,11 +47,9 @@ function isVisible(app: AppView): boolean {
   return !status || status.presence.state !== "absent" || status.install_route !== "none";
 }
 
-const visibleApps = $derived(apps.filter(isVisible));
-
 const appsByCategory = $derived.by(() => {
   const byCategory: Record<string, AppView[]> = {};
-  for (const app of visibleApps) (byCategory[app.category] ??= []).push(app);
+  for (const app of apps) if (isVisible(app)) (byCategory[app.category] ??= []).push(app);
   return byCategory;
 });
 
@@ -53,7 +60,7 @@ function refreshStatuses(): Promise<void> {
       for (const view of await api.getAppStatuses()) adopt(view);
       scanError = null;
     } catch (error) {
-      console.error("Failed to scan app statuses:", error);
+      logError("Failed to scan app statuses", error);
       scanError = errorMessage(error);
     }
   })().finally(() => {
@@ -71,25 +78,25 @@ async function onWindowFocus(): Promise<void> {
   }
 }
 
-async function run(id: string, op: (id: string) => Promise<AppStatusView>, done: string): Promise<void> {
-  if (busy.has(id)) return;
-  busy.add(id);
+async function run(id: string, kind: AppOperationKind, done: string): Promise<void> {
+  if (operations.has(id)) return;
+  operations.set(id, { kind, startedAt: Date.now() });
   errors.delete(id);
   let failed = false;
-  const tweakName = apps.find((a) => a.id === id)?.name;
+  const subject = apps.find((a) => a.id === id)?.name;
   try {
-    adopt(await op(id));
-    toastStore.success(done, { tweakName });
+    adopt(await (kind === "remove" ? api.removeApp(id) : api.installApp(id)));
+    toastStore.success(done, { subject });
   } catch (error) {
     // Refused before anything ran, so there is nothing to re-scan.
     if (isAppExiting(error)) {
-      toastStore.warning(errorMessage(error), { tweakName });
+      toastStore.warning(errorMessage(error), { subject });
       return;
     }
     failed = true;
     errors.set(id, errorMessage(error));
   } finally {
-    busy.delete(id);
+    operations.delete(id);
   }
   // The operation may have partly happened, so show what the machine reads now.
   if (failed) await refreshStatuses();
@@ -100,19 +107,16 @@ export const appsStore = {
     return apps;
   },
 
-  get visible() {
-    return visibleApps;
-  },
-
   get byCategory() {
     return appsByCategory;
   },
 
+  /** Bumped when the model reloads. */
   get version() {
     return appsVersion;
   },
 
-  /** Why the last presence scan failed, for cards that have no status yet. */
+  /** Why the last presence scan failed, for rows that have no status yet. */
   get scanError() {
     return scanError;
   },
@@ -127,7 +131,12 @@ export const appsStore = {
   },
 
   isBusy(id: string): boolean {
-    return busy.has(id);
+    return operations.has(id);
+  },
+
+  /** The remove or install in flight, with when it started. */
+  operation(id: string): AppOperation | undefined {
+    return operations.get(id);
   },
 
   error(id: string): string | undefined {
@@ -138,14 +147,14 @@ export const appsStore = {
     errors.delete(id);
   },
 
-  /** Load the model (availability included) and scan presence. Concurrent calls share one run. */
+  /** Loads the model (availability included) and scans presence. Concurrent calls share one run. */
   load(): Promise<void> {
     loadPromise ??= (async () => {
       try {
         apps = await api.getApps();
         appsVersion++;
       } catch (error) {
-        console.error("Failed to load apps:", error);
+        logError("Failed to load apps", error);
         return;
       }
       await refreshStatuses();
@@ -155,14 +164,12 @@ export const appsStore = {
     return loadPromise;
   },
 
-  refresh: refreshStatuses,
-
   remove(id: string): Promise<void> {
-    return run(id, api.removeApp, "Removed");
+    return run(id, "remove", "Removed");
   },
 
   install(id: string): Promise<void> {
-    return run(id, api.installApp, "Installed");
+    return run(id, "install", "Installed");
   },
 
   /** The Store install is unverified, so presence is re-read when the user comes back. */
@@ -171,7 +178,7 @@ export const appsStore = {
     if (!productId) return;
     errors.delete(id);
     try {
-      await openUrl(`ms-windows-store://pdp/?ProductId=${productId}`);
+      await openUrl(`${STORE_PAGE_URL}${productId}`);
     } catch (error) {
       errors.set(id, errorMessage(error));
       return;

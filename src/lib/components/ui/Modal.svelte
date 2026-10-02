@@ -7,16 +7,17 @@
   import type { Snippet } from "svelte";
   import { tick } from "svelte";
 
+  type Size = "sm" | "md" | "lg" | "xl" | "full";
+
   interface Props {
     open: boolean;
     onclose?: () => void;
-    size?: "sm" | "md" | "lg" | "xl" | "full";
+    size?: Size;
     closeOnBackdrop?: boolean;
     closeOnEscape?: boolean;
-    class?: string;
     role?: "dialog" | "alertdialog";
-    /** ID of the element that labels this modal (for aria-labelledby) */
     labelledBy?: string;
+    describedBy?: string;
     children: Snippet;
   }
 
@@ -26,18 +27,26 @@
     size = "md",
     closeOnBackdrop = true,
     closeOnEscape = true,
-    class: className = "",
     role = "dialog",
     labelledBy,
+    describedBy,
     children,
   }: Props = $props();
 
-  // Internal state to manage exit animation
+  const SIZE_CLASS: Record<Size, string> = {
+    sm: "max-w-dialog-sm",
+    md: "max-w-dialog-md",
+    lg: "max-w-dialog-lg",
+    xl: "max-w-dialog-xl",
+    full: "h-full max-w-dialog-full",
+  };
+
+  // Mounted while open or playing the exit animation.
   let isVisible = $state(false);
   let isClosing = $state(false);
 
   let modalEl = $state<HTMLElement | null>(null);
-  let previouslyFocusedEl = $state<HTMLElement | null>(null);
+  let previouslyFocusedEl: HTMLElement | null = null;
 
   const stackToken = {};
   const isTopmost = () => openStack.at(-1) === stackToken;
@@ -49,7 +58,6 @@
   });
 
   function getFocusableElements(root: HTMLElement): HTMLElement[] {
-    // Keep selector intentionally conservative to avoid trapping non-interactive elements.
     const selector = [
       "a[href]",
       "summary",
@@ -61,7 +69,6 @@
     ].join(",");
 
     return Array.from(root.querySelectorAll<HTMLElement>(selector)).filter((el) => {
-      // Exclude elements that are not actually focusable/visible.
       if (el.hasAttribute("disabled")) return false;
       if (el.getAttribute("aria-disabled") === "true") return false;
       if (el.closest("[inert]")) return false;
@@ -73,31 +80,14 @@
     if (!modalEl) return;
     await tick();
 
-    const focusables = getFocusableElements(modalEl);
-    const first = focusables[0];
-
-    if (first) {
-      first.focus();
-      return;
-    }
-
-    // If there are no focusable elements, focus the modal container.
-    modalEl.tabIndex = -1;
-    modalEl.focus();
+    (getFocusableElements(modalEl)[0] ?? modalEl).focus();
   }
 
-  // Track open prop changes to trigger animations
   $effect(() => {
-    if (open && !isVisible && !isClosing) {
-      // Opening: show immediately
-      isVisible = true;
-    } else if (!open && isVisible && !isClosing) {
-      // Closing: trigger exit animation
-      isClosing = true;
-    }
+    if (open && !isVisible && !isClosing) isVisible = true;
+    else if (!open && isVisible && !isClosing) isClosing = true;
   });
 
-  // Focus management (capture on open, restore on fully closed)
   $effect(() => {
     if (!open) return;
     previouslyFocusedEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -120,14 +110,6 @@
     }
   });
 
-  const sizeClasses: Record<string, string> = {
-    sm: "w-full max-w-dialog-sm",
-    md: "w-full max-w-dialog-md",
-    lg: "w-full max-w-dialog-lg",
-    xl: "w-full max-w-dialog-xl",
-    full: "h-full w-full max-w-dialog-full",
-  };
-
   function handleBackdropClick(e: MouseEvent) {
     if (closeOnBackdrop && e.target === e.currentTarget && onclose) {
       onclose();
@@ -138,7 +120,8 @@
     // A control inside (an open dropdown) already used this key.
     if (e.defaultPrevented || !isTopmost()) return;
     if (closeOnEscape && e.key === "Escape" && isVisible && !isClosing && onclose) {
-      e.stopPropagation();
+      // Lets later window listeners see the key was used.
+      e.preventDefault();
       onclose();
     }
 
@@ -147,7 +130,6 @@
     const focusables = getFocusableElements(modalEl);
     if (focusables.length === 0) {
       e.preventDefault();
-      modalEl.tabIndex = -1;
       modalEl.focus();
       return;
     }
@@ -156,7 +138,6 @@
     const last = focusables[focusables.length - 1];
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    // If focus escaped somehow, bring it back.
     if (!active || !modalEl.contains(active)) {
       e.preventDefault();
       first.focus();
@@ -211,14 +192,15 @@
     onclick={handleBackdropClick}
   >
     <div
-      class="flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-elevated shadow-dialog {sizeClasses[
+      class="flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-elevated shadow-dialog {SIZE_CLASS[
         size
-      ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'} {className}"
+      ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'}"
       bind:this={modalEl}
       {role}
       tabindex="-1"
       aria-modal="true"
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onanimationend={handleAnimationEnd}
     >
       {@render children()}

@@ -1,7 +1,7 @@
 import * as api from "$lib/api/logs";
 import type { LogLine, LogSettings, LogTail } from "$lib/api/logs";
 import { errorMessage } from "$lib/utils/error";
-import { toastStore } from "./toast.svelte";
+import { TOAST_DURATION, toastStore } from "./toast.svelte";
 
 export const LOGS_PANEL_ID = "logs-panel";
 export const LOGS_TOGGLE_ID = "logs-toggle";
@@ -72,6 +72,19 @@ async function loadSettings() {
   }
 }
 
+function openPanel() {
+  if (panelOpen) return;
+  panelOpen = true;
+  void poll(++generation);
+  if (!settings) void loadSettings();
+}
+
+function closePanel() {
+  panelOpen = false;
+  generation++;
+  clearTimeout(timer);
+}
+
 export const logsStore = {
   get rows() {
     return rows;
@@ -82,29 +95,19 @@ export const logsStore = {
   get settings() {
     return settings;
   },
-  get settingsBusy() {
+  get isSettingsBusy() {
     return settingsBusy;
   },
-  get exporting() {
+  get isExporting() {
     return exporting;
   },
 
-  openPanel() {
-    if (panelOpen) return;
-    panelOpen = true;
-    void poll(++generation);
-    if (!settings) void loadSettings();
-  },
-
-  closePanel() {
-    panelOpen = false;
-    generation++;
-    clearTimeout(timer);
-  },
+  openPanel,
+  closePanel,
 
   togglePanel() {
-    if (panelOpen) this.closePanel();
-    else this.openPanel();
+    if (panelOpen) closePanel();
+    else openPanel();
   },
 
   /** Empties the view only; lines already read are not fetched again. */
@@ -148,7 +151,7 @@ export const logsStore = {
       const path = await api.exportDiagnostics();
       if (path === null) return;
       toastStore.success("Diagnostics exported. Check the file before sharing.", {
-        duration: 10000,
+        duration: TOAST_DURATION.long,
         action: {
           label: "Show in folder",
           run: () => void api.revealLastExport().catch((e) => toastStore.error(errorMessage(e))),

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { toastStore, type ToastType } from "$lib/stores/toast.svelte";
-  import { pendingRebootStore } from "$lib/stores/tweaks.svelte";
+  import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import { reflow, shift } from "$lib/utils/motion";
 
   const typeConfig: Record<ToastType, { icon: string; color: string; stripe: string }> = {
@@ -32,8 +32,8 @@
       <span class="absolute inset-y-0 left-0 w-1 {config.stripe}" aria-hidden="true"></span>
       <Icon icon={config.icon} width="18" class="mt-px shrink-0 {config.color}" />
       <div class="min-w-0 flex-1">
-        {#if toast.tweakName}
-          <div class="text-xs font-medium text-foreground-muted">{toast.tweakName}</div>
+        {#if toast.subject}
+          <div class="text-xs font-medium text-foreground-muted">{toast.subject}</div>
         {/if}
         <div class="text-ui wrap-break-word text-foreground">{toast.message}</div>
         {#if toast.action}

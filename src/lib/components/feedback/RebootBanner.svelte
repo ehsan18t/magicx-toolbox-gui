@@ -1,13 +1,13 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { filterStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
+  import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import { expand } from "$lib/utils/motion";
 
   let showDetails = $state(false);
 
   const rebootCount = $derived(pendingRebootStore.count);
-  const rebootTweaks = $derived(filterStore.pendingRebootTweaks);
+  const rebootTweaks = $derived(pendingRebootStore.tweaks);
 </script>
 
 {#if rebootCount > 0}

@@ -4,7 +4,6 @@
     Badge,
     Button,
     Checkbox,
-    IconButton,
     Modal,
     ModalBody,
     ModalFooter,
@@ -12,10 +11,11 @@
     ProgressBar,
     Switch,
   } from "$lib/components/ui";
-  import { closeModal, modalStore } from "$lib/stores/modal.svelte";
+  import { PROFILE_EXT } from "$lib/config/app";
+  import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { rescanStatuses } from "$lib/stores/tweaks.svelte";
+  import { rescanStatuses } from "$lib/stores/tweaksData.svelte";
   import { listenFileDrop } from "$lib/utils/fileDrop";
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
@@ -76,7 +76,7 @@
   $effect(() => {
     if (!isOpen) return;
     return listenFileDrop({
-      extension: ".mgx",
+      extension: `.${PROFILE_EXT}`,
       onOver: () => (isDragOver = step === "select"),
       onLeave: () => (isDragOver = false),
       onDrop: (path) => {
@@ -90,7 +90,7 @@
 
   function handleClose() {
     profileStore.clear();
-    closeModal();
+    modalStore.close();
   }
 
   async function handleBrowse() {
@@ -126,11 +126,11 @@
     }
   }
 
-  function riskVariant(risk: string): "default" | "warning" | "error" {
+  function riskTone(risk: string): "neutral" | "warning" | "error" {
     const level = risk.toLowerCase();
     if (level === "medium") return "warning";
     if (level === "high" || level === "critical") return "error";
-    return "default";
+    return "neutral";
   }
 
   async function handleFinish() {
@@ -167,13 +167,13 @@
   closeOnBackdrop={step !== "applying"}
   labelledBy="import-modal-title"
 >
-  <ModalHeader id="import-modal-title">
+  <ModalHeader onclose={step !== "applying" ? handleClose : undefined}>
     <div class="flex items-center gap-3">
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:import" width="24" class="text-accent" />
       </div>
       <div>
-        <h2 class="m-0 text-lg font-bold text-foreground">Import Profile</h2>
+        <h2 id="import-modal-title" class="m-0 text-lg font-bold text-foreground">Import Profile</h2>
         <p class="m-0 text-sm text-foreground-muted">
           {#if step === "select"}
             Select a profile file
@@ -187,9 +187,6 @@
         </p>
       </div>
     </div>
-    {#if step !== "applying"}
-      <IconButton icon="mdi:close" onclick={handleClose} aria-label="Close" />
-    {/if}
   </ModalHeader>
 
   <ModalBody>
@@ -303,7 +300,7 @@
         <div class="rounded-lg border border-border">
           <div class="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2">
             <span class="text-sm font-semibold text-foreground">Changes to Apply</span>
-            <Badge variant="default">{tweaksToApply.length} tweaks</Badge>
+            <Badge>{tweaksToApply.length} tweaks</Badge>
           </div>
 
           {#if applicableTweaks.length === 0}
@@ -329,13 +326,12 @@
                   <Checkbox
                     checked={!skipTweakIds.has(preview.tweak_id) && !(skipAlreadyApplied && preview.already_applied)}
                     disabled={isDisabled}
-                    ariaLabel="{preview.tweak_name} selection"
                   />
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
                       <span class="truncate text-sm font-medium text-foreground">{preview.tweak_name}</span>
                       {#if preview.already_applied}
-                        <Badge variant="default" class="shrink-0 text-xs">Already Applied</Badge>
+                        <Badge class="shrink-0">Already Applied</Badge>
                       {/if}
                     </div>
                     <div class="mt-0.5 flex items-center gap-1 text-xs text-foreground-muted">
@@ -344,7 +340,7 @@
                       <span class="text-accent">{preview.target_option_label}</span>
                     </div>
                   </div>
-                  <Badge variant={riskVariant(preview.risk_level)} class="shrink-0 text-xs">
+                  <Badge tone={riskTone(preview.risk_level)} class="shrink-0">
                     {preview.changes.length} changes
                   </Badge>
                 </button>
@@ -357,7 +353,11 @@
         <div class="space-y-3">
           <div class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3">
             <span class="text-sm text-foreground">Skip already-applied tweaks</span>
-            <Switch checked={skipAlreadyApplied} onchange={(v) => (skipAlreadyApplied = v)} />
+            <Switch
+              checked={skipAlreadyApplied}
+              label="Skip already-applied tweaks"
+              onchange={(v) => (skipAlreadyApplied = v)}
+            />
           </div>
         </div>
       </div>
@@ -372,12 +372,12 @@
           <p class="mb-4 font-medium text-foreground">Applying profile changes...</p>
 
           {#if applyProgress}
-            <ProgressBar value={applyProgress.current} max={applyProgress.total} size="lg" showLabel />
+            <ProgressBar value={applyProgress.current} max={applyProgress.total} label="Applying profile" showValue />
             <p class="mt-2 text-sm text-foreground-muted">
               {applyProgress.current} of {applyProgress.total} tweaks
             </p>
           {:else}
-            <ProgressBar value={0} max={100} size="lg" />
+            <ProgressBar value={0} label="Applying profile" />
           {/if}
         </div>
 

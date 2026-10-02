@@ -1,60 +1,53 @@
-<script lang="ts">
+<script lang="ts" module>
+  const MENU_GAP = 4;
+  const VIEWPORT_GUTTER = 8;
+</script>
+
+<script lang="ts" generics="T extends string | number">
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import { pop } from "$lib/utils/motion";
   import { tick } from "svelte";
   import Spinner from "./Spinner.svelte";
-
-  interface Option {
-    value: string | number;
-    label: string;
-    disabled?: boolean;
-  }
+  import type { SelectOption } from "./types";
 
   interface Props {
-    value: string | number | null;
-    options: Option[];
+    value: T | null;
+    options: SelectOption<T>[];
+    label: string;
     placeholder?: string;
     pending?: boolean;
     loading?: boolean;
     disabled?: boolean;
-    /** Accessible name for the control. */
-    label?: string;
     class?: string;
-    onchange?: (value: string | number) => void;
+    onchange?: (value: T) => void;
   }
 
   let {
     value,
     options,
-    placeholder = "Select...",
+    label,
+    placeholder = "Select…",
     pending = false,
     loading = false,
     disabled = false,
-    label,
-    class: className = "",
+    class: className,
     onchange,
   }: Props = $props();
 
-  const instanceId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? `select-${crypto.randomUUID()}`
-      : `select-${Math.random().toString(36).slice(2)}`;
-  const listboxId = `${instanceId}-listbox`;
+  const id = $props.id();
+  const listboxId = `${id}-listbox`;
   // Index, not value: labels carry spaces and colons, which break the id reference.
-  const optionId = (i: number) => `${instanceId}-option-${i}`;
+  const optionId = (i: number) => `${id}-option-${i}`;
 
   let isOpen = $state(false);
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let menuEl = $state<HTMLDivElement | null>(null);
   let highlightedIndex = $state(-1);
   let menuPosition = $state({ top: 0, left: 0, minWidth: 0, maxWidth: 0, above: false });
-  const MENU_GAP = 4;
-  const VIEWPORT_GUTTER = 8;
 
   const selectedOption = $derived(options.find((o) => o.value === value));
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
-  const isPlaceholder = $derived(!selectedOption);
   const highlightedOptionId = $derived(
     isOpen && highlightedIndex >= 0 && options[highlightedIndex] ? optionId(highlightedIndex) : undefined,
   );
@@ -84,7 +77,7 @@
     isOpen = true;
     await updatePosition();
     const selectedIdx = options.findIndex((o) => o.value === value);
-    highlightedIndex = selectedIdx >= 0 ? selectedIdx : options.findIndex((o) => !o.disabled);
+    highlightedIndex = selectedIdx >= 0 ? selectedIdx : firstEnabled(0, 1);
   }
 
   function close() {
@@ -97,12 +90,26 @@
     else open();
   }
 
-  function selectOption(opt: Option) {
+  function selectOption(opt: SelectOption<T>) {
     if (opt.disabled) return;
     // Controlled: the parent may decline the change, so the trigger shows only what it passes back.
     if (opt.value !== value) onchange?.(opt.value);
     close();
     triggerEl?.focus();
+  }
+
+  /** First enabled index walking from `from` by `step`, wrapping; -1 when all are disabled. */
+  function firstEnabled(from: number, step: number): number {
+    const len = options.length;
+    for (let i = 0; i < len; i++) {
+      const idx = (((from + step * i) % len) + len) % len;
+      if (!options[idx].disabled) return idx;
+    }
+    return -1;
+  }
+
+  function highlight(index: number) {
+    if (index >= 0) highlightedIndex = index;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -112,28 +119,22 @@
       case "Enter":
       case " ":
         e.preventDefault();
-        if (isOpen && highlightedIndex >= 0) {
-          const opt = options[highlightedIndex];
-          if (opt && !opt.disabled) selectOption(opt);
-        } else {
-          open();
-        }
+        if (isOpen && highlightedIndex >= 0) selectOption(options[highlightedIndex]);
+        else open();
         break;
       case "ArrowDown":
+      case "ArrowUp": {
         e.preventDefault();
-        if (!isOpen) {
-          open();
-        } else {
-          moveHighlight(1);
-        }
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        if (isOpen) highlight(firstEnabled(highlightedIndex + step, step));
+        else open();
         break;
-      case "ArrowUp":
+      }
+      case "Home":
+      case "End":
+        if (!isOpen) break;
         e.preventDefault();
-        if (!isOpen) {
-          open();
-        } else {
-          moveHighlight(-1);
-        }
+        highlight(e.key === "Home" ? firstEnabled(0, 1) : firstEnabled(options.length - 1, -1));
         break;
       case "Escape":
         if (isOpen) {
@@ -148,26 +149,6 @@
     }
   }
 
-  function moveHighlight(direction: number) {
-    const len = options.length;
-    let next = highlightedIndex;
-    for (let i = 0; i < len; i++) {
-      next = (next + direction + len) % len;
-      if (!options[next]?.disabled) {
-        highlightedIndex = next;
-        break;
-      }
-    }
-  }
-
-  function handleClickOutside(e: MouseEvent) {
-    if (!isOpen) return;
-    const target = e.target as Node;
-    if (!triggerEl?.contains(target) && !menuEl?.contains(target)) {
-      close();
-    }
-  }
-
   // Keep the highlighted option in view while navigating.
   $effect(() => {
     if (!isOpen || !menuEl || highlightedIndex < 0) return;
@@ -176,37 +157,28 @@
       ?.scrollIntoView({ block: "nearest" });
   });
 
-  // Set up scroll listeners on scrollable ancestors
+  // The menu is fixed-position: any scroll behind it, or a click outside, closes it.
   $effect(() => {
-    if (!triggerEl) return;
+    if (!isOpen || !triggerEl) return;
 
-    let el: HTMLElement | null = triggerEl.parentElement;
-    const scrollListeners: Array<{ el: Element; handler: EventListener }> = [];
-
-    while (el) {
-      const style = window.getComputedStyle(el);
-      const isScrollable = /(auto|scroll)/.test(style.overflow + style.overflowY + style.overflowX);
-
-      if (isScrollable) {
-        const handler = () => {
-          if (isOpen) close();
-        };
-        el.addEventListener("scroll", handler, { passive: true });
-        scrollListeners.push({ el, handler });
-      }
-
-      el = el.parentElement;
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!triggerEl?.contains(target) && !menuEl?.contains(target)) close();
+    };
+    const scrollers: EventTarget[] = [window];
+    for (let el = triggerEl.parentElement; el; el = el.parentElement) {
+      const style = getComputedStyle(el);
+      if (/(auto|scroll)/.test(style.overflow + style.overflowY + style.overflowX)) scrollers.push(el);
     }
 
+    window.addEventListener("click", onClick);
+    for (const el of scrollers) el.addEventListener("scroll", close, { passive: true });
     return () => {
-      scrollListeners.forEach(({ el, handler }) => {
-        el.removeEventListener("scroll", handler);
-      });
+      window.removeEventListener("click", onClick);
+      for (const el of scrollers) el.removeEventListener("scroll", close);
     };
   });
 </script>
-
-<svelte:window onclick={handleClickOutside} onscroll={() => isOpen && close()} />
 
 <div class={cn("relative", className)}>
   <button
@@ -216,7 +188,7 @@
     onclick={toggle}
     onkeydown={handleKeydown}
     disabled={disabled || loading}
-    aria-label={label ? `${label}: ${displayLabel}` : undefined}
+    aria-label="{label}: {displayLabel}"
     aria-haspopup="listbox"
     aria-expanded={isOpen}
     aria-controls={listboxId}
@@ -230,19 +202,19 @@
       disabled && "cursor-not-allowed opacity-60",
     )}
   >
-    <span class={cn("truncate", isPlaceholder && "text-foreground-muted")}>
+    <span class={cn("truncate", !selectedOption && "text-foreground-muted")}>
       {displayLabel}
     </span>
-    <div class="flex shrink-0 items-center gap-1">
+    <span class="flex shrink-0 items-center gap-1">
       {#if loading}
-        <Spinner size="sm" class="text-foreground-muted" />
+        <Spinner size="sm" />
       {:else}
         <Icon
           icon="mdi:chevron-down"
           class={cn("h-4 w-4 text-foreground-muted transition-transform duration-normal", isOpen && "rotate-180")}
         />
       {/if}
-    </div>
+    </span>
   </button>
 </div>
 
@@ -264,7 +236,6 @@
         role="option"
         id={optionId(i)}
         aria-selected={opt.value === value}
-        aria-disabled={opt.disabled}
         disabled={opt.disabled}
         tabindex={-1}
         onclick={() => selectOption(opt)}

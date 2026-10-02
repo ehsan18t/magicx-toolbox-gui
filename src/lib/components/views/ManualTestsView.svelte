@@ -16,10 +16,10 @@
 
   const runningId = $derived(manualTestsStore.runningId);
 
-  const statusBadge: Record<ManualTestStatus, { variant: "success" | "error" | "info"; label: string }> = {
-    pass: { variant: "success", label: "Pass" },
-    fail: { variant: "error", label: "Fail" },
-    info: { variant: "info", label: "Info" },
+  const statusBadge: Record<ManualTestStatus, { tone: "success" | "error" | "info"; label: string }> = {
+    pass: { tone: "success", label: "Pass" },
+    fail: { tone: "error", label: "Fail" },
+    info: { tone: "info", label: "Info" },
   };
 
   function minutesFor(test: ManualTest): number | null {
@@ -42,7 +42,7 @@
 
   async function copyReport(id: string) {
     try {
-      await navigator.clipboard.writeText(manualTestsStore.reportFor(id));
+      await navigator.clipboard.writeText(manualTestsStore.report(id));
       toastStore.success("Report copied");
     } catch (e) {
       console.error("Copy failed:", e);
@@ -64,14 +64,14 @@
 >
   {#each manualTestsStore.tests as test (test.id)}
     {@const isRunning = runningId === test.id}
-    {@const result = manualTestsStore.resultFor(test.id)}
-    {@const failure = manualTestsStore.failureFor(test.id)}
-    {@const log = manualTestsStore.logFor(test.id)}
-    <Card>
+    {@const result = manualTestsStore.result(test.id)}
+    {@const failure = manualTestsStore.failure(test.id)}
+    {@const log = manualTestsStore.log(test.id)}
+    <Card class="p-4">
       <section class="flex flex-col gap-3" aria-labelledby="manual-test-{test.id}">
         <div class="flex flex-wrap items-center gap-2">
           <h2 id="manual-test-{test.id}" class="m-0 text-base font-semibold text-foreground">{test.title}</h2>
-          <Badge variant={test.changes_system ? "warning" : "default"}>
+          <Badge tone={test.changes_system ? "warning" : "neutral"}>
             {test.changes_system ? "Changes this PC" : "Read-only"}
           </Badge>
           <code class="text-xs text-foreground-muted">{test.id}</code>
@@ -113,12 +113,12 @@
             <Button
               variant="outline"
               size="sm"
-              loading={manualTestsStore.cancelling}
+              loading={manualTestsStore.isCancelling}
               aria-label="Cancel {test.title}"
               onclick={() => manualTestsStore.cancel()}
             >
               <Icon icon="mdi:stop" width="16" />
-              {manualTestsStore.cancelling ? "Stopping and restoring" : "Cancel"}
+              {manualTestsStore.isCancelling ? "Stopping and restoring" : "Cancel"}
             </Button>
           {/if}
           {#if result || failure || log.length > 0}
@@ -135,7 +135,7 @@
           {/if}
           {#if isRunning}
             <span class="flex items-center gap-2 text-sm text-foreground-muted">
-              <Spinner size="sm" ariaLabel="Running {test.title}" />
+              <Spinner size="sm" label="Running {test.title}" />
               Running
             </span>
           {/if}
@@ -145,7 +145,7 @@
           {@const badge = statusBadge[result.status]}
           <div class="flex animate-fade-in flex-col gap-1.5" role="status">
             <div class="flex items-start gap-2">
-              <Badge variant={badge.variant} size="md">{badge.label}</Badge>
+              <Badge tone={badge.tone} size="md">{badge.label}</Badge>
               <p class="m-0 text-sm font-medium text-foreground">{result.summary}</p>
             </div>
             {#if result.details.length > 0}
@@ -158,7 +158,7 @@
           </div>
         {:else if failure}
           <div class="flex animate-fade-in items-start gap-2" role="alert">
-            <Badge variant="error" size="md">Error</Badge>
+            <Badge tone="error" size="md">Error</Badge>
             <p class="m-0 text-sm text-foreground">{failure}</p>
           </div>
         {/if}

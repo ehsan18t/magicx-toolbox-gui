@@ -1,9 +1,11 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { SegmentedSwitch, Select } from "$lib/components/ui";
-  import { loadingStore, pendingChangesStore, stageChange, unstageChange } from "$lib/stores/tweaks.svelte";
+  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { restoreTweak } from "$lib/utils/tweakActions";
+  import { restoreWithConfirm } from "$lib/utils/tweakActions";
+  import { labelsOf } from "$lib/utils/tweakPresentation";
 
   interface Props {
     tweak: TweakWithStatus;
@@ -14,12 +16,12 @@
 
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
-  const isLoading = $derived(loadingStore.isLoading(def.id));
-  const hasSnapshot = $derived(status.has_backup);
+  const isLoading = $derived(tweakOps.isRunning(def.id));
+  const hasSnapshot = $derived(status.hasSnapshot);
   const pendingChange = $derived(pendingChangesStore.get(def.id));
   const hasPending = $derived(pendingChange !== undefined);
   const activeOption = $derived(status.activeOption);
-  const optionLabels = $derived(def.optionLabels);
+  const optionLabels = $derived(labelsOf(def));
   const selectValue = $derived(pendingChange?.optionLabel ?? activeOption);
 
   const disabledReason = $derived.by(() => {
@@ -67,11 +69,11 @@
 
   function selectTarget(target: string) {
     if (target === SYSTEM_DEFAULT) {
-      if (hasPending) unstageChange(def.id);
+      if (hasPending) pendingChangesStore.remove(def.id);
       // Every other segment only stages; this one changes the system at once, so it always asks.
-      else if (hasSnapshot) void restoreTweak(def, true);
-    } else if (target === activeOption) unstageChange(def.id);
-    else stageChange(def.id, { tweakId: def.id, optionLabel: target });
+      else if (hasSnapshot) void restoreWithConfirm(def, true);
+    } else if (target === activeOption) pendingChangesStore.remove(def.id);
+    else pendingChangesStore.set(def.id, { tweakId: def.id, optionLabel: target });
   }
 </script>
 

@@ -3,9 +3,9 @@
   import { ExternalLink, Icon } from "$lib/components/shared";
   import { Modal } from "$lib/components/ui";
   import { APP_CONFIG } from "$lib/config/app";
-  import { closeModal, modalStore } from "$lib/stores/modal.svelte";
+  import { modalStore } from "$lib/stores/modal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { systemStore } from "$lib/stores/tweaksData.svelte";
   import { delay } from "$lib/utils/motion";
   import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
@@ -51,13 +51,13 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="about-title">
+<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy="about-title">
   <div class="relative overflow-y-auto px-7 pt-7 pb-6">
     <button
       type="button"
       class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
       aria-label="Close"
-      onclick={closeModal}
+      onclick={modalStore.close}
     >
       <Icon icon="mdi:close" width="18" />
     </button>

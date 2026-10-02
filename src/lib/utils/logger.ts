@@ -1,8 +1,10 @@
 import { logFrontend } from "$lib/api/logs";
 
 const DEDUPE_MS = 5000;
-const MAX_PER_SECOND = 5;
+const RATE_WINDOW_MS = 1000;
+const MAX_PER_WINDOW = 5;
 const MAX_CHARS = 2000;
+const DEDUPE_PRUNE_AT = 100;
 
 const lastSent = new Map<string, number>();
 let windowStart = 0;
@@ -20,20 +22,20 @@ function describe(value: unknown): string {
 }
 
 /** De-duplicated and rate-limited; never throws and never rejects. */
-export function forwardToLog(level: "error" | "warn" | "info", message: string): void {
+function forwardToLog(level: "error" | "warn" | "info", message: string): void {
   // A failure inside the forwarder must not be forwarded again.
   if (forwarding) return;
   forwarding = true;
   try {
     const now = Date.now();
     if ((lastSent.get(message) ?? -Infinity) > now - DEDUPE_MS) return;
-    if (now - windowStart >= 1000) {
+    if (now - windowStart >= RATE_WINDOW_MS) {
       windowStart = now;
       sentInWindow = 0;
     }
-    if (sentInWindow >= MAX_PER_SECOND) return;
+    if (sentInWindow >= MAX_PER_WINDOW) return;
     sentInWindow++;
-    if (lastSent.size > 100) {
+    if (lastSent.size > DEDUPE_PRUNE_AT) {
       for (const [key, at] of lastSent) if (at <= now - DEDUPE_MS) lastSent.delete(key);
     }
     lastSent.set(message, now);
@@ -43,7 +45,17 @@ export function forwardToLog(level: "error" | "warn" | "info", message: string):
   }
 }
 
-/** Sends uncaught errors and unhandled rejections to the session log. */
+/** The console plus the session log. */
+export function logError(context: string, error: unknown): void {
+  console.error(`${context}:`, error);
+  forwardToLog("error", `${context}: ${describe(error)}`);
+}
+
+export function logWarning(message: string): void {
+  console.warn(message);
+  forwardToLog("warn", message);
+}
+
 export function installErrorForwarding(): void {
   window.addEventListener("error", (e) =>
     forwardToLog("error", e.error ? describe(e.error) : `${e.message} (${e.filename}:${e.lineno}:${e.colno})`),

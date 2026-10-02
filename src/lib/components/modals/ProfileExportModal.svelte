@@ -11,10 +11,10 @@
     ModalHeader,
     Switch,
   } from "$lib/components/ui";
-  import { closeModal, modalStore } from "$lib/stores/modal.svelte";
+  import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { categoriesStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
@@ -33,12 +33,12 @@
   let includeSystemState = $state(false);
 
   // Get applied tweaks grouped by category
-  const appliedTweaks = $derived(tweaksStore.list.filter((t) => t.status.is_applied));
+  const appliedTweaks = $derived(tweaksStore.list.filter((t) => t.status.state === "active"));
 
   const tweaksByCategory = $derived.by(() => {
     const byCategory: Record<string, typeof appliedTweaks> = {};
     for (const tweak of appliedTweaks) {
-      const catId = tweak.definition.category_id;
+      const catId = tweak.definition.categoryId;
       if (!byCategory[catId]) byCategory[catId] = [];
       byCategory[catId].push(tweak);
     }
@@ -106,7 +106,7 @@
 
     if (success) {
       toastStore.show("success", `Profile "${profileName}" exported successfully`);
-      closeModal();
+      modalStore.close();
     } else if (profileStore.exportError) {
       toastStore.show("error", profileStore.exportError);
     }
@@ -121,14 +121,14 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="lg" labelledBy="export-modal-title">
-  <ModalHeader id="export-modal-title">
+<Modal open={isOpen} onclose={modalStore.close} size="lg" labelledBy="export-modal-title">
+  <ModalHeader>
     <div class="flex items-center gap-3">
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:export" width="24" class="text-accent" />
       </div>
       <div>
-        <h2 class="m-0 text-lg font-bold text-foreground">Export Profile</h2>
+        <h2 id="export-modal-title" class="m-0 text-lg font-bold text-foreground">Export Profile</h2>
         <p class="m-0 text-sm text-foreground-muted">
           {#if step === 1}
             Select tweaks to include
@@ -157,7 +157,7 @@
           2
         </span>
       </div>
-      <IconButton icon="mdi:close" onclick={closeModal} aria-label="Close" />
+      <IconButton icon="mdi:close" label="Close" onclick={modalStore.close} />
     </div>
   </ModalHeader>
 
@@ -173,10 +173,10 @@
           aria-label="Select all applied tweaks"
         >
           <div class="flex items-center gap-3">
-            <Checkbox checked={selectAllApplied} ariaLabel="Select all" />
+            <Checkbox checked={selectAllApplied} />
             <span class="font-medium text-foreground">Select All Applied Tweaks</span>
           </div>
-          <Badge variant="default">{appliedTweaks.length} tweaks</Badge>
+          <Badge>{appliedTweaks.length} tweaks</Badge>
         </button>
 
         {#if appliedTweaks.length === 0}
@@ -209,11 +209,11 @@
                       onclick={() => toggleTweak(tweak.definition.id)}
                       aria-label="Toggle {tweak.definition.name}"
                     >
-                      <Checkbox checked={isSelected} ariaLabel="{tweak.definition.name} selection" />
+                      <Checkbox checked={isSelected} />
                       <div class="min-w-0 flex-1">
                         <span class="block truncate text-sm font-medium text-foreground">{tweak.definition.name}</span>
                       </div>
-                      <Badge variant="default" class="shrink-0">{currentLabel}</Badge>
+                      <Badge class="shrink-0">{currentLabel}</Badge>
                     </button>
                   {/each}
                 </div>
@@ -269,7 +269,11 @@
               machine.
             </p>
           </div>
-          <Switch checked={includeSystemState} onchange={(checked) => (includeSystemState = checked)} />
+          <Switch
+            checked={includeSystemState}
+            label="Include baseline system state"
+            onchange={(checked) => (includeSystemState = checked)}
+          />
         </div>
 
         <!-- Info box -->
@@ -287,7 +291,7 @@
 
   <ModalFooter>
     {#if step === 1}
-      <Button variant="secondary" onclick={closeModal}>Cancel</Button>
+      <Button variant="secondary" onclick={modalStore.close}>Cancel</Button>
       <Button variant="primary" onclick={handleNext} disabled={selectedCount === 0}>
         Continue
         <Icon icon="mdi:arrow-right" width="18" />

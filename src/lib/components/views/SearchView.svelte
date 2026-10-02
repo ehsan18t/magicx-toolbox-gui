@@ -5,15 +5,9 @@
   import { EmptyState, HighlightedText } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
-  import { categoriesStore, loadingStateStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { type SearchResult, searchStore } from "$lib/stores/search.svelte";
+  import { categoriesStore, initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import type { AppView, TweakWithStatus } from "$lib/types";
-  import { untrack } from "svelte";
-
-  // Results are cached per query, so re-run once the app model lands after a search.
-  $effect(() => {
-    if (appsStore.version > 0) untrack(() => searchStore.isActive && searchStore.search());
-  });
 
   type MappedResult = { categoryName: string; searchResult: SearchResult } & (
     { kind: "tweak"; tweak: TweakWithStatus } | { kind: "app"; app: AppView }
@@ -43,12 +37,12 @@
 
   function goToItem({ id, categoryId }: SearchResult) {
     searchStore.setHighlight(id);
-    navigationStore.navigateToCategory(categoryId);
+    navigationStore.navigateToTab(categoryId);
   }
 </script>
 
 {#snippet highlighted(text: string, ranges: number[])}
-  <HighlightedText text={text || ""} {ranges} highlightClass="rounded-sm bg-accent/25 text-foreground" />
+  <HighlightedText text={text || ""} {ranges} />
 {/snippet}
 
 {#snippet location(result: MappedResult)}
@@ -70,8 +64,8 @@
 {/snippet}
 
 <PageLayout title="Search" {description}>
-  {#if loadingStateStore.tweaksLoading && !searchStore.isActive}
-    <EmptyState icon="mdi:loading" title="" description="Loading tweaks…" />
+  {#if initStatus.isLoadingTweaks && !searchStore.isActive}
+    <EmptyState loading description="Loading tweaks…" />
   {:else if searchStore.error}
     <EmptyState
       icon="mdi:alert-circle"

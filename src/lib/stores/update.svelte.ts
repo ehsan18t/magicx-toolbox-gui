@@ -1,37 +1,19 @@
-/**
- * Update Store - Svelte 5 Runes
- *
- * Manages app update checking and installation state.
- */
-
+import * as api from "$lib/api/update";
 import { APP_CONFIG } from "$lib/config/app";
-import { settingsStore } from "$lib/stores/settings.svelte";
-import { toastStore } from "$lib/stores/toast.svelte";
 import type { UpdateInfo } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
-import { invoke } from "@tauri-apps/api/core";
-
-// === State ===
-
-/** Whether we're currently checking for updates */
-let isChecking = $state(false);
-
-/** Whether we're currently downloading/installing an update */
-let isInstalling = $state(false);
-
-/** The latest update info from the last check */
-let updateInfo = $state<UpdateInfo | null>(null);
-
-/** Error message from the last check */
-let error = $state<string | null>(null);
-
-/** Whether the last check was done silently (background) */
-let lastCheckWasSilent = $state(false);
-
-// Derived: is update available
-const isAvailable = $derived(updateInfo?.available ?? false);
+import { logError } from "$lib/utils/logger";
+import { settingsStore } from "./settings.svelte";
+import { toastStore } from "./toast.svelte";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+let isChecking = $state(false);
+let isInstalling = $state(false);
+let updateInfo = $state<UpdateInfo | null>(null);
+let error = $state<string | null>(null);
+
+const isAvailable = $derived(updateInfo?.available ?? false);
 
 // Overlapping checks (startup, manual, pre-release toggle) finish out of order; only the latest writes.
 let checkSeq = 0;
@@ -40,93 +22,66 @@ function stampLastCheck(): void {
   settingsStore.setLastUpdateCheck(new Date().toISOString());
 }
 
-// === Export ===
+/** A silent check (background) never records its error. */
+async function checkForUpdate(silent = false): Promise<UpdateInfo | null> {
+  const seq = ++checkSeq;
+  isChecking = true;
+  if (!silent) error = null;
+
+  try {
+    const { source, flags } = APP_CONFIG.update.assetPattern;
+    const result = await api.checkForUpdate({
+      releasesApiUrl: APP_CONFIG.update.releasesApiUrl,
+      // `source` drops the flags; regex_lite reads case-insensitivity inline.
+      assetPattern: (flags.includes("i") ? "(?i)" : "") + source,
+      includePrereleases: settingsStore.includePrereleases,
+    });
+    stampLastCheck();
+    if (seq === checkSeq) {
+      updateInfo = result;
+      error = null;
+    }
+    return result;
+  } catch (err) {
+    logError("Update check failed", err);
+    if (!silent && seq === checkSeq) error = errorMessage(err);
+    return null;
+  } finally {
+    if (seq === checkSeq) isChecking = false;
+  }
+}
 
 export const updateStore = {
-  /** Whether currently checking for updates */
   get isChecking() {
     return isChecking;
   },
 
-  /** Whether currently installing an update */
   get isInstalling() {
     return isInstalling;
   },
 
-  /** Current update info */
   get updateInfo() {
     return updateInfo;
   },
 
-  /** Current error message */
   get error() {
     return error;
   },
 
-  /** Whether last check was silent */
-  get lastCheckWasSilent() {
-    return lastCheckWasSilent;
-  },
-
-  /** Whether an update is available */
   get isAvailable() {
     return isAvailable;
   },
 
-  /**
-   * Check for updates from GitHub releases
-   * @param silent If true, errors won't be stored (for background checks)
-   */
-  async checkForUpdate(silent: boolean = false): Promise<UpdateInfo | null> {
-    const seq = ++checkSeq;
-    isChecking = true;
-    if (!silent) {
-      error = null;
-    }
-    lastCheckWasSilent = silent;
-
-    try {
-      const { source, flags } = APP_CONFIG.update.assetPattern;
-      const config = {
-        releasesApiUrl: APP_CONFIG.update.releasesApiUrl,
-        // `source` drops the flags; regex_lite reads case-insensitivity inline.
-        assetPattern: (flags.includes("i") ? "(?i)" : "") + source,
-        includePrereleases: settingsStore.includePrereleases,
-      };
-
-      const result = await invoke<UpdateInfo>("check_for_update", { config });
-      stampLastCheck();
-      if (seq === checkSeq) {
-        updateInfo = result;
-        error = null;
-      }
-      return result;
-    } catch (err) {
-      const message = errorMessage(err);
-      console.error("Update check failed:", message);
-
-      // Only store error for non-silent checks
-      if (!silent && seq === checkSeq) {
-        error = message;
-      }
-
-      return null;
-    } finally {
-      if (seq === checkSeq) isChecking = false;
-    }
-  },
+  checkForUpdate,
 
   /** Silent background check, at most once per `UPDATE_CHECK_INTERVAL_MS`, when enabled. */
   autoCheckIfDue() {
     if (!settingsStore.autoCheckUpdates) return;
     const lastCheck = settingsStore.lastUpdateCheck;
     const due = !lastCheck || Date.now() - Date.parse(lastCheck) > UPDATE_CHECK_INTERVAL_MS;
-    if (due) void updateStore.checkForUpdate(true);
+    if (due) void checkForUpdate(true);
   },
 
-  /**
-   * Download and install an available update
-   */
   async installUpdate(): Promise<boolean> {
     if (!updateInfo?.available || !updateInfo.downloadUrl || !updateInfo.assetName) {
       error = "No update available to install";
@@ -135,17 +90,12 @@ export const updateStore = {
 
     isInstalling = true;
     error = null;
-
     try {
-      await invoke("install_update", {
-        downloadUrl: updateInfo.downloadUrl,
-        assetName: updateInfo.assetName,
-        assetDigest: updateInfo.assetDigest ?? null,
-      });
+      await api.installUpdate(updateInfo.downloadUrl, updateInfo.assetName, updateInfo.assetDigest ?? null);
       return true;
     } catch (err) {
+      logError("Update installation failed", err);
       const message = errorMessage(err);
-      console.error("Update installation failed:", message);
       if (isAppExiting(err)) toastStore.warning(message);
       else error = message;
       return false;
@@ -154,18 +104,7 @@ export const updateStore = {
     }
   },
 
-  /** Clear any stored error */
   clearError() {
     error = null;
-  },
-
-  /** Reset the store to initial state */
-  reset() {
-    checkSeq++;
-    isChecking = false;
-    isInstalling = false;
-    updateInfo = null;
-    error = null;
-    lastCheckWasSilent = false;
   },
 };

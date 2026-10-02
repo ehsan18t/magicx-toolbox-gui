@@ -3,14 +3,14 @@
   import { ThemeToggle } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
   import { SearchInput } from "$lib/components/ui";
-  import { sidebarStore } from "$lib/stores/layout.svelte";
+  import { elevationStore } from "$lib/stores/elevation.svelte";
   import { LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
+  import { sidebarStore } from "$lib/stores/sidebar.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaks.svelte";
-  import { restartAsAdmin } from "$lib/utils/elevation";
+  import { systemStore } from "$lib/stores/tweaksData.svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -22,8 +22,8 @@
   let appVersion = $state("");
   let isMaximized = $state(false);
   let appIcon = $state("/icons/Toolbox.ico");
-  let isRestarting = $state(false);
 
+  const isRestarting = $derived(elevationStore.isRestarting);
   const isAdmin = $derived(systemStore.info?.is_admin ?? null);
 
   let searchEl = $state<HTMLInputElement | null>(null);
@@ -32,12 +32,7 @@
     if (navigationStore.focusSearchSignal > 0) tick().then(() => searchEl?.focus());
   });
 
-  // Leaving Search clears the query; setQuery keeps a go-to-location highlight, clear() would not.
-  $effect(() => {
-    if (navigationStore.activeTab !== "search" && searchStore.query) searchStore.setQuery("");
-  });
-
-  const scoped = $derived(pageFilterStore.scoped);
+  const scoped = $derived(pageFilterStore.isScoped);
   const chipTab = $derived(pageFilterStore.chipTab);
   const scopeName = $derived(navigationStore.allTabs.find((t) => t.id === chipTab)?.name ?? "");
 
@@ -46,7 +41,7 @@
     else if (navigationStore.isScopable) pageFilterStore.searchEverywhere(value);
     else {
       searchStore.setQuery(value);
-      if (value && navigationStore.activeTab !== "search") navigationStore.navigateToSearch();
+      if (value && navigationStore.activeTab !== "search") navigationStore.navigateToTab("search");
     }
   }
 
@@ -104,13 +99,6 @@
     } catch (error) {
       console.error(`Window ${action} failed:`, error);
     }
-  }
-
-  async function restart() {
-    if (isRestarting) return;
-    isRestarting = true;
-    await restartAsAdmin();
-    isRestarting = false;
   }
 </script>
 
@@ -177,7 +165,7 @@
       class="w-full max-w-100 drag-disable"
       trailing={chipTab ? scopeToggle : undefined}
       onbackspace={scoped ? toggleScope : undefined}
-      onchange={handleSearch}
+      oninput={handleSearch}
     />
   </div>
 
@@ -186,7 +174,7 @@
       <button
         type="button"
         class="flex h-8 animate-fade-in cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-warning hover:bg-muted disabled:cursor-wait disabled:opacity-60"
-        onclick={restart}
+        onclick={elevationStore.restartAsAdmin}
         disabled={isRestarting}
         use:tooltip={"Restart as administrator"}
         aria-label="Restart as administrator"

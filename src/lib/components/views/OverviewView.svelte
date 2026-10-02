@@ -3,26 +3,20 @@
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import {
-    categoriesStore,
-    getCategoryStats,
-    loadingStateStore,
-    pendingChangesStore,
-    systemStore,
-    tweaksStore,
-  } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, initStatus, systemStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
 
   const info = $derived(systemStore.info);
   const hw = $derived(info?.hardware);
-  const categoryStats = $derived(getCategoryStats());
-  const systemLoading = $derived(loadingStateStore.systemInfoLoading);
+  const categoryStats = $derived(categoriesStore.stats);
+  const systemLoading = $derived(initStatus.isLoadingSystemInfo);
 
-  const applied = $derived(tweaksStore.list.filter((t) => t.status.is_applied).length);
+  const applied = $derived(tweaksStore.list.filter((t) => t.status.state === "active").length);
   const attentionTweaks = $derived(tweaksStore.list.filter((t) => t.status.attention));
   const attention = $derived(attentionTweaks.length);
   const checking = $derived(tweaksStore.list.filter((t) => t.status.state === "loading").length);
   const unknown = $derived(tweaksStore.list.filter((t) => t.status.state === "unknown").length);
-  const attentionCategories = $derived(new Set(attentionTweaks.map((t) => t.definition.category_id)));
+  const attentionCategories = $derived(new Set(attentionTweaks.map((t) => t.definition.categoryId)));
 
   // "All verified" only once every state is read: loading and unknown are not verified.
   const attentionTile = $derived.by(() => {
@@ -35,12 +29,12 @@
         onclick: () => navigationStore.navigateToAttention(first),
       };
     }
-    if (checking || loadingStateStore.tweaksLoading)
+    if (checking || initStatus.isLoadingTweaks)
       return { sub: "Checking…", tone: "text-foreground-muted", onclick: null };
     if (unknown) return { sub: `${unknown} could not be read`, tone: "text-warning", onclick: null };
     return { sub: "All verified", tone: "text-success", onclick: null };
   });
-  const snapshots = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
+  const snapshots = $derived(tweaksStore.list.filter((t) => t.status.hasSnapshot).length);
 
   const formatClock = (mhz: number) => (mhz >= 1000 ? `${(mhz / 1000).toFixed(1)} GHz` : `${mhz} MHz`);
   const formatStorage = (gb: number) => (gb >= 1000 ? `${(gb / 1000).toFixed(1)} TB` : `${gb.toFixed(0)} GB`);
@@ -185,7 +179,7 @@
       sub: "restorable",
       icon: "mdi:history",
       tone: "text-foreground-muted",
-      onclick: () => navigationStore.navigateToSnapshots(),
+      onclick: () => navigationStore.navigateToTab("snapshots"),
     },
     {
       label: "Ready to apply",
@@ -278,7 +272,7 @@
                 onclick={() =>
                   s?.attention
                     ? navigationStore.navigateToAttention(category.id)
-                    : navigationStore.navigateToCategory(category.id)}
+                    : navigationStore.navigateToTab(category.id)}
                 aria-label="{category.name}: {s?.applied ?? 0} of {s?.total ?? 0} applied{s?.attention
                   ? `, ${s.attention} need attention`
                   : ''}"
@@ -316,13 +310,13 @@
             type="button"
             class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             onclick={() => systemStore.refresh().catch((e) => console.error("Failed to refresh hardware info:", e))}
-            disabled={systemLoading || loadingStateStore.systemInfoRefreshing}
+            disabled={systemLoading || initStatus.isRefreshingSystemInfo}
             aria-label="Refresh system info"
             use:tooltip={systemStore.cachedAt && !systemLoading
               ? `Updated ${new Date(systemStore.cachedAt).toLocaleString()}. Select to refresh.`
               : "Refresh system info"}
           >
-            <Icon icon="mdi:refresh" width="16" class={loadingStateStore.systemInfoRefreshing ? "animate-spin" : ""} />
+            <Icon icon="mdi:refresh" width="16" class={initStatus.isRefreshingSystemInfo ? "animate-spin" : ""} />
           </button>
         </div>
         {#if systemLoading || !hw}

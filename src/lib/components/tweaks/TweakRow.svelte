@@ -4,14 +4,24 @@
   import { HighlightedText } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
-  import { openTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { errorStore, loadingStore, pendingChangesStore, unstageChange } from "$lib/stores/tweaks.svelte";
+  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
+  import { errorStore, tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
   import { expand } from "$lib/utils/motion";
   import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
-  import { keepWithConfirm, restoreTweak } from "$lib/utils/tweakActions";
-  import { availabilityLabel, isHighRisk, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
+  import { keepWithConfirm, restoreWithConfirm } from "$lib/utils/tweakActions";
+  import {
+    attentionCause,
+    availabilityLabel,
+    isHighRisk,
+    permissionInfoFor,
+    RISK_INFO,
+    RISK_TONE,
+    stateSummary,
+    TONE_TEXT,
+    usesDropdown,
+  } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
   import TweakControl from "./TweakControl.svelte";
 
@@ -28,8 +38,8 @@
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
   const availability = $derived(def.availability);
-  const isLoading = $derived(loadingStore.isLoading(def.id));
-  const tweakError = $derived(errorStore.getError(def.id));
+  const isLoading = $derived(tweakOps.isRunning(def.id));
+  const tweakError = $derived(errorStore.get(def.id));
   const isSelected = $derived(tweakDetailsModalStore.tweakId === def.id);
   const summary = $derived(stateSummary(status));
   const filterMatch = $derived(titleSlot ? null : pageFilterStore.match(def.id));
@@ -47,11 +57,11 @@
     () => rowEl,
   );
 
-  const riskInfo = $derived(RISK_INFO[def.risk_level]);
-  const highRisk = $derived(isHighRisk(def.risk_level));
-  const permissionInfo = $derived(permissionInfoFor(def.required_level));
+  const riskInfo = $derived(RISK_INFO[def.riskLevel]);
+  const highRisk = $derived(isHighRisk(def.riskLevel));
+  const permissionInfo = $derived(permissionInfoFor(def.requiredLevel));
   const isFavorite = $derived(favoritesStore.isFavorite(def.id));
-  const hasSnapshot = $derived(status.has_backup);
+  const hasSnapshot = $derived(status.hasSnapshot);
 
   // Needs Attention (ADR-0001/0002): the engine's own record, kept per tweak.
   const attention = $derived(status.attention);
@@ -65,15 +75,15 @@
   // Hidden until asked for, but staging a change is when it matters, so that opens it too.
   let warningToggled = $state(false);
   const warningOpen = $derived(warningToggled || hasPending);
-  const optionLabels = $derived(def.optionLabels);
+  const dropdown = $derived(usesDropdown(def));
 
-  const handleRestoreClick = () => restoreTweak(def, highRisk);
+  const handleRestoreClick = () => restoreWithConfirm(def, highRisk);
   const handleKeepCurrentState = () => keepWithConfirm(def);
 
   function handleRowClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (target.closest("button, a, input, [role='radiogroup'], [role='combobox'], [role='listbox']")) return;
-    openTweakDetailsModal(def.id);
+    tweakDetailsModalStore.open(def.id);
   }
 
   const restoreDisabled = $derived(isLoading || availability.state !== "available");
@@ -85,12 +95,12 @@
         : "Restore the state saved before the last change",
   );
   const stripe = $derived(
-    attention ? "bg-error" : hasPending ? "bg-warning" : status.is_applied ? "bg-accent" : "bg-transparent",
+    attention ? "bg-error" : hasPending ? "bg-warning" : status.state === "active" ? "bg-accent" : "bg-transparent",
   );
 </script>
 
 {#snippet marked(text: string, ranges: number[])}
-  <HighlightedText {text} {ranges} highlightClass="rounded-sm bg-accent/25 text-foreground" />
+  <HighlightedText {text} {ranges} />
 {/snippet}
 
 {#snippet metaItem(icon: string, label: string, tone: string, tip?: string | null, spin?: boolean)}
@@ -139,7 +149,7 @@
 
       <TweakControl
         {tweak}
-        class="max-w-item-row-control @max-item-row:max-w-full {optionLabels.length > 2 ? '@max-item-row:w-full' : ''}"
+        class="max-w-item-row-control @max-item-row:max-w-full {dropdown ? '@max-item-row:w-full' : ''}"
       />
 
       <p class="col-span-full m-0 text-ui leading-snug text-foreground-muted">
@@ -210,7 +220,7 @@
         <button
           type="button"
           class="flex shrink-0 cursor-pointer rounded p-0.5 text-error/70 hover:bg-error/10 hover:text-error"
-          onclick={() => errorStore.clearError(def.id)}
+          onclick={() => errorStore.clear(def.id)}
           aria-label="Dismiss error"
         >
           <Icon icon="mdi:close" width="14" />
@@ -237,7 +247,7 @@
             type="button"
             class="cursor-pointer rounded px-1 font-medium underline-offset-2 hover:underline"
             aria-label="Undo staged change to {def.name}"
-            onclick={() => unstageChange(def.id)}
+            onclick={() => pendingChangesStore.remove(def.id)}
           >
             Undo
           </button>
@@ -246,7 +256,7 @@
       {@render metaItem(
         "mdi:shield-half-full",
         `${riskInfo.name} risk`,
-        TONE_TEXT[RISK_TONE[def.risk_level]],
+        TONE_TEXT[RISK_TONE[def.riskLevel]],
         riskInfo.description,
       )}
       {#if def.warning}
@@ -276,7 +286,7 @@
           permissionInfo.description,
         )}
       {/if}
-      {#if def.requires_reboot}
+      {#if def.requiresReboot}
         {@render metaItem("mdi:restart", "Restart", "text-info", "Restart required after applying or restoring")}
       {/if}
       {#if availability.state !== "available" && status.state !== "unavailable"}
@@ -321,7 +331,12 @@
         >
           <Icon icon={isFavorite ? "mdi:star" : "mdi:star-outline"} width="16" />
         </button>
-        {@render actionButton("mdi:chevron-right", "Details", () => openTweakDetailsModal(def.id), "Open details")}
+        {@render actionButton(
+          "mdi:chevron-right",
+          "Details",
+          () => tweakDetailsModalStore.open(def.id),
+          "Open details",
+        )}
       </div>
     </div>
   </div>

@@ -1,41 +1,18 @@
-// Tweak details modal store using Svelte 5 runes
+import { navigationStore } from "./navigation.svelte";
 
-export interface TweakDetailsModalState {
-  tweakId: string;
-}
-
-// Reactive state
-let modalState = $state<TweakDetailsModalState | null>(null);
-
-// Derived values
-const isOpen = $derived(modalState !== null);
+// Keyed by page visit, so navigating away closes the modal with no effect to reset it.
+let opened = $state<{ tweakId: string; visit: number } | null>(null);
 
 export const tweakDetailsModalStore = {
-  get state() {
-    return modalState;
-  },
-
-  get isOpen() {
-    return isOpen;
-  },
-
-  get tweakId() {
-    return modalState?.tweakId ?? null;
+  get tweakId(): string | null {
+    return opened?.visit === navigationStore.visit ? opened.tweakId : null;
   },
 
   open(tweakId: string) {
-    modalState = { tweakId };
+    opened = { tweakId, visit: navigationStore.visit };
   },
 
   close() {
-    modalState = null;
+    opened = null;
   },
 };
-
-export function openTweakDetailsModal(tweakId: string) {
-  tweakDetailsModalStore.open(tweakId);
-}
-
-export function closeTweakDetailsModal() {
-  tweakDetailsModalStore.close();
-}

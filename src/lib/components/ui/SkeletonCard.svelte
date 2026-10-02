@@ -1,21 +1,9 @@
-<script lang="ts">
-  /**
-   * SkeletonCard - Loading skeleton for tweak cards
-   *
-   * Used in CategoryTab, FavoritesTab, SnapshotsTab during loading state.
-   */
-
-  interface Props {
-    /** Number of skeleton cards to render */
-    count?: number;
-  }
-
-  let { count = 4 }: Props = $props();
+<script lang="ts" module>
+  const ROWS = 4;
 </script>
 
 <div class="flex flex-col gap-2 pb-4">
-  <!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-  {#each Array(count) as _, i (`tweak-skeleton-${i}`)}
+  {#each { length: ROWS }, i (i)}
     <div class="relative flex animate-pulse overflow-hidden rounded-lg border border-border bg-card">
       <div class="flex flex-1 flex-col gap-3 p-4">
         <div class="flex items-start justify-between">

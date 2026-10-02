@@ -3,33 +3,35 @@
   import { Icon } from "$lib/components/shared";
   import { GroupedTweakList } from "$lib/components/tweaks";
   import { EmptyState, SkeletonCard } from "$lib/components/ui";
-  import { confirm } from "$lib/stores/confirm.svelte";
+  import { confirmStore } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { restoreTweaks } from "$lib/stores/tweaksActions.svelte";
+  import { initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
 
   const favoriteTweaks = $derived(tweaksStore.list.filter((t) => favoritesStore.ids.includes(t.definition.id)));
   const filteredTweaks = $derived(favoriteTweaks.filter((t) => pageFilterStore.passes(t.definition.id)));
   const restorable = $derived(favoriteTweaks.filter(canRestore));
-  const appliedCount = $derived(favoriteTweaks.filter((t) => t.status.is_applied).length);
+  const appliedCount = $derived(favoriteTweaks.filter((t) => t.status.state === "active").length);
 
   async function restoreAll() {
     const ids = restorable.map((t) => t.definition.id);
-    const ok = await confirm({
+    const ok = await confirmStore.ask({
       title: "Restore favorites?",
       message: restoreMessage(ids.length),
       confirmText: "Restore",
       variant: "danger",
     });
-    if (ok) await batchRevertTweaks(ids);
+    if (ok) await restoreTweaks(ids);
   }
 
   async function clearAll() {
     const n = favoriteTweaks.length;
-    const ok = await confirm({
+    const ok = await confirmStore.ask({
       title: "Clear all favorites?",
       message: `Remove ${n === 1 ? "1 tweak" : `${n} tweaks`} from your favorites? This won't change the tweaks themselves.`,
       confirmText: "Clear favorites",
@@ -54,7 +56,7 @@
             <button
               type="button"
               class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={loadingStore.busy}
+              disabled={tweakOps.isBusy}
               onclick={restoreAll}
             >
               <Icon icon="mdi:history" width="16" />
@@ -65,7 +67,7 @@
           <button
             type="button"
             class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-ui font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={loadingStore.busy}
+            disabled={tweakOps.isBusy}
             onclick={clearAll}
           >
             <Icon icon="mdi:star-off" width="16" />
@@ -76,7 +78,7 @@
     {/if}
   {/snippet}
 
-  {#if loadingStateStore.tweaksLoading && favoriteTweaks.length === 0}
+  {#if initStatus.isLoadingTweaks && favoriteTweaks.length === 0}
     <SkeletonCard />
   {:else if favoriteTweaks.length === 0}
     <EmptyState
@@ -84,7 +86,7 @@
       title="No favorites yet"
       description="Select the star on any tweak to keep it here for quick access."
       actionText="Browse tweaks"
-      onaction={() => navigationStore.navigateToOverview()}
+      onaction={() => navigationStore.navigateToTab("overview")}
       showIconCircle
     />
   {:else if filteredTweaks.length === 0}

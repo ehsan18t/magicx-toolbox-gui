@@ -1,57 +1,33 @@
 <script lang="ts">
   interface Props {
     value: number;
+    label: string;
     max?: number;
-    size?: "sm" | "md" | "lg";
-    variant?: "default" | "success" | "warning" | "error";
-    showLabel?: boolean;
-    class?: string;
+    showValue?: boolean;
   }
 
-  let {
-    value,
-    max = 100,
-    size = "md",
-    variant = "default",
-    showLabel = false,
-    class: className = "",
-  }: Props = $props();
+  let { value, label, max = 100, showValue = false }: Props = $props();
 
-  const percentage = $derived(Math.min(100, Math.max(0, (value / max) * 100)));
-
-  const sizeClasses: Record<string, string> = {
-    sm: "h-1.5",
-    md: "h-2.5",
-    lg: "h-4",
-  };
-
-  const variantClasses: Record<string, string> = {
-    default: "bg-accent",
-    success: "bg-success",
-    warning: "bg-warning",
-    error: "bg-error",
-  };
+  const percent = $derived(Math.min(100, Math.max(0, (value / max) * 100)));
 </script>
 
-<div class="flex w-full items-center gap-3 {className}">
+<div class="flex w-full items-center gap-3">
   <div
-    class="relative flex-1 overflow-hidden rounded-full bg-muted {sizeClasses[size]}"
+    class="relative h-4 flex-1 overflow-hidden rounded-full bg-muted"
     role="progressbar"
-    aria-valuenow={Math.round(percentage)}
+    aria-valuenow={Math.round(percent)}
     aria-valuemin={0}
     aria-valuemax={100}
-    aria-label="Progress"
+    aria-label={label}
   >
     <div
-      class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-slower ease-out {variantClasses[
-        variant
-      ]}"
-      style="width: {percentage}%"
+      class="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-slower ease-out"
+      style:width="{percent}%"
     ></div>
   </div>
-  {#if showLabel}
-    <span class="min-w-12 text-right text-sm font-medium text-foreground-muted tabular-nums">
-      {Math.round(percentage)}%
-    </span>
+  {#if showValue}
+    <span class="min-w-12 text-right text-sm font-medium text-foreground-muted tabular-nums"
+      >{Math.round(percent)}%</span
+    >
   {/if}
 </div>

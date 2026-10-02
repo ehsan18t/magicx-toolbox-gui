@@ -4,11 +4,13 @@
   import { AppRow, TweakRow } from "$lib/components/tweaks";
   import { EmptyState, SkeletonCard } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
-  import { confirm } from "$lib/stores/confirm.svelte";
+  import { confirmStore } from "$lib/stores/confirm.svelte";
+  import { elevationStore } from "$lib/stores/elevation.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
-  import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import { restartAsAdmin } from "$lib/utils/elevation";
+  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { restoreTweaks } from "$lib/stores/tweaksActions.svelte";
+  import { initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
   import { untrack } from "svelte";
 
@@ -20,8 +22,8 @@
 
   let attentionOnly = $state(navigationStore.takeAttentionFilter());
 
-  const categoryTweaks = $derived(tweaksStore.list.filter((t) => t.definition.category_id === tab.id));
-  const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
+  const categoryTweaks = $derived(tweaksStore.list.filter((t) => t.definition.categoryId === tab.id));
+  const appliedCount = $derived(categoryTweaks.filter((t) => t.status.state === "active").length);
   const attentionCount = $derived(categoryTweaks.filter((t) => t.status.attention).length);
   const needsAdminCount = $derived(
     categoryTweaks.filter((t) => t.definition.availability.state === "needs_elevation").length,
@@ -49,14 +51,14 @@
   async function restoreAll() {
     const ids = restorable.map((t) => t.definition.id);
     if (
-      await confirm({
+      await confirmStore.ask({
         title: `Restore ${tab.name}?`,
         message: restoreMessage(ids.length),
         confirmText: "Restore",
         variant: "danger",
       })
     )
-      await batchRevertTweaks(ids);
+      await restoreTweaks(ids);
   }
 </script>
 
@@ -94,7 +96,7 @@
         <button
           type="button"
           class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={loadingStore.busy}
+          disabled={tweakOps.isBusy}
           onclick={restoreAll}
         >
           <Icon icon="mdi:history" width="16" />
@@ -119,14 +121,14 @@
       <button
         type="button"
         class="h-8 cursor-pointer rounded-md bg-accent px-3 text-ui font-semibold text-accent-foreground hover:bg-accent-hover"
-        onclick={restartAsAdmin}
+        onclick={elevationStore.restartAsAdmin}
       >
         Restart as admin
       </button>
     </div>
   {/if}
 
-  {#if loadingStateStore.tweaksLoading && categoryTweaks.length === 0}
+  {#if initStatus.isLoadingTweaks && categoryTweaks.length === 0}
     <SkeletonCard />
   {:else if filteredTweaks.length === 0 && filteredApps.length === 0}
     {#if query}

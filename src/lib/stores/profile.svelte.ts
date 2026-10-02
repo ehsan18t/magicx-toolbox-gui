@@ -1,57 +1,83 @@
-/**
- * Profile Store - Svelte 5 Runes
- *
- * Manages profile export/import state for configuration profiles.
- */
-
-import type { ConfigurationProfile, ProfileApplyResult, ProfileValidation, TweakChangePreview } from "$lib/api/profile";
+import type {
+  ApplyOptions,
+  ConfigurationProfile,
+  ExportOptions,
+  ProfileApplyResult,
+  ProfileMetadata,
+  ProfileValidation,
+} from "$lib/api/profile";
 import * as profileApi from "$lib/api/profile";
+import { PROFILE_EXT, STORAGE_KEYS } from "$lib/config/app";
 import { errorMessage } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
-// === Export State ===
+const PROFILE_FILTERS = [{ name: "MagicX Profile", extensions: [PROFILE_EXT] }];
+
 let isExporting = $state(false);
 let exportError = $state<string | null>(null);
 
-// === Import State ===
 let isImporting = $state(false);
 let importError = $state<string | null>(null);
 
-// === Saved Profiles State ===
-let savedProfiles = $state<profileApi.ProfileMetadata[]>([]);
-let loadingSavedProfiles = $state(false);
+let savedProfiles = $state.raw<ProfileMetadata[]>([]);
+let isLoadingSavedProfiles = $state(false);
 let savedProfilesError = $state<string | null>(null);
-let isDeleting = $state(false);
+let isDeleting = false;
 let deleteError = $state<string | null>(null);
 // Drops a saved-profiles response superseded by a later directory change.
 let loadSeq = 0;
 
-// Persistent store for profile directory
-const currentProfileDirStore = new PersistentStore<string | null>("magicx_profile_dir", null);
+const profileDir = new PersistentStore<string | null>(STORAGE_KEYS.profileDir, null);
 
-// === Apply State ===
 let isApplying = $state(false);
 let applyProgress = $state<{ current: number; total: number } | null>(null);
 let applyError = $state<string | null>(null);
 
-// === Profile Data ===
 let currentProfile = $state<ConfigurationProfile | null>(null);
 let validation = $state<ProfileValidation | null>(null);
 let applyResult = $state<ProfileApplyResult | null>(null);
 
-// === Derived Values ===
-const applicableTweaks = $derived.by(() => {
-  if (!validation) return [];
-  return validation.preview.filter((p) => p.applicable && !p.already_applied);
-});
+async function loadSavedProfiles() {
+  const mine = ++loadSeq;
+  isLoadingSavedProfiles = true;
+  savedProfilesError = null;
+  try {
+    const list = await profileApi.getSavedProfiles(profileDir.value);
+    if (mine === loadSeq) savedProfiles = list;
+  } catch (error) {
+    if (mine !== loadSeq) return;
+    logError("Failed to load saved profiles", error);
+    savedProfilesError = errorMessage(error);
+  } finally {
+    if (mine === loadSeq) isLoadingSavedProfiles = false;
+  }
+}
 
-const warningCount = $derived(validation?.warnings.length ?? 0);
-const errorCount = $derived(validation?.errors.length ?? 0);
+/** Loads and validates the profile at the path `pick` resolves to; null is a cancelled dialog. */
+async function importFrom(pick: () => Promise<string | null>): Promise<boolean> {
+  if (isImporting) return false;
+  isImporting = true;
+  importError = null;
+  currentProfile = null;
+  validation = null;
+  applyResult = null;
+  try {
+    const filePath = await pick();
+    if (!filePath) return false;
+    [currentProfile, validation] = await profileApi.importProfile(filePath);
+    return true;
+  } catch (error) {
+    logError("Failed to import profile", error);
+    importError = errorMessage(error);
+    return false;
+  } finally {
+    isImporting = false;
+  }
+}
 
-// === Export Store ===
 export const profileStore = {
-  // Getters
   get isExporting() {
     return isExporting;
   },
@@ -67,20 +93,17 @@ export const profileStore = {
   get savedProfiles() {
     return savedProfiles;
   },
-  get loadingSavedProfiles() {
-    return loadingSavedProfiles;
+  get isLoadingSavedProfiles() {
+    return isLoadingSavedProfiles;
   },
   get savedProfilesError() {
     return savedProfilesError;
-  },
-  get isDeleting() {
-    return isDeleting;
   },
   get deleteError() {
     return deleteError;
   },
   get currentProfileDir() {
-    return currentProfileDirStore.value;
+    return profileDir.value;
   },
   get isApplying() {
     return isApplying;
@@ -100,61 +123,28 @@ export const profileStore = {
   get applyResult() {
     return applyResult;
   },
-  get applicableTweaks() {
-    return applicableTweaks;
-  },
-  get warningCount() {
-    return warningCount;
-  },
-  get errorCount() {
-    return errorCount;
-  },
 
-  /**
-   * Set custom profile directory and reload profiles.
-   */
   setProfileDir(path: string | null) {
-    currentProfileDirStore.value = path;
-    this.loadSavedProfiles();
+    profileDir.value = path;
+    void loadSavedProfiles();
   },
 
-  /**
-   * Export a profile to a file.
-   * Opens a save dialog and exports the selected tweaks.
-   */
-  async exportProfile(
-    name: string,
-    tweakIds: string[],
-    options?: {
-      description?: string;
-      includeSystemState?: boolean;
-    },
-  ): Promise<boolean> {
+  /** Asks where to save, then exports the selected tweaks. */
+  async exportProfile(name: string, tweakIds: string[], options?: ExportOptions): Promise<boolean> {
     if (isExporting) return false;
-
     isExporting = true;
     exportError = null;
-
     try {
-      // Open save dialog
       const filePath = await save({
-        defaultPath: `${name.toLowerCase().replace(/\s+/g, "-")}.mgx`,
-        filters: [{ name: "MagicX Profile", extensions: ["mgx"] }],
+        defaultPath: `${name.toLowerCase().replace(/\s+/g, "-")}.${PROFILE_EXT}`,
+        filters: PROFILE_FILTERS,
       });
-
-      if (!filePath) {
-        // User cancelled
-        isExporting = false;
-        return false;
-      }
-
+      if (!filePath) return false;
       await profileApi.exportProfile(filePath, name, tweakIds, options);
-
-      // Reload profiles after successful export
-      this.loadSavedProfiles();
+      void loadSavedProfiles();
       return true;
     } catch (error) {
-      console.error("Failed to export profile:", error);
+      logError("Failed to export profile", error);
       exportError = errorMessage(error);
       return false;
     } finally {
@@ -162,40 +152,16 @@ export const profileStore = {
     }
   },
 
-  /**
-   * Load the list of saved profiles.
-   */
-  async loadSavedProfiles() {
-    const mine = ++loadSeq;
-    loadingSavedProfiles = true;
-    savedProfilesError = null;
-    try {
-      const list = await profileApi.getSavedProfiles(currentProfileDirStore.value);
-      if (mine === loadSeq) savedProfiles = list;
-    } catch (error) {
-      if (mine !== loadSeq) return;
-      console.error("Failed to load saved profiles:", error);
-      savedProfilesError = errorMessage(error);
-    } finally {
-      if (mine === loadSeq) loadingSavedProfiles = false;
-    }
-  },
-
-  /**
-   * Delete a saved profile.
-   */
   async deleteProfile(name: string): Promise<boolean> {
     if (isDeleting) return false;
-
     isDeleting = true;
     deleteError = null;
-
     try {
-      await profileApi.deleteSavedProfile(name, currentProfileDirStore.value);
-      await this.loadSavedProfiles();
+      await profileApi.deleteSavedProfile(name, profileDir.value);
+      await loadSavedProfiles();
       return true;
     } catch (error) {
-      console.error("Failed to delete profile:", error);
+      logError("Failed to delete profile", error);
       deleteError = errorMessage(error);
       return false;
     } finally {
@@ -203,103 +169,41 @@ export const profileStore = {
     }
   },
 
-  /**
-   * Import a profile from a file.
-   * Opens a file dialog and loads + validates the profile.
-   */
-  async importProfile(): Promise<boolean> {
-    if (isImporting) return false;
-
-    isImporting = true;
-    importError = null;
-    currentProfile = null;
-    validation = null;
-    applyResult = null;
-
-    try {
-      // Open file dialog
-      const filePath = await open({
-        multiple: false,
-        filters: [{ name: "MagicX Profile", extensions: ["mgx"] }],
-      });
-
-      if (!filePath || typeof filePath !== "string") {
-        // User cancelled
-        return false;
-      }
-
-      const [profile, validationResult] = await profileApi.importProfile(filePath);
-      currentProfile = profile;
-      validation = validationResult;
-      return true;
-    } catch (error) {
-      console.error("Failed to import profile:", error);
-      importError = errorMessage(error);
-      return false;
-    } finally {
-      isImporting = false;
-    }
+  /** Opens a file dialog, then loads and validates the chosen profile. */
+  importProfile(): Promise<boolean> {
+    return importFrom(async () => {
+      const filePath = await open({ multiple: false, filters: PROFILE_FILTERS });
+      return typeof filePath === "string" ? filePath : null;
+    });
   },
 
-  /**
-   * Import a profile from a file path (for drag-drop).
-   * @param filePath - Path to the profile file
-   */
-  async importProfileFromPath(filePath: string): Promise<boolean> {
-    if (isImporting) return false;
-
-    isImporting = true;
-    importError = null;
-    currentProfile = null;
-    validation = null;
-    applyResult = null;
-
-    try {
-      const [profile, validationResult] = await profileApi.importProfile(filePath);
-      currentProfile = profile;
-      validation = validationResult;
-      return true;
-    } catch (error) {
-      console.error("Failed to import profile:", error);
-      importError = errorMessage(error);
-      return false;
-    } finally {
-      isImporting = false;
-    }
+  /** For a dropped file. */
+  importProfileFromPath(filePath: string): Promise<boolean> {
+    return importFrom(async () => filePath);
   },
 
-  /**
-   * Apply the currently loaded profile.
-   */
-  async applyProfile(options?: {
-    skipTweakIds?: string[];
-    skipAlreadyApplied?: boolean;
-    createRestorePoint?: boolean;
-  }): Promise<boolean> {
+  async applyProfile(options?: ApplyOptions): Promise<boolean> {
     if (isApplying || !currentProfile) return false;
-
     isApplying = true;
     applyError = null;
     applyResult = null;
 
-    // Calculate total tweaks to apply for progress tracking
-    const tweaksToApply =
+    const total =
       validation?.preview.filter(
         (p) =>
           p.applicable &&
           !(options?.skipAlreadyApplied && p.already_applied) &&
           !options?.skipTweakIds?.includes(p.tweak_id),
-      ) ?? [];
-
-    applyProgress = { current: 0, total: tweaksToApply.length };
+      ).length ?? 0;
+    applyProgress = { current: 0, total };
 
     try {
       const result = await profileApi.applyProfile(currentProfile, options);
       applyResult = result;
-      applyProgress = { current: result.applied_count, total: tweaksToApply.length };
+      applyProgress = { current: result.applied_count, total };
       return result.success;
     } catch (error) {
-      console.error("Failed to apply profile:", error);
+      logError("Failed to apply profile", error);
       applyError = errorMessage(error);
       return false;
     } finally {
@@ -307,40 +211,14 @@ export const profileStore = {
     }
   },
 
-  /**
-   * Clear all profile state.
-   */
+  /** Drops results and errors; in-flight flags stay, so the re-entry guards hold. */
   clear() {
-    isExporting = false;
     exportError = null;
-    isImporting = false;
     importError = null;
-    isApplying = false;
     applyProgress = null;
     applyError = null;
     currentProfile = null;
     validation = null;
     applyResult = null;
   },
-
-  /**
-   * Get a preview item by tweak ID.
-   */
-  getPreviewByTweakId(tweakId: string): TweakChangePreview | undefined {
-    return validation?.preview.find((p) => p.tweak_id === tweakId);
-  },
 };
-
-// Re-export types for convenience
-export type {
-  ChangeDetail,
-  ChangeType,
-  ConfigurationProfile,
-  ProfileApplyResult,
-  ProfileMetadata,
-  ProfileValidation,
-  TweakChangePreview,
-  ValidationError,
-  ValidationStats,
-  ValidationWarning,
-} from "$lib/api/profile";

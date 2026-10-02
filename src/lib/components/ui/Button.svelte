@@ -4,26 +4,17 @@
   import type { HTMLButtonAttributes } from "svelte/elements";
   import { button, type ButtonVariants } from "./variants";
 
-  interface Props extends HTMLButtonAttributes {
-    variant?: ButtonVariants["variant"];
-    size?: ButtonVariants["size"];
-    loading?: boolean;
+  interface Props extends Omit<HTMLButtonAttributes, "class">, ButtonVariants {
     class?: string;
+    loading?: boolean;
     children: Snippet;
   }
 
-  let {
-    variant = "secondary",
-    size = "md",
-    loading = false,
-    disabled,
-    class: className = "",
-    children,
-    ...rest
-  }: Props = $props();
+  let { variant, size, loading = false, disabled, class: className, children, ...rest }: Props = $props();
 </script>
 
 <button
+  type="button"
   class={button({ variant, size, class: className })}
   disabled={disabled || loading}
   aria-busy={loading}

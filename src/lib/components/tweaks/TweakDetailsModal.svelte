@@ -3,25 +3,31 @@
   import { discardSnapshotEntry, listSnapshotEntries } from "$lib/api/tweaks";
   import { Icon, MarkdownText } from "$lib/components/shared";
   import { Modal, ModalBody } from "$lib/components/ui";
-  import { confirm } from "$lib/stores/confirm.svelte";
+  import { confirmStore } from "$lib/stores/confirm.svelte";
+  import { elevationStore } from "$lib/stores/elevation.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import {
-    elevationStore,
-    loadingStore,
-    pendingChangesStore,
-    refreshTweakStatus,
-    tweaksStore,
-  } from "$lib/stores/tweaks.svelte";
+  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
+  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { refreshTweakStatus } from "$lib/stores/tweaksActions.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { AttentionItem, EntrySummary } from "$lib/types";
-  import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
-  import { buildMatrix, optionsMatchingNow, type ChangeKind, type MatrixCell } from "$lib/utils/changeMatrix";
+  import { buildMatrix, type ChangeKind, type MatrixCell, optionsMatchingNow } from "$lib/utils/changeMatrix";
   import { errorMessage, isAppExiting } from "$lib/utils/error";
   import { expand } from "$lib/utils/motion";
-  import { keepWithConfirm, restoreTweak } from "$lib/utils/tweakActions";
-  import { availabilityTitle, isHighRisk, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
+  import { keepWithConfirm, restoreWithConfirm } from "$lib/utils/tweakActions";
+  import {
+    attentionCause,
+    availabilityTitle,
+    isHighRisk,
+    labelsOf,
+    permissionInfoFor,
+    RISK_INFO,
+    RISK_TONE,
+    stateSummary,
+    TONE_TEXT,
+  } from "$lib/utils/tweakPresentation";
   import TweakControl from "./TweakControl.svelte";
 
   // Held through the exit animation, after the store has cleared the id.
@@ -32,9 +38,9 @@
   const def = $derived(tweak?.definition ?? null);
   const status = $derived(tweak?.status ?? null);
   const pendingChange = $derived(def ? pendingChangesStore.get(def.id) : undefined);
-  const isLoading = $derived(def ? loadingStore.isLoading(def.id) : false);
+  const isLoading = $derived(def ? tweakOps.isRunning(def.id) : false);
   const summary = $derived(status ? stateSummary(status) : null);
-  const permissionInfo = $derived(def ? permissionInfoFor(def.required_level) : null);
+  const permissionInfo = $derived(def ? permissionInfoFor(def.requiredLevel) : null);
 
   const matrix = $derived(def && status ? buildMatrix(def.options, status.observed?.changes ?? null) : []);
   const showNow = $derived(matrix.some((r) => r.now !== null));
@@ -52,17 +58,8 @@
   let entriesLoading = $state(false);
   let busySeq = $state<number | null>(null);
   let keeping = $state(false);
-  // Gated on entries, not `has_backup`: an all-invalid history still needs a discard path (ADR-0002).
-  const hasHistory = $derived(!!status?.has_backup || entriesLoading || entries.length > 0);
-
-  let lastTab = navigationStore.activeTab;
-  $effect(() => {
-    const tab = navigationStore.activeTab;
-    if (tab !== lastTab) {
-      lastTab = tab;
-      closeTweakDetailsModal();
-    }
-  });
+  // Gated on entries, not `hasSnapshot`: an all-invalid history still needs a discard path (ADR-0002).
+  const hasHistory = $derived(!!status?.hasSnapshot || entriesLoading || entries.length > 0);
 
   // Keyed on the whole tweak, so a restore or keep re-reads the list.
   $effect(() => {
@@ -131,7 +128,7 @@
     } finally {
       busySeq = null;
     }
-    // The engine owns `has_backup` and its status arrives stamped, so an in-flight sweep cannot restore the badge.
+    // The engine owns `hasSnapshot` and its status arrives stamped, so an in-flight sweep cannot restore the badge.
     const read = await refreshTweakStatus(t.definition.id);
     if (!read.ok) {
       toastStore.warning(`The entry was discarded, but the tweak's state could not be re-read: ${read.message}`);
@@ -139,7 +136,7 @@
   }
 
   async function requestDiscard(seq: number) {
-    const ok = await confirm({
+    const ok = await confirmStore.ask({
       title: `Discard snapshot entry #${seq}?`,
       message: "The state it recorded can no longer be restored for this tweak.",
       confirmText: "Discard",
@@ -187,7 +184,7 @@
 
 <Modal
   open={tweakDetailsModalStore.tweakId !== null}
-  onclose={closeTweakDetailsModal}
+  onclose={tweakDetailsModalStore.close}
   size="full"
   labelledBy="tweak-details-title"
 >
@@ -218,7 +215,7 @@
             type="button"
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
             aria-label="Close details"
-            onclick={closeTweakDetailsModal}
+            onclick={tweakDetailsModalStore.close}
           >
             <Icon icon="mdi:close" width="18" />
           </button>
@@ -233,9 +230,9 @@
           {/if}
           {@render metaItem(
             "mdi:shield-half-full",
-            `${RISK_INFO[def.risk_level].name} risk`,
-            TONE_TEXT[RISK_TONE[def.risk_level]],
-            RISK_INFO[def.risk_level].description,
+            `${RISK_INFO[def.riskLevel].name} risk`,
+            TONE_TEXT[RISK_TONE[def.riskLevel]],
+            RISK_INFO[def.riskLevel].description,
           )}
           {@render metaItem(
             permissionInfo?.icon ?? "mdi:account",
@@ -243,7 +240,7 @@
             "text-foreground-muted",
             permissionInfo?.description,
           )}
-          {#if def.requires_reboot}
+          {#if def.requiresReboot}
             {@render metaItem("mdi:restart", "Restart needed", "text-foreground-muted", "After applying or restoring")}
           {/if}
           {#if !def.reversible}
@@ -251,18 +248,18 @@
           {/if}
           {@render metaItem(
             "mdi:history",
-            status.has_backup ? "Snapshot saved" : "No snapshot",
-            status.has_backup ? "text-foreground-muted" : "text-foreground-subtle",
+            status.hasSnapshot ? "Snapshot saved" : "No snapshot",
+            status.hasSnapshot ? "text-foreground-muted" : "text-foreground-subtle",
           )}
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          {#if status.has_backup && !status.attention}
+          {#if status.hasSnapshot && !status.attention}
             <button
               type="button"
               class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isLoading || def.availability.state !== "available"}
               use:tooltip={"Restore the state saved before the last change"}
-              onclick={() => restoreTweak(def, isHighRisk(def.risk_level))}
+              onclick={() => restoreWithConfirm(def, isHighRisk(def.riskLevel))}
             >
               <Icon icon="mdi:history" width="16" />
               Restore
@@ -322,7 +319,7 @@
             <span>
               <span class="font-semibold">Needs attention.</span>
               <span class="text-foreground-muted">
-                {attentionCause(status.attention.reason)}{status.has_backup
+                {attentionCause(status.attention.reason)}{status.hasSnapshot
                   ? ", so the snapshot was kept."
                   : ". There is no snapshot left to restore."}
               </span>
@@ -340,12 +337,12 @@
             </ul>
           {/if}
           <div class="mt-3 ml-6.5 flex flex-wrap gap-2">
-            {#if status.has_backup}
+            {#if status.hasSnapshot}
               <button
                 type="button"
                 class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || def.availability.state !== "available"}
-                onclick={() => restoreTweak(def, isHighRisk(def.risk_level))}
+                onclick={() => restoreWithConfirm(def, isHighRisk(def.riskLevel))}
               >
                 <Icon icon="mdi:history" width="16" />
                 {status.attention.reason === "restore_failed" ? "Retry restore" : "Restore"}
@@ -468,7 +465,7 @@
                       </span>
                     </th>
                     {#if showNow}
-                      {@const agrees = optionsMatchingNow(row, def.optionLabels, status.observed?.agreement ?? [])}
+                      {@const agrees = optionsMatchingNow(row, labelsOf(def), status.observed?.agreement ?? [])}
                       <td class="bg-warning/5 px-3 py-2 align-top break-all">
                         {@render cellText(row.now)}
                         {#if row.now}

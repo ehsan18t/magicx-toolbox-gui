@@ -3,35 +3,23 @@
 
   interface Props {
     checked: boolean;
+    label: string;
     disabled?: boolean;
     loading?: boolean;
-    pending?: boolean;
-    class?: string;
-    ariaLabel?: string;
     onchange?: (checked: boolean) => void;
   }
 
-  const {
-    checked,
-    disabled = false,
-    loading = false,
-    pending = false,
-    class: className = "",
-    ariaLabel = "Toggle",
-    onchange,
-  }: Props = $props();
+  const { checked, label, disabled = false, loading = false, onchange }: Props = $props();
 
-  function handleClick() {
-    if (!disabled && !loading) {
-      onchange?.(!checked);
-    }
+  function toggle() {
+    if (!disabled && !loading) onchange?.(!checked);
   }
 
+  // Toggles on keydown: the native click fires on Space keyup, a beat later.
   function handleKeydown(e: KeyboardEvent) {
-    if ((e.key === "Enter" || e.key === " ") && !disabled && !loading) {
-      e.preventDefault();
-      onchange?.(!checked);
-    }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    toggle();
   }
 </script>
 
@@ -39,18 +27,18 @@
   type="button"
   role="switch"
   aria-checked={checked}
-  aria-label={ariaLabel}
+  aria-label={label}
   {disabled}
-  class="switch shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70 {className}"
-  onclick={handleClick}
+  class="shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70"
+  onclick={toggle}
   onkeydown={handleKeydown}
 >
   <span
-    class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-[background-color,filter] duration-normal hover:brightness-95
-      {checked ? (pending ? 'bg-warning' : 'bg-accent') : 'bg-muted'}"
+    class="flex h-6 w-11 items-center rounded-full p-0.5 transition-[background-color,filter] duration-normal hover:brightness-95
+      {checked ? 'bg-accent' : 'bg-muted'}"
   >
     <span
-      class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-normal
+      class="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-normal
         {checked ? 'translate-x-5' : 'translate-x-0'}
         {loading ? 'text-foreground-muted' : 'text-accent'}"
     >

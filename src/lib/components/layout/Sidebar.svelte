@@ -3,10 +3,11 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { sidebarStore } from "$lib/stores/layout.svelte";
-  import { openAboutModal, openUpdateModal } from "$lib/stores/modal.svelte";
-  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, getCategoryStats, pendingChangesStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { modalStore } from "$lib/stores/modal.svelte";
+  import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
+  import { sidebarStore } from "$lib/stores/sidebar.svelte";
+  import { categoriesStore, initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { fade, reducedMotion } from "$lib/utils/motion";
 
@@ -15,12 +16,12 @@
   let moreBelow = $state(false);
   let scrollEl = $state<HTMLElement | null>(null);
   const activeTab = $derived(navigationStore.activeTab);
-  const categoryStats = $derived(getCategoryStats());
+  const categoryStats = $derived(categoriesStore.stats);
 
   // One shared indicator glides between pages; when items shift under it (the pane opening, categories
   // loading) it jumps with them instead.
   let indicator = $state<{ x: number; y: number; glide: boolean } | null>(null);
-  let indicatorTab = "";
+  let indicatorTab: TabId | null = null;
   $effect(() => {
     void [activeTab, isOpen, navigationStore.fixedTabs.length, navigationStore.categoryTabs.length];
     const item = scrollEl?.querySelector<HTMLElement>('[aria-current="page"]');
@@ -28,12 +29,12 @@
     indicatorTab = activeTab;
     indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide } : null;
   });
-  const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
+  const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.hasSnapshot).length);
   // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
   const pendingByCategory = $derived.by(() => {
     const counts: Record<string, number> = {};
     for (const change of pendingChangesStore.all.values()) {
-      const category = tweaksStore.getById(change.tweakId)?.definition.category_id;
+      const category = tweaksStore.getById(change.tweakId)?.definition.categoryId;
       if (category) counts[category] = (counts[category] ?? 0) + 1;
     }
     return counts;
@@ -44,7 +45,7 @@
     sidebarStore.closeOverlay();
   }
 
-  function fixedCount(id: string): number {
+  function fixedCount(id: TabId): number {
     if (id === "favorites") return favoritesStore.count;
     if (id === "snapshots") return snapshotCount;
     return 0;
@@ -54,7 +55,7 @@
     {
       label: updateStore.isAvailable ? "Update available" : "Updates",
       icon: "mdi:update",
-      open: openUpdateModal,
+      open: () => modalStore.open("update"),
       dot: updateStore.isAvailable,
       active: false,
     },
@@ -65,7 +66,13 @@
       dot: false,
       active: activeTab === "settings",
     },
-    { label: "About", icon: "mdi:information-outline", open: openAboutModal, dot: false, active: false },
+    {
+      label: "About",
+      icon: "mdi:information-outline",
+      open: () => modalStore.open("about"),
+      dot: false,
+      active: false,
+    },
   ]);
 
   function handleKeydown(e: KeyboardEvent) {
@@ -193,7 +200,7 @@
           )}
         {/each}
 
-        {#if categoriesStore.isLoading}
+        {#if initStatus.isLoadingTweaks}
           {#each [0, 1, 2, 3, 4, 5] as i (i)}
             <div class="flex h-9 shrink-0 items-center gap-3 px-3">
               <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>

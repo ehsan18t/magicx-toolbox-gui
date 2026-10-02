@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { loadingStore } from "$lib/stores/tweaks.svelte";
+  import { tweakOps } from "$lib/stores/tweakOps.svelte";
   import { delay, fade } from "$lib/utils/motion";
   import { untrack } from "svelte";
 
-  const isApplying = $derived(loadingStore.busy);
+  const isApplying = $derived(tweakOps.isBusy);
 
   let visible = $state(false);
   let shownAt = 0;

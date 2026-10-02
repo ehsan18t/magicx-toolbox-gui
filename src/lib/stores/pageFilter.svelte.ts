@@ -1,16 +1,16 @@
 import { navigationStore, type TabId } from "./navigation.svelte";
-import { fuzzyMatches, searchStore, type SearchResult } from "./search.svelte";
+import { fuzzyMatches, type SearchResult, searchStore } from "./search.svelte";
 
 // Keyed by page visit, so every visit opens unfiltered and scoped with no effect to reset it.
-let state = $state({ visit: -1, query: "", scoped: true });
+let filter = $state({ visit: -1, query: "", scoped: true });
 // The list page a global search left from, valid only while the Search page it opened is showing.
 let origin = $state<{ tab: TabId; visit: number } | null>(null);
 
-const isCurrent = () => state.visit === navigationStore.visit;
-const set = (query: string, scoped: boolean) => (state = { visit: navigationStore.visit, query, scoped });
+const isCurrent = () => filter.visit === navigationStore.visit;
+const set = (query: string, scoped: boolean) => (filter = { visit: navigationStore.visit, query, scoped });
 
-const scoped = $derived(navigationStore.isScopable && (!isCurrent() || state.scoped));
-const query = $derived(isCurrent() ? state.query : "");
+const scoped = $derived(navigationStore.isScopable && (!isCurrent() || filter.scoped));
+const query = $derived(isCurrent() ? filter.query : "");
 const matches = $derived(scoped && query.trim() ? fuzzyMatches(query) : null);
 const originTab = $derived(
   origin && origin.visit === navigationStore.visit && navigationStore.activeTab === "search" ? origin.tab : null,
@@ -18,7 +18,7 @@ const originTab = $derived(
 
 /** The title-bar search while it is scoped to the current list page. */
 export const pageFilterStore = {
-  get scoped(): boolean {
+  get isScoped(): boolean {
     return scoped;
   },
   get query(): string {
@@ -55,7 +55,7 @@ export const pageFilterStore = {
     set("", false);
     if (!text.trim()) return;
     searchStore.setQuery(text);
-    navigationStore.navigateToSearch();
+    navigationStore.navigateToTab("search");
     origin = { tab: from, visit: navigationStore.visit };
   },
 };

@@ -1,17 +1,13 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
-  import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
-  import {
-    applyPendingChanges,
-    loadingStore,
-    pendingChangesStore,
-    tweaksStore,
-    unstageChange,
-  } from "$lib/stores/tweaks.svelte";
-  import { RISK_INFO } from "$lib/types";
+  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
+  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { applyPendingChanges } from "$lib/stores/tweaksActions.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { expand, pop, shift } from "$lib/utils/motion";
-  import { isHighRisk, stateSummary } from "$lib/utils/tweakPresentation";
+  import { isHighRisk, RISK_INFO, stateSummary } from "$lib/utils/tweakPresentation";
 
   let expanded = $state(false);
   let applying = $state(false);
@@ -25,13 +21,13 @@
         change,
         tweak,
         from: tweak ? stateSummary(tweak.status).label : "",
-        highRisk: tweak ? isHighRisk(tweak.definition.risk_level) : false,
+        highRisk: tweak ? isHighRisk(tweak.definition.riskLevel) : false,
       };
     }),
   );
-  const needsReboot = $derived(items.some((i) => i.tweak?.definition.requires_reboot));
+  const needsReboot = $derived(items.some((i) => i.tweak?.definition.requiresReboot));
   const highRiskCount = $derived(items.filter((i) => i.highRisk).length);
-  const busy = $derived(applying || loadingStore.busy);
+  const busy = $derived(applying || tweakOps.isBusy);
 
   const reviewOpen = $derived(reviewing && count > 0);
 
@@ -66,7 +62,7 @@
               <button
                 type="button"
                 class="min-w-0 flex-1 cursor-pointer truncate text-left text-ui"
-                onclick={() => openTweakDetailsModal(change.tweakId)}
+                onclick={() => tweakDetailsModalStore.open(change.tweakId)}
               >
                 <span class="text-foreground">{tweak?.definition.name ?? change.tweakId}</span>
                 <span class="text-foreground-muted"> {from ? `${from} → ` : "→ "}{change.optionLabel}</span>
@@ -75,7 +71,7 @@
                 type="button"
                 class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-foreground-muted hover:bg-muted hover:text-foreground"
                 aria-label="Unstage {tweak?.definition.name ?? change.tweakId}"
-                onclick={() => unstageChange(change.tweakId)}
+                onclick={() => pendingChangesStore.remove(change.tweakId)}
               >
                 <Icon icon="mdi:close" width="14" />
               </button>
@@ -116,7 +112,7 @@
             type="button"
             class="h-8 cursor-pointer rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
-            onclick={() => pendingChangesStore.clearAll()}
+            onclick={() => pendingChangesStore.clear()}
           >
             Discard
           </button>
@@ -136,11 +132,11 @@
 {/if}
 
 <Modal open={reviewOpen} onclose={() => (reviewing = false)} size="lg" labelledBy="apply-review-title">
-  <ModalHeader id="apply-review-title">
+  <ModalHeader>
     <div class="flex items-center gap-3">
       <Icon icon="mdi:alert" width="22" class="shrink-0 text-warning" />
       <div>
-        <h2 class="m-0 text-base font-semibold text-foreground">
+        <h2 id="apply-review-title" class="m-0 text-base font-semibold text-foreground">
           Review {count === 1 ? "1 change" : `${count} changes`}
         </h2>
         <p class="m-0 mt-0.5 text-ui text-foreground-muted">
@@ -159,12 +155,12 @@
               {from ? `${from} → ` : "→ "}<span class="font-medium text-foreground">{change.optionLabel}</span>
             </span>
           </div>
-          {#if tweak && (highRisk || tweak.definition.requires_reboot)}
+          {#if tweak && (highRisk || tweak.definition.requiresReboot)}
             <div class="mt-1 flex flex-wrap gap-x-3 text-xs">
               {#if highRisk}
-                <span class="text-error">{RISK_INFO[tweak.definition.risk_level].name} risk</span>
+                <span class="text-error">{RISK_INFO[tweak.definition.riskLevel].name} risk</span>
               {/if}
-              {#if tweak.definition.requires_reboot}<span class="text-info">Needs a restart</span>{/if}
+              {#if tweak.definition.requiresReboot}<span class="text-info">Needs a restart</span>{/if}
             </div>
           {/if}
           {#if highRisk && tweak?.definition.warning}

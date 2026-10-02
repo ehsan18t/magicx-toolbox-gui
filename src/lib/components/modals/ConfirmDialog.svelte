@@ -1,8 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
-
-  type Variant = "default" | "warning" | "danger";
+  import type { ConfirmVariant as Variant } from "$lib/stores/confirm.svelte";
 
   interface Props {
     open: boolean;
@@ -39,10 +38,10 @@
 </script>
 
 <Modal {open} onclose={oncancel} size="sm" role="alertdialog" labelledBy="confirm-dialog-title">
-  <ModalHeader id="confirm-dialog-title">
+  <ModalHeader>
     <div class="flex items-center gap-3">
       <Icon icon={config.icon} width="24" class="shrink-0 {config.iconColor}" />
-      <h2 class="m-0 text-base font-semibold text-foreground">{title}</h2>
+      <h2 id="confirm-dialog-title" class="m-0 text-base font-semibold text-foreground">{title}</h2>
     </div>
   </ModalHeader>
 

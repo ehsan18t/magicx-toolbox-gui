@@ -1,29 +1,28 @@
-// Theme store for dark/light mode management
-// Using Svelte 5 runes for reactive state
-
 import { browser } from "$app/environment";
+import { STORAGE_KEYS } from "$lib/config/app";
 import { duration } from "$lib/utils/motion";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
-import { APP_CONFIG } from "@/lib/config/app";
 
 export type Theme = "light" | "dark";
 
-// Persistent state
-const themeState = new PersistentStore<Theme>(APP_CONFIG.theme.storageKey, "dark");
+const themeState = new PersistentStore<Theme>(STORAGE_KEYS.theme, "dark");
+let transitionTimer: ReturnType<typeof setTimeout> | undefined;
 
-function applyTheme(theme: Theme) {
-  if (browser) {
-    document.documentElement.classList.add("theme-transitioning");
-
-    themeState.value = theme;
-    document.documentElement.setAttribute("data-theme", theme);
-
-    // The theme-fade overlay in app.css runs for the same token.
-    setTimeout(() => document.documentElement.classList.remove("theme-transitioning"), duration("normal"));
-  }
+function paint(theme: Theme) {
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
-// Export the theme store with methods
+function set(theme: Theme) {
+  if (!browser) return;
+  const root = document.documentElement;
+  root.classList.add("theme-transitioning");
+  themeState.value = theme;
+  paint(theme);
+  clearTimeout(transitionTimer);
+  // The theme-fade overlay in app.css runs for the same token.
+  transitionTimer = setTimeout(() => root.classList.remove("theme-transitioning"), duration("normal"));
+}
+
 export const themeStore = {
   get current() {
     return themeState.value;
@@ -35,24 +34,15 @@ export const themeStore = {
 
   init() {
     if (!browser) return;
-
-    // Check if we should use system preference (if nothing stored)
-    // We check directly here because we want to override the default "dark" if necessary
-    const stored = localStorage.getItem(APP_CONFIG.theme.storageKey);
-    if (!stored) {
-      const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      themeState.value = systemPrefersDark ? "dark" : "light";
+    if (!themeState.hadStoredValue) {
+      themeState.value = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
-
-    document.documentElement.setAttribute("data-theme", themeState.value);
+    paint(themeState.value);
   },
 
   toggle() {
-    const newTheme: Theme = themeState.value === "dark" ? "light" : "dark";
-    applyTheme(newTheme);
+    set(themeState.value === "dark" ? "light" : "dark");
   },
 
-  set(theme: Theme) {
-    applyTheme(theme);
-  },
+  set,
 };

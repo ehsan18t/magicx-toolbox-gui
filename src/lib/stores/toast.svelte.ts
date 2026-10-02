@@ -1,133 +1,71 @@
-/**
- * Toast Store - Svelte 5 Runes
- *
- * Manages toast notifications for the application.
- */
-
 export type ToastType = "success" | "error" | "warning" | "info";
-
-export interface Toast {
-  id: string;
-  type: ToastType;
-  message: string;
-  duration?: number;
-  tweakName?: string;
-  action?: ToastAction;
-}
 
 export interface ToastAction {
   label: string;
   run: () => void;
 }
 
-type ToastOptions = { duration?: number; tweakName?: string; action?: ToastAction };
+export interface Toast {
+  id: string;
+  type: ToastType;
+  message: string;
+  duration?: number;
+  /** The tweak or app the toast is about, shown as its title. */
+  subject?: string;
+  action?: ToastAction;
+}
 
-let toasts = $state<Toast[]>([]);
-let idCounter = 0;
+interface ToastOptions {
+  duration?: number;
+  subject?: string;
+  action?: ToastAction;
+}
 
-// Store timeout IDs so we can clear them when toasts are manually dismissed
-// Note: Intentionally using plain Map since this is not rendered and doesn't need reactivity
-/* eslint-disable svelte/prefer-svelte-reactivity -- Intentionally using a plain Map for timeout IDs.
-    This Map is used only for internal timeout tracking and is not used in any reactive context,
-    so Svelte reactivity is not needed or desired here. */
-// Store timeout IDs so we can clear them when toasts are manually dismissed
-const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
-/* eslint-enable svelte/prefer-svelte-reactivity */
+export const TOAST_DURATION = { default: 3000, error: 5000, long: 10000 } as const;
 
-/** Maximum number of toasts to display at once */
 const MAX_TOASTS = 5;
 
-function generateId(): string {
-  return `toast-${++idCounter}-${Date.now()}`;
+let toasts = $state.raw<Toast[]>([]);
+let idCounter = 0;
+// Not rendered, so not reactive.
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const timeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearTimer(id: string) {
+  clearTimeout(timeouts.get(id));
+  timeouts.delete(id);
+}
+
+function dismiss(id: string) {
+  clearTimer(id);
+  toasts = toasts.filter((t) => t.id !== id);
+}
+
+function show(type: ToastType, message: string, options?: ToastOptions) {
+  const id = `toast-${++idCounter}-${Date.now()}`;
+  const duration = options?.duration ?? (type === "error" ? TOAST_DURATION.error : TOAST_DURATION.default);
+
+  while (toasts.length >= MAX_TOASTS) {
+    clearTimer(toasts[0].id);
+    toasts = toasts.slice(1);
+  }
+  toasts = [...toasts, { id, type, message, duration, subject: options?.subject, action: options?.action }];
+
+  if (duration > 0) {
+    const timer = setTimeout(() => dismiss(id), duration);
+    timeouts.set(id, timer);
+  }
+  return id;
 }
 
 export const toastStore = {
   get list() {
     return toasts;
   },
-
-  /**
-   * Show a toast notification
-   */
-  show(type: ToastType, message: string, options?: ToastOptions) {
-    const id = generateId();
-    const duration = options?.duration ?? (type === "error" ? 5000 : 3000);
-
-    const toast: Toast = {
-      id,
-      type,
-      message,
-      duration,
-      tweakName: options?.tweakName,
-      action: options?.action,
-    };
-
-    // Remove oldest toast(s) if at max capacity
-    while (toasts.length >= MAX_TOASTS) {
-      const oldest = toasts[0];
-      if (oldest) {
-        // Clear any pending timeout for the removed toast
-        const oldestTimeout = timeoutIds.get(oldest.id);
-        if (oldestTimeout) {
-          clearTimeout(oldestTimeout);
-          timeoutIds.delete(oldest.id);
-        }
-      }
-      toasts = toasts.slice(1);
-    }
-
-    toasts = [...toasts, toast];
-
-    // Auto-dismiss with proper cleanup
-    if (duration > 0) {
-      const timeoutId = setTimeout(() => {
-        toastStore.dismiss(id);
-      }, duration);
-      timeoutIds.set(id, timeoutId);
-    }
-
-    return id;
-  },
-
-  /**
-   * Dismiss a specific toast
-   */
-  dismiss(id: string) {
-    // Clear the auto-dismiss timeout if it exists
-    const timeoutId = timeoutIds.get(id);
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutIds.delete(id);
-    }
-    toasts = toasts.filter((t) => t.id !== id);
-  },
-
-  /**
-   * Clear all toasts
-   */
-  clear() {
-    // Clear all pending timeouts
-    for (const timeoutId of timeoutIds.values()) {
-      clearTimeout(timeoutId);
-    }
-    timeoutIds.clear();
-    toasts = [];
-  },
-
-  // Convenience methods
-  success(message: string, options?: ToastOptions) {
-    return this.show("success", message, options);
-  },
-
-  error(message: string, options?: ToastOptions) {
-    return this.show("error", message, options);
-  },
-
-  warning(message: string, options?: ToastOptions) {
-    return this.show("warning", message, options);
-  },
-
-  info(message: string, options?: ToastOptions) {
-    return this.show("info", message, options);
-  },
+  show,
+  dismiss,
+  success: (message: string, options?: ToastOptions) => show("success", message, options),
+  error: (message: string, options?: ToastOptions) => show("error", message, options),
+  warning: (message: string, options?: ToastOptions) => show("warning", message, options),
+  info: (message: string, options?: ToastOptions) => show("info", message, options),
 };

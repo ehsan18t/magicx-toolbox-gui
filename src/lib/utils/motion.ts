@@ -1,14 +1,14 @@
-//! Motion presets. Timing lives once, as tokens in app.css; this reads them so JS and CSS motion match.
-//! CSS classes (`animate-*`, `duration-*`, `ease-*`) for enter-only and hover motion; these presets where
-//! Svelte must hold an element for its exit or measure its height.
+// Motion presets. Timing lives once, as tokens in app.css; this reads them so JS and CSS motion match.
+// CSS classes (`animate-*`, `duration-*`, `ease-*`) for enter-only and hover motion; these presets where
+// Svelte must hold an element for its exit or measure its height.
 import { flip } from "svelte/animate";
 import type { AnimationConfig } from "svelte/animate";
 import { slide, type EasingFunction, type TransitionConfig } from "svelte/transition";
 
-export type Speed = "fast" | "normal" | "slow" | "slower" | "highlight";
-export type Delay = "reveal" | "settle" | "tooltip" | "feedback";
-export type Curve = "in" | "out" | "in-out" | "overshoot";
-export type Distance = "sm" | "md" | "lg";
+type Speed = "fast" | "normal" | "slow" | "slower" | "highlight";
+type Delay = "reveal" | "settle" | "tooltip" | "feedback";
+type Curve = "in" | "out" | "in-out" | "overshoot";
+type Distance = "md" | "lg";
 type Direction = "above" | "below" | "left" | "right";
 
 interface MotionParams {
@@ -45,7 +45,7 @@ export function delay(name: Delay): number {
   return ms(`--transition-delay-${name}`);
 }
 
-export function distance(size: Distance): number {
+function distance(size: Distance): number {
   return parseFloat(token(`--motion-distance-${size}`));
 }
 
@@ -66,7 +66,7 @@ function cubicBezier(x1: number, y1: number, x2: number, y2: number): EasingFunc
 
 const curves = new Map<Curve, EasingFunction>();
 
-export function easing(curve: Curve): EasingFunction {
+function easing(curve: Curve): EasingFunction {
   let fn = curves.get(curve);
   if (!fn) {
     const [x1, y1, x2, y2] = (token(`--ease-${curve}`).match(/-?[\d.]+/g) ?? ["0", "0", "1", "1"]).map(Number);

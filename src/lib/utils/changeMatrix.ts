@@ -1,4 +1,5 @@
-import type { EffectAgreement, RegistryChange, TweakEffectOption } from "$lib/types";
+import type { EffectAgreement, RegistryChange, RegistryValueType, TweakEffectOption } from "$lib/types";
+import { capitalize } from "$lib/utils/format";
 
 export type ChangeKind = "registry" | "service" | "task" | "hosts" | "firewall";
 
@@ -17,19 +18,18 @@ export interface MatrixRow {
   name: string;
   /** Where the setting lives: a registry key path, a task folder, or the kind of item. */
   location: string;
-  /** Value type for registry values, e.g. REG_DWORD. */
-  type?: string;
+  type?: RegistryValueType;
   /** One per option, in option order; null leaves the setting untouched. */
   cells: (MatrixCell | null)[];
   /** The live value at System Default, when the engine reported one. */
   now: MatrixCell | null;
 }
 
-const leaf = (path: string) => path.split("\\").filter(Boolean).at(-1) ?? path;
+const lastSegment = (path: string) => path.split("\\").filter(Boolean).at(-1) ?? path;
 
-const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1).replaceAll("_", " ") : s);
+const humanize = (s: string) => capitalize(s.replaceAll("_", " "));
 
-function registryValue(c: RegistryChange): MatrixCell {
+function registryCell(c: RegistryChange): MatrixCell {
   const note = c.windows_versions?.length ? `Win ${c.windows_versions.join(", ")}` : undefined;
   if (c.action === "delete_value") return { text: "Not set", removal: true, note };
   if (c.action === "delete_key") return { text: "Key removed", removal: true, note };
@@ -48,13 +48,13 @@ function registryValue(c: RegistryChange): MatrixCell {
   return { text, note };
 }
 
-interface Entry {
+interface MatrixEntry {
   key: string;
   row: Omit<MatrixRow, "cells" | "now">;
   cell: MatrixCell;
 }
 
-function entries(o: TweakEffectOption): Entry[] {
+function matrixEntries(o: TweakEffectOption): MatrixEntry[] {
   return [
     ...o.registry_changes.map((c) => {
       const isKey = c.action === "delete_key" || c.action === "create_key";
@@ -63,17 +63,17 @@ function entries(o: TweakEffectOption): Entry[] {
         row: {
           kind: "registry" as const,
           title: isKey ? "(key)" : c.value_name || "(Default)",
-          name: isKey ? leaf(c.key) : c.value_name,
+          name: isKey ? lastSegment(c.key) : c.value_name,
           location: `${c.hive}\\${c.key}`,
           type: isKey ? undefined : (c.value_type ?? undefined),
         },
-        cell: registryValue(c),
+        cell: registryCell(c),
       };
     }),
     ...o.service_changes.map((c) => ({
       key: `svc:${c.name}`.toLowerCase(),
       row: { kind: "service" as const, title: c.name, name: c.name, location: "Service startup" },
-      cell: { text: capitalize(c.startup) },
+      cell: { text: humanize(c.startup) },
     })),
     ...o.scheduler_changes.map((c) => {
       const cut = c.task_path.lastIndexOf("\\");
@@ -82,7 +82,7 @@ function entries(o: TweakEffectOption): Entry[] {
         row: {
           kind: "task" as const,
           title: c.task_path.slice(cut + 1) || c.task_path,
-          name: leaf(c.task_path),
+          name: lastSegment(c.task_path),
           location: cut > 0 ? c.task_path.slice(0, cut) : "Task Scheduler",
         },
         cell: { text: c.action === "enable" ? "Enabled" : "Disabled" },
@@ -99,7 +99,7 @@ function entries(o: TweakEffectOption): Entry[] {
       cell:
         c.operation === "delete"
           ? { text: "Removed", removal: true }
-          : { text: [capitalize(c.action ?? "block"), c.direction].filter(Boolean).join(" ") },
+          : { text: [humanize(c.action ?? "block"), c.direction].filter(Boolean).join(" ") },
     })),
   ];
 }
@@ -109,7 +109,7 @@ const KIND_ORDER: ChangeKind[] = ["registry", "service", "task", "hosts", "firew
 /** One row per setting any option touches, so options compare side by side. */
 export function buildMatrix(options: TweakEffectOption[], observed: TweakEffectOption | null): MatrixRow[] {
   const rows = new Map<string, MatrixRow>();
-  const rowFor = (e: Entry) => {
+  const rowFor = (e: MatrixEntry) => {
     let row = rows.get(e.key);
     if (!row) {
       row = { ...e.row, cells: options.map(() => null), now: null };
@@ -118,10 +118,10 @@ export function buildMatrix(options: TweakEffectOption[], observed: TweakEffectO
     return row;
   };
   options.forEach((o, i) => {
-    for (const e of entries(o)) rowFor(e).cells[i] = e.cell;
+    for (const e of matrixEntries(o)) rowFor(e).cells[i] = e.cell;
   });
   if (observed) {
-    for (const e of entries(observed)) rowFor(e).now = e.cell;
+    for (const e of matrixEntries(observed)) rowFor(e).now = e.cell;
   }
   return [...rows.values()].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
 }

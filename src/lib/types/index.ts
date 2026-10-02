@@ -1,192 +1,91 @@
-// Type definitions matching Rust models
+// Mirrors the serde shapes emitted by src-tauri/src/commands/*.rs unless noted.
 
-/** Risk level for tweaks */
-export type RiskLevel = "low" | "medium" | "high" | "critical";
-
-/** Registry hive types */
 export type RegistryHive = "HKCU" | "HKLM";
 
-/** Registry value types */
 export type RegistryValueType = "REG_DWORD" | "REG_SZ" | "REG_EXPAND_SZ" | "REG_BINARY" | "REG_MULTI_SZ" | "REG_QWORD";
 
-/** Windows service startup type */
 export type ServiceStartupType = "disabled" | "manual" | "automatic" | "automatic_delayed" | "boot" | "system";
 
-/**
- * Registry value type - maps to the RegistryValueType enum.
- * - REG_DWORD: 32-bit number (0 to 4294967295)
- * - REG_QWORD: 64-bit number
- * - REG_SZ: String
- * - REG_EXPAND_SZ: Expandable string (contains environment variables)
- * - REG_MULTI_SZ: Array of strings
- * - REG_BINARY: Array of numbers (bytes)
- */
+/** REG_MULTI_SZ is string[], REG_BINARY number[] (bytes). */
 export type RegistryValue = number | string | string[] | number[] | null;
 
-// ============================================================================
-// NEW UNIFIED OPTION-BASED TWEAK SYSTEM
-// ============================================================================
-
-/** Action type for registry operations */
 export type RegistryAction = "set" | "delete_value" | "delete_key" | "create_key";
 
-/** Registry change within an option */
 export interface RegistryChange {
   hive: RegistryHive;
   key: string;
   value_name: string;
-  /** Action to perform: set value, delete value, delete key, or create key */
   action: RegistryAction;
-  /** Value type (required for set action, null for delete operations) */
+  /** Null for the delete and create-key actions. */
   value_type: RegistryValueType | null;
-  /** The value to set when this option is selected (null for delete operations) */
   value: RegistryValue;
-  /** Optional Windows version filter. If undefined/empty, applies to all versions. */
+  /** Empty or absent applies to every version. */
   windows_versions?: number[];
-  /** If true, skip this change for tweak status validation and ignore failures during apply */
   skip_validation?: boolean;
 }
 
-/** Service change within an option */
 export interface ServiceChange {
-  /** Service name (e.g., "SysMain", "DiagTrack") */
   name: string;
-  /** Target startup type when this option is selected */
   startup: ServiceStartupType;
-  /** If true, skip this change for tweak status validation and ignore failures during apply */
   skip_validation?: boolean;
 }
 
-/** Action for scheduled task changes */
 export type SchedulerAction = "enable" | "disable";
 
-/** Scheduler change within an option */
 export interface SchedulerChange {
-  /** Task path in Task Scheduler (e.g., "\\Microsoft\\Windows\\Application Experience") */
   task_path: string;
-  /** Action to perform on the task(s) */
   action: SchedulerAction;
-  /** If true, skip this change for tweak status validation and ignore failures during apply */
   skip_validation?: boolean;
 }
 
-/** Action for hosts file changes */
 export type HostsAction = "add" | "remove";
 
-/** Hosts file change within an option */
 export interface HostsChange {
-  /** IP address to map (e.g., "127.0.0.1", "0.0.0.0") */
   ip: string;
-  /** Domain/hostname to block or redirect (e.g., "telemetry.microsoft.com") */
   domain: string;
-  /** Action to perform: add or remove */
   action: HostsAction;
-  /** Optional comment to add after the entry */
   comment?: string;
-  /** If true, skip this change for tweak status validation */
   skip_validation?: boolean;
 }
 
-/** Direction for firewall rules */
 export type FirewallDirection = "inbound" | "outbound";
 
-/** Action for firewall rules */
 export type FirewallRuleAction = "block" | "allow";
 
-/** Protocol for firewall rules */
 export type FirewallProtocol = "any" | "tcp" | "udp" | "icmpv4" | "icmpv6";
 
-/** Firewall operation type */
 export type FirewallOperation = "create" | "delete";
 
-/** Firewall rule change within an option */
 export interface FirewallChange {
-  /** Unique rule name (e.g., "Block DiagTrack Telemetry") */
   name: string;
-  /** Operation to perform: create or delete */
   operation: FirewallOperation;
-  /** Direction: inbound or outbound (required for create) */
+  /** Required for create. */
   direction?: FirewallDirection;
-  /** Action: block or allow (required for create) */
+  /** Required for create. */
   action?: FirewallRuleAction;
-  /** Protocol to match (defaults to any) */
   protocol?: FirewallProtocol;
-  /** Program/executable path to match */
   program?: string;
-  /** Service name to match */
   service?: string;
-  /** Remote addresses to match (e.g., ["157.56.0.0/16"]) */
   remote_addresses?: string[];
-  /** Remote ports to match (e.g., "80,443") */
   remote_ports?: string;
-  /** Local ports to match */
   local_ports?: string;
-  /** Description for the rule */
   description?: string;
-  /** If true, skip this change for tweak status validation */
   skip_validation?: boolean;
 }
-
-/** A single option within a tweak - contains all changes for that state */
-export interface TweakOption {
-  /** Display label (e.g., "Enabled", "Disabled", "4MB") */
-  label: string;
-  /** Registry modifications for this option */
-  registry_changes: RegistryChange[];
-  /** Service modifications for this option */
-  service_changes: ServiceChange[];
-  /** Scheduler task modifications for this option */
-  scheduler_changes: SchedulerChange[];
-  /** Hosts file modifications for this option */
-  hosts_changes: HostsChange[];
-  /** Firewall rule modifications for this option */
-  firewall_changes: FirewallChange[];
-  /** Shell commands to run BEFORE applying changes */
-  pre_commands: string[];
-  /** PowerShell commands to run BEFORE applying changes (after pre_commands) */
-  pre_powershell: string[];
-  /** Shell commands to run AFTER applying changes */
-  post_commands: string[];
-  /** PowerShell commands to run AFTER applying changes (after post_commands) */
-  post_powershell: string[];
-  /**
-   * If true, treat missing registry keys/values as matching this option.
-   * Used for tweaks that modify registry entries which may not exist on all Windows editions.
-   * When a registry entry doesn't exist and this flag is set, the status is inferred rather than detected.
-   */
-  registry_missing_is_match?: boolean;
-  /**
-   * If true, treat missing services as matching this option.
-   * Used for tweaks that disable services which may not exist on all Windows editions.
-   * When a service doesn't exist and this flag is set, the status is inferred rather than detected.
-   */
-  service_missing_is_match?: boolean;
-  /**
-   * If true, treat missing scheduled tasks as matching this option.
-   * Used for tweaks that disable tasks which may not exist on all Windows editions.
-   * When a task doesn't exist and this flag is set, the status is inferred rather than detected.
-   */
-  scheduler_missing_is_match?: boolean;
-}
-
-// Mirrors the serde shapes emitted by src-tauri/src/commands/tweaks.rs.
 
 /** Elevation floor / app ceiling (serde: exact Rust variant names). */
 export type Level = "User" | "Admin" | "Ti";
 
-/** Risk level as serialized by the engine (PascalCase, unlike the UI's RiskLevel). */
 export type BackendRiskLevel = "Low" | "Medium" | "High" | "Critical";
 
+export type RiskLevel = Lowercase<BackendRiskLevel>;
+
+export type ItemKind = "tweak" | "app";
+
 /**
- * Whether a tweak can be applied/restored right now (spec §9).
- *
- * `sid_mismatch` and `sid_unknown` are separate on purpose: the first means the guard positively
- * identified a different account, the second means it could not read a SID at all. Both block
- * HKCU-touching tweaks, but only the first may tell the user another account is involved.
- *
- * `elevation_path_unavailable` is separate from `needs_elevation` for the same kind of reason: the
- * first is a machine the user cannot fix by restarting the app (the TrustedInstaller service is
- * disabled or absent), and telling them to restart as administrator would send them in a circle.
+ * `sid_mismatch` positively identified another account; `sid_unknown` could not read a SID. Only the first
+ * may say another account is involved. `elevation_path_unavailable` (TrustedInstaller disabled or absent)
+ * is not fixed by restarting as administrator, so it never says to.
  */
 export type Availability =
   | { state: "available" }
@@ -195,8 +94,6 @@ export type Availability =
   | { state: "sid_unknown"; reason: string }
   | { state: "elevation_path_unavailable"; reason: string };
 
-/** The compiled tweak model for the UI (`get_tweaks`). */
-/** Corpus category metadata from `get_categories` (id, display name, icon, description). */
 export interface CategoryMeta {
   id: string;
   name: string;
@@ -204,11 +101,7 @@ export interface CategoryMeta {
   description: string;
 }
 
-/**
- * One option with the concrete per-effect changes it drives, projected by the backend so the
- * Details modal can show a power user exactly what each state writes. The `*_changes` shapes are
- * the same ones the detail components already render.
- */
+/** One option with the concrete per-effect changes it drives. */
 export interface TweakEffectOption {
   label: string;
   registry_changes: RegistryChange[];
@@ -216,7 +109,7 @@ export interface TweakEffectOption {
   scheduler_changes: SchedulerChange[];
   hosts_changes: HostsChange[];
   firewall_changes: FirewallChange[];
-  /** Action scripts this option runs (Appx removal, powercfg, DISM, and the like), shown verbatim. */
+  /** Action scripts, shown verbatim. */
   commands: string[];
 }
 
@@ -224,25 +117,22 @@ export interface TweakView {
   id: string;
   name: string;
   description: string;
-  /** Rich markdown detail for the Details modal (authored `info:`); null if none. */
+  /** Markdown for the Details modal. */
   info: string | null;
-  /** Authored caution shown on the tweak row; null if none. */
   warning: string | null;
   category: string;
   risk: BackendRiskLevel;
   reversible: boolean;
-  /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
   requires_reboot: boolean;
-  /** Each option with the concrete effects it drives (apply targets are addressed by label). */
+  /** Apply targets are addressed by label. */
   options: TweakEffectOption[];
-  /** The level the engine will actually run the tweak at, not its declared floor (ADR-0005). */
+  /** The level the engine actually runs the tweak at, not its declared floor (ADR-0005). */
   required_level: Level;
   availability: Availability;
   /** False when this Windows build can run none of its effects. */
   supported: boolean;
 }
 
-/** Why one applicable effect could not be read (spec §8.4). */
 export type UnknownCause = "AccessDenied" | "Malformed" | "MissingRequired" | "Other";
 
 export interface UnknownReason {
@@ -252,7 +142,6 @@ export interface UnknownReason {
   needs_elevation: boolean;
 }
 
-/** An option that cannot be selected on this machine/build right now. */
 export interface UnavailableOpt {
   label: string;
   reason: string;
@@ -266,29 +155,24 @@ export interface EffectAgreement {
   wanted_by: string[];
 }
 
-/**
- * What the machine reads when it matches no authored option. `changes` is shaped exactly like a
- * TweakOption so the UI renders it with the same components, letting the user compare like with like.
- */
+/** What the machine reads when it matches no option, shaped like one so it renders beside them. */
 export interface ObservedState {
   changes: TweakEffectOption;
   agreement: EffectAgreement[];
 }
 
-/** A shared setting's current claimants, surfaced as info regardless of match. */
 export interface HeldInfo {
   shared: string;
   holders: string[];
 }
 
-/** A tweak's detected state (nested inside TweakStatusView.state). */
 export type TweakStateView =
   | { state: "active"; option: string }
   | { state: "system_default" }
   | { state: "unavailable"; reason: string }
   | { state: "unknown"; reasons: UnknownReason[] };
 
-/** What kind of step could not be verified, so the UI never parses a message to find out. */
+/** The step kind that could not be verified, so the UI never parses a message to find out. */
 export type AttentionKind =
   | "drive"
   | "verify"
@@ -301,10 +185,9 @@ export type AttentionKind =
   | "unrecorded"
   | "other";
 
-/** Why a step failed (serde: `OpFailureClass`). */
+/** serde: `OpFailureClass`. */
 export type FailureClass = "access_denied" | "not_found" | "invalid_data" | "busy" | "failed";
 
-/** One step the failed operation could not verify. */
 export interface AttentionItem {
   effect: string | null;
   kind: AttentionKind;
@@ -325,77 +208,50 @@ export type TweakFailureCode =
   | "TWEAK_VERIFY_MISMATCH"
   | "TWEAK_ENGINE_ERROR";
 
-/**
- * A tweak's Needs Attention record (ADR-0001/0002). Kept per tweak rather than per snapshot entry,
- * so releasing an entry cannot drop it; it clears only on a verified apply or restore, or when the
- * user discards the snapshot.
- */
+/** Kept per tweak, not per snapshot entry, so releasing an entry cannot drop it (ADR-0001/0002). */
 export interface Attention {
   reason: "apply_failed" | "restore_failed" | "crash_residue" | "outcome_unrecorded" | "record_unreadable";
   items: AttentionItem[];
 }
 
-/** What each Needs Attention reason means, in the words the cards and the modal both use. */
-export const ATTENTION_CAUSE: Record<Attention["reason"], string> = {
-  apply_failed: "The last apply couldn't be fully verified",
-  restore_failed: "The last restore didn't fully complete",
-  crash_residue: "A change to this tweak was never recorded as finished, so part of it is unconfirmed",
-  outcome_unrecorded: "The last operation ended in a verified state, but the app couldn't record that",
-  record_unreadable: "This tweak's Needs Attention record couldn't be read, so whatever it holds is unresolved",
-};
-
-/** Reason text with a fallback, so a reason added in Rust never interpolates `undefined` into the UI. */
-export function attentionCause(reason: Attention["reason"] | undefined): string {
-  return (reason && ATTENTION_CAUSE[reason]) || "The last operation couldn't be fully verified";
-}
-
-/** One tweak's live status, delivered per-tweak via the `tweak-status` event. */
 export interface TweakStatusView {
   state: TweakStateView;
   unavailable: UnavailableOpt[];
   residues: string[];
   has_history: boolean;
-  /** The tweak's Needs Attention record, or null. */
   attention: Attention | null;
   /** Publication order: a status stamped lower than the one already shown read the machine earlier. */
   stamp: number;
   held_shared: HeldInfo[];
-  /** Non-empty only at System Default: what the surface reads and which options wanted it. */
+  /** Non-null only at System Default. */
   observed: ObservedState | null;
 }
 
-/** `tweak-status` event payload: one tweak's freshly detected status. */
 export interface TweakStatusEvent {
   tweak_id: string;
   status: TweakStatusView;
 }
 
 /**
- * `get_elevation_state` result: app ceiling + over-the-shoulder SID guard.
- *
- * `sid_mismatch` is "per-user tweaks are blocked", which covers BOTH a confirmed different account
- * and an unresolvable one. It does not distinguish them; the per-tweak `Availability` does, via
- * `sid_mismatch` vs `sid_unknown`. Do not render this field as "another account elevated the app".
+ * `sid_mismatch` covers both a confirmed other account and an unresolvable one; only the per-tweak
+ * `Availability` tells them apart. Never render it as "another account elevated the app".
  */
 export interface ElevationState {
   level: Level;
   sid_mismatch: boolean;
 }
 
-/** `apply_tweak` result — carries the fresh post-op status (use it, don't re-fetch). */
 export interface ApplyOutcome {
   effects: { effect: string; kind: Record<string, unknown> }[];
   status: TweakStatusView;
 }
 
-/** Why one snapshot entry cannot be a restore target. */
 export type InvalidReason =
   "Corrupt" | "WrongSchema" | "WrongMachine" | "WrongUser" | "DanglingRef" | "TargetUnavailable";
 
-/** Entry validity — "Valid" or an externally-tagged Invalid(reason). */
+/** Externally tagged. */
 export type EntryValidity = "Valid" | { Invalid: InvalidReason };
 
-/** One `list_snapshot_entries` row (drives the discard affordance). */
 export interface EntrySummary {
   seq: number;
   validity: EntryValidity;
@@ -403,7 +259,6 @@ export interface EntrySummary {
   captured: unknown;
 }
 
-/** `restore_tweak` result — fresh status + advisories, computed without a re-scan. */
 export interface RestoreOutcome {
   status: TweakStatusView;
   consumed: number | null;
@@ -411,7 +266,7 @@ export interface RestoreOutcome {
   skipped_invalid: EntrySummary[];
 }
 
-/** A curated removable app (`get_apps`). Not a tweak: no options, no snapshot (ADR-0009). */
+/** Not a tweak: no options, no snapshot (ADR-0009). */
 export interface AppView {
   id: string;
   name: string;
@@ -425,7 +280,6 @@ export interface AppView {
   install: { kind: "store" | "winget" | "store_page"; id: string } | null;
   remove_availability: Availability;
   install_availability: Availability;
-  /** False when this Windows build is outside the app's scope. */
   supported: boolean;
 }
 
@@ -435,7 +289,7 @@ export type AppPresence =
   | { state: "absent" }
   | { state: "unknown"; reason: string; needs_elevation: boolean };
 
-/** How this machine can reinstall the app; "none" makes a removal permanent. */
+/** "none" makes a removal permanent. */
 export type InstallRoute = "winget" | "store_page" | "none";
 
 export interface AppStatusView {
@@ -445,233 +299,117 @@ export interface AppStatusView {
   stamp: number;
 }
 
-/** Category definition (derived on the frontend from the tweaks' category strings). */
+// Frontend models, adapted from the DTOs above.
+
 export interface CategoryDefinition {
   id: string;
   name: string;
   description: string;
-  /** Iconify icon name (e.g., 'mdi:shield-lock') */
+  /** Iconify name, e.g. "mdi:shield-lock". */
   icon: string;
   order: number;
 }
 
-/**
- * A tweak's presentation model: the frontend adapter over the engine's `TweakView`.
- * Field names the many view components already read (id/name/description/category_id/
- * risk_level) are preserved so those components need no changes.
- */
 export interface TweakDefinition {
   id: string;
   name: string;
   description: string;
-  /** The engine's category string, under the field name view components read. */
-  category_id: string;
-  /** Lowercased from the engine's PascalCase risk, for the existing UI maps. */
-  risk_level: RiskLevel;
-  /** Whether the tweak declares itself reversible. */
+  categoryId: string;
+  riskLevel: RiskLevel;
   reversible: boolean;
-  /** Whether applying/restoring needs a reboot to take full effect (spec §6). */
-  requires_reboot: boolean;
-  /**
-   * The level the engine will actually run this tweak at: its declared floor raised by any effect
-   * that routes higher, which is what the permission badge names (ADR-0005).
-   */
-  required_level: Level;
-  /** Whether the tweak can be applied/restored right now (spec §9). */
+  requiresReboot: boolean;
+  /** The engine's run level, which the permission badge names (ADR-0005). */
+  requiredLevel: Level;
   availability: Availability;
   supported: boolean;
-  /** Authored option labels, in order. Apply targets are addressed by label, not index. */
-  optionLabels: string[];
-  /** Each option with the concrete per-effect changes it drives, for the Details modal breakdown. */
+  /** Apply targets are addressed by label, not index. */
   options: TweakEffectOption[];
-  /** Rich markdown detail block (authored `info:`), shown in the Details modal; undefined if none. */
   info?: string;
   warning?: string;
 }
 
-/**
- * A tweak's live status — the frontend adapter over the engine's `TweakStatusView`.
- * `is_applied`/`has_backup` are kept as convenience booleans so count/coloring
- * consumers stay unchanged; the richer new-state fields drive the card markers.
- */
+/** "loading" until the tweak's first `tweak-status` event arrives. */
 export interface TweakStatus {
-  tweak_id: string;
-  /** False until the first `tweak-status` event has arrived for this tweak. */
-  loaded: boolean;
-  /** Detected state tag ("loading" before the first event arrives). */
-  state: "loading" | "active" | "system_default" | "unavailable" | "unknown";
-  /** Active option label when state === "active", else null. */
+  state: "loading" | TweakStateView["state"];
   activeOption: string | null;
-  /** Reason the whole tweak is unavailable (state === "unavailable"). */
   unavailableReason: string | null;
-  /** Effects that could not be read (state === "unknown"). */
   unknownReasons: UnknownReason[];
-  /** True when any Unknown reason is fixable by elevating. */
+  /** Any Unknown reason is fixable by elevating. */
   needsElevation: boolean;
-  /** Options that cannot be selected on this machine/build right now. */
   unavailableOptions: UnavailableOpt[];
-  /** Effects left in a detectable residual state (informational). */
   residues: string[];
-  /** Shared settings currently held, with their holders (informational). */
   heldShared: HeldInfo[];
-  /**
-   * What the managed surface actually reads, shaped like an option so it renders beside them.
-   * Present only at System Default, the one state that says what the machine is NOT.
-   */
   observed: ObservedState | null;
-  /** Convenience: state === "active" (drives applied counts/coloring). */
-  is_applied: boolean;
-  /** A snapshot exists to restore from (the engine's has_history). */
-  has_backup: boolean;
-  /** Needs Attention as the engine recorded it, or null (ADR-0001/0002). */
+  /** The engine's has_history. */
+  hasSnapshot: boolean;
   attention: Attention | null;
 }
 
-/** Combined tweak info for UI display */
 export interface TweakWithStatus {
   definition: TweakDefinition;
   status: TweakStatus;
 }
 
-/** Windows system information */
 export interface WindowsInfo {
   product_name: string;
   display_version: string;
   build_number: string;
   is_windows_11: boolean;
-  version_string: string; // "10" or "11"
+  /** "10" or "11". */
+  version_string: string;
   is_windows_server: boolean;
-  /** System uptime in seconds */
   uptime_seconds: number;
-  /** OS install date as ISO 8601 string */
+  /** ISO 8601. */
   install_date: string | null;
 }
 
-// Inspection Types
-export interface RegistryMismatch {
-  hive: string;
-  key: string;
-  value_name: string;
-  expected_value: unknown;
-  actual_value: unknown;
-  value_type?: string;
-  description: string;
-  is_match: boolean;
-}
-
-export interface ServiceMismatch {
-  name: string;
-  expected_startup: string;
-  actual_startup?: string;
-  description: string;
-  is_match: boolean;
-}
-
-export interface SchedulerMismatch {
-  task_path: string;
-  task_name: string;
-  expected_state: string;
-  actual_state?: string;
-  description: string;
-  is_match: boolean;
-}
-
-export interface OptionInspection {
-  option_index: number;
-  label: string;
-  is_current: boolean;
-  is_pending: boolean;
-  registry_results: RegistryMismatch[];
-  service_results: ServiceMismatch[];
-  scheduler_results: SchedulerMismatch[];
-  all_match: boolean;
-}
-
-export interface TweakInspection {
-  tweak_id: string;
-  options: OptionInspection[];
-  matched_option_index?: number;
-}
-
-/** Device/system information from Win32_ComputerSystem */
 export interface DeviceInfo {
-  /** System manufacturer (e.g., "Dell Inc.", "ASUS") */
   manufacturer: string;
-  /** System model (e.g., "XPS 15 9520") */
   model: string;
-  /** System type (e.g., "x64-based PC") */
   system_type: string;
-  /** PC type: Desktop, Laptop, Workstation, etc. */
+  /** Desktop, Laptop, Workstation, … */
   pc_type: string;
 }
 
-/** CPU information */
 export interface CpuInfo {
-  /** CPU name (e.g., "Intel Core i7-12700K") */
   name: string;
-  /** Number of physical cores */
   cores: number;
-  /** Number of logical processors (threads) */
   threads: number;
-  /** CPU architecture (e.g., "x64") */
   architecture: string;
-  /** Maximum clock speed in MHz */
   max_clock_mhz: number;
 }
 
-/** GPU information */
 export interface GpuInfo {
-  /** GPU name (e.g., "NVIDIA GeForce RTX 3080") */
   name: string;
-  /** GPU memory in GB */
   memory_gb: number;
-  /** Driver version */
   driver_version: string;
-  /** Video processor/chip name */
   processor: string;
-  /** Current refresh rate in Hz */
   refresh_rate: number;
-  /** Video mode description (resolution + color depth) */
+  /** Resolution and colour depth. */
   video_mode: string;
 }
 
-/** Disk drive information */
 export interface DiskInfo {
-  /** Disk model name */
   model: string;
-  /** Size in GB */
   size_gb: number;
-  /** Drive type (e.g., "SSD", "HDD") */
   drive_type: string;
-  /** Interface type (e.g., "NVMe", "SATA") */
   interface_type: string;
-  /** Disk health status (e.g., "Healthy", "Warning") */
   health_status: string | null;
 }
 
-/** Memory (RAM) information */
 export interface MemoryInfo {
-  /** Total physical memory in GB */
   total_gb: number;
-  /** Memory speed in MHz */
   speed_mhz: number;
-  /** Memory type (e.g., "DDR4", "DDR5") */
   memory_type: string;
-  /** Number of memory sticks */
   slots_used: number;
 }
 
-/** Motherboard information */
 export interface MotherboardInfo {
-  /** Manufacturer (e.g., "ASUS", "MSI", "Gigabyte") */
   manufacturer: string;
-  /** Product name/model */
   product: string;
-  /** BIOS version */
   bios_version: string;
 }
 
-/** Network adapter information */
 export interface NetworkInfo {
   name: string;
   mac_address: string;
@@ -679,7 +417,6 @@ export interface NetworkInfo {
   dhcp_enabled: boolean;
 }
 
-/** Hardware information */
 export interface MonitorInfo {
   name: string;
   resolution: string;
@@ -694,11 +431,9 @@ export interface HardwareInfo {
   motherboard: MotherboardInfo;
   disks: DiskInfo[];
   network: NetworkInfo[];
-  /** Total storage across all disks in GB */
   total_storage_gb: number;
 }
 
-/** System information */
 export interface SystemInfo {
   windows: WindowsInfo;
   computer_name: string;
@@ -708,110 +443,30 @@ export interface SystemInfo {
   device: DeviceInfo;
 }
 
-/**
- * Cached system information with timestamp.
- * Hardware info (CPU, RAM, GPU, disks) is static and can be cached.
- * Dynamic info (uptime, is_admin) should be refreshed on each load.
- */
+/** The static part of SystemInfo; uptime and elevation are re-read on every load. */
 export interface CachedSystemInfo {
-  /** The cached hardware and device info (static data) */
   hardware: HardwareInfo;
   device: DeviceInfo;
   computer_name: string;
-  /** ISO 8601 timestamp when the cache was last updated */
   cachedAt: string;
 }
 
-/** Result of applying a tweak */
-export interface TweakResult {
-  success: boolean;
-  message: string;
-  requires_reboot: boolean;
-  /** List of [tweak_id, error_message] for failed operations in batch mode */
-  failures?: [string, string][];
-}
-
-/** Batch apply result */
-export interface BatchApplyResult {
-  success: boolean;
-  results: Record<string, TweakResult>;
-  total_applied: number;
-  total_failed: number;
-}
-
-/** Pending change for staged apply pattern (apply targets by option label). */
 export interface PendingChange {
-  /** Tweak ID */
   tweakId: string;
-  /** Option label to apply. */
   optionLabel: string;
 }
 
-/**
- * UI display information for risk levels.
- * These are presentation-layer constants for displaying risk level metadata to users.
- * The risk level identifiers (low, medium, high, critical) must match the backend RiskLevel enum.
- * These descriptions are intentionally kept in the frontend as they are purely for UI display
- * and do not affect any backend logic or tweak behavior.
- */
-export const RISK_INFO: Record<RiskLevel, { name: string; description: string }> = {
-  low: {
-    name: "Low",
-    description: "Safe to apply/revert without issues",
-  },
-  medium: {
-    name: "Medium",
-    description: "May require restart or have minor side effects",
-  },
-  high: {
-    name: "High",
-    description: "Could significantly impact system",
-  },
-  critical: {
-    name: "Critical",
-    description: "Could break Windows, use with caution",
-  },
-};
-
-// ============================================
-// App Settings & Export/Import Types
-// ============================================
-
-/** App settings stored in localStorage */
+/** Persisted in localStorage. */
 export interface AppSettings {
-  /** Whether to automatically check for updates */
   autoCheckUpdates: boolean;
-  /** Whether to automatically install updates when available */
   autoInstallUpdates: boolean;
-  /** Last time an update check was performed (ISO 8601) */
+  /** ISO 8601. */
   lastUpdateCheck: string | null;
   /** List tweaks and apps this Windows build cannot run, shown as unavailable. */
   showUnsupported: boolean;
-  /** Offer releases marked pre-release on GitHub. */
   includePrereleases: boolean;
 }
 
-/** Tweak snapshot for export - captures current registry state */
-export interface TweakSnapshot {
-  tweakId: string;
-  tweakName: string;
-  isApplied: boolean;
-  /** Current registry values at time of snapshot */
-  registryValues: Record<string, unknown>;
-  /** Timestamp of snapshot */
-  snapshotTime: string;
-}
-
-/** Export data structure for settings/tweaks */
-export interface ExportData {
-  version: string;
-  exportTime: string;
-  appVersion: string;
-  settings: AppSettings;
-  tweakSnapshots: TweakSnapshot[];
-}
-
-/** Update information from the backend */
 export interface UpdateInfo {
   available: boolean;
   currentVersion: string;
@@ -819,43 +474,10 @@ export interface UpdateInfo {
   releaseNotes?: string;
   downloadUrl?: string;
   publishedAt?: string;
-  /** Asset file name for download */
   assetName?: string;
-  /** Asset size in bytes */
+  /** Bytes. */
   assetSize?: number;
-  /** GitHub's `sha256:<hex>` for the asset, required to install it */
+  /** GitHub's `sha256:<hex>`, required to install. */
   assetDigest?: string;
-  /** The offered release is marked pre-release on GitHub. */
   prerelease: boolean;
-}
-
-/** Update check result */
-export interface UpdateCheckResult {
-  success: boolean;
-  update?: UpdateInfo;
-  error?: string;
-}
-
-/** Permission info for UI display */
-export interface PermissionInfo {
-  name: string;
-  description: string;
-  icon: string;
-}
-
-const PERMISSION_INFO: Record<Exclude<Level, "User">, PermissionInfo> = {
-  Admin: {
-    name: "Admin",
-    description: "Requires Administrator privileges to apply",
-    icon: "mdi:shield-account-outline",
-  },
-  Ti: {
-    name: "TrustedInstaller",
-    description: "Requires TrustedInstaller elevation for highly protected resources",
-    icon: "mdi:shield-key",
-  },
-};
-
-export function permissionInfoFor(level: Level): PermissionInfo | null {
-  return level === "User" ? null : PERMISSION_INFO[level];
 }

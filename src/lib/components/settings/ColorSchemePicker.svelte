@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "$lib/stores/colorScheme.svelte";
+  import { COLOR_SCHEMES, type ColorSchemeId, colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { cn } from "$lib/utils/cn";
 
   interface Props {
@@ -18,7 +18,7 @@
   };
 
   function handleSchemeChange(schemeId: ColorSchemeId) {
-    colorSchemeStore.setScheme(schemeId);
+    colorSchemeStore.set(schemeId);
   }
 </script>
 

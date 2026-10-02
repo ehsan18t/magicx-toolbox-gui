@@ -3,7 +3,7 @@
   import { ColorSchemePicker } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
   import { Button, SegmentedSwitch, Spinner, Switch } from "$lib/components/ui";
-  import { confirm } from "$lib/stores/confirm.svelte";
+  import { confirmStore } from "$lib/stores/confirm.svelte";
   import { logsStore } from "$lib/stores/logs.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
@@ -24,7 +24,7 @@
   }
 
   async function deleteLogs() {
-    const ok = await confirm({
+    const ok = await confirmStore.ask({
       title: "Delete saved logs?",
       message:
         "Deletes the log files saved on this PC, including this session's file. Files another running copy of MagicX Toolbox is still writing are kept.",
@@ -70,7 +70,7 @@
   {#snippet unsupportedControl()}
     <Switch
       checked={settingsStore.showUnsupported}
-      ariaLabel="Show tweaks this PC cannot run"
+      label="Show tweaks this PC cannot run"
       onchange={(show) => settingsStore.setShowUnsupported(show)}
     />
   {/snippet}
@@ -86,16 +86,16 @@
     {#snippet persistControl()}
       <Switch
         checked={logs.persist}
-        loading={logsStore.settingsBusy}
-        ariaLabel="Save logs on this PC"
+        loading={logsStore.isSettingsBusy}
+        label="Save logs on this PC"
         onchange={(persist) => logsStore.setSettings(persist, logs.detailed)}
       />
     {/snippet}
     {#snippet detailedControl()}
       <Switch
         checked={logs.detailed}
-        loading={logsStore.settingsBusy}
-        ariaLabel="Detailed logging"
+        loading={logsStore.isSettingsBusy}
+        label="Detailed logging"
         onchange={(detailed) => logsStore.setSettings(logs.persist, detailed)}
       />
     {/snippet}
@@ -125,13 +125,19 @@
         <Button
           variant="secondary"
           size="sm"
-          loading={logsStore.exporting}
+          loading={logsStore.isExporting}
           onclick={() => logsStore.exportDiagnostics()}
         >
-          {#if !logsStore.exporting}<Icon icon="mdi:export" width="16" />{/if}
+          {#if !logsStore.isExporting}<Icon icon="mdi:export" width="16" />{/if}
           Export diagnostics
         </Button>
-        <Button variant="secondary" size="sm" class="text-error" disabled={logsStore.settingsBusy} onclick={deleteLogs}>
+        <Button
+          variant="secondary"
+          size="sm"
+          class="text-error"
+          disabled={logsStore.isSettingsBusy}
+          onclick={deleteLogs}
+        >
           <Icon icon="mdi:delete-outline" width="16" />
           Delete logs
         </Button>

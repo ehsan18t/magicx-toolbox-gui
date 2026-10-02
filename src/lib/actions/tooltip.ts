@@ -1,39 +1,36 @@
 import { delay } from "$lib/utils/motion";
 
+/** Gap between the anchor and the tooltip, px. */
+const TOOLTIP_OFFSET = 8;
+/** Closest the tooltip comes to the viewport's side edges, px. */
+const VIEWPORT_INSET = 4;
+
+type TooltipText = string | undefined | null;
+
 // Moving from one tooltip to the next within the delay skips it, as Windows does.
 let lastHiddenAt = -Infinity;
 
-export function tooltip(node: HTMLElement, text: string | undefined | null) {
-  let tooltipComponent: HTMLElement | null = null;
+export function tooltip(node: HTMLElement, text: TooltipText) {
+  let tip: HTMLElement | null = null;
   let showTimer: ReturnType<typeof setTimeout> | undefined;
 
   function hide() {
     clearTimeout(showTimer);
-    if (tooltipComponent) {
-      tooltipComponent.remove();
-      tooltipComponent = null;
+    if (tip) {
+      tip.remove();
+      tip = null;
       lastHiddenAt = performance.now();
     }
-
     window.removeEventListener("scroll", hide, true);
-    window.removeEventListener("resize", positionTooltip);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("resize", position);
+    document.removeEventListener("visibilitychange", hideIfHidden);
   }
 
-  function handleVisibilityChange() {
+  function hideIfHidden() {
     if (document.hidden) hide();
   }
 
-  function params(text: string | undefined | null) {
-    if (!text) {
-      hide();
-      return;
-    }
-
-    if (tooltipComponent) tooltipComponent.textContent = text;
-  }
-
-  function mouseEnter() {
+  function scheduleShow() {
     if (!text) return;
     hide();
     const wait = delay("tooltip");
@@ -43,70 +40,54 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
 
   function show() {
     if (!text) return;
-
-    tooltipComponent = document.createElement("div");
-    tooltipComponent.textContent = text;
-
-    // Style tooltip
-    tooltipComponent.className =
+    tip = document.createElement("div");
+    tip.textContent = text;
+    tip.className =
       "fixed z-popover px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-lg border border-border pointer-events-none animate-pop-in";
+    document.body.appendChild(tip);
+    position();
 
-    document.body.appendChild(tooltipComponent);
-
-    positionTooltip();
-
-    // Hide tooltip on interactions that can interrupt hover without firing mouseleave
+    // These interrupt a hover without firing mouseleave.
     window.addEventListener("scroll", hide, true);
-    window.addEventListener("resize", positionTooltip);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("resize", position);
+    document.addEventListener("visibilitychange", hideIfHidden);
   }
 
-  function mouseLeave() {
-    hide();
-  }
-
-  function positionTooltip() {
-    if (!tooltipComponent) return;
-
-    const nodeRect = node.getBoundingClientRect();
+  function position() {
+    if (!tip) return;
+    const anchor = node.getBoundingClientRect();
     // Offset size, not the bounding rect: the entrance pop scales the tooltip.
-    const tooltipRect = { width: tooltipComponent.offsetWidth, height: tooltipComponent.offsetHeight };
+    const width = tip.offsetWidth;
+    const height = tip.offsetHeight;
 
-    // Position above centered
-    let top = nodeRect.top - tooltipRect.height - 8;
-    let left = nodeRect.left + (nodeRect.width - tooltipRect.width) / 2;
+    // Centred above, flipped below when there is no room.
+    let top = anchor.top - height - TOOLTIP_OFFSET;
+    if (top < 0) top = anchor.bottom + TOOLTIP_OFFSET;
+    let left = anchor.left + (anchor.width - width) / 2;
+    if (left < 0) left = VIEWPORT_INSET;
+    if (left + width > window.innerWidth) left = window.innerWidth - width - VIEWPORT_INSET;
 
-    // Boundary text (viewport) - basic check
-    if (top < 0) {
-      // Flip to bottom if too close to top
-      top = nodeRect.bottom + 8;
-    }
-
-    if (left < 0) left = 4;
-    if (left + tooltipRect.width > window.innerWidth) {
-      left = window.innerWidth - tooltipRect.width - 4;
-    }
-
-    tooltipComponent.style.top = `${top}px`;
-    tooltipComponent.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
   }
 
-  node.addEventListener("mouseenter", mouseEnter);
-  node.addEventListener("mouseleave", mouseLeave);
-  node.addEventListener("mousemove", positionTooltip); // Follow/update if needed, or mostly static
+  node.addEventListener("mouseenter", scheduleShow);
+  node.addEventListener("mouseleave", hide);
+  node.addEventListener("mousemove", position);
   node.addEventListener("pointerdown", hide);
   node.addEventListener("click", hide);
   node.addEventListener("blur", hide, true);
 
   return {
-    update(newText: string) {
+    update(newText: TooltipText) {
       text = newText;
-      params(text);
+      if (!text) hide();
+      else if (tip) tip.textContent = text;
     },
     destroy() {
-      node.removeEventListener("mouseenter", mouseEnter);
-      node.removeEventListener("mouseleave", mouseLeave);
-      node.removeEventListener("mousemove", positionTooltip);
+      node.removeEventListener("mouseenter", scheduleShow);
+      node.removeEventListener("mouseleave", hide);
+      node.removeEventListener("mousemove", position);
       node.removeEventListener("pointerdown", hide);
       node.removeEventListener("click", hide);
       node.removeEventListener("blur", hide, true);

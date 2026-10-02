@@ -1,59 +1,32 @@
-<script lang="ts">
+<script lang="ts" module>
+  const SHRINK_LABEL_CHARS = 16;
+</script>
+
+<script lang="ts" generics="T extends string | number">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { glide } from "$lib/utils/motion";
   import { cn } from "$lib/utils/cn";
-
-  export interface SegmentOption {
-    value: number;
-    label: string;
-    /** Iconify name, e.g. 'mdi:check' */
-    icon?: string;
-    disabled?: boolean;
-    /** Tooltip in place of the label, e.g. why the segment is disabled. */
-    tip?: string;
-  }
+  import { glide } from "$lib/utils/motion";
+  import type { SegmentOption } from "./types";
 
   interface Props {
-    value: number;
-    options: SegmentOption[];
+    value: T;
+    options: SegmentOption<T>[];
+    label: string;
     pending?: boolean;
     loading?: boolean;
     disabled?: boolean;
-    iconOnly?: boolean;
-    size?: "sm" | "md";
-    /** Accessible name for the group. */
-    label?: string;
-    class?: string;
-    onchange?: (value: number) => void;
+    onchange?: (value: T) => void;
   }
 
-  let {
-    value,
-    options,
-    pending = false,
-    loading = false,
-    disabled = false,
-    iconOnly = false,
-    size = "sm",
-    label,
-    class: className = "",
-    onchange,
-  }: Props = $props();
-
-  const sizeClasses = {
-    sm: { segment: "h-7 px-3 text-ui", segmentIconOnly: "h-7 px-2", icon: 14 },
-    md: { segment: "h-8 px-3.5 text-sm", segmentIconOnly: "h-8 px-2.5", icon: 16 },
-  };
-
-  const currentSize = $derived(sizeClasses[size]);
+  let { value, options, label, pending = false, loading = false, disabled = false, onchange }: Props = $props();
 
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
   // Only long labels give up width, so a short sibling is never cut to make room for them.
   const longestIndex = $derived(
     options.reduce((best, o, i) => (o.label.length > options[best].label.length ? i : best), 0),
   );
-  const shrinks = (i: number) => i === longestIndex || options[i].label.length > 16;
+  const shrinks = (i: number) => i === longestIndex || options[i].label.length > SHRINK_LABEL_CHARS;
   // With nothing selected the group still needs one tab stop.
   const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
 
@@ -68,7 +41,7 @@
     if (segments[from] && segments[selectedIndex]) glide(segments[from], segments[selectedIndex]);
   });
 
-  function handleClick(optValue: number) {
+  function handleClick(optValue: T) {
     if (disabled || loading || optValue === value) return;
     if (options.find((o) => o.value === optValue)?.disabled) return;
     onchange?.(optValue);
@@ -109,7 +82,6 @@
     "relative isolate inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors",
     pending ? "border-warning/50 bg-warning/10" : "border-border bg-secondary",
     disabled && "opacity-55",
-    className,
   )}
   onkeydown={handleKeydown}
 >
@@ -119,14 +91,13 @@
       type="button"
       role="radio"
       aria-checked={isSelected}
-      aria-label={iconOnly ? opt.label : undefined}
       tabindex={i === tabStopIndex ? 0 : -1}
       disabled={disabled || loading || opt.disabled}
       class={cn(
         "relative inline-flex items-center justify-center gap-1.5 rounded font-medium whitespace-nowrap",
         shrinks(i) ? "min-w-0" : "shrink-0",
         "outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
-        iconOnly ? currentSize.segmentIconOnly : currentSize.segment,
+        "h-7 px-3 text-ui",
         isSelected
           ? cn(
               "before:absolute before:inset-0 before:-z-1 before:origin-left before:rounded before:shadow-sm before:transition-colors",
@@ -142,13 +113,11 @@
       use:tooltip={opt.tip ?? opt.label}
     >
       {#if loading && isSelected}
-        <Icon icon="mdi:loading" width={currentSize.icon} class="shrink-0 animate-spin" />
+        <Icon icon="mdi:loading" width={14} class="shrink-0 animate-spin" />
       {:else if opt.icon}
-        <Icon icon={opt.icon} width={currentSize.icon} class="shrink-0" />
+        <Icon icon={opt.icon} width={14} class="shrink-0" />
       {/if}
-      {#if !iconOnly}
-        <span class="truncate">{opt.label}</span>
-      {/if}
+      <span class="truncate">{opt.label}</span>
     </button>
   {/each}
 </div>

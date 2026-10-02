@@ -1,14 +1,13 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
   import type { LogLevel, LogSource } from "$lib/api/logs";
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput, Select } from "$lib/components/ui";
   import { formatLogLine, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { systemStore } from "$lib/stores/tweaksData.svelte";
   import { expand } from "$lib/utils/motion";
   import { getVersion } from "@tauri-apps/api/app";
-  import { fromAction, type Attachment } from "svelte/attachments";
+  import type { Attachment } from "svelte/attachments";
 
   const RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
   const LEVEL_FILTERS: { value: LogLevel; label: string }[] = [
@@ -53,8 +52,6 @@
       if (stuck && rows.length > 0) node.scrollTop = node.scrollHeight;
     };
   }
-
-  const tip = (text: string) => fromAction(tooltip, () => text);
 
   function close() {
     logsStore.closePanel();
@@ -107,7 +104,7 @@
         <Icon icon="tabler:file-text" width="18" height="18" class="text-accent" />
         <h2 class="m-0 text-sm font-semibold">Logs</h2>
         {#if logsStore.settings?.detailed}
-          <Badge variant="info">Detailed</Badge>
+          <Badge tone="info">Detailed</Badge>
         {/if}
       </div>
       <p class="m-0 hidden text-xs text-foreground-muted logs-hint:block">
@@ -129,39 +126,36 @@
           class="w-32"
           onchange={(v) => (source = v as "all" | LogSource)}
         />
-        <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" onchange={(v) => (query = v)} />
+        <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" oninput={(v) => (query = v)} />
 
         <IconButton
           icon="mdi:broom"
-          size={16}
-          aria-label="Clear view"
-          {@attach tip("Clears this view. Saved logs are not changed.")}
+          size="sm"
+          label="Clear view"
+          tooltip="Clears this view. Saved logs are not changed."
           onclick={() => logsStore.clearView()}
         />
         <IconButton
           icon="mdi:content-copy"
-          size={16}
-          aria-label="Copy visible lines"
-          {@attach tip("Copy visible lines")}
+          size="sm"
+          tooltip="Copy visible lines"
           disabled={!hasLines}
           onclick={copyVisible}
         />
         <IconButton
           icon="mdi:export"
-          size={16}
-          aria-label="Export diagnostics"
-          {@attach tip("Export diagnostics")}
-          disabled={logsStore.exporting}
+          size="sm"
+          tooltip="Export diagnostics"
+          disabled={logsStore.isExporting}
           onclick={() => logsStore.exportDiagnostics()}
         />
         <IconButton
           icon="mdi:folder-open"
-          size={16}
-          aria-label="Open logs folder"
-          {@attach tip("Open logs folder")}
+          size="sm"
+          tooltip="Open logs folder"
           onclick={() => logsStore.openFolder()}
         />
-        <IconButton icon="mdi:close" size={16} aria-label="Close logs" {@attach tip("Close logs")} onclick={close} />
+        <IconButton icon="mdi:close" size="sm" tooltip="Close logs" onclick={close} />
       </div>
     </div>
 

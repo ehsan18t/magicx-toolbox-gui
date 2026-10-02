@@ -1,16 +1,17 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import IconButton from "./IconButton.svelte";
 
   interface Props {
+    /** Adds a close button after the content. */
+    onclose?: () => void;
     children: Snippet;
-    class?: string;
-    /** ID for aria-labelledby connection with Modal */
-    id?: string;
   }
 
-  let { children, class: className = "", id }: Props = $props();
+  let { onclose, children }: Props = $props();
 </script>
 
-<div {id} class="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-3 {className}">
+<div class="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-3">
   {@render children()}
+  {#if onclose}<IconButton icon="mdi:close" label="Close" onclick={onclose} />{/if}
 </div>

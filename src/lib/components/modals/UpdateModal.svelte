@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ExternalLink, Icon, MarkdownText } from "$lib/components/shared";
   import { Button, Modal, Switch } from "$lib/components/ui";
-  import { closeModal, modalStore } from "$lib/stores/modal.svelte";
+  import { modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
@@ -45,7 +45,7 @@
           await exit(0);
         } catch {
           // The installer is already running, and the backend keeps refusing applies until exit.
-          closeModal();
+          modalStore.close();
           toastStore.warning(
             "The installer is running, but the app could not close itself. Close the app to finish the update.",
           );
@@ -86,13 +86,13 @@
   </div>
 {/snippet}
 
-<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="update-title">
+<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy="update-title">
   <div class="relative overflow-y-auto px-7 pt-6 pb-5">
     <button
       type="button"
       class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
       aria-label="Close"
-      onclick={closeModal}
+      onclick={modalStore.close}
     >
       <Icon icon="mdi:close" width="18" />
     </button>
@@ -183,21 +183,21 @@
       {#snippet autoCheck()}
         <Switch
           checked={settingsStore.autoCheckUpdates}
-          ariaLabel="Check for updates at startup"
+          label="Check for updates at startup"
           onchange={(on) => settingsStore.setAutoCheckUpdates(on)}
         />
       {/snippet}
       {#snippet prereleases()}
         <Switch
           checked={settingsStore.includePrereleases}
-          ariaLabel="Include pre-releases"
+          label="Include pre-releases"
           onchange={setIncludePrereleases}
         />
       {/snippet}
       {#snippet autoInstall()}
         <Switch
           checked={settingsStore.autoInstallUpdates}
-          ariaLabel="Install updates automatically"
+          label="Install updates automatically"
           disabled
           onchange={(on) => settingsStore.setAutoInstallUpdates(on)}
         />

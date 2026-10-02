@@ -1,8 +1,11 @@
 import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
+import { createTV } from "tailwind-variants";
+
+export type { VariantProps } from "tailwind-variants";
 
 // Mirrors app.css's custom theme names (cn.test.ts enforces it); unknown ones merge wrongly, e.g. `text-ui` as a colour.
-export const twMergeConfig = {
+const twMergeConfig = {
   extend: {
     theme: {
       text: ["body", "badge-sm", "badge-md", "caption", "code", "ui", "lead", "title", "hero"],
@@ -33,3 +36,5 @@ const twMerge = extendTailwindMerge(twMergeConfig);
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
+
+export const tv = createTV({ twMergeConfig });

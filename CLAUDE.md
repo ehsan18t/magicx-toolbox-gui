@@ -110,7 +110,8 @@ explicitly with `cargo test -- --ignored`.
   subscription syntax with rune stores. Stores are `.svelte.ts` files with getter-based access
   (`src/lib/stores/`).
 - Tailwind CSS v4 utility classes; no global styles outside `src/app.css`. Aliases: `$lib`,
-  `@/*` → `src/*`; prefer barrel exports from `$lib/index.ts`.
+  `@/*` → `src/*`. Import components from their folder barrel (`$lib/components/<group>`) and
+  stores from their own module (`$lib/stores/<name>.svelte`).
 - Reuse the UI primitives in `$lib/components/ui` (`Button`, `Badge`, `Card`, `Modal`, `Select`,
   `Switch`, `Spinner`, …) before building new ones. Any new icon must be imported in `Icon.svelte`.
 - No direct `fetch` to local files — go through Tauri commands. External links use the `ExternalLink`

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { categoriesStore } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore } from "$lib/stores/tweaksData.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import TweakRow from "./TweakRow.svelte";
 
@@ -13,7 +13,7 @@
 
   const groups = $derived.by(() => {
     const byCategory: Record<string, TweakWithStatus[]> = {};
-    for (const t of tweaks) (byCategory[t.definition.category_id] ??= []).push(t);
+    for (const t of tweaks) (byCategory[t.definition.categoryId] ??= []).push(t);
     return Object.entries(byCategory);
   });
 </script>
@@ -25,7 +25,7 @@
         <button
           type="button"
           class="group flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-muted"
-          onclick={() => navigationStore.navigateToCategory(categoryId)}
+          onclick={() => navigationStore.navigateToTab(categoryId)}
         >
           <Icon icon={categoriesStore.getIcon(categoryId)} width="16" class="shrink-0 text-foreground-muted" />
           <span class="truncate">{categoriesStore.getName(categoryId)}</span>

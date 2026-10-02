@@ -13,10 +13,10 @@
     SettingsView,
     SnapshotsView,
   } from "$lib/components/views";
+  import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { loadRemainingData, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { loadRemainingData, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
 
@@ -46,7 +46,7 @@
       const id = currentCategoryTab.id;
       return {
         title: currentCategoryTab.name,
-        tweaks: tweaksStore.list.filter((t) => t.definition.category_id === id),
+        tweaks: tweaksStore.list.filter((t) => t.definition.categoryId === id),
       };
     }
     if (activeTab === "favorites") {
@@ -54,7 +54,7 @@
       return { title: "Favorites", tweaks: tweaksStore.list.filter((t) => ids.has(t.definition.id)) };
     }
     if (activeTab === "snapshots") {
-      return { title: "Snapshots", tweaks: tweaksStore.list.filter((t) => t.status.has_backup) };
+      return { title: "Snapshots", tweaks: tweaksStore.list.filter((t) => t.status.hasSnapshot) };
     }
     return null;
   });

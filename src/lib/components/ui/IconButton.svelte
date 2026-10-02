@@ -1,20 +1,30 @@
+<script lang="ts" module>
+  import type { IconButtonSize } from "./variants";
+
+  const ICON_SIZE: Record<IconButtonSize, number> = { xs: 14, sm: 16, md: 18 };
+</script>
+
 <script lang="ts">
+  import { tooltip as tooltipAction } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import type { HTMLButtonAttributes } from "svelte/elements";
+  import { iconButton } from "./variants";
 
-  interface Props extends Omit<HTMLButtonAttributes, "class"> {
-    icon: string;
-    size?: number;
+  type Props = Omit<HTMLButtonAttributes, "children" | "class"> & {
     class?: string;
-  }
+    icon: string;
+    size?: IconButtonSize;
+  } & ({ label: string; tooltip?: string } | { label?: string; tooltip: string });
 
-  let { icon, size = 20, class: className = "", ...rest }: Props = $props();
+  let { icon, size = "md", label, tooltip, class: className, ...rest }: Props = $props();
 </script>
 
 <button
   type="button"
-  class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted {className}"
+  class={iconButton({ size, class: className })}
+  aria-label={label ?? tooltip}
+  use:tooltipAction={tooltip}
   {...rest}
 >
-  <Icon {icon} width={size} />
+  <Icon {icon} width={ICON_SIZE[size]} />
 </button>

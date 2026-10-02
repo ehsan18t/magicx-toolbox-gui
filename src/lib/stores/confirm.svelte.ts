@@ -1,19 +1,28 @@
+export type ConfirmVariant = "default" | "warning" | "danger";
+
 export interface ConfirmOptions {
   title: string;
   message: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: "default" | "warning" | "danger";
+  variant?: ConfirmVariant;
 }
 
-interface Request extends ConfirmOptions {
+interface PendingConfirm extends ConfirmOptions {
   resolve: (ok: boolean) => void;
 }
 
-let current = $state<Request | null>(null);
+let current = $state<PendingConfirm | null>(null);
 // Outlives `current`, so the dialog keeps its text through the exit animation.
 let shown = $state<ConfirmOptions>({ title: "", message: "" });
 
+function settle(ok: boolean) {
+  const pending = current;
+  current = null;
+  pending?.resolve(ok);
+}
+
+/** One shared dialog for every row: per-row dialogs cost three component trees and window listeners each. */
 export const confirmStore = {
   get current() {
     return current;
@@ -21,16 +30,11 @@ export const confirmStore = {
   get shown() {
     return shown;
   },
-  settle(ok: boolean) {
-    const request = current;
-    current = null;
-    request?.resolve(ok);
+  settle,
+  /** Resolves to whether the user confirmed; a newer request cancels an open one. */
+  ask(options: ConfirmOptions): Promise<boolean> {
+    settle(false);
+    shown = options;
+    return new Promise((resolve) => (current = { ...options, resolve }));
   },
 };
-
-/** One shared dialog for every row: per-row dialogs cost three component trees and window listeners each. */
-export function confirm(options: ConfirmOptions): Promise<boolean> {
-  confirmStore.settle(false);
-  shown = options;
-  return new Promise((resolve) => (current = { ...options, resolve }));
-}

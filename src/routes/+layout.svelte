@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { showMainWindow } from "$lib/api/system";
   import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
   import { LogsPanel, TitleBar } from "$lib/components/layout";
   import { AboutModal, ConfirmHost, ProfileExportModal, ProfileImportModal, UpdateModal } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
+  import { RETIRED_STORAGE_KEYS } from "$lib/config/app";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
@@ -11,12 +13,9 @@
   import { errorMessage } from "$lib/utils/error";
   import { installErrorForwarding } from "$lib/utils/logger";
   import "@/app.css";
-  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
   let { children } = $props();
-
-  const RETIRED_DEBUG_MODE_KEY = "magicx-debug-mode";
 
   let initError = $state<string | null>(null);
 
@@ -32,14 +31,14 @@
   onMount(async () => {
     installErrorForwarding();
     try {
-      localStorage.removeItem(RETIRED_DEBUG_MODE_KEY);
+      for (const key of RETIRED_STORAGE_KEYS) localStorage.removeItem(key);
     } catch {
       // Storage can be unavailable; the window must still be shown.
     }
 
     // Show the window now that the UI is ready
     try {
-      await invoke("show_main_window");
+      await showMainWindow();
     } catch (e) {
       console.error("Failed to show window:", e);
     }
