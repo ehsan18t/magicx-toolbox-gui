@@ -226,6 +226,8 @@ export interface TweakView {
   description: string;
   /** Rich markdown detail for the Details modal (authored `info:`); null if none. */
   info: string | null;
+  /** Authored caution shown on the tweak row; null if none. */
+  warning: string | null;
   category: string;
   risk: BackendRiskLevel;
   reversible: boolean;
@@ -450,7 +452,7 @@ export interface CategoryDefinition {
 }
 
 /**
- * A tweak's presentation model — the frontend adapter over the engine's `TweakView`.
+ * A tweak's presentation model: the frontend adapter over the engine's `TweakView`.
  * Field names the many view components already read (id/name/description/category_id/
  * risk_level) are preserved so those components need no changes.
  */
@@ -479,6 +481,7 @@ export interface TweakDefinition {
   options: TweakEffectOption[];
   /** Rich markdown detail block (authored `info:`), shown in the Details modal; undefined if none. */
   info?: string;
+  warning?: string;
 }
 
 /**

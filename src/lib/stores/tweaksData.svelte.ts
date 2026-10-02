@@ -66,6 +66,7 @@ function mapView(view: TweakView): TweakDefinition {
     optionLabels: view.options.map((o) => o.label),
     options: view.options,
     info: view.info ?? undefined,
+    warning: view.warning ?? undefined,
   };
 }
 

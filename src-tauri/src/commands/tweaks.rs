@@ -381,6 +381,7 @@ pub struct TweakView {
     pub description: String,
     /// Rich markdown detail shown in the tweak's Details modal (spec: authored `info:`).
     pub info: Option<String>,
+    pub warning: Option<String>,
     pub category: String,
     pub risk: RiskLevel,
     pub reversible: bool,
@@ -709,6 +710,7 @@ fn tweak_view(
         name: t.name.clone(),
         description: t.description.clone(),
         info: t.info.clone(),
+        warning: t.warning.clone(),
         category: t.category.clone(),
         risk: t.risk_level,
         reversible: t.reversible,
