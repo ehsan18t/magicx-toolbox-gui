@@ -198,7 +198,7 @@ fn readable(stream: &str) -> String {
 
 /// Starts past a separator: a fragment of a SID or path would slip past redaction.
 fn tail_of(text: &str) -> &str {
-    let at = crate::logging::redact::cut_start(text, text.len().saturating_sub(TAIL_BYTES));
+    let at = crate::logging::cut_start(text, text.len().saturating_sub(TAIL_BYTES));
     text.get(at..).unwrap_or_default().trim_start()
 }
 

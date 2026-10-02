@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use log::{Level, LevelFilter};
 
 use super::files::FileSink;
-use super::redact::{cut_end, Redactor};
+use super::redact::Redactor;
 
 pub const RING_CAPACITY: usize = 2000;
 pub const RECORD_CAP: usize = 4096;
@@ -33,14 +33,15 @@ impl Drop for InLogger {
 }
 
 /// A record raised while this thread is already inside the logger is dropped, never recursed into.
-/// The flag resets on unwind too: a caught panic must not silence the thread.
-pub(super) fn guarded(f: impl FnOnce()) {
+/// The flag resets on unwind too: a caught panic must not silence the thread. Every path that takes
+/// the ring or file lock runs in here, so the panic hook skips instead of re-locking on this thread.
+pub(super) fn guarded<R>(f: impl FnOnce() -> R) -> Option<R> {
     if IN_LOGGER.get() {
-        return;
+        return None;
     }
     IN_LOGGER.set(true);
     let _reset = InLogger;
-    f();
+    Some(f())
 }
 
 /// Debug builds echo for `pnpm tauri dev`; `eprint!` panics when stderr is gone.
@@ -209,6 +210,10 @@ impl Pipeline {
         self.redactor.redact(text)
     }
 
+    pub fn cut_start(&self, text: &str, at: usize) -> usize {
+        self.redactor.cut_start(text, at)
+    }
+
     fn ingest(&self, level: Level, source: Source, target: &str, raw: &str) {
         let ts = timestamp();
         // The trailing newline is part of the line.
@@ -231,7 +236,9 @@ impl Pipeline {
 
     /// `room` is for the formatted line, where each `\n` becomes `\n\t`.
     fn prepare(&self, raw: &str, room: usize) -> String {
-        let input = raw.get(..cut_end(raw, INPUT_CAP)).unwrap_or_default();
+        let input = raw
+            .get(..self.redactor.cut_end(raw, INPUT_CAP))
+            .unwrap_or_default();
         let msg = self.redactor.redact(input);
         let cut = raw.len() - input.len();
         let width = |c: char| if c == '\n' { 2 } else { c.len_utf8() };
@@ -280,13 +287,15 @@ impl Pipeline {
     /// Opens a new session file. With `backfill`, the ring so far is copied in first and writers
     /// skip every seq up to that point: nothing is lost or written twice.
     pub fn attach(&self, dir: &Path, header: &str, backfill: bool) {
-        let mut file = lock(&self.file);
-        if let Err(failure) = file.open(dir, header) {
-            drop(file);
-            self.note(failure);
-            return;
-        }
-        self.attach_opened(file, backfill);
+        guarded(|| {
+            let mut file = lock(&self.file);
+            if let Err(failure) = file.open(dir, header) {
+                drop(file);
+                self.note(failure);
+                return;
+            }
+            self.attach_opened(file, backfill);
+        });
     }
 
     fn attach_opened(&self, mut file: MutexGuard<'_, FileSink>, backfill: bool) {
@@ -309,23 +318,40 @@ impl Pipeline {
 
     /// Closes the file and clears its error: turning saving off is the reset a broken sink waits for.
     pub fn detach(&self) {
-        let mut file = lock(&self.file);
-        file.close();
-        file.error = None;
+        guarded(|| {
+            let mut file = lock(&self.file);
+            file.close();
+            file.error = None;
+        });
     }
 
-    pub fn file_state(&self) -> (bool, Option<String>) {
-        let file = lock(&self.file);
-        (file.writing(), file.error.clone())
+    pub fn file_state(&self) -> FileState {
+        guarded(|| {
+            let file = lock(&self.file);
+            FileState {
+                writing: file.writing(),
+                soft_capped: file.soft_capped(),
+                error: file.error.clone(),
+            }
+        })
+        .unwrap_or_default()
     }
 
     pub fn tail(&self, since: u64) -> (Vec<Entry>, u64) {
-        lock(&self.ring).since(since)
+        guarded(|| lock(&self.ring).since(since)).unwrap_or_default()
     }
 
     pub fn ring_text(&self) -> String {
-        lock(&self.ring).entries.iter().map(Entry::line).collect()
+        guarded(|| lock(&self.ring).entries.iter().map(Entry::line).collect()).unwrap_or_default()
     }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct FileState {
+    pub writing: bool,
+    /// Past the soft cap: Info and Debug lines reach the ring only.
+    pub soft_capped: bool,
+    pub error: Option<String>,
 }
 
 #[cfg(test)]
@@ -470,7 +496,7 @@ mod tests {
         }
         assert_eq!(p.tail(0).0.len(), 3);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
-        assert!(!p.file_state().0);
+        assert!(!p.file_state().writing);
     }
 
     #[test]
@@ -579,11 +605,11 @@ mod tests {
         assert_eq!(failures.len(), 1);
         assert!(failures[0].msg.contains("disk full"));
         assert_eq!(entries.len(), 4);
-        let (writing, error) = p.file_state();
-        assert!(!writing);
-        assert!(error.is_some());
+        let state = p.file_state();
+        assert!(!state.writing);
+        assert!(state.error.is_some());
         p.detach();
-        assert_eq!(p.file_state(), (false, None));
+        assert_eq!(p.file_state(), FileState::default());
     }
 
     #[test]
@@ -607,6 +633,66 @@ mod tests {
                 let len = prefix_len(&entry.ts, level, source, &entry.target);
                 assert_eq!(entry.line().len(), len + 1, "{level} {source:?}");
             }
+        }
+    }
+
+    #[test]
+    fn the_input_cut_never_keeps_the_first_word_of_a_spaced_name() {
+        let p = pipeline("John Smith");
+        let unit = r"C:\Users\John Smith\AppData\Local\Temp ";
+        let filler = unit.repeat((INPUT_CAP - 100) / unit.len());
+        let pad = "q".repeat(INPUT_CAP - 6 - filler.len());
+        let raw = format!("{filler}{pad} John Smith after");
+        assert_eq!(&raw[INPUT_CAP..INPUT_CAP + 5], "Smith");
+        log(&p, Level::Info, "app_lib", &raw);
+        let msg = &msgs(&p)[0];
+        assert!(msg.starts_with("%TEMP%"), "{msg}");
+        assert!(!msg.contains("John"), "{}", &msg[msg.len() - 60..]);
+    }
+
+    #[test]
+    fn the_soft_cap_is_reported() {
+        let p = pipeline("Alice");
+        lock(&p.file).start(Box::new(io::sink()));
+        assert!(!p.file_state().soft_capped);
+        let big = "x".repeat(files::SOFT_CAP as usize + 1);
+        lock(&p.file).append(Level::Info, &big);
+        let state = p.file_state();
+        assert!(state.writing && state.soft_capped, "{state:?}");
+    }
+
+    struct Witness(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+    impl Write for Witness {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Drop for Witness {
+        fn drop(&mut self) {
+            self.0.store(IN_LOGGER.get(), Ordering::SeqCst);
+        }
+    }
+
+    /// The panic hook skips while IN_LOGGER is set; unset, a panic under the file lock would hang it.
+    #[test]
+    fn the_file_lock_is_only_held_inside_the_logger_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = pipeline("Alice");
+        for reopen in [false, true] {
+            let seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            lock(&p.file).start(Box::new(Witness(seen.clone())));
+            if reopen {
+                p.attach(dir.path(), "", false);
+            } else {
+                p.detach();
+            }
+            assert!(seen.load(Ordering::SeqCst), "reopen {reopen}");
+            assert!(!IN_LOGGER.get());
         }
     }
 

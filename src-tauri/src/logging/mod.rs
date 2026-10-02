@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use log::{Level, LevelFilter};
 
-use pipeline::{lock, Entry, Pipeline, Source};
+use pipeline::{lock, Entry, FileState, Pipeline, Source};
 use redact::{Identity, Redactor};
 use settings::Settings;
 
@@ -203,6 +203,14 @@ pub fn push(level: Level, source: Source, target: &str, msg: &str) {
     }
 }
 
+/// [`redact::cut_start`], also past the closing words of a spaced name once the logger runs.
+pub fn cut_start(text: &str, at: usize) -> usize {
+    match PIPELINE.get() {
+        Some(p) => p.cut_start(text, at),
+        None => redact::cut_start(text, at),
+    }
+}
+
 fn record_panic(msg: &str) {
     push(Level::Error, Source::App, "app_lib::panic", msg);
 }
@@ -291,7 +299,7 @@ pub struct Status {
 }
 
 fn status_of(c: &Control) -> Status {
-    let (writing, sink_error) = PIPELINE.get().map(Pipeline::file_state).unwrap_or_default();
+    let file = PIPELINE.get().map(Pipeline::file_state).unwrap_or_default();
     let folder = c.logs_dir();
     let listed = folder
         .as_deref()
@@ -302,7 +310,7 @@ fn status_of(c: &Control) -> Status {
         .data_dir
         .is_none()
         .then(|| "The logs folder could not be located, so logs are kept in memory only.".into());
-    let error = [c.error.clone(), sink_error, missing]
+    let error = [c.error.clone(), file.error, missing]
         .into_iter()
         .flatten()
         .reduce(|a, b| format!("{a} {b}"));
@@ -310,7 +318,7 @@ fn status_of(c: &Control) -> Status {
         persist: c.persist,
         detailed: c.detailed,
         folder,
-        writing,
+        writing: file.writing,
         error,
         files: u32::try_from(listed.len()).unwrap_or(u32::MAX),
         bytes: listed.iter().map(|f| f.bytes).sum(),
@@ -382,10 +390,10 @@ pub fn delete_logs() -> std::io::Result<Status> {
     }
 }
 
-/// The heading for this session's ring when the files do not hold all of it: saving off, or the
-/// file stopped (write failure, hard cap, failed attach).
-fn unsaved_heading(persist: bool, writing: bool) -> Option<&'static str> {
-    match (persist, writing) {
+/// The heading for this session's ring when the files do not hold all of it: saving off, the file
+/// stopped (write failure, hard cap, failed attach), or it passed the soft cap.
+fn unsaved_heading(persist: bool, file: &FileState) -> Option<&'static str> {
+    match (persist, file.writing && !file.soft_capped) {
         (false, _) => Some("this session (not saved to disk)"),
         (true, false) => Some("this session (not fully saved to disk)"),
         (true, true) => None,
@@ -408,7 +416,7 @@ pub fn export(dest: &Path, header: &str) -> io::Result<()> {
             .map(|d| files::session_files(&d))
             .unwrap_or_default();
         let ring =
-            unsaved_heading(c.persist, p.file_state().0).map(|heading| (heading, p.ring_text()));
+            unsaved_heading(c.persist, &p.file_state()).map(|heading| (heading, p.ring_text()));
         (sessions, ring)
     };
     write_export(dest, &p.redact(header), &sessions, ring)?;
@@ -498,12 +506,21 @@ mod tests {
 
     #[test]
     fn the_export_carries_the_ring_whenever_the_file_does_not_hold_it_all() {
-        assert!(unsaved_heading(false, false).is_some());
+        let state = |writing, soft_capped| FileState {
+            writing,
+            soft_capped,
+            error: None,
+        };
+        assert!(unsaved_heading(false, &state(false, false)).is_some());
         assert_eq!(
-            unsaved_heading(true, false),
+            unsaved_heading(true, &state(false, false)),
             Some("this session (not fully saved to disk)")
         );
-        assert_eq!(unsaved_heading(true, true), None);
+        assert_eq!(
+            unsaved_heading(true, &state(true, true)),
+            Some("this session (not fully saved to disk)")
+        );
+        assert_eq!(unsaved_heading(true, &state(true, false)), None);
     }
 
     #[test]

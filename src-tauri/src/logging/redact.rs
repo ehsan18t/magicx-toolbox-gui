@@ -22,6 +22,9 @@ const STOPLIST: &[&str] = &[
     "pc",
 ];
 
+/// Profile folders Windows creates for no one.
+const SHARED_PROFILES: &[&str] = &["all users", "default user", "defaultapppool"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     /// Anywhere, even inside a word: the manual tests' report scrubber.
@@ -104,6 +107,51 @@ pub fn cut_start(text: &str, at: usize) -> usize {
         .char_indices()
         .find(|(_, c)| is_separator(*c))
         .map_or(to, |(i, c)| at + i + c.len_utf8())
+}
+
+/// Whitespace is a separator, so a cut can fall inside a spaced literal: "John" outlives "John
+/// Smith". Moves `cut` back before any opening words of one that `text[..cut]` ends with.
+fn clear_end(text: &str, cut: usize, spaced: &[String]) -> usize {
+    let kept = text[..cut].trim_end().as_bytes();
+    let mut best = cut;
+    for literal in spaced {
+        for (ws, _) in literal.match_indices(char::is_whitespace) {
+            let head = literal[..ws].trim_end().as_bytes();
+            let Some(start) = kept.len().checked_sub(head.len()) else {
+                continue;
+            };
+            if !head.is_empty()
+                && kept[start..].eq_ignore_ascii_case(head)
+                && !text[..start].chars().next_back().is_some_and(is_word)
+            {
+                best = best.min(start);
+            }
+        }
+    }
+    best
+}
+
+/// The mirror of [`clear_end`]: past any closing words of a spaced literal `text[cut..]` opens with.
+fn clear_start(text: &str, cut: usize, spaced: &[String]) -> usize {
+    let lead = text[cut..].trim_start();
+    let offset = text.len() - lead.len();
+    let mut best = cut;
+    for literal in spaced {
+        for (ws, sep) in literal.match_indices(char::is_whitespace) {
+            let tail = literal[ws + sep.len()..].trim_start().as_bytes();
+            let end = offset + tail.len();
+            if !tail.is_empty()
+                && lead
+                    .as_bytes()
+                    .get(..tail.len())
+                    .is_some_and(|w| w.eq_ignore_ascii_case(tail))
+                && !text[end..].chars().next().is_some_and(is_word)
+            {
+                best = best.max(end);
+            }
+        }
+    }
+    best
 }
 
 impl Literal {
@@ -279,6 +327,8 @@ fn env_literals(env: &dyn Fn(&str) -> Option<String>) -> (Literals, Literals) {
 
 pub struct Redactor {
     literals: LiteralSet,
+    /// Lowercased literals holding whitespace, for [`Redactor::cut_end`] and [`Redactor::cut_start`].
+    spaced: Vec<String>,
     sid: Regex,
     email: Regex,
     profile: Regex,
@@ -325,16 +375,66 @@ impl Redactor {
             })
             .filter(|l| seen.insert(l.lower.clone()))
             .collect();
+        let spaced = literals
+            .iter()
+            .filter(|l| l.lower.contains(char::is_whitespace))
+            .map(|l| l.lower.clone())
+            .collect();
         let regex = |pattern: &str| Regex::new(pattern).expect("constant pattern");
         Self {
             literals: LiteralSet::new(literals),
+            spaced,
             sid: regex(r"(?i)S-1-5-21-\d+-\d+-\d+(?:-\d+)?|S-1-12-1-\d+-\d+-\d+(?:-\d+)?"),
             email: regex(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"),
-            // Drive, UNC or \Device prefix; the profile name runs to the next separator or quote.
+            // Drive, UNC or \Device prefix; the profile name may hold spaces, never `:` or brackets.
             profile: regex(
-                r#"(?i)(?:[a-z]:|[\\/]{2,}[^\\/\s"']+|[\\/]+device[\\/]+[^\\/\s"']+)[\\/]+users[\\/]+[^\\/"'\r\n]+"#,
+                r#"(?i)(?:[a-z]:|[\\/]{2,}[^\\/\s"']+|[\\/]+device[\\/]+[^\\/\s"']+)[\\/]+users[\\/]+([^\\/"'\r\n:;,()<>|]+)"#,
             ),
         }
+    }
+
+    pub fn cut_end(&self, text: &str, at: usize) -> usize {
+        clear_end(text, cut_end(text, at), &self.spaced)
+    }
+
+    pub fn cut_start(&self, text: &str, at: usize) -> usize {
+        clear_start(text, cut_start(text, at), &self.spaced)
+    }
+
+    /// A shared profile, or `//host/users/` in a URL, is kept and searched again one byte on, so it
+    /// never hides a later path.
+    fn redact_profiles(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let (mut copied, mut from) = (0, 0);
+        while let Some(caps) = self.profile.captures_at(text, from) {
+            let (Some(whole), Some(name)) = (caps.get(0), caps.get(1)) else {
+                break;
+            };
+            let mut end = whole.end();
+            // `C:\Users\Public D:\x`: a letter and a colon after a space start the next path.
+            if text[end..].starts_with(':') {
+                if let Some((head, letter)) =
+                    text[name.start()..end].rsplit_once(char::is_whitespace)
+                {
+                    if letter.len() == 1 && letter.as_bytes()[0].is_ascii_alphabetic() {
+                        end = name.start() + head.len();
+                    }
+                }
+            }
+            let own = text[name.start()..end].trim_end();
+            end = name.start() + own.len();
+            let url =
+                whole.as_str().starts_with(['\\', '/']) && text[..whole.start()].ends_with(':');
+            if url || own.is_empty() || names_nobody(own) {
+                from = whole.start() + 1;
+                continue;
+            }
+            out.push_str(&text[copied..whole.start()]);
+            out.push_str("<profile>");
+            (copied, from) = (end, end);
+        }
+        out.push_str(&text[copied..]);
+        out
     }
 
     /// Emails first, on the raw text: the name pass would split `smith.alice@contoso.com`. SIDs and
@@ -356,8 +456,13 @@ impl Redactor {
             return out;
         }
         let out = self.sid.replace_all(&out, "<sid>");
-        self.profile.replace_all(&out, "<profile>").into_owned()
+        self.redact_profiles(&out)
     }
+}
+
+fn names_nobody(profile: &str) -> bool {
+    let profile = profile.to_ascii_lowercase();
+    STOPLIST.contains(&profile.as_str()) || SHARED_PROFILES.contains(&profile.as_str())
 }
 
 /// The manual tests' report scrubber: a match followed by a path separator takes the rest of that
@@ -737,6 +842,72 @@ pub(super) mod tests {
                     lower.contains(needle)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn a_profile_path_keeps_the_error_text_after_it() {
+        assert_eq!(
+            redact(
+                "Alice",
+                r"failed to open C:\Users\Bob: Access is denied. (os error 5)"
+            ),
+            "failed to open <profile>: Access is denied. (os error 5)"
+        );
+        assert_eq!(
+            redact("Alice", r"C:\Users\Bob (os error 2); C:\Users\Carol, done"),
+            "<profile> (os error 2); <profile>, done"
+        );
+    }
+
+    #[test]
+    fn a_url_with_a_users_segment_is_not_a_profile() {
+        assert_eq!(
+            redact("Alice", "see https://github.com/users/x/repos"),
+            "see https://github.com/users/x/repos"
+        );
+        assert_eq!(
+            redact("Alice", r"https://a/users/x then \\server\Users\Bob\y"),
+            r"https://a/users/x then <profile>\y"
+        );
+    }
+
+    #[test]
+    fn shared_profile_folders_name_nobody() {
+        for text in [
+            r"C:\Users\Public\Documents",
+            r"C:\Users\Default\NTUSER.DAT",
+            r"C:\Users\All Users\x",
+            r"C:\Users\Default User\x",
+            r"C:\Users\DefaultAppPool\x",
+            r"c:\users\PUBLIC",
+        ] {
+            assert_eq!(redact("Alice", text), text);
+        }
+        assert_eq!(
+            redact("Alice", r"copy C:\Users\Public C:\Users\Bob\x"),
+            r"copy C:\Users\Public <profile>\x"
+        );
+    }
+
+    #[test]
+    fn a_cut_never_splits_a_spaced_name() {
+        let r = Redactor::new(&identity("John Smith"));
+        let text = "qqq John Smith rest";
+        let inside = text.find("Smith").unwrap() + 2;
+        assert_eq!(cut_end(text, inside), text.find("Smith").unwrap());
+        assert_eq!(&text[..r.cut_end(text, inside)], "qqq ");
+        assert_eq!(
+            &text[..r.cut_end(text, text.find(" Smith").unwrap())],
+            "qqq "
+        );
+        assert_eq!(&text[r.cut_start(text, 6)..], " rest");
+        let longer = "Johnny Smith";
+        assert_eq!(&longer[..r.cut_end(longer, 9)], "Johnny ");
+        let wide = "ö JOHN SMITH ö";
+        for at in 0..=wide.len() {
+            assert!(wide.is_char_boundary(r.cut_end(wide, at)));
+            assert!(wide.is_char_boundary(r.cut_start(wide, at)));
         }
     }
 }

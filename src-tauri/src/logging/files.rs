@@ -54,6 +54,10 @@ impl FileSink {
         self.out.is_some()
     }
 
+    pub fn soft_capped(&self) -> bool {
+        self.soft
+    }
+
     /// `Some` once, on the write that broke the sink: the line for the ring.
     pub fn write(&mut self, seq: u64, level: Level, line: &str) -> Option<String> {
         if seq <= self.attached_through {
