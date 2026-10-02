@@ -94,6 +94,7 @@
   } as const;
 
   let showDetails = $state(false);
+  let warningOpen = $state(false);
 
   const scope = $derived(app.source === "appx" ? "for every account on this PC" : "for your account");
   const confirmMessage = $derived(
@@ -165,8 +166,11 @@
       {/if}
     </div>
 
-    {#if app.warning}
-      <div class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground">
+    {#if app.warning && warningOpen}
+      <div
+        id="app-warning-{app.id}"
+        class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground"
+      >
         <Icon icon="mdi:alert" width="14" class="mt-px shrink-0 text-warning" />
         <span class="min-w-0">{app.warning}</span>
       </div>
@@ -199,6 +203,19 @@
         <Icon icon="mdi:shield-half-full" width="13" class="shrink-0" />
         {riskInfo.name} risk
       </span>
+      {#if app.warning}
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center gap-1 rounded text-warning hover:underline"
+          aria-expanded={warningOpen}
+          aria-controls={warningOpen ? `app-warning-${app.id}` : undefined}
+          use:tooltip={warningOpen ? "Hide warning" : "Show warning"}
+          onclick={() => (warningOpen = !warningOpen)}
+        >
+          <Icon icon="mdi:alert" width="13" class="shrink-0" />
+          Warning
+        </button>
+      {/if}
       {#if permissionInfo}
         <span class="inline-flex items-center gap-1 text-foreground-muted" use:tooltip={permissionInfo.description}>
           <Icon icon={permissionInfo.icon} width="13" class="shrink-0" />

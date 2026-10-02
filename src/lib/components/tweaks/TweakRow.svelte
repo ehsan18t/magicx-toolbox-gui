@@ -73,6 +73,9 @@
 
   const pendingChange = $derived(pendingChangesStore.get(def.id));
   const hasPending = $derived(pendingChange !== undefined);
+  // Hidden until asked for, but staging a change is when it matters, so that opens it too.
+  let warningToggled = $state(false);
+  const warningOpen = $derived(warningToggled || hasPending);
   const activeOption = $derived(status.activeOption);
   const optionLabels = $derived(def.optionLabels);
 
@@ -258,8 +261,11 @@
       </div>
     </div>
 
-    {#if def.warning}
-      <div class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground">
+    {#if def.warning && warningOpen}
+      <div
+        id="warning-{def.id}"
+        class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground"
+      >
         <Icon icon="mdi:alert" width="14" class="mt-px shrink-0 text-warning" />
         <span class="min-w-0">{def.warning}</span>
       </div>
@@ -350,6 +356,20 @@
         TONE_TEXT[RISK_TONE[def.risk_level]],
         riskInfo.description,
       )}
+      {#if def.warning}
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center gap-1 rounded text-warning hover:underline disabled:cursor-default disabled:no-underline"
+          aria-expanded={warningOpen}
+          aria-controls={warningOpen ? `warning-${def.id}` : undefined}
+          disabled={hasPending}
+          use:tooltip={hasPending ? "Shown while a change is staged" : warningOpen ? "Hide warning" : "Show warning"}
+          onclick={() => (warningToggled = !warningToggled)}
+        >
+          <Icon icon="mdi:alert" width="13" class="shrink-0" />
+          Warning
+        </button>
+      {/if}
       {#if permissionInfo}
         {@render metaItem(
           permissionInfo.icon,

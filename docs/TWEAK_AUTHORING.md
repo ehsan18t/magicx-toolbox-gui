@@ -275,7 +275,7 @@ accepts, whether it is required, its default, its legal values, and its gotchas.
 | `name`            | **yes**  | string                                    | –                 | display name                                                    |
 | `description`     | **yes**  | string                                    | –                 | one-line description shown in the UI                            |
 | `info`            | no       | string                                    | _(none)_          | optional longer explanation                                     |
-| `warning`         | no       | string                                    | _(none)_          | caution callout on the tweak's row and in its details panel     |
+| `warning`         | no       | string                                    | _(none)_          | caution callout in the details panel; on the row behind a Warning toggle, opened automatically while a change is staged     |
 | `risk_level`      | **yes**  | `low` \| `medium` \| `high` \| `critical` | –                 | advisory only; never changes behavior                           |
 | `elevation`       | **yes**  | `user` \| `admin` \| `ti`                 | –                 | the privilege **floor** for the whole tweak (§13)               |
 | `reversible`      | **yes**  | `true` \| `false`                         | –                 | declared **and** build-checked against the computed value (§14) |
@@ -2569,7 +2569,7 @@ apps:
 | `name` | yes | The app's own name ("Clipchamp"), not an action ("Remove Clipchamp"): the row already has the buttons. |
 | `description` | yes | One line saying what the app is. |
 | `info` | no | Markdown, same conventions as a tweak's `info`. Say what Remove does and how to get the app back; never mention reverting, System Default or Needs Attention. |
-| `warning` | no | Shown as a callout on the app's row, as for a tweak. |
+| `warning` | no | Shown behind a Warning toggle on the app's row, in its details and in the Remove confirmation. |
 | `risk_level` | yes | `low`, `medium`, `high` or `critical`, as for a tweak. |
 | `windows` | no | The same scope grammar as a tweak (§10). `revision` is rejected. |
 | `appx` | one of `appx` / `script` | AppX package names, as `Get-AppxPackage -Name` and a provisioned package's `DisplayName` spell them. |
