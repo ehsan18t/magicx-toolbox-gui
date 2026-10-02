@@ -156,7 +156,7 @@
   ></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="grid grid-cols-row items-center gap-x-6 gap-y-1 @max-row:grid-cols-1 @max-row:gap-y-2">
+    <div class="grid grid-cols-item-row items-center gap-x-6 gap-y-1 @max-item-row:grid-cols-1 @max-item-row:gap-y-2">
       <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
         {#if titleSlot}{@render titleSlot()}{:else if filterMatch}<HighlightedText
             text={app.name}

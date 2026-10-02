@@ -127,8 +127,8 @@
 
   body {
     @apply select-none;
-    font-size: 14px;
-    line-height: 1.43;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
     background: hsl(var(--background));
     color: hsl(var(--foreground));
   }
@@ -136,6 +136,11 @@
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 1px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--foreground) / 0.28) transparent;
   }
 
   /* Frozen while the theme swaps, except the toggle's own animation. */
@@ -196,45 +201,60 @@
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  /* Sizes only: no --line-height companion, so line height stays inherited. */
-  --text-micro: 9px;
-  --text-tiny: 10px;
-  --text-caption: 11px;
-  --text-code: 12px;
-  --text-ui: 13px;
-  --text-lead: 15px;
-  --text-title: 26px;
-  --text-hero: 34px;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.43;
+  /* No --line-height companion below: line height stays inherited. */
+  --text-badge-sm: 0.5625rem;
+  --text-badge-md: 0.625rem;
+  --text-caption: 0.6875rem;
+  --text-code: 0.75rem;
+  --text-ui: 0.8125rem;
+  --text-lead: 0.9375rem;
+  --text-title: 1.625rem;
+  --text-hero: 2.125rem;
 
   --tracking-display: -0.02em;
 
-  --container-row: 32.5rem;
-  --container-overview: 52rem;
+  --container-item-row: 32.5rem;
+  --container-overview-split: 52rem;
   --container-dialog-sm: 25rem;
   --container-dialog-md: 32.5rem;
   --container-dialog-lg: 42.5rem;
   --container-dialog-xl: 57.5rem;
   --container-dialog-full: 75rem;
-  --container-row-control: 45cqw;
-  --container-toast: min(22rem, calc(100vw - 2rem));
-  --container-summary-panel: clamp(360px, 30%, 440px);
+
+  --width-toast: min(22rem, calc(100vw - 2rem));
+  --width-summary-panel: clamp(22.5rem, 30%, 27.5rem);
+  --max-width-item-row-control: 45cqw;
 
   --breakpoint-titlebar-version: 45rem;
   --breakpoint-titlebar-name: 47.5rem;
   --breakpoint-titlebar-admin: 51.25rem;
   --breakpoint-logs-hint: 68.75rem;
 
+  --spacing-rail: 3.5rem;
   --spacing-titlebar: 3rem;
   /* Toasts clear the titlebar, and the reboot banner while it shows. */
   --spacing-toast-offset: calc(var(--spacing-titlebar) + 0.5rem);
   --spacing-toast-offset-banner: calc(var(--spacing-titlebar) + 3rem);
   --spacing-dock-clearance: 7rem;
 
-  --grid-template-columns-row: minmax(0, 1fr) auto;
-  --grid-template-columns-hardware: 1.25rem 5.5rem minmax(0, 1fr);
-  --grid-template-columns-category-progress: 1.25rem minmax(0, 1fr) 5rem 2.75rem;
+  --grid-template-columns-item-row: minmax(0, 1fr) auto;
+  --grid-template-columns-label-value: auto minmax(0, 1fr);
+  --grid-template-columns-icon-label-value: 1.25rem 5.5rem minmax(0, 1fr);
+  --grid-template-columns-icon-label-meter-value: 1.25rem minmax(0, 1fr) 5rem 2.75rem;
   --grid-template-columns-main-aside: minmax(0, 2fr) minmax(0, 1fr);
-  --grid-template-columns-cards: repeat(auto-fill, minmax(260px, 1fr));
+  --grid-template-columns-cards: repeat(auto-fill, minmax(16.25rem, 1fr));
+
+  --z-index-raised: 10;
+  --z-index-dock: 30;
+  --z-index-scrim: 40;
+  --z-index-drawer: 50;
+  --z-index-modal: 1000;
+  --z-index-busy: 1050;
+  --z-index-toast: 1100;
+  --z-index-popover: 1200;
+  --z-index-theme-fade: 9000;
 
   --shadow-flyout: var(--elev-flyout);
   --shadow-dialog: var(--elev-dialog);
@@ -271,7 +291,7 @@
   --color-caption-close: #c42b1c;
 }
 
-/* Motion and layering tokens. Static: $lib/utils/motion reads them at runtime, so they must always be emitted.
+/* Motion tokens. Static: $lib/utils/motion reads the durations, delays, easings and distances at runtime.
    Fluent timing: entrances decelerate (ease-out), exits accelerate (ease-in) and run one step faster. */
 @theme static {
   --transition-duration-fast: 100ms;
@@ -308,18 +328,6 @@
   --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
   --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
   --animate-activity: activity-slide var(--transition-duration-activity) var(--ease-in-out) infinite;
-
-  --spacing-rail: 3.5rem;
-
-  --z-index-raised: 10;
-  --z-index-dock: 30;
-  --z-index-scrim: 40;
-  --z-index-drawer: 50;
-  --z-index-modal: 1000;
-  --z-index-busy: 1050;
-  --z-index-toast: 1100;
-  --z-index-popover: 1200;
-  --z-index-theme-fade: 9000;
 }
 
 @utility drag-enable {
@@ -332,11 +340,6 @@
 
 @utility scrollbar-none {
   scrollbar-width: none;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--foreground) / 0.28) transparent;
 }
 
 @keyframes fade-in {

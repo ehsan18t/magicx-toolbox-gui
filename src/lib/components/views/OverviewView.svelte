@@ -199,9 +199,9 @@
 </script>
 
 {#snippet pcList(rows: HardwareRow[], columns: boolean)}
-  <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-overview:grid-cols-2' : ''}">
+  <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-overview-split:grid-cols-2' : ''}">
     {#each rows as row, i (`${row.label}-${i}`)}
-      <div class="grid grid-cols-hardware items-baseline gap-x-2.5 px-2 py-1.5">
+      <div class="grid grid-cols-icon-label-value items-baseline gap-x-2.5 px-2 py-1.5">
         <Icon icon={row.icon} width="15" class="self-center text-foreground-muted" />
         <dt class="truncate text-xs text-foreground-muted">{row.label}</dt>
         <dd class="m-0 min-w-0 text-ui wrap-break-word select-text">
@@ -264,7 +264,7 @@
   </section>
 
   <div class="@container">
-    <div class="grid items-start gap-3 @min-overview:grid-cols-2">
+    <div class="grid items-start gap-3 @min-overview-split:grid-cols-2">
       <section class="overflow-hidden rounded-lg border border-border bg-card" aria-labelledby="overview-categories">
         <h2 id="overview-categories" class="m-0 border-b border-border px-3 py-2 text-ui font-semibold">Categories</h2>
         <ul class="m-0 list-none p-1">
@@ -274,7 +274,7 @@
             <li>
               <button
                 type="button"
-                class="grid w-full cursor-pointer grid-cols-category-progress items-center gap-x-2.5 rounded-md px-2 py-2 text-left hover:bg-muted"
+                class="grid w-full cursor-pointer grid-cols-icon-label-meter-value items-center gap-x-2.5 rounded-md px-2 py-2 text-left hover:bg-muted"
                 onclick={() =>
                   s?.attention
                     ? navigationStore.navigateToAttention(category.id)

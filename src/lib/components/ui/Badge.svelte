@@ -25,8 +25,8 @@
   };
 
   const sizeClasses: Record<Size, string> = {
-    sm: "px-1.5 py-0.5 text-micro",
-    md: "px-2 py-1 text-tiny",
+    sm: "px-1.5 py-0.5 text-badge-sm",
+    md: "px-2 py-1 text-badge-md",
   };
 </script>
 

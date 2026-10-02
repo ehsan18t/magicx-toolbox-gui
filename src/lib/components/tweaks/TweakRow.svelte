@@ -103,14 +103,14 @@
 {#snippet actionButton(icon: string, label: string, onclick: () => void, tip: string, disabled = false)}
   <button
     type="button"
-    class="inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 @max-row:w-7 @max-row:px-0"
+    class="inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 @max-item-row:w-7 @max-item-row:px-0"
     aria-label={label}
     use:tooltip={tip}
     {disabled}
     {onclick}
   >
     <Icon {icon} width="15" class="shrink-0" />
-    <span class="@max-row:hidden">{label}</span>
+    <span class="@max-item-row:hidden">{label}</span>
   </button>
 {/snippet}
 
@@ -129,7 +129,7 @@
   ></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="grid grid-cols-row items-center gap-x-6 gap-y-1 @max-row:grid-cols-1 @max-row:gap-y-2">
+    <div class="grid grid-cols-item-row items-center gap-x-6 gap-y-1 @max-item-row:grid-cols-1 @max-item-row:gap-y-2">
       <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
         {#if titleSlot}{@render titleSlot()}{:else if filterMatch}{@render marked(
             def.name,
@@ -139,7 +139,7 @@
 
       <TweakControl
         {tweak}
-        class="max-w-row-control @max-row:max-w-full {optionLabels.length > 2 ? '@max-row:w-full' : ''}"
+        class="max-w-item-row-control @max-item-row:max-w-full {optionLabels.length > 2 ? '@max-item-row:w-full' : ''}"
       />
 
       <p class="col-span-full m-0 text-ui leading-snug text-foreground-muted">
