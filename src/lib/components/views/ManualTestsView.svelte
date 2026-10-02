@@ -8,6 +8,9 @@
   import { toastStore } from "$lib/stores/toast.svelte";
   import type { Attachment } from "svelte/attachments";
 
+  const MIN_MINUTES = 1;
+  const MAX_MINUTES = 1440;
+
   let minutes = $state<Record<string, number>>({});
   let confirming = $state<ManualTest | null>(null);
 
@@ -85,11 +88,14 @@
               Duration (minutes)
               <input
                 type="number"
-                min="1"
-                max="1440"
+                min={MIN_MINUTES}
+                max={MAX_MINUTES}
                 class="h-8 w-20 rounded-md border border-border bg-secondary px-2 text-sm text-foreground focus:border-accent focus:outline-none"
                 disabled={runningId !== null}
-                bind:value={() => minutesFor(test) ?? 1, (v) => (minutes[test.id] = Math.max(1, Math.floor(v || 1)))}
+                bind:value={
+                  () => minutesFor(test) ?? MIN_MINUTES,
+                  (v) => (minutes[test.id] = Math.min(MAX_MINUTES, Math.max(MIN_MINUTES, Math.floor(v || MIN_MINUTES))))
+                }
               />
             </label>
           {/if}
