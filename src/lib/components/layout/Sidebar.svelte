@@ -17,12 +17,16 @@
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(getCategoryStats());
 
-  // One shared indicator glides to the active item; items above it can shift, so re-measure on those too.
-  let indicator = $state<{ x: number; y: number } | null>(null);
+  // One shared indicator glides between pages; when items shift under it (the pane opening, categories
+  // loading) it jumps with them instead.
+  let indicator = $state<{ x: number; y: number; glide: boolean } | null>(null);
+  let indicatorTab = "";
   $effect(() => {
     void [activeTab, isOpen, navigationStore.fixedTabs.length, navigationStore.categoryTabs.length];
     const item = scrollEl?.querySelector<HTMLElement>('[aria-current="page"]');
-    indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2 } : null;
+    const glide = indicatorTab !== activeTab;
+    indicatorTab = activeTab;
+    indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide } : null;
   });
   const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
   // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
@@ -98,11 +102,9 @@
     <span class="relative flex w-5 shrink-0 justify-center">
       <Icon {icon} width="18" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
       {#if alert && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 animate-pop-in rounded-full bg-error ring-2 ring-background"
-        ></span>
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-error ring-2 ring-background"></span>
       {:else if pending && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 animate-pop-in rounded-full bg-warning ring-2 ring-background"
-        ></span>
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-warning ring-2 ring-background"></span>
       {/if}
     </span>
     {#if isOpen}
@@ -111,7 +113,7 @@
         <Icon icon="mdi:alert-circle" width="14" class="shrink-0 text-error" />
       {/if}
       {#if pending}
-        <span class="h-2 w-2 shrink-0 animate-pop-in rounded-full bg-warning" aria-hidden="true"></span>
+        <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>
       {/if}
       {#if trailing}
         <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
@@ -138,7 +140,7 @@
 >
   <div
     class="flex h-full flex-col {sidebarStore.isOverlay
-      ? 'absolute inset-y-0 left-0 z-drawer w-72 animate-drawer-in rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
+      ? 'absolute inset-y-0 left-0 z-drawer w-72 rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout transition-[width] duration-slow ease-out'
       : 'w-full'}"
   >
     <div class="relative flex min-h-0 flex-1 flex-col">
@@ -152,7 +154,9 @@
       >
         {#if indicator}
           <span
-            class="pointer-events-none absolute top-0 left-0 h-4 w-0.75 -translate-y-1/2 animate-fade-in rounded-full bg-accent transition-transform duration-slow"
+            class="pointer-events-none absolute top-0 left-0 h-4 w-0.75 -translate-y-1/2 animate-fade-in rounded-full bg-accent {indicator.glide
+              ? 'transition-transform duration-slow'
+              : ''}"
             style:transform="translate({indicator.x}px, {indicator.y}px)"
             aria-hidden="true"
           ></span>
