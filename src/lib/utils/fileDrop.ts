@@ -1,3 +1,4 @@
+import { logError } from "$lib/utils/logger";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 interface FileDropHandlers {
@@ -30,7 +31,8 @@ export function listenFileDrop(handlers: FileDropHandlers): () => void {
     .then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
-    });
+    })
+    .catch((error) => logError("Failed to listen for file drops", error));
 
   return () => {
     cancelled = true;
