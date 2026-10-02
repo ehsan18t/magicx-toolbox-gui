@@ -215,19 +215,14 @@
 
     <ThemeToggle />
 
-    <div class="ml-2 flex h-full items-stretch">
-      <WindowControlButton title="Minimize" icon="fluent:minimize-20-regular" onclick={() => windowCall("minimize")} />
+    <div class="ml-2 flex items-center gap-0.5 pr-1.5">
+      <WindowControlButton title="Minimize" glyph="minimize" onclick={() => windowCall("minimize")} />
       <WindowControlButton
         title={isMaximized ? "Restore" : "Maximize"}
-        icon={isMaximized ? "fluent:square-multiple-20-regular" : "fluent:maximize-20-regular"}
+        glyph={isMaximized ? "restore" : "maximize"}
         onclick={() => windowCall("toggleMaximize")}
       />
-      <WindowControlButton
-        title="Close"
-        icon="fluent:dismiss-20-regular"
-        variant="danger"
-        onclick={() => windowCall("close")}
-      />
+      <WindowControlButton title="Close" glyph="close" onclick={() => windowCall("close")} />
     </div>
   </div>
 </header>

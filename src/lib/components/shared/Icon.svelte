@@ -143,10 +143,6 @@
   import FluentShieldError16Filled from "~icons/fluent/shield-error-16-filled";
   import FluentShieldKeyhole16Regular from "~icons/fluent/shield-keyhole-16-regular";
   import FluentDocumentText20Regular from "~icons/fluent/document-text-20-regular";
-  import FluentMinimize20Regular from "~icons/fluent/minimize-20-regular";
-  import FluentSquareMultiple20Regular from "~icons/fluent/square-multiple-20-regular";
-  import FluentMaximize20Regular from "~icons/fluent/maximize-20-regular";
-  import FluentDismiss20Regular from "~icons/fluent/dismiss-20-regular";
   import MdiShieldHalfFull from "~icons/mdi/shield-half-full";
 
   // Icon Park Twotone Icons
@@ -285,10 +281,6 @@
     "fluent:shield-error-16-filled": FluentShieldError16Filled,
     "fluent:shield-keyhole-16-regular": FluentShieldKeyhole16Regular,
     "fluent:document-text-20-regular": FluentDocumentText20Regular,
-    "fluent:minimize-20-regular": FluentMinimize20Regular,
-    "fluent:square-multiple-20-regular": FluentSquareMultiple20Regular,
-    "fluent:maximize-20-regular": FluentMaximize20Regular,
-    "fluent:dismiss-20-regular": FluentDismiss20Regular,
     "mdi:shield-half-full": MdiShieldHalfFull,
 
     // Bi icons
