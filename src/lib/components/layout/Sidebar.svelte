@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { overflowHints } from "$lib/actions/overflowHints";
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
@@ -9,6 +10,9 @@
   import { updateStore } from "$lib/stores/update.svelte";
 
   const isOpen = $derived(sidebarStore.isOpen);
+  let moreAbove = $state(false);
+  let moreBelow = $state(false);
+  let scrollEl = $state<HTMLElement | null>(null);
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(getCategoryStats());
   const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
@@ -129,46 +133,84 @@
       ? 'absolute inset-y-0 left-0 z-50 w-72 animate-slide-in-up rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
       : 'w-full'}"
   >
-    <div class="nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2">
-      {#each navigationStore.fixedTabs as tab (tab.id)}
-        {@const count = fixedCount(tab.id)}
-        {@render navItem(
-          tab.name,
-          tab.icon || "mdi:folder",
-          activeTab === tab.id,
-          () => go(tab),
-          count > 0 ? String(count) : "",
-          "text-foreground-subtle",
-        )}
-      {/each}
-
-      <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
-      {#if isOpen}
-        <div class="shrink-0 px-3 pb-1 text-xs font-semibold text-foreground-muted">Categories</div>
-      {/if}
-
-      {#each navigationStore.categoryTabs as tab (tab.id)}
-        {@const s = categoryStats[tab.id]}
-        {@const complete = !!s && s.total > 0 && s.applied === s.total}
-        {@render navItem(
-          tab.name,
-          tab.icon || "mdi:folder",
-          activeTab === tab.id,
-          () => go(tab),
-          s ? `${s.applied}/${s.total}` : "",
-          complete ? "text-success" : "text-foreground-subtle",
-          s?.attention ? `${s.attention} need${s.attention === 1 ? "s" : ""} attention` : "",
-          pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
-        )}
-      {/each}
-
-      {#if categoriesStore.isLoading}
-        {#each [0, 1, 2, 3, 4, 5] as i (i)}
-          <div class="flex h-9 shrink-0 items-center gap-3 px-3">
-            <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>
-            {#if isOpen}<div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>{/if}
-          </div>
+    <div class="relative flex min-h-0 flex-1 flex-col">
+      <div
+        bind:this={scrollEl}
+        class="nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
+        use:overflowHints={(above, below) => {
+          moreAbove = above;
+          moreBelow = below;
+        }}
+      >
+        {#each navigationStore.fixedTabs as tab (tab.id)}
+          {@const count = fixedCount(tab.id)}
+          {@render navItem(
+            tab.name,
+            tab.icon || "mdi:folder",
+            activeTab === tab.id,
+            () => go(tab),
+            count > 0 ? String(count) : "",
+            "text-foreground-subtle",
+          )}
         {/each}
+
+        <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
+        {#if isOpen}
+          <div class="shrink-0 px-3 pb-1 text-xs font-semibold text-foreground-muted">Categories</div>
+        {/if}
+
+        {#each navigationStore.categoryTabs as tab (tab.id)}
+          {@const s = categoryStats[tab.id]}
+          {@const complete = !!s && s.total > 0 && s.applied === s.total}
+          {@render navItem(
+            tab.name,
+            tab.icon || "mdi:folder",
+            activeTab === tab.id,
+            () => go(tab),
+            s ? `${s.applied}/${s.total}` : "",
+            complete ? "text-success" : "text-foreground-subtle",
+            s?.attention ? `${s.attention} need${s.attention === 1 ? "s" : ""} attention` : "",
+            pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
+          )}
+        {/each}
+
+        {#if categoriesStore.isLoading}
+          {#each [0, 1, 2, 3, 4, 5] as i (i)}
+            <div class="flex h-9 shrink-0 items-center gap-3 px-3">
+              <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>
+              {#if isOpen}<div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>{/if}
+            </div>
+          {/each}
+        {/if}
+      </div>
+      {#if moreAbove}
+        <div
+          class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b to-transparent {sidebarStore.isOverlay
+            ? 'from-elevated'
+            : 'from-background'}"
+          aria-hidden="true"
+        ></div>
+      {/if}
+      {#if moreBelow}
+        <div
+          class="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 {sidebarStore.isOverlay
+            ? 'from-elevated'
+            : 'from-background'}"
+        >
+          <button
+            type="button"
+            class="pointer-events-auto flex h-6 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
+            aria-label="Scroll for more"
+            use:tooltip={"More below"}
+            onclick={() =>
+              scrollEl?.scrollBy({
+                top: scrollEl.clientHeight * 0.6,
+                behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+              })}
+          >
+            <Icon icon="mdi:chevron-down" width="18" />
+          </button>
+        </div>
       {/if}
     </div>
 
