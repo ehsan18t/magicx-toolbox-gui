@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
+  import { glide } from "$lib/utils/motion";
   import { cn } from "@/utils";
 
   export interface SegmentOption {
@@ -56,25 +57,15 @@
   // With nothing selected the group still needs one tab stop.
   const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
 
-  // One thumb slides to the selection; a resize can move segments without changing it, so re-measure on resize too.
+  // The pill is the selected segment's ::before, free at mount; a change glides it over from the old segment.
   let group = $state<HTMLElement | null>(null);
-  let thumb = $state<{ x: number; width: number } | null>(null);
-
-  function measure() {
-    const selected = group?.querySelectorAll<HTMLElement>("[role='radio']")[selectedIndex];
-    thumb = selected ? { x: selected.offsetLeft, width: selected.offsetWidth } : null;
-  }
-
+  let previousIndex = -1;
   $effect(() => {
-    void [selectedIndex, options.length, size, iconOnly];
-    measure();
-  });
-
-  $effect(() => {
-    if (!group) return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(group);
-    return () => observer.disconnect();
+    const from = previousIndex;
+    previousIndex = selectedIndex;
+    if (from < 0 || selectedIndex < 0 || from === selectedIndex || !group) return;
+    const segments = group.querySelectorAll<HTMLElement>("[role='radio']");
+    if (segments[from] && segments[selectedIndex]) glide(segments[from], segments[selectedIndex]);
   });
 
   function handleClick(optValue: number) {
@@ -115,23 +106,13 @@
   aria-label={label}
   tabindex="-1"
   class={cn(
-    "relative inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors",
+    "relative isolate inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors",
     pending ? "border-warning/50 bg-warning/10" : "border-border bg-secondary",
     disabled && "opacity-55",
     className,
   )}
   onkeydown={handleKeydown}
 >
-  {#if thumb}
-    <span
-      class="absolute inset-y-0.5 left-0 animate-fade-in rounded shadow-sm transition-[translate,width,background-color] duration-normal {pending
-        ? 'bg-warning'
-        : 'bg-accent'}"
-      style:width="{thumb.width}px"
-      style:translate="{thumb.x}px"
-      aria-hidden="true"
-    ></span>
-  {/if}
   {#each options as opt, i (opt.value)}
     {@const isSelected = opt.value === value}
     <button
@@ -147,9 +128,10 @@
         "outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
         iconOnly ? currentSize.segmentIconOnly : currentSize.segment,
         isSelected
-          ? pending
-            ? "text-warning-foreground"
-            : "text-accent-foreground"
+          ? cn(
+              "before:absolute before:inset-0 before:-z-1 before:origin-left before:rounded before:shadow-sm before:transition-colors",
+              pending ? "text-warning-foreground before:bg-warning" : "text-accent-foreground before:bg-accent",
+            )
           : cn(
               "text-foreground-muted",
               opt.disabled && "opacity-40",
