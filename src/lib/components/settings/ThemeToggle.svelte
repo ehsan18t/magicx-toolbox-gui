@@ -16,8 +16,8 @@
 
 <button
   type="button"
-  use:tooltip={`Switch to ${themeStore.isDark ? "light" : "dark"} mode`}
-  aria-label={`Switch to ${themeStore.isDark ? "light" : "dark"} mode`}
+  use:tooltip={`Switch to ${themeStore.current === "dark" ? "light" : "dark"} mode`}
+  aria-label={`Switch to ${themeStore.current === "dark" ? "light" : "dark"} mode`}
   onclick={toggleTheme}
   class="theme-toggle group"
   class:is-animating={isAnimating}

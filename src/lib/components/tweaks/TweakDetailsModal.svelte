@@ -1,22 +1,20 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { discardSnapshotEntry, listSnapshotEntries } from "$lib/api/tweaks";
+  import * as tweaksApi from "$lib/api/tweaks";
   import { Icon, MarkdownText } from "$lib/components/shared";
   import { Modal, ModalBody } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
-  import { refreshTweakStatus } from "$lib/stores/tweaksActions.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { AttentionItem, EntrySummary } from "$lib/types";
   import { buildMatrix, type ChangeKind, type MatrixCell, optionsMatchingNow } from "$lib/utils/changeMatrix";
   import { errorMessage, isAppExiting } from "$lib/utils/error";
   import { expand } from "$lib/utils/motion";
-  import { keepWithConfirm, restoreWithConfirm } from "$lib/utils/tweakActions";
   import {
     attentionCause,
     availabilityTitle,
@@ -33,12 +31,12 @@
   // Held through the exit animation, after the store has cleared the id.
   let lastId: string | null = null;
   const shownId = $derived.by(() => (lastId = tweakDetailsModalStore.tweakId ?? lastId));
-  const tweak = $derived(shownId ? (tweaksStore.getById(shownId) ?? null) : null);
+  const tweak = $derived(shownId ? (tweaksStore.tweak(shownId) ?? null) : null);
 
   const def = $derived(tweak?.definition ?? null);
   const status = $derived(tweak?.status ?? null);
-  const pendingChange = $derived(def ? pendingChangesStore.get(def.id) : undefined);
-  const isLoading = $derived(def ? tweakOps.isRunning(def.id) : false);
+  const pendingChange = $derived(def ? pendingChangesStore.change(def.id) : undefined);
+  const isLoading = $derived(def ? tweakActionsStore.isRunning(def.id) : false);
   const summary = $derived(status ? stateSummary(status) : null);
   const permissionInfo = $derived(def ? permissionInfoFor(def.requiredLevel) : null);
 
@@ -58,8 +56,8 @@
   let entriesLoading = $state(false);
   let busySeq = $state<number | null>(null);
   let keeping = $state(false);
-  // Gated on entries, not `hasSnapshot`: an all-invalid history still needs a discard path (ADR-0002).
-  const hasHistory = $derived(!!status?.hasSnapshot || entriesLoading || entries.length > 0);
+  // Gated on entries, not `hasHistory`: an all-invalid history still needs a discard path (ADR-0002).
+  const hasHistory = $derived(!!status?.hasHistory || entriesLoading || entries.length > 0);
 
   // Keyed on the whole tweak, so a restore or keep re-reads the list.
   $effect(() => {
@@ -68,7 +66,8 @@
 
     if (id) {
       entriesLoading = true;
-      listSnapshotEntries(id)
+      tweaksApi
+        .listSnapshotEntries(id)
         .then((e) => {
           if (!cancelled) entries = e;
         })
@@ -94,7 +93,7 @@
     return "";
   }
 
-  const holderName = (id: string) => tweaksStore.getById(id)?.definition.name ?? id;
+  const holderName = (id: string) => tweaksStore.tweak(id)?.definition.name ?? id;
 
   function entryTime(stamp: string): string {
     const date = new Date(stamp);
@@ -110,11 +109,11 @@
     if (!t) return;
     busySeq = seq;
     try {
-      await discardSnapshotEntry(t.definition.id, seq);
-    } catch (e) {
-      const message = errorMessage(e);
+      await tweaksApi.discardSnapshotEntry(t.definition.id, seq);
+    } catch (error) {
+      const message = errorMessage(error);
       console.error("Failed to discard snapshot entry:", message);
-      if (isAppExiting(e)) toastStore.warning(message);
+      if (isAppExiting(error)) toastStore.warning(message);
       else toastStore.error(message);
       busySeq = null;
       return;
@@ -122,14 +121,14 @@
 
     entries = entries.filter((entry) => entry.seq !== seq);
     try {
-      entries = await listSnapshotEntries(t.definition.id);
-    } catch (e) {
-      toastStore.warning(`The entry was discarded, but the list could not be refreshed: ${errorMessage(e)}`);
+      entries = await tweaksApi.listSnapshotEntries(t.definition.id);
+    } catch (error) {
+      toastStore.warning(`The entry was discarded, but the list could not be refreshed: ${errorMessage(error)}`);
     } finally {
       busySeq = null;
     }
-    // The engine owns `hasSnapshot` and its status arrives stamped, so an in-flight sweep cannot restore the badge.
-    const read = await refreshTweakStatus(t.definition.id);
+    // The engine owns `hasHistory` and its status arrives stamped, so an in-flight sweep cannot restore the badge.
+    const read = await tweakActionsStore.refresh(t.definition.id);
     if (!read.ok) {
       toastStore.warning(`The entry was discarded, but the tweak's state could not be re-read: ${read.message}`);
     }
@@ -150,14 +149,14 @@
     if (!t) return;
     keeping = true;
     try {
-      if (await keepWithConfirm(t.definition)) {
+      if (await tweakActionsStore.keepWithConfirm(t.definition)) {
         entries = [];
         return;
       }
       // Declined or refused: re-read so the list does not claim the entries are gone.
-      entries = await listSnapshotEntries(t.definition.id);
-    } catch (e) {
-      toastStore.warning(`The snapshot entries could not be re-read: ${errorMessage(e)}`);
+      entries = await tweaksApi.listSnapshotEntries(t.definition.id);
+    } catch (error) {
+      toastStore.warning(`The snapshot entries could not be re-read: ${errorMessage(error)}`);
     } finally {
       keeping = false;
     }
@@ -248,18 +247,18 @@
           {/if}
           {@render metaItem(
             "mdi:history",
-            status.hasSnapshot ? "Snapshot saved" : "No snapshot",
-            status.hasSnapshot ? "text-foreground-muted" : "text-foreground-subtle",
+            status.hasHistory ? "Snapshot saved" : "No snapshot",
+            status.hasHistory ? "text-foreground-muted" : "text-foreground-subtle",
           )}
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          {#if status.hasSnapshot && !status.attention}
+          {#if status.hasHistory && !status.attention}
             <button
               type="button"
               class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isLoading || def.availability.state !== "available"}
               use:tooltip={"Restore the state saved before the last change"}
-              onclick={() => restoreWithConfirm(def, isHighRisk(def.riskLevel))}
+              onclick={() => tweakActionsStore.restoreWithConfirm(def, isHighRisk(def.riskLevel))}
             >
               <Icon icon="mdi:history" width="16" />
               Restore
@@ -319,7 +318,7 @@
             <span>
               <span class="font-semibold">Needs attention.</span>
               <span class="text-foreground-muted">
-                {attentionCause(status.attention.reason)}{status.hasSnapshot
+                {attentionCause(status.attention.reason)}{status.hasHistory
                   ? ", so the snapshot was kept."
                   : ". There is no snapshot left to restore."}
               </span>
@@ -337,12 +336,12 @@
             </ul>
           {/if}
           <div class="mt-3 ml-6.5 flex flex-wrap gap-2">
-            {#if status.hasSnapshot}
+            {#if status.hasHistory}
               <button
                 type="button"
                 class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || def.availability.state !== "available"}
-                onclick={() => restoreWithConfirm(def, isHighRisk(def.riskLevel))}
+                onclick={() => tweakActionsStore.restoreWithConfirm(def, isHighRisk(def.riskLevel))}
               >
                 <Icon icon="mdi:history" width="16" />
                 {status.attention.reason === "restore_failed" ? "Retry restore" : "Restore"}

@@ -6,7 +6,7 @@
   import { modalStore } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
-  import { categoriesStore, initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { fade, reducedMotion } from "$lib/utils/motion";
@@ -29,12 +29,12 @@
     indicatorTab = activeTab;
     indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide } : null;
   });
-  const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.hasSnapshot).length);
+  const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.hasHistory).length);
   // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
   const pendingByCategory = $derived.by(() => {
     const counts: Record<string, number> = {};
     for (const change of pendingChangesStore.all.values()) {
-      const category = tweaksStore.getById(change.tweakId)?.definition.categoryId;
+      const category = tweaksStore.tweak(change.tweakId)?.definition.categoryId;
       if (category) counts[category] = (counts[category] ?? 0) + 1;
     }
     return counts;
@@ -200,7 +200,7 @@
           )}
         {/each}
 
-        {#if initStatus.isLoadingTweaks}
+        {#if tweaksStore.isLoading}
           {#each [0, 1, 2, 3, 4, 5] as i (i)}
             <div class="flex h-9 shrink-0 items-center gap-3 px-3">
               <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>

@@ -1,4 +1,4 @@
-import type { LogLine, LogSettings } from "$lib/api/logs";
+import type { LogLine, LogSettings } from "$lib/types";
 import type {
   AppPresence,
   Attention,

@@ -1,6 +1,7 @@
-// One function per command in commands/system.rs, elevation.rs and general.rs.
+// One function per command in src-tauri/src/commands/{system,elevation,general}.rs, plus the events lib.rs emits.
 import { invoke } from "@tauri-apps/api/core";
-import type { SystemInfo } from "../types";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { SystemInfo } from "$lib/types";
 
 export async function getSystemInfo(): Promise<SystemInfo> {
   return await invoke<SystemInfo>("get_system_info");
@@ -13,4 +14,9 @@ export async function restartAsAdmin(): Promise<void> {
 
 export async function showMainWindow(): Promise<void> {
   await invoke("show_main_window");
+}
+
+/** The backend refuses to close mid-apply (a half-applied tweak has nothing to undo it); the payload says so. */
+export async function onCloseBlocked(handler: (message: string) => void): Promise<UnlistenFn> {
+  return await listen<string>("close-blocked", (event) => handler(event.payload));
 }

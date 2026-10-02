@@ -1,9 +1,8 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
-  import { applyPendingChanges } from "$lib/stores/tweaksActions.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { expand, pop, shift } from "$lib/utils/motion";
@@ -16,7 +15,7 @@
   const count = $derived(pendingChangesStore.count);
   const items = $derived(
     Array.from(pendingChangesStore.all.values()).map((change) => {
-      const tweak = tweaksStore.getById(change.tweakId);
+      const tweak = tweaksStore.tweak(change.tweakId);
       return {
         change,
         tweak,
@@ -27,7 +26,7 @@
   );
   const needsReboot = $derived(items.some((i) => i.tweak?.definition.requiresReboot));
   const highRiskCount = $derived(items.filter((i) => i.highRisk).length);
-  const busy = $derived(applying || tweakOps.isBusy);
+  const busy = $derived(applying || tweakActionsStore.isBusy);
 
   const reviewOpen = $derived(reviewing && count > 0);
 
@@ -41,7 +40,7 @@
     reviewing = false;
     applying = true;
     try {
-      await applyPendingChanges();
+      await tweakActionsStore.applyPending();
     } finally {
       applying = false;
     }

@@ -13,25 +13,26 @@
     SettingsView,
     SnapshotsView,
   } from "$lib/components/views";
+  import { bootStore } from "$lib/stores/boot.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { loadRemainingData, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
 
   const SUMMARY_MIN_WIDTH = 1400;
 
-  let error = $state<string | null>(null);
+  let loadError = $state<string | null>(null);
   let workspaceWidth = $state(0);
 
   onMount(async () => {
-    void manualTestsStore.init();
+    void manualTestsStore.load();
     try {
-      await loadRemainingData();
-    } catch (e) {
-      error = errorMessage(e);
-      console.error("Failed to initialize:", e);
+      await bootStore.load();
+    } catch (error) {
+      loadError = errorMessage(error);
+      console.error("Failed to initialize:", error);
     }
   });
 
@@ -54,13 +55,13 @@
       return { title: "Favorites", tweaks: tweaksStore.list.filter((t) => ids.has(t.definition.id)) };
     }
     if (activeTab === "snapshots") {
-      return { title: "Snapshots", tweaks: tweaksStore.list.filter((t) => t.status.hasSnapshot) };
+      return { title: "Snapshots", tweaks: tweaksStore.list.filter((t) => t.status.hasHistory) };
     }
     return null;
   });
 </script>
 
-{#if error}
+{#if loadError}
   <div class="flex h-full flex-col">
     <div class="flex min-h-0 flex-1 items-center justify-center p-6">
       <div class="w-full max-w-sm rounded-lg border border-border bg-card p-6 text-center">
@@ -68,7 +69,7 @@
           <Icon icon="mdi:alert-circle" width="28" />
         </div>
         <h2 class="mt-4 mb-1 text-base font-semibold">Failed to load</h2>
-        <p class="m-0 text-sm wrap-break-word text-foreground-muted">{error}</p>
+        <p class="m-0 text-sm wrap-break-word text-foreground-muted">{loadError}</p>
         <button
           type="button"
           class="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"

@@ -8,9 +8,8 @@
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
-  import { restoreTweaks } from "$lib/stores/tweaksActions.svelte";
-  import { initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
 
   const favoriteTweaks = $derived(tweaksStore.list.filter((t) => favoritesStore.ids.includes(t.definition.id)));
@@ -26,7 +25,7 @@
       confirmText: "Restore",
       variant: "danger",
     });
-    if (ok) await restoreTweaks(ids);
+    if (ok) await tweakActionsStore.restoreAll(ids);
   }
 
   async function clearAll() {
@@ -56,7 +55,7 @@
             <button
               type="button"
               class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={tweakOps.isBusy}
+              disabled={tweakActionsStore.isBusy}
               onclick={restoreAll}
             >
               <Icon icon="mdi:history" width="16" />
@@ -67,7 +66,7 @@
           <button
             type="button"
             class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-ui font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={tweakOps.isBusy}
+            disabled={tweakActionsStore.isBusy}
             onclick={clearAll}
           >
             <Icon icon="mdi:star-off" width="16" />
@@ -78,7 +77,7 @@
     {/if}
   {/snippet}
 
-  {#if initStatus.isLoadingTweaks && favoriteTweaks.length === 0}
+  {#if tweaksStore.isLoading && favoriteTweaks.length === 0}
     <SkeletonCard />
   {:else if favoriteTweaks.length === 0}
     <EmptyState

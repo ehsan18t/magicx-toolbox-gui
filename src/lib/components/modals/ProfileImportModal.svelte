@@ -12,10 +12,10 @@
     Switch,
   } from "$lib/components/ui";
   import { PROFILE_EXT } from "$lib/config/app";
+  import { bootStore } from "$lib/stores/boot.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { rescanStatuses } from "$lib/stores/tweaksData.svelte";
   import { listenFileDrop } from "$lib/utils/fileDrop";
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
@@ -83,7 +83,7 @@
         if (step === "select") handleDroppedFile(path);
       },
       onReject: () => {
-        if (step === "select") toastStore.show("error", "Please select a .mgx profile file");
+        if (step === "select") toastStore.error("Please select a .mgx profile file");
       },
     });
   });
@@ -96,14 +96,14 @@
   async function handleBrowse() {
     await profileStore.importProfile();
     if (profileStore.importError) {
-      toastStore.show("error", profileStore.importError);
+      toastStore.error(profileStore.importError);
     }
   }
 
   async function handleDroppedFile(filePath: string) {
     const success = await profileStore.importProfileFromPath(filePath);
     if (!success && profileStore.importError) {
-      toastStore.show("error", profileStore.importError);
+      toastStore.error(profileStore.importError);
     }
   }
 
@@ -122,7 +122,7 @@
     });
 
     if (!success && profileStore.applyError) {
-      toastStore.show("error", profileStore.applyError);
+      toastStore.error(profileStore.applyError);
     }
   }
 
@@ -135,14 +135,14 @@
 
   async function handleFinish() {
     // Re-detect statuses to reflect changes
-    await rescanStatuses();
+    await bootStore.rescan();
     const result = applyResult;
     handleClose();
 
     if (result?.requires_reboot) {
-      toastStore.show("warning", "Some changes require a system restart to take effect", { duration: 5000 });
+      toastStore.warning("Some changes require a system restart to take effect", { duration: 5000 });
     } else {
-      toastStore.show("success", `Successfully applied ${result?.applied_count ?? 0} tweaks`);
+      toastStore.success(`Successfully applied ${result?.applied_count ?? 0} tweaks`);
     }
   }
 

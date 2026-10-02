@@ -5,10 +5,11 @@ import { logError, logWarning } from "$lib/utils/logger";
 export class PersistentStore<T> {
   #value = $state() as T;
   #key: string;
-  /** Something was stored under the key at construction, even if it did not parse. */
-  readonly hadStoredValue: boolean = false;
+  /** A valid stored value was adopted at construction. */
+  readonly restored: boolean = false;
 
-  constructor(key: string, initialValue: T) {
+  /** `parse` vets what was stored: undefined rejects it, and the default is written back. */
+  constructor(key: string, initialValue: T, parse: (stored: unknown) => T | undefined = (stored) => stored as T) {
     this.#key = key;
     this.#value = initialValue;
     if (!browser) return;
@@ -16,16 +17,22 @@ export class PersistentStore<T> {
     try {
       const stored = localStorage.getItem(key);
       if (stored === null) return;
-      this.hadStoredValue = true;
+      let parsed: T | undefined;
       try {
-        this.#value = JSON.parse(stored);
+        parsed = parse(JSON.parse(stored));
       } catch {
-        logWarning(`Invalid JSON in ${key}, resetting to default.`);
-        try {
-          localStorage.setItem(key, JSON.stringify(initialValue));
-        } catch (writeErr) {
-          logError(`Failed to reset ${key}`, writeErr);
-        }
+        parsed = undefined;
+      }
+      if (parsed !== undefined) {
+        this.#value = parsed;
+        this.restored = true;
+        return;
+      }
+      logWarning(`Invalid value in ${key}, resetting to default.`);
+      try {
+        localStorage.setItem(key, JSON.stringify(initialValue));
+      } catch (writeError) {
+        logError(`Failed to reset ${key}`, writeError);
       }
     } catch (error) {
       logError(`Error loading ${key} from localStorage`, error);

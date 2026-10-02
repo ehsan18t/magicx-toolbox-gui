@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   settings: "magicx-app-settings",
   favorites: "magicx-favorites",
   navCollapsed: "magicx-nav-collapsed",
+  // Persisted under this spelling already, so it keeps its underscores.
   profileDir: "magicx_profile_dir",
   systemInfoCache: "magicx-system-info-cache",
 } as const;

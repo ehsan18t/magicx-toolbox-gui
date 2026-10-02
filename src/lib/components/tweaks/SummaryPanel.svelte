@@ -28,7 +28,7 @@
   const attention = $derived(tweaks.filter((t) => t.status.attention));
   const pending = $derived(tweaks.filter((t) => pendingChangesStore.has(t.definition.id)));
   const unknown = $derived(tweaks.filter((t) => t.status.state === "unknown"));
-  const reboot = $derived(tweaks.filter((t) => pendingRebootStore.needsReboot(t.definition.id)));
+  const reboot = $derived(tweaks.filter((t) => pendingRebootStore.has(t.definition.id)));
   const allClear = $derived(
     attention.length + pending.length + unknown.length + reboot.length + count("loading") === 0,
   );
@@ -126,7 +126,7 @@
       "text-warning",
       "Ready to apply",
       pending,
-      (t) => `→ ${pendingChangesStore.get(t.definition.id)?.optionLabel ?? ""}`,
+      (t) => `→ ${pendingChangesStore.change(t.definition.id)?.optionLabel ?? ""}`,
     )}
     {@render group("mdi:help-circle-outline", "text-warning", "State unknown", unknown, (t) =>
       t.status.needsElevation ? "Restart as administrator to read it" : "",

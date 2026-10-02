@@ -6,7 +6,7 @@
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { type SearchResult, searchStore } from "$lib/stores/search.svelte";
-  import { categoriesStore, initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import type { AppView, TweakWithStatus } from "$lib/types";
 
   type MappedResult = { categoryName: string; searchResult: SearchResult } & (
@@ -17,7 +17,7 @@
     const mapped: MappedResult[] = [];
     const byId = new Map(tweaksStore.list.map((t) => [t.definition.id, t]));
     for (const result of searchStore.results) {
-      const categoryName = categoriesStore.getName(result.categoryId);
+      const categoryName = categoriesStore.name(result.categoryId);
       if (result.kind === "tweak") {
         const tweak = byId.get(result.id);
         if (tweak) mapped.push({ kind: "tweak", tweak, categoryName, searchResult: result });
@@ -47,7 +47,7 @@
 
 {#snippet location(result: MappedResult)}
   <span class="inline-flex items-center gap-1 text-foreground-muted">
-    <Icon icon={categoriesStore.getIcon(result.searchResult.categoryId)} width="13" class="shrink-0" />
+    <Icon icon={categoriesStore.icon(result.searchResult.categoryId)} width="13" class="shrink-0" />
     {result.categoryName}
   </span>
   <button
@@ -64,7 +64,7 @@
 {/snippet}
 
 <PageLayout title="Search" {description}>
-  {#if initStatus.isLoadingTweaks && !searchStore.isActive}
+  {#if tweaksStore.isLoading && !searchStore.isActive}
     <EmptyState loading description="Loading tweaks…" />
   {:else if searchStore.error}
     <EmptyState

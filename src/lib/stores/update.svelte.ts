@@ -1,4 +1,4 @@
-import * as api from "$lib/api/update";
+import * as updateApi from "$lib/api/update";
 import { APP_CONFIG } from "$lib/config/app";
 import type { UpdateInfo } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
@@ -11,7 +11,7 @@ const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 let isChecking = $state(false);
 let isInstalling = $state(false);
 let updateInfo = $state<UpdateInfo | null>(null);
-let error = $state<string | null>(null);
+let lastError = $state<string | null>(null);
 
 const isAvailable = $derived(updateInfo?.available ?? false);
 
@@ -26,11 +26,11 @@ function stampLastCheck(): void {
 async function checkForUpdate(silent = false): Promise<UpdateInfo | null> {
   const seq = ++checkSeq;
   isChecking = true;
-  if (!silent) error = null;
+  if (!silent) lastError = null;
 
   try {
     const { source, flags } = APP_CONFIG.update.assetPattern;
-    const result = await api.checkForUpdate({
+    const result = await updateApi.checkForUpdate({
       releasesApiUrl: APP_CONFIG.update.releasesApiUrl,
       // `source` drops the flags; regex_lite reads case-insensitivity inline.
       assetPattern: (flags.includes("i") ? "(?i)" : "") + source,
@@ -39,12 +39,12 @@ async function checkForUpdate(silent = false): Promise<UpdateInfo | null> {
     stampLastCheck();
     if (seq === checkSeq) {
       updateInfo = result;
-      error = null;
+      lastError = null;
     }
     return result;
-  } catch (err) {
-    logError("Update check failed", err);
-    if (!silent && seq === checkSeq) error = errorMessage(err);
+  } catch (error) {
+    logError("Update check failed", error);
+    if (!silent && seq === checkSeq) lastError = errorMessage(error);
     return null;
   } finally {
     if (seq === checkSeq) isChecking = false;
@@ -65,7 +65,7 @@ export const updateStore = {
   },
 
   get error() {
-    return error;
+    return lastError;
   },
 
   get isAvailable() {
@@ -85,20 +85,20 @@ export const updateStore = {
   async installUpdate(): Promise<boolean> {
     if (isInstalling) return false;
     if (!updateInfo?.available || !updateInfo.downloadUrl || !updateInfo.assetName) {
-      error = "No update available to install";
+      lastError = "No update available to install";
       return false;
     }
 
     isInstalling = true;
-    error = null;
+    lastError = null;
     try {
-      await api.installUpdate(updateInfo.downloadUrl, updateInfo.assetName, updateInfo.assetDigest ?? null);
+      await updateApi.installUpdate(updateInfo.downloadUrl, updateInfo.assetName, updateInfo.assetDigest ?? null);
       return true;
-    } catch (err) {
-      logError("Update installation failed", err);
-      const message = errorMessage(err);
-      if (isAppExiting(err)) toastStore.warning(message);
-      else error = message;
+    } catch (error) {
+      logError("Update installation failed", error);
+      const message = errorMessage(error);
+      if (isAppExiting(error)) toastStore.warning(message);
+      else lastError = message;
       return false;
     } finally {
       isInstalling = false;
@@ -106,6 +106,6 @@ export const updateStore = {
   },
 
   clearError() {
-    error = null;
+    lastError = null;
   },
 };

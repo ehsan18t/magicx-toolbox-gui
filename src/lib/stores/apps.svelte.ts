@@ -1,9 +1,8 @@
 // App items: the curated removable apps and their live presence (ADR-0009). Remove and Install run
 // immediately, never through pending changes, snapshots or profiles.
 
-import * as api from "$lib/api/apps";
-import type { AppStatusView, AppView } from "$lib/types";
-import type { AppOperationKind } from "$lib/utils/appPresentation";
+import * as appsApi from "$lib/api/apps";
+import type { AppOperationKind, AppStatusView, AppView } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -20,14 +19,14 @@ const STORE_PAGE_URL = "ms-windows-store://pdp/?ProductId=";
 const STORE_WATCH_CHECKS = 5;
 
 let apps = $state.raw<AppView[]>([]);
-let appsVersion = $state(0);
+let modelVersion = $state(0);
 let scanError = $state<string | null>(null);
 const statuses = new SvelteMap<string, AppStatusView>();
 // Store-side, so a row that remounts mid-operation keeps its label and elapsed time.
 const operations = new SvelteMap<string, AppOperation>();
 const errors = new SvelteMap<string, string>();
 /** Opened in the Store: id -> focus re-checks left. Each check spawns PowerShell, so it is bounded. */
-// eslint-disable-next-line svelte/prefer-svelte-reactivity
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- re-check budget, never rendered
 const awaitingStore = new Map<string, number>();
 let loadPromise: Promise<void> | null = null;
 let refreshPromise: Promise<void> | null = null;
@@ -57,7 +56,7 @@ const appsByCategory = $derived.by(() => {
 function refreshStatuses(): Promise<void> {
   refreshPromise ??= (async () => {
     try {
-      for (const view of await api.getAppStatuses()) adopt(view);
+      for (const view of await appsApi.getAppStatuses()) adopt(view);
       scanError = null;
     } catch (error) {
       logError("Failed to scan app statuses", error);
@@ -85,7 +84,7 @@ async function run(id: string, kind: AppOperationKind, done: string): Promise<vo
   let failed = false;
   const subject = apps.find((a) => a.id === id)?.name;
   try {
-    adopt(await (kind === "remove" ? api.removeApp(id) : api.installApp(id)));
+    adopt(await (kind === "remove" ? appsApi.removeApp(id) : appsApi.installApp(id)));
     toastStore.success(done, { subject });
   } catch (error) {
     // Refused before anything ran, so there is nothing to re-scan.
@@ -112,8 +111,8 @@ export const appsStore = {
   },
 
   /** Bumped when the model reloads. */
-  get version() {
-    return appsVersion;
+  get modelVersion() {
+    return modelVersion;
   },
 
   /** Why the last presence scan failed, for rows that have no status yet. */
@@ -128,10 +127,6 @@ export const appsStore = {
   isVisible(id: string): boolean {
     const app = apps.find((a) => a.id === id);
     return !!app && isVisible(app);
-  },
-
-  isBusy(id: string): boolean {
-    return operations.has(id);
   },
 
   /** The remove or install in flight, with when it started. */
@@ -151,8 +146,8 @@ export const appsStore = {
   load(): Promise<void> {
     loadPromise ??= (async () => {
       try {
-        apps = await api.getApps();
-        appsVersion++;
+        apps = await appsApi.getApps();
+        modelVersion++;
       } catch (error) {
         logError("Failed to load apps", error);
         return;

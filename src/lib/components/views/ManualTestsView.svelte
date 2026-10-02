@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { ManualTest, ManualTestStatus } from "$lib/api/manualTests";
   import { PageLayout } from "$lib/components/layout";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { Badge, Button, Card, Spinner } from "$lib/components/ui";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
+  import type { ManualTest, ManualTestStatus } from "$lib/types";
   import type { Attachment } from "svelte/attachments";
 
   const MIN_MINUTES = 1;
@@ -44,8 +44,8 @@
     try {
       await navigator.clipboard.writeText(manualTestsStore.report(id));
       toastStore.success("Report copied");
-    } catch (e) {
-      console.error("Copy failed:", e);
+    } catch (error) {
+      console.error("Copy failed:", error);
       toastStore.error("Could not copy the report");
     }
   }

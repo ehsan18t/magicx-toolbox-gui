@@ -15,7 +15,7 @@
 
   const profiles = $derived(profileStore.savedProfiles);
   const isLoading = $derived(profileStore.isLoadingSavedProfiles);
-  const currentProfileDir = $derived(profileStore.currentProfileDir);
+  const currentProfileDir = $derived(profileStore.profileDir);
   let profileToDelete = $state<string | null>(null);
   let deletingProfile = $state<string | null>(null);
 
@@ -27,9 +27,9 @@
     profileToDelete = null;
 
     if (success) {
-      toastStore.show("success", `Profile "${name}" deleted`);
+      toastStore.success(`Profile "${name}" deleted`);
     } else {
-      toastStore.show("error", profileStore.deleteError ?? "Failed to delete profile");
+      toastStore.error(profileStore.deleteError ?? "Failed to delete profile");
     }
 
     deletingProfile = null;
@@ -53,11 +53,11 @@
       if (success) {
         modalStore.open("profileImport");
       } else if (profileStore.importError) {
-        toastStore.show("error", profileStore.importError);
+        toastStore.error(profileStore.importError);
       }
-    } catch (e) {
-      console.error("Failed to prepare import:", e);
-      toastStore.show("error", "Failed to load profile for import");
+    } catch (error) {
+      console.error("Failed to prepare import:", error);
+      toastStore.error("Failed to load profile for import");
     }
   }
 
@@ -73,8 +73,8 @@
         profileStore.setProfileDir(selected);
         toastStore.success(`Loaded profiles from: ${selected}`);
       }
-    } catch (e) {
-      console.error("Failed to open folder:", e);
+    } catch (error) {
+      console.error("Failed to open folder:", error);
       toastStore.error("Failed to open folder dialog");
     }
   }

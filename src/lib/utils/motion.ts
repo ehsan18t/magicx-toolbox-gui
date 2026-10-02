@@ -116,12 +116,12 @@ export function expand(
 
 /** Slides `to`'s pseudo-element (a selection pill) in from where `from`'s sat; only the control that changed pays. */
 export function glide(from: HTMLElement, to: HTMLElement, pseudoElement = "::before"): void {
-  const ms = duration("normal");
-  if (!ms) return;
+  const time = duration("normal");
+  if (!time) return;
   const offset = from.offsetLeft - to.offsetLeft;
   to.animate(
     { transform: [`translateX(${offset}px) scaleX(${from.offsetWidth / to.offsetWidth})`, "none"] },
-    { duration: ms, easing: token("--ease-out"), pseudoElement },
+    { duration: time, easing: token("--ease-out"), pseudoElement },
   );
 }
 

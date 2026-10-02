@@ -1,5 +1,5 @@
-import type { LogLine } from "$lib/api/logs";
 import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
+import type { LogLine } from "$lib/types";
 import type {
   AppStatusView,
   AppView,
@@ -14,7 +14,7 @@ import type {
 } from "$lib/types";
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { apps, categories, tweaks, type CorpusTweak } from "./corpus";
+import { apps, categories, type CorpusTweak, tweaks } from "./corpus";
 import {
   adminAvailability,
   APP_VERSION,

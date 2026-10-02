@@ -1,13 +1,10 @@
-import type { AppStatusView, AppView, Availability } from "$lib/types";
+import type { AppActionKind, AppOperationKind, AppStatusView, AppView, Availability } from "$lib/types";
 import { CHECKING, ELEVATE_HINT, type StateSummary, UNKNOWN_ICON, UNKNOWN_NEEDS_ADMIN } from "./tweakPresentation";
 
 export interface AppAction {
-  kind: "remove" | "install" | "store";
+  kind: AppActionKind;
   disabledReason: string | null;
 }
-
-/** An operation that runs in the app; the Store page opens elsewhere. */
-export type AppOperationKind = Exclude<AppAction["kind"], "store">;
 
 export const APP_OPERATION_LABEL: Record<AppOperationKind, string> = { remove: "Removing", install: "Installing" };
 

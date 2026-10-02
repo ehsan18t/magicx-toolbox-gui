@@ -4,13 +4,11 @@
   import { HighlightedText } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { errorStore, tweakOps } from "$lib/stores/tweakOps.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { expand } from "$lib/utils/motion";
-  import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
-  import { keepWithConfirm, restoreWithConfirm } from "$lib/utils/tweakActions";
   import {
     attentionCause,
     availabilityLabel,
@@ -23,6 +21,7 @@
     usesDropdown,
   } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
+  import { searchHighlight } from "./searchHighlight.svelte";
   import TweakControl from "./TweakControl.svelte";
 
   interface Props {
@@ -38,8 +37,8 @@
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
   const availability = $derived(def.availability);
-  const isLoading = $derived(tweakOps.isRunning(def.id));
-  const tweakError = $derived(errorStore.get(def.id));
+  const isLoading = $derived(tweakActionsStore.isRunning(def.id));
+  const tweakError = $derived(tweakActionsStore.error(def.id));
   const isSelected = $derived(tweakDetailsModalStore.tweakId === def.id);
   const summary = $derived(stateSummary(status));
   const filterMatch = $derived(titleSlot ? null : pageFilterStore.match(def.id));
@@ -61,7 +60,7 @@
   const highRisk = $derived(isHighRisk(def.riskLevel));
   const permissionInfo = $derived(permissionInfoFor(def.requiredLevel));
   const isFavorite = $derived(favoritesStore.isFavorite(def.id));
-  const hasSnapshot = $derived(status.hasSnapshot);
+  const hasSnapshot = $derived(status.hasHistory);
 
   // Needs Attention (ADR-0001/0002): the engine's own record, kept per tweak.
   const attention = $derived(status.attention);
@@ -70,15 +69,15 @@
     (attention?.items ?? []).map((item) => (/[.!?]$/.test(item.message) ? item.message : `${item.message}.`)).join(" "),
   );
 
-  const pendingChange = $derived(pendingChangesStore.get(def.id));
+  const pendingChange = $derived(pendingChangesStore.change(def.id));
   const hasPending = $derived(pendingChange !== undefined);
   // Hidden until asked for, but staging a change is when it matters, so that opens it too.
   let warningToggled = $state(false);
   const warningOpen = $derived(warningToggled || hasPending);
   const dropdown = $derived(usesDropdown(def));
 
-  const handleRestoreClick = () => restoreWithConfirm(def, highRisk);
-  const handleKeepCurrentState = () => keepWithConfirm(def);
+  const handleRestoreClick = () => tweakActionsStore.restoreWithConfirm(def, highRisk);
+  const handleKeepCurrentState = () => tweakActionsStore.keepWithConfirm(def);
 
   function handleRowClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -220,7 +219,7 @@
         <button
           type="button"
           class="flex shrink-0 cursor-pointer rounded p-0.5 text-error/70 hover:bg-error/10 hover:text-error"
-          onclick={() => errorStore.clear(def.id)}
+          onclick={() => tweakActionsStore.clearError(def.id)}
           aria-label="Dismiss error"
         >
           <Icon icon="mdi:close" width="14" />

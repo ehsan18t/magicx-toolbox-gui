@@ -1,5 +1,4 @@
-// One function per command in src-tauri/src/lib.rs's generate_handler!. Tauri maps camelCase args to
-// snake_case params (`tweakId` -> `tweak_id`).
+// One function per command in src-tauri/src/commands/tweaks.rs; Tauri maps camelCase args to snake_case.
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -11,7 +10,7 @@ import type {
   TweakStatusEvent,
   TweakStatusView,
   TweakView,
-} from "../types";
+} from "$lib/types";
 
 /** The compiled model with this moment's availability. */
 export async function getTweaks(): Promise<TweakView[]> {

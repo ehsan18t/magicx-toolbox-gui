@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { LogLevel, LogSource } from "$lib/api/logs";
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput, Select } from "$lib/components/ui";
   import { formatLogLine, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
+  import { systemStore } from "$lib/stores/system.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaksData.svelte";
+  import type { LogLevel, LogSource } from "$lib/types";
   import { expand } from "$lib/utils/motion";
   import { getVersion } from "@tauri-apps/api/app";
   import type { Attachment } from "svelte/attachments";

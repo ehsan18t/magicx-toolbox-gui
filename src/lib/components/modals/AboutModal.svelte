@@ -4,8 +4,8 @@
   import { Modal } from "$lib/components/ui";
   import { APP_CONFIG } from "$lib/config/app";
   import { modalStore } from "$lib/stores/modal.svelte";
+  import { systemStore } from "$lib/stores/system.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaksData.svelte";
   import { delay } from "$lib/utils/motion";
   import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";

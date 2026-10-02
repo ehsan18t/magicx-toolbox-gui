@@ -1,13 +1,6 @@
-// One function per command in commands/update.rs.
+// One function per command in src-tauri/src/commands/update.rs.
 import { invoke } from "@tauri-apps/api/core";
-import type { UpdateInfo } from "../types";
-
-export interface UpdateConfig {
-  releasesApiUrl: string;
-  /** regex_lite syntax. */
-  assetPattern: string;
-  includePrereleases: boolean;
-}
+import type { UpdateConfig, UpdateInfo } from "$lib/types";
 
 export async function checkForUpdate(config: UpdateConfig): Promise<UpdateInfo> {
   return await invoke<UpdateInfo>("check_for_update", { config });

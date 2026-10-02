@@ -105,19 +105,19 @@
     });
 
     if (success) {
-      toastStore.show("success", `Profile "${profileName}" exported successfully`);
+      toastStore.success(`Profile "${profileName}" exported successfully`);
       modalStore.close();
     } else if (profileStore.exportError) {
-      toastStore.show("error", profileStore.exportError);
+      toastStore.error(profileStore.exportError);
     }
   }
 
   function getCategoryIcon(categoryId: string): string {
-    return categoriesStore.getIcon(categoryId);
+    return categoriesStore.icon(categoryId);
   }
 
   function getCategoryName(categoryId: string): string {
-    return categoriesStore.getName(categoryId);
+    return categoriesStore.name(categoryId);
   }
 </script>
 

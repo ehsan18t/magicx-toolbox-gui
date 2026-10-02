@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import * as systemApi from "$lib/api/system";
   import { ThemeToggle } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
   import { SearchInput } from "$lib/components/ui";
@@ -9,10 +10,9 @@
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
+  import { systemStore } from "$lib/stores/system.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaksData.svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
-  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, tick } from "svelte";
   import WindowControlButton from "./WindowControlButton.svelte";
@@ -53,7 +53,6 @@
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
-    // The backend refuses to close mid-apply (a half-applied tweak has nothing to undo it); say so.
     let unlistenCloseBlocked: (() => void) | undefined;
 
     const init = async () => {
@@ -68,9 +67,7 @@
         if (version.status === "fulfilled") appVersion = version.value;
         isMaximized = maximized.status === "fulfilled" ? maximized.value : false;
 
-        unlistenCloseBlocked = await listen<string>("close-blocked", (event) => {
-          toastStore.show("warning", event.payload);
-        });
+        unlistenCloseBlocked = await systemApi.onCloseBlocked((message) => toastStore.warning(message));
         unlisten = await appWindow.onResized(async () => {
           try {
             isMaximized = await appWindow.isMaximized();

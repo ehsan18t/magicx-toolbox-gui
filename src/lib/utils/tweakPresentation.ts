@@ -99,7 +99,7 @@ export const rowDomId = (kind: ItemKind, id: string): string => `${kind}-${id}`;
 
 /** A bulk restore takes only these: each row's own Restore is disabled otherwise. */
 export const canRestore = (t: TweakWithStatus): boolean =>
-  t.status.hasSnapshot && t.definition.availability.state === "available";
+  t.status.hasHistory && t.definition.availability.state === "available";
 
 export const restoreMessage = (count: number): string =>
   `Restore ${plural(count, "tweak")} to the state saved before ${count === 1 ? "its" : "each one's"} last change?`;
@@ -128,7 +128,7 @@ export function tallies(list: TweakWithStatus[]): Tallies {
   for (const { definition, status } of list) {
     if (status.state === "active") t.applied++;
     if (status.attention) t.attention++;
-    if (status.hasSnapshot) t.withSnapshot++;
+    if (status.hasHistory) t.withSnapshot++;
     if (definition.availability.state === "needs_elevation") t.needsAdmin++;
     t.byState[status.state]++;
   }
@@ -160,7 +160,12 @@ export function stateSummary(status: TweakStatus): StateSummary {
 }
 
 /** Whether a row's Restore can run, and what its tooltip says. */
-export function restoreState(def: TweakDefinition, status: TweakStatus, isRunning: boolean) {
+export interface RestoreState {
+  disabled: boolean;
+  tip: string;
+}
+
+export function restoreState(def: TweakDefinition, status: TweakStatus, isRunning: boolean): RestoreState {
   if (def.availability.state !== "available") return { disabled: true, tip: def.availability.reason };
   return {
     disabled: isRunning,

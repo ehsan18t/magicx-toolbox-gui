@@ -1,5 +1,5 @@
-import * as api from "$lib/api/logs";
-import type { LogLine, LogSettings, LogTail } from "$lib/api/logs";
+import * as logsApi from "$lib/api/logs";
+import type { LogLine, LogSettings, LogTail } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
 import { TOAST_DURATION, toastStore } from "./toast.svelte";
 
@@ -32,13 +32,13 @@ export function formatLogLine(line: LogLine): string {
 
 let rows = $state.raw<LogRow[]>([]);
 let since = 0;
-let panelOpen = $state(false);
+let isPanelOpen = $state(false);
 let generation = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 let settings = $state<LogSettings | null>(null);
-let settingsBusy = $state(false);
-let exporting = $state(false);
+let isSettingsBusy = $state(false);
+let isExporting = $state(false);
 
 function append(requested: number, tail: LogTail) {
   // A poll that overlapped a close/reopen answers for a `since` another poll already consumed.
@@ -57,30 +57,30 @@ function append(requested: number, tail: LogTail) {
 async function poll(gen: number) {
   try {
     const requested = since;
-    append(requested, await api.getLogTail(requested));
+    append(requested, await logsApi.getLogTail(requested));
   } catch {
     // Retried on the next tick.
   }
-  if (gen === generation && panelOpen) timer = setTimeout(() => void poll(gen), POLL_MS);
+  if (gen === generation && isPanelOpen) timer = setTimeout(() => void poll(gen), POLL_MS);
 }
 
 async function loadSettings() {
   try {
-    settings = await api.getLogSettings();
-  } catch (e) {
-    toastStore.error(`Could not read the log settings: ${errorMessage(e)}`);
+    settings = await logsApi.getLogSettings();
+  } catch (error) {
+    toastStore.error(`Could not read the log settings: ${errorMessage(error)}`);
   }
 }
 
 function openPanel() {
-  if (panelOpen) return;
-  panelOpen = true;
+  if (isPanelOpen) return;
+  isPanelOpen = true;
   void poll(++generation);
   if (!settings) void loadSettings();
 }
 
 function closePanel() {
-  panelOpen = false;
+  isPanelOpen = false;
   generation++;
   clearTimeout(timer);
 }
@@ -90,23 +90,22 @@ export const logsStore = {
     return rows;
   },
   get isPanelOpen() {
-    return panelOpen;
+    return isPanelOpen;
   },
   get settings() {
     return settings;
   },
   get isSettingsBusy() {
-    return settingsBusy;
+    return isSettingsBusy;
   },
   get isExporting() {
-    return exporting;
+    return isExporting;
   },
 
-  openPanel,
   closePanel,
 
   togglePanel() {
-    if (panelOpen) closePanel();
+    if (isPanelOpen) closePanel();
     else openPanel();
   },
 
@@ -118,57 +117,57 @@ export const logsStore = {
   loadSettings,
 
   async setSettings(persist: boolean, detailed: boolean) {
-    if (settingsBusy) return;
-    settingsBusy = true;
+    if (isSettingsBusy) return;
+    isSettingsBusy = true;
     try {
-      settings = await api.setLogSettings(persist, detailed);
-    } catch (e) {
-      toastStore.error(`Could not change the log settings: ${errorMessage(e)}`);
+      settings = await logsApi.setLogSettings(persist, detailed);
+    } catch (error) {
+      toastStore.error(`Could not change the log settings: ${errorMessage(error)}`);
       await loadSettings();
     } finally {
-      settingsBusy = false;
+      isSettingsBusy = false;
     }
   },
 
   async deleteLogs() {
-    if (settingsBusy) return;
-    settingsBusy = true;
+    if (isSettingsBusy) return;
+    isSettingsBusy = true;
     try {
-      settings = await api.deleteLogs();
+      settings = await logsApi.deleteLogs();
       toastStore.success("Logs deleted");
-    } catch (e) {
-      toastStore.error(`Some log files could not be deleted: ${errorMessage(e)}`);
+    } catch (error) {
+      toastStore.error(`Some log files could not be deleted: ${errorMessage(error)}`);
       await loadSettings();
     } finally {
-      settingsBusy = false;
+      isSettingsBusy = false;
     }
   },
 
   async exportDiagnostics() {
-    if (exporting) return;
-    exporting = true;
+    if (isExporting) return;
+    isExporting = true;
     try {
-      const path = await api.exportDiagnostics();
+      const path = await logsApi.exportDiagnostics();
       if (path === null) return;
       toastStore.success("Diagnostics exported. Check the file before sharing.", {
         duration: TOAST_DURATION.long,
         action: {
           label: "Show in folder",
-          run: () => void api.revealLastExport().catch((e) => toastStore.error(errorMessage(e))),
+          run: () => void logsApi.revealLastExport().catch((error) => toastStore.error(errorMessage(error))),
         },
       });
-    } catch (e) {
-      toastStore.error(`Could not export diagnostics: ${errorMessage(e)}`);
+    } catch (error) {
+      toastStore.error(`Could not export diagnostics: ${errorMessage(error)}`);
     } finally {
-      exporting = false;
+      isExporting = false;
     }
   },
 
   async openFolder() {
     try {
-      await api.openLogFolder();
-    } catch (e) {
-      toastStore.error(`Could not open the logs folder: ${errorMessage(e)}`);
+      await logsApi.openLogFolder();
+    } catch (error) {
+      toastStore.error(`Could not open the logs folder: ${errorMessage(error)}`);
     }
   },
 };

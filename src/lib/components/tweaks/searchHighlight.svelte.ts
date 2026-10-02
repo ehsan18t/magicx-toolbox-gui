@@ -8,8 +8,8 @@ export function searchHighlight(id: () => string, el: () => HTMLElement | null) 
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   $effect(() => {
-    if (searchStore.highlightTweakId !== id()) return;
-    searchStore.clearHighlight();
+    if (searchStore.highlightId !== id()) return;
+    searchStore.setHighlight(null);
     active = true;
     // After a frame: rows above are still settling their height on first render.
     frame = requestAnimationFrame(() => el()?.scrollIntoView({ block: "center" }));

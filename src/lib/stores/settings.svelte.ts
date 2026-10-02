@@ -2,7 +2,7 @@ import { STORAGE_KEYS } from "$lib/config/app";
 import type { AppSettings } from "$lib/types";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
-const defaultSettings: AppSettings = {
+const DEFAULT_SETTINGS: AppSettings = {
   autoCheckUpdates: true,
   autoInstallUpdates: false,
   lastUpdateCheck: null,
@@ -10,14 +10,16 @@ const defaultSettings: AppSettings = {
   includePrereleases: false,
 };
 
-const settingsState = new PersistentStore<AppSettings>(STORAGE_KEYS.settings, defaultSettings);
+// A stored object can predate a key: the default fills it.
+const settingsState = new PersistentStore<AppSettings>(STORAGE_KEYS.settings, DEFAULT_SETTINGS, (stored) =>
+  typeof stored === "object" && stored !== null ? { ...DEFAULT_SETTINGS, ...stored } : undefined,
+);
 
 const autoCheckUpdates = $derived(settingsState.value.autoCheckUpdates);
 const autoInstallUpdates = $derived(settingsState.value.autoInstallUpdates);
 const lastUpdateCheck = $derived(settingsState.value.lastUpdateCheck);
-// A stored object may lack these keys; undefined must read as false.
-const showUnsupported = $derived(settingsState.value.showUnsupported === true);
-const includePrereleases = $derived(settingsState.value.includePrereleases === true);
+const showUnsupported = $derived(settingsState.value.showUnsupported);
+const includePrereleases = $derived(settingsState.value.includePrereleases);
 
 function update(changes: Partial<AppSettings>) {
   settingsState.value = { ...settingsState.value, ...changes };

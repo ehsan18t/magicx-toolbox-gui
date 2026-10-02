@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { showMainWindow } from "$lib/api/system";
+  import * as systemApi from "$lib/api/system";
   import { ApplyingOverlay, ToastContainer } from "$lib/components/feedback";
   import { LogsPanel, TitleBar } from "$lib/components/layout";
   import { AboutModal, ConfirmHost, ProfileExportModal, ProfileImportModal, UpdateModal } from "$lib/components/modals";
@@ -8,7 +8,7 @@
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
-  import { initializeQuick } from "$lib/stores/tweaksData.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { installErrorForwarding } from "$lib/utils/logger";
@@ -38,9 +38,9 @@
 
     // Show the window now that the UI is ready
     try {
-      await showMainWindow();
-    } catch (e) {
-      console.error("Failed to show window:", e);
+      await systemApi.showMainWindow();
+    } catch (error) {
+      console.error("Failed to show window:", error);
     }
 
     // Init theme stores (synchronous, fast)
@@ -51,10 +51,10 @@
     // CRITICAL: We await here to ensure +page.svelte has categories loaded
     // before its onMount runs. This prevents race conditions and simplifies page logic.
     try {
-      await initializeQuick();
-    } catch (e) {
-      initError = errorMessage(e);
-      console.error("Failed to initialize categories:", e);
+      await tweaksStore.load();
+    } catch (error) {
+      initError = errorMessage(error);
+      console.error("Failed to initialize categories:", error);
     }
 
     const initialLoader = document.getElementById("initial-loader");

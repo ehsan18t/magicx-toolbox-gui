@@ -22,7 +22,7 @@ export interface SearchResult {
 }
 
 interface HaystackEntry {
-  kind: SearchResult["kind"];
+  kind: ItemKind;
   id: string;
   categoryId: string;
   nameEnd: number;
@@ -54,12 +54,13 @@ let query = $state("");
 let searchedQuery = $state("");
 // Bumped by search(), so a retry re-runs the same query.
 let runs = $state(0);
-let highlightTweakId = $state<string | null>(null);
+// A tweak or app id the rows scroll to and flash once.
+let highlightId = $state<string | null>(null);
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Keyed on the model versions, not the lists: status events replace the tweak list but never its text.
 const haystack = $derived.by(() => {
-  void [tweaksStore.version, appsStore.version, settingsStore.showUnsupported];
+  void [tweaksStore.modelVersion, appsStore.modelVersion, settingsStore.showUnsupported];
   return untrack(() => {
     const items = [
       ...tweaksStore.list.map(({ definition: d }) => ({
@@ -67,16 +68,16 @@ const haystack = $derived.by(() => {
         id: d.id,
         categoryId: d.categoryId,
         name: d.name,
-        description: d.description || "",
-        info: d.info || "",
+        description: d.description,
+        info: d.info ?? "",
       })),
       ...appsStore.list.map((a) => ({
         kind: "app" as const,
         id: a.id,
         categoryId: a.category,
         name: a.name,
-        description: a.description || "",
-        info: a.info || "",
+        description: a.description,
+        info: a.info ?? "",
       })),
     ];
     const strings: string[] = [];
@@ -130,7 +131,7 @@ function toResult(idx: number, ranges: number[]): SearchResult {
 }
 
 /** Every fuzzy match, unranked and uncapped, keyed by id: the in-page filter keeps its own order. */
-export function fuzzyMatches(needle: string): Record<string, SearchResult> {
+function fuzzyMatches(needle: string): Record<string, SearchResult> {
   const q = needle.trim();
   if (!q) return {};
   const { strings } = haystack;
@@ -160,9 +161,9 @@ const outcome = $derived.by((): { results: SearchResult[]; error: string | null 
   if (!searchedQuery) return { results: [], error: null };
   try {
     return { results: rank(searchedQuery), error: null };
-  } catch (e) {
-    logError("[search] Search failed", e);
-    return { results: [], error: errorMessage(e) };
+  } catch (error) {
+    logError("Search failed", error);
+    return { results: [], error: errorMessage(error) };
   }
 });
 
@@ -196,8 +197,8 @@ export const searchStore = {
     return isActive;
   },
 
-  get highlightTweakId() {
-    return highlightTweakId;
+  get highlightId() {
+    return highlightId;
   },
 
   /** Searches after a debounce; an empty query clears at once. */
@@ -224,11 +225,9 @@ export const searchStore = {
   /** Searches the current query now. */
   search,
 
-  setHighlight(tweakId: string | null) {
-    highlightTweakId = tweakId;
-  },
+  fuzzyMatches,
 
-  clearHighlight() {
-    highlightTweakId = null;
+  setHighlight(id: string | null) {
+    highlightId = id;
   },
 };

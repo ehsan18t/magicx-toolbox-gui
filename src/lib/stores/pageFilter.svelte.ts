@@ -1,5 +1,5 @@
 import { navigationStore, type TabId } from "./navigation.svelte";
-import { fuzzyMatches, type SearchResult, searchStore } from "./search.svelte";
+import { type SearchResult, searchStore } from "./search.svelte";
 
 // Keyed by page visit, so every visit opens unfiltered and scoped with no effect to reset it.
 let filter = $state({ visit: -1, query: "", scoped: true });
@@ -11,7 +11,7 @@ const set = (query: string, scoped: boolean) => (filter = { visit: navigationSto
 
 const scoped = $derived(navigationStore.isScopable && (!isCurrent() || filter.scoped));
 const query = $derived(isCurrent() ? filter.query : "");
-const matches = $derived(scoped && query.trim() ? fuzzyMatches(query) : null);
+const matches = $derived(scoped && query.trim() ? searchStore.fuzzyMatches(query) : null);
 const originTab = $derived(
   origin && origin.visit === navigationStore.visit && navigationStore.activeTab === "search" ? origin.tab : null,
 );

@@ -8,9 +8,9 @@
   import type { AppView } from "$lib/types";
   import { APP_OPERATION_LABEL } from "$lib/utils/appPresentation";
   import { expand } from "$lib/utils/motion";
-  import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
   import { permissionInfoFor, RISK_INFO, RISK_TONE, TONE_TEXT, toRiskLevel } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
+  import { searchHighlight } from "./searchHighlight.svelte";
 
   interface Props {
     app: AppView;

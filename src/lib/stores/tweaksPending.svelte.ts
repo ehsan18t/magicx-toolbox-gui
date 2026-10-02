@@ -19,7 +19,7 @@ export const pendingChangesStore = {
     return pendingChanges.size;
   },
 
-  get(tweakId: string): PendingChange | undefined {
+  change(tweakId: string): PendingChange | undefined {
     return pendingChanges.get(tweakId);
   },
 
@@ -27,8 +27,8 @@ export const pendingChangesStore = {
     return pendingChanges.has(tweakId);
   },
 
-  set(tweakId: string, change: PendingChange) {
-    pendingChanges.set(tweakId, change);
+  stage(tweakId: string, optionLabel: string) {
+    pendingChanges.set(tweakId, { tweakId, optionLabel });
   },
 
   remove(tweakId: string) {
@@ -49,7 +49,7 @@ export const pendingRebootStore = {
     return rebootTweaks;
   },
 
-  needsReboot(tweakId: string): boolean {
+  has(tweakId: string): boolean {
     return pendingReboot.has(tweakId);
   },
 

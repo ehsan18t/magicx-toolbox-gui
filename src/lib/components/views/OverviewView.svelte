@@ -3,13 +3,14 @@
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, initStatus, systemStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { systemStore } from "$lib/stores/system.svelte";
+  import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
 
   const info = $derived(systemStore.info);
   const hw = $derived(info?.hardware);
   const categoryStats = $derived(categoriesStore.stats);
-  const systemLoading = $derived(initStatus.isLoadingSystemInfo);
+  const systemLoading = $derived(systemStore.isLoading);
 
   const applied = $derived(tweaksStore.list.filter((t) => t.status.state === "active").length);
   const attentionTweaks = $derived(tweaksStore.list.filter((t) => t.status.attention));
@@ -24,17 +25,16 @@
       const [first] = attentionCategories;
       const single = attentionCategories.size === 1;
       return {
-        sub: `in ${categoriesStore.getName(first)}${single ? "" : ` and ${attentionCategories.size - 1} more`}`,
+        sub: `in ${categoriesStore.name(first)}${single ? "" : ` and ${attentionCategories.size - 1} more`}`,
         tone: "text-error",
         onclick: () => navigationStore.navigateToAttention(first),
       };
     }
-    if (checking || initStatus.isLoadingTweaks)
-      return { sub: "Checking…", tone: "text-foreground-muted", onclick: null };
+    if (checking || tweaksStore.isLoading) return { sub: "Checking…", tone: "text-foreground-muted", onclick: null };
     if (unknown) return { sub: `${unknown} could not be read`, tone: "text-warning", onclick: null };
     return { sub: "All verified", tone: "text-success", onclick: null };
   });
-  const snapshots = $derived(tweaksStore.list.filter((t) => t.status.hasSnapshot).length);
+  const snapshots = $derived(tweaksStore.list.filter((t) => t.status.hasHistory).length);
 
   const formatClock = (mhz: number) => (mhz >= 1000 ? `${(mhz / 1000).toFixed(1)} GHz` : `${mhz} MHz`);
   const formatStorage = (gb: number) => (gb >= 1000 ? `${(gb / 1000).toFixed(1)} TB` : `${gb.toFixed(0)} GB`);
@@ -309,14 +309,15 @@
           <button
             type="button"
             class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={() => systemStore.refresh().catch((e) => console.error("Failed to refresh hardware info:", e))}
-            disabled={systemLoading || initStatus.isRefreshingSystemInfo}
+            onclick={() =>
+              systemStore.refresh().catch((error) => console.error("Failed to refresh hardware info:", error))}
+            disabled={systemLoading || systemStore.isRefreshing}
             aria-label="Refresh system info"
             use:tooltip={systemStore.cachedAt && !systemLoading
               ? `Updated ${new Date(systemStore.cachedAt).toLocaleString()}. Select to refresh.`
               : "Refresh system info"}
           >
-            <Icon icon="mdi:refresh" width="16" class={initStatus.isRefreshingSystemInfo ? "animate-spin" : ""} />
+            <Icon icon="mdi:refresh" width="16" class={systemStore.isRefreshing ? "animate-spin" : ""} />
           </button>
         </div>
         {#if systemLoading || !hw}

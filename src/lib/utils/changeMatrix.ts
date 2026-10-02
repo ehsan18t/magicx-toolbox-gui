@@ -36,7 +36,7 @@ function registryCell(c: RegistryChange): MatrixCell {
   if (c.action === "create_key") return { text: "Key created", note };
   const v = c.value;
   const text =
-    v === null || v === undefined
+    v === null
       ? "(empty)"
       : typeof v === "number"
         ? `${v} (0x${v.toString(16).toUpperCase()})`
@@ -132,6 +132,7 @@ export function buildMatrix(options: TweakEffectOption[], observed: TweakEffectO
  */
 export function optionsMatchingNow(row: MatrixRow, labels: string[], agreement: EffectAgreement[]): string[] {
   if (!row.now) return [];
+  // The engine names a registry value's sub-field `name [field]`, so both forms belong to this row.
   const own = agreement.filter((a) => a.name === row.name || a.name.startsWith(`${row.name} [`));
   if (own.length === 1) return own[0].wanted_by;
   return labels.filter((_, i) => row.cells[i]?.text === row.now?.text);

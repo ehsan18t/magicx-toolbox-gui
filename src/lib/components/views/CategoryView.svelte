@@ -8,9 +8,8 @@
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
-  import { restoreTweaks } from "$lib/stores/tweaksActions.svelte";
-  import { initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
   import { untrack } from "svelte";
 
@@ -58,7 +57,7 @@
         variant: "danger",
       })
     )
-      await restoreTweaks(ids);
+      await tweakActionsStore.restoreAll(ids);
   }
 </script>
 
@@ -96,7 +95,7 @@
         <button
           type="button"
           class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={tweakOps.isBusy}
+          disabled={tweakActionsStore.isBusy}
           onclick={restoreAll}
         >
           <Icon icon="mdi:history" width="16" />
@@ -128,7 +127,7 @@
     </div>
   {/if}
 
-  {#if initStatus.isLoadingTweaks && categoryTweaks.length === 0}
+  {#if tweaksStore.isLoading && categoryTweaks.length === 0}
     <SkeletonCard />
   {:else if filteredTweaks.length === 0 && filteredApps.length === 0}
     {#if query}

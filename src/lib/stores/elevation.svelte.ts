@@ -1,8 +1,9 @@
 import * as systemApi from "$lib/api/system";
-import { getElevationState } from "$lib/api/tweaks";
+import * as tweaksApi from "$lib/api/tweaks";
 import type { Level } from "$lib/types";
-import { reportFailure } from "$lib/utils/error";
+import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
+import { toastStore } from "./toast.svelte";
 
 let level = $state<Level | null>(null);
 // A second call while the UAC prompt is up would raise a second prompt.
@@ -20,7 +21,7 @@ export const elevationStore = {
 
   async load() {
     try {
-      level = (await getElevationState()).level;
+      level = (await tweaksApi.getElevationState()).level;
     } catch (error) {
       logError("Failed to load elevation state", error);
     }
@@ -33,7 +34,10 @@ export const elevationStore = {
     try {
       await systemApi.restartAsAdmin();
     } catch (error) {
-      reportFailure("Failed to restart as admin", error);
+      logError("Failed to restart as admin", error);
+      // An exit refusal ran nothing, so it is a warning.
+      if (isAppExiting(error)) toastStore.warning(errorMessage(error));
+      else toastStore.error(errorMessage(error));
     } finally {
       isRestarting = false;
     }

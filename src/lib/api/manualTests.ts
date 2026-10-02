@@ -1,32 +1,8 @@
-// Manual Tests (test build only). Every command but `manual_tests_available` exists only in a
-// binary built with the `test-build` Cargo feature.
+// One function per command in src-tauri/src/commands/manual_tests.rs. All but `manual_tests_available`
+// exist only in a binary built with the `test-build` Cargo feature.
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-
-export type ManualTestStatus = "pass" | "fail" | "info";
-
-export interface ManualTest {
-  id: string;
-  title: string;
-  description: string;
-  changes: string;
-  changes_system: boolean;
-  /** Default duration in minutes, for a test that runs over time. */
-  minutes: number | null;
-}
-
-export interface ManualTestReport {
-  test_id: string;
-  status: ManualTestStatus;
-  summary: string;
-  details: string[];
-  report: string;
-}
-
-export interface ManualTestLogEvent {
-  test_id: string;
-  line: string;
-}
+import type { ManualTest, ManualTestReport, ManualTestLogEvent } from "$lib/types";
 
 export async function manualTestsAvailable(): Promise<boolean> {
   return await invoke<boolean>("manual_tests_available");

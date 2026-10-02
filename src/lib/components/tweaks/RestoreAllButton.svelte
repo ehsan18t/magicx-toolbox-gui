@@ -1,9 +1,8 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { Button } from "$lib/components/ui";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { restoreAllWithConfirm } from "$lib/utils/tweakActions";
 
   interface Props {
     /** The confirmation's title, e.g. "Restore favorites?". */
@@ -18,8 +17,8 @@
 
 <Button
   class={className}
-  disabled={tweakOps.isBusy || tweaks.length === 0}
-  onclick={() => restoreAllWithConfirm(title, tweaks)}
+  disabled={tweakActionsStore.isBusy || tweaks.length === 0}
+  onclick={() => tweakActionsStore.restoreAllWithConfirm(title, tweaks)}
 >
   <Icon icon="mdi:history" width="16" />
   Restore all

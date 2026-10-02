@@ -28,9 +28,6 @@ export const favoritesStore = {
     return idSet.has(tweakId);
   },
 
-  add,
-  remove,
-
   /** Whether the tweak is now a favorite. */
   toggle(tweakId: string): boolean {
     if (idSet.has(tweakId)) {

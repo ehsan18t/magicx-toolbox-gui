@@ -1,10 +1,9 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { SegmentedSwitch, Select } from "$lib/components/ui";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { restoreWithConfirm } from "$lib/utils/tweakActions";
   import { labelsOf } from "$lib/utils/tweakPresentation";
 
   interface Props {
@@ -16,9 +15,9 @@
 
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
-  const isLoading = $derived(tweakOps.isRunning(def.id));
-  const hasSnapshot = $derived(status.hasSnapshot);
-  const pendingChange = $derived(pendingChangesStore.get(def.id));
+  const isLoading = $derived(tweakActionsStore.isRunning(def.id));
+  const hasSnapshot = $derived(status.hasHistory);
+  const pendingChange = $derived(pendingChangesStore.change(def.id));
   const hasPending = $derived(pendingChange !== undefined);
   const activeOption = $derived(status.activeOption);
   const optionLabels = $derived(labelsOf(def));
@@ -71,9 +70,9 @@
     if (target === SYSTEM_DEFAULT) {
       if (hasPending) pendingChangesStore.remove(def.id);
       // Every other segment only stages; this one changes the system at once, so it always asks.
-      else if (hasSnapshot) void restoreWithConfirm(def, true);
+      else if (hasSnapshot) void tweakActionsStore.restoreWithConfirm(def, true);
     } else if (target === activeOption) pendingChangesStore.remove(def.id);
-    else pendingChangesStore.set(def.id, { tweakId: def.id, optionLabel: target });
+    else pendingChangesStore.stage(def.id, target);
   }
 </script>
 

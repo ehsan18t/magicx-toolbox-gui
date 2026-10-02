@@ -1,3 +1,5 @@
+import * as profileApi from "$lib/api/profile";
+import { PROFILE_EXT, STORAGE_KEYS } from "$lib/config/app";
 import type {
   ApplyOptions,
   ConfigurationProfile,
@@ -5,9 +7,7 @@ import type {
   ProfileApplyResult,
   ProfileMetadata,
   ProfileValidation,
-} from "$lib/api/profile";
-import * as profileApi from "$lib/api/profile";
-import { PROFILE_EXT, STORAGE_KEYS } from "$lib/config/app";
+} from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
@@ -24,6 +24,7 @@ let importError = $state<string | null>(null);
 let savedProfiles = $state.raw<ProfileMetadata[]>([]);
 let isLoadingSavedProfiles = $state(false);
 let savedProfilesError = $state<string | null>(null);
+// A re-entry guard only: nothing renders it.
 let isDeleting = false;
 let deleteError = $state<string | null>(null);
 // Drops a saved-profiles response superseded by a later directory change.
@@ -102,7 +103,7 @@ export const profileStore = {
   get deleteError() {
     return deleteError;
   },
-  get currentProfileDir() {
+  get profileDir() {
     return profileDir.value;
   },
   get isApplying() {

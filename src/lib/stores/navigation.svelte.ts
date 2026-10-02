@@ -2,17 +2,9 @@ import { manualTestsStore } from "./manualTests.svelte";
 import { searchStore } from "./search.svelte";
 import { categoriesStore } from "./tweaksData.svelte";
 
-export const PAGE_IDS = [
-  "overview",
-  "search",
-  "favorites",
-  "snapshots",
-  "profiles",
-  "settings",
-  "manual-tests",
-] as const;
+const PAGE_IDS = ["overview", "search", "favorites", "snapshots", "profiles", "settings", "manual-tests"] as const;
 
-export type PageId = (typeof PAGE_IDS)[number];
+type PageId = (typeof PAGE_IDS)[number];
 
 /** A fixed page, or a category id (any string the corpus defines). */
 export type TabId = PageId | (string & {});

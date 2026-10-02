@@ -1,4 +1,5 @@
-import { logFrontend } from "$lib/api/logs";
+import * as logsApi from "$lib/api/logs";
+import type { ForwardedLogLevel } from "$lib/types";
 
 const DEDUPE_MS = 5000;
 const RATE_WINDOW_MS = 1000;
@@ -22,7 +23,7 @@ function describe(value: unknown): string {
 }
 
 /** De-duplicated and rate-limited; never throws and never rejects. */
-function forwardToLog(level: "error" | "warn" | "info", message: string): void {
+function forwardToLog(level: ForwardedLogLevel, message: string): void {
   // A failure inside the forwarder must not be forwarded again.
   if (forwarding) return;
   forwarding = true;
@@ -39,7 +40,7 @@ function forwardToLog(level: "error" | "warn" | "info", message: string): void {
       for (const [key, at] of lastSent) if (at <= now - DEDUPE_MS) lastSent.delete(key);
     }
     lastSent.set(message, now);
-    logFrontend(level, message.slice(0, MAX_CHARS)).catch(() => {});
+    logsApi.logFrontend(level, message.slice(0, MAX_CHARS)).catch(() => {});
   } finally {
     forwarding = false;
   }

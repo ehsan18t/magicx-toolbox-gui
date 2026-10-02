@@ -21,8 +21,8 @@
   onMount(async () => {
     try {
       appVersion = await getVersion();
-    } catch (err) {
-      console.error("Failed to get app version:", err);
+    } catch (error) {
+      console.error("Failed to get app version:", error);
     }
   });
 

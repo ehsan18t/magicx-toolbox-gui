@@ -55,7 +55,7 @@
 {#snippet appearance()}
   {#snippet themeControl()}
     <SegmentedSwitch
-      value={themeStore.isDark ? 1 : 0}
+      value={themeStore.current === "dark" ? 1 : 0}
       options={themes}
       label="Theme"
       onchange={(v) => themeStore.set(v === 1 ? "dark" : "light")}

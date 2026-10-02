@@ -9,7 +9,8 @@ export interface Toast {
   id: string;
   type: ToastType;
   message: string;
-  duration?: number;
+  /** Milliseconds; 0 stays until dismissed. */
+  duration: number;
   /** The tweak or app the toast is about, shown as its title. */
   subject?: string;
   action?: ToastAction;
@@ -27,8 +28,7 @@ const MAX_TOASTS = 5;
 
 let toasts = $state.raw<Toast[]>([]);
 let idCounter = 0;
-// Not rendered, so not reactive.
-// eslint-disable-next-line svelte/prefer-svelte-reactivity
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- timers, never rendered
 const timeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 function clearTimer(id: string) {
@@ -42,7 +42,7 @@ function dismiss(id: string) {
 }
 
 function show(type: ToastType, message: string, options?: ToastOptions) {
-  const id = `toast-${++idCounter}-${Date.now()}`;
+  const id = `toast-${++idCounter}`;
   const duration = options?.duration ?? (type === "error" ? TOAST_DURATION.error : TOAST_DURATION.default);
 
   while (toasts.length >= MAX_TOASTS) {
@@ -62,7 +62,6 @@ export const toastStore = {
   get list() {
     return toasts;
   },
-  show,
   dismiss,
   success: (message: string, options?: ToastOptions) => show("success", message, options),
   error: (message: string, options?: ToastOptions) => show("error", message, options),

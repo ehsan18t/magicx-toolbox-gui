@@ -17,9 +17,11 @@ export type ColorSchemeId = (typeof COLOR_SCHEMES)[number]["id"];
 
 const DEFAULT_SCHEME: ColorSchemeId = "purple";
 
-const schemeState = new PersistentStore<ColorSchemeId>(STORAGE_KEYS.colorScheme, DEFAULT_SCHEME);
+const isScheme = (id: unknown): id is ColorSchemeId => COLOR_SCHEMES.some((s) => s.id === id);
 
-const isScheme = (id: string): id is ColorSchemeId => COLOR_SCHEMES.some((s) => s.id === id);
+const schemeState = new PersistentStore<ColorSchemeId>(STORAGE_KEYS.colorScheme, DEFAULT_SCHEME, (stored) =>
+  isScheme(stored) ? stored : undefined,
+);
 
 function paint(scheme: ColorSchemeId) {
   document.documentElement.setAttribute("data-scheme", scheme);
@@ -33,7 +35,6 @@ export const colorSchemeStore = {
 
   init() {
     if (!browser) return;
-    if (!isScheme(schemeState.value)) schemeState.value = DEFAULT_SCHEME;
     paint(schemeState.value);
   },
 

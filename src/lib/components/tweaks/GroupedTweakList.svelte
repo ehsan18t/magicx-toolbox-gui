@@ -27,8 +27,8 @@
           class="group flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-muted"
           onclick={() => navigationStore.navigateToTab(categoryId)}
         >
-          <Icon icon={categoriesStore.getIcon(categoryId)} width="16" class="shrink-0 text-foreground-muted" />
-          <span class="truncate">{categoriesStore.getName(categoryId)}</span>
+          <Icon icon={categoriesStore.icon(categoryId)} width="16" class="shrink-0 text-foreground-muted" />
+          <span class="truncate">{categoriesStore.name(categoryId)}</span>
           <span class="text-xs font-normal text-foreground-subtle tabular-nums">{list.length}</span>
           <Icon
             icon="mdi:chevron-right"

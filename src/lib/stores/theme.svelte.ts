@@ -5,7 +5,11 @@ import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
 export type Theme = "light" | "dark";
 
-const themeState = new PersistentStore<Theme>(STORAGE_KEYS.theme, "dark");
+const isTheme = (value: unknown): value is Theme => value === "light" || value === "dark";
+
+const themeState = new PersistentStore<Theme>(STORAGE_KEYS.theme, "dark", (stored) =>
+  isTheme(stored) ? stored : undefined,
+);
 let transitionTimer: ReturnType<typeof setTimeout> | undefined;
 
 function paint(theme: Theme) {
@@ -28,13 +32,9 @@ export const themeStore = {
     return themeState.value;
   },
 
-  get isDark() {
-    return themeState.value === "dark";
-  },
-
   init() {
     if (!browser) return;
-    if (!themeState.hadStoredValue) {
+    if (!themeState.restored) {
       themeState.value = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     paint(themeState.value);

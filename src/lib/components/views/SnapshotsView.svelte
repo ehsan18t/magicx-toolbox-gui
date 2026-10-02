@@ -6,12 +6,11 @@
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
-  import { tweakOps } from "$lib/stores/tweakOps.svelte";
-  import { restoreTweaks } from "$lib/stores/tweaksActions.svelte";
-  import { initStatus, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
+  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
 
-  const snapshotTweaks = $derived(tweaksStore.list.filter((t) => t.status.hasSnapshot));
+  const snapshotTweaks = $derived(tweaksStore.list.filter((t) => t.status.hasHistory));
   const filteredTweaks = $derived(snapshotTweaks.filter((t) => pageFilterStore.passes(t.definition.id)));
   const restorable = $derived(snapshotTweaks.filter(canRestore));
   const appliedCount = $derived(snapshotTweaks.filter((t) => t.status.state === "active").length);
@@ -24,7 +23,7 @@
       confirmText: "Restore",
       variant: "danger",
     });
-    if (ok) await restoreTweaks(ids);
+    if (ok) await tweakActionsStore.restoreAll(ids);
   }
 </script>
 
@@ -42,7 +41,7 @@
         <button
           type="button"
           class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={tweakOps.isBusy || restorable.length === 0}
+          disabled={tweakActionsStore.isBusy || restorable.length === 0}
           onclick={restoreAll}
         >
           <Icon icon="mdi:history" width="16" />
@@ -53,7 +52,7 @@
     {/if}
   {/snippet}
 
-  {#if initStatus.isLoadingTweaks && snapshotTweaks.length === 0}
+  {#if tweaksStore.isLoading && snapshotTweaks.length === 0}
     <SkeletonCard />
   {:else if snapshotTweaks.length === 0}
     <EmptyState

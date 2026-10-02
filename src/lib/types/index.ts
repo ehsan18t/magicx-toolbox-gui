@@ -1,4 +1,5 @@
-// Mirrors the serde shapes emitted by src-tauri/src/commands/*.rs unless noted.
+// Wire DTOs mirror the serde shapes from src-tauri/src/commands/*.rs and live here; api/ only wraps commands.
+// Only the tweak model is adapted to camelCase (frontend models, below); every other DTO stays as the wire sends it.
 
 export type RegistryHive = "HKCU" | "HKLM";
 
@@ -82,11 +83,8 @@ export type RiskLevel = Lowercase<BackendRiskLevel>;
 
 export type ItemKind = "tweak" | "app";
 
-/**
- * `sid_mismatch` positively identified another account; `sid_unknown` could not read a SID. Only the first
- * may say another account is involved. `elevation_path_unavailable` (TrustedInstaller disabled or absent)
- * is not fixed by restarting as administrator, so it never says to.
- */
+// sid_mismatch identified another account, sid_unknown read no SID: only the first may name another account.
+// elevation_path_unavailable (TrustedInstaller off) is not fixed by restarting elevated, so it never says to.
 export type Availability =
   | { state: "available" }
   | { state: "needs_elevation"; reason: string }
@@ -208,9 +206,33 @@ export type TweakFailureCode =
   | "TWEAK_VERIFY_MISMATCH"
   | "TWEAK_ENGINE_ERROR";
 
+/** `code` of every backend `Error` (src-tauri/src/error.rs). */
+export type BackendErrorCode =
+  | TweakFailureCode
+  | "APP_EXITING"
+  | "APP_FAILED"
+  | "APP_UNAVAILABLE"
+  | "APPLY_IN_FLIGHT"
+  | "BACKUP_FAILED"
+  | "COMMAND_EXECUTION_FAILED"
+  | "NOT_FOUND"
+  | "REGISTRY_ACCESS_DENIED"
+  | "REGISTRY_KEY_NOT_FOUND"
+  | "REGISTRY_OPERATION_FAILED"
+  | "REQUIRES_ADMIN"
+  | "SERVICE_CONTROL_FAILED"
+  | "TAURI_ERROR"
+  | "TWEAK_UNAVAILABLE"
+  | "UPDATE_ERROR"
+  | "VALIDATION_FAILED"
+  | "WINDOWS_API_ERROR";
+
 /** Kept per tweak, not per snapshot entry, so releasing an entry cannot drop it (ADR-0001/0002). */
+export type AttentionReason =
+  "apply_failed" | "restore_failed" | "crash_residue" | "outcome_unrecorded" | "record_unreadable";
+
 export interface Attention {
-  reason: "apply_failed" | "restore_failed" | "crash_residue" | "outcome_unrecorded" | "record_unreadable";
+  reason: AttentionReason;
   items: AttentionItem[];
 }
 
@@ -232,10 +254,7 @@ export interface TweakStatusEvent {
   status: TweakStatusView;
 }
 
-/**
- * `sid_mismatch` covers both a confirmed other account and an unresolvable one; only the per-tweak
- * `Availability` tells them apart. Never render it as "another account elevated the app".
- */
+/** `sid_mismatch` also covers an unreadable SID; only `Availability` tells them apart, so never render it as another account. */
 export interface ElevationState {
   level: Level;
   sid_mismatch: boolean;
@@ -277,6 +296,7 @@ export interface AppView {
   risk: BackendRiskLevel;
   /** `appx` removes for every account; `script` acts on the running account. */
   source: "appx" | "script";
+  /** As authored; `InstallRoute` is the route this machine can actually use. */
   install: { kind: "store" | "winget" | "store_page"; id: string } | null;
   remove_availability: Availability;
   install_availability: Availability;
@@ -291,6 +311,11 @@ export type AppPresence =
 
 /** "none" makes a removal permanent. */
 export type InstallRoute = "winget" | "store_page" | "none";
+
+/** What an app row offers; "store" opens the Store page rather than running here. */
+export type AppActionKind = "remove" | "install" | "store";
+
+export type AppOperationKind = Exclude<AppActionKind, "store">;
 
 export interface AppStatusView {
   app_id: string;
@@ -340,8 +365,7 @@ export interface TweakStatus {
   residues: string[];
   heldShared: HeldInfo[];
   observed: ObservedState | null;
-  /** The engine's has_history. */
-  hasSnapshot: boolean;
+  hasHistory: boolean;
   attention: Attention | null;
 }
 
@@ -444,12 +468,7 @@ export interface SystemInfo {
 }
 
 /** The static part of SystemInfo; uptime and elevation are re-read on every load. */
-export interface CachedSystemInfo {
-  hardware: HardwareInfo;
-  device: DeviceInfo;
-  computer_name: string;
-  cachedAt: string;
-}
+export type CachedSystemInfo = Pick<SystemInfo, "hardware" | "device" | "computer_name"> & { cachedAt: string };
 
 export interface PendingChange {
   tweakId: string;
@@ -480,4 +499,234 @@ export interface UpdateInfo {
   /** GitHub's `sha256:<hex>`, required to install. */
   assetDigest?: string;
   prerelease: boolean;
+}
+
+// Logs panel and diagnostics (commands/logging.rs).
+
+export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
+/** The levels the frontend forwards; the backend records anything else as info. */
+export type ForwardedLogLevel = Extract<LogLevel, "error" | "warn" | "info">;
+
+export type LogSource = "app" | "ui" | "helper";
+
+export interface LogLine {
+  seq: number;
+  ts: string;
+  level: LogLevel;
+  source: LogSource;
+  target: string;
+  msg: string;
+}
+
+export interface LogTail {
+  lines: LogLine[];
+  /** Lines after `since` that left the in-memory buffer before they could be read. */
+  skipped: number;
+}
+
+export interface LogSettings {
+  persist: boolean;
+  detailed: boolean;
+  folder: string;
+  writing: boolean;
+  error: string | null;
+  files: number;
+  bytes: number;
+}
+
+// Manual tests, test build only (commands/manual_tests.rs).
+
+export type ManualTestStatus = "pass" | "fail" | "info";
+
+export interface ManualTest {
+  id: string;
+  title: string;
+  description: string;
+  changes: string;
+  changes_system: boolean;
+  /** Default duration in minutes, for a test that runs over time. */
+  minutes: number | null;
+}
+
+export interface ManualTestReport {
+  test_id: string;
+  status: ManualTestStatus;
+  summary: string;
+  details: string[];
+  report: string;
+}
+
+export interface ManualTestLogEvent {
+  test_id: string;
+  line: string;
+}
+
+// App updates (commands/update.rs).
+
+export interface UpdateConfig {
+  releasesApiUrl: string;
+  /** regex_lite syntax. */
+  assetPattern: string;
+  includePrereleases: boolean;
+}
+
+// Profiles: the planned shapes of a backend that does not exist yet (docs/spec/profile-v1.md).
+
+export interface TweakSelection {
+  tweak_id: string;
+  selected_option_index: number;
+  selected_option_label: string;
+  option_content_hash?: string;
+  category_id?: string;
+}
+
+export interface ProfileMetadata {
+  name: string;
+  description?: string;
+  created_at: string;
+  modified_at: string;
+  app_version: string;
+  source_windows_version: number;
+  source_windows_build: number;
+  source_machine_id?: string;
+}
+
+export interface RegistryValueState {
+  hive: string;
+  key: string;
+  value_name: string;
+  value_type?: string;
+  value?: unknown;
+  exists: boolean;
+}
+
+export interface ServiceState {
+  name: string;
+  startup_type: string;
+  is_running: boolean;
+  exists: boolean;
+}
+
+export interface SchedulerState {
+  task_path: string;
+  task_name: string;
+  state: string;
+  exists: boolean;
+}
+
+export interface SnapshotMetadata {
+  created_at: string;
+  app_version: string;
+  windows_version: number;
+  windows_build: number;
+  machine_name: string;
+}
+
+export interface SystemStateSnapshot {
+  schema_version: number;
+  metadata: SnapshotMetadata;
+  registry_state: RegistryValueState[];
+  service_state: ServiceState[];
+  scheduler_state: SchedulerState[];
+}
+
+export interface ConfigurationProfile {
+  schema_version: number;
+  metadata: ProfileMetadata;
+  selections: TweakSelection[];
+  system_state?: SystemStateSnapshot;
+}
+
+export type ProfileWarningCode =
+  "WindowsVersionMismatch" | "TweakSchemaChanged" | "OptionResolvedByHash" | "TweakResolvedByAlias" | "AlreadyApplied";
+
+export type ProfileErrorCode =
+  | "SchemaVersionTooNew"
+  | "TweakNotFound"
+  | "WindowsVersionIncompatible"
+  | "InvalidOptionIndex"
+  | "ServiceNotFound"
+  | "TaskNotFound";
+
+export interface ValidationWarning {
+  tweak_id: string;
+  code: ProfileWarningCode;
+  message: string;
+}
+
+export interface ValidationError {
+  tweak_id: string;
+  code: ProfileErrorCode;
+  message: string;
+}
+
+export type ChangeType = "Registry" | "Service" | "ScheduledTask" | "Command";
+
+export interface ChangeDetail {
+  change_type: ChangeType;
+  description: string;
+  current_value?: string;
+  new_value?: string;
+}
+
+export interface TweakChangePreview {
+  tweak_id: string;
+  tweak_name: string;
+  category_id: string;
+  current_option_index?: number;
+  current_option_label?: string;
+  target_option_index: number;
+  target_option_label: string;
+  applicable: boolean;
+  skip_reason?: string;
+  risk_level: string;
+  already_applied: boolean;
+  has_skipped_commands: boolean;
+  changes: ChangeDetail[];
+}
+
+export interface ValidationStats {
+  total_tweaks: number;
+  applicable_tweaks: number;
+  skipped_tweaks: number;
+  already_applied: number;
+  tweaks_with_warnings: number;
+}
+
+export interface ProfileValidation {
+  is_valid: boolean;
+  is_partially_applicable: boolean;
+  warnings: ValidationWarning[];
+  errors: ValidationError[];
+  preview: TweakChangePreview[];
+  stats: ValidationStats;
+}
+
+export interface ApplyFailure {
+  tweak_id: string;
+  tweak_name: string;
+  error: string;
+  was_rolled_back: boolean;
+}
+
+export interface ProfileApplyResult {
+  success: boolean;
+  applied_count: number;
+  skipped_count: number;
+  failed_count: number;
+  failures: ApplyFailure[];
+  requires_reboot: boolean;
+  reboot_required_tweaks: string[];
+}
+
+export interface ExportOptions {
+  description?: string;
+  includeSystemState?: boolean;
+}
+
+export interface ApplyOptions {
+  skipTweakIds?: string[];
+  skipAlreadyApplied?: boolean;
+  createRestorePoint?: boolean;
 }
