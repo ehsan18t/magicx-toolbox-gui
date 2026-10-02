@@ -1,10 +1,18 @@
+import { delay } from "$lib/utils/motion";
+
+// Moving from one tooltip to the next within the delay skips it, as Windows does.
+let lastHiddenAt = -Infinity;
+
 export function tooltip(node: HTMLElement, text: string | undefined | null) {
   let tooltipComponent: HTMLElement | null = null;
+  let showTimer: ReturnType<typeof setTimeout> | undefined;
 
   function hide() {
+    clearTimeout(showTimer);
     if (tooltipComponent) {
       tooltipComponent.remove();
       tooltipComponent = null;
+      lastHiddenAt = performance.now();
     }
 
     window.removeEventListener("scroll", hide, true);
@@ -27,17 +35,21 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
 
   function mouseEnter() {
     if (!text) return;
-
-    // Ensure we never leave an orphaned tooltip behind
     hide();
+    const wait = delay("tooltip");
+    if (performance.now() - lastHiddenAt < wait) show();
+    else showTimer = setTimeout(show, wait);
+  }
 
-    // Create tooltip
+  function show() {
+    if (!text) return;
+
     tooltipComponent = document.createElement("div");
     tooltipComponent.textContent = text;
 
     // Style tooltip
     tooltipComponent.className =
-      "fixed z-popover px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-lg border border-border pointer-events-none fade-in-0 zoom-in-95 animate-in duration-150";
+      "fixed z-popover px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-lg border border-border pointer-events-none animate-pop-in";
 
     document.body.appendChild(tooltipComponent);
 

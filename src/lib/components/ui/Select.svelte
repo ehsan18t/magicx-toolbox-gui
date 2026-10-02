@@ -1,9 +1,8 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { cn } from "@/utils";
+  import { pop } from "$lib/utils/motion";
   import { tick } from "svelte";
-  import { cubicOut } from "svelte/easing";
-  import { scale } from "svelte/transition";
   import Spinner from "./Spinner.svelte";
 
   interface Option {
@@ -49,7 +48,9 @@
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let menuEl = $state<HTMLDivElement | null>(null);
   let highlightedIndex = $state(-1);
-  let menuPosition = $state({ top: 0, left: 0, minWidth: 0, maxWidth: 0 });
+  let menuPosition = $state({ top: 0, left: 0, minWidth: 0, maxWidth: 0, above: false });
+  const MENU_GAP = 4;
+  const VIEWPORT_GUTTER = 8;
 
   const selectedOption = $derived(options.find((o) => o.value === value));
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
@@ -62,19 +63,20 @@
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
 
-    const gutter = 8;
-    const maxWidth = window.innerWidth - gutter * 2;
-    menuPosition = { top: rect.bottom + 4, left: rect.left, minWidth: Math.min(rect.width, maxWidth), maxWidth };
+    const maxWidth = window.innerWidth - VIEWPORT_GUTTER * 2;
+    const below = rect.bottom + MENU_GAP;
+    menuPosition = { top: below, left: rect.left, minWidth: Math.min(rect.width, maxWidth), maxWidth, above: false };
 
     await tick();
     if (!menuEl) return;
-    const menuRect = menuEl.getBoundingClientRect();
-    let top = rect.bottom + 4;
-    if (top + menuRect.height > window.innerHeight - gutter && rect.top - menuRect.height - 4 > gutter) {
-      top = rect.top - menuRect.height - 4;
-    }
-    const left = Math.max(gutter, Math.min(rect.left, window.innerWidth - gutter - menuRect.width));
-    menuPosition = { ...menuPosition, top, left };
+    // Offset size, not the bounding rect: the opening pop scales the menu.
+    const height = menuEl.offsetHeight;
+    const width = menuEl.offsetWidth;
+    const above =
+      below + height > window.innerHeight - VIEWPORT_GUTTER && rect.top - height - MENU_GAP > VIEWPORT_GUTTER;
+    const top = above ? rect.top - height - MENU_GAP : below;
+    const left = Math.max(VIEWPORT_GUTTER, Math.min(rect.left, window.innerWidth - VIEWPORT_GUTTER - width));
+    menuPosition = { ...menuPosition, top, left, above };
   }
 
   async function open() {
@@ -250,8 +252,10 @@
     bind:this={menuEl}
     id={listboxId}
     role="listbox"
-    transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
-    class="fixed z-popover max-h-72 space-y-0.5 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-flyout"
+    transition:pop
+    class="fixed z-popover max-h-72 space-y-0.5 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-flyout {menuPosition.above
+      ? 'origin-bottom'
+      : 'origin-top'}"
     style="top: {menuPosition.top}px; left: {menuPosition.left}px; min-width: {menuPosition.minWidth}px; max-width: {menuPosition.maxWidth}px;"
   >
     {#each options as opt, i (opt.value)}

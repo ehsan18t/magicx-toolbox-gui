@@ -193,8 +193,8 @@
   });
 
   function handleAnimationEnd(e: AnimationEvent) {
-    // Only handle our exit animation
-    if (e.animationName === "modal-out" && isClosing) {
+    // Animations inside the dialog bubble up here too.
+    if (e.target === e.currentTarget && isClosing) {
       isVisible = false;
       isClosing = false;
     }
@@ -205,8 +205,8 @@
 
 {#if isVisible}
   <div
-    class="fixed inset-0 z-modal flex items-center justify-center p-4
-      backdrop-blur-xs {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/40'}"
+    class="fixed inset-0 z-modal flex items-center justify-center bg-black/40
+      p-4 backdrop-blur-xs {isClosing ? 'animate-fade-out' : 'animate-fade-in'}"
     role="presentation"
     onclick={handleBackdropClick}
   >
