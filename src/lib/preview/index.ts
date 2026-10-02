@@ -347,7 +347,7 @@ export function installPreview(admin: boolean): void {
         case "export_diagnostics":
           return "C:\\Users\\PreviewUser\\Desktop\\magicx-diagnostics-2026-10-02.zip";
         case "check_for_update":
-          return wait(500).then(() => ({ available: false, currentVersion: APP_VERSION }));
+          return wait(500).then(() => ({ available: false, currentVersion: APP_VERSION, prerelease: false }));
         case "manual_tests_available":
           return false;
         case "list_manual_tests":

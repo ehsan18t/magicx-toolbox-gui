@@ -5,6 +5,7 @@
  */
 
 import { APP_CONFIG } from "$lib/config/app";
+import { settingsStore } from "$lib/stores/settings.svelte";
 import { toastStore } from "$lib/stores/toast.svelte";
 import type { UpdateInfo } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
@@ -80,6 +81,7 @@ export const updateStore = {
         releasesApiUrl: APP_CONFIG.update.releasesApiUrl,
         // `source` drops the flags; regex_lite reads case-insensitivity inline.
         assetPattern: (flags.includes("i") ? "(?i)" : "") + source,
+        includePrereleases: settingsStore.includePrereleases,
       };
 
       const result = await invoke<UpdateInfo>("check_for_update", { config });

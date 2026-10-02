@@ -11,6 +11,7 @@ const defaultSettings: AppSettings = {
   checkUpdateInterval: 24, // hours
   lastUpdateCheck: null,
   showUnsupported: false,
+  includePrereleases: false,
 };
 
 // Persistent state
@@ -23,6 +24,7 @@ const checkUpdateInterval = $derived(settingsState.value.checkUpdateInterval);
 const lastUpdateCheck = $derived(settingsState.value.lastUpdateCheck);
 // Settings stored before this key existed read as undefined, which keeps them hidden.
 const showUnsupported = $derived(settingsState.value.showUnsupported === true);
+const includePrereleases = $derived(settingsState.value.includePrereleases === true);
 
 export const settingsStore = {
   get settings() {
@@ -51,6 +53,14 @@ export const settingsStore = {
 
   setShowUnsupported(show: boolean) {
     settingsState.value = { ...settingsState.value, showUnsupported: show };
+  },
+
+  get includePrereleases() {
+    return includePrereleases;
+  },
+
+  setIncludePrereleases(include: boolean) {
+    settingsState.value = { ...settingsState.value, includePrereleases: include };
   },
 
   update(newSettings: Partial<AppSettings>) {

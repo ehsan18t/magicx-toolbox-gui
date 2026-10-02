@@ -2,6 +2,7 @@
 
 use crate::Error;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::io::Read;
 use std::process::Command;
 
@@ -26,6 +27,10 @@ pub struct GitHubRelease {
     pub published_at: Option<String>,
     pub html_url: String,
     pub assets: Vec<GitHubAsset>,
+    #[serde(default)]
+    pub prerelease: bool,
+    #[serde(default)]
+    pub draft: bool,
 }
 
 /// Update information returned to the frontend
@@ -49,6 +54,8 @@ pub struct UpdateInfo {
     /// Asset size in bytes
     pub asset_size: Option<u64>,
     pub asset_digest: Option<String>,
+    /// The offered release is marked pre-release on GitHub.
+    pub prerelease: bool,
 }
 
 /// Update check configuration
@@ -59,25 +66,66 @@ pub struct UpdateConfig {
     pub releases_api_url: String,
     /// Regex pattern to match asset name
     pub asset_pattern: String,
+    /// Offer releases GitHub marks pre-release; off, only stable releases count.
+    #[serde(default)]
+    pub include_prereleases: bool,
 }
 
-/// Parse semantic version string to tuple for comparison
-fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
-    let version = version.trim_start_matches('v');
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() >= 3 {
-        let major = parts[0].parse().ok()?;
-        let minor = parts[1].parse().ok()?;
-        // Handle pre-release suffixes like "0-beta"
-        let patch_str = parts[2].split('-').next().unwrap_or(parts[2]);
-        let patch = patch_str.parse().ok()?;
-        Some((major, minor, patch))
-    } else if parts.len() == 2 {
-        let major = parts[0].parse().ok()?;
-        let minor = parts[1].parse().ok()?;
-        Some((major, minor, 0))
-    } else {
-        None
+/// `major.minor.patch[-pre]`; an empty `pre` is a release, which outranks every pre-release of it.
+#[derive(Debug, PartialEq, Eq)]
+struct Version {
+    core: (u64, u64, u64),
+    pre: Vec<String>,
+}
+
+fn parse_version(version: &str) -> Option<Version> {
+    let version = version.trim().trim_start_matches(['v', 'V']);
+    let version = version.split('+').next().unwrap_or(version);
+    let (core, pre) = version.split_once('-').unwrap_or((version, ""));
+    let num = |s: &str| s.parse::<u64>().ok();
+    let core = match core.split('.').collect::<Vec<_>>()[..] {
+        [major, minor, patch] => (num(major)?, num(minor)?, num(patch)?),
+        [major, minor] => (num(major)?, num(minor)?, 0),
+        _ => return None,
+    };
+    let pre = pre
+        .split('.')
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect();
+    Some(Version { core, pre })
+}
+
+/// SemVer precedence: numeric identifiers compare as numbers and sort before alphanumeric ones.
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.core
+            .cmp(&other.core)
+            .then_with(|| match (self.pre.is_empty(), other.pre.is_empty()) {
+                (true, true) => Ordering::Equal,
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                (false, false) => {
+                    for (a, b) in self.pre.iter().zip(&other.pre) {
+                        let order = match (a.parse::<u64>(), b.parse::<u64>()) {
+                            (Ok(x), Ok(y)) => x.cmp(&y),
+                            (Ok(_), Err(_)) => Ordering::Less,
+                            (Err(_), Ok(_)) => Ordering::Greater,
+                            (Err(_), Err(_)) => a.cmp(b),
+                        };
+                        if order != Ordering::Equal {
+                            return order;
+                        }
+                    }
+                    self.pre.len().cmp(&other.pre.len())
+                }
+            })
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -87,6 +135,19 @@ fn is_newer_version(current: &str, latest: &str) -> bool {
         (Some(curr), Some(lat)) => lat > curr,
         _ => false,
     }
+}
+
+/// The newest published release, skipping drafts, and pre-releases unless they are wanted.
+fn newest_release(
+    releases: Vec<GitHubRelease>,
+    include_prereleases: bool,
+) -> Option<GitHubRelease> {
+    releases
+        .into_iter()
+        .filter(|r| !r.draft && (include_prereleases || !r.prerelease))
+        .filter_map(|r| parse_version(&r.tag_name).map(|v| (v, r)))
+        .max_by(|(a, _), (b, _)| a.cmp(b))
+        .map(|(_, r)| r)
 }
 
 /// Check for available updates from GitHub Releases
@@ -107,8 +168,13 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
         .build()
         .into();
 
+    // `/releases/latest` never returns a pre-release, so read the list and choose here.
+    let list_url = format!(
+        "{}?per_page=30",
+        config.releases_api_url.trim_end_matches("/latest")
+    );
     let mut response = agent
-        .get(&config.releases_api_url)
+        .get(&list_url)
         .header("User-Agent", "MagicX-Toolbox-Updater")
         .call()
         .map_err(|e| {
@@ -143,6 +209,7 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
                 asset_name: None,
                 asset_size: None,
                 asset_digest: None,
+                prerelease: false,
             });
         }
         code => {
@@ -153,10 +220,25 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
         }
     }
 
-    let release: GitHubRelease = response.body_mut().read_json().map_err(|e| {
+    let releases: Vec<GitHubRelease> = response.body_mut().read_json().map_err(|e| {
         log::error!("Failed to parse release JSON: {}", e);
         Error::Update("Failed to parse update information".into())
     })?;
+    let Some(release) = newest_release(releases, config.include_prereleases) else {
+        log::info!("Update check complete: no published release to offer");
+        return Ok(UpdateInfo {
+            available: false,
+            current_version,
+            latest_version: None,
+            release_notes: None,
+            download_url: None,
+            published_at: None,
+            asset_name: None,
+            asset_size: None,
+            asset_digest: None,
+            prerelease: false,
+        });
+    };
 
     log::debug!("Latest release: {}", release.tag_name);
 
@@ -192,6 +274,7 @@ pub fn check_for_update(app: tauri::AppHandle, config: UpdateConfig) -> Result<U
         asset_name: matching_asset.map(|a| a.name.clone()),
         asset_size: matching_asset.map(|a| a.size),
         asset_digest: matching_asset.and_then(|a| a.digest.clone()),
+        prerelease: release.prerelease,
     })
 }
 
@@ -499,30 +582,36 @@ mod tests {
     // parse_version tests
     // ========================================================================
 
+    fn core(v: &str) -> Option<(u64, u64, u64)> {
+        parse_version(v).map(|v| v.core)
+    }
+
     #[test]
     fn test_parse_version_three_parts() {
-        assert_eq!(parse_version("3.0.0"), Some((3, 0, 0)));
-        assert_eq!(parse_version("1.2.3"), Some((1, 2, 3)));
-        assert_eq!(parse_version("10.20.30"), Some((10, 20, 30)));
+        assert_eq!(core("3.0.0"), Some((3, 0, 0)));
+        assert_eq!(core("1.2.3"), Some((1, 2, 3)));
+        assert_eq!(core("10.20.30"), Some((10, 20, 30)));
     }
 
     #[test]
     fn test_parse_version_with_v_prefix() {
-        assert_eq!(parse_version("v3.0.0"), Some((3, 0, 0)));
-        assert_eq!(parse_version("v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(core("v3.0.0"), Some((3, 0, 0)));
+        assert_eq!(core("v1.2.3"), Some((1, 2, 3)));
     }
 
     #[test]
     fn test_parse_version_two_parts() {
-        assert_eq!(parse_version("3.0"), Some((3, 0, 0)));
-        assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
+        assert_eq!(core("3.0"), Some((3, 0, 0)));
+        assert_eq!(core("1.2"), Some((1, 2, 0)));
     }
 
     #[test]
     fn test_parse_version_with_prerelease() {
-        // Should strip pre-release suffix from patch
-        assert_eq!(parse_version("3.0.0-beta"), Some((3, 0, 0)));
-        assert_eq!(parse_version("1.2.3-rc.1"), Some((1, 2, 3)));
+        assert_eq!(core("3.0.0-beta"), Some((3, 0, 0)));
+        assert_eq!(
+            parse_version("1.2.3-rc.1").map(|v| v.pre),
+            Some(vec!["rc".into(), "1".into()])
+        );
     }
 
     #[test]
@@ -530,6 +619,68 @@ mod tests {
         assert_eq!(parse_version("invalid"), None);
         assert_eq!(parse_version("abc.def.ghi"), None);
         assert_eq!(parse_version("1"), None);
+    }
+
+    #[test]
+    fn prerelease_ordering_follows_semver() {
+        let ordered = [
+            "3.0.0",
+            "3.1.0-alpha",
+            "3.1.0-alpha.1",
+            "3.1.0-alpha.beta",
+            "3.1.0-beta",
+            "3.1.0-beta.2",
+            "3.1.0-beta.11",
+            "3.1.0-rc.1",
+            "3.1.0",
+        ];
+        for pair in ordered.windows(2) {
+            assert!(
+                is_newer_version(pair[0], pair[1]),
+                "{} < {}",
+                pair[0],
+                pair[1]
+            );
+            assert!(
+                !is_newer_version(pair[1], pair[0]),
+                "{} > {}",
+                pair[1],
+                pair[0]
+            );
+        }
+    }
+
+    fn release(tag: &str, prerelease: bool, draft: bool) -> GitHubRelease {
+        GitHubRelease {
+            tag_name: tag.into(),
+            name: None,
+            body: None,
+            published_at: None,
+            html_url: String::new(),
+            assets: Vec::new(),
+            prerelease,
+            draft,
+        }
+    }
+
+    #[test]
+    fn newest_release_skips_prereleases_unless_wanted_and_always_skips_drafts() {
+        let list = || {
+            vec![
+                release("v3.0.0", false, false),
+                release("v3.1.0-beta.1", true, false),
+                release("v3.2.0", false, true),
+            ]
+        };
+        assert_eq!(
+            newest_release(list(), false).map(|r| r.tag_name),
+            Some("v3.0.0".into())
+        );
+        assert_eq!(
+            newest_release(list(), true).map(|r| r.tag_name),
+            Some("v3.1.0-beta.1".into())
+        );
+        assert!(newest_release(Vec::new(), true).is_none());
     }
 
     // ========================================================================

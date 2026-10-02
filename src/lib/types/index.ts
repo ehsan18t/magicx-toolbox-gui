@@ -789,6 +789,8 @@ export interface AppSettings {
   lastUpdateCheck: string | null;
   /** List tweaks and apps this Windows build cannot run, shown as unavailable. */
   showUnsupported: boolean;
+  /** Offer releases marked pre-release on GitHub. */
+  includePrereleases: boolean;
 }
 
 /** Tweak snapshot for export - captures current registry state */
@@ -825,6 +827,8 @@ export interface UpdateInfo {
   assetSize?: number;
   /** GitHub's `sha256:<hex>` for the asset, required to install it */
   assetDigest?: string;
+  /** The offered release is marked pre-release on GitHub. */
+  prerelease: boolean;
 }
 
 /** Update check result */
