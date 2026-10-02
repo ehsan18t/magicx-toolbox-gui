@@ -19,6 +19,7 @@
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
   import { buildMatrix, optionsMatchingNow, type ChangeKind, type MatrixCell } from "$lib/utils/changeMatrix";
   import { errorMessage, isAppExiting } from "$lib/utils/error";
+  import { expand } from "$lib/utils/motion";
   import { keepWithConfirm, restoreTweak } from "$lib/utils/tweakActions";
   import { availabilityTitle, isHighRisk, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
   import TweakControl from "./TweakControl.svelte";
@@ -556,10 +557,11 @@
               {:else if entries.length === 0}
                 <p class="m-0 text-[13px] text-foreground-muted italic">No snapshot entries.</p>
               {:else}
-                <div class="space-y-1.5">
+                <div class="animate-fade-in space-y-1.5">
                   {#each entries as entry (entry.seq)}
                     <div
                       class="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2"
+                      transition:expand
                     >
                       <div class="min-w-0 text-xs wrap-break-word">
                         <span class="font-semibold">#{entry.seq}</span>

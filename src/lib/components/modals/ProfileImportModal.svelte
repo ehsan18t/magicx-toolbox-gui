@@ -241,7 +241,7 @@
   <ModalBody>
     {#if step === "select"}
       <!-- Step 1: File Selection -->
-      <div class="space-y-4">
+      <div class="animate-fade-in space-y-4">
         <!-- Drop zone -->
         <button
           type="button"
@@ -283,7 +283,7 @@
       </div>
     {:else if step === "review" && profile && validation}
       <!-- Step 2: Review -->
-      <div class="space-y-4">
+      <div class="animate-fade-in space-y-4">
         <!-- Profile info -->
         <div class="rounded-lg border border-border bg-surface p-4">
           <div class="flex items-start gap-3">
@@ -419,7 +419,7 @@
       </div>
     {:else if step === "applying"}
       <!-- Step 3: Applying -->
-      <div class="flex flex-col items-center justify-center gap-6 py-8">
+      <div class="flex animate-fade-in flex-col items-center justify-center gap-6 py-8">
         <div class="flex h-20 w-20 items-center justify-center rounded-full bg-accent/15">
           <Icon icon="mdi:cog" width="40" class="animate-spin text-accent" />
         </div>
@@ -441,7 +441,7 @@
       </div>
     {:else if step === "complete" && applyResult}
       <!-- Step 4: Complete -->
-      <div class="flex flex-col items-center justify-center gap-6 py-8">
+      <div class="flex animate-fade-in flex-col items-center justify-center gap-6 py-8">
         <div
           class="flex h-20 w-20 items-center justify-center rounded-full {applyResult.success
             ? 'bg-success/15'

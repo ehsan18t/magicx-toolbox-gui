@@ -162,6 +162,25 @@
     animation: theme-fade var(--transition-duration-normal) var(--ease-out) forwards;
   }
 
+  /* <details> opens and closes with the expand timing; interpolate-size lets height reach `auto`. */
+  @supports (interpolate-size: allow-keywords) {
+    :root {
+      interpolate-size: allow-keywords;
+    }
+
+    details::details-content {
+      block-size: 0;
+      overflow-y: clip;
+      transition:
+        block-size var(--transition-duration-normal) var(--ease-out),
+        content-visibility var(--transition-duration-normal) allow-discrete;
+    }
+
+    details[open]::details-content {
+      block-size: auto;
+    }
+  }
+
   button,
   a,
   [role="button"],

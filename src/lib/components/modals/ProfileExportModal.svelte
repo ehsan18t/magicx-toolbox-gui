@@ -162,7 +162,7 @@
   <ModalBody>
     {#if step === 1}
       <!-- Step 1: Select Tweaks -->
-      <div class="space-y-4">
+      <div class="animate-fade-in space-y-4">
         <!-- Select all toggle -->
         <button
           type="button"
@@ -222,7 +222,7 @@
       </div>
     {:else}
       <!-- Step 2: Profile Details -->
-      <div class="space-y-5">
+      <div class="animate-fade-in space-y-5">
         <!-- Summary -->
         <div class="flex items-center gap-3 rounded-lg border border-border bg-success/10 p-3">
           <Icon icon="mdi:check-circle" width="20" class="text-success" />

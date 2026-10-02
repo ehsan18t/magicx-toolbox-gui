@@ -104,7 +104,7 @@
 
     <section class="mt-5" aria-live="polite">
       {#if updateInfo?.available}
-        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div class="flex animate-fade-in flex-wrap items-baseline gap-x-2 gap-y-1">
           <p class="m-0 text-lg font-semibold">Version {updateInfo.latestVersion} is available</p>
           {#if updateInfo.prerelease}
             <span class="rounded border border-warning/40 bg-warning/10 px-1.5 py-px text-xs font-medium text-warning">
@@ -143,7 +143,7 @@
           {/if}
         </div>
       {:else}
-        <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex animate-fade-in flex-wrap items-center justify-between gap-4">
           <div class="min-w-0">
             <p class="m-0 flex items-center gap-2 text-lg font-semibold">
               {#if updateInfo}
@@ -166,7 +166,9 @@
       {/if}
 
       {#if error}
-        <div class="mt-4 flex items-start gap-2 rounded-lg border border-error/30 bg-error/8 px-3 py-2.5 text-[13px]">
+        <div
+          class="mt-4 flex animate-fade-in items-start gap-2 rounded-lg border border-error/30 bg-error/8 px-3 py-2.5 text-[13px]"
+        >
           <Icon icon="mdi:alert-circle" width="16" class="mt-0.5 shrink-0 text-error" />
           <span class="min-w-0 flex-1">{error}</span>
           <button
