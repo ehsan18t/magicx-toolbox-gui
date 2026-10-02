@@ -1,137 +1,137 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
   import { ExternalLink, Icon } from "$lib/components/shared";
-  import { IconButton, Modal, ModalBody } from "$lib/components/ui";
+  import { Modal } from "$lib/components/ui";
   import { APP_CONFIG } from "$lib/config/app";
   import { closeModal, modalStore } from "$lib/stores/modal.svelte";
-  import { getVersion } from "@tauri-apps/api/app";
+  import { toastStore } from "$lib/stores/toast.svelte";
+  import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
 
-  let appVersion = $state("1.0.0");
+  let appVersion = $state("");
+  let tauriVersion = $state("");
+  let copied = $state(false);
 
   const isOpen = $derived(modalStore.current === "about");
+  const info = $derived(systemStore.info);
 
   onMount(async () => {
-    try {
-      appVersion = await getVersion();
-    } catch (error) {
-      console.error("Failed to get app version:", error);
-    }
+    const [app, tauri] = await Promise.allSettled([getVersion(), getTauriVersion()]);
+    if (app.status === "fulfilled") appVersion = app.value;
+    if (tauri.status === "fulfilled") tauriVersion = tauri.value;
   });
 
-  const developer = {
-    name: "Ehsan Khan",
-    email: "ehsan18t@gmail.com",
-    github: "https://github.com/ehsan18t",
-    website: "https://ehsankhan.me",
-  };
+  const repo = APP_CONFIG.githubRepo;
+  const links = [
+    { label: "Source code", href: repo },
+    { label: "Releases", href: `${repo}/releases` },
+    { label: "Report a problem", href: `${repo}/issues/new` },
+  ];
 
-  const links = {
-    repository: APP_CONFIG.githubRepo,
-    issues: `${APP_CONFIG.githubRepo}/issues`,
-    releases: `${APP_CONFIG.githubRepo}/releases`,
-    license: `${APP_CONFIG.githubRepo}/blob/main/LICENSE`,
-  };
+  const facts = $derived(
+    [
+      { label: "Windows", value: info ? `${info.windows.product_name} ${info.windows.display_version}` : null },
+      { label: "Build", value: info?.windows.build_number ?? null },
+      { label: "Running as", value: info ? (info.is_admin ? "Administrator" : "Standard user") : null },
+      { label: "Engine", value: tauriVersion ? `Tauri ${tauriVersion}` : null },
+    ].filter((f): f is { label: string; value: string } => f.value !== null),
+  );
+
+  async function copyDetails() {
+    const text = [`${APP_CONFIG.appName} ${appVersion}`, ...facts.map((f) => `${f.label}: ${f.value}`)].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+      setTimeout(() => (copied = false), 1500);
+    } catch {
+      toastStore.error("Could not copy to the clipboard");
+    }
+  }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="sm">
-  <!-- Custom Header with gradient -->
-  <div class="relative bg-linear-to-br from-accent/20 via-accent/10 to-transparent px-6 pt-6 pb-4">
-    <IconButton
-      icon="mdi:close"
-      size={18}
-      class="absolute top-3 right-3 bg-black/10 hover:bg-black/20"
-      onclick={closeModal}
+<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="about-title">
+  <div class="relative overflow-y-auto px-7 pt-7 pb-6">
+    <button
+      type="button"
+      class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
       aria-label="Close"
-    />
+      onclick={closeModal}
+    >
+      <Icon icon="mdi:close" width="18" />
+    </button>
 
-    <div class="flex flex-col items-center text-center">
-      <div class="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/20 shadow-lg">
-        <Icon icon="mdi:magic-staff" width="36" class="text-accent" />
-      </div>
-      <h2 class="m-0 text-xl font-bold text-foreground">
-        {APP_CONFIG.appName}
-      </h2>
-      <div class="mt-1 flex items-center gap-2">
-        <span class="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent">
-          v{appVersion}
-        </span>
+    <img src="/icons/Toolbox.ico" alt="" width="44" height="44" class="block" />
+    <h2 id="about-title" class="m-0 mt-4 font-display text-[34px] leading-none font-semibold tracking-[-0.02em]">
+      {APP_CONFIG.appName}
+    </h2>
+    <p class="m-0 mt-2 text-sm text-foreground-muted">
+      {appVersion ? `Version ${appVersion}` : "Version unknown"}
+    </p>
+
+    <p class="m-0 mt-6 max-w-[42ch] text-[15px] leading-relaxed">
+      Curated Windows tweaks you can apply, check against the live system, and undo from snapshots.
+    </p>
+
+    <div class="mt-6 border-t border-border pt-4">
+      <div class="flex items-start justify-between gap-4">
+        <dl class="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-[13px]">
+          {#each facts as fact (fact.label)}
+            <dt class="text-foreground-muted">{fact.label}</dt>
+            <dd class="m-0 select-text">{fact.value}</dd>
+          {/each}
+        </dl>
+        <button
+          type="button"
+          class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted"
+          onclick={copyDetails}
+          use:tooltip={"Copy the version and system details for a bug report"}
+        >
+          <Icon icon={copied ? "mdi:check" : "mdi:content-copy"} width="15" class={copied ? "text-success" : ""} />
+          {copied ? "Copied" : "Copy details"}
+        </button>
       </div>
     </div>
+
+    <nav class="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4 text-[13px]" aria-label="Project links">
+      {#each links as link (link.label)}
+        <ExternalLink
+          href={link.href}
+          class="font-medium text-foreground underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent"
+        >
+          {link.label}
+        </ExternalLink>
+      {/each}
+    </nav>
+
+    <footer class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs">
+      <p class="m-0 text-foreground-muted">
+        Made by Ehsan Khan. Free and open source under the
+        <ExternalLink
+          href="{repo}/blob/main/LICENSE"
+          class="text-foreground underline underline-offset-2 hover:text-accent"
+        >
+          MIT License</ExternalLink
+        >.
+      </p>
+      <div class="flex gap-0.5">
+        {#each [{ icon: "mdi:github", label: "Ehsan Khan on GitHub", href: "https://github.com/ehsan18t" }, { icon: "mdi:web", label: "ehsankhan.me", href: "https://ehsankhan.me" }] as profile (profile.href)}
+          <ExternalLink
+            href={profile.href}
+            class="flex h-7 w-7 items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
+            aria-label={profile.label}
+          >
+            <Icon icon={profile.icon} width="16" />
+          </ExternalLink>
+        {/each}
+        <a
+          href="mailto:ehsan18t@gmail.com"
+          class="flex h-7 w-7 items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
+          aria-label="Email Ehsan Khan"
+        >
+          <Icon icon="mdi:email" width="16" />
+        </a>
+      </div>
+    </footer>
   </div>
-
-  <ModalBody class="space-y-4">
-    <p class="m-0 text-center text-sm leading-relaxed text-foreground-muted">
-      A powerful Windows system optimization and tweaking application for privacy, performance, and customization.
-    </p>
-
-    <div class="grid grid-cols-2 gap-2">
-      <ExternalLink
-        href={links.repository}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-      >
-        <Icon icon="mdi:github" width="18" />
-        <span>Source</span>
-      </ExternalLink>
-      <ExternalLink
-        href={links.releases}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-      >
-        <Icon icon="mdi:download" width="18" />
-        <span>Releases</span>
-      </ExternalLink>
-      <ExternalLink
-        href={links.issues}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-      >
-        <Icon icon="mdi:bug" width="18" />
-        <span>Report Bug</span>
-      </ExternalLink>
-      <ExternalLink
-        href={links.license}
-        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
-      >
-        <Icon icon="mdi:license" width="18" />
-        <span>MIT License</span>
-      </ExternalLink>
-    </div>
-
-    <div class="rounded-lg border border-border bg-surface/50 p-4">
-      <div class="flex items-center gap-3">
-        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent/15">
-          <Icon icon="mdi:account" width="20" class="text-accent" />
-        </div>
-        <div class="flex-1">
-          <span class="block text-sm font-semibold text-foreground">{developer.name}</span>
-          <span class="text-xs text-foreground-muted">Developer</span>
-        </div>
-        <div class="flex gap-1">
-          <ExternalLink
-            href={developer.github}
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-accent/10 hover:text-accent"
-            title="GitHub"
-          >
-            <Icon icon="mdi:github" width="18" />
-          </ExternalLink>
-          <ExternalLink
-            href={developer.website}
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-accent/10 hover:text-accent"
-            title="Website"
-          >
-            <Icon icon="mdi:web" width="18" />
-          </ExternalLink>
-          <a
-            href="mailto:{developer.email}"
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-accent/10 hover:text-accent"
-            title="Email"
-          >
-            <Icon icon="mdi:email" width="18" />
-          </a>
-        </div>
-      </div>
-    </div>
-
-    <p class="m-0 text-center text-[11px] text-foreground-subtle">
-      © 2025 {developer.name}. Made with ❤️ for Windows users.
-    </p>
-  </ModalBody>
 </Modal>

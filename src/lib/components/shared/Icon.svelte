@@ -16,7 +16,6 @@
   import MdiArrowUpCircle from "~icons/mdi/arrow-up-circle";
   import MdiBackupRestore from "~icons/mdi/backup-restore";
   import MdiBroom from "~icons/mdi/broom";
-  import MdiBug from "~icons/mdi/bug";
   import MdiCalendar from "~icons/mdi/calendar";
   import MdiCalendarClock from "~icons/mdi/calendar-clock";
   import MdiCancel from "~icons/mdi/cancel";
@@ -75,13 +74,11 @@
   import MdiInformationOutline from "~icons/mdi/information-outline";
   import MdiKeyVariant from "~icons/mdi/key-variant";
   import MdiLaptop from "~icons/mdi/laptop";
-  import MdiLicense from "~icons/mdi/license";
   import MdiLightbulbOutline from "~icons/mdi/lightbulb-outline";
   import MdiLan from "~icons/mdi/lan";
   import MdiLightningBolt from "~icons/mdi/lightning-bolt";
   import MdiLinkVariant from "~icons/mdi/link-variant";
   import MdiLoading from "~icons/mdi/loading";
-  import MdiMagicStaff from "~icons/mdi/magic-staff";
   import MdiMagnify from "~icons/mdi/magnify";
   import MdiMemory from "~icons/mdi/memory";
   import MdiMonitor from "~icons/mdi/monitor";
@@ -155,7 +152,6 @@
     "mdi:alert-circle": MdiAlertCircle,
     "mdi:alert-circle-outline": MdiAlertCircleOutline,
     "mdi:refresh": MdiRefresh,
-    "mdi:magic-staff": MdiMagicStaff,
     "mdi:tune-vertical": MdiTuneVertical,
     "mdi:check-circle": MdiCheckCircle,
     "mdi:circle": MdiCircle,
@@ -233,7 +229,6 @@
     "mdi:shield-outline": MdiShieldOutline,
     "mdi:calendar": MdiCalendar,
     "mdi:calendar-clock": MdiCalendarClock,
-    "mdi:bug": MdiBug,
     "mdi:cog": MdiCog,
     "mdi:database-export": MdiDatabaseExport,
     "mdi:download": MdiDownload,
@@ -243,7 +238,6 @@
     "mdi:github": MdiGithub,
     "mdi:import": MdiImport,
     "mdi:information": MdiInformation,
-    "mdi:license": MdiLicense,
     "mdi:open-in-new": MdiOpenInNew,
     "mdi:web": MdiWeb,
     "mdi:account-circle": MdiAccountCircle,
