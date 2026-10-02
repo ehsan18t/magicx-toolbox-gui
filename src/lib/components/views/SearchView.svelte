@@ -36,8 +36,8 @@
   });
 
   const description = $derived(
-    searchStore.isActive && !searchStore.isSearching
-      ? `${mappedResults.length} result${mappedResults.length === 1 ? "" : "s"} for "${searchStore.query.trim()}"`
+    searchStore.isActive && searchStore.searchedQuery
+      ? `${mappedResults.length} result${mappedResults.length === 1 ? "" : "s"} for "${searchStore.searchedQuery}"`
       : "Find tweaks and apps by name, description or details.",
   );
 
@@ -88,18 +88,16 @@
       actionText="Focus search"
       onaction={() => navigationStore.focusSearch()}
     />
-  {:else if searchStore.isSearching}
-    <EmptyState icon="mdi:loading" title="" description="Searching…" />
   {:else if mappedResults.length === 0}
     <EmptyState
       icon="mdi:file-search-outline"
       title="No results"
-      description={`Nothing matches "${searchStore.query.trim()}"`}
+      description={`Nothing matches "${searchStore.searchedQuery}"`}
       actionText="Clear search"
       onaction={() => searchStore.setQuery("")}
     />
   {:else}
-    <div class="flex flex-col gap-2">
+    <div class="flex animate-fade-in flex-col gap-2">
       {#each mappedResults as result (result.searchResult.id)}
         {@const ranges = result.searchResult}
         {#if result.kind === "tweak"}

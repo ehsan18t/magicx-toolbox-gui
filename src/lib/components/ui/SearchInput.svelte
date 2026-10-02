@@ -51,7 +51,7 @@
 
 <label
   for={inputId}
-  class="flex h-8 min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 focus-within:border-accent {className}"
+  class="flex h-8 min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 transition-colors focus-within:border-accent {className}"
 >
   <Icon icon="mdi:magnify" width="16" class="shrink-0 text-foreground-muted" />
   <input
@@ -69,7 +69,7 @@
     <button
       type="button"
       onclick={handleClear}
-      class="flex shrink-0 cursor-pointer rounded p-0.5 text-foreground-muted hover:bg-muted hover:text-foreground"
+      class="flex shrink-0 animate-pop-in cursor-pointer rounded p-0.5 text-foreground-muted hover:bg-muted hover:text-foreground"
       aria-label="Clear search"
     >
       <Icon icon="mdi:close" width="14" />

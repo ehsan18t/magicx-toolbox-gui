@@ -73,14 +73,11 @@ let query = $state("");
 /** Cached search results */
 let results = $state<SearchResult[]>([]);
 
-/** Whether a search is in progress */
-let isSearching = $state(false);
-
 /** Error message if search failed */
 let error = $state<string | null>(null);
 
 /** Query that produced current cached results */
-let cachedQuery = "";
+let cachedQuery = $state("");
 
 /** Tweak ID to highlight after navigation */
 let highlightTweakId = $state<string | null>(null);
@@ -258,8 +255,9 @@ export const searchStore = {
     return results;
   },
 
-  get isSearching() {
-    return isSearching;
+  /** The query the current results answer; lags `query` while a search is debounced. */
+  get searchedQuery() {
+    return cachedQuery;
   },
 
   get error() {
@@ -311,7 +309,12 @@ export const searchStore = {
       return;
     }
 
-    // Debounce search execution to reduce CPU usage during rapid typing
+    // The first keystroke runs at once, so an empty "No results" never flashes; later ones debounce the re-render.
+    if (!cachedQuery) {
+      this.search();
+      return;
+    }
+
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       this.search();
@@ -331,7 +334,6 @@ export const searchStore = {
       return;
     }
 
-    isSearching = true;
     error = null;
 
     try {
@@ -340,7 +342,6 @@ export const searchStore = {
       if (strings.length === 0) {
         results = [];
         cachedQuery = needle;
-        isSearching = false;
         return;
       }
 
@@ -353,7 +354,6 @@ export const searchStore = {
       if (!idxs || idxs.length === 0) {
         results = [];
         cachedQuery = needle;
-        isSearching = false;
         return;
       }
 
@@ -401,8 +401,6 @@ export const searchStore = {
     } catch (e) {
       error = errorMessage(e);
       console.error("[search] Search failed:", e);
-    } finally {
-      isSearching = false;
     }
   },
 

@@ -23,7 +23,9 @@
   let { icon, title, description, actionText, onaction, showIconCircle = false, children }: Props = $props();
 </script>
 
-<div class="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center text-foreground-muted">
+<div
+  class="flex animate-fade-in flex-col items-center justify-center gap-2 px-6 py-14 text-center text-foreground-muted"
+>
   {#if showIconCircle}
     <div class="mb-1 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
       <Icon {icon} width="32" />
