@@ -25,9 +25,9 @@ use crate::tweaks::engine::{
     Phase, ProbeCache, RealActions, RealProbe,
 };
 use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol, Hive, Level,
-    Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType, Tweak,
-    TypedRegValue, Value,
+    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol,
+    Hive, Level, Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType,
+    Tweak, TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{
@@ -700,7 +700,7 @@ fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
 /// Builds one IPC [`TweakView`] from a compiled `Tweak` at the given elevation/SID context.
 /// Factored out of [`get_tweaks`] so a command-layer test can assert field carry-through
 /// (e.g. `requires_reboot`, spec §6) without needing a live Tauri runtime.
-fn tweak_view(
+pub(super) fn tweak_view(
     t: &Tweak,
     corpus: &Corpus,
     winver: &WinVer,
@@ -814,7 +814,7 @@ pub struct EffectAgreementView {
 /// The concrete thing an effect addresses, named the way the change list above already names it.
 /// Paths are dropped: the row directly above carries the full address, so the short name is what
 /// tells the two rows apart. Falls back to the effect id for the kinds that have no address.
-fn effect_display_name(effect: &EffectDef) -> String {
+pub(super) fn effect_display_name(effect: &EffectDef) -> String {
     let Effect::Setting(setting) = &effect.kind else {
         return effect.id.0.clone();
     };
@@ -1212,18 +1212,22 @@ pub struct CategoryView {
     pub description: String,
 }
 
+pub(super) fn category_view(c: &CategoryDef) -> CategoryView {
+    CategoryView {
+        id: c.id.clone(),
+        name: c.name.clone(),
+        icon: c.icon.clone(),
+        description: c.description.clone(),
+    }
+}
+
 #[tauri::command]
 pub async fn get_categories() -> Result<Vec<CategoryView>> {
     log::info!("get_categories: corpus category metadata for the UI");
     Ok(compiled_corpus()
         .categories
         .iter()
-        .map(|c| CategoryView {
-            id: c.id.clone(),
-            name: c.name.clone(),
-            icon: c.icon.clone(),
-            description: c.description.clone(),
-        })
+        .map(category_view)
         .collect())
 }
 

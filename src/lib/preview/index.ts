@@ -99,6 +99,8 @@ function observedFor(t: CorpusTweak): ObservedState {
     commands: [],
   };
   const effectFor = (name: string) => t.surface.find((e) => e.name === name)?.id ?? name;
+  // A task's surface name is the leaf of its path, as the backend's agreement names it.
+  const leaf = (path: string) => path.slice(path.lastIndexOf("\\") + 1);
   const agreement: EffectAgreement[] = [
     ...changes.registry_changes.map((c) => ({
       effect: effectFor(c.value_name),
@@ -115,8 +117,8 @@ function observedFor(t: CorpusTweak): ObservedState {
         .map((o) => o.label),
     })),
     ...changes.scheduler_changes.map((c) => ({
-      effect: effectFor(c.task_path),
-      name: c.task_path,
+      effect: effectFor(leaf(c.task_path)),
+      name: leaf(c.task_path),
       wanted_by: t.options
         .filter((o) => o.scheduler_changes.some((s) => s.task_path === c.task_path && s.action === "enable"))
         .map((o) => o.label),

@@ -100,7 +100,7 @@ fn app_wording(availability: Availability) -> Availability {
     }
 }
 
-fn app_view(app: &AppDef, level: Level, sid: SidCheck, winver: &WinVer) -> AppView {
+pub(super) fn app_view(app: &AppDef, level: Level, sid: SidCheck, winver: &WinVer) -> AppView {
     AppView {
         id: app.id.clone(),
         name: app.name.clone(),
