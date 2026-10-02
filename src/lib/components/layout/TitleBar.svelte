@@ -98,7 +98,9 @@
 
   async function windowCall(action: "minimize" | "toggleMaximize" | "close") {
     try {
-      await appWindow?.[action]();
+      // The capability grants maximize and unmaximize, not toggle-maximize.
+      if (action === "toggleMaximize") await (isMaximized ? appWindow?.unmaximize() : appWindow?.maximize());
+      else await appWindow?.[action]();
     } catch (error) {
       console.error(`Window ${action} failed:`, error);
     }
@@ -210,7 +212,7 @@
         ? 'text-accent'
         : 'text-foreground-muted'}"
     >
-      <Icon icon="fluent:document-text-20-regular" width="18" />
+      <Icon icon="fluent:bug-20-regular" width="18" />
     </button>
 
     <ThemeToggle />
