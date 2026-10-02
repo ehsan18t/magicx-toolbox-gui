@@ -5,13 +5,22 @@
   import { sidebarStore } from "$lib/stores/layout.svelte";
   import { openAboutModal, openSettingsModal, openUpdateModal } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, getCategoryStats, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, getCategoryStats, pendingChangesStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
 
   const isOpen = $derived(sidebarStore.isOpen);
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(getCategoryStats());
   const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
+  // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
+  const pendingByCategory = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    for (const change of pendingChangesStore.all.values()) {
+      const category = tweaksStore.getById(change.tweakId)?.definition.category_id;
+      if (category) counts[category] = (counts[category] ?? 0) + 1;
+    }
+    return counts;
+  });
 
   function go(tab: TabDefinition) {
     navigationStore.navigateToTab(tab.id);
@@ -51,8 +60,8 @@
   onclick: () => void,
   trailing: string,
   trailingTone: string,
-  dot: string | null,
   alert = "",
+  pending = "",
 )}
   <button
     type="button"
@@ -60,8 +69,10 @@
       ? 'bg-muted'
       : 'hover:bg-muted'}"
     aria-current={active ? "page" : undefined}
-    aria-label={[label, trailing, alert].filter(Boolean).join(", ")}
-    use:tooltip={isOpen ? (alert ? `${alert}` : null) : [label, trailing, alert].filter(Boolean).join(" · ")}
+    aria-label={[label, trailing, alert, pending].filter(Boolean).join(", ")}
+    use:tooltip={isOpen
+      ? [alert, pending].filter(Boolean).join(" · ") || null
+      : [label, trailing, alert, pending].filter(Boolean).join(" · ")}
     {onclick}
   >
     {#if active}
@@ -71,14 +82,17 @@
       <Icon {icon} width="18" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
       {#if alert && !isOpen}
         <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-error ring-2 ring-background"></span>
-      {:else if dot && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full ring-2 ring-background {dot}"></span>
+      {:else if pending && !isOpen}
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-warning ring-2 ring-background"></span>
       {/if}
     </span>
     {#if isOpen}
       <span class="min-w-0 flex-1 truncate">{label}</span>
       {#if alert}
         <Icon icon="mdi:alert-circle" width="14" class="shrink-0 text-error" />
+      {/if}
+      {#if pending}
+        <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>
       {/if}
       {#if trailing}
         <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
@@ -118,7 +132,6 @@
           () => go(tab),
           count > 0 ? String(count) : "",
           "text-foreground-subtle",
-          count > 0 ? (tab.id === "favorites" ? "bg-warning" : "bg-accent") : null,
         )}
       {/each}
 
@@ -137,8 +150,8 @@
           () => go(tab),
           s ? `${s.applied}/${s.total}` : "",
           complete ? "text-success" : "text-foreground-subtle",
-          s && s.applied > 0 ? "bg-accent" : null,
           s?.attention ? `${s.attention} need${s.attention === 1 ? "s" : ""} attention` : "",
+          pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
         )}
       {/each}
 
