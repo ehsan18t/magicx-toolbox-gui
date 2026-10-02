@@ -2,10 +2,11 @@
   import { tooltip } from "$lib/actions/tooltip";
   import type { LogLevel, LogSource } from "$lib/api/logs";
   import { Icon } from "$lib/components/shared";
-  import { Badge, IconButton, SearchInput } from "$lib/components/ui";
+  import { Badge, IconButton, SearchInput, Select } from "$lib/components/ui";
   import { formatLogLine, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
+  import { expand } from "$lib/utils/motion";
   import { getVersion } from "@tauri-apps/api/app";
   import { fromAction, type Attachment } from "svelte/attachments";
 
@@ -29,9 +30,6 @@
     debug: "text-foreground-muted",
     trace: "text-foreground-subtle",
   };
-  const selectClass =
-    "h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none";
-
   let minLevel = $state<LogLevel>("trace");
   let source = $state<"all" | LogSource>("all");
   let query = $state("");
@@ -66,16 +64,15 @@
   const panel: Attachment<HTMLElement> = (node) => {
     stuck = true;
     node.focus({ preventScroll: true });
-    const onKeydown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // The search box clears itself on the first Escape.
-      if (e.target instanceof HTMLInputElement && e.target.value !== "") return;
-      e.preventDefault();
-      close();
-    };
-    node.addEventListener("keydown", onKeydown);
-    return () => node.removeEventListener("keydown", onKeydown);
   };
+
+  // Delegated like the controls inside, so it runs after them: a native listener here would run first.
+  function handleKeydown(e: KeyboardEvent) {
+    // A control inside (an open dropdown, the search box clearing itself) already used this key.
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    e.preventDefault();
+    close();
+  }
 
   async function copyVisible() {
     const info = systemStore.info;
@@ -94,12 +91,16 @@
 </script>
 
 {#if logsStore.isPanelOpen}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <section
     id={LOGS_PANEL_ID}
     aria-label="Logs"
     tabindex="-1"
     {@attach panel}
-    class="flex h-72 max-h-[45%] min-h-40 shrink-0 animate-rise-in flex-col border-t border-border bg-background outline-none"
+    onkeydown={handleKeydown}
+    in:expand={{ speed: "slow" }}
+    out:expand
+    class="flex h-72 max-h-[45%] min-h-40 shrink-0 flex-col border-t border-border bg-background outline-none"
   >
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">
@@ -114,16 +115,20 @@
       </p>
 
       <div class="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
-        <select bind:value={minLevel} aria-label="Level" class={selectClass}>
-          {#each LEVEL_FILTERS as f (f.value)}
-            <option value={f.value}>{f.label}</option>
-          {/each}
-        </select>
-        <select bind:value={source} aria-label="Source" class={selectClass}>
-          {#each SOURCE_FILTERS as f (f.value)}
-            <option value={f.value}>{f.label}</option>
-          {/each}
-        </select>
+        <Select
+          value={minLevel}
+          options={LEVEL_FILTERS}
+          label="Level"
+          class="w-32"
+          onchange={(v) => (minLevel = v as LogLevel)}
+        />
+        <Select
+          value={source}
+          options={SOURCE_FILTERS}
+          label="Source"
+          class="w-32"
+          onchange={(v) => (source = v as "all" | LogSource)}
+        />
         <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" onchange={(v) => (query = v)} />
 
         <IconButton

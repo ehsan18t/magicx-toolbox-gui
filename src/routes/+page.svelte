@@ -1,6 +1,6 @@
 <script lang="ts">
   import { PendingBar, RebootBanner } from "$lib/components/feedback";
-  import { Sidebar } from "$lib/components/layout";
+  import { LogsPanel, Sidebar } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { SummaryPanel, TweakDetailsModal } from "$lib/components/tweaks";
   import {
@@ -61,22 +61,25 @@
 </script>
 
 {#if error}
-  <div class="flex h-full items-center justify-center p-6">
-    <div class="w-full max-w-sm rounded-xl border border-border bg-card p-6 text-center">
-      <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
-        <Icon icon="mdi:alert-circle" width="28" />
+  <div class="flex h-full flex-col">
+    <div class="flex min-h-0 flex-1 items-center justify-center p-6">
+      <div class="w-full max-w-sm rounded-xl border border-border bg-card p-6 text-center">
+        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
+          <Icon icon="mdi:alert-circle" width="28" />
+        </div>
+        <h2 class="mt-4 mb-1 text-base font-semibold">Failed to load</h2>
+        <p class="m-0 text-sm wrap-break-word text-foreground-muted">{error}</p>
+        <button
+          type="button"
+          class="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
+          onclick={() => window.location.reload()}
+        >
+          <Icon icon="mdi:refresh" width="18" />
+          Retry
+        </button>
       </div>
-      <h2 class="mt-4 mb-1 text-base font-semibold">Failed to load</h2>
-      <p class="m-0 text-sm wrap-break-word text-foreground-muted">{error}</p>
-      <button
-        type="button"
-        class="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
-        onclick={() => window.location.reload()}
-      >
-        <Icon icon="mdi:refresh" width="18" />
-        Retry
-      </button>
     </div>
+    <LogsPanel />
   </div>
 {:else}
   <div class="flex h-full min-h-0">
@@ -115,6 +118,7 @@
           {/key}
         {/if}
       </div>
+      <LogsPanel />
     </main>
   </div>
   <TweakDetailsModal />

@@ -116,7 +116,8 @@
       {@render children()}
     {/if}
   </div>
-  <LogsPanel />
+  <!-- Otherwise the page docks it inside its content column, clear of the sidebar. -->
+  {#if initError}<LogsPanel />{/if}
 </div>
 
 <AboutModal />
