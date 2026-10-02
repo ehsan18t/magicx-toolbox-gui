@@ -23,7 +23,7 @@ There are three levels, ordered `user < admin < ti`.
 
 ## Getting to Admin
 
-The app ships unelevated. The user elevates on purpose with the Elevate button in the title bar:
+The app ships unelevated. The user elevates on purpose with the Restart as admin button in the title bar (a category view whose tweaks need administrator rights offers the same button in its notice):
 
 ```mermaid
 sequenceDiagram
@@ -54,7 +54,7 @@ Before an apply or restore reaches the engine, the command layer checks, in orde
 2. **Needs elevation**. The app is running as `user` and some step would need more. The required level includes the level a shared claim's release would restore at.
 3. **Elevation path unavailable**. The tweak needs `ti` and the TrustedInstaller service is disabled or missing. This is known before the click: a one-time probe reads the service's startup type. A probe that cannot answer does not block.
 
-A refusal reaches the UI as a reason ("Needs elevation", "Different account", "Account unknown", "Not available on this PC") and the controls are disabled. The app never elevates to get past it (ADR-0005).
+A refusal reaches the UI as a label on the tweak's row ("Needs admin", "Different account", "Account unconfirmed", "Not available on this PC") with the reason in its tooltip, and the controls are disabled. The app never elevates to get past it (ADR-0005).
 
 ## The TrustedInstaller broker
 

@@ -272,7 +272,7 @@ accepts, whether it is required, its default, its legal values, and its gotchas.
 | `name`            | **yes**  | string                                    | –                 | display name                                                    |
 | `description`     | **yes**  | string                                    | –                 | one-line description shown in the UI                            |
 | `info`            | no       | string                                    | _(none)_          | optional longer explanation                                     |
-| `warning`         | no       | string                                    | _(none)_          | optional caution banner shown in the UI                         |
+| `warning`         | no       | string                                    | _(none)_          | caution callout on the tweak's row and in its details panel     |
 | `risk_level`      | **yes**  | `low` \| `medium` \| `high` \| `critical` | –                 | advisory only; never changes behavior                           |
 | `elevation`       | **yes**  | `user` \| `admin` \| `ti`                 | –                 | the privilege **floor** for the whole tweak (§13)               |
 | `reversible`      | **yes**  | `true` \| `false`                         | –                 | declared **and** build-checked against the computed value (§14) |
@@ -1643,7 +1643,7 @@ it).
 - **Reads run at whatever level the app currently has.** Most state is world-readable, so detection works
   unelevated; TI-protected resources legitimately deny reads and read as **Unknown** with a
   needs-elevation hint until the user elevates.
-- A tweak is **disabled** in the UI (status still shown) when the highest level any of its effects runs at exceeds the current level, and enabled only after the user chooses to elevate. That level is the floor raised by any per-effect `elevation:` (§13.2); an HKCU effect counts as `user` whatever it declares (§13.3). It is also the level the card's permission badge names, so the badge always reads as the level the apply will really use. Effects this build excludes through `windows:` (§6.6) are left out of it, exactly as the apply leaves them out. An `optional:` effect is counted even though a missing resource skips it at apply time: whether the resource exists is not known until the apply runs, and asking for one level too many is better than a card that promises to work and then refuses. The notice names the level the tweak needs. Elevation triggers an automatic full re-scan.
+- A tweak is **disabled** in the UI (status still shown) when the highest level any of its effects runs at exceeds the current level, and enabled only after the user chooses to elevate. That level is the floor raised by any per-effect `elevation:` (§13.2); an HKCU effect counts as `user` whatever it declares (§13.3). It is also the permission level the tweak's row names, so the row always shows the level the apply will really use. Effects this build excludes through `windows:` (§6.6) are left out of it, exactly as the apply leaves them out. An `optional:` effect is counted even though a missing resource skips it at apply time: whether the resource exists is not known until the apply runs, and asking for one level too many is better than a row that promises to work and then refuses. The notice names the level the tweak needs. Elevation triggers an automatic full re-scan.
 - A tweak with **any** effect that runs at `ti` is also disabled, as "Not available on this PC", when the TrustedInstaller service is disabled or missing. Restarting as administrator cannot fix that, so the notice says what to change instead. You only see it once the app is elevated enough to reach that level: below that the tweak reads as needing elevation first, since restarting as administrator is the step either way. The check runs once per launch and is deliberately best effort: a service that is disabled or absent is reported, but if the SCM or the service cannot be opened for any other reason, the app assumes the path is fine and lets the apply report the real error rather than blocking a tweak that might work.
 - `elevation: user` tweaks need no elevation at either level, and elevating does not take them away.
   If you ever see per-user tweaks disabled purely because the app is running as administrator, that is
@@ -1749,7 +1749,7 @@ still reverts**: only the genuinely one-way action cannot, and it surfaces as **
 
 Which marks an outcome settles depends on what it proved. A verified apply or restore settles every drive mark in the tweak's history, since it just verified the whole surface, but an action it never drove stays raised: no Settings check can tell whether a half-undone script finished. A rollback that verifies settles only its own drive mark, because it returns to the state captured just before it and proves nothing about an earlier crash. A failure recorded as Needs Attention settles only the marks that operation added itself, because the record now names each of its failed steps; a mark an earlier crash left, even on the same entry, stays until an operation settles it. If a crash happens while a record is already showing, the next launch adds the unfinished items to that record instead of hiding them behind it. A verified apply or restore that leaves anything unfinished (another entry's action it never drove) shows it at once instead of a clean status, and a restore never deletes an entry still holding such a step or a planned action it never accounted for, so the evidence outlives the restore. An unfinished step settles when an operation drives the same action and verifies it, in either direction, or probes it, since either leaves the action in a known state. An action that ran during a failed apply but could not be recorded as complete is reversed by the rollback like any other that ran, and still surfaces as Needs Attention, since the app cannot prove what it left behind.
 
-**It clears in exactly three ways**: a fully verified apply of that tweak, a fully verified restore, or the user deciding to keep the current state (discarding the snapshot). Nothing else clears it, not even discarding the last snapshot entry by hand, which is why a tweak that reports Needs Attention keeps reporting it across a rescan and a restart until one of those three happens. An interrupted operation also leaves its marks behind, and each of the three accounts for them too, so the startup scan cannot raise the same interruption again next launch and put the badge straight back: a verified apply or restore settles every drive mark and resolves the rows and in-flight actions whose action it actually drove and verified, leaving any it never touched to be raised, and keeping the current state settles every mark before it releases the record and discards the entries those marks live in.
+**It clears in exactly three ways**: a fully verified apply of that tweak, a fully verified restore, or the user deciding to keep the current state (discarding the snapshot). Nothing else clears it, not even discarding the last snapshot entry by hand, which is why a tweak that reports Needs Attention keeps reporting it across a rescan and a restart until one of those three happens. An interrupted operation also leaves its marks behind, and each of the three accounts for them too, so the startup scan cannot raise the same interruption again next launch and put Needs Attention straight back: a verified apply or restore settles every drive mark and resolves the rows and in-flight actions whose action it actually drove and verified, leaving any it never touched to be raised, and keeping the current state settles every mark before it releases the record and discards the entries those marks live in.
 
 ---
 
@@ -2562,10 +2562,10 @@ apps:
 | field | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Same rules as a tweak id (`a-z`, `0-9`, `_`). Tweaks and apps share one id space, compared case-insensitively: an app id may not reuse a tweak id. |
-| `name` | yes | The app's own name ("Clipchamp"), not an action ("Remove Clipchamp"): the card already has the buttons. |
+| `name` | yes | The app's own name ("Clipchamp"), not an action ("Remove Clipchamp"): the row already has the buttons. |
 | `description` | yes | One line saying what the app is. |
 | `info` | no | Markdown, same conventions as a tweak's `info`. Say what Remove does and how to get the app back; never mention reverting, System Default or Needs Attention. |
-| `warning` | no | Shown on the card, as for a tweak. |
+| `warning` | no | Shown as a callout on the app's row, as for a tweak. |
 | `risk_level` | yes | `low`, `medium`, `high` or `critical`, as for a tweak. |
 | `windows` | no | The same scope grammar as a tweak (§10). `revision` is rejected. |
 | `appx` | one of `appx` / `script` | AppX package names, as `Get-AppxPackage -Name` and a provisioned package's `DisplayName` spell them. |
@@ -2589,7 +2589,7 @@ List each package of an app that ships as several; list two apps that have their
 **`script: { probe, remove, timeout? }`**: for an app that is not an AppX package (OneDrive is the shipped example). Both bodies are PowerShell and run through the action runner (§12.6).
 
 - **`probe` exit codes: `0` = installed, `2` = absent, anything else = Unknown.** A timeout or a crash is Unknown too. This is **not** the action probe contract (§12.2), where every non-zero code means absent.
-- **Why `1` is not absent:** an uncaught PowerShell error exits `1`. If `1` meant absent, a probe that throws would report an installed app as gone and hide its card. So wrap the checks in `try`, `exit 1` from the `catch`, and reach `exit 2` only after every check has run cleanly. **Never `exit 2` inside a `catch`.**
+- **Why `1` is not absent:** an uncaught PowerShell error exits `1`. If `1` meant absent, a probe that throws would report an installed app as gone and hide its row. So wrap the checks in `try`, `exit 1` from the `catch`, and reach `exit 2` only after every check has run cleanly. **Never `exit 2` inside a `catch`.**
 - The probe always gets the fixed 30 second probe timeout; keep it quick.
 - `remove` exits `0` on success. Any other exit is a failure, reported with its code. `timeout` bounds `remove` only: 1 to 1800 seconds, default 600. Set it for uninstallers that take minutes.
 - Neither body may be empty.
@@ -2609,23 +2609,23 @@ Check with `winget show --id <id> --exact` (and `--source msstore` for Store ids
 
 Each scan works out the **route** this machine actually offers:
 
-| Authored | winget available | Store available | Route | Card |
+| Authored | winget available | Store available | Route | Row |
 | --- | --- | --- | --- | --- |
 | `store` | yes | any | `winget` | Install |
 | `store` | no | yes | `store_page` | Get in Store |
 | `winget` | yes | any | `winget` | Install |
 | `store_page` | any | yes | `store_page` | Get in Store |
-| otherwise | | | `none` | Permanent badge |
+| otherwise | | | `none` | Permanent label |
 
-winget is available when `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` exists for the running account; the Store when the `ms-windows-store` protocol is registered. An install runs as the current account with a 1800 second timeout and must read Installed afterwards. Get in Store is not verified by the app: the card checks presence again when the window regains focus.
+winget is available when `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` exists for the running account; the Store when the `ms-windows-store` protocol is registered. An install runs as the current account with a 1800 second timeout and must read Installed afterwards. Get in Store is not verified by the app: the row checks presence again when the window regains focus.
 
 ### 20.5 Fixed elevation, no snapshot, visibility
 
 - **Elevation is fixed**, not authored: Remove needs `admin`; Install runs at `user`; presence degrades unelevated (§20.3). Install is blocked when the app was elevated with another account's credentials, because the app would land in the wrong account; so is a script removal, whose paths may be per-user, and a script item's presence then reads Unknown without running its probe.
-- **No snapshot** (ADR-0009). Nothing is captured before a removal and there is no Restore. The only way back is the install route, and an app with none is permanent: the card carries a Permanent badge and Remove's confirmation says it cannot be undone. Say so in `info` too.
+- **No snapshot** (ADR-0009). Nothing is captured before a removal and there is no Restore. The only way back is the install route, and an app with none is permanent: its row is marked Permanent and Remove's confirmation says it cannot be undone. Say so in `info` too.
 - **Visibility:** an app is shown unless it is Absent **and** has no route on this machine. Unknown is always shown, with its buttons disabled. An app whose `windows:` scope excludes the running build is left out of release builds.
-- **Feature updates can re-add apps.** Windows feature updates (and, for some apps, Windows Update) re-provision removed packages. The card then reads Installed again. Say this in `info` for every app it applies to.
-- Favorites, profiles, Apply Changes, the applied counter and Restore Snapshots ignore apps.
+- **Feature updates can re-add apps.** Windows feature updates (and, for some apps, Windows Update) re-provision removed packages. The row then reads Installed again. Say this in `info` for every app it applies to.
+- Favorites, profiles, the pending bar, the applied counter and Restore all ignore apps.
 
 ### 20.6 Build errors
 

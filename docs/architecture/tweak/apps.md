@@ -2,7 +2,7 @@
 
 An app item is a curated, removable app authored in the same YAML files as tweaks, under `apps:`. It is not a tweak: it has no options, no snapshot, no journal, no System Default, no Restore and no Needs Attention (ADR-0009). It has a presence (Installed, Absent or Unknown) and two actions, Remove and Install, that run immediately and are verified by reading presence again.
 
-Code: `src-tauri/src/apps/{mod,run}.rs` (presence, removal, install, install route), `src-tauri/src/commands/apps.rs` (commands and gates), `src-tauri/src/services/appx_index.rs` (the package enumeration), `src-tauri/src/tweaks/{schema,model,validate}.rs` (the `AppDef` model and its build rules), `src/lib/stores/apps.svelte.ts`, `src/lib/components/tweaks/AppCard.svelte`.
+Code: `src-tauri/src/apps/{mod,run}.rs` (presence, removal, install, install route), `src-tauri/src/commands/apps.rs` (commands and gates), `src-tauri/src/services/appx_index.rs` (the package enumeration), `src-tauri/src/tweaks/{schema,model,validate}.rs` (the `AppDef` model and its build rules), `src/lib/stores/apps.svelte.ts`, `src/lib/components/tweaks/AppRow.svelte`.
 
 [Back to the index](README.md)
 
@@ -61,7 +61,7 @@ Each scan also reports how the app could come back on this machine. winget count
 
 - **Remove, AppX.** The backend generates the script from the validated names: for each package a bundle pass (`-PackageTypeFilter Bundle`), a plain pass, then `Remove-AppxProvisionedPackage -Online` for the matching provisioned copy, all with `$ErrorActionPreference = 'Stop'` inside one `try`. The `catch` exits with the exception's HRESULT (0 remapped to 1), so the error names the cause, for example 0x80073CFA. Timeout 600 seconds.
 - **Remove, script.** Runs the authored `remove` with its `timeout` (default 600 seconds).
-- **Install.** Only the `winget` route runs in the backend: `winget install --id <id> -e --source msstore|winget --accept-source-agreements --accept-package-agreements`, timeout 1800 seconds. The `store_page` route is opened by the frontend (`ms-windows-store://pdp/?ProductId=<id>`) and is not verified; the card checks presence again when the window regains focus.
+- **Install.** Only the `winget` route runs in the backend: `winget install --id <id> -e --source msstore|winget --accept-source-agreements --accept-package-agreements`, timeout 1800 seconds. The `store_page` route is opened by the frontend (`ms-windows-store://pdp/?ProductId=<id>`) and is not verified; the row checks presence again when the window regains focus.
 - **Did it work.** A non-zero exit is an error. Otherwise the index is invalidated and presence read again: after Remove it must be Absent, after Install it must be Installed, or the command fails with the reason. An AppX package still registered after a successful removal usually belongs to another signed-in account, and the error says so.
 
 ## Gates
@@ -79,15 +79,15 @@ Each scan also reports how the app could come back on this machine. winget count
 
 ## Frontend
 
-- Apps render in their own "Apps" section of the category view, after the tweak grid and outside its empty state. The category text filter and the global search cover them.
-- **Remove** asks for confirmation (a danger dialog that says whether removal covers every account, for AppX items, or only yours, for script items) and then runs at once; it is never staged into pending changes. **Install** runs at once without confirmation. Each card has its own spinner and the UI never blocks.
+- Apps render as rows in their own "Apps" section of the category view, after the tweak rows and outside their empty state, and only while the All filter chip is selected. A row shows the app's `warning:` as a callout. The category text filter and the global search cover them.
+- **Remove** asks for confirmation (a danger dialog that says whether removal covers every account, for AppX items, or only yours, for script items) and then runs at once; it is never staged into pending changes. **Install** runs at once without confirmation. Each row has its own spinner and the UI never blocks.
 - **Visibility**: an app is shown unless it is Absent with no install route. Unknown is always shown, with its buttons disabled, because hiding it would fail open.
-- **Permanent**: an app whose route is `none` carries a Permanent badge, and its Remove confirmation says the change cannot be undone.
-- Favorites, the Overview and sidebar counts, the applied counter, Apply Changes, Restore Snapshots and profiles ignore apps. Favorites drop ids they do not know when they load.
+- **Permanent**: an app whose route is `none` is marked Permanent on its row, and its Remove confirmation says the change cannot be undone.
+- Favorites, the Overview and navigation pane counts, the applied counter, the pending bar, Restore all and profiles ignore apps. Favorites drop ids they do not know when they load.
 
 ## Traps
 
 - **A feature update can re-provision a removed app.** The app then reads Installed again; nothing in the app prevents it.
 - **Status stamps order results.** A scan that started before a removal stamps lower than the removal's own result, so it cannot overwrite it.
 - **A provisioned-only app reads Installed**, because Windows installs it into every new account.
-- **Opening the Store page proves nothing.** Only the focus re-check moves the card.
+- **Opening the Store page proves nothing.** Only the focus re-check moves the row.

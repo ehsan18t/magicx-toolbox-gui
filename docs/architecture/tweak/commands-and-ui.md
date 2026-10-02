@@ -1,6 +1,6 @@
 # Commands and UI
 
-This is everything between the engine and the user. A thin Tauri command layer builds the engine's dependencies, gates and serializes every operation that changes the machine, and translates engine results into view types. On the frontend, Svelte rune stores hold the catalog and per-tweak statuses, which the background scan fills in, and the tweak cards render each status.
+This is everything between the engine and the user. A thin Tauri command layer builds the engine's dependencies, gates and serializes every operation that changes the machine, and translates engine results into view types. On the frontend, Svelte rune stores hold the catalog and per-tweak statuses, which the background scan fills in, and the tweak rows render each status.
 
 Code: `src-tauri/src/commands/tweaks.rs` (commands and view types), `src-tauri/src/commands/elevation.rs`, `src-tauri/src/setup.rs`, `src-tauri/src/lib.rs` (registration and window events), `src/lib/stores/tweaks*.svelte.ts`, `src/lib/components/tweaks/`.
 
@@ -48,7 +48,7 @@ sequenceDiagram
   L->>L: open snapshot store, claims store, probe cache, read MachineGuid
   L->>L: startup crash scan (records Needs Attention)
   FE->>CMD: get_tweaks and get_categories
-  Note over FE: every card shows "Checking"
+  Note over FE: every row shows "Checking"
   FE->>FE: listen for tweak-status
   FE->>CMD: get_statuses_stream
   CMD->>SCAN: spawn full scan
@@ -69,15 +69,15 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant Card as Tweak card
+  participant Row as Tweak row
   participant Store as Stores
   participant CMD as apply_tweak
-  U->>Card: pick an option
+  U->>Row: pick an option
   alt high or critical risk
-    Card->>U: confirm first
+    Row->>U: confirm first
   end
-  Card->>Store: stage the change (card shows Pending)
-  U->>Store: press Apply in the view
+  Row->>Store: stage the change (row shows it as pending)
+  U->>Store: press Apply in the pending bar
   loop each staged tweak, one at a time
     Store->>CMD: apply_tweak(id, option)
     alt success
@@ -90,13 +90,13 @@ sequenceDiagram
   end
 ```
 
-- Picking an option never applies it; the view's Apply button runs the staged changes one after another.
+- Picking an option never applies it. One floating pending bar serves every view: it lists the staged changes (each can be unstaged), its Apply button runs them one after another without a further confirmation, and Discard clears them all.
 - An `APP_EXITING` error stops the loop and reports how many changes were skipped, without a re-read, because nothing was touched.
 
 ### Restore, discard, keep
 
-- **Restore** (the card's Restore button, shown when a history exists, disabled unless the tweak is available) calls `restore_tweak` and adopts the returned status. On failure the card re-reads the status; when a `restore_failed` record was written, the button becomes "Retry" and the tweak needs attention.
-- **Details view** lists the snapshot entries (valid and invalid, with reasons) and lets the user discard one, after confirmation.
+- **Restore** (the row's Restore action, shown when a history exists and the tweak does not need attention; while it does, the row's Needs Attention callout and the details panel carry Restore instead; disabled unless the tweak is available) calls `restore_tweak` and adopts the returned status. On failure the store re-reads the status; when a `restore_failed` record was written, the button becomes "Retry restore" and the tweak needs attention.
+- **Details panel** (opened from a row's Details action or by clicking the row; docked beside the list when the content area is at least 1040px wide, otherwise an overlay dialog) lists the snapshot entries (valid and invalid, with reasons) and lets the user discard one, after confirmation.
 - **Keep current state** appears only while the tweak needs attention, and asks for confirmation.
 
 ## Frontend state
@@ -106,26 +106,28 @@ sequenceDiagram
 | `tweaksData` | The catalog with each tweak's status, category metadata, system info, elevation state, status stamps and buffered early statuses. |
 | `tweaksLoading` | Which tweaks are being changed right now, and per-tweak errors. |
 | `tweaksPending` | Staged option changes, and tweaks waiting for a reboot. |
-| `tweaksActions` | Search and filter state, and the apply, restore and keep-current-state actions (single and batch). The details view calls discard directly. |
+| `tweaksActions` | Search and filter state, and the apply, restore and keep-current-state actions (single and batch). The details panel calls discard directly. |
 | `apps` | App item views, presence statuses, per-app busy and error state, and the Remove, Install and Get in Store actions. Outside pending changes, snapshots and profiles. |
 
 ### What the user sees
 
 | State | Shown as |
 | --- | --- |
-| Checking | Spinner badge, nothing selected, until the first status arrives. |
-| Active | The option is selected; accent border. |
-| System Default | A "System Default" position appears on the switch (between the two options, or before a single option) or at the top of the dropdown, **only while it is the detected state**. The details view shows the observed values. |
-| Unknown | Warning badge, "needs elevation" when that is the cause, nothing selected. |
-| Unavailable | Badge, control disabled with the reason. |
+| Checking | "Checking" with a spinner on the row's meta line, nothing selected, until the first status arrives. |
+| Active | The option is selected and named on the meta line; accent stripe on the row's left edge. |
+| System Default | A "System Default" position appears on the switch (between the two options, or before a single option) or at the top of the dropdown, **only while it is the detected state**. The details panel shows the observed values. |
+| Unknown | "Unknown" in warning colour on the meta line ("Unknown, needs admin" when elevation is the cause), the unreadable effects in its tooltip, nothing selected. |
+| Unavailable | "Unavailable" on the meta line; control disabled, the reason in its tooltip. |
 | Unavailable option | The option is labelled "(unavailable)" and cannot be chosen. |
-| Blocked by availability | Badge with the reason; control and Restore disabled. |
-| Needs Attention | Red badge; Restore becomes "Retry" after a failed restore; Keep current state appears. |
-| Shared | Badge listing the shared settings held and by whom. |
-| Residue | Badge. |
+| Blocked by availability | A meta-line label (Needs admin, Different account, Account unconfirmed, Not available on this PC) with the reason in its tooltip; control and Restore disabled. A category view with tweaks that need admin shows one notice with Restart as admin. |
+| Needs Attention | Red stripe and a Needs Attention callout on the row with Restore ("Retry restore" after a failed restore) and Keep current state. |
+| Shared | "Shared" on the meta line; its tooltip lists the shared settings held and by whom. |
+| Residue | "Residue" on the meta line; its tooltip lists the residual settings. |
 | Applying | Control disabled with a loading state. |
 
 **Switch or dropdown.** One or two authored options render as a segmented switch; three or more render as a dropdown.
+
+**Rows and panes.** Every view lists tweaks as full-width rows, one per line. A row shows the title, the description, the authored `warning:` as a callout, then a meta line (state, pending target, risk, permission level, Restart, availability, Residue, Shared) ending in Restore, the favourite star and Details. The control sits right of the text and moves under it when the row is narrower than 520px or the switch labels are long. At 1400px of content width and above, category, Favorites and Snapshots views show an At a glance pane while no tweak is selected: applied progress by state, and lists of tweaks that need attention, are ready to apply, have an unknown state or wait for a restart, each opening the details panel.
 
 **System Default is never a target.** Choosing it from the control only unstages a pending change. The only way back to an earlier state is the Restore button (ADR-0003).
 

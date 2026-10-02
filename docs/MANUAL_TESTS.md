@@ -6,7 +6,7 @@ The test build is the normal app plus a Manual Tests view: one card per test, ea
 
 - `pnpm run build:test` builds the app with the `test-build` Cargo feature (`tauri build --features test-build`). The output lands in the usual `src-tauri/target/release` folder, so do not ship a binary from a folder you last built with `build:test`.
 - `pnpm run dev:test` runs the development server with the same feature.
-- Copy the built executable to the target PC, run it as administrator, and open Manual Tests in the sidebar.
+- Copy the built executable to the target PC, run it as administrator, and open Manual Tests in the navigation pane.
 
 A normal build (`pnpm run build`) compiles none of the manual test code. The frontend is the same in both builds: it calls `manual_tests_available`, which is the only command present in every build, and shows the view only when it returns `true`.
 
@@ -33,7 +33,7 @@ The four tests that apply the tweak refuse to start, before changing anything, i
 
 `feedback_hub_round_trip` carries its own Feedback Hub definition (package `Microsoft.WindowsFeedbackHub`, Store id `9NBLGGH4R32N`), so it runs on any build whatever the corpus holds. It refuses to start, before removing anything, if the app is not elevated, if winget is not available for this account, or if Feedback Hub is not installed. The reinstall lands only in the account running the app; other accounts on the PC, and new accounts, do not get it back. If the reinstall fails, install Feedback Hub from the Microsoft Store by hand.
 
-If a restore fails or leaves an effect different from the baseline, the result says so in capitals and lists every differing effect. The engine keeps the snapshot in that case: open the "Block the Windows Update pipeline" card, which shows Needs Attention, and restore from there. Never delete that snapshot by hand. Closing the app during a watch leaves the tweak applied with its snapshot in place, so the card can restore it the same way.
+If a restore fails or leaves an effect different from the baseline, the result says so in capitals and lists every differing effect. The engine keeps the snapshot in that case: open the "Block the Windows Update pipeline" tweak, whose row shows Needs Attention, and restore from there. Never delete that snapshot by hand. Closing the app during a watch leaves the tweak applied with its snapshot in place, so its row can restore it the same way.
 
 ## Add a test
 

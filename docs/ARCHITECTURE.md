@@ -41,13 +41,13 @@ src/lib/stores/
 ├── index.ts              # Barrel export for all stores
 ├── theme.svelte.ts       # Theme management (light/dark/system)
 ├── modal.svelte.ts       # Modal state (about/settings/update)
-├── layout.svelte.ts      # Sidebar expanded/pinned state (sidebarStore)
+├── layout.svelte.ts      # Navigation pane collapsed/overlay state (sidebarStore)
 ├── colorScheme.svelte.ts # Accent color scheme selection
 ├── settings.svelte.ts    # App settings with localStorage persistence
 ├── logs.svelte.ts        # Logs panel lines, polling, logging settings and export
 ├── navigation.svelte.ts  # Tab navigation state
 ├── update.svelte.ts      # Update checking state
-├── tweakDetailsModal.svelte.ts # Tweak details modal state
+├── tweakDetailsModal.svelte.ts # Which tweak the details panel shows
 └── tweaks.svelte.ts      # Barrel export for tweaks system
     ├── tweaksData.svelte.ts    # System info, categories, tweaks list
     ├── tweaksLoading.svelte.ts # Loading/error state with SvelteSet/SvelteMap
@@ -58,13 +58,13 @@ src/lib/stores/
 **Available stores:**
 - `themeStore` - Theme management (light/dark/system)
 - `modalStore` - Modal state (about/settings/update)
-- `sidebarStore` - Sidebar expanded/pinned state
+- `sidebarStore` - Navigation pane collapsed/overlay state
 - `colorSchemeStore` - Accent color scheme selection
 - `settingsStore` - App settings with localStorage persistence
 - `logsStore` - Logs panel lines, polling, logging settings and export
 - `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
 - `updateStore` - Update info and checking state
-- `tweakDetailsModalStore` - Tweak details modal state
+- `tweakDetailsModalStore` - Which tweak the details panel shows (also the selected row)
 
 **Tweaks system stores:**
 - `systemStore` - Windows system info (.info getter)
@@ -93,32 +93,24 @@ Reusable UI primitives in `$lib/components/ui/`:
 
 ```
 src/lib/components/
-├── ui/                   # Reusable primitives
-│   ├── Button.svelte
-│   ├── Badge.svelte
-│   ├── Card.svelte
-│   ├── Modal.svelte, ModalHeader.svelte, ModalBody.svelte, ModalFooter.svelte
-│   ├── IconButton.svelte
-│   ├── Switch.svelte
-│   ├── Select.svelte
-│   ├── SearchInput.svelte
-│   ├── Spinner.svelte
-│   └── index.ts          # Barrel exports
-├── tweak-details/        # Tweak detail sub-components
-│   ├── RegistryChangeItem.svelte
-│   ├── ServiceChangeItem.svelte
-│   ├── SchedulerChangeItem.svelte
-│   ├── CommandList.svelte
-│   └── index.ts
-├── AboutModal.svelte     # App info modal
-├── SettingsModal.svelte  # App settings
-├── UpdateModal.svelte    # Update management
-├── TweakCard.svelte      # Individual tweak display
-├── TweakDetailsModal.svelte # Tweak details view
-├── Sidebar.svelte        # Navigation sidebar
-├── TitleBar.svelte       # Custom window titlebar
-└── ...
+├── ui/                   # Reusable primitives (Button, Badge, Card, Modal*, Select, SegmentedSwitch, FilterChips, ...)
+├── tweaks/
+│   ├── TweakRow.svelte          # One tweak as a full-width row: text, callouts, meta line, control
+│   ├── TweakDetailsPanel.svelte # Details side panel: docked at 1040px+ content width, else an overlay dialog
+│   ├── SummaryPanel.svelte      # "At a glance" pane at 1400px+ content width while no tweak is selected
+│   ├── GroupedTweakList.svelte  # Rows grouped by category (Favorites, Snapshots)
+│   ├── AppRow.svelte            # One app item as a row
+│   └── details/                 # Registry, service, scheduler, hosts, firewall change items; CommandList
+├── views/                # Overview, Category, Search, Favorites, Snapshots, Manual Tests
+├── layout/               # TitleBar (search box, Ctrl+K), Sidebar (navigation pane), LogsPanel, PageLayout
+├── feedback/             # PendingBar (staged changes, Apply, Discard), RebootBanner, ApplyingOverlay, toasts
+├── modals/               # About, Settings (theme and accent under Appearance), Update, profile dialogs, ConfirmDialog
+├── profile/              # ProfileManager
+├── settings/             # ThemeToggle, ColorSchemePicker
+└── shared/               # Icon, ExternalLink, MarkdownText
 ```
+
+The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. The Logs panel docks under the content and is rendered by `src/routes/+layout.svelte`, so it is reachable from error screens too. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.
 
 ---
 
@@ -133,8 +125,8 @@ src/lib/components/
 #### 1. Effect-centric tweaks
 - **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts,
   firewall, shared, action) once; each **option** is a flat value-map over that surface.
-- **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 option
-  renders as a toggle, ≥2 as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also
+- **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 or 2
+  options render as a segmented switch, 3 or more as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also
   computed, never authored.
 - **Windows scoping**: `windows: { products, build, revision }` at tweak/effect/option-value level.
 
