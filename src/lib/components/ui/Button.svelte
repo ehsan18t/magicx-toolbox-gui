@@ -7,7 +7,6 @@
   interface Props extends HTMLButtonAttributes {
     variant?: ButtonVariants["variant"];
     size?: ButtonVariants["size"];
-    fullWidth?: boolean;
     loading?: boolean;
     class?: string;
     children: Snippet;
@@ -16,7 +15,6 @@
   let {
     variant = "secondary",
     size = "md",
-    fullWidth = false,
     loading = false,
     disabled,
     class: className = "",
@@ -26,7 +24,7 @@
 </script>
 
 <button
-  class={button({ variant, size, fullWidth, class: className })}
+  class={button({ variant, size, class: className })}
   disabled={disabled || loading}
   aria-busy={loading}
   {...rest}

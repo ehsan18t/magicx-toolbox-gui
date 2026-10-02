@@ -1,18 +1,10 @@
-/**
- * Shared tailwind-variants definitions for the UI component system
- * @see https://www.tailwind-variants.org/
- */
-import { tv, type VariantProps } from "tailwind-variants";
+import { twMergeConfig } from "$lib/utils/cn";
+import { createTV, type VariantProps } from "tailwind-variants";
 
-// =============================================================================
-// BUTTON VARIANTS
-// =============================================================================
+const tv = createTV({ twMergeConfig });
 
-/**
- * Base button variant - used by Button
- */
 export const button = tv({
-  base: "inline-flex items-center justify-center gap-2 rounded-md border-0 font-medium cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
+  base: "inline-flex items-center justify-center gap-1.5 rounded-md border-0 font-medium cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
   variants: {
     variant: {
       primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
@@ -20,17 +12,11 @@ export const button = tv({
       ghost: "bg-transparent text-foreground-muted hover:bg-muted hover:text-foreground",
       danger: "bg-error text-background hover:bg-error/90",
       warning: "bg-warning text-warning-foreground hover:bg-warning/90",
-      success: "bg-success text-background hover:bg-success/90",
       outline: "border border-border bg-transparent text-foreground hover:bg-muted hover:border-border-hover",
     },
     size: {
-      xs: "h-6 px-2 text-xs",
       sm: "h-7 px-2.5 text-xs",
-      md: "h-8 px-3 text-[13px]",
-      lg: "h-9 px-4 text-sm",
-    },
-    fullWidth: {
-      true: "w-full",
+      md: "h-8 px-3 text-ui",
     },
   },
   defaultVariants: {
@@ -41,45 +27,13 @@ export const button = tv({
 
 export type ButtonVariants = VariantProps<typeof button>;
 
-// =============================================================================
-// BADGE VARIANTS
-// =============================================================================
-
-/**
- * Counter badge - small round badge for counts
- */
-export const counterBadge = tv({
-  base: "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold",
-  variants: {
-    variant: {
-      warning: "bg-warning text-warning-foreground",
-      error: "bg-error/20 text-error",
-      accent: "bg-accent/20 text-accent",
-      success: "bg-success/20 text-success",
-      muted: "bg-muted text-foreground-muted",
-    },
-    size: {
-      sm: "h-4 min-w-4 text-[10px]",
-      md: "h-5 min-w-5 text-xs",
-    },
-  },
-  defaultVariants: {
-    variant: "warning",
-    size: "md",
-  },
-});
-
-export type CounterBadgeVariants = VariantProps<typeof counterBadge>;
-
-/**
- * Panel variant - for sections like toolbar panels
- */
-export const panel = tv({
-  base: "flex items-center gap-4 rounded-xl border border-border bg-card",
+export const iconButton = tv({
+  base: "flex shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground-muted",
   variants: {
     size: {
-      sm: "px-3 py-2",
-      md: "px-5 py-3",
+      xs: "h-6 w-6 rounded",
+      sm: "h-7 w-7 rounded-md",
+      md: "h-8 w-8 rounded-md",
     },
   },
   defaultVariants: {
@@ -87,67 +41,33 @@ export const panel = tv({
   },
 });
 
-export type PanelVariants = VariantProps<typeof panel>;
+export type IconButtonVariants = VariantProps<typeof iconButton>;
 
-// =============================================================================
-// LAYOUT VARIANTS
-// =============================================================================
-
-/**
- * Flex row variant - common flex patterns
- */
-export const flexRow = tv({
-  base: "flex items-center",
+export const callout = tv({
+  base: "border",
   variants: {
-    gap: {
-      none: "",
-      xs: "gap-1",
-      sm: "gap-2",
-      md: "gap-3",
-      lg: "gap-4",
+    tone: {
+      warning: "border-warning/30 bg-warning/8",
+      error: "border-error/30 bg-error/8",
+      info: "border-info/30 bg-info/8",
+      success: "border-success/30 bg-success/8",
+      neutral: "border-border bg-muted",
     },
-    justify: {
-      start: "justify-start",
-      center: "justify-center",
-      end: "justify-end",
-      between: "justify-between",
-    },
-    wrap: {
-      true: "flex-wrap",
-    },
-  },
-  defaultVariants: {
-    gap: "sm",
-    justify: "start",
-    wrap: false,
-  },
-});
-
-export type FlexRowVariants = VariantProps<typeof flexRow>;
-
-// =============================================================================
-// TEXT VARIANTS
-// =============================================================================
-
-/**
- * Section heading variant
- */
-export const sectionHeading = tv({
-  base: "m-0 flex items-center gap-2 font-semibold text-foreground",
-  variants: {
     size: {
-      xs: "mb-2 text-xs tracking-wide text-foreground-muted",
-      sm: "mb-3 text-sm",
-      md: "mb-4 text-base",
-    },
-    uppercase: {
-      true: "uppercase",
+      compact: "rounded-md px-2.5 py-2 text-xs",
+      banner: "rounded-lg px-3 py-2.5",
+      panel: "rounded-lg p-3",
     },
   },
+  compoundVariants: [{ tone: "warning", size: "compact", class: "border-0" }],
   defaultVariants: {
-    size: "md",
-    uppercase: false,
+    tone: "warning",
+    size: "banner",
   },
 });
 
-export type SectionHeadingVariants = VariantProps<typeof sectionHeading>;
+export type CalloutVariants = VariantProps<typeof callout>;
+
+export const textLink = tv({
+  base: "font-medium underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent",
+});
