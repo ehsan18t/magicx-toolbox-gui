@@ -100,7 +100,7 @@
   const confirmMessage = $derived(
     (permanent
       ? `${app.name} is removed ${scope} and has no install source on this PC, so this cannot be undone.`
-      : `${app.name} is removed ${scope}. You can reinstall it later from this card.`) +
+      : `${app.name} is removed ${scope}. You can reinstall it later from here.`) +
       (app.warning ? ` ${app.warning}` : ""),
   );
 
@@ -118,15 +118,21 @@
 
   const isHighlighting = $derived(searchStore.highlightTweakId === app.id);
 
+  let rowEl = $state<HTMLElement | null>(null);
   $effect(() => {
     if (!isHighlighting) return;
+    const frame = requestAnimationFrame(() => rowEl?.scrollIntoView({ block: "center" }));
     const timer = setTimeout(() => searchStore.clearHighlight(), 1500);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
   });
 </script>
 
 <article
   id="app-{app.id}"
+  bind:this={rowEl}
   class="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {isHighlighting
     ? 'tweak-highlight'
     : ''}"

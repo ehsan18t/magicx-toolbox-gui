@@ -60,6 +60,7 @@
         detail: [
           gpu.memory_gb > 0 ? `${gpu.memory_gb} GB` : "Shared memory",
           gpu.driver_version && `Driver ${gpu.driver_version}`,
+          hw.monitors.length === 0 && gpu.refresh_rate > 0 && `${gpu.refresh_rate} Hz`,
         ]
           .filter(Boolean)
           .join(" · "),
@@ -208,22 +209,27 @@
     <h2 id="overview-tweaks" class="m-0 text-base font-semibold">Your tweaks</h2>
     <div class="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
       {#each tiles as t (t.label)}
-        <svelte:element
-          this={t.onclick ? "button" : "div"}
-          type={t.onclick ? "button" : undefined}
-          role={t.onclick ? undefined : "group"}
-          class="flex min-w-0 flex-col items-start rounded-lg border border-border bg-card p-3 text-left {t.onclick
-            ? 'cursor-pointer hover:border-border-hover'
-            : ''}"
-          onclick={t.onclick ?? undefined}
-        >
+        {#snippet tileBody()}
           <span class="flex items-center gap-1.5 text-xs text-foreground-muted">
             <Icon icon={t.icon} width="14" class="shrink-0 {t.tone}" />
             {t.label}
           </span>
           <span class="mt-1 font-display text-2xl leading-none font-semibold tabular-nums">{t.value}</span>
           <span class="mt-1 text-xs text-foreground-muted">{t.sub}</span>
-        </svelte:element>
+        {/snippet}
+        {#if t.onclick}
+          <button
+            type="button"
+            class="flex min-w-0 cursor-pointer flex-col items-start rounded-lg border border-border bg-card p-3 text-left hover:border-border-hover"
+            onclick={t.onclick}
+          >
+            {@render tileBody()}
+          </button>
+        {:else}
+          <div class="flex min-w-0 flex-col items-start rounded-lg border border-border bg-card p-3">
+            {@render tileBody()}
+          </div>
+        {/if}
       {/each}
     </div>
   </section>

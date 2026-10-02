@@ -19,7 +19,7 @@
       <div class="min-w-0">
         <h1 class="m-0 font-display text-[26px] leading-tight font-semibold wrap-break-word">{title}</h1>
         {#if description}
-          <p class="m-0 mt-1 text-[13px] text-foreground-muted">{description}</p>
+          <p class="m-0 mt-1 text-[13px] wrap-break-word text-foreground-muted">{description}</p>
         {/if}
       </div>
       {#if aside}{@render aside()}{/if}

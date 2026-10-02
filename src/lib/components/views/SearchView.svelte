@@ -15,11 +15,10 @@
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
   import type { AppView, TweakWithStatus } from "$lib/types";
-  import { onDestroy, untrack } from "svelte";
+  import { untrack } from "svelte";
 
   let showRevertAllDialog = $state(false);
   let isBatchProcessing = $state(false);
-  let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Results are cached per query, so re-run once the app model lands after a search.
   $effect(() => {
@@ -55,14 +54,9 @@
       : "Find tweaks and apps by name, description or details.",
   );
 
-  function goToItem({ kind, id, categoryId }: SearchResult) {
+  function goToItem({ id, categoryId }: SearchResult) {
     searchStore.setHighlight(id);
     navigationStore.navigateToCategory(categoryId);
-    if (scrollTimer) clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => {
-      document.getElementById(`${kind}-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      scrollTimer = null;
-    }, 120);
   }
 
   async function handleRestoreSnapshots() {
@@ -71,10 +65,6 @@
     await batchRevertTweaks(tweaksWithSnapshots.map((t) => t.definition.id));
     isBatchProcessing = false;
   }
-
-  onDestroy(() => {
-    if (scrollTimer) clearTimeout(scrollTimer);
-  });
 </script>
 
 {#snippet highlighted(text: string, ranges: number[])}
@@ -89,6 +79,9 @@
   <button
     type="button"
     class="inline-flex cursor-pointer items-center gap-1 rounded px-1 text-accent hover:underline"
+    aria-label="Go to {result.kind === 'tweak'
+      ? result.tweak.definition.name
+      : result.app.name} in {result.categoryName}"
     onclick={() => goToItem(result.searchResult)}
   >
     Go to

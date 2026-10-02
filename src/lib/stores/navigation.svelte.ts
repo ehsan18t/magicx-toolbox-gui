@@ -235,7 +235,7 @@ export const navigationStore = {
     activeTab = categoryId;
   },
 
-  /** Signal to focus search input (watched by SearchView) */
+  /** Signal to focus the title bar search box. */
   get focusSearchSignal() {
     return focusSearchSignal;
   },
@@ -243,7 +243,6 @@ export const navigationStore = {
   /** Navigate to search tab and focus the search input */
   focusSearch() {
     activeTab = "search";
-    // Increment signal to trigger focus in SearchView
     focusSearchSignal++;
   },
 };

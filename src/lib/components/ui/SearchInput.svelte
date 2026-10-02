@@ -55,7 +55,7 @@
       type="button"
       onclick={handleClear}
       class="flex shrink-0 cursor-pointer rounded p-0.5 text-foreground-muted hover:bg-muted hover:text-foreground"
-      aria-label="Clear"
+      aria-label="Clear search"
     >
       <Icon icon="mdi:close" width="14" />
     </button>

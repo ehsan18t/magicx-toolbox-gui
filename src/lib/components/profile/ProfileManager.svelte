@@ -11,7 +11,6 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
-  // Use derived state from store
   const profiles = $derived(profileStore.savedProfiles);
   const isLoading = $derived(profileStore.loadingSavedProfiles);
   const currentProfileDir = $derived(profileStore.currentProfileDir);
@@ -83,7 +82,6 @@
     toastStore.info("Reset to default profile directory");
   }
 
-  // Drag state
   let isDragOver = $state(false);
 
   async function handleDroppedFile(path: string) {
@@ -101,12 +99,7 @@
   }
 
   onMount(() => {
-    // NOTE: loadSavedProfiles() is deliberately not called. The v1 profile
-    // backend was deleted and is being rebuilt (docs/spec/profile-v1.md), so
-    // invoking it here would surface an error toast every time this tab opens.
-    // Restore this call along with the backend.
-
-    // Set up native drag-drop listener
+    // No loadSavedProfiles(): it errors until the profile backend returns (docs/spec/profile-v1.md).
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
@@ -121,12 +114,10 @@
             handleDroppedFile(paths[0]);
           }
         } else {
-          // cancelled
           isDragOver = false;
         }
       })
       .then((fn) => {
-        // If cleanup was called before promise resolved, immediately clean up
         if (cancelled) {
           fn();
         } else {
@@ -174,7 +165,7 @@
       </div>
     {/snippet}
 
-    <!-- The profile backend is being rebuilt; this notice goes when it returns (docs/TWEAK_SYSTEM_PLAN.md). -->
+    <!-- The profile backend is being rebuilt; this notice goes when it returns (docs/spec/profile-v1.md). -->
     <div class="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5" role="status">
       <Icon icon="mdi:hammer-wrench" width="18" class="mt-0.5 shrink-0 text-warning" />
       <p class="m-0 text-[13px]">

@@ -21,6 +21,8 @@
     /** Segments share the full available width. */
     stretch?: boolean;
     size?: "sm" | "md";
+    /** Accessible name for the group. */
+    label?: string;
     class?: string;
     onchange?: (value: number) => void;
   }
@@ -34,6 +36,7 @@
     iconOnly = false,
     stretch = false,
     size = "sm",
+    label,
     class: className = "",
     onchange,
   }: Props = $props();
@@ -80,6 +83,7 @@
 
 <div
   role="radiogroup"
+  aria-label={label}
   tabindex="-1"
   class={cn(
     "items-center gap-0.5 rounded-md border p-0.5 transition-colors duration-150",

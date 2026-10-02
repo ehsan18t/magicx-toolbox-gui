@@ -59,15 +59,22 @@
   });
   const controlDisabled = $derived(isLoading || controlDisabledReason !== null);
 
+  let rowEl = $state<HTMLElement | null>(null);
   let isHighlighting = $state(false);
+  // The row scrolls itself: the view that requested it has already unmounted.
   $effect(() => {
     if (searchStore.highlightTweakId !== def.id) return;
     isHighlighting = true;
+    // After a frame: rows above are still settling their height on first render.
+    const frame = requestAnimationFrame(() => rowEl?.scrollIntoView({ block: "center" }));
     const timer = setTimeout(() => {
       isHighlighting = false;
       searchStore.clearHighlight();
     }, 1500);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
   });
 
   let showConfirmDialog = $state(false);
@@ -225,6 +232,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <article
   id="tweak-{def.id}"
+  bind:this={rowEl}
   bind:clientWidth={rowWidth}
   class="relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-colors duration-150 {isSelected
     ? 'border-accent/70'

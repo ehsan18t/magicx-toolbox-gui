@@ -20,7 +20,7 @@ import uFuzzy from "@leeoniya/ufuzzy";
 
 /** A search result with match information */
 export interface SearchResult {
-  /** Apps only render as cards; apply, discard and restore flows read tweak results alone. */
+  /** Restore on the results page reads tweak results alone. */
   kind: "tweak" | "app";
   /** Tweak or app id (unique across both) */
   id: string;
