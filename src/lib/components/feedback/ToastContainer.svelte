@@ -15,8 +15,8 @@
 <!-- Always mounted: a live region must exist before its content arrives, and the last toast still animates out. -->
 <div
   class="fixed right-4 z-toast flex flex-col gap-2 transition-[top] duration-slow {pendingRebootStore.count > 0
-    ? 'top-24'
-    : 'top-14'}"
+    ? 'top-toast-offset-banner'
+    : 'top-toast-offset'}"
   role="region"
   aria-label="Notifications"
   aria-live="polite"
@@ -24,7 +24,7 @@
   {#each toastStore.list as toast (toast.id)}
     {@const config = typeConfig[toast.type]}
     <div
-      class="relative flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 overflow-hidden rounded-lg border border-border bg-elevated py-3 pr-2 pl-4 shadow-flyout"
+      class="relative flex w-toast items-start gap-3 overflow-hidden rounded-lg border border-border bg-elevated py-3 pr-2 pl-4 shadow-flyout"
       role={toast.type === "error" ? "alert" : "status"}
       transition:shift={{ from: "right", by: "lg" }}
       animate:reflow
@@ -35,7 +35,7 @@
         {#if toast.tweakName}
           <div class="text-xs font-medium text-foreground-muted">{toast.tweakName}</div>
         {/if}
-        <div class="text-[13px] wrap-break-word text-foreground">{toast.message}</div>
+        <div class="text-ui wrap-break-word text-foreground">{toast.message}</div>
         {#if toast.action}
           {@const action = toast.action}
           <button

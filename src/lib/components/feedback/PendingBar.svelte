@@ -65,7 +65,7 @@
             <li class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted" transition:expand>
               <button
                 type="button"
-                class="min-w-0 flex-1 cursor-pointer truncate text-left text-[13px]"
+                class="min-w-0 flex-1 cursor-pointer truncate text-left text-ui"
                 onclick={() => openTweakDetailsModal(change.tweakId)}
               >
                 <span class="text-foreground">{tweak?.definition.name ?? change.tweakId}</span>
@@ -97,7 +97,7 @@
             {#key count}<span class="inline-block" in:pop>{count}</span>{/key}
           </span>
           <span class="min-w-0">
-            <span class="block truncate text-[13px] font-semibold text-foreground">
+            <span class="block truncate text-ui font-semibold text-foreground">
               {count === 1 ? "1 change" : `${count} changes`} ready to apply
             </span>
             {#if needsReboot}
@@ -114,7 +114,7 @@
         <div class="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            class="h-8 cursor-pointer rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            class="h-8 cursor-pointer rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
             onclick={() => pendingChangesStore.clearAll()}
           >
@@ -122,7 +122,7 @@
           </button>
           <button
             type="button"
-            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-accent px-3.5 text-[13px] font-semibold text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-accent px-3.5 text-ui font-semibold text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             disabled={busy}
             onclick={requestApply}
           >
@@ -143,7 +143,7 @@
         <h2 class="m-0 text-base font-semibold text-foreground">
           Review {count === 1 ? "1 change" : `${count} changes`}
         </h2>
-        <p class="m-0 mt-0.5 text-[13px] text-foreground-muted">
+        <p class="m-0 mt-0.5 text-ui text-foreground-muted">
           {highRiskCount === 1 ? "1 change is" : `${highRiskCount} changes are`} high risk. Check them before applying.
         </p>
       </div>
@@ -152,7 +152,7 @@
   <ModalBody>
     <ul class="m-0 list-none space-y-1.5 p-0">
       {#each items as { change, tweak, from, highRisk } (change.tweakId)}
-        <li class="rounded-md border px-3 py-2 text-[13px] {highRisk ? 'border-error/35 bg-error/6' : 'border-border'}">
+        <li class="rounded-md border px-3 py-2 text-ui {highRisk ? 'border-error/35 bg-error/6' : 'border-border'}">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
             <span class="font-medium text-foreground">{tweak?.definition.name ?? change.tweakId}</span>
             <span class="text-foreground-muted">

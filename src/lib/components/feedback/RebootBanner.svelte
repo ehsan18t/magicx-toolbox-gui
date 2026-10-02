@@ -14,7 +14,7 @@
   <div class="shrink-0 border-b border-border bg-info/8 px-4 py-2" transition:expand>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <Icon icon="mdi:restart" width="16" class="shrink-0 text-info" />
-      <p class="m-0 min-w-0 flex-1 text-[13px]">
+      <p class="m-0 min-w-0 flex-1 text-ui">
         <span class="font-semibold">Restart required.</span>
         <span class="text-foreground-muted">
           {rebootCount === 1 ? "1 change takes" : `${rebootCount} changes take`} effect after you restart Windows.

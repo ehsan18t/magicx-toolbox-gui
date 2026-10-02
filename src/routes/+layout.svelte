@@ -77,7 +77,7 @@
   <div class="min-h-0 flex-1">
     {#if initError}
       <div class="flex min-h-full items-center justify-center p-6">
-        <div class="w-[min(92vw,420px)] rounded-xl border border-border bg-card p-6 text-center">
+        <div class="w-[min(92vw,420px)] rounded-lg border border-border bg-card p-6 text-center">
           <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
             <Icon icon="mdi:alert-circle" width="28" />
           </div>

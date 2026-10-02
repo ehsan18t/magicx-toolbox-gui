@@ -63,7 +63,7 @@
     aria-label={label ?? placeholder}
     oninput={(e) => onchange?.(e.currentTarget.value)}
     onkeydown={handleKeydown}
-    class="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground outline-none placeholder:text-foreground-subtle"
+    class="min-w-0 flex-1 border-0 bg-transparent text-ui text-foreground outline-none placeholder:text-foreground-subtle"
   />
   {#if value}
     <button

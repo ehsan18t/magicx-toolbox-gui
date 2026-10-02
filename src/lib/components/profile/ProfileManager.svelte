@@ -149,7 +149,7 @@
     <!-- The profile backend is being rebuilt; this notice goes when it returns (docs/spec/profile-v1.md). -->
     <div class="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5" role="status">
       <Icon icon="mdi:hammer-wrench" width="18" class="mt-0.5 shrink-0 text-warning" />
-      <p class="m-0 text-[13px]">
+      <p class="m-0 text-ui">
         <span class="font-semibold">Profiles are being rebuilt.</span>
         <span class="text-foreground-muted">
           Exporting, importing and applying profiles are unavailable for now. Your tweaks and snapshots are unaffected.
@@ -169,7 +169,7 @@
         description="Profiles you export are kept here for quick access."
       />
     {:else}
-      <div class="grid animate-fade-in grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+      <div class="grid animate-fade-in grid-cols-cards gap-2">
         {#each profiles as profile (profile.name + profile.created_at)}
           <div
             class="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:border-border-hover"
@@ -223,7 +223,7 @@
       class="absolute inset-0 z-scrim flex flex-col items-center justify-center bg-background/85"
       transition:fade={{ speed: "fast" }}
     >
-      <div class="flex h-24 w-24 items-center justify-center rounded-2xl bg-accent/15">
+      <div class="flex h-24 w-24 items-center justify-center rounded-xl bg-accent/15">
         <Icon icon="mdi:file-import" width="48" class="text-accent" />
       </div>
       <h2 class="mt-6 text-xl font-semibold">Drop to import profile</h2>

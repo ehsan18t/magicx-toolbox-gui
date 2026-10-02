@@ -63,7 +63,7 @@
 {#if error}
   <div class="flex h-full flex-col">
     <div class="flex min-h-0 flex-1 items-center justify-center p-6">
-      <div class="w-full max-w-sm rounded-xl border border-border bg-card p-6 text-center">
+      <div class="w-full max-w-sm rounded-lg border border-border bg-card p-6 text-center">
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
           <Icon icon="mdi:alert-circle" width="28" />
         </div>

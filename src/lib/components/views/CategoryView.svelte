@@ -66,7 +66,7 @@
       {#if attentionCount > 0}
         <button
           type="button"
-          class="inline-flex h-8 animate-pop-in cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium {attentionOnly
+          class="inline-flex h-8 animate-pop-in cursor-pointer items-center gap-1.5 rounded-full border px-3 text-ui font-medium {attentionOnly
             ? 'border-error bg-error text-background'
             : 'border-error/40 bg-error/10 text-error hover:bg-error/15'}"
           aria-pressed={attentionOnly}
@@ -93,7 +93,7 @@
       {#if restorable.length > 0}
         <button
           type="button"
-          class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+          class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
           disabled={loadingStore.busy}
           onclick={restoreAll}
         >
@@ -110,7 +110,7 @@
       class="flex animate-fade-in flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5"
     >
       <Icon icon="mdi:shield-lock-outline" width="18" class="shrink-0 text-warning" />
-      <p class="m-0 min-w-0 flex-1 text-[13px]">
+      <p class="m-0 min-w-0 flex-1 text-ui">
         <span class="font-semibold">
           {needsAdminCount === 1 ? "1 tweak here needs" : `${needsAdminCount} tweaks here need`} administrator rights.
         </span>
@@ -118,7 +118,7 @@
       </p>
       <button
         type="button"
-        class="h-8 cursor-pointer rounded-md bg-accent px-3 text-[13px] font-semibold text-accent-foreground hover:bg-accent-hover"
+        class="h-8 cursor-pointer rounded-md bg-accent px-3 text-ui font-semibold text-accent-foreground hover:bg-accent-hover"
         onclick={restartAsAdmin}
       >
         Restart as admin

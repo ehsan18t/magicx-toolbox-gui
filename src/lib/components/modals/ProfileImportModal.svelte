@@ -199,7 +199,7 @@
         <!-- Drop zone -->
         <button
           type="button"
-          class="flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 transition-colors
+          class="flex w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-10 transition-colors
             {isDragOver ? 'border-accent bg-accent/10' : 'border-border hover:border-accent/50 hover:bg-muted/30'}"
           onclick={handleBrowse}
         >

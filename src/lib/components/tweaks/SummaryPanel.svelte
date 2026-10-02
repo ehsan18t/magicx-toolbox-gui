@@ -51,7 +51,7 @@
 )}
   {#if items.length > 0}
     <section transition:expand>
-      <h3 class="m-0 mb-1.5 flex items-center gap-2 text-[13px] font-semibold">
+      <h3 class="m-0 mb-1.5 flex items-center gap-2 text-ui font-semibold">
         <Icon {icon} width="16" class={tone} />
         {title}
         <span class="text-xs font-normal text-foreground-subtle tabular-nums">{items.length}</span>
@@ -66,7 +66,7 @@
               onclick={() => reveal(t.definition.id)}
             >
               <span class="min-w-0 flex-1">
-                <span class="block text-[13px] wrap-break-word">{t.definition.name}</span>
+                <span class="block text-ui wrap-break-word">{t.definition.name}</span>
                 {#if d}<span class="block text-xs text-foreground-muted">{d}</span>{/if}
               </span>
               <Icon
@@ -83,19 +83,19 @@
 {/snippet}
 
 <aside
-  class="flex w-[clamp(360px,30%,440px)] shrink-0 animate-fade-in flex-col border-l border-border bg-surface"
+  class="flex w-summary-panel shrink-0 animate-fade-in flex-col border-l border-border bg-surface"
   aria-label={label}
 >
   <header class="shrink-0 border-b border-border px-5 pt-4 pb-3">
     <h2 class="m-0 font-display text-lg font-semibold">At a glance</h2>
-    <p class="m-0 mt-0.5 text-[13px] text-foreground-muted">Select a tweak to see its details here.</p>
+    <p class="m-0 mt-0.5 text-ui text-foreground-muted">Select a tweak to see its details here.</p>
   </header>
 
   <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
     {#if tweaks.length > 0}
       <section class="rounded-lg border border-border bg-card p-3">
         <div class="flex items-baseline justify-between">
-          <span class="text-[13px] text-foreground-muted">Applied</span>
+          <span class="text-ui text-foreground-muted">Applied</span>
           <span class="text-sm font-semibold tabular-nums">{applied} of {tweaks.length}</span>
         </div>
         <div class="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted">
@@ -134,7 +134,7 @@
     {@render group("mdi:restart", "text-info", "Waiting for a restart", reboot, () => "")}
 
     {#if allClear && tweaks.length > 0}
-      <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-[13px]" in:fade>
+      <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-ui" in:fade>
         <Icon icon="mdi:check-circle" width="18" class="shrink-0 text-success" />
         <span class="text-foreground-muted">Nothing here needs your attention.</span>
       </div>

@@ -125,7 +125,7 @@
 {#if sidebarStore.isOverlay}
   <button
     type="button"
-    class="fixed inset-x-0 top-12 bottom-0 z-scrim animate-fade-in cursor-default bg-black/20"
+    class="fixed inset-x-0 top-titlebar bottom-0 z-scrim animate-fade-in cursor-default bg-black/20"
     aria-label="Close navigation"
     tabindex="-1"
     onclick={() => sidebarStore.closeOverlay()}

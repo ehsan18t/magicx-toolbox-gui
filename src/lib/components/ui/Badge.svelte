@@ -25,8 +25,8 @@
   };
 
   const sizeClasses: Record<Size, string> = {
-    sm: "px-1.5 py-0.5 text-[9px]",
-    md: "px-2 py-1 text-[10px]",
+    sm: "px-1.5 py-0.5 text-micro",
+    md: "px-2 py-1 text-tiny",
   };
 </script>
 

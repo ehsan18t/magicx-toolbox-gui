@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { cn } from "@/utils";
+  import { cn } from "$lib/utils/cn";
   import { pop } from "$lib/utils/motion";
   import { tick } from "svelte";
   import Spinner from "./Spinner.svelte";
@@ -222,7 +222,7 @@
     aria-controls={listboxId}
     aria-activedescendant={highlightedOptionId}
     class={cn(
-      "flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border bg-secondary px-3 text-[13px]",
+      "flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border bg-secondary px-3 text-ui",
       "border-border text-foreground hover:border-border-hover hover:bg-secondary-hover",
       isOpen && "border-accent",
       pending && "border-warning/60 bg-warning/10 text-warning",
@@ -270,7 +270,7 @@
         onclick={() => selectOption(opt)}
         onmouseenter={() => (highlightedIndex = i)}
         class={cn(
-          "relative flex w-full cursor-pointer items-center rounded px-3 py-1.5 text-left text-[13px] text-foreground",
+          "relative flex w-full cursor-pointer items-center rounded px-3 py-1.5 text-left text-ui text-foreground",
           highlightedIndex === i && "bg-muted",
           opt.value === value && "bg-muted font-medium",
           opt.disabled && "cursor-not-allowed text-foreground-muted opacity-50",

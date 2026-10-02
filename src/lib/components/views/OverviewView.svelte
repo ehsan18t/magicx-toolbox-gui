@@ -199,12 +199,12 @@
 </script>
 
 {#snippet pcList(rows: HardwareRow[], columns: boolean)}
-  <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-[52rem]:grid-cols-2' : ''}">
+  <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-overview:grid-cols-2' : ''}">
     {#each rows as row, i (`${row.label}-${i}`)}
-      <div class="grid grid-cols-[1.25rem_5.5rem_minmax(0,1fr)] items-baseline gap-x-2.5 px-2 py-1.5">
+      <div class="grid grid-cols-hardware items-baseline gap-x-2.5 px-2 py-1.5">
         <Icon icon={row.icon} width="15" class="self-center text-foreground-muted" />
         <dt class="truncate text-xs text-foreground-muted">{row.label}</dt>
-        <dd class="m-0 min-w-0 text-[13px] wrap-break-word select-text">
+        <dd class="m-0 min-w-0 text-ui wrap-break-word select-text">
           <span class="font-medium">{row.value}</span>
           {#if row.detail}<span class="text-xs text-foreground-muted"> · {row.detail}</span>{/if}
           {#if row.status}<span class="text-xs font-medium {row.status.tone}"> · {row.status.text}</span>{/if}
@@ -264,11 +264,9 @@
   </section>
 
   <div class="@container">
-    <div class="grid items-start gap-3 @min-[52rem]:grid-cols-2">
+    <div class="grid items-start gap-3 @min-overview:grid-cols-2">
       <section class="overflow-hidden rounded-lg border border-border bg-card" aria-labelledby="overview-categories">
-        <h2 id="overview-categories" class="m-0 border-b border-border px-3 py-2 text-[13px] font-semibold">
-          Categories
-        </h2>
+        <h2 id="overview-categories" class="m-0 border-b border-border px-3 py-2 text-ui font-semibold">Categories</h2>
         <ul class="m-0 list-none p-1">
           {#each categoriesStore.list as category (category.id)}
             {@const s = categoryStats[category.id]}
@@ -276,7 +274,7 @@
             <li>
               <button
                 type="button"
-                class="grid w-full cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_5rem_2.75rem] items-center gap-x-2.5 rounded-md px-2 py-2 text-left hover:bg-muted"
+                class="grid w-full cursor-pointer grid-cols-category-progress items-center gap-x-2.5 rounded-md px-2 py-2 text-left hover:bg-muted"
                 onclick={() =>
                   s?.attention
                     ? navigationStore.navigateToAttention(category.id)
@@ -286,7 +284,7 @@
                   : ''}"
               >
                 <Icon icon={category.icon || "mdi:folder"} width="16" class="text-accent" />
-                <span class="flex min-w-0 items-center gap-1.5 text-[13px] font-medium">
+                <span class="flex min-w-0 items-center gap-1.5 text-ui font-medium">
                   <span class="truncate">{category.name}</span>
                   {#if s?.attention}
                     <Icon icon="mdi:alert-circle" width="14" class="shrink-0 text-error" />
@@ -313,7 +311,7 @@
 
       <section class="overflow-hidden rounded-lg border border-border bg-card" aria-labelledby="overview-pc">
         <div class="flex items-center justify-between gap-3 border-b border-border py-1 pr-1 pl-3">
-          <h2 id="overview-pc" class="m-0 text-[13px] font-semibold">This PC</h2>
+          <h2 id="overview-pc" class="m-0 text-ui font-semibold">This PC</h2>
           <button
             type="button"
             class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
@@ -340,7 +338,7 @@
         class="mt-3 animate-fade-in overflow-hidden rounded-lg border border-border bg-card"
         aria-labelledby="overview-devices"
       >
-        <h2 id="overview-devices" class="m-0 border-b border-border px-3 py-2 text-[13px] font-semibold">Devices</h2>
+        <h2 id="overview-devices" class="m-0 border-b border-border px-3 py-2 text-ui font-semibold">Devices</h2>
         {@render pcList(deviceRows, true)}
       </section>
     {/if}

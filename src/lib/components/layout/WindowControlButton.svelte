@@ -11,7 +11,7 @@
 <button
   class="flex h-8 w-10 cursor-default items-center justify-center rounded-md text-foreground-muted hover:text-foreground {glyph ===
   'close'
-    ? 'hover:bg-[#c42b1c] hover:text-white active:bg-[#c42b1c]/85'
+    ? 'hover:bg-caption-close hover:text-white active:bg-caption-close/85'
     : 'hover:bg-muted active:bg-foreground/10'}"
   type="button"
   aria-label={title}

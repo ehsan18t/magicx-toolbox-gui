@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "$lib/stores/colorScheme.svelte";
-  import { cn } from "@/utils";
+  import { cn } from "$lib/utils/cn";
 
   interface Props {
     /** Size of color circles */

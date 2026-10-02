@@ -156,9 +156,7 @@
   ></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div
-      class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 @max-[520px]:grid-cols-1 @max-[520px]:gap-y-2"
-    >
+    <div class="grid grid-cols-row items-center gap-x-6 gap-y-1 @max-row:grid-cols-1 @max-row:gap-y-2">
       <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
         {#if titleSlot}{@render titleSlot()}{:else if filterMatch}<HighlightedText
             text={app.name}
@@ -185,7 +183,7 @@
         </div>
       {/if}
 
-      <p class="col-span-full m-0 text-[13px] leading-snug text-foreground-muted">
+      <p class="col-span-full m-0 text-ui leading-snug text-foreground-muted">
         {#if descriptionSlot}{@render descriptionSlot()}{:else if filterMatch}<HighlightedText
             text={app.description}
             ranges={filterMatch.descriptionRanges}

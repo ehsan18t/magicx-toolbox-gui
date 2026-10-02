@@ -79,7 +79,7 @@
 {#snippet row(title: string, description: string, control: Snippet)}
   <div class="flex items-center justify-between gap-6 py-3">
     <div class="min-w-0">
-      <p class="m-0 text-[13px] font-medium">{title}</p>
+      <p class="m-0 text-ui font-medium">{title}</p>
       <p class="m-0 mt-0.5 text-xs text-foreground-muted">{description}</p>
     </div>
     {@render control()}
@@ -109,14 +109,14 @@
             </span>
           {/if}
         </div>
-        <p class="m-0 mt-1 text-[13px] text-foreground-muted">
+        <p class="m-0 mt-1 text-ui text-foreground-muted">
           You have {appVersion || updateInfo.currentVersion}.
           {#if updateInfo.publishedAt}Released {formatDate(updateInfo.publishedAt)}.{/if}
           {#if updateInfo.assetSize}{formatBytes(updateInfo.assetSize)} download.{/if}
         </p>
 
         {#if updateInfo.releaseNotes}
-          <div class="mt-4 max-h-52 overflow-y-auto rounded-lg border border-border bg-card px-4 py-3 text-[13px]">
+          <div class="mt-4 max-h-52 overflow-y-auto rounded-lg border border-border bg-card px-4 py-3 text-ui">
             <MarkdownText content={updateInfo.releaseNotes} />
           </div>
         {/if}
@@ -128,12 +128,12 @@
               {isInstalling ? "Downloading…" : "Install update"}
             </Button>
           {:else}
-            <span class="text-[13px] text-foreground-muted">No installer for this PC in the release.</span>
+            <span class="text-ui text-foreground-muted">No installer for this PC in the release.</span>
           {/if}
           {#if updateInfo.downloadUrl}
             <ExternalLink
               href={updateInfo.downloadUrl}
-              class="text-[13px] font-medium underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent"
+              class="text-ui font-medium underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent"
             >
               Download manually
             </ExternalLink>
@@ -150,7 +150,7 @@
                 Version {appVersion}
               {/if}
             </p>
-            <p class="m-0 mt-1 text-[13px] text-foreground-muted">
+            <p class="m-0 mt-1 text-ui text-foreground-muted">
               {#if updateInfo}Version {appVersion || updateInfo.currentVersion}.{/if}
               {lastChecked}.
             </p>
@@ -164,7 +164,7 @@
 
       {#if error}
         <div
-          class="mt-4 flex animate-fade-in items-start gap-2 rounded-lg border border-error/30 bg-error/8 px-3 py-2.5 text-[13px]"
+          class="mt-4 flex animate-fade-in items-start gap-2 rounded-lg border border-error/30 bg-error/8 px-3 py-2.5 text-ui"
         >
           <Icon icon="mdi:alert-circle" width="16" class="mt-0.5 shrink-0 text-error" />
           <span class="min-w-0 flex-1">{error}</span>

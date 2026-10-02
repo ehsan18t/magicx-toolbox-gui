@@ -165,7 +165,7 @@
 
         {#if log.length > 0}
           <pre
-            class="m-0 max-h-72 overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground"
+            class="m-0 max-h-72 overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-caption leading-relaxed whitespace-pre-wrap text-foreground"
             role="log"
             aria-live="polite"
             aria-label="Log for {test.title}"

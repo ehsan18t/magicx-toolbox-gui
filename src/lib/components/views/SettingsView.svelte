@@ -45,7 +45,7 @@
 {#snippet row(title: string, description: string, control: Snippet)}
   <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3.5">
     <div class="min-w-0 flex-1 basis-64">
-      <p class="m-0 text-[13px] font-medium">{title}</p>
+      <p class="m-0 text-ui font-medium">{title}</p>
       {#if description}<p class="m-0 mt-0.5 text-xs text-foreground-muted">{description}</p>{/if}
     </div>
     <div class="flex shrink-0 flex-wrap items-center gap-2">{@render control()}</div>

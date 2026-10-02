@@ -100,7 +100,7 @@
     onkeydown={handleKeydown}
     in:expand={{ speed: "slow" }}
     out:expand
-    class="flex h-72 max-h-[45%] min-h-40 shrink-0 flex-col border-t border-border bg-background outline-none"
+    class="flex h-72 max-h-9/20 min-h-40 shrink-0 flex-col border-t border-border bg-background outline-none"
   >
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">
@@ -110,7 +110,7 @@
           <Badge variant="info">Detailed</Badge>
         {/if}
       </div>
-      <p class="m-0 hidden text-xs text-foreground-muted min-[1100px]:block">
+      <p class="m-0 hidden text-xs text-foreground-muted logs-hint:block">
         This session. Earlier sessions: Export or Open folder.
       </p>
 

@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { glide } from "$lib/utils/motion";
-  import { cn } from "@/utils";
+  import { cn } from "$lib/utils/cn";
 
   export interface SegmentOption {
     value: number;
@@ -42,7 +42,7 @@
   }: Props = $props();
 
   const sizeClasses = {
-    sm: { segment: "h-7 px-3 text-[13px]", segmentIconOnly: "h-7 px-2", icon: 14 },
+    sm: { segment: "h-7 px-3 text-ui", segmentIconOnly: "h-7 px-2", icon: 14 },
     md: { segment: "h-8 px-3.5 text-sm", segmentIconOnly: "h-8 px-2.5", icon: 16 },
   };
 

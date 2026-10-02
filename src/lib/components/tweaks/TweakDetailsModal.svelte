@@ -179,7 +179,7 @@
     <span class={cell.removal ? "text-foreground-muted italic" : "font-medium"}>
       {cell.text}
     </span>
-    {#if cell.note}<span class="ml-1 text-[11px] text-foreground-subtle">{cell.note}</span>{/if}
+    {#if cell.note}<span class="ml-1 text-caption text-foreground-subtle">{cell.note}</span>{/if}
   {:else}
     <span class="text-foreground-subtle" use:tooltip={"Left as it is by this option"}>—</span>
   {/if}
@@ -199,7 +199,7 @@
           <h2 id="tweak-details-title" class="m-0 font-display text-xl leading-snug font-semibold wrap-break-word">
             {def.name}
           </h2>
-          <p class="m-0 mt-1 text-[13px] leading-relaxed text-foreground-muted">{def.description}</p>
+          <p class="m-0 mt-1 text-ui leading-relaxed text-foreground-muted">{def.description}</p>
         </div>
         <div class="flex shrink-0 items-center gap-0.5">
           <button
@@ -259,7 +259,7 @@
           {#if status.has_backup && !status.attention}
             <button
               type="button"
-              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isLoading || def.availability.state !== "available"}
               use:tooltip={"Restore the state saved before the last change"}
               onclick={() => restoreTweak(def, isHighRisk(def.risk_level))}
@@ -277,14 +277,14 @@
       {#if def.warning}
         <div class="flex gap-3 rounded-lg border border-warning/30 bg-warning/8 p-3">
           <Icon icon="mdi:alert" width="18" class="mt-0.5 shrink-0 text-warning" />
-          <p class="m-0 text-[13px] leading-relaxed text-foreground">{def.warning}</p>
+          <p class="m-0 text-ui leading-relaxed text-foreground">{def.warning}</p>
         </div>
       {/if}
 
       {#if def.availability.state !== "available"}
         <div class="flex gap-3 rounded-lg border border-warning/30 bg-warning/8 p-3">
           <Icon icon="mdi:shield-lock-outline" width="18" class="mt-0.5 shrink-0 text-warning" />
-          <p class="m-0 text-[13px] leading-relaxed">
+          <p class="m-0 text-ui leading-relaxed">
             <span class="font-semibold">{availabilityTitle(def.availability)}.</span>
             <span class="text-foreground-muted">{def.availability.reason}</span>
           </p>
@@ -294,13 +294,13 @@
       {#if status.state === "unavailable" && status.unavailableReason}
         <div class="flex gap-3 rounded-lg border border-border bg-card p-3">
           <Icon icon="mdi:cancel" width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
-          <p class="m-0 text-[13px] text-foreground-muted">{status.unavailableReason}</p>
+          <p class="m-0 text-ui text-foreground-muted">{status.unavailableReason}</p>
         </div>
       {/if}
 
       {#if status.state === "unknown" && status.unknownReasons.length > 0}
         <div class="rounded-lg border border-warning/30 bg-warning/8 p-3">
-          <p class="m-0 mb-1.5 flex items-center gap-2 text-[13px] font-semibold">
+          <p class="m-0 mb-1.5 flex items-center gap-2 text-ui font-semibold">
             <Icon icon="mdi:help-circle-outline" width="16" class="text-warning" />
             Could not determine state
           </p>
@@ -317,7 +317,7 @@
 
       {#if status.attention}
         <div class="rounded-lg border border-error/35 bg-error/8 p-3">
-          <p class="m-0 flex gap-2 text-[13px] leading-relaxed">
+          <p class="m-0 flex gap-2 text-ui leading-relaxed">
             <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0 text-error" />
             <span>
               <span class="font-semibold">Needs attention.</span>
@@ -343,7 +343,7 @@
             {#if status.has_backup}
               <button
                 type="button"
-                class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || def.availability.state !== "available"}
                 onclick={() => restoreTweak(def, isHighRisk(def.risk_level))}
               >
@@ -354,7 +354,7 @@
             <!-- Consent stays reachable whenever a record exists, entries left or not (ADR-0002). -->
             <button
               type="button"
-              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
               onclick={keepCurrent}
               disabled={keeping || isLoading}
             >
@@ -366,7 +366,7 @@
       {/if}
 
       {#if status.residues.length > 0 || status.heldShared.length > 0}
-        <div class="space-y-2 rounded-lg border border-border bg-card p-3 text-[13px] text-foreground-muted">
+        <div class="space-y-2 rounded-lg border border-border bg-card p-3 text-ui text-foreground-muted">
           {#if status.residues.length > 0}
             <p class="m-0 flex gap-2">
               <Icon icon="mdi:information-outline" width="16" class="mt-0.5 shrink-0 text-info" />
@@ -387,17 +387,17 @@
       {/if}
 
       <section aria-labelledby="tweak-changes-title">
-        <h3 id="tweak-changes-title" class="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
+        <h3 id="tweak-changes-title" class="m-0 mb-2.5 flex items-center gap-2 text-ui font-semibold">
           <Icon icon="mdi:tune-variant" width="16" class="text-foreground-muted" />
           What each option sets
         </h3>
         {#if matrix.length === 0}
-          <p class="m-0 text-[13px] text-foreground-muted">
+          <p class="m-0 text-ui text-foreground-muted">
             {scripted.length > 0 ? "This tweak works through the scripts below." : "No system settings are listed."}
           </p>
         {:else}
           <div class="overflow-x-auto rounded-lg border border-border">
-            <table class="w-full border-collapse text-left text-[13px]">
+            <table class="w-full border-collapse text-left text-ui">
               <thead>
                 <tr class="border-b border-border bg-muted/40 text-xs">
                   <th
@@ -409,7 +409,7 @@
                   {#if showNow}
                     <th scope="col" class="min-w-36 bg-warning/8 px-3 py-2 font-semibold">
                       This PC now
-                      <span class="block text-[11px] font-normal text-foreground-muted">no single option matches</span>
+                      <span class="block text-caption font-normal text-foreground-muted">no single option matches</span>
                     </th>
                   {/if}
                   {#each def.options as option (option.label)}
@@ -426,11 +426,11 @@
                     >
                       {option.label}
                       {#if current}
-                        <span class="block text-[11px] font-medium text-accent">Current</span>
+                        <span class="block text-caption font-medium text-accent">Current</span>
                       {:else if pending}
-                        <span class="block text-[11px] font-medium text-warning">Pending</span>
+                        <span class="block text-caption font-medium text-warning">Pending</span>
                       {:else if unavailable}
-                        <span class="block text-[11px] font-normal text-warning" use:tooltip={unavailable.reason}>
+                        <span class="block text-caption font-normal text-warning" use:tooltip={unavailable.reason}>
                           Unavailable here
                         </span>
                       {/if}
@@ -445,7 +445,7 @@
                       <th
                         scope="rowgroup"
                         colspan={def.options.length + (showNow ? 2 : 1)}
-                        class="px-3 pt-3 pb-1.5 text-[11px] font-semibold tracking-wide text-foreground-muted uppercase"
+                        class="px-3 pt-3 pb-1.5 text-caption font-semibold tracking-wide text-foreground-muted uppercase"
                       >
                         <span class="sticky left-3 inline-flex items-center gap-1.5">
                           <Icon icon={KIND_LABEL[row.kind].icon} width="13" />
@@ -457,11 +457,11 @@
                   <tr class="border-b border-border last:border-b-0">
                     <th scope="row" class="sticky left-0 z-raised max-w-80 bg-card px-3 py-2 align-top font-normal">
                       <span class="flex flex-wrap items-baseline gap-x-2">
-                        <span class="font-mono text-[12px] font-semibold break-all">{row.title}</span>
-                        {#if row.type}<span class="text-[11px] text-foreground-subtle">{row.type}</span>{/if}
+                        <span class="font-mono text-code font-semibold break-all">{row.title}</span>
+                        {#if row.type}<span class="text-caption text-foreground-subtle">{row.type}</span>{/if}
                       </span>
                       <span
-                        class="mt-0.5 block truncate font-mono text-[11px] text-foreground-muted"
+                        class="mt-0.5 block truncate font-mono text-caption text-foreground-muted"
                         use:tooltip={row.location}
                       >
                         {row.location}
@@ -472,7 +472,7 @@
                       <td class="bg-warning/5 px-3 py-2 align-top break-all">
                         {@render cellText(row.now)}
                         {#if row.now}
-                          <span class="mt-0.5 block text-[11px] {agrees.length ? 'text-success' : 'text-warning'}">
+                          <span class="mt-0.5 block text-caption {agrees.length ? 'text-success' : 'text-warning'}">
                             {agrees.length ? `✓ ${agrees.join(", ")}` : "No option"}
                           </span>
                         {/if}
@@ -499,14 +499,14 @@
 
       {#if scripted.length > 0}
         <section aria-labelledby="tweak-scripts-title">
-          <h3 id="tweak-scripts-title" class="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
+          <h3 id="tweak-scripts-title" class="m-0 mb-2.5 flex items-center gap-2 text-ui font-semibold">
             <Icon icon="mdi:console" width="16" class="text-foreground-muted" />
             Scripts
           </h3>
           <div class="space-y-1.5">
             {#each scripted as option (option.label)}
               <details class="group rounded-lg border border-border bg-card">
-                <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[13px]">
+                <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-ui">
                   <Icon
                     icon="mdi:chevron-right"
                     width="16"
@@ -520,7 +520,7 @@
                 <div class="space-y-1.5 border-t border-border p-3">
                   {#each option.commands as cmd, idx (idx)}
                     <code
-                      class="block rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] break-all whitespace-pre-wrap text-foreground/85"
+                      class="block rounded-md border border-border bg-background px-3 py-2 font-mono text-caption break-all whitespace-pre-wrap text-foreground/85"
                       >{cmd}</code
                     >
                   {/each}
@@ -532,10 +532,10 @@
       {/if}
 
       <div class="@container">
-        <div class="grid items-start gap-5 @min-[48rem]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div class="grid items-start gap-5 @3xl:grid-cols-main-aside">
           {#if def.info}
-            <section aria-labelledby="tweak-about-title" class={hasHistory ? "" : "@min-[48rem]:col-span-2"}>
-              <h3 id="tweak-about-title" class="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
+            <section aria-labelledby="tweak-about-title" class={hasHistory ? "" : "@3xl:col-span-2"}>
+              <h3 id="tweak-about-title" class="m-0 mb-2.5 flex items-center gap-2 text-ui font-semibold">
                 <Icon icon="mdi:information-outline" width="16" class="text-foreground-muted" />
                 About
               </h3>
@@ -544,18 +544,18 @@
           {/if}
 
           {#if hasHistory}
-            <section aria-labelledby="tweak-history-title" class={def.info ? "" : "@min-[48rem]:col-span-2"}>
-              <h3 id="tweak-history-title" class="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-semibold">
+            <section aria-labelledby="tweak-history-title" class={def.info ? "" : "@3xl:col-span-2"}>
+              <h3 id="tweak-history-title" class="m-0 mb-2.5 flex items-center gap-2 text-ui font-semibold">
                 <Icon icon="mdi:history" width="16" class="text-foreground-muted" />
                 Snapshot history
               </h3>
               {#if entriesLoading}
-                <div class="flex items-center gap-2 text-[13px] text-foreground-muted">
+                <div class="flex items-center gap-2 text-ui text-foreground-muted">
                   <Icon icon="mdi:loading" width="16" class="animate-spin" />
                   Loading…
                 </div>
               {:else if entries.length === 0}
-                <p class="m-0 text-[13px] text-foreground-muted italic">No snapshot entries.</p>
+                <p class="m-0 text-ui text-foreground-muted italic">No snapshot entries.</p>
               {:else}
                 <div class="animate-fade-in space-y-1.5">
                   {#each entries as entry (entry.seq)}

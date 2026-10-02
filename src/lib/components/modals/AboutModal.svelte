@@ -63,20 +63,20 @@
     </button>
 
     <img src="/icons/Toolbox.ico" alt="" width="44" height="44" class="block" />
-    <h2 id="about-title" class="m-0 mt-4 font-display text-[34px] leading-none font-semibold tracking-[-0.02em]">
+    <h2 id="about-title" class="m-0 mt-4 font-display text-hero leading-none font-semibold tracking-display">
       {APP_CONFIG.appName}
     </h2>
     <p class="m-0 mt-2 text-sm text-foreground-muted">
       {appVersion ? `Version ${appVersion}` : "Version unknown"}
     </p>
 
-    <p class="m-0 mt-6 text-[15px] leading-relaxed">
+    <p class="m-0 mt-6 text-lead leading-relaxed">
       Curated Windows tweaks you can apply, check against the live system, and undo from snapshots.
     </p>
 
     <div class="mt-6 border-t border-border pt-4">
       <div class="flex items-start justify-between gap-4">
-        <dl class="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-[13px]">
+        <dl class="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-ui">
           {#each facts as fact (fact.label)}
             <dt class="text-foreground-muted">{fact.label}</dt>
             <dd class="m-0 select-text">{fact.value}</dd>
@@ -84,7 +84,7 @@
         </dl>
         <button
           type="button"
-          class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted"
+          class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-ui font-medium hover:bg-muted"
           onclick={copyDetails}
           use:tooltip={"Copy the version and system details for a bug report"}
         >
@@ -98,7 +98,7 @@
       </div>
     </div>
 
-    <nav class="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4 text-[13px]" aria-label="Project links">
+    <nav class="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4 text-ui" aria-label="Project links">
       {#each links as link (link.label)}
         <ExternalLink
           href={link.href}

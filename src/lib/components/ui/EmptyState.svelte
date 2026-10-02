@@ -35,7 +35,7 @@
   {/if}
 
   {#if title}<h3 class="m-0 text-base font-semibold text-foreground">{title}</h3>{/if}
-  <p class="m-0 max-w-sm text-[13px] wrap-break-word">{description}</p>
+  <p class="m-0 max-w-sm text-ui wrap-break-word">{description}</p>
 
   {#if children}
     {@render children()}

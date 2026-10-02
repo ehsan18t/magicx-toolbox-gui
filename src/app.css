@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
 @layer base {
-  body {
-    @apply select-none;
-  }
-
   /* Navy neutrals; dark is the default theme. Layers lighten upward: base, content, card. */
   :root,
   [data-theme="dark"] {
@@ -19,14 +15,12 @@
     --foreground: 210 40% 98%;
     --foreground-muted: 215 20% 70%;
     --foreground-subtle: 215 16% 56%;
-    --muted-foreground: var(--foreground-muted);
 
     --border: 224 40% 17%;
     --border-hover: 224 38% 24%;
 
     --secondary: 224 42% 14%;
     --secondary-hover: 224 40% 18%;
-    --secondary-foreground: 210 40% 98%;
 
     --accent: 262 100% 80%;
     --accent-hover: 262 100% 74%;
@@ -60,7 +54,6 @@
 
     --secondary: 210 40% 98%;
     --secondary-hover: 210 40% 95%;
-    --secondary-foreground: 222 84% 5%;
 
     --accent: 262 60% 50%;
     --accent-hover: 262 60% 44%;
@@ -128,14 +121,12 @@
 
   :root {
     --ring: var(--accent);
-    --primary: var(--accent);
-    --primary-hover: var(--accent-hover);
-    --primary-foreground: var(--accent-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
 
   body {
+    @apply select-none;
     font-size: 14px;
     line-height: 1.43;
     background: hsl(var(--background));
@@ -205,8 +196,45 @@
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  --radius-xl: 0.5rem;
-  --radius-2xl: 0.75rem;
+  /* Sizes only: no --line-height companion, so line height stays inherited. */
+  --text-micro: 9px;
+  --text-tiny: 10px;
+  --text-caption: 11px;
+  --text-code: 12px;
+  --text-ui: 13px;
+  --text-lead: 15px;
+  --text-title: 26px;
+  --text-hero: 34px;
+
+  --tracking-display: -0.02em;
+
+  --container-row: 32.5rem;
+  --container-overview: 52rem;
+  --container-dialog-sm: 25rem;
+  --container-dialog-md: 32.5rem;
+  --container-dialog-lg: 42.5rem;
+  --container-dialog-xl: 57.5rem;
+  --container-dialog-full: 75rem;
+  --container-row-control: 45cqw;
+  --container-toast: min(22rem, calc(100vw - 2rem));
+  --container-summary-panel: clamp(360px, 30%, 440px);
+
+  --breakpoint-titlebar-version: 45rem;
+  --breakpoint-titlebar-name: 47.5rem;
+  --breakpoint-titlebar-admin: 51.25rem;
+  --breakpoint-logs-hint: 68.75rem;
+
+  --spacing-titlebar: 3rem;
+  /* Toasts clear the titlebar, and the reboot banner while it shows. */
+  --spacing-toast-offset: calc(var(--spacing-titlebar) + 0.5rem);
+  --spacing-toast-offset-banner: calc(var(--spacing-titlebar) + 3rem);
+  --spacing-dock-clearance: 7rem;
+
+  --grid-template-columns-row: minmax(0, 1fr) auto;
+  --grid-template-columns-hardware: 1.25rem 5.5rem minmax(0, 1fr);
+  --grid-template-columns-category-progress: 1.25rem minmax(0, 1fr) 5rem 2.75rem;
+  --grid-template-columns-main-aside: minmax(0, 2fr) minmax(0, 1fr);
+  --grid-template-columns-cards: repeat(auto-fill, minmax(260px, 1fr));
 
   --shadow-flyout: var(--elev-flyout);
   --shadow-dialog: var(--elev-dialog);
@@ -216,7 +244,6 @@
   --color-card: hsl(var(--card));
   --color-elevated: hsl(var(--elevated));
   --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
 
   --color-foreground: hsl(var(--foreground));
   --color-foreground-muted: hsl(var(--foreground-muted));
@@ -225,13 +252,8 @@
   --color-border: hsl(var(--border));
   --color-border-hover: hsl(var(--border-hover));
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-hover: hsl(var(--primary-hover));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
   --color-secondary: hsl(var(--secondary));
   --color-secondary-hover: hsl(var(--secondary-hover));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
 
   --color-accent: hsl(var(--accent));
   --color-accent-hover: hsl(var(--accent-hover));
@@ -244,6 +266,9 @@
   --color-warning-foreground: hsl(var(--warning-foreground));
   --color-error: hsl(var(--error));
   --color-info: hsl(var(--info));
+
+  /* Windows caption close red, the same in both themes. */
+  --color-caption-close: #c42b1c;
 }
 
 /* Motion and layering tokens. Static: $lib/utils/motion reads them at runtime, so they must always be emitted.
@@ -254,6 +279,7 @@
   --transition-duration-slow: 200ms;
   --transition-duration-slower: 300ms;
   --transition-duration-highlight: 1500ms;
+  --transition-duration-activity: 1400ms;
 
   --transition-delay-reveal: 150ms;
   --transition-delay-settle: 250ms;
@@ -268,7 +294,6 @@
   --default-transition-duration: var(--transition-duration-fast);
   --default-transition-timing-function: var(--ease-out);
 
-  --motion-distance-sm: 4px;
   --motion-distance-md: 8px;
   --motion-distance-lg: 16px;
   --motion-scale-delta: 0.04;
@@ -282,7 +307,7 @@
   --animate-modal-in: modal-in var(--transition-duration-slow) var(--ease-out);
   --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
   --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
-  --animate-activity: activity-slide 1.4s var(--ease-in-out) infinite;
+  --animate-activity: activity-slide var(--transition-duration-activity) var(--ease-in-out) infinite;
 
   --spacing-rail: 3.5rem;
 
@@ -297,8 +322,6 @@
   --z-index-theme-fade: 9000;
 }
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
 @utility drag-enable {
   -webkit-app-region: drag;
 }
@@ -307,8 +330,8 @@
   -webkit-app-region: no-drag;
 }
 
-*[data-tauri-drag-region] {
-  -webkit-app-region: drag;
+@utility scrollbar-none {
+  scrollbar-width: none;
 }
 
 * {

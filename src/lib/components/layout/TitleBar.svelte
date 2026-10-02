@@ -114,7 +114,7 @@
   }
 </script>
 
-<header class="flex h-12 shrink-0 items-stretch bg-background text-foreground select-none drag-enable">
+<header class="flex h-titlebar shrink-0 items-stretch bg-background text-foreground select-none drag-enable">
   <div class="flex min-w-0 shrink items-center gap-1 pl-1">
     <button
       type="button"
@@ -131,13 +131,13 @@
       {#if appIcon}
         <img src={appIcon} alt="" class="h-4 w-4 shrink-0" onerror={() => (appIcon = "")} />
       {/if}
-      <span class="hidden truncate text-xs text-foreground min-[760px]:inline">{appName}</span>
+      <span class="hidden truncate text-xs text-foreground titlebar-name:inline">{appName}</span>
       {#if appVersion}
-        <span class="hidden shrink-0 text-xs text-foreground-subtle min-[720px]:inline">{appVersion}</span>
+        <span class="hidden shrink-0 text-xs text-foreground-subtle titlebar-version:inline">{appVersion}</span>
       {/if}
       {#if isAdmin !== null}
         <span
-          class="inline-flex shrink-0 animate-fade-in items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold {isAdmin
+          class="inline-flex shrink-0 animate-fade-in items-center gap-1 rounded px-1.5 py-0.5 text-caption font-semibold {isAdmin
             ? 'bg-success/15 text-success'
             : 'bg-warning/15 text-warning'}"
           use:tooltip={isAdmin
@@ -155,7 +155,7 @@
     {#snippet scopeToggle()}
       <button
         type="button"
-        class="inline-flex max-w-[45%] shrink-0 animate-pop-in cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium {scoped
+        class="inline-flex max-w-9/20 shrink-0 animate-pop-in cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium {scoped
           ? 'border-accent/40 bg-accent/15 text-accent hover:bg-accent/20'
           : 'border-border-hover bg-muted text-foreground-muted hover:border-accent/50 hover:text-foreground'}"
         aria-pressed={scoped}
@@ -196,7 +196,7 @@
           width="16"
           class={isRestarting ? "animate-spin" : ""}
         />
-        <span class="hidden min-[820px]:inline">Restart as admin</span>
+        <span class="hidden titlebar-admin:inline">Restart as admin</span>
       </button>
     {/if}
 

@@ -121,11 +121,11 @@
   });
 
   const sizeClasses: Record<string, string> = {
-    sm: "w-full max-w-[400px]",
-    md: "w-full max-w-[520px]",
-    lg: "w-full max-w-[680px]",
-    xl: "w-full max-w-[920px]",
-    full: "h-full w-full max-w-[1200px]",
+    sm: "w-full max-w-dialog-sm",
+    md: "w-full max-w-dialog-md",
+    lg: "w-full max-w-dialog-lg",
+    xl: "w-full max-w-dialog-xl",
+    full: "h-full w-full max-w-dialog-full",
   };
 
   function handleBackdropClick(e: MouseEvent) {
@@ -211,7 +211,7 @@
     onclick={handleBackdropClick}
   >
     <div
-      class="flex max-h-full flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-dialog {sizeClasses[
+      class="flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-elevated shadow-dialog {sizeClasses[
         size
       ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'} {className}"
       bind:this={modalEl}
