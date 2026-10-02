@@ -257,10 +257,13 @@
   --animate-fade-out: fade-out var(--transition-duration-normal) var(--ease-in) forwards;
   --animate-rise-in: rise-in var(--transition-duration-slow) var(--ease-out);
   --animate-pop-in: pop-in var(--transition-duration-normal) var(--ease-out);
+  --animate-drawer-in: drawer-in var(--transition-duration-slow) var(--ease-out);
   --animate-modal-in: modal-in var(--transition-duration-slow) var(--ease-out);
   --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
   --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
   --animate-activity: activity-slide 1.4s var(--ease-in-out) infinite;
+
+  --spacing-rail: 3.5rem;
 
   --z-index-raised: 10;
   --z-index-dock: 30;
@@ -315,6 +318,13 @@
   from {
     opacity: 0;
     transform: scale(calc(1 - var(--motion-scale-delta)));
+  }
+}
+
+/* The overlay pane widens out of the compact rail, as WinUI's NavigationView does. */
+@keyframes drawer-in {
+  from {
+    width: var(--spacing-rail);
   }
 }
 

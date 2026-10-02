@@ -137,7 +137,7 @@
       {/if}
       {#if isAdmin !== null}
         <span
-          class="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold {isAdmin
+          class="inline-flex shrink-0 animate-fade-in items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold {isAdmin
             ? 'bg-success/15 text-success'
             : 'bg-warning/15 text-warning'}"
           use:tooltip={isAdmin
@@ -155,7 +155,7 @@
     {#snippet scopeToggle()}
       <button
         type="button"
-        class="inline-flex max-w-[45%] shrink-0 cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium {scoped
+        class="inline-flex max-w-[45%] shrink-0 animate-pop-in cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium {scoped
           ? 'border-accent/40 bg-accent/15 text-accent hover:bg-accent/20'
           : 'border-border-hover bg-muted text-foreground-muted hover:border-accent/50 hover:text-foreground'}"
         aria-pressed={scoped}
@@ -185,7 +185,7 @@
     {#if isAdmin === false}
       <button
         type="button"
-        class="flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-warning hover:bg-muted disabled:cursor-wait disabled:opacity-60"
+        class="flex h-8 animate-fade-in cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-warning hover:bg-muted disabled:cursor-wait disabled:opacity-60"
         onclick={restart}
         disabled={isRestarting}
         use:tooltip={"Restart as administrator"}

@@ -86,7 +86,7 @@
       <div class="relative flex min-h-0 flex-1" bind:clientWidth={workspaceWidth}>
         <div class="relative flex min-w-0 flex-1 flex-col">
           {#key activeTab}
-            <div class="min-h-0 flex-1 animate-fade-in">
+            <div class="min-h-0 flex-1 animate-rise-in">
               {#if activeTab === "overview"}
                 <OverviewView />
               {:else if activeTab === "search"}
@@ -109,7 +109,10 @@
           <PendingBar />
         </div>
         {#if summary && workspaceWidth >= SUMMARY_MIN_WIDTH}
-          <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />
+          <!-- Keyed: switching pages remounts it rather than animating every row out and in. -->
+          {#key summary.title}
+            <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />
+          {/key}
         {/if}
       </div>
     </main>

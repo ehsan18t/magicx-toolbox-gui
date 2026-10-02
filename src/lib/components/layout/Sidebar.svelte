@@ -8,6 +8,7 @@
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { categoriesStore, getCategoryStats, pendingChangesStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
+  import { fade, reducedMotion } from "$lib/utils/motion";
 
   const isOpen = $derived(sidebarStore.isOpen);
   let moreAbove = $state(false);
@@ -15,6 +16,14 @@
   let scrollEl = $state<HTMLElement | null>(null);
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(getCategoryStats());
+
+  // One shared indicator glides to the active item; items above it can shift, so re-measure on those too.
+  let indicator = $state<{ x: number; y: number } | null>(null);
+  $effect(() => {
+    void [activeTab, isOpen, navigationStore.fixedTabs.length, navigationStore.categoryTabs.length];
+    const item = scrollEl?.querySelector<HTMLElement>('[aria-current="page"]');
+    indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2 } : null;
+  });
   const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
   // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
   const pendingByCategory = $derived.by(() => {
@@ -86,15 +95,14 @@
       : [label, trailing, alert, pending].filter(Boolean).join(" · ")}
     {onclick}
   >
-    {#if active}
-      <span class="absolute top-1/2 left-0 h-4 w-0.75 -translate-y-1/2 rounded-full bg-accent"></span>
-    {/if}
     <span class="relative flex w-5 shrink-0 justify-center">
       <Icon {icon} width="18" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
       {#if alert && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-error ring-2 ring-background"></span>
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 animate-pop-in rounded-full bg-error ring-2 ring-background"
+        ></span>
       {:else if pending && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-warning ring-2 ring-background"></span>
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 animate-pop-in rounded-full bg-warning ring-2 ring-background"
+        ></span>
       {/if}
     </span>
     {#if isOpen}
@@ -103,7 +111,7 @@
         <Icon icon="mdi:alert-circle" width="14" class="shrink-0 text-error" />
       {/if}
       {#if pending}
-        <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>
+        <span class="h-2 w-2 shrink-0 animate-pop-in rounded-full bg-warning" aria-hidden="true"></span>
       {/if}
       {#if trailing}
         <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
@@ -115,7 +123,7 @@
 {#if sidebarStore.isOverlay}
   <button
     type="button"
-    class="fixed inset-x-0 top-12 bottom-0 z-scrim cursor-default bg-black/20"
+    class="fixed inset-x-0 top-12 bottom-0 z-scrim animate-fade-in cursor-default bg-black/20"
     aria-label="Close navigation"
     tabindex="-1"
     onclick={() => sidebarStore.closeOverlay()}
@@ -123,25 +131,32 @@
 {/if}
 
 <nav
-  class="relative h-full shrink-0 transition-[width] duration-200 ease-out {sidebarStore.isDockedExpanded
+  class="relative h-full shrink-0 transition-[width] duration-slow ease-out {sidebarStore.isDockedExpanded
     ? 'w-64'
-    : 'w-14'}"
+    : 'w-rail'}"
   aria-label="Main"
 >
   <div
     class="flex h-full flex-col {sidebarStore.isOverlay
-      ? 'absolute inset-y-0 left-0 z-drawer w-72 animate-rise-in rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
+      ? 'absolute inset-y-0 left-0 z-drawer w-72 animate-drawer-in rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
       : 'w-full'}"
   >
     <div class="relative flex min-h-0 flex-1 flex-col">
       <div
         bind:this={scrollEl}
-        class="nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
+        class="nav-scroll relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
         use:overflowHints={(above, below) => {
           moreAbove = above;
           moreBelow = below;
         }}
       >
+        {#if indicator}
+          <span
+            class="pointer-events-none absolute top-0 left-0 h-4 w-0.75 -translate-y-1/2 animate-fade-in rounded-full bg-accent transition-transform duration-slow"
+            style:transform="translate({indicator.x}px, {indicator.y}px)"
+            aria-hidden="true"
+          ></span>
+        {/if}
         {#each navigationStore.fixedTabs as tab (tab.id)}
           {@const count = fixedCount(tab.id)}
           {@render navItem(
@@ -185,6 +200,7 @@
       </div>
       {#if moreAbove}
         <div
+          transition:fade={{ speed: "fast" }}
           class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b to-transparent {sidebarStore.isOverlay
             ? 'from-elevated'
             : 'from-background'}"
@@ -193,6 +209,7 @@
       {/if}
       {#if moreBelow}
         <div
+          transition:fade={{ speed: "fast" }}
           class="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 {sidebarStore.isOverlay
             ? 'from-elevated'
             : 'from-background'}"
@@ -205,7 +222,7 @@
             onclick={() =>
               scrollEl?.scrollBy({
                 top: scrollEl.clientHeight * 0.6,
-                behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+                behavior: reducedMotion() ? "auto" : "smooth",
               })}
           >
             <Icon icon="mdi:chevron-down" width="18" />
@@ -236,7 +253,7 @@
           <Icon icon={item.icon} width="18" />
           {#if item.dot}
             <span
-              class="absolute top-1.5 right-1/2 h-2 w-2 translate-x-3 rounded-full bg-success ring-2 ring-background"
+              class="absolute top-1.5 right-1/2 h-2 w-2 translate-x-3 animate-pop-in rounded-full bg-success ring-2 ring-background"
             ></span>
           {/if}
         </button>

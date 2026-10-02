@@ -4,6 +4,7 @@
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { attentionCause } from "$lib/types";
+  import { expand, fade, reducedMotion } from "$lib/utils/motion";
 
   interface Props {
     /** Names the pane for assistive tech, e.g. "Security at a glance". */
@@ -36,7 +37,7 @@
     openTweakDetailsModal(id);
     document.getElementById(`tweak-${id}`)?.scrollIntoView({
       block: "nearest",
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      behavior: reducedMotion() ? "auto" : "smooth",
     });
   }
 </script>
@@ -49,7 +50,7 @@
   detail: (t: TweakWithStatus) => string,
 )}
   {#if items.length > 0}
-    <section>
+    <section transition:expand>
       <h3 class="m-0 mb-1.5 flex items-center gap-2 text-[13px] font-semibold">
         <Icon {icon} width="16" class={tone} />
         {title}
@@ -58,7 +59,7 @@
       <ul class="m-0 list-none space-y-0.5 p-0">
         {#each items as t (t.definition.id)}
           {@const d = detail(t)}
-          <li>
+          <li transition:expand>
             <button
               type="button"
               class="group flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
@@ -81,7 +82,10 @@
   {/if}
 {/snippet}
 
-<aside class="flex w-[clamp(360px,30%,440px)] shrink-0 flex-col border-l border-border bg-surface" aria-label={label}>
+<aside
+  class="flex w-[clamp(360px,30%,440px)] shrink-0 animate-fade-in flex-col border-l border-border bg-surface"
+  aria-label={label}
+>
   <header class="shrink-0 border-b border-border px-5 pt-4 pb-3">
     <h2 class="m-0 font-display text-lg font-semibold">At a glance</h2>
     <p class="m-0 mt-0.5 text-[13px] text-foreground-muted">Select a tweak to see its details here.</p>
@@ -96,7 +100,10 @@
         </div>
         <div class="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted">
           {#each breakdown as b (b.label)}
-            <div class={b.tone} style="width: {(b.value / tweaks.length) * 100}%"></div>
+            <div
+              class="transition-[width] duration-slower ease-out {b.tone}"
+              style:width="{(b.value / tweaks.length) * 100}%"
+            ></div>
           {/each}
         </div>
         <ul class="m-0 mt-2.5 flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
@@ -127,7 +134,7 @@
     {@render group("mdi:restart", "text-info", "Waiting for a restart", reboot, () => "")}
 
     {#if allClear && tweaks.length > 0}
-      <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-[13px]">
+      <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-[13px]" in:fade>
         <Icon icon="mdi:check-circle" width="18" class="shrink-0 text-success" />
         <span class="text-foreground-muted">Nothing here needs your attention.</span>
       </div>
