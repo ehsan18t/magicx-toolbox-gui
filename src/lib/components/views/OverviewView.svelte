@@ -243,7 +243,7 @@
         {#if i === 0 && tweaksStore.list.length > 0}
           <span class="mt-2 block h-1 w-full overflow-hidden rounded-full bg-muted">
             <span
-              class="block h-full rounded-full bg-accent transition-[width] duration-300"
+              class="block h-full rounded-full bg-accent transition-[width] duration-slower ease-out"
               style="width: {(applied / tweaksStore.list.length) * 100}%"
             ></span>
           </span>
@@ -294,7 +294,7 @@
                 </span>
                 <span class="block h-1 overflow-hidden rounded-full bg-muted">
                   <span
-                    class="block h-full rounded-full bg-accent transition-[width] duration-300"
+                    class="block h-full rounded-full bg-accent transition-[width] duration-slower ease-out"
                     style="width: {progress}%"
                   ></span>
                 </span>

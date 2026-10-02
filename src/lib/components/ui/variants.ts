@@ -12,7 +12,7 @@ import { tv, type VariantProps } from "tailwind-variants";
  * Base button variant - used by Button
  */
 export const button = tv({
-  base: "inline-flex items-center justify-center gap-2 rounded-md border-0 font-medium transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
+  base: "inline-flex items-center justify-center gap-2 rounded-md border-0 font-medium cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
   variants: {
     variant: {
       primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
@@ -40,30 +40,6 @@ export const button = tv({
 });
 
 export type ButtonVariants = VariantProps<typeof button>;
-
-/**
- * Icon button variant - small icon-only buttons
- */
-export const iconButton = tv({
-  base: "flex shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted",
-  variants: {
-    size: {
-      sm: "h-6 w-6",
-      md: "h-8 w-8",
-      lg: "h-10 w-10",
-    },
-    variant: {
-      ghost: "hover:bg-muted",
-      subtle: "hover:bg-foreground/5",
-    },
-  },
-  defaultVariants: {
-    size: "md",
-    variant: "ghost",
-  },
-});
-
-export type IconButtonVariants = VariantProps<typeof iconButton>;
 
 // =============================================================================
 // BADGE VARIANTS
@@ -94,42 +70,6 @@ export const counterBadge = tv({
 });
 
 export type CounterBadgeVariants = VariantProps<typeof counterBadge>;
-
-// =============================================================================
-// CARD VARIANTS
-// =============================================================================
-
-/**
- * Card container variant
- */
-export const card = tv({
-  base: "rounded-lg border transition-all duration-200",
-  variants: {
-    variant: {
-      default: "border-border bg-card",
-      elevated: "border-border bg-elevated shadow-flyout",
-      outlined: "border-border bg-transparent",
-      ghost: "border-transparent bg-transparent",
-      surface: "border-border bg-surface",
-    },
-    hover: {
-      true: "hover:border-border-hover hover:shadow-md",
-    },
-    padding: {
-      none: "",
-      sm: "p-2",
-      md: "p-4",
-      lg: "p-6",
-    },
-  },
-  defaultVariants: {
-    variant: "default",
-    hover: false,
-    padding: "md",
-  },
-});
-
-export type CardVariants = VariantProps<typeof card>;
 
 /**
  * Panel variant - for sections like toolbar panels

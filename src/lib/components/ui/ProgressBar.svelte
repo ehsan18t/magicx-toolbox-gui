@@ -43,7 +43,9 @@
     aria-label="Progress"
   >
     <div
-      class="absolute inset-y-0 left-0 rounded-full transition-all duration-300 ease-out {variantClasses[variant]}"
+      class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-slower ease-out {variantClasses[
+        variant
+      ]}"
       style="width: {percentage}%"
     ></div>
   </div>

@@ -28,7 +28,7 @@
       type="button"
       onclick={() => handleSchemeChange(scheme.id)}
       class={cn(
-        "flex cursor-pointer items-center justify-center rounded-full transition-all duration-200",
+        "flex cursor-pointer items-center justify-center rounded-full transition duration-normal",
         "hover:scale-110 hover:ring-2 hover:ring-white/30",
         "focus:ring-2 focus:ring-white/50 focus:outline-none",
         sizeClasses[size],
@@ -40,7 +40,7 @@
       aria-pressed={currentScheme === scheme.id}
     >
       {#if currentScheme === scheme.id}
-        <svg class="h-2.5 w-2.5 text-white drop-shadow-sm" viewBox="0 0 20 20" fill="currentColor">
+        <svg class="h-2.5 w-2.5 animate-pop-in text-white drop-shadow-sm" viewBox="0 0 20 20" fill="currentColor">
           <path
             fill-rule="evenodd"
             d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"

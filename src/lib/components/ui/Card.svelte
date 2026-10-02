@@ -13,7 +13,7 @@
 
   let { variant = "default", hover = false, padding = "md", class: className = "", children }: Props = $props();
 
-  const baseClasses = "rounded-lg border transition-all duration-200";
+  const baseClasses = "rounded-lg border transition duration-normal";
 
   const variantClasses: Record<Variant, string> = {
     default: "border-border bg-card",

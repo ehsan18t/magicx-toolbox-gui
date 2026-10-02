@@ -84,7 +84,7 @@
           </div>
           <div class="h-1 overflow-hidden rounded-full bg-muted">
             <div
-              class="h-full rounded-full bg-accent transition-[width] duration-300"
+              class="h-full rounded-full bg-accent transition-[width] duration-slower ease-out"
               style="width: {(appliedCount / categoryTweaks.length) * 100}%"
             ></div>
           </div>
