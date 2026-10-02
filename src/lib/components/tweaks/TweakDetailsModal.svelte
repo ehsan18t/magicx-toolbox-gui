@@ -509,7 +509,7 @@
                   <Icon
                     icon="mdi:chevron-right"
                     width="16"
-                    class="shrink-0 transition-transform group-open:rotate-90"
+                    class="shrink-0 transition-transform duration-normal group-open:rotate-90"
                   />
                   <span class="font-medium">{option.label}</span>
                   <span class="text-xs text-foreground-muted">

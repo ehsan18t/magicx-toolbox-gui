@@ -237,7 +237,7 @@
       {:else}
         <Icon
           icon="mdi:chevron-down"
-          class={cn("h-4 w-4 text-foreground-muted transition-transform duration-150", isOpen && "rotate-180")}
+          class={cn("h-4 w-4 text-foreground-muted transition-transform duration-normal", isOpen && "rotate-180")}
         />
       {/if}
     </div>

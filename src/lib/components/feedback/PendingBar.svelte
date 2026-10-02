@@ -10,8 +10,8 @@
     unstageChange,
   } from "$lib/stores/tweaks.svelte";
   import { RISK_INFO } from "$lib/types";
+  import { expand, pop, shift } from "$lib/utils/motion";
   import { isHighRisk, stateSummary } from "$lib/utils/tweakPresentation";
-  import { slide } from "svelte/transition";
 
   let expanded = $state(false);
   let applying = $state(false);
@@ -53,22 +53,16 @@
 </script>
 
 {#if count > 0}
-  <div
-    class="pointer-events-none absolute inset-x-0 bottom-0 z-dock flex justify-center px-4 pb-4"
-    transition:slide={{ duration: 180 }}
-  >
+  <div class="pointer-events-none absolute inset-x-0 bottom-0 z-dock flex justify-center px-4 pb-4" transition:shift>
     <div
       class="pointer-events-auto w-full max-w-xl overflow-hidden rounded-lg border border-border bg-elevated shadow-flyout"
       role="region"
       aria-label="Pending changes"
     >
       {#if expanded}
-        <ul
-          class="m-0 max-h-56 list-none overflow-y-auto border-b border-border p-1"
-          transition:slide={{ duration: 150 }}
-        >
+        <ul class="m-0 max-h-56 list-none overflow-y-auto border-b border-border p-1" transition:expand>
           {#each items as { change, tweak, from } (change.tweakId)}
-            <li class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
+            <li class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted" transition:expand>
               <button
                 type="button"
                 class="min-w-0 flex-1 cursor-pointer truncate text-left text-[13px]"
@@ -100,7 +94,7 @@
           <span
             class="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-warning-foreground tabular-nums"
           >
-            {count}
+            {#key count}<span class="inline-block" in:pop>{count}</span>{/key}
           </span>
           <span class="min-w-0">
             <span class="block truncate text-[13px] font-semibold text-foreground">
@@ -111,9 +105,9 @@
             {/if}
           </span>
           <Icon
-            icon={expanded ? "mdi:chevron-down" : "mdi:chevron-up"}
+            icon="mdi:chevron-up"
             width="16"
-            class="shrink-0 text-foreground-muted"
+            class="shrink-0 text-foreground-muted transition-transform duration-normal {expanded ? 'rotate-180' : ''}"
           />
         </button>
 

@@ -56,6 +56,27 @@
   // With nothing selected the group still needs one tab stop.
   const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
 
+  // One thumb slides to the selection; a resize can move segments without changing it, so re-measure on resize too.
+  let group = $state<HTMLElement | null>(null);
+  let thumb = $state<{ x: number; width: number } | null>(null);
+
+  function measure() {
+    const selected = group?.querySelectorAll<HTMLElement>("[role='radio']")[selectedIndex];
+    thumb = selected ? { x: selected.offsetLeft, width: selected.offsetWidth } : null;
+  }
+
+  $effect(() => {
+    void [selectedIndex, options.length, size, iconOnly];
+    measure();
+  });
+
+  $effect(() => {
+    if (!group) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(group);
+    return () => observer.disconnect();
+  });
+
   function handleClick(optValue: number) {
     if (disabled || loading || optValue === value) return;
     if (options.find((o) => o.value === optValue)?.disabled) return;
@@ -89,17 +110,28 @@
 </script>
 
 <div
+  bind:this={group}
   role="radiogroup"
   aria-label={label}
   tabindex="-1"
   class={cn(
-    "inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors duration-150",
+    "relative inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors",
     pending ? "border-warning/50 bg-warning/10" : "border-border bg-secondary",
     disabled && "opacity-55",
     className,
   )}
   onkeydown={handleKeydown}
 >
+  {#if thumb}
+    <span
+      class="absolute inset-y-0.5 left-0 animate-fade-in rounded shadow-sm transition-[translate,width,background-color] duration-normal {pending
+        ? 'bg-warning'
+        : 'bg-accent'}"
+      style:width="{thumb.width}px"
+      style:translate="{thumb.x}px"
+      aria-hidden="true"
+    ></span>
+  {/if}
   {#each options as opt, i (opt.value)}
     {@const isSelected = opt.value === value}
     <button
@@ -116,8 +148,8 @@
         iconOnly ? currentSize.segmentIconOnly : currentSize.segment,
         isSelected
           ? pending
-            ? "bg-warning text-warning-foreground shadow-sm"
-            : "bg-accent text-accent-foreground shadow-sm"
+            ? "text-warning-foreground"
+            : "text-accent-foreground"
           : cn(
               "text-foreground-muted",
               opt.disabled && "opacity-40",

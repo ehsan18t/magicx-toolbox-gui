@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { filterStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
-  import { slide } from "svelte/transition";
+  import { expand } from "$lib/utils/motion";
 
   let showDetails = $state(false);
 
@@ -11,7 +11,7 @@
 </script>
 
 {#if rebootCount > 0}
-  <div class="shrink-0 border-b border-border bg-info/8 px-4 py-2" transition:slide={{ duration: 150 }}>
+  <div class="shrink-0 border-b border-border bg-info/8 px-4 py-2" transition:expand>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <Icon icon="mdi:restart" width="16" class="shrink-0 text-info" />
       <p class="m-0 min-w-0 flex-1 text-[13px]">
@@ -41,7 +41,7 @@
       </div>
     </div>
     {#if showDetails}
-      <ul class="m-0 mt-1.5 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 pl-7" transition:slide={{ duration: 150 }}>
+      <ul class="m-0 mt-1.5 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 pl-7" transition:expand>
         {#each rebootTweaks as tweak (tweak.definition.id)}
           <li class="min-w-0 text-xs wrap-break-word text-foreground-muted">{tweak.definition.name}</li>
         {/each}

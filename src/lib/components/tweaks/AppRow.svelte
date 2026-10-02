@@ -7,6 +7,7 @@
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import type { AppView, RiskLevel } from "$lib/types";
   import { permissionInfoFor, RISK_INFO } from "$lib/types";
+  import { expand } from "$lib/utils/motion";
   import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
   import { RISK_TONE, TONE_TEXT } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
@@ -142,13 +143,13 @@
 <article
   id="app-{app.id}"
   bind:this={rowEl}
-  class="@container relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {highlight.active
+  class="@container relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-border-hover {highlight.active
     ? 'animate-highlight'
     : ''}"
   aria-busy={busy}
 >
   <span
-    class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {presence?.state === 'installed'
+    class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full transition-colors {presence?.state === 'installed'
       ? 'bg-accent'
       : 'bg-transparent'}"
     aria-hidden="true"
@@ -194,7 +195,7 @@
     </div>
 
     {#if busy}
-      <div class="flex items-center gap-3 text-xs text-foreground-muted" role="status">
+      <div class="flex items-center gap-3 text-xs text-foreground-muted" role="status" transition:expand>
         <div class="h-1 flex-1 overflow-hidden rounded-full bg-muted">
           <div class="activity-bar h-full w-1/3 rounded-full bg-accent"></div>
         </div>
@@ -205,6 +206,7 @@
     {#if app.warning && warningOpen}
       <div
         id="app-warning-{app.id}"
+        transition:expand
         class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground"
       >
         <Icon icon="mdi:alert" width="14" class="mt-px shrink-0 text-warning" />
@@ -216,6 +218,7 @@
       <div
         class="flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs text-error"
         role="alert"
+        transition:expand
       >
         <Icon icon="mdi:alert-circle" width="14" class="mt-px shrink-0" />
         <span class="min-w-0 flex-1 wrap-break-word">{appError}</span>
@@ -253,7 +256,7 @@
           <Icon
             icon="mdi:chevron-down"
             width="14"
-            class="shrink-0 transition-transform {warningOpen ? 'rotate-180' : ''}"
+            class="shrink-0 transition-transform duration-normal {warningOpen ? 'rotate-180' : ''}"
           />
         </button>
       {/if}

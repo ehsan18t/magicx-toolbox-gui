@@ -46,18 +46,18 @@
   onkeydown={handleKeydown}
 >
   <span
-    class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-colors duration-200 hover:brightness-95
+    class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-[background-color,filter] duration-normal hover:brightness-95
       {checked ? (pending ? 'bg-warning' : 'bg-accent') : 'bg-muted'}"
   >
     <span
-      class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200
+      class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-normal
         {checked ? 'translate-x-5' : 'translate-x-0'}
         {loading ? 'text-foreground-muted' : 'text-accent'}"
     >
       {#if loading}
         <Icon icon="mdi:loading" width={14} class="animate-spin" />
       {:else if checked}
-        <Icon icon="mdi:check" width={14} />
+        <Icon icon="mdi:check" width={14} class="animate-pop-in" />
       {/if}
     </span>
   </span>

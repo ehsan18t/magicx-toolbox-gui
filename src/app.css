@@ -255,6 +255,8 @@
 
   --animate-fade-in: fade-in var(--transition-duration-slow) var(--ease-out);
   --animate-fade-out: fade-out var(--transition-duration-normal) var(--ease-in) forwards;
+  /* Anti-flicker: stays invisible unless whatever it covers outlasts the reveal delay. */
+  --animate-reveal: fade-in var(--transition-duration-slow) var(--ease-out) var(--transition-delay-reveal) backwards;
   --animate-rise-in: rise-in var(--transition-duration-slow) var(--ease-out);
   --animate-pop-in: pop-in var(--transition-duration-normal) var(--ease-out);
   --animate-drawer-in: drawer-in var(--transition-duration-slow) var(--ease-out);

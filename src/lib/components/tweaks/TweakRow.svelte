@@ -8,6 +8,7 @@
   import { errorStore, loadingStore, pendingChangesStore, unstageChange } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
+  import { expand } from "$lib/utils/motion";
   import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
   import { keepWithConfirm, restoreTweak } from "$lib/utils/tweakActions";
   import { availabilityLabel, isHighRisk, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
@@ -117,14 +118,15 @@
 <article
   id="tweak-{def.id}"
   bind:this={rowEl}
-  class="@container relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-colors duration-150 {isSelected
+  class="@container relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-colors {isSelected
     ? 'border-accent/70'
     : hasPending
       ? 'border-warning/45'
       : 'border-border hover:border-border-hover'} {highlight.active ? 'animate-highlight' : ''}"
   onclick={handleRowClick}
 >
-  <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {stripe}" aria-hidden="true"></span>
+  <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full transition-colors {stripe}" aria-hidden="true"
+  ></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
     <div
@@ -153,6 +155,7 @@
     {#if def.warning && warningOpen}
       <div
         id="warning-{def.id}"
+        transition:expand
         class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground"
       >
         <Icon icon="mdi:alert" width="14" class="mt-px shrink-0 text-warning" />
@@ -161,7 +164,7 @@
     {/if}
 
     {#if attention}
-      <div class="rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs leading-relaxed">
+      <div class="rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs leading-relaxed" transition:expand>
         <div class="flex gap-2">
           <Icon icon="mdi:alert-circle" width="14" class="mt-px shrink-0 text-error" />
           <span class="min-w-0">
@@ -200,7 +203,10 @@
     {/if}
 
     {#if tweakError}
-      <div class="flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs text-error">
+      <div
+        class="flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs text-error"
+        transition:expand
+      >
         <Icon icon="mdi:alert-circle" width="14" class="mt-px shrink-0" />
         <span class="min-w-0 flex-1 wrap-break-word">{tweakError}</span>
         <button
@@ -227,7 +233,7 @@
         status.state === "loading",
       )}
       {#if pendingChange}
-        <span class="inline-flex max-w-full items-center gap-1 text-warning">
+        <span class="inline-flex max-w-full animate-pop-in items-center gap-1 text-warning">
           {@render metaItem("mdi:arrow-right", `${pendingChange.optionLabel} pending`, "", "Staged, not applied yet")}
           <button
             type="button"
@@ -260,7 +266,7 @@
           <Icon
             icon="mdi:chevron-down"
             width="14"
-            class="shrink-0 transition-transform {warningOpen ? 'rotate-180' : ''}"
+            class="shrink-0 transition-transform duration-normal {warningOpen ? 'rotate-180' : ''}"
           />
         </button>
       {/if}
