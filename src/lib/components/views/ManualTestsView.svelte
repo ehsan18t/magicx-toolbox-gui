@@ -137,7 +137,7 @@
 
         {#if result}
           {@const badge = statusBadge[result.status]}
-          <div class="flex flex-col gap-1.5" role="status">
+          <div class="flex animate-fade-in flex-col gap-1.5" role="status">
             <div class="flex items-start gap-2">
               <Badge variant={badge.variant} size="md">{badge.label}</Badge>
               <p class="m-0 text-sm font-medium text-foreground">{result.summary}</p>
@@ -151,7 +151,7 @@
             {/if}
           </div>
         {:else if failure}
-          <div class="flex items-start gap-2" role="alert">
+          <div class="flex animate-fade-in items-start gap-2" role="alert">
             <Badge variant="error" size="md">Error</Badge>
             <p class="m-0 text-sm text-foreground">{failure}</p>
           </div>

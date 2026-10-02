@@ -18,7 +18,7 @@
   });
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex animate-fade-in flex-col gap-6">
   {#each groups as [categoryId, list] (categoryId)}
     <section class="flex flex-col gap-2" aria-labelledby="group-{categoryId}">
       <h2 id="group-{categoryId}" class="m-0">

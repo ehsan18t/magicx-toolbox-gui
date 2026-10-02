@@ -66,7 +66,7 @@
       {#if attentionCount > 0}
         <button
           type="button"
-          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium {attentionOnly
+          class="inline-flex h-8 animate-pop-in cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium {attentionOnly
             ? 'border-error bg-error text-background'
             : 'border-error/40 bg-error/10 text-error hover:bg-error/15'}"
           aria-pressed={attentionOnly}
@@ -107,7 +107,7 @@
 
   {#if needsAdminCount > 0}
     <div
-      class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5"
+      class="flex animate-fade-in flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5"
     >
       <Icon icon="mdi:shield-lock-outline" width="18" class="shrink-0 text-warning" />
       <p class="m-0 min-w-0 flex-1 text-[13px]">
@@ -154,7 +154,7 @@
     {/if}
   {:else}
     {#if filteredTweaks.length > 0}
-      <div class="flex flex-col gap-2">
+      <div class="flex animate-fade-in flex-col gap-2">
         {#each filteredTweaks as tweak (tweak.definition.id)}
           <TweakRow {tweak} />
         {/each}
@@ -162,7 +162,7 @@
     {/if}
 
     {#if filteredApps.length > 0}
-      <section aria-labelledby="apps-heading-{tab.id}" class="mt-4 flex flex-col gap-2">
+      <section aria-labelledby="apps-heading-{tab.id}" class="mt-4 flex animate-fade-in flex-col gap-2">
         <h2 id="apps-heading-{tab.id}" class="m-0 flex items-baseline gap-2 text-base font-semibold">
           Apps
           <span class="text-xs font-normal text-foreground-muted">{installedAppCount} installed</span>

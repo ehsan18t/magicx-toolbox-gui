@@ -99,7 +99,7 @@
     aria-label="Logs"
     tabindex="-1"
     {@attach panel}
-    class="flex h-72 max-h-[45%] min-h-40 shrink-0 flex-col border-t border-border bg-background outline-none"
+    class="flex h-72 max-h-[45%] min-h-40 shrink-0 animate-rise-in flex-col border-t border-border bg-background outline-none"
   >
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">

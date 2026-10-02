@@ -116,7 +116,7 @@
           {storedSize(logs.files, logs.bytes)}{logs.persist ? "" : ". Existing log files are kept."}
         </p>
       </div>
-      {#if logs.error}<p class="m-0 text-xs text-error">Logging problem: {logs.error}</p>{/if}
+      {#if logs.error}<p class="m-0 animate-fade-in text-xs text-error">Logging problem: {logs.error}</p>{/if}
       <div class="flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onclick={() => logsStore.openFolder()}>
           <Icon icon="mdi:folder-open" width="16" />

@@ -6,6 +6,7 @@
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
+  import { fade, pop, reflow } from "$lib/utils/motion";
   import { appDataDir, join } from "@tauri-apps/api/path";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -188,10 +189,12 @@
         description="Profiles you export are kept here for quick access."
       />
     {:else}
-      <div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+      <div class="grid animate-fade-in grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
         {#each profiles as profile (profile.name + profile.created_at)}
           <div
-            class="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3.5 hover:border-border-hover"
+            class="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:border-border-hover"
+            out:pop
+            animate:reflow
           >
             <div class="flex items-start gap-2.5">
               <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">
@@ -236,7 +239,10 @@
   </PageLayout>
 
   {#if isDragOver}
-    <div class="absolute inset-0 z-scrim flex flex-col items-center justify-center bg-background/85">
+    <div
+      class="absolute inset-0 z-scrim flex flex-col items-center justify-center bg-background/85"
+      transition:fade={{ speed: "fast" }}
+    >
       <div class="flex h-24 w-24 items-center justify-center rounded-2xl bg-accent/15">
         <Icon icon="mdi:file-import" width="48" class="text-accent" />
       </div>

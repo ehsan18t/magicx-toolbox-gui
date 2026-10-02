@@ -199,7 +199,7 @@
 </script>
 
 {#snippet pcList(rows: HardwareRow[], columns: boolean)}
-  <dl class="m-0 grid p-1 {columns ? '@min-[52rem]:grid-cols-2' : ''}">
+  <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-[52rem]:grid-cols-2' : ''}">
     {#each rows as row, i (`${row.label}-${i}`)}
       <div class="grid grid-cols-[1.25rem_5.5rem_minmax(0,1fr)] items-baseline gap-x-2.5 px-2 py-1.5">
         <Icon icon={row.icon} width="15" class="self-center text-foreground-muted" />
@@ -336,7 +336,10 @@
     </div>
 
     {#if deviceRows.length > 0}
-      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-card" aria-labelledby="overview-devices">
+      <section
+        class="mt-3 animate-fade-in overflow-hidden rounded-lg border border-border bg-card"
+        aria-labelledby="overview-devices"
+      >
         <h2 id="overview-devices" class="m-0 border-b border-border px-3 py-2 text-[13px] font-semibold">Devices</h2>
         {@render pcList(deviceRows, true)}
       </section>
