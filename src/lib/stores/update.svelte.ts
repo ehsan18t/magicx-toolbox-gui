@@ -83,6 +83,7 @@ export const updateStore = {
   },
 
   async installUpdate(): Promise<boolean> {
+    if (isInstalling) return false;
     if (!updateInfo?.available || !updateInfo.downloadUrl || !updateInfo.assetName) {
       error = "No update available to install";
       return false;
