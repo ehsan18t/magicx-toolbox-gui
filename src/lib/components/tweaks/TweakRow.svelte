@@ -80,15 +80,11 @@
   // the state line names it and Restore is the only way back.
   const selectValue = $derived(pendingChange?.optionLabel ?? activeOption);
 
-  const LONG_SEGMENT_LABELS = 34;
   const segments = $derived(
     optionLabels.map((label, i) => {
       const unavailable = status.unavailableOptions.some((u) => u.label === label);
       return { value: i, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
     }),
-  );
-  const longLabels = $derived(
-    optionLabels.length === 2 && segments.reduce((n, s) => n + s.label.length, 0) > LONG_SEGMENT_LABELS,
   );
   const selectOptions = $derived(segments.map((s, i) => ({ ...s, value: optionLabels[i] })));
   const selectPlaceholder = $derived(
@@ -199,7 +195,7 @@
   <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {stripe}" aria-hidden="true"></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="flex gap-x-6 gap-y-2.5 @max-[520px]:flex-col {longLabels ? 'flex-col' : 'items-start'}">
+    <div class="flex items-start gap-x-6 gap-y-2.5 @max-[520px]:flex-col">
       <div class="min-w-0 flex-1">
         <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
           {#if titleSlot}{@render titleSlot()}{:else}{def.name}{/if}
@@ -210,20 +206,17 @@
       </div>
 
       <div
-        class="min-w-0 {longLabels
-          ? 'w-full'
-          : onlyOption !== null
-            ? 'shrink-0'
-            : optionLabels.length === 2
-              ? 'max-w-[45%] shrink-0 @max-[520px]:max-w-full'
-              : 'w-fit max-w-[45%] min-w-44 shrink-0 @max-[520px]:w-full @max-[520px]:max-w-full'}"
+        class="max-w-[45%] min-w-0 shrink-0 @max-[520px]:max-w-full {optionLabels.length > 2
+          ? 'w-fit min-w-44 @max-[520px]:w-full'
+          : ''}"
         use:tooltip={controlDisabledReason ??
           (switchOffBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : null)}
       >
         {#if onlyOption !== null}
           <div class="flex items-center gap-2.5">
             <span
-              class="text-[13px] {switchOn
+              use:tooltip={onlyOption}
+              class="min-w-0 truncate text-[13px] {switchOn
                 ? hasPending
                   ? 'text-warning'
                   : 'text-foreground'
@@ -247,7 +240,6 @@
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}
-            stretch={longLabels}
             label={def.name}
             onchange={(i) => selectTarget(optionLabels[i])}
           />

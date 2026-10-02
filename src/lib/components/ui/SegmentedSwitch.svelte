@@ -18,8 +18,6 @@
     loading?: boolean;
     disabled?: boolean;
     iconOnly?: boolean;
-    /** Segments share the full available width. */
-    stretch?: boolean;
     size?: "sm" | "md";
     /** Accessible name for the group. */
     label?: string;
@@ -34,7 +32,6 @@
     loading = false,
     disabled = false,
     iconOnly = false,
-    stretch = false,
     size = "sm",
     label,
     class: className = "",
@@ -49,6 +46,11 @@
   const currentSize = $derived(sizeClasses[size]);
 
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
+  // Only long labels give up width, so a short sibling is never cut to make room for them.
+  const longestIndex = $derived(
+    options.reduce((best, o, i) => (o.label.length > options[best].label.length ? i : best), 0),
+  );
+  const shrinks = (i: number) => i === longestIndex || options[i].label.length > 16;
   // With nothing selected the group still needs one tab stop.
   const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
 
@@ -89,8 +91,7 @@
   aria-label={label}
   tabindex="-1"
   class={cn(
-    "items-center gap-0.5 rounded-md border p-0.5 transition-colors duration-150",
-    stretch ? "flex w-full" : "inline-flex max-w-full",
+    "inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors duration-150",
     pending ? "border-warning/50 bg-warning/10" : "border-border bg-secondary",
     disabled && "opacity-55",
     className,
@@ -107,9 +108,9 @@
       tabindex={i === tabStopIndex ? 0 : -1}
       disabled={disabled || loading || opt.disabled}
       class={cn(
-        "relative inline-flex min-w-0 items-center justify-center gap-1.5 rounded font-medium whitespace-nowrap",
+        "relative inline-flex items-center justify-center gap-1.5 rounded font-medium whitespace-nowrap",
+        shrinks(i) ? "min-w-0" : "shrink-0",
         "outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
-        stretch && "flex-1",
         iconOnly ? currentSize.segmentIconOnly : currentSize.segment,
         isSelected
           ? pending
