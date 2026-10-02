@@ -3,12 +3,6 @@
   import type { Snippet } from "svelte";
   import { button } from "./variants";
 
-  /**
-   * EmptyState - Consistent empty/no-results state display
-   *
-   * Used for no tweaks, no favorites, no snapshots, no search results, etc.
-   */
-
   interface Props {
     /** Main icon to display (mdi icon) */
     icon: string;
@@ -29,17 +23,17 @@
   let { icon, title, description, actionText, onaction, showIconCircle = false, children }: Props = $props();
 </script>
 
-<div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
+<div class="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center text-foreground-muted">
   {#if showIconCircle}
-    <div class="flex h-20 w-20 items-center justify-center rounded-full bg-muted/50">
-      <Icon {icon} width="48" class="text-foreground-muted/50" />
+    <div class="mb-1 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+      <Icon {icon} width="32" />
     </div>
   {:else}
-    <Icon {icon} width="56" />
+    <Icon {icon} width="40" class="mb-1 {icon === 'mdi:loading' ? 'animate-spin' : ''}" />
   {/if}
 
-  <h3 class="m-0 text-lg font-semibold text-foreground">{title}</h3>
-  <p class="m-0 max-w-sm text-sm">{description}</p>
+  {#if title}<h3 class="m-0 text-base font-semibold text-foreground">{title}</h3>{/if}
+  <p class="m-0 max-w-sm text-[13px]">{description}</p>
 
   {#if children}
     {@render children()}

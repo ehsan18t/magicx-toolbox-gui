@@ -1,7 +1,8 @@
 <script lang="ts">
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { ActionButton, Badge, Button, EmptyState } from "$lib/components/ui";
+  import { PageLayout } from "$lib/components/layout";
+  import { Badge, Button, EmptyState } from "$lib/components/ui";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -140,139 +141,101 @@
   });
 </script>
 
-<div class="flex h-full flex-col gap-5 overflow-hidden p-6">
-  <!--
-    Temporarily disabled: the v1 profile backend was deleted and is being rebuilt.
-    The UI is kept so the feature reads as "coming back" rather than "gone".
-    Remove this banner when the backend returns. See docs/TWEAK_SYSTEM_PLAN.md.
-  -->
-  <div class="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 px-5 py-4" role="status">
-    <Icon icon="mdi:hammer-wrench" width="22" class="mt-0.5 shrink-0 text-warning" />
-    <div>
-      <p class="m-0 text-sm font-semibold text-foreground">Profiles are being rebuilt</p>
-      <p class="mt-1 mb-0 text-sm text-foreground-muted">
-        Exporting, importing and applying profiles are unavailable for now. Your tweaks and snapshots are unaffected.
+<div class="relative h-full">
+  <PageLayout title="Profiles" description="Saved configuration profiles you can apply on this or another PC.">
+    {#snippet aside()}
+      <p class="m-0 text-xs text-foreground-muted">
+        <span class="font-semibold text-foreground tabular-nums">{profiles.length}</span> saved
+      </p>
+    {/snippet}
+
+    {#snippet toolbar()}
+      {#if currentProfileDir}
+        <p class="m-0 flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground-muted" title={currentProfileDir}>
+          <Icon icon="mdi:folder-open" width="14" class="shrink-0" />
+          <span class="truncate font-mono">{currentProfileDir}</span>
+        </p>
+      {/if}
+      <div class="ml-auto flex flex-wrap gap-2">
+        {#if currentProfileDir}
+          <Button variant="secondary" onclick={handleResetFolder} title="Reset to the default AppData folder">
+            <Icon icon="mdi:refresh" width="16" />
+            Reset folder
+          </Button>
+        {/if}
+        <Button variant="secondary" onclick={handleOpenFolder} title="Select a folder to view profiles">
+          <Icon icon="mdi:folder-open" width="16" />
+          Open folder
+        </Button>
+        <Button variant="primary" onclick={() => modalStore.open("profileExport")}>
+          <Icon icon="mdi:plus" width="16" />
+          New profile
+        </Button>
+      </div>
+    {/snippet}
+
+    <!-- The profile backend is being rebuilt; this notice goes when it returns (docs/TWEAK_SYSTEM_PLAN.md). -->
+    <div class="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5" role="status">
+      <Icon icon="mdi:hammer-wrench" width="18" class="mt-0.5 shrink-0 text-warning" />
+      <p class="m-0 text-[13px]">
+        <span class="font-semibold">Profiles are being rebuilt.</span>
+        <span class="text-foreground-muted">
+          Exporting, importing and applying profiles are unavailable for now. Your tweaks and snapshots are unaffected.
+        </span>
       </p>
     </div>
-  </div>
 
-  <!-- Header -->
-  <header class="flex flex-wrap items-center justify-between gap-6">
-    <div class="flex items-center gap-4">
-      <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent">
-        <Icon icon="mdi:file-multiple" width="28" />
-      </div>
-      <div>
-        <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Profile Library</h1>
-        <p class="mt-1 mb-0 text-sm text-foreground-muted">
-          {#if currentProfileDir}
-            <span class="flex items-center gap-1.5" title={currentProfileDir}>
-              <Icon icon="mdi:folder-open" width="14" />
-              Custom Folder: <span class="font-mono text-xs">{currentProfileDir}</span>
-            </span>
-          {:else}
-            Manage your saved configuration profiles
-          {/if}
-        </p>
-      </div>
-    </div>
-
-    <div class="flex items-center gap-4 rounded-xl border border-border bg-card px-5 py-3">
-      <div class="flex items-center gap-2.5">
-        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15">
-          <Icon icon="mdi:folder" width="18" class="text-accent" />
-        </div>
-        <div class="flex flex-col items-center justify-center gap-0.5">
-          <span class="text-base font-bold text-foreground">{profiles.length}</span>
-          <span class="text-xs text-foreground-muted">Saved Profiles</span>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Toolbar -->
-  <div class="flex flex-wrap items-center gap-3">
-    <div class="flex-1"></div>
-    {#if currentProfileDir}
-      <ActionButton
-        intent="default"
-        icon="mdi:refresh"
-        onclick={handleResetFolder}
-        tooltip="Reset to default AppData folder"
-      >
-        Reset Default
-      </ActionButton>
-    {/if}
-    <ActionButton
-      intent="default"
-      icon="mdi:folder-open"
-      onclick={handleOpenFolder}
-      tooltip="Select a folder to view profiles"
-    >
-      Open Folder
-    </ActionButton>
-    <ActionButton intent="accent" icon="mdi:plus" onclick={() => modalStore.open("profileExport")}>
-      New Profile
-    </ActionButton>
-  </div>
-
-  <!-- Profiles List -->
-  <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if isLoading}
-      <div class="space-y-3">
-        <div class="h-24 w-full animate-pulse rounded-lg bg-muted/50"></div>
-        <div class="h-24 w-full animate-pulse rounded-lg bg-muted/50"></div>
+      <div class="space-y-2">
+        <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+        <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
       </div>
     {:else if profiles.length === 0}
       <EmptyState
         icon="mdi:folder-outline"
-        title="No Saved Profiles"
-        description="Profiles you export can be saved here for quick access."
-        actionText="Create Profile"
+        title="No saved profiles"
+        description="Profiles you export are kept here for quick access."
+        actionText="Create profile"
         onaction={() => modalStore.open("profileExport")}
       />
     {:else}
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
         {#each profiles as profile (profile.name + profile.created_at)}
           <div
-            class="group relative flex flex-col justify-between gap-4 rounded-xl border border-border bg-surface p-5 transition-all hover:border-accent hover:shadow-sm"
+            class="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3.5 hover:border-border-hover"
           >
-            <div>
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                  <Icon icon="mdi:file-cog" width="20" />
-                </div>
-                <Badge class="text-xs">v{profile.app_version}</Badge>
+            <div class="flex items-start gap-2.5">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">
+                <Icon icon="mdi:file-cog" width="18" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <h3 class="m-0 text-sm font-semibold wrap-break-word">{profile.name}</h3>
+                <p class="m-0 mt-0.5 line-clamp-2 text-xs text-foreground-muted">
+                  {profile.description || "No description"}
+                </p>
               </div>
-              <h3 class="mt-3 mb-1 text-base font-semibold text-foreground transition-colors group-hover:text-accent">
-                {profile.name}
-              </h3>
-              <p class="line-clamp-2 min-h-[2.5em] text-sm text-foreground-muted">
-                {profile.description || "No description"}
-              </p>
+              <Badge class="shrink-0 text-xs">v{profile.app_version}</Badge>
             </div>
-
-            <div class="flex items-center justify-between border-t border-border/50 pt-4">
-              <div class="flex flex-col text-xs text-foreground-muted">
-                <span class="font-medium">Win {profile.source_windows_version}</span>
-                <span>{new Date(profile.created_at).toLocaleDateString()}</span>
-              </div>
-              <div class="flex gap-1">
+            <div class="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+              <span class="text-xs text-foreground-muted">
+                Windows {profile.source_windows_version} · {new Date(profile.created_at).toLocaleDateString()}
+              </span>
+              <div class="flex gap-1.5">
                 <Button
                   size="sm"
                   variant="secondary"
-                  class="h-8 px-2"
+                  aria-label="Delete {profile.name}"
                   onclick={() => (profileToDelete = profile.name)}
                   disabled={deletingProfile === profile.name}
                 >
-                  {#if deletingProfile === profile.name}
-                    <Icon icon="mdi:loading" width="16" class="animate-spin" />
-                  {:else}
-                    <Icon icon="mdi:delete" width="16" />
-                  {/if}
+                  <Icon
+                    icon={deletingProfile === profile.name ? "mdi:loading" : "mdi:delete"}
+                    width="16"
+                    class={deletingProfile === profile.name ? "animate-spin" : ""}
+                  />
                 </Button>
-                <Button size="sm" variant="primary" class="h-8 px-3" onclick={() => handleApplySaved(profile.name)}>
-                  <Icon icon="mdi:play" width="16" class="mr-1.5" />
+                <Button size="sm" variant="primary" onclick={() => handleApplySaved(profile.name)}>
+                  <Icon icon="mdi:play" width="16" />
                   Apply
                 </Button>
               </div>
@@ -281,18 +244,15 @@
         {/each}
       </div>
     {/if}
-  </div>
+  </PageLayout>
 
-  <!-- Drag Overlay -->
   {#if isDragOver}
-    <div
-      class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm transition-all"
-    >
-      <div class="flex h-32 w-32 animate-bounce items-center justify-center rounded-3xl bg-accent/20">
-        <Icon icon="mdi:file-import" width="64" class="text-accent" />
+    <div class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/85">
+      <div class="flex h-24 w-24 items-center justify-center rounded-2xl bg-accent/15">
+        <Icon icon="mdi:file-import" width="48" class="text-accent" />
       </div>
-      <h2 class="mt-8 text-2xl font-bold tracking-tight text-foreground">Drop to Import Profile</h2>
-      <p class="mt-2 text-lg text-foreground-muted">Release the file to start importing</p>
+      <h2 class="mt-6 text-xl font-semibold">Drop to import profile</h2>
+      <p class="mt-1 text-sm text-foreground-muted">Release the file to start importing</p>
     </div>
   {/if}
 </div>

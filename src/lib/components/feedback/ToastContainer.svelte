@@ -7,27 +7,11 @@
   // Track which toasts are being dismissed for exit animation
   let dismissingIds = $state<Set<string>>(new Set());
 
-  const typeConfig: Record<ToastType, { icon: string; color: string; bgColor: string }> = {
-    success: {
-      icon: "mdi:check-circle",
-      color: "text-success",
-      bgColor: "bg-success/10 border-success/20",
-    },
-    error: {
-      icon: "mdi:alert-circle",
-      color: "text-error",
-      bgColor: "bg-error/10 border-error/20",
-    },
-    warning: {
-      icon: "mdi:alert",
-      color: "text-warning",
-      bgColor: "bg-warning/10 border-warning/20",
-    },
-    info: {
-      icon: "mdi:information",
-      color: "text-accent",
-      bgColor: "bg-accent/10 border-accent/20",
-    },
+  const typeConfig: Record<ToastType, { icon: string; color: string; stripe: string }> = {
+    success: { icon: "mdi:check-circle", color: "text-success", stripe: "bg-success" },
+    error: { icon: "mdi:alert-circle", color: "text-error", stripe: "bg-error" },
+    warning: { icon: "mdi:alert", color: "text-warning", stripe: "bg-warning" },
+    info: { icon: "mdi:information", color: "text-info", stripe: "bg-info" },
   };
 
   function dismiss(id: string) {
@@ -44,7 +28,7 @@
 
 {#if toasts.length > 0}
   <div
-    class="fixed right-4 bottom-4 z-1000 flex flex-col gap-2"
+    class="fixed top-14 right-4 z-1000 flex flex-col gap-2"
     role="region"
     aria-label="Notifications"
     aria-live="polite"
@@ -53,17 +37,17 @@
       {@const config = typeConfig[toast.type]}
       {@const isDismissing = dismissingIds.has(toast.id)}
       <div
-        class="flex w-80 items-start gap-3 rounded-lg border p-3 shadow-lg backdrop-blur-sm transition-all duration-300
-          {config.bgColor}
+        class="relative flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 overflow-hidden rounded-lg border border-border bg-elevated py-3 pr-2 pl-4 shadow-flyout
           {isDismissing ? 'animate-out' : 'animate-in'}"
         role="alert"
       >
-        <Icon icon={config.icon} width="20" class="mt-0.5 shrink-0 {config.color}" />
+        <span class="absolute inset-y-0 left-0 w-1 {config.stripe}" aria-hidden="true"></span>
+        <Icon icon={config.icon} width="18" class="mt-px shrink-0 {config.color}" />
         <div class="min-w-0 flex-1">
           {#if toast.tweakName}
             <div class="text-xs font-medium text-foreground-muted">{toast.tweakName}</div>
           {/if}
-          <div class="text-sm text-foreground">{toast.message}</div>
+          <div class="text-[13px] wrap-break-word text-foreground">{toast.message}</div>
           {#if toast.action}
             {@const action = toast.action}
             <button
@@ -79,7 +63,7 @@
           {/if}
         </div>
         <button
-          class="shrink-0 cursor-pointer rounded border-0 bg-transparent p-1 text-foreground-muted transition-colors hover:bg-surface hover:text-foreground"
+          class="shrink-0 cursor-pointer rounded border-0 bg-transparent p-1 text-foreground-muted transition-colors hover:bg-muted hover:text-foreground"
           onclick={() => dismiss(toast.id)}
           aria-label="Dismiss notification"
         >

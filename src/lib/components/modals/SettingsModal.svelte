@@ -1,32 +1,45 @@
 <script lang="ts">
   import { ColorSchemePicker } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
-  import { Badge, Button, IconButton, Modal, ModalBody, ModalHeader, Spinner, Switch } from "$lib/components/ui";
+  import {
+    Button,
+    IconButton,
+    Modal,
+    ModalBody,
+    ModalHeader,
+    SegmentedSwitch,
+    Spinner,
+    Switch,
+  } from "$lib/components/ui";
   import { logsStore } from "$lib/stores/logs.svelte";
-  import { closeModal, modalStore, openProfileExportModal, openProfileImportModal } from "$lib/stores/modal.svelte";
-  import { tweaksStore } from "$lib/stores/tweaks.svelte";
+  import {
+    closeModal,
+    modalStore,
+    openProfileExportModal,
+    openProfileImportModal,
+    openUpdateModal,
+  } from "$lib/stores/modal.svelte";
+  import { themeStore } from "$lib/stores/theme.svelte";
   import { getVersion } from "@tauri-apps/api/app";
+  import type { Snippet } from "svelte";
   import { onMount } from "svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
 
-  let appVersion = $state("1.0.0");
+  const PROFILES_UNAVAILABLE = "Profiles are being rebuilt and are temporarily unavailable";
+
+  let appVersion = $state("");
+  let confirmingDelete = $state(false);
 
   const isOpen = $derived(modalStore.current === "settings");
-
-  // Count applied tweaks for badge
-  const appliedCount = $derived(tweaksStore.list.filter((t) => t.status.is_applied).length);
-
   const logs = $derived(logsStore.settings);
-  let confirmingDelete = $state(false);
+  const themes = [
+    { value: 0, label: "Light", icon: "tabler:sun" },
+    { value: 1, label: "Dark", icon: "tabler:moon" },
+  ];
 
   $effect(() => {
     if (isOpen) void logsStore.loadSettings();
   });
-
-  function storedSize(files: number, bytes: number): string {
-    const size = bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
-    return `${files} ${files === 1 ? "file" : "files"}, ${size}`;
-  }
 
   onMount(async () => {
     try {
@@ -36,181 +49,154 @@
     }
   });
 
-  function handleExportProfile() {
-    closeModal();
-    // Small delay to allow current modal to close
-    setTimeout(() => {
-      openProfileExportModal();
-    }, 100);
+  function storedSize(files: number, bytes: number): string {
+    const size = bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
+    return `${files} ${files === 1 ? "file" : "files"}, ${size}`;
   }
 
-  function handleImportProfile() {
+  // Opening a second modal while this one animates out would stack two focus traps.
+  function switchTo(open: () => void) {
     closeModal();
-    setTimeout(() => {
-      openProfileImportModal();
-    }, 100);
+    setTimeout(open, 100);
   }
 </script>
 
-<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="settings-modal-title">
-  <ModalHeader id="settings-modal-title">
-    <div class="flex items-center gap-3">
-      <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
-        <Icon icon="mdi:cog" width="24" class="text-accent" />
-      </div>
-      <h2 class="m-0 text-lg font-bold text-foreground">Settings</h2>
+{#snippet section(title: string, body: Snippet)}
+  <section>
+    <h3 class="m-0 mb-2 text-[13px] font-semibold text-foreground">{title}</h3>
+    <div class="divide-y divide-border rounded-lg border border-border bg-card">{@render body()}</div>
+  </section>
+{/snippet}
+
+{#snippet row(title: string, description: string, control: Snippet)}
+  <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3.5 py-3">
+    <div class="min-w-0 flex-1 basis-56">
+      <p class="m-0 text-[13px] font-medium">{title}</p>
+      {#if description}<p class="m-0 mt-0.5 text-xs text-foreground-muted">{description}</p>{/if}
     </div>
+    <div class="flex shrink-0 flex-wrap items-center gap-2">{@render control()}</div>
+  </div>
+{/snippet}
+
+{#snippet appearance()}
+  {#snippet themeControl()}
+    <SegmentedSwitch
+      value={themeStore.isDark ? 1 : 0}
+      options={themes}
+      onchange={(v) => themeStore.set(v === 1 ? "dark" : "light")}
+    />
+  {/snippet}
+  {#snippet accentControl()}<ColorSchemePicker size="md" />{/snippet}
+  {@render row("Theme", "", themeControl)}
+  {@render row("Accent colour", "Used for selections, applied states and progress.", accentControl)}
+{/snippet}
+{#snippet updates()}
+  {#snippet updateControl()}
+    <Button variant="secondary" onclick={() => switchTo(openUpdateModal)}>
+      <Icon icon="mdi:update" width="16" />
+      Check for updates
+    </Button>
+  {/snippet}
+  {@render row("Updates", "Automatic checks and installs are set in the update window.", updateControl)}
+{/snippet}
+{#snippet profiles()}
+  {#snippet profileControl()}
+    <Button variant="secondary" disabled title={PROFILES_UNAVAILABLE} onclick={() => switchTo(openProfileExportModal)}>
+      <Icon icon="mdi:export" width="16" />
+      Export
+    </Button>
+    <Button variant="secondary" disabled title={PROFILES_UNAVAILABLE} onclick={() => switchTo(openProfileImportModal)}>
+      <Icon icon="mdi:import" width="16" />
+      Import
+    </Button>
+  {/snippet}
+  {@render row(
+    "Configuration profiles",
+    "Save your applied tweaks as a portable .mgx file to reuse after a reinstall or on another PC. Temporarily unavailable while profiles are rebuilt.",
+    profileControl,
+  )}
+{/snippet}
+{#snippet diagnostics()}
+  {#if logs}
+    {#snippet persistControl()}
+      <Switch
+        checked={logs.persist}
+        loading={logsStore.settingsBusy}
+        ariaLabel="Save logs on this PC"
+        onchange={(persist) => logsStore.setSettings(persist, logs.detailed)}
+      />
+    {/snippet}
+    {#snippet detailedControl()}
+      <Switch
+        checked={logs.detailed}
+        loading={logsStore.settingsBusy}
+        ariaLabel="Detailed logging"
+        onchange={(detailed) => logsStore.setSettings(logs.persist, detailed)}
+      />
+    {/snippet}
+    {#snippet fileControls()}
+      <Button variant="secondary" size="sm" onclick={() => logsStore.openFolder()}>
+        <Icon icon="mdi:folder-open" width="16" />
+        Open folder
+      </Button>
+      <Button variant="secondary" size="sm" loading={logsStore.exporting} onclick={() => logsStore.exportDiagnostics()}>
+        {#if !logsStore.exporting}<Icon icon="mdi:export" width="16" />{/if}
+        Export diagnostics
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        class="text-error"
+        disabled={logsStore.settingsBusy}
+        onclick={() => (confirmingDelete = true)}
+      >
+        <Icon icon="mdi:delete-outline" width="16" />
+        Delete logs
+      </Button>
+    {/snippet}
+    {@render row(
+      "Save logs on this PC",
+      "Off keeps logs only until you close the app. Nothing is uploaded.",
+      persistControl,
+    )}
+    {@render row(
+      "Detailed logging",
+      "Records more steps, including script output. Turn on when asked; files grow faster.",
+      detailedControl,
+    )}
+    <div class="space-y-2.5 px-3.5 py-3">
+      <div class="text-xs text-foreground-muted">
+        <p class="m-0 font-mono break-all text-foreground select-text">
+          {logs.folder || "Logs folder unavailable"}
+        </p>
+        <p class="m-0 mt-0.5">
+          {storedSize(logs.files, logs.bytes)}{logs.persist ? "" : ". Existing log files are kept."}
+        </p>
+      </div>
+      {#if logs.error}<p class="m-0 text-xs text-error">Logging problem: {logs.error}</p>{/if}
+      <div class="flex flex-wrap gap-2">{@render fileControls()}</div>
+    </div>
+  {:else}
+    <div class="flex justify-center py-3"><Spinner size="sm" /></div>
+  {/if}
+{/snippet}
+
+<Modal open={isOpen} onclose={closeModal} size="md" labelledBy="settings-modal-title">
+  <ModalHeader>
+    <h2 id="settings-modal-title" class="m-0 font-display text-xl font-semibold">Settings</h2>
     <IconButton icon="mdi:close" onclick={closeModal} aria-label="Close" />
   </ModalHeader>
 
   <ModalBody class="space-y-5">
-    <div class="rounded-lg border border-border bg-surface p-4">
-      <h3 class="m-0 mb-3 text-sm font-semibold text-foreground">Accent colour</h3>
-      <ColorSchemePicker size="md" />
-    </div>
+    {@render section("Appearance", appearance)}
 
-    <!-- Configuration Profiles Section -->
-    <div class="rounded-lg border border-border bg-surface p-4">
-      <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Icon icon="mdi:file-document-multiple" width="18" class="text-accent" />
-        Configuration Profiles
-      </h3>
-      <p class="mb-4 text-sm text-foreground-muted">
-        Export your tweak configurations to share across machines or back up before reinstalling Windows.
-      </p>
+    {@render section("Updates", updates)}
 
-      <div class="flex flex-wrap gap-3">
-        <Button
-          variant="secondary"
-          class="flex-1"
-          disabled
-          title="Profiles are being rebuilt and are temporarily unavailable"
-          onclick={handleExportProfile}
-        >
-          <Icon icon="mdi:export" width="18" />
-          Export Profile
-          {#if appliedCount > 0}
-            <Badge variant="default" class="ml-1">{appliedCount}</Badge>
-          {/if}
-        </Button>
+    {@render section("Profiles", profiles)}
 
-        <Button
-          variant="secondary"
-          class="flex-1"
-          disabled
-          title="Profiles are being rebuilt and are temporarily unavailable"
-          onclick={handleImportProfile}
-        >
-          <Icon icon="mdi:import" width="18" />
-          Import Profile
-        </Button>
-      </div>
-    </div>
+    {@render section("Diagnostics", diagnostics)}
 
-    <!-- Profile Info Box -->
-    <div class="flex items-start gap-3 rounded-lg border border-border/50 bg-surface/50 p-3">
-      <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
-      <div class="text-xs leading-relaxed text-foreground-muted">
-        <p class="m-0">
-          <strong>Profiles</strong> save your applied tweak selections as a portable
-          <code class="rounded bg-muted px-1">.mgx</code> file.
-        </p>
-        <ul class="m-0 mt-1.5 list-inside list-disc space-y-0.5 pl-0">
-          <li>Share your setup with others</li>
-          <li>Restore after Windows reinstall</li>
-          <li>Sync across multiple machines</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="rounded-lg border border-border bg-surface p-4">
-      <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Icon icon="tabler:file-text" width="18" class="text-accent" />
-        Diagnostics
-      </h3>
-
-      {#if logs}
-        <div class="space-y-4">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="m-0 text-sm font-medium text-foreground">Save logs on this PC</p>
-              <p class="m-0 mt-0.5 text-xs text-foreground-muted">
-                Off keeps logs only until you close the app. Nothing is uploaded.
-              </p>
-            </div>
-            <Switch
-              checked={logs.persist}
-              loading={logsStore.settingsBusy}
-              ariaLabel="Save logs on this PC"
-              onchange={(persist) => logsStore.setSettings(persist, logs.detailed)}
-            />
-          </div>
-
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="m-0 text-sm font-medium text-foreground">Detailed logging</p>
-              <p class="m-0 mt-0.5 text-xs text-foreground-muted">
-                Records more steps, including script output. Turn on when asked; files grow faster.
-              </p>
-            </div>
-            <Switch
-              checked={logs.detailed}
-              loading={logsStore.settingsBusy}
-              ariaLabel="Detailed logging"
-              onchange={(detailed) => logsStore.setSettings(logs.persist, detailed)}
-            />
-          </div>
-
-          {#if logs.error}
-            <p class="m-0 text-xs text-error">Logging problem: {logs.error}</p>
-          {/if}
-
-          <div class="text-xs text-foreground-muted">
-            <p class="m-0 font-mono break-all text-foreground">{logs.folder || "Logs folder unavailable"}</p>
-            <p class="m-0 mt-0.5">{storedSize(logs.files, logs.bytes)}</p>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onclick={() => logsStore.openFolder()}>
-              <Icon icon="mdi:folder-open" width="16" />
-              Open logs folder
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={logsStore.exporting}
-              onclick={() => logsStore.exportDiagnostics()}
-            >
-              {#if !logsStore.exporting}
-                <Icon icon="mdi:export" width="16" />
-              {/if}
-              Export diagnostics
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              class="text-error"
-              disabled={logsStore.settingsBusy}
-              onclick={() => (confirmingDelete = true)}
-            >
-              <Icon icon="mdi:delete-outline" width="16" />
-              Delete logs
-            </Button>
-            {#if !logs.persist}
-              <span class="text-xs text-foreground-muted">Existing log files are kept.</span>
-            {/if}
-          </div>
-        </div>
-      {:else}
-        <div class="flex justify-center py-2"><Spinner size="sm" /></div>
-      {/if}
-    </div>
-
-    <!-- App Info -->
-    <div class="flex items-center justify-between rounded-lg border border-border/50 bg-surface/50 px-4 py-3">
-      <span class="text-sm text-foreground-muted">App Version</span>
-      <Badge variant="default">{appVersion}</Badge>
-    </div>
+    <p class="m-0 text-center text-xs text-foreground-subtle">MagicX Toolbox {appVersion}</p>
   </ModalBody>
 </Modal>
 

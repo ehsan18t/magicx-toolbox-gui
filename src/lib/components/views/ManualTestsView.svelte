@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ManualTest, ManualTestStatus } from "$lib/api/manualTests";
+  import { PageLayout } from "$lib/components/layout";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { Badge, Button, Card, Spinner } from "$lib/components/ui";
@@ -54,19 +55,10 @@
   }
 </script>
 
-<div class="flex h-full flex-col gap-5 overflow-y-auto p-6">
-  <header class="flex items-center gap-4">
-    <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-warning/15 text-warning">
-      <Icon icon="mdi:flask-outline" width="28" />
-    </div>
-    <div>
-      <h1 class="m-0 text-2xl font-bold tracking-tight text-foreground">Manual Tests</h1>
-      <p class="mt-1 mb-0 text-sm text-foreground-muted">
-        Test build only. Run the app as administrator, run one test at a time, then copy its report.
-      </p>
-    </div>
-  </header>
-
+<PageLayout
+  title="Manual Tests"
+  description="Test build only. Run the app as administrator, run one test at a time, then copy its report."
+>
   {#each manualTestsStore.tests as test (test.id)}
     {@const isRunning = runningId === test.id}
     {@const result = manualTestsStore.resultFor(test.id)}
@@ -95,7 +87,7 @@
                 type="number"
                 min="1"
                 max="1440"
-                class="w-20 rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground focus:border-accent focus:outline-none"
+                class="h-8 w-20 rounded-md border border-border bg-secondary px-2 text-sm text-foreground focus:border-accent focus:outline-none"
                 disabled={runningId !== null}
                 bind:value={() => minutesFor(test) ?? 1, (v) => (minutes[test.id] = Math.max(1, Math.floor(v || 1)))}
               />
@@ -176,7 +168,7 @@
       </section>
     </Card>
   {/each}
-</div>
+</PageLayout>
 
 <ConfirmDialog
   open={confirming !== null}
