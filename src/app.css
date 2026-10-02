@@ -330,11 +330,31 @@
   animation: tweak-highlight-pulse 1.5s ease-in-out;
 }
 
+@keyframes activity-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.activity-bar {
+  animation: activity-slide 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* A near-zero infinite animation would flicker: hold a static, dimmed full bar instead. */
+  .activity-bar {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
   }
 }

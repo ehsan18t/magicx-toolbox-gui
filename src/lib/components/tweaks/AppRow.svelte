@@ -108,13 +108,29 @@
 
   async function handleAction() {
     if (!action || action.disabledReason !== null) return;
-    if (action.kind === "install") void appsStore.install(app.id);
-    else if (action.kind === "store") void appsStore.openStorePage(app.id);
+    if (action.kind === "install") {
+      busyLabel = "Installing";
+      void appsStore.install(app.id);
+    } else if (action.kind === "store") void appsStore.openStorePage(app.id);
     else if (
       await confirm({ title: `Remove ${app.name}?`, message: confirmMessage, confirmText: "Remove", variant: "danger" })
-    )
+    ) {
+      busyLabel = "Removing";
       void appsStore.remove(app.id);
+    }
   }
+
+  // winget reports no usable progress to a redirected script, so this shows activity and elapsed time.
+  let busyLabel = $state("Working");
+  let elapsed = $state(0);
+  $effect(() => {
+    if (!busy) return;
+    const start = Date.now();
+    elapsed = 0;
+    const timer = setInterval(() => (elapsed = Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(timer);
+  });
+  const elapsedText = $derived(`${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`);
 
   let rowEl = $state<HTMLElement | null>(null);
   const highlight = searchHighlight(
@@ -177,6 +193,15 @@
       </p>
     </div>
 
+    {#if busy}
+      <div class="flex items-center gap-3 text-xs text-foreground-muted" role="status">
+        <div class="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+          <div class="activity-bar h-full w-1/3 rounded-full bg-accent"></div>
+        </div>
+        <span class="tabular-nums">{busyLabel}… {elapsedText}</span>
+      </div>
+    {/if}
+
     {#if app.warning && warningOpen}
       <div
         id="app-warning-{app.id}"
@@ -217,7 +242,7 @@
       {#if app.warning}
         <button
           type="button"
-          class="inline-flex cursor-pointer items-center gap-1 rounded text-warning hover:underline"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-warning/35 bg-warning/10 py-0.5 pr-1 pl-2 font-medium text-warning hover:bg-warning/20"
           aria-expanded={warningOpen}
           aria-controls={warningOpen ? `app-warning-${app.id}` : undefined}
           use:tooltip={warningOpen ? "Hide warning" : "Show warning"}
@@ -225,6 +250,11 @@
         >
           <Icon icon="mdi:alert" width="13" class="shrink-0" />
           Warning
+          <Icon
+            icon="mdi:chevron-down"
+            width="14"
+            class="shrink-0 transition-transform {warningOpen ? 'rotate-180' : ''}"
+          />
         </button>
       {/if}
       {#if permissionInfo}

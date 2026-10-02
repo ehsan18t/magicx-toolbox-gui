@@ -361,7 +361,7 @@
       {#if def.warning}
         <button
           type="button"
-          class="inline-flex cursor-pointer items-center gap-1 rounded text-warning hover:underline disabled:cursor-default disabled:no-underline"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-warning/35 bg-warning/10 py-0.5 pr-1 pl-2 font-medium text-warning hover:bg-warning/20 disabled:cursor-default disabled:opacity-70 disabled:hover:bg-warning/10"
           aria-expanded={warningOpen}
           aria-controls={warningOpen ? `warning-${def.id}` : undefined}
           disabled={hasPending}
@@ -370,6 +370,11 @@
         >
           <Icon icon="mdi:alert" width="13" class="shrink-0" />
           Warning
+          <Icon
+            icon="mdi:chevron-down"
+            width="14"
+            class="shrink-0 transition-transform {warningOpen ? 'rotate-180' : ''}"
+          />
         </button>
       {/if}
       {#if permissionInfo}
