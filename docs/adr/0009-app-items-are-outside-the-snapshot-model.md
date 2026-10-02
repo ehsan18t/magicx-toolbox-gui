@@ -15,8 +15,8 @@ We author these as **app items**, a separate list in the same YAML category file
 
 ## Consequences
 
-- Removal is final unless an install source exists. An app with no usable install source on this machine carries a Permanent badge, and its Remove confirmation says the change cannot be undone.
-- Both actions still honour the did-it-work contract: after a removal the app must read Absent, after an install it must read Installed, or the command fails with the reason. Unknown is never treated as Absent, so a card whose presence cannot be read stays visible with its buttons disabled.
+- Removal is final unless an install source exists. An app with no usable install source on this machine carries a Permanent label on its row, and its Remove confirmation says the change cannot be undone.
+- Both actions still honour the did-it-work contract: after a removal the app must read Absent, after an install it must read Installed, or the command fails with the reason. Unknown is never treated as Absent, so a row whose presence cannot be read stays visible with its buttons disabled.
 - Removal and install run under the same per-id lifecycle lock as an apply, so closing the window, restarting as administrator or installing an update waits for them.
-- Favorites, profiles, Apply Changes, the applied counter and Restore Snapshots ignore apps: none of them has anything to hold for an item without options or history.
-- Opening the Store page is not verified by the app. The card checks presence again when the window regains focus.
+- Favorites, profiles, the pending bar, the applied counters and Restore all ignore apps: none of them has anything to hold for an item without options or history.
+- Opening the Store page is not verified by the app. The row checks presence again when the window regains focus.

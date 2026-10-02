@@ -15,6 +15,6 @@ We do not make older builds agree with newer ones. A folder is written by one bu
 
 ## Consequences
 
-An older build over a newer folder shows badges out of step with reality, in both directions: it ignores marks it does not know, and any entry it rewrites drops the fields it does not know. Its dedup can delete a Settings-only entry whose drive a crash interrupted. A build that knows only the unsuffixed `shared_claims.json` finds no claims record at all, so a first claim there would capture an already-driven value as the original.
+An older build over a newer folder shows statuses out of step with reality, in both directions: it ignores marks it does not know, and any entry it rewrites drops the fields it does not know. Its dedup can delete a Settings-only entry whose drive a crash interrupted. A build that knows only the unsuffixed `shared_claims.json` finds no claims record at all, so a first claim there would capture an already-driven value as the original.
 
 What still holds across builds: the entry walk skips every file whose name is not a sequence number, so unknown files are invisible rather than corrupting; a record this build cannot parse surfaces as Needs Attention in its own right; a wrong-schema or foreign-machine record is never overwritten and never deleted; and Keep current state releases the record and discards the entries whatever wrote them, so the user always has a way out.
