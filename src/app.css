@@ -5,28 +5,28 @@
     @apply select-none;
   }
 
-  /* Windows 11 Fluent neutrals. Dark is the default theme. */
+  /* Navy neutrals; dark is the default theme. Layers lighten upward: base, content, card. */
   :root,
   [data-theme="dark"] {
     color-scheme: dark;
 
-    --background: 0 0% 12.5%; /* window base (Mica) */
-    --surface: 0 0% 15.3%; /* content layer */
-    --card: 0 0% 17.6%;
-    --elevated: 0 0% 17.3%; /* flyouts, dialogs */
-    --muted: 0 0% 100% / 0.06; /* subtle fill: hover, tracks */
+    --background: 224 71% 4%;
+    --surface: 224 52% 6.5%;
+    --card: 224 47% 10%;
+    --elevated: 224 42% 12%;
+    --muted: 220 60% 80% / 0.07;
 
-    --foreground: 0 0% 100%;
-    --foreground-muted: 0 0% 79%;
-    --foreground-subtle: 0 0% 58%;
+    --foreground: 210 40% 98%;
+    --foreground-muted: 215 20% 70%;
+    --foreground-subtle: 215 16% 52%;
     --muted-foreground: var(--foreground-muted);
 
-    --border: 0 0% 100% / 0.08;
-    --border-hover: 0 0% 100% / 0.14;
+    --border: 224 40% 17%;
+    --border-hover: 224 38% 24%;
 
-    --secondary: 0 0% 100% / 0.06;
-    --secondary-hover: 0 0% 100% / 0.09;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 224 42% 14%;
+    --secondary-hover: 224 40% 18%;
+    --secondary-foreground: 210 40% 98%;
 
     --accent: 262 100% 80%;
     --accent-hover: 262 100% 74%;
@@ -38,29 +38,29 @@
     --error: 353 100% 80%;
     --info: 199 100% 69%;
 
-    --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.26);
-    --elev-dialog: 0 32px 64px rgb(0 0 0 / 0.37), 0 2px 21px rgb(0 0 0 / 0.37);
+    --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.4);
+    --elev-dialog: 0 32px 64px rgb(0 0 0 / 0.5), 0 2px 21px rgb(0 0 0 / 0.4);
   }
 
   [data-theme="light"] {
     color-scheme: light;
 
-    --background: 0 0% 95.3%;
-    --surface: 0 0% 97.6%;
+    --background: 214 32% 95%;
+    --surface: 210 40% 98.5%;
     --card: 0 0% 100%;
-    --elevated: 0 0% 98.8%;
-    --muted: 0 0% 0% / 0.04;
+    --elevated: 0 0% 100%;
+    --muted: 215 40% 40% / 0.07;
 
-    --foreground: 0 0% 10.6%;
-    --foreground-muted: 0 0% 37%;
-    --foreground-subtle: 0 0% 52%;
+    --foreground: 222 84% 5%;
+    --foreground-muted: 215 19% 38%;
+    --foreground-subtle: 215 16% 52%;
 
-    --border: 0 0% 0% / 0.09;
-    --border-hover: 0 0% 0% / 0.16;
+    --border: 214 32% 89%;
+    --border-hover: 213 27% 80%;
 
-    --secondary: 0 0% 100% / 0.7;
-    --secondary-hover: 0 0% 97% / 0.9;
-    --secondary-foreground: 0 0% 10.6%;
+    --secondary: 210 40% 98%;
+    --secondary-hover: 210 40% 95%;
+    --secondary-foreground: 222 84% 5%;
 
     --accent: 262 60% 50%;
     --accent-hover: 262 60% 44%;
@@ -72,11 +72,11 @@
     --error: 6 75% 44%;
     --info: 208 100% 36%;
 
-    --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.14);
-    --elev-dialog: 0 32px 64px rgb(0 0 0 / 0.19), 0 2px 21px rgb(0 0 0 / 0.15);
+    --elev-flyout: 0 8px 16px rgb(15 23 42 / 0.12);
+    --elev-dialog: 0 32px 64px rgb(15 23 42 / 0.18), 0 2px 21px rgb(15 23 42 / 0.12);
   }
 
-  /* Accent schemes: a lighter tone on dark, a deeper tone on light (Fluent AccentLight2 / AccentDark1). */
+  /* Accent schemes: a lighter tone on dark, a deeper tone on light, so text on either stays readable. */
   [data-scheme="blue"] {
     --accent: 199 100% 69%;
     --accent-hover: 199 100% 62%;
