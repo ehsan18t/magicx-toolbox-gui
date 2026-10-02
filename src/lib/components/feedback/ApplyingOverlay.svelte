@@ -2,7 +2,7 @@
   import { Icon } from "$lib/components/shared";
   import { loadingStore } from "$lib/stores/tweaks.svelte";
 
-  const isApplying = $derived(loadingStore.isAnyLoading);
+  const isApplying = $derived(loadingStore.busy);
 
   let visible = $state(false);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,7 +52,7 @@
           <Icon icon="mdi:loading" width="24" class="text-accent" />
         </span>
         <div class="min-w-0">
-          <div class="text-base font-semibold text-foreground">Applying tweaks…</div>
+          <div class="text-base font-semibold text-foreground">Changing system settings…</div>
           <div class="mt-0.5 text-sm text-foreground-muted">Please wait and do not close the app.</div>
         </div>
       </div>

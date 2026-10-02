@@ -8,24 +8,20 @@
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import { matchesQuery } from "$lib/utils/tweakPresentation";
+  import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
 
   let searchQuery = $state("");
   let showRevertAllDialog = $state(false);
   let showClearAllDialog = $state(false);
-  let isBatchProcessing = $state(false);
 
   const favoriteTweaks = $derived(tweaksStore.list.filter((t) => favoritesStore.ids.includes(t.definition.id)));
   const filteredTweaks = $derived(favoriteTweaks.filter((t) => matchesQuery(t, searchQuery)));
-  const withSnapshots = $derived(favoriteTweaks.filter((t) => t.status.has_backup));
+  const withSnapshots = $derived(favoriteTweaks.filter(canRestore));
   const appliedCount = $derived(favoriteTweaks.filter((t) => t.status.is_applied).length);
-  const isLoading = $derived(favoriteTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
 
   async function handleRestoreAll() {
     showRevertAllDialog = false;
-    isBatchProcessing = true;
     await batchRevertTweaks(withSnapshots.map((t) => t.definition.id));
-    isBatchProcessing = false;
   }
 
   function handleClearAll() {
@@ -58,7 +54,7 @@
           <button
             type="button"
             class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isLoading || isBatchProcessing}
+            disabled={loadingStore.busy}
             onclick={() => (showRevertAllDialog = true)}
           >
             <Icon icon="mdi:history" width="16" />
@@ -69,7 +65,7 @@
         <button
           type="button"
           class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={isBatchProcessing}
+          disabled={loadingStore.busy}
           onclick={() => (showClearAllDialog = true)}
         >
           <Icon icon="mdi:star-off" width="16" />
@@ -105,11 +101,9 @@
 
 <ConfirmDialog
   open={showRevertAllDialog}
-  title="Restore All Snapshots"
-  message="Restore {withSnapshots.length} favorite{withSnapshots.length === 1
-    ? ''
-    : 's'} to their original state from saved snapshots?"
-  confirmText="Restore All"
+  title="Restore favorites"
+  message={restoreMessage(withSnapshots.length)}
+  confirmText="Restore"
   variant="danger"
   onconfirm={handleRestoreAll}
   oncancel={() => (showRevertAllDialog = false)}

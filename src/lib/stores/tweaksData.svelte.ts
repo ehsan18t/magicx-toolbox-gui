@@ -170,12 +170,13 @@ const stats = $derived({
 
 // Derived: stats per category
 const categoryStats = $derived.by(() => {
-  const result: Record<string, { total: number; applied: number }> = {};
+  const result: Record<string, { total: number; applied: number; attention: number }> = {};
   for (const cat of categories) {
     const catTweaks = tweaksByCategory[cat.id] || [];
     result[cat.id] = {
       total: catTweaks.length,
       applied: catTweaks.filter((t) => t.status.is_applied).length,
+      attention: catTweaks.filter((t) => t.status.attention).length,
     };
   }
   return result;

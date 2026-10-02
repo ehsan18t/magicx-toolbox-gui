@@ -28,11 +28,16 @@
   const pending = $derived(tweaks.filter((t) => pendingChangesStore.has(t.definition.id)));
   const unknown = $derived(tweaks.filter((t) => t.status.state === "unknown"));
   const reboot = $derived(tweaks.filter((t) => pendingRebootStore.needsReboot(t.definition.id)));
-  const allClear = $derived(attention.length + pending.length + unknown.length + reboot.length === 0);
+  const allClear = $derived(
+    attention.length + pending.length + unknown.length + reboot.length + count("loading") === 0,
+  );
 
   function reveal(id: string) {
     openTweakDetailsModal(id);
-    document.getElementById(`tweak-${id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    document.getElementById(`tweak-${id}`)?.scrollIntoView({
+      block: "nearest",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
   }
 </script>
 

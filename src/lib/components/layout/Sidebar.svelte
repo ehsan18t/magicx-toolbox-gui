@@ -41,6 +41,7 @@
   trailing: string,
   trailingTone: string,
   dot: string | null,
+  alert = "",
 )}
   <button
     type="button"
@@ -48,8 +49,8 @@
       ? 'bg-muted'
       : 'hover:bg-muted'}"
     aria-current={active ? "page" : undefined}
-    aria-label={isOpen ? undefined : trailing ? `${label} (${trailing})` : label}
-    use:tooltip={isOpen ? null : trailing ? `${label} · ${trailing}` : label}
+    aria-label={[label, trailing, alert].filter(Boolean).join(", ")}
+    use:tooltip={isOpen ? (alert ? `${alert}` : null) : [label, trailing, alert].filter(Boolean).join(" · ")}
     {onclick}
   >
     {#if active}
@@ -57,12 +58,17 @@
     {/if}
     <span class="relative flex w-5 shrink-0 justify-center">
       <Icon {icon} width="18" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
-      {#if dot && !isOpen}
+      {#if alert && !isOpen}
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-error ring-2 ring-background"></span>
+      {:else if dot && !isOpen}
         <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full ring-2 ring-background {dot}"></span>
       {/if}
     </span>
     {#if isOpen}
       <span class="min-w-0 flex-1 truncate">{label}</span>
+      {#if alert}
+        <Icon icon="mdi:alert-circle" width="14" class="shrink-0 text-error" />
+      {/if}
       {#if trailing}
         <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
       {/if}
@@ -120,7 +126,8 @@
           () => go(tab),
           s ? `${s.applied}/${s.total}` : "",
           complete ? "text-success" : "text-foreground-subtle",
-          s && s.applied > 0 ? "bg-success" : null,
+          s && s.applied > 0 ? "bg-accent" : null,
+          s?.attention ? `${s.attention} need${s.attention === 1 ? "s" : ""} attention` : "",
         )}
       {/each}
 

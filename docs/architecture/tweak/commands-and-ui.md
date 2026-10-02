@@ -125,11 +125,13 @@ sequenceDiagram
 | Residue | "Residue" on the meta line; its tooltip lists the residual settings. |
 | Applying | Control disabled with a loading state. |
 
-**Switch or dropdown.** One or two authored options render as a segmented switch; three or more render as a dropdown.
+**Switch or dropdown.** One authored option renders as an on/off switch: on stages it, off unstages it or, once applied, restores the snapshot. Two render as a segmented switch, three or more as a dropdown.
 
 **Rows and panes.** Every view lists tweaks as full-width rows, one per line. A row shows the title, the description, the authored `warning:` as a callout, then a meta line (state, pending target, risk, permission level, Restart, availability, Residue, Shared) ending in Restore, the favourite star and Details. The control sits right of the text and moves under it when the row is narrower than 520px or the switch labels are long. At 1400px of content width and above, category, Favorites and Snapshots views show an At a glance pane while no tweak is selected: applied progress by state, and lists of tweaks that need attention, are ready to apply, have an unknown state or wait for a restart, each opening the details panel.
 
-**System Default is never a target.** Choosing it from the control only unstages a pending change. The only way back to an earlier state is the Restore button (ADR-0003).
+**System Default is never a target.** No control offers it: at System Default the control shows no selection and the state line names it. A staged change is undone from the row's Undo link or the pending bar. The only way back to an earlier state is Restore (ADR-0003), which steps back one snapshot entry.
+
+**Confirming risk.** Staging never asks for confirmation. Apply opens a review of every staged change (from → to, risk, restart, the authored warning) when any of them is high or critical risk; otherwise it applies at once. Restore on a high or critical risk tweak, Keep current state, and discarding a snapshot entry each confirm through one shared dialog. Bulk Restore buttons count only tweaks the user can restore right now.
 
 ## Profiles
 

@@ -16,7 +16,7 @@ This category collects the Windows AI controls in one place: Recall (snapshot po
 | [Turn off Edge AI features](#turn-off-edge-ai-features) | `disable_edge_ai_features` | Switch (2 options) | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Set the AI Fabric service to Manual start](#set-the-ai-fabric-service-to-manual-start) | `disable_ai_fabric_service` | Switch (2 options) | low | admin | yes | VERIFIED-WITH-CORRECTION |
 
-"Switch" means one or two authored options, shown as a segmented switch; "Dropdown" means three or more. The app adds the computed **System Default** state to either while it is the live state (the state when the machine matches no authored option; selecting it restores the snapshot).
+"Switch" means one authored option (an on/off switch) or two (a segmented switch); "Dropdown" means three or more. The computed **System Default** state (the machine matches no authored option) shows on the row's state line, never in the control; Restore walks back through the snapshot.
 
 ## Tweaks
 

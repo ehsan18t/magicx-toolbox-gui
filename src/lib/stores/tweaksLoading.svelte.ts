@@ -8,6 +8,8 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 // === Loading State ===
 const loadingTweaks = new SvelteSet<string>();
+// Spans a whole batch: the per-tweak set is empty between items.
+let batchRunning = $state(false);
 
 // === Error State ===
 const errors = new SvelteMap<string, string>();
@@ -23,6 +25,22 @@ export const loadingStore = {
   /** Check if any tweak is loading */
   get isAnyLoading(): boolean {
     return loadingTweaks.size > 0;
+  },
+
+  /** True while any tweak operation or batch runs; gate every batch control on this. */
+  get busy(): boolean {
+    return batchRunning || loadingTweaks.size > 0;
+  },
+
+  /** Runs `fn` as the only batch; resolves to null when another batch is already running. */
+  async exclusive<T>(fn: () => Promise<T>): Promise<T | null> {
+    if (batchRunning) return null;
+    batchRunning = true;
+    try {
+      return await fn();
+    } finally {
+      batchRunning = false;
+    }
   },
 
   /** Mark a tweak as loading */

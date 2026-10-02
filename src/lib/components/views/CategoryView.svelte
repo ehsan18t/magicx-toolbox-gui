@@ -6,11 +6,12 @@
   import { EmptyState, FilterChips, SearchInput, SkeletonCard } from "$lib/components/ui";
   import type { FilterChip } from "$lib/components/ui/FilterChips.svelte";
   import { appsStore } from "$lib/stores/apps.svelte";
-  import type { TabDefinition } from "$lib/stores/navigation.svelte";
+  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { restartAsAdmin } from "$lib/utils/elevation";
-  import { matchesQuery } from "$lib/utils/tweakPresentation";
+  import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
+  import { untrack } from "svelte";
 
   interface Props {
     tab: TabDefinition;
@@ -21,9 +22,8 @@
   type Filter = "all" | "applied" | "not_applied" | "attention";
 
   let searchQuery = $state("");
-  let filter = $state<Filter>("all");
+  let filter = $state<Filter>(navigationStore.takeAttentionFilter() ? "attention" : "all");
   let showRevertAllDialog = $state(false);
-  let isBatchProcessing = $state(false);
 
   const categoryTweaks = $derived(tweaksStore.list.filter((t) => t.definition.category_id === tab.id));
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
@@ -31,8 +31,7 @@
   const needsAdminCount = $derived(
     categoryTweaks.filter((t) => t.definition.availability.state === "needs_elevation").length,
   );
-  const tweaksWithSnapshots = $derived(categoryTweaks.filter((t) => t.status.has_backup));
-  const isLoading = $derived(categoryTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
+  const tweaksWithSnapshots = $derived(categoryTweaks.filter(canRestore));
 
   const filters = $derived<FilterChip<Filter>[]>([
     { id: "all", label: "All", count: categoryTweaks.length },
@@ -42,12 +41,15 @@
       ? [{ id: "attention" as const, label: "Needs attention", count: attentionCount, tone: "error" as const }]
       : []),
   ]);
-  const activeFilter = $derived<Filter>(filter === "attention" && attentionCount === 0 ? "all" : filter);
+  // Fall back to All once the last item resolves, so a later one cannot silently narrow the list.
+  $effect(() => {
+    if (attentionCount === 0 && untrack(() => filter) === "attention") filter = "all";
+  });
 
   function matchesFilter(t: TweakWithStatus): boolean {
-    if (activeFilter === "applied") return t.status.is_applied;
-    if (activeFilter === "not_applied") return !t.status.is_applied;
-    if (activeFilter === "attention") return t.status.attention !== null;
+    if (filter === "applied") return t.status.is_applied;
+    if (filter === "not_applied") return !t.status.is_applied;
+    if (filter === "attention") return t.status.attention !== null;
     return true;
   }
 
@@ -56,7 +58,7 @@
 
   const categoryApps = $derived(appsStore.byCategory[tab.id] ?? []);
   const filteredApps = $derived(
-    activeFilter !== "all"
+    filter !== "all"
       ? []
       : categoryApps.filter(
           (a) => !query || a.name.toLowerCase().includes(query) || a.description.toLowerCase().includes(query),
@@ -68,9 +70,7 @@
 
   async function handleRestoreSnapshots() {
     showRevertAllDialog = false;
-    isBatchProcessing = true;
     await batchRevertTweaks(tweaksWithSnapshots.map((t) => t.definition.id));
-    isBatchProcessing = false;
   }
 
   function resetFilters() {
@@ -104,12 +104,12 @@
       class="min-w-48 flex-1 sm:max-w-80"
       onchange={(v) => (searchQuery = v)}
     />
-    <FilterChips options={filters} value={activeFilter} onchange={(v) => (filter = v)} />
+    <FilterChips options={filters} value={filter} onchange={(v) => (filter = v)} />
     {#if tweaksWithSnapshots.length > 0}
       <button
         type="button"
         class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={isLoading || isBatchProcessing}
+        disabled={loadingStore.busy}
         onclick={() => (showRevertAllDialog = true)}
       >
         <Icon icon="mdi:history" width="16" />
@@ -145,13 +145,13 @@
   {:else if filteredTweaks.length === 0 && filteredApps.length === 0}
     <EmptyState
       icon={query ? "mdi:file-search-outline" : "mdi:package-variant"}
-      title={query || activeFilter !== "all" ? "Nothing matches" : "No tweaks available"}
+      title={query || filter !== "all" ? "Nothing matches" : "No tweaks available"}
       description={query
         ? `Nothing in ${tab.name} matches "${searchQuery}"`
-        : activeFilter !== "all"
+        : filter !== "all"
           ? "No tweaks in this category match the selected filter"
           : "This category has no tweaks for your system"}
-      actionText={query || activeFilter !== "all" ? "Show all" : undefined}
+      actionText={query || filter !== "all" ? "Show all" : undefined}
       onaction={resetFilters}
     />
   {:else}
@@ -179,11 +179,9 @@
 
 <ConfirmDialog
   open={showRevertAllDialog}
-  title="Restore Snapshots"
-  message="Restore {tweaksWithSnapshots.length} tweak{tweaksWithSnapshots.length === 1
-    ? ''
-    : 's'} to their original state from saved snapshots?"
-  confirmText="Restore Snapshots"
+  title="Restore {tab.name}"
+  message={restoreMessage(tweaksWithSnapshots.length)}
+  confirmText="Restore"
   variant="danger"
   onconfirm={handleRestoreSnapshots}
   oncancel={() => (showRevertAllDialog = false)}

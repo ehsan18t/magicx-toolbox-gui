@@ -293,6 +293,10 @@ function batchStopMessage(
  * (no backend batch command exists). Per-tweak results are surfaced via the loop.
  */
 export async function applyPendingChanges(): Promise<{ success: number; failed: number }> {
+  return (await loadingStore.exclusive(applyPendingLoop)) ?? { success: 0, failed: 0 };
+}
+
+async function applyPendingLoop(): Promise<{ success: number; failed: number }> {
   const tweakIds = Array.from(pendingChangesStore.all.keys());
   if (tweakIds.length === 0) {
     return { success: 0, failed: 0 };
@@ -331,6 +335,10 @@ export async function applyPendingChanges(): Promise<{ success: number; failed: 
  * (no backend batch command exists).
  */
 export async function batchRevertTweaks(tweakIds: string[]): Promise<{ success: number; failed: number }> {
+  return (await loadingStore.exclusive(() => revertLoop(tweakIds))) ?? { success: 0, failed: 0 };
+}
+
+async function revertLoop(tweakIds: string[]): Promise<{ success: number; failed: number }> {
   if (tweakIds.length === 0) {
     return { success: 0, failed: 0 };
   }

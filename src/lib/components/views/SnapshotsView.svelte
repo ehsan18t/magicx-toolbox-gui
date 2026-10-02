@@ -6,30 +6,30 @@
   import { EmptyState, SearchInput, SkeletonCard } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import { matchesQuery } from "$lib/utils/tweakPresentation";
+  import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
 
   let searchQuery = $state("");
   let showRevertAllDialog = $state(false);
-  let isBatchProcessing = $state(false);
 
   const snapshotTweaks = $derived(tweaksStore.list.filter((t) => t.status.has_backup));
   const filteredTweaks = $derived(snapshotTweaks.filter((t) => matchesQuery(t, searchQuery)));
+  const restorable = $derived(snapshotTweaks.filter(canRestore));
   const appliedCount = $derived(snapshotTweaks.filter((t) => t.status.is_applied).length);
-  const isLoading = $derived(snapshotTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
 
   async function handleRestoreAll() {
     showRevertAllDialog = false;
-    isBatchProcessing = true;
-    await batchRevertTweaks(snapshotTweaks.map((t) => t.definition.id));
-    isBatchProcessing = false;
+    await batchRevertTweaks(restorable.map((t) => t.definition.id));
   }
 </script>
 
-<PageLayout title="Snapshots" description="Tweaks with a saved original state that you can restore.">
+<PageLayout
+  title="Snapshots"
+  description="Tweaks with a saved snapshot. Each Restore steps a tweak back to the state saved before its last change."
+>
   {#snippet aside()}
     {#if snapshotTweaks.length > 0}
       <p class="m-0 text-xs text-foreground-muted">
-        <span class="font-semibold text-foreground tabular-nums">{snapshotTweaks.length}</span> restorable ·
+        <span class="font-semibold text-foreground tabular-nums">{snapshotTweaks.length}</span> with snapshots ·
         <span class="font-semibold text-foreground tabular-nums">{appliedCount}</span> currently applied
       </p>
     {/if}
@@ -46,12 +46,12 @@
       <button
         type="button"
         class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={isLoading || isBatchProcessing}
+        disabled={loadingStore.busy || restorable.length === 0}
         onclick={() => (showRevertAllDialog = true)}
       >
         <Icon icon="mdi:history" width="16" />
         Restore all
-        <span class="text-xs text-foreground-subtle tabular-nums">{snapshotTweaks.length}</span>
+        <span class="text-xs text-foreground-subtle tabular-nums">{restorable.length}</span>
       </button>
     {/if}
   {/snippet}
@@ -62,7 +62,7 @@
     <EmptyState
       icon="mdi:backup-restore"
       title="No snapshots yet"
-      description="Applying a tweak saves the original state as a snapshot, so you can restore it later."
+      description="Applying a tweak saves the state it replaces as a snapshot, so you can restore it later."
       actionText="Browse tweaks"
       onaction={() => navigationStore.navigateToOverview()}
       showIconCircle
@@ -82,11 +82,9 @@
 
 <ConfirmDialog
   open={showRevertAllDialog}
-  title="Restore All Snapshots"
-  message="Restore all {snapshotTweaks.length} tweak{snapshotTweaks.length === 1
-    ? ''
-    : 's'} to their original state? This undoes every applied change that has a snapshot."
-  confirmText="Restore All"
+  title="Restore all snapshots"
+  message={restoreMessage(restorable.length)}
+  confirmText="Restore"
   variant="danger"
   onconfirm={handleRestoreAll}
   oncancel={() => (showRevertAllDialog = false)}

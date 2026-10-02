@@ -18,7 +18,28 @@
   const systemLoading = $derived(loadingStateStore.systemInfoLoading);
 
   const applied = $derived(tweaksStore.list.filter((t) => t.status.is_applied).length);
-  const attention = $derived(tweaksStore.list.filter((t) => t.status.attention).length);
+  const attentionTweaks = $derived(tweaksStore.list.filter((t) => t.status.attention));
+  const attention = $derived(attentionTweaks.length);
+  const checking = $derived(tweaksStore.list.filter((t) => t.status.state === "loading").length);
+  const unknown = $derived(tweaksStore.list.filter((t) => t.status.state === "unknown").length);
+  const attentionCategories = $derived(new Set(attentionTweaks.map((t) => t.definition.category_id)));
+
+  // "All verified" only once every state is read: loading and unknown are not verified.
+  const attentionTile = $derived.by(() => {
+    if (attention) {
+      const [first] = attentionCategories;
+      const single = attentionCategories.size === 1;
+      return {
+        sub: `in ${categoriesStore.getName(first)}${single ? "" : ` and ${attentionCategories.size - 1} more`}`,
+        tone: "text-error",
+        onclick: () => navigationStore.navigateToAttention(first),
+      };
+    }
+    if (checking || loadingStateStore.tweaksLoading)
+      return { sub: "Checking…", tone: "text-foreground-muted", onclick: null };
+    if (unknown) return { sub: `${unknown} could not be read`, tone: "text-warning", onclick: null };
+    return { sub: "All verified", tone: "text-success", onclick: null };
+  });
   const snapshots = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
 
   const formatClock = (mhz: number) => (mhz >= 1000 ? `${(mhz / 1000).toFixed(1)} GHz` : `${mhz} MHz`);
@@ -129,10 +150,8 @@
     {
       label: "Needs attention",
       value: `${attention}`,
-      sub: attention ? "Open a category to resolve" : "All verified",
       icon: "mdi:alert-circle",
-      tone: attention ? "text-error" : "text-success",
-      onclick: null,
+      ...attentionTile,
     },
     {
       label: "Snapshots",

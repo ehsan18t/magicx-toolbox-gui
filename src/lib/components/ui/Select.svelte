@@ -19,17 +19,20 @@
     pending?: boolean;
     loading?: boolean;
     disabled?: boolean;
+    /** Accessible name for the control. */
+    label?: string;
     class?: string;
     onchange?: (value: string | number) => void;
   }
 
   let {
-    value = $bindable(),
+    value,
     options,
     placeholder = "Select...",
     pending = false,
     loading = false,
     disabled = false,
+    label,
     class: className = "",
     onchange,
   }: Props = $props();
@@ -39,7 +42,8 @@
       ? `select-${crypto.randomUUID()}`
       : `select-${Math.random().toString(36).slice(2)}`;
   const listboxId = `${instanceId}-listbox`;
-  const optionId = (opt: Option) => `${instanceId}-option-${String(opt.value)}`;
+  // Index, not value: labels carry spaces and colons, which break the id reference.
+  const optionId = (i: number) => `${instanceId}-option-${i}`;
 
   let isOpen = $state(false);
   let triggerEl = $state<HTMLButtonElement | null>(null);
@@ -51,7 +55,7 @@
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
   const isPlaceholder = $derived(!selectedOption);
   const highlightedOptionId = $derived(
-    highlightedIndex >= 0 && options[highlightedIndex] ? optionId(options[highlightedIndex]) : undefined,
+    isOpen && highlightedIndex >= 0 && options[highlightedIndex] ? optionId(highlightedIndex) : undefined,
   );
 
   async function updatePosition() {
@@ -93,10 +97,8 @@
 
   function selectOption(opt: Option) {
     if (opt.disabled) return;
-    if (opt.value !== value) {
-      value = opt.value;
-      onchange?.(opt.value);
-    }
+    // Controlled: the parent may decline the change, so the trigger shows only what it passes back.
+    if (opt.value !== value) onchange?.(opt.value);
     close();
     triggerEl?.focus();
   }
@@ -167,10 +169,9 @@
   // Keep the highlighted option in view while navigating.
   $effect(() => {
     if (!isOpen || !menuEl || highlightedIndex < 0) return;
-    const opt = options[highlightedIndex];
-    if (!opt) return;
-    const el = menuEl.querySelector<HTMLElement>(`#${CSS.escape(optionId(opt))}`);
-    el?.scrollIntoView({ block: "nearest" });
+    menuEl
+      .querySelector<HTMLElement>(`#${CSS.escape(optionId(highlightedIndex))}`)
+      ?.scrollIntoView({ block: "nearest" });
   });
 
   // Set up scroll listeners on scrollable ancestors
@@ -213,6 +214,7 @@
     onclick={toggle}
     onkeydown={handleKeydown}
     disabled={disabled || loading}
+    aria-label={label ? `${label}: ${displayLabel}` : undefined}
     aria-haspopup="listbox"
     aria-expanded={isOpen}
     aria-controls={listboxId}
@@ -256,7 +258,7 @@
       <button
         type="button"
         role="option"
-        id={optionId(opt)}
+        id={optionId(i)}
         aria-selected={opt.value === value}
         aria-disabled={opt.disabled}
         disabled={opt.disabled}

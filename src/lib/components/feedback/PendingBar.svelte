@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
   import {
     applyPendingChanges,
@@ -8,22 +9,40 @@
     tweaksStore,
     unstageChange,
   } from "$lib/stores/tweaks.svelte";
+  import { RISK_INFO } from "$lib/types";
+  import { isHighRisk, stateSummary } from "$lib/utils/tweakPresentation";
   import { slide } from "svelte/transition";
 
   let expanded = $state(false);
   let applying = $state(false);
+  let reviewing = $state(false);
 
   const count = $derived(pendingChangesStore.count);
   const items = $derived(
-    Array.from(pendingChangesStore.all.values()).map((change) => ({
-      change,
-      tweak: tweaksStore.getById(change.tweakId),
-    })),
+    Array.from(pendingChangesStore.all.values()).map((change) => {
+      const tweak = tweaksStore.getById(change.tweakId);
+      return {
+        change,
+        tweak,
+        from: tweak ? stateSummary(tweak.status).label : "",
+        highRisk: tweak ? isHighRisk(tweak.definition.risk_level) : false,
+      };
+    }),
   );
   const needsReboot = $derived(items.some((i) => i.tweak?.definition.requires_reboot));
-  const busy = $derived(applying || loadingStore.isAnyLoading);
+  const highRiskCount = $derived(items.filter((i) => i.highRisk).length);
+  const busy = $derived(applying || loadingStore.busy);
+
+  const reviewOpen = $derived(reviewing && count > 0);
+
+  // High-risk changes are confirmed here, once, with the whole batch in view, not on each click.
+  function requestApply() {
+    if (highRiskCount > 0) reviewing = true;
+    else void apply();
+  }
 
   async function apply() {
+    reviewing = false;
     applying = true;
     try {
       await applyPendingChanges();
@@ -48,7 +67,7 @@
           class="m-0 max-h-56 list-none overflow-y-auto border-b border-border p-1"
           transition:slide={{ duration: 150 }}
         >
-          {#each items as { change, tweak } (change.tweakId)}
+          {#each items as { change, tweak, from } (change.tweakId)}
             <li class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
               <button
                 type="button"
@@ -56,7 +75,7 @@
                 onclick={() => openTweakDetailsModal(change.tweakId)}
               >
                 <span class="text-foreground">{tweak?.definition.name ?? change.tweakId}</span>
-                <span class="text-foreground-subtle"> → {change.optionLabel}</span>
+                <span class="text-foreground-muted"> {from ? `${from} → ` : "→ "}{change.optionLabel}</span>
               </button>
               <button
                 type="button"
@@ -111,7 +130,7 @@
             type="button"
             class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-accent px-3.5 text-[13px] font-semibold text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             disabled={busy}
-            onclick={apply}
+            onclick={requestApply}
           >
             {#if applying}<Icon icon="mdi:loading" width="14" class="animate-spin" />{/if}
             Apply
@@ -121,3 +140,50 @@
     </div>
   </div>
 {/if}
+
+<Modal open={reviewOpen} onclose={() => (reviewing = false)} size="lg" labelledBy="apply-review-title">
+  <ModalHeader id="apply-review-title">
+    <div class="flex items-center gap-3">
+      <Icon icon="mdi:alert" width="22" class="shrink-0 text-warning" />
+      <div>
+        <h2 class="m-0 text-base font-semibold text-foreground">
+          Review {count === 1 ? "1 change" : `${count} changes`}
+        </h2>
+        <p class="m-0 mt-0.5 text-[13px] text-foreground-muted">
+          {highRiskCount === 1 ? "1 change is" : `${highRiskCount} changes are`} high risk. Check them before applying.
+        </p>
+      </div>
+    </div>
+  </ModalHeader>
+  <ModalBody>
+    <ul class="m-0 list-none space-y-1.5 p-0">
+      {#each items as { change, tweak, from, highRisk } (change.tweakId)}
+        <li class="rounded-md border px-3 py-2 text-[13px] {highRisk ? 'border-error/35 bg-error/6' : 'border-border'}">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <span class="font-medium text-foreground">{tweak?.definition.name ?? change.tweakId}</span>
+            <span class="text-foreground-muted">
+              {from ? `${from} → ` : "→ "}<span class="font-medium text-foreground">{change.optionLabel}</span>
+            </span>
+          </div>
+          {#if tweak && (highRisk || tweak.definition.requires_reboot)}
+            <div class="mt-1 flex flex-wrap gap-x-3 text-xs">
+              {#if highRisk}
+                <span class="text-error">{RISK_INFO[tweak.definition.risk_level].name} risk</span>
+              {/if}
+              {#if tweak.definition.requires_reboot}<span class="text-info">Needs a restart</span>{/if}
+            </div>
+          {/if}
+          {#if highRisk && tweak?.definition.warning}
+            <p class="m-0 mt-1 text-xs leading-relaxed text-foreground-muted">{tweak.definition.warning}</p>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  </ModalBody>
+  <ModalFooter>
+    <Button variant="secondary" onclick={() => (reviewing = false)}>Back</Button>
+    <Button variant="warning" onclick={apply} disabled={busy}
+      >Apply {count === 1 ? "change" : `${count} changes`}</Button
+    >
+  </ModalFooter>
+</Modal>

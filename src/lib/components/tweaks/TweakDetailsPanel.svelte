@@ -1,6 +1,5 @@
 <script lang="ts">
   import { discardSnapshotEntry, listSnapshotEntries } from "$lib/api/tweaks";
-  import { ConfirmDialog } from "$lib/components/modals";
   import { Icon, MarkdownText } from "$lib/components/shared";
   import {
     FirewallChangeItem,
@@ -10,6 +9,7 @@
     ServiceChangeItem,
   } from "$lib/components/tweaks/details";
   import { Badge } from "$lib/components/ui";
+  import { confirm } from "$lib/stores/confirm.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -55,10 +55,6 @@
   let entriesLoading = $state(false);
   let busySeq = $state<number | null>(null);
   let keeping = $state(false);
-  let discardSeq = $state<number | null>(null);
-  let showDiscardConfirmDialog = $state(false);
-  let showKeepStateConfirmDialog = $state(false);
-  let showRestoreConfirmDialog = $state(false);
 
   let lastTab = navigationStore.activeTab;
   $effect(() => {
@@ -72,17 +68,23 @@
   let panelEl = $state<HTMLElement | null>(null);
   let returnFocusTo: HTMLElement | null = null;
 
-  // Overlay mode is a modal dialog: focus moves in, and returns to the opener on close.
+  let openedId: string | null = null;
+  // Overlay is modal, so focus moves in. Focus returns to the opener in the effect body: a cleanup reads the pre-close store.
   $effect(() => {
-    if (!def?.id || docked) return;
-    if (!returnFocusTo && document.activeElement instanceof HTMLElement) returnFocusTo = document.activeElement;
-    closeButton?.focus();
-    return () => {
-      if (!tweakDetailsModalStore.tweakId) {
-        returnFocusTo?.focus();
-        returnFocusTo = null;
+    const id = def?.id ?? null;
+    if (id && id !== openedId) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== document.body && !panelEl?.contains(active)) {
+        returnFocusTo = active;
       }
-    };
+    }
+    openedId = id;
+    if (id) {
+      if (!docked) closeButton?.focus();
+    } else if (returnFocusTo) {
+      if (returnFocusTo.isConnected) returnFocusTo.focus();
+      returnFocusTo = null;
+    }
   });
 
   // Keyed on the whole tweak, so a restore or keep re-reads the list.
@@ -178,15 +180,27 @@
     }
   }
 
-  function executeDiscard() {
-    showDiscardConfirmDialog = false;
-    if (discardSeq !== null) void discardEntry(discardSeq);
+  async function requestDiscard(seq: number) {
+    const ok = await confirm({
+      title: `Discard snapshot entry #${seq}?`,
+      message: "The state it recorded can no longer be restored for this tweak.",
+      confirmText: "Discard",
+      variant: "danger",
+    });
+    if (ok) await discardEntry(seq);
   }
 
   async function executeKeepCurrentState() {
-    showKeepStateConfirmDialog = false;
     const t = tweak;
     if (!t) return;
+    const ok = await confirm({
+      title: "Keep the current state?",
+      message:
+        "This accepts the current state as-is and releases the saved snapshot, so the earlier state can no longer be restored for this tweak.",
+      confirmText: "Keep current state",
+      variant: "danger",
+    });
+    if (!ok) return;
     keeping = true;
     try {
       if (await keepCurrentState(t.definition.id, { showToast: true, tweakName: t.definition.name })) {
@@ -202,17 +216,21 @@
     }
   }
 
-  function handleRestoreClick() {
-    if (isLoading) return;
-    if (isHighRisk) showRestoreConfirmDialog = true;
-    else void executeRestore();
-  }
-
-  async function executeRestore() {
-    showRestoreConfirmDialog = false;
+  async function handleRestoreClick() {
     const t = tweak;
+    if (!t || isLoading) return;
+    if (
+      isHighRisk &&
+      !(await confirm({
+        title: `Restore ${t.definition.name}?`,
+        message: `This ${t.definition.risk_level}-risk tweak steps back to the state saved before its last change.`,
+        confirmText: "Restore",
+        variant: "warning",
+      }))
+    )
+      return;
     // A second restore while one is in flight would walk back to the next-older snapshot.
-    if (!t || loadingStore.isLoading(t.definition.id)) return;
+    if (loadingStore.isLoading(t.definition.id)) return;
     await revertTweak(t.definition.id, { showToast: true, tweakName: t.definition.name });
   }
 </script>
@@ -318,7 +336,7 @@
     <button
       type="button"
       class="absolute inset-0 z-30 animate-fade-in cursor-default bg-black/30"
-      aria-label="Close details"
+      aria-hidden="true"
       tabindex="-1"
       onclick={closeTweakDetailsModal}
     ></button>
@@ -374,8 +392,8 @@
           )}
           {@render fact(
             "Restart",
-            def.requires_reboot ? "Required after apply or restore" : "Not needed",
-            def.requires_reboot ? "text-info" : "text-foreground",
+            def.requires_reboot ? "Needed after apply or restore" : "Not needed",
+            "text-foreground",
           )}
           {@render fact(
             "Reversible",
@@ -397,7 +415,7 @@
             disabled={isLoading || def.availability.state !== "available"}
           >
             <Icon icon="mdi:history" width="16" />
-            {status.attention?.reason === "restore_failed" ? "Retry restore" : "Restore original state"}
+            {status.attention?.reason === "restore_failed" ? "Retry restore" : "Restore previous state"}
           </button>
         {/if}
       </section>
@@ -464,7 +482,7 @@
           <button
             type="button"
             class="mt-3 ml-6.5 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={() => (showKeepStateConfirmDialog = true)}
+            onclick={executeKeepCurrentState}
             disabled={keeping || isLoading}
           >
             <Icon icon={keeping ? "mdi:loading" : "mdi:check"} width="16" class={keeping ? "animate-spin" : ""} />
@@ -587,10 +605,7 @@
                   <button
                     type="button"
                     class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-foreground-muted hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
-                    onclick={() => {
-                      discardSeq = entry.seq;
-                      showDiscardConfirmDialog = true;
-                    }}
+                    onclick={() => requestDiscard(entry.seq)}
                     disabled={busySeq === entry.seq}
                     aria-label="Discard snapshot entry {entry.seq}"
                   >
@@ -610,33 +625,3 @@
     </div>
   </aside>
 {/if}
-
-<ConfirmDialog
-  open={showRestoreConfirmDialog}
-  title="Restore Snapshot?"
-  message="This will restore the original state from before the tweak was applied."
-  confirmText="Restore"
-  cancelText="Cancel"
-  onconfirm={executeRestore}
-  oncancel={() => (showRestoreConfirmDialog = false)}
-/>
-
-<ConfirmDialog
-  open={showKeepStateConfirmDialog}
-  title="Keep Current State?"
-  message="This accepts the current state as-is and releases any saved snapshot. The original state can no longer be restored for this tweak."
-  confirmText="Keep current state"
-  cancelText="Cancel"
-  onconfirm={executeKeepCurrentState}
-  oncancel={() => (showKeepStateConfirmDialog = false)}
-/>
-
-<ConfirmDialog
-  open={showDiscardConfirmDialog}
-  title="Discard Snapshot Entry?"
-  message="This deletes snapshot entry #{discardSeq}. The state it recorded can no longer be restored for this tweak."
-  confirmText="Discard"
-  cancelText="Cancel"
-  onconfirm={executeDiscard}
-  oncancel={() => (showDiscardConfirmDialog = false)}
-/>

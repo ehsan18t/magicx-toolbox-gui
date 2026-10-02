@@ -25,6 +25,7 @@ export interface TabDefinition {
 let activeTab = $state<TabId>("overview");
 /** Signal to focus the search input - incremented each time focus is requested */
 let focusSearchSignal = $state(0);
+let attentionFilterRequested = false;
 
 // Overview tab definition (static)
 const overviewTab: TabDefinition = {
@@ -208,6 +209,19 @@ export const navigationStore = {
   /** Navigate to a specific tab by ID */
   navigateToTab(tabId: TabId) {
     activeTab = tabId;
+  },
+
+  /** Opens a category already filtered to its Needs Attention tweaks. */
+  navigateToAttention(categoryId: TabId) {
+    attentionFilterRequested = true;
+    activeTab = categoryId;
+  },
+
+  /** Read once by the category view as it mounts. */
+  takeAttentionFilter(): boolean {
+    const requested = attentionFilterRequested;
+    attentionFilterRequested = false;
+    return requested;
   },
 
   /** Navigate to the overview tab */

@@ -3,6 +3,7 @@
   import { LogsPanel, TitleBar } from "$lib/components/layout";
   import {
     AboutModal,
+    ConfirmHost,
     ProfileExportModal,
     ProfileImportModal,
     SettingsModal,
@@ -131,6 +132,7 @@
 <UpdateModal />
 <ProfileExportModal />
 <ProfileImportModal />
+<ConfirmHost />
 
 <ApplyingOverlay />
 <ToastContainer />

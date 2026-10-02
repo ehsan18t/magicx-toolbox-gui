@@ -1,10 +1,9 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { SegmentedSwitch, Select } from "$lib/components/ui";
+  import { SegmentedSwitch, Select, Switch } from "$lib/components/ui";
+  import { confirm } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { searchStore } from "$lib/stores/search.svelte";
   import { openTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import {
     errorStore,
@@ -17,7 +16,8 @@
   } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
-  import { availabilityLabel, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
+  import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
+  import { availabilityLabel, isHighRisk, RISK_TONE, stateSummary, TONE_TEXT } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -29,13 +29,6 @@
   }
 
   let { tweak, titleSlot, descriptionSlot, context }: Props = $props();
-
-  const STACK_BELOW_ROW_WIDTH = 520;
-  // Sentinel dropdown value for the computed "System Default" position (ADR-0003).
-  const SYSTEM_DEFAULT = "__system_default__";
-
-  let rowWidth = $state(800);
-  const stacked = $derived(rowWidth < STACK_BELOW_ROW_WIDTH);
 
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
@@ -60,29 +53,13 @@
   const controlDisabled = $derived(isLoading || controlDisabledReason !== null);
 
   let rowEl = $state<HTMLElement | null>(null);
-  let isHighlighting = $state(false);
-  // The row scrolls itself: the view that requested it has already unmounted.
-  $effect(() => {
-    if (searchStore.highlightTweakId !== def.id) return;
-    isHighlighting = true;
-    // After a frame: rows above are still settling their height on first render.
-    const frame = requestAnimationFrame(() => rowEl?.scrollIntoView({ block: "center" }));
-    const timer = setTimeout(() => {
-      isHighlighting = false;
-      searchStore.clearHighlight();
-    }, 1500);
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timer);
-    };
-  });
-
-  let showConfirmDialog = $state(false);
-  let showRestoreConfirmDialog = $state(false);
-  let showKeepStateConfirmDialog = $state(false);
+  const highlight = searchHighlight(
+    () => def.id,
+    () => rowEl,
+  );
 
   const riskInfo = $derived(RISK_INFO[def.risk_level]);
-  const isHighRisk = $derived(def.risk_level === "high" || def.risk_level === "critical");
+  const highRisk = $derived(isHighRisk(def.risk_level));
   const permissionInfo = $derived(permissionInfoFor(def.required_level));
   const isFavorite = $derived(favoritesStore.isFavorite(def.id));
   const hasSnapshot = $derived(status.has_backup);
@@ -97,94 +74,75 @@
   const pendingChange = $derived(pendingChangesStore.get(def.id));
   const hasPending = $derived(pendingChange !== undefined);
   const activeOption = $derived(status.activeOption);
-
   const optionLabels = $derived(def.optionLabels);
-  const isSegmented = $derived(optionLabels.length <= 2);
 
-  // ADR-0003: offered only while it is the detected state. Not `activeOption == null`: Unknown and
-  // loading also have no active option, and must show nothing selected.
-  const atSystemDefault = $derived(status.state === "system_default");
+  // ADR-0003: System Default is a computed state, never a choice, so no control offers it;
+  // the state line names it and Restore is the only way back.
+  const selectValue = $derived(pendingChange?.optionLabel ?? activeOption);
 
   const LONG_SEGMENT_LABELS = 34;
-
-  const segments = $derived.by(() => {
-    const [first, second] = optionLabels;
-    const ordered = second === undefined ? [first] : [first, second];
-    if (atSystemDefault) ordered.splice(second === undefined ? 0 : 1, 0, SYSTEM_DEFAULT);
-    return ordered.map((label, i) => {
-      const isDefault = label === SYSTEM_DEFAULT;
-      const unavailable = isDefault ? undefined : status.unavailableOptions.find((u) => u.label === label);
-      return {
-        value: i,
-        label: isDefault ? "System default" : unavailable ? `${label} (unavailable)` : label,
-        icon: isDefault ? "mdi:monitor" : undefined,
-        disabled: !!unavailable,
-        target: label,
-      };
-    });
-  });
-
-  const longLabels = $derived(
-    isSegmented && segments.length > 1 && segments.reduce((n, s) => n + s.label.length, 0) > LONG_SEGMENT_LABELS,
+  const segments = $derived(
+    optionLabels.map((label, i) => {
+      const unavailable = status.unavailableOptions.some((u) => u.label === label);
+      return { value: i, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
+    }),
   );
-  const stackControl = $derived(stacked || longLabels);
+  const longLabels = $derived(
+    optionLabels.length === 2 && segments.reduce((n, s) => n + s.label.length, 0) > LONG_SEGMENT_LABELS,
+  );
+  const selectOptions = $derived(segments.map((s, i) => ({ ...s, value: optionLabels[i] })));
+  const selectPlaceholder = $derived(
+    status.state === "system_default"
+      ? "System default"
+      : status.state === "loading"
+        ? "Checking…"
+        : status.state === "unavailable"
+          ? "Unavailable"
+          : "Unknown",
+  );
 
-  const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? (atSystemDefault ? SYSTEM_DEFAULT : null));
-  // -1 selects no segment (Unknown / loading).
-  const segmentValue = $derived(segments.findIndex((s) => s.target === selectValue));
-  const selectOptions = $derived.by(() => {
-    const opts: { value: string; label: string; disabled?: boolean }[] = [];
-    if (atSystemDefault) opts.push({ value: SYSTEM_DEFAULT, label: "System default" });
-    for (const label of optionLabels) {
-      const un = status.unavailableOptions.find((u) => u.label === label);
-      opts.push({ value: label, label: un ? `${label} (unavailable)` : label, disabled: !!un });
-    }
-    return opts;
-  });
+  // A single-option tweak is a switch: on stages the option, off restores the snapshot.
+  const onlyOption = $derived(optionLabels.length === 1 ? optionLabels[0] : null);
+  const switchOn = $derived(onlyOption !== null && selectValue === onlyOption);
+  const switchOffBlocked = $derived(switchOn && !hasPending && !hasSnapshot);
 
-  let pendingHighRiskLabel: string | null = $state(null);
-
-  // System Default is a Restore, never an Apply (ADR-0003), and only from an authored option:
-  // clicking it while already there must only unstage.
   function selectTarget(target: string) {
-    if (target === SYSTEM_DEFAULT) {
-      unstageChange(def.id);
-      if (activeOption && hasSnapshot) handleRestoreClick();
-      return;
-    }
-    if (target === activeOption) {
-      unstageChange(def.id);
-      return;
-    }
-    if (isHighRisk) {
-      pendingHighRiskLabel = target;
-      showConfirmDialog = true;
-      return;
-    }
-    stageChange(def.id, { tweakId: def.id, optionLabel: target });
+    if (target === activeOption) unstageChange(def.id);
+    else stageChange(def.id, { tweakId: def.id, optionLabel: target });
   }
 
-  function handleConfirmHighRisk() {
-    showConfirmDialog = false;
-    if (pendingHighRiskLabel !== null) {
-      stageChange(def.id, { tweakId: def.id, optionLabel: pendingHighRiskLabel });
-      pendingHighRiskLabel = null;
-    }
+  function toggleOnly(on: boolean) {
+    if (onlyOption === null) return;
+    if (on) selectTarget(onlyOption);
+    else if (hasPending) unstageChange(def.id);
+    else if (hasSnapshot) void handleRestoreClick();
   }
 
-  function handleRestoreClick() {
-    if (isHighRisk) showRestoreConfirmDialog = true;
-    else void executeRestore();
-  }
-
-  async function executeRestore() {
-    showRestoreConfirmDialog = false;
+  async function handleRestoreClick() {
+    if (
+      highRisk &&
+      !(await confirm({
+        title: `Restore ${def.name}?`,
+        message: `This ${def.risk_level}-risk tweak steps back to the state saved before its last change.`,
+        confirmText: "Restore",
+        variant: "warning",
+      }))
+    )
+      return;
+    // A second restore while one is in flight would walk back to the next-older snapshot.
+    if (loadingStore.isLoading(def.id)) return;
     await revertTweak(def.id, { showToast: true, tweakName: def.name });
   }
 
-  async function executeKeepCurrentState() {
-    showKeepStateConfirmDialog = false;
-    await keepCurrentState(def.id, { showToast: true, tweakName: def.name });
+  async function handleKeepCurrentState() {
+    const ok = await confirm({
+      title: "Keep the current state?",
+      message:
+        "This accepts the current state as-is and releases the saved snapshot, so the earlier state can no longer be restored for this tweak.",
+      confirmText: "Keep current state",
+      variant: "danger",
+    });
+    if (ok) await keepCurrentState(def.id, { showToast: true, tweakName: def.name });
   }
 
   function handleRowClick(e: MouseEvent) {
@@ -198,8 +156,8 @@
     availability.state !== "available"
       ? availability.reason
       : restoreFailed
-        ? "Retry restoring the original state"
-        : "Restore the original state from the snapshot",
+        ? "Retry restoring the saved state"
+        : "Restore the state saved before the last change",
   );
   const stripe = $derived(
     attention ? "bg-error" : hasPending ? "bg-warning" : status.is_applied ? "bg-accent" : "bg-transparent",
@@ -216,16 +174,14 @@
 {#snippet actionButton(icon: string, label: string, onclick: () => void, tip: string, disabled = false)}
   <button
     type="button"
-    class="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md text-xs font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 {stacked
-      ? 'w-7 justify-center'
-      : 'px-2'}"
+    class="inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 @max-[520px]:w-7 @max-[520px]:px-0"
     aria-label={label}
     use:tooltip={tip}
     {disabled}
     {onclick}
   >
     <Icon {icon} width="15" class="shrink-0" />
-    {#if !stacked}<span>{label}</span>{/if}
+    <span class="@max-[520px]:hidden">{label}</span>
   </button>
 {/snippet}
 
@@ -233,18 +189,17 @@
 <article
   id="tweak-{def.id}"
   bind:this={rowEl}
-  bind:clientWidth={rowWidth}
-  class="relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-colors duration-150 {isSelected
+  class="@container relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-colors duration-150 {isSelected
     ? 'border-accent/70'
     : hasPending
       ? 'border-warning/45'
-      : 'border-border hover:border-border-hover'} {isHighlighting ? 'tweak-highlight' : ''}"
+      : 'border-border hover:border-border-hover'} {highlight.active ? 'tweak-highlight' : ''}"
   onclick={handleRowClick}
 >
   <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {stripe}" aria-hidden="true"></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="flex gap-x-6 gap-y-2.5 {stackControl ? 'flex-col' : 'items-start'}">
+    <div class="flex gap-x-6 gap-y-2.5 @max-[520px]:flex-col {longLabels ? 'flex-col' : 'items-start'}">
       <div class="min-w-0 flex-1">
         <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
           {#if titleSlot}{@render titleSlot()}{:else}{def.name}{/if}
@@ -255,34 +210,56 @@
       </div>
 
       <div
-        class="min-w-0 {stackControl
+        class="min-w-0 {longLabels
           ? 'w-full'
-          : isSegmented
-            ? 'max-w-[45%] shrink-0'
-            : 'w-fit max-w-[45%] min-w-44 shrink-0'}"
-        use:tooltip={controlDisabledReason}
+          : onlyOption !== null
+            ? 'shrink-0'
+            : optionLabels.length === 2
+              ? 'max-w-[45%] shrink-0 @max-[520px]:max-w-full'
+              : 'w-fit max-w-[45%] min-w-44 shrink-0 @max-[520px]:w-full @max-[520px]:max-w-full'}"
+        use:tooltip={controlDisabledReason ??
+          (switchOffBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : null)}
       >
-        {#if isSegmented}
+        {#if onlyOption !== null}
+          <div class="flex items-center gap-2.5">
+            <span
+              class="text-[13px] {switchOn
+                ? hasPending
+                  ? 'text-warning'
+                  : 'text-foreground'
+                : 'text-foreground-muted'}"
+            >
+              {onlyOption}
+            </span>
+            <Switch
+              checked={switchOn}
+              pending={hasPending}
+              loading={isLoading}
+              disabled={controlDisabled || switchOffBlocked}
+              ariaLabel="{def.name}: {onlyOption}"
+              onchange={toggleOnly}
+            />
+          </div>
+        {:else if optionLabels.length === 2}
           <SegmentedSwitch
-            value={segmentValue}
+            value={segments.findIndex((_, i) => optionLabels[i] === selectValue)}
             options={segments}
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}
             stretch={longLabels}
-            onchange={(i) => {
-              const t = segments[i]?.target;
-              if (t !== undefined) selectTarget(t);
-            }}
+            label={def.name}
+            onchange={(i) => selectTarget(optionLabels[i])}
           />
         {:else}
           <Select
             value={selectValue}
             options={selectOptions}
-            placeholder={status.state === "unknown" ? "Unknown" : status.state === "loading" ? "Checking…" : undefined}
+            placeholder={selectPlaceholder}
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}
+            label={def.name}
             onchange={(v) => selectTarget(String(v))}
           />
         {/if}
@@ -326,7 +303,7 @@
           <button
             type="button"
             class="h-7 cursor-pointer rounded-md border border-border bg-secondary px-2.5 font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={() => (showKeepStateConfirmDialog = true)}
+            onclick={handleKeepCurrentState}
             disabled={isLoading}
           >
             Keep current state
@@ -363,12 +340,17 @@
         status.state === "loading",
       )}
       {#if pendingChange}
-        {@render metaItem(
-          "mdi:arrow-right",
-          `${pendingChange.optionLabel} pending`,
-          "text-warning",
-          "Staged, not applied yet",
-        )}
+        <span class="inline-flex max-w-full items-center gap-1 text-warning">
+          {@render metaItem("mdi:arrow-right", `${pendingChange.optionLabel} pending`, "", "Staged, not applied yet")}
+          <button
+            type="button"
+            class="cursor-pointer rounded px-1 font-medium underline-offset-2 hover:underline"
+            aria-label="Undo staged change to {def.name}"
+            onclick={() => unstageChange(def.id)}
+          >
+            Undo
+          </button>
+        </span>
       {/if}
       {@render metaItem(
         "mdi:shield-half-full",
@@ -434,36 +416,3 @@
     </div>
   </div>
 </article>
-
-<ConfirmDialog
-  open={showConfirmDialog}
-  title="Apply High-Risk Tweak?"
-  message="This tweak is marked as {def.risk_level} risk. {riskInfo.description} Are you sure you want to apply it?"
-  confirmText="Yes, Apply"
-  cancelText="Cancel"
-  onconfirm={handleConfirmHighRisk}
-  oncancel={() => {
-    showConfirmDialog = false;
-    pendingHighRiskLabel = null;
-  }}
-/>
-
-<ConfirmDialog
-  open={showRestoreConfirmDialog}
-  title="Restore Snapshot?"
-  message="This will restore the original state from before the tweak was applied."
-  confirmText="Restore"
-  cancelText="Cancel"
-  onconfirm={executeRestore}
-  oncancel={() => (showRestoreConfirmDialog = false)}
-/>
-
-<ConfirmDialog
-  open={showKeepStateConfirmDialog}
-  title="Keep Current State?"
-  message="This accepts the current state as-is and releases any saved snapshot. The original state can no longer be restored for this tweak."
-  confirmText="Keep current state"
-  cancelText="Cancel"
-  onconfirm={executeKeepCurrentState}
-  oncancel={() => (showKeepStateConfirmDialog = false)}
-/>

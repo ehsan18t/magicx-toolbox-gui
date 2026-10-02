@@ -27,6 +27,15 @@ export const RISK_TONE: Record<RiskLevel, Tone> = {
   critical: "error",
 };
 
+/** A bulk restore takes only these: each row's own Restore is disabled otherwise. */
+export const canRestore = (t: TweakWithStatus) =>
+  t.status.has_backup && t.definition.availability.state === "available";
+
+export const restoreMessage = (count: number) =>
+  `Restore ${count === 1 ? "1 tweak" : `${count} tweaks`} to the state saved before ${count === 1 ? "its" : "each one's"} last change?`;
+
+export const isHighRisk = (level: RiskLevel) => level === "high" || level === "critical";
+
 export interface StateSummary {
   label: string;
   tone: Tone;

@@ -22,7 +22,7 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 
 ## Tweak System
 
-Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One or two authored options render as a segmented switch; three or more render as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option (ADR-0003).
+Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One authored option renders as an on/off switch, two as a segmented switch, three or more as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option, shown on the row's state line and never offered by a control (ADR-0003).
 
 Effect kinds:
 

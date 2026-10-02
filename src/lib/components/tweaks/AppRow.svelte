@@ -1,12 +1,12 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { ConfirmDialog } from "$lib/components/modals";
   import { Icon, MarkdownText } from "$lib/components/shared";
   import { Button, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
-  import { searchStore } from "$lib/stores/search.svelte";
+  import { confirm } from "$lib/stores/confirm.svelte";
   import type { AppView, RiskLevel } from "$lib/types";
   import { permissionInfoFor, RISK_INFO } from "$lib/types";
+  import { searchHighlight } from "$lib/utils/searchHighlight.svelte";
   import { RISK_TONE, TONE_TEXT } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
 
@@ -93,7 +93,6 @@
     store: { label: "Get in Store", icon: "mdi:open-in-new", aria: "Open the Microsoft Store page for", tone: "" },
   } as const;
 
-  let showRemoveConfirm = $state(false);
   let showDetails = $state(false);
 
   const scope = $derived(app.source === "appx" ? "for every account on this PC" : "for your account");
@@ -104,36 +103,27 @@
       (app.warning ? ` ${app.warning}` : ""),
   );
 
-  function handleAction() {
+  async function handleAction() {
     if (!action || action.disabledReason !== null) return;
-    if (action.kind === "remove") showRemoveConfirm = true;
-    else if (action.kind === "install") void appsStore.install(app.id);
-    else void appsStore.openStorePage(app.id);
+    if (action.kind === "install") void appsStore.install(app.id);
+    else if (action.kind === "store") void appsStore.openStorePage(app.id);
+    else if (
+      await confirm({ title: `Remove ${app.name}?`, message: confirmMessage, confirmText: "Remove", variant: "danger" })
+    )
+      void appsStore.remove(app.id);
   }
-
-  function confirmRemove() {
-    showRemoveConfirm = false;
-    void appsStore.remove(app.id);
-  }
-
-  const isHighlighting = $derived(searchStore.highlightTweakId === app.id);
 
   let rowEl = $state<HTMLElement | null>(null);
-  $effect(() => {
-    if (!isHighlighting) return;
-    const frame = requestAnimationFrame(() => rowEl?.scrollIntoView({ block: "center" }));
-    const timer = setTimeout(() => searchStore.clearHighlight(), 1500);
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timer);
-    };
-  });
+  const highlight = searchHighlight(
+    () => app.id,
+    () => rowEl,
+  );
 </script>
 
 <article
   id="app-{app.id}"
   bind:this={rowEl}
-  class="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {isHighlighting
+  class="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {highlight.active
     ? 'tweak-highlight'
     : ''}"
   aria-busy={busy}
@@ -237,16 +227,6 @@
     </div>
   </div>
 </article>
-
-<ConfirmDialog
-  open={showRemoveConfirm}
-  title="Remove {app.name}?"
-  message={confirmMessage}
-  confirmText="Remove"
-  variant="danger"
-  onconfirm={confirmRemove}
-  oncancel={() => (showRemoveConfirm = false)}
-/>
 
 <Modal open={showDetails} onclose={() => (showDetails = false)} size="lg" labelledBy="app-details-{app.id}">
   <ModalHeader id="app-details-{app.id}">

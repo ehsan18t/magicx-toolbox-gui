@@ -77,7 +77,10 @@
     else return;
 
     e.preventDefault();
-    if (newIndex !== null && newIndex !== selectedIndex) onchange?.(options[newIndex].value);
+    if (newIndex === null || newIndex === selectedIndex) return;
+    onchange?.(options[newIndex].value);
+    // Roving tab stop: focus follows the selection, or it stays on a now-untabbable segment.
+    (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("[role='radio']")[newIndex]?.focus();
   }
 </script>
 

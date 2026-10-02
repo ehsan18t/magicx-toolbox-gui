@@ -1,24 +1,14 @@
 <script lang="ts">
   import { PageLayout } from "$lib/components/layout";
-  import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { AppRow, TweakRow } from "$lib/components/tweaks";
   import { EmptyState, HighlightedText } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { searchStore, type SearchResult } from "$lib/stores/search.svelte";
-  import {
-    batchRevertTweaks,
-    categoriesStore,
-    loadingStateStore,
-    loadingStore,
-    tweaksStore,
-  } from "$lib/stores/tweaks.svelte";
+  import { categoriesStore, loadingStateStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import type { AppView, TweakWithStatus } from "$lib/types";
   import { untrack } from "svelte";
-
-  let showRevertAllDialog = $state(false);
-  let isBatchProcessing = $state(false);
 
   // Results are cached per query, so re-run once the app model lands after a search.
   $effect(() => {
@@ -31,10 +21,11 @@
 
   const mappedResults = $derived.by((): MappedResult[] => {
     const mapped: MappedResult[] = [];
+    const byId = new Map(tweaksStore.list.map((t) => [t.definition.id, t]));
     for (const result of searchStore.results) {
       const categoryName = categoriesStore.getName(result.categoryId);
       if (result.kind === "tweak") {
-        const tweak = tweaksStore.getById(result.id);
+        const tweak = byId.get(result.id);
         if (tweak) mapped.push({ kind: "tweak", tweak, categoryName, searchResult: result });
       } else if (appsStore.isVisible(result.id)) {
         const app = appsStore.list.find((a) => a.id === result.id);
@@ -43,10 +34,6 @@
     }
     return mapped;
   });
-
-  const resultTweaks = $derived(mappedResults.flatMap((r) => (r.kind === "tweak" ? [r.tweak] : [])));
-  const tweaksWithSnapshots = $derived(resultTweaks.filter((t) => t.status.has_backup));
-  const isLoading = $derived(resultTweaks.some((t) => loadingStore.isLoading(t.definition.id)));
 
   const description = $derived(
     searchStore.isActive && !searchStore.isSearching
@@ -57,13 +44,6 @@
   function goToItem({ id, categoryId }: SearchResult) {
     searchStore.setHighlight(id);
     navigationStore.navigateToCategory(categoryId);
-  }
-
-  async function handleRestoreSnapshots() {
-    showRevertAllDialog = false;
-    isBatchProcessing = true;
-    await batchRevertTweaks(tweaksWithSnapshots.map((t) => t.definition.id));
-    isBatchProcessing = false;
   }
 </script>
 
@@ -90,21 +70,6 @@
 {/snippet}
 
 <PageLayout title="Search" {description}>
-  {#snippet toolbar()}
-    {#if tweaksWithSnapshots.length > 0}
-      <button
-        type="button"
-        class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={isLoading || isBatchProcessing}
-        onclick={() => (showRevertAllDialog = true)}
-      >
-        <Icon icon="mdi:history" width="16" />
-        Restore results
-        <span class="text-xs text-foreground-subtle tabular-nums">{tweaksWithSnapshots.length}</span>
-      </button>
-    {/if}
-  {/snippet}
-
   {#if loadingStateStore.tweaksLoading && !searchStore.isActive}
     <EmptyState icon="mdi:loading" title="" description="Loading tweaks…" />
   {:else if searchStore.error}
@@ -159,15 +124,3 @@
     </div>
   {/if}
 </PageLayout>
-
-<ConfirmDialog
-  open={showRevertAllDialog}
-  title="Restore Snapshots"
-  message="Restore {tweaksWithSnapshots.length} tweak{tweaksWithSnapshots.length === 1
-    ? ''
-    : 's'} from these results to their original state from saved snapshots?"
-  confirmText="Restore Snapshots"
-  variant="danger"
-  onconfirm={handleRestoreSnapshots}
-  oncancel={() => (showRevertAllDialog = false)}
-/>
