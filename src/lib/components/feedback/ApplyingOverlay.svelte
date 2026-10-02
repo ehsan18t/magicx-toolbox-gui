@@ -42,7 +42,7 @@
 
 {#if visible}
   <div
-    class="fixed inset-x-0 top-12 bottom-0 z-1000 flex items-center justify-center bg-black/40 p-4"
+    class="fixed inset-x-0 top-12 bottom-0 z-busy flex items-center justify-center bg-black/40 p-4"
     role="presentation"
     aria-busy="true"
   >

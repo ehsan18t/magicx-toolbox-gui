@@ -29,7 +29,7 @@
 
 {#if toasts.length > 0}
   <div
-    class="fixed right-4 z-1000 flex flex-col gap-2 {pendingRebootStore.count > 0 ? 'top-24' : 'top-14'}"
+    class="fixed right-4 z-toast flex flex-col gap-2 {pendingRebootStore.count > 0 ? 'top-24' : 'top-14'}"
     role="region"
     aria-label="Notifications"
     aria-live="polite"

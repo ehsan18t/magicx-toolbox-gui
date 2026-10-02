@@ -115,7 +115,7 @@
 {#if sidebarStore.isOverlay}
   <button
     type="button"
-    class="fixed inset-x-0 top-12 bottom-0 z-40 cursor-default bg-black/20"
+    class="fixed inset-x-0 top-12 bottom-0 z-scrim cursor-default bg-black/20"
     aria-label="Close navigation"
     tabindex="-1"
     onclick={() => sidebarStore.closeOverlay()}
@@ -130,7 +130,7 @@
 >
   <div
     class="flex h-full flex-col {sidebarStore.isOverlay
-      ? 'absolute inset-y-0 left-0 z-50 w-72 animate-rise-in rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
+      ? 'absolute inset-y-0 left-0 z-drawer w-72 animate-rise-in rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
       : 'w-full'}"
   >
     <div class="relative flex min-h-0 flex-1 flex-col">

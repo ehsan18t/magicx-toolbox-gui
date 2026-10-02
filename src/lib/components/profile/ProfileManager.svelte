@@ -236,7 +236,7 @@
   </PageLayout>
 
   {#if isDragOver}
-    <div class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/85">
+    <div class="absolute inset-0 z-scrim flex flex-col items-center justify-center bg-background/85">
       <div class="flex h-24 w-24 items-center justify-center rounded-2xl bg-accent/15">
         <Icon icon="mdi:file-import" width="48" class="text-accent" />
       </div>

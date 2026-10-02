@@ -37,7 +37,7 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
 
     // Style tooltip
     tooltipComponent.className =
-      "fixed z-[9999] px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-lg border border-border pointer-events-none fade-in-0 zoom-in-95 animate-in duration-150";
+      "fixed z-popover px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-lg border border-border pointer-events-none fade-in-0 zoom-in-95 animate-in duration-150";
 
     document.body.appendChild(tooltipComponent);
 

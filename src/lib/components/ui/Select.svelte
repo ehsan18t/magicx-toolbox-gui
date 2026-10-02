@@ -251,7 +251,7 @@
     id={listboxId}
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
-    class="fixed z-9999 max-h-72 space-y-0.5 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-flyout"
+    class="fixed z-popover max-h-72 space-y-0.5 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-flyout"
     style="top: {menuPosition.top}px; left: {menuPosition.left}px; min-width: {menuPosition.minWidth}px; max-width: {menuPosition.maxWidth}px;"
   >
     {#each options as opt, i (opt.value)}

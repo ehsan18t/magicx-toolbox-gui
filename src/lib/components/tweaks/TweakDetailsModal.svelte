@@ -401,7 +401,7 @@
                 <tr class="border-b border-border bg-muted/40 text-xs">
                   <th
                     scope="col"
-                    class="sticky left-0 z-10 min-w-56 bg-card px-3 py-2 font-medium text-foreground-muted"
+                    class="sticky left-0 z-raised min-w-56 bg-card px-3 py-2 font-medium text-foreground-muted"
                   >
                     Setting
                   </th>
@@ -454,7 +454,7 @@
                     </tr>
                   {/if}
                   <tr class="border-b border-border last:border-b-0">
-                    <th scope="row" class="sticky left-0 z-10 max-w-80 bg-card px-3 py-2 align-top font-normal">
+                    <th scope="row" class="sticky left-0 z-raised max-w-80 bg-card px-3 py-2 align-top font-normal">
                       <span class="flex flex-wrap items-baseline gap-x-2">
                         <span class="font-mono text-[12px] font-semibold break-all">{row.title}</span>
                         {#if row.type}<span class="text-[11px] text-foreground-subtle">{row.type}</span>{/if}

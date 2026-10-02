@@ -54,7 +54,7 @@
 
 {#if count > 0}
   <div
-    class="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-4"
+    class="pointer-events-none absolute inset-x-0 bottom-0 z-dock flex justify-center px-4 pb-4"
     transition:slide={{ duration: 180 }}
   >
     <div
