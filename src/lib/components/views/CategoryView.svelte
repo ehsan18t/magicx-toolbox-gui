@@ -9,7 +9,7 @@
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { restartAsAdmin } from "$lib/utils/elevation";
-  import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
+  import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
   import { untrack } from "svelte";
 
   interface Props {
@@ -33,19 +33,15 @@
     if (attentionCount === 0 && untrack(() => attentionOnly)) attentionOnly = false;
   });
 
-  const query = $derived(pageFilterStore.query.trim().toLowerCase());
+  const query = $derived(pageFilterStore.query.trim());
   const filteredTweaks = $derived(
-    categoryTweaks.filter((t) => (!attentionOnly || t.status.attention !== null) && matchesQuery(t, query)),
+    categoryTweaks.filter(
+      (t) => (!attentionOnly || t.status.attention !== null) && pageFilterStore.passes(t.definition.id),
+    ),
   );
 
   const categoryApps = $derived(appsStore.byCategory[tab.id] ?? []);
-  const filteredApps = $derived(
-    attentionOnly
-      ? []
-      : categoryApps.filter(
-          (a) => !query || a.name.toLowerCase().includes(query) || a.description.toLowerCase().includes(query),
-        ),
-  );
+  const filteredApps = $derived(attentionOnly ? [] : categoryApps.filter((a) => pageFilterStore.passes(a.id)));
   const installedAppCount = $derived(
     categoryApps.filter((a) => appsStore.status(a.id)?.presence.state === "installed").length,
   );
@@ -137,7 +133,7 @@
       <EmptyState
         icon="mdi:file-search-outline"
         title="Nothing matches"
-        description={`Nothing in ${tab.name} matches "${pageFilterStore.query.trim()}"`}
+        description={`Nothing in ${tab.name} matches "${query}"`}
         actionText="Search everywhere"
         onaction={() => pageFilterStore.searchEverywhere()}
       />

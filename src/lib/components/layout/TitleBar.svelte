@@ -38,20 +38,21 @@
   });
 
   const scoped = $derived(pageFilterStore.scoped);
-  const scopeName = $derived(navigationStore.currentTab?.name ?? "");
+  const chipTab = $derived(pageFilterStore.chipTab);
+  const scopeName = $derived(navigationStore.allTabs.find((t) => t.id === chipTab)?.name ?? "");
 
   function handleSearch(value: string) {
-    if (scoped) {
-      pageFilterStore.setQuery(value);
-      return;
+    if (scoped) pageFilterStore.setQuery(value);
+    else if (navigationStore.isScopable) pageFilterStore.searchEverywhere(value);
+    else {
+      searchStore.setQuery(value);
+      if (value && navigationStore.activeTab !== "search") navigationStore.navigateToSearch();
     }
-    searchStore.setQuery(value);
-    if (value && navigationStore.activeTab !== "search") navigationStore.navigateToSearch();
   }
 
-  function setScope(on: boolean) {
-    if (on) pageFilterStore.rescope();
-    else pageFilterStore.searchEverywhere();
+  function toggleScope() {
+    if (scoped) pageFilterStore.searchEverywhere();
+    else pageFilterStore.scopeIn();
     searchEl?.focus();
   }
 
@@ -149,34 +150,22 @@
   </div>
 
   <div class="flex min-w-36 flex-1 items-center justify-center px-3">
-    {#snippet scopeLeading()}
-      {#if scoped}
-        <Icon icon="mdi:magnify" width="16" class="shrink-0 text-foreground-muted" />
-        <span
-          class="inline-flex max-w-[45%] shrink-0 items-center gap-0.5 rounded bg-accent/15 py-0.5 pr-0.5 pl-2 text-xs font-medium text-accent"
-        >
-          <span class="truncate">{scopeName}</span>
-          <button
-            type="button"
-            class="flex shrink-0 cursor-pointer rounded p-0.5 hover:bg-accent/20"
-            aria-label="Search everywhere instead of only {scopeName}"
-            use:tooltip={"Search everywhere"}
-            onclick={() => setScope(false)}
-          >
-            <Icon icon="mdi:close" width="12" />
-          </button>
-        </span>
-      {:else}
-        <button
-          type="button"
-          class="flex shrink-0 cursor-pointer rounded text-foreground-muted hover:text-accent"
-          aria-label="Search only in {scopeName}"
-          use:tooltip={`Search only in ${scopeName}`}
-          onclick={() => setScope(true)}
-        >
-          <Icon icon="mdi:magnify" width="16" />
-        </button>
-      {/if}
+    {#snippet scopeToggle()}
+      <button
+        type="button"
+        class="inline-flex max-w-[45%] shrink-0 cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium {scoped
+          ? 'border-accent/40 bg-accent/15 text-accent hover:bg-accent/20'
+          : 'border-border-hover bg-muted text-foreground-muted hover:border-accent/50 hover:text-foreground'}"
+        aria-pressed={scoped}
+        aria-label="Search only in {scopeName}"
+        use:tooltip={scoped
+          ? `Searching only in ${scopeName}. Select to search everywhere.`
+          : `Search only in ${scopeName}`}
+        onclick={toggleScope}
+      >
+        <Icon icon={scoped ? "mdi:filter-variant" : "mdi:filter-variant-remove"} width="13" class="shrink-0" />
+        <span class="truncate">{scopeName}</span>
+      </button>
     {/snippet}
     <SearchInput
       bind:inputRef={searchEl}
@@ -184,8 +173,8 @@
       placeholder={scoped ? "Filter (Ctrl+K)" : "Search tweaks and apps (Ctrl+K)"}
       label={scoped ? `Filter ${scopeName}` : "Search tweaks and apps"}
       class="w-full max-w-100 drag-disable"
-      leading={navigationStore.isScopable ? scopeLeading : undefined}
-      onbackspace={scoped ? () => setScope(false) : undefined}
+      trailing={chipTab ? scopeToggle : undefined}
+      onbackspace={scoped ? toggleScope : undefined}
       onchange={handleSearch}
     />
   </div>

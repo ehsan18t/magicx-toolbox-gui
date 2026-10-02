@@ -213,6 +213,32 @@ function extractFieldRanges(
   return { nameRanges, descriptionRanges, infoRanges };
 }
 
+/** Every fuzzy match, unranked and uncapped, keyed by id: the in-page filter keeps its own order. */
+export function fuzzyMatches(needle: string): Record<string, SearchResult> {
+  const q = needle.trim();
+  if (!q) return {};
+  const { strings, entries } = getHaystack();
+  const [idxs, info] = uf.search(strings, q, 2, strings.length);
+  // A multi-term miss returns an info object with no idx, so the empty case must return first.
+  if (!idxs || idxs.length === 0) return {};
+  const hits = info?.idx
+    ? info.idx.map((idx, i) => ({ idx, ranges: info.ranges[i] ?? [] }))
+    : idxs.map((idx) => ({ idx, ranges: [] }));
+  return Object.fromEntries(
+    hits.map(({ idx, ranges }) => {
+      const entry = entries[idx];
+      const result: SearchResult = {
+        kind: entry.kind,
+        id: entry.id,
+        categoryId: entry.categoryId,
+        haystackIndex: idx,
+        ...extractFieldRanges(ranges, entry),
+      };
+      return [entry.id, result];
+    }),
+  );
+}
+
 // === Derived State ===
 
 const hasResults = $derived(results.length > 0);

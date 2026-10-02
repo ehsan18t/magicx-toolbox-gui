@@ -88,9 +88,3 @@ export function availabilityTitle(availability: Availability): string {
       return "Administrator required";
   }
 }
-
-export function matchesQuery(tweak: TweakWithStatus, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return tweak.definition.name.toLowerCase().includes(q) || tweak.definition.description.toLowerCase().includes(q);
-}

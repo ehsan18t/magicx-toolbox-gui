@@ -8,6 +8,8 @@
   import MdiAlertCircle from "~icons/mdi/alert-circle";
   import MdiAlertCircleOutline from "~icons/mdi/alert-circle-outline";
   import MdiAlertOctagon from "~icons/mdi/alert-octagon";
+  import MdiFilterVariant from "~icons/mdi/filter-variant";
+  import MdiFilterVariantRemove from "~icons/mdi/filter-variant-remove";
   import MdiArrowLeft from "~icons/mdi/arrow-left";
   import MdiArrowRight from "~icons/mdi/arrow-right";
   import MdiArrowRightCircle from "~icons/mdi/arrow-right-circle";
@@ -169,6 +171,8 @@
     "mdi:broom": MdiBroom,
     "mdi:lan": MdiLan,
     "mdi:monitor": MdiMonitor,
+    "mdi:filter-variant": MdiFilterVariant,
+    "mdi:filter-variant-remove": MdiFilterVariantRemove,
     "mdi:console": MdiConsole,
     "mdi:database": MdiDatabase,
     "mdi:shield-account-outline": MdiShieldAccountOutline,

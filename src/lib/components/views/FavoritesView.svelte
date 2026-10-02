@@ -9,10 +9,10 @@
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
+  import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
 
   const favoriteTweaks = $derived(tweaksStore.list.filter((t) => favoritesStore.ids.includes(t.definition.id)));
-  const filteredTweaks = $derived(favoriteTweaks.filter((t) => matchesQuery(t, pageFilterStore.query)));
+  const filteredTweaks = $derived(favoriteTweaks.filter((t) => pageFilterStore.passes(t.definition.id)));
   const restorable = $derived(favoriteTweaks.filter(canRestore));
   const appliedCount = $derived(favoriteTweaks.filter((t) => t.status.is_applied).length);
 

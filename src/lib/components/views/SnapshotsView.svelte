@@ -7,10 +7,10 @@
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
+  import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
 
   const snapshotTweaks = $derived(tweaksStore.list.filter((t) => t.status.has_backup));
-  const filteredTweaks = $derived(snapshotTweaks.filter((t) => matchesQuery(t, pageFilterStore.query)));
+  const filteredTweaks = $derived(snapshotTweaks.filter((t) => pageFilterStore.passes(t.definition.id)));
   const restorable = $derived(snapshotTweaks.filter(canRestore));
   const appliedCount = $derived(snapshotTweaks.filter((t) => t.status.is_applied).length);
 

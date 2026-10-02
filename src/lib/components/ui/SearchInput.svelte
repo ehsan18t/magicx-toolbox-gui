@@ -11,8 +11,8 @@
     inputRef?: HTMLInputElement | null;
     onchange?: (value: string) => void;
     onclear?: () => void;
-    /** Replaces the magnifier, e.g. with a scope chip. */
-    leading?: Snippet;
+    /** After the clear button, e.g. a scope toggle. */
+    trailing?: Snippet;
     /** Backspace in an empty box, e.g. to drop that scope. */
     onbackspace?: () => void;
   }
@@ -25,7 +25,7 @@
     inputRef = $bindable(null),
     onchange,
     onclear,
-    leading,
+    trailing,
     onbackspace,
   }: Props = $props();
 
@@ -53,11 +53,7 @@
   for={inputId}
   class="flex h-8 min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 focus-within:border-accent {className}"
 >
-  {#if leading}{@render leading()}{:else}<Icon
-      icon="mdi:magnify"
-      width="16"
-      class="shrink-0 text-foreground-muted"
-    />{/if}
+  <Icon icon="mdi:magnify" width="16" class="shrink-0 text-foreground-muted" />
   <input
     bind:this={inputRef}
     id={inputId}
@@ -79,4 +75,5 @@
       <Icon icon="mdi:close" width="14" />
     </button>
   {/if}
+  {#if trailing}{@render trailing()}{/if}
 </label>
