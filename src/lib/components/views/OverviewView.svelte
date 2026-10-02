@@ -1,109 +1,30 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, getCategoryStats, loadingStateStore, systemStore } from "$lib/stores/tweaks.svelte";
-  import ScrollingText from "./ScrollingText.svelte";
-  import SystemInfoCard from "./SystemInfoCard.svelte";
+  import {
+    categoriesStore,
+    getCategoryStats,
+    loadingStateStore,
+    pendingChangesStore,
+    systemStore,
+    tweaksStore,
+  } from "$lib/stores/tweaks.svelte";
 
-  // Get category stats reactively
+  const info = $derived(systemStore.info);
+  const hw = $derived(info?.hardware);
   const categoryStats = $derived(getCategoryStats());
+  const systemLoading = $derived(loadingStateStore.systemInfoLoading);
 
-  // Loading states
-  const systemInfoLoading = $derived(loadingStateStore.systemInfoLoading);
-  const systemInfoRefreshing = $derived(loadingStateStore.systemInfoRefreshing);
-  const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
+  const applied = $derived(tweaksStore.list.filter((t) => t.status.is_applied).length);
+  const attention = $derived(tweaksStore.list.filter((t) => t.status.attention).length);
+  const snapshots = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
 
-  // Handle refresh button click
-  async function handleRefreshHardware() {
-    try {
-      await systemStore.refresh();
-    } catch (error) {
-      console.error("Failed to refresh hardware info:", error);
-    }
-  }
+  const formatClock = (mhz: number) => (mhz >= 1000 ? `${(mhz / 1000).toFixed(1)} GHz` : `${mhz} MHz`);
+  const formatStorage = (gb: number) => (gb >= 1000 ? `${(gb / 1000).toFixed(1)} TB` : `${gb.toFixed(0)} GB`);
 
-  // Format cached time for tooltip
-  function formatCachedTime(isoString: string | null): string {
-    if (!isoString) return "Never";
-    const date = new Date(isoString);
-    return date.toLocaleString();
-  }
-
-  /**
-   * Handle keyboard navigation for category grid.
-   * Arrow keys move focus between category cards in a grid pattern.
-   */
-  function handleCategoryKeydown(event: KeyboardEvent, index: number, totalItems: number) {
-    const key = event.key;
-    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
-      return;
-    }
-
-    event.preventDefault();
-    const grid = event.currentTarget as HTMLElement;
-    const parent = grid.parentElement;
-    if (!parent) return;
-
-    const buttons = Array.from(parent.querySelectorAll("button"));
-    if (buttons.length === 0) return;
-
-    // Calculate columns based on container width (match Tailwind breakpoints)
-    // sm:2, lg:3, xl:4 columns
-    const containerWidth = parent.getBoundingClientRect().width;
-    let cols = 1;
-    if (containerWidth >= 1280)
-      cols = 4; // xl
-    else if (containerWidth >= 1024)
-      cols = 3; // lg
-    else if (containerWidth >= 640) cols = 2; // sm
-
-    let targetIndex = index;
-
-    switch (key) {
-      case "ArrowRight":
-        targetIndex = Math.min(index + 1, totalItems - 1);
-        break;
-      case "ArrowLeft":
-        targetIndex = Math.max(index - 1, 0);
-        break;
-      case "ArrowDown":
-        targetIndex = Math.min(index + cols, totalItems - 1);
-        break;
-      case "ArrowUp":
-        targetIndex = Math.max(index - cols, 0);
-        break;
-      case "Home":
-        targetIndex = 0;
-        break;
-      case "End":
-        targetIndex = totalItems - 1;
-        break;
-    }
-
-    if (targetIndex !== index && buttons[targetIndex]) {
-      (buttons[targetIndex] as HTMLElement).focus();
-    }
-  }
-
-  // Format clock speed
-  const formatClockSpeed = (mhz: number) => {
-    if (mhz >= 1000) {
-      return `${(mhz / 1000).toFixed(1)} GHz`;
-    }
-    return `${mhz} MHz`;
-  };
-
-  // Format storage size
-  const formatStorage = (gb: number) => {
-    if (gb >= 1000) {
-      return `${(gb / 1000).toFixed(1)} TB`;
-    }
-    return `${gb.toFixed(0)} GB`;
-  };
-
-  // Format uptime
-  const formatUptime = (seconds: number): string => {
+  function formatUptime(seconds: number): string {
     if (!seconds || seconds <= 0) return "Unknown";
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
@@ -111,363 +32,279 @@
     if (days > 0) return `${days}d ${hours}h`;
     if (hours > 0) return `${hours}h ${minutes}m`;
     return `${minutes}m`;
-  };
+  }
+
+  interface HardwareRow {
+    icon: string;
+    label: string;
+    value: string;
+    detail: string;
+    status?: { text: string; tone: string };
+  }
+
+  const hardware = $derived.by((): HardwareRow[] => {
+    if (!hw) return [];
+    const rows: HardwareRow[] = [
+      {
+        icon: "mdi:cpu-64-bit",
+        label: "Processor",
+        value: hw.cpu.name,
+        detail: `${hw.cpu.cores} cores, ${hw.cpu.threads} threads · up to ${formatClock(hw.cpu.max_clock_mhz)}`,
+      },
+    ];
+    hw.gpu.forEach((gpu, i) =>
+      rows.push({
+        icon: "mdi:expansion-card",
+        label: hw.gpu.length > 1 ? `Graphics ${i + 1}` : "Graphics",
+        value: gpu.name,
+        detail: [
+          gpu.memory_gb > 0 ? `${gpu.memory_gb} GB` : "Shared memory",
+          gpu.driver_version && `Driver ${gpu.driver_version}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      }),
+    );
+    hw.monitors.forEach((m, i) =>
+      rows.push({
+        icon: "mdi:monitor",
+        label: hw.monitors.length > 1 ? `Display ${i + 1}` : "Display",
+        value: m.name,
+        detail: [m.resolution, m.refresh_rate > 0 && `${m.refresh_rate} Hz`].filter(Boolean).join(" · "),
+      }),
+    );
+    rows.push({
+      icon: "ri:ram-line",
+      label: "Memory",
+      value: `${hw.memory.total_gb} GB ${hw.memory.memory_type}`.trim(),
+      detail: [
+        hw.memory.speed_mhz > 0 && `${hw.memory.speed_mhz} MHz`,
+        hw.memory.slots_used > 0 && `${hw.memory.slots_used} modules`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    });
+    rows.push({
+      icon: "bi:motherboard",
+      label: "Motherboard",
+      value: hw.motherboard.product,
+      detail: [hw.motherboard.manufacturer, hw.motherboard.bios_version && `BIOS ${hw.motherboard.bios_version}`]
+        .filter(Boolean)
+        .join(" · "),
+    });
+    hw.disks.forEach((d, i) =>
+      rows.push({
+        icon: d.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus",
+        label: hw.disks.length > 1 ? `Storage ${i + 1}` : "Storage",
+        value: d.model,
+        detail: [formatStorage(d.size_gb), d.drive_type, d.interface_type !== "Unknown" && d.interface_type]
+          .filter(Boolean)
+          .join(" · "),
+        status: d.health_status
+          ? { text: d.health_status, tone: d.health_status === "Healthy" ? "text-success" : "text-warning" }
+          : undefined,
+      }),
+    );
+    hw.network.forEach((n, i) =>
+      rows.push({
+        icon: "mdi:ethernet",
+        label: hw.network.length > 1 ? `Network ${i + 1}` : "Network",
+        value: n.name,
+        detail: [n.ip_address || "Not connected", n.mac_address].filter(Boolean).join(" · "),
+      }),
+    );
+    return rows;
+  });
+
+  const tiles = $derived([
+    {
+      label: "Applied",
+      value: `${applied}`,
+      sub: `of ${tweaksStore.list.length} tweaks`,
+      icon: "mdi:check-circle",
+      tone: "text-accent",
+      onclick: null,
+    },
+    {
+      label: "Needs attention",
+      value: `${attention}`,
+      sub: attention ? "Open a category to resolve" : "All verified",
+      icon: "mdi:alert-circle",
+      tone: attention ? "text-error" : "text-success",
+      onclick: null,
+    },
+    {
+      label: "Snapshots",
+      value: `${snapshots}`,
+      sub: "restorable",
+      icon: "mdi:history",
+      tone: "text-foreground-muted",
+      onclick: () => navigationStore.navigateToSnapshots(),
+    },
+    {
+      label: "Ready to apply",
+      value: `${pendingChangesStore.count}`,
+      sub: pendingChangesStore.count ? "staged changes" : "nothing staged",
+      icon: "mdi:arrow-right",
+      tone: pendingChangesStore.count ? "text-warning" : "text-foreground-muted",
+      onclick: null,
+    },
+  ]);
 </script>
 
-<div class="flex h-full w-full flex-col gap-5 overflow-y-auto p-5">
-  <!-- System Overview -->
-  <div class="flex flex-col gap-2">
-    <h2 class="m-0 text-lg font-semibold text-foreground">System</h2>
-    <div class="rounded-xl border border-border bg-card p-4">
-      {#if systemInfoLoading}
-        <!-- Skeleton loading for system info -->
-        <div
-          class="grid grid-cols-2 gap-4 gap-y-6 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-0 md:divide-x md:divide-border/50"
-        >
-          {#each [0, 1, 2, 3] as i (`system-skeleton-${i}`)}
-            <div class="flex flex-col gap-1.5 {i === 0 ? 'md:pr-4' : i === 3 ? 'md:pl-4' : 'md:px-4'}">
-              <span class="flex items-center gap-2">
-                <div class="h-3.5 w-3.5 animate-pulse rounded bg-surface/80"></div>
-                <div class="h-3 w-24 animate-pulse rounded bg-surface/80"></div>
-              </span>
-              <div class="flex flex-col gap-1">
-                <div class="h-5 w-32 animate-pulse rounded bg-surface/60"></div>
-                <div class="h-3 w-20 animate-pulse rounded bg-surface/40"></div>
-              </div>
-            </div>
-          {/each}
+{#snippet skeleton(lines: number)}
+  {#each Array.from({ length: lines }, (_, i) => i) as i (i)}
+    <div class="h-4 animate-pulse rounded bg-muted" style="width: {90 - i * 15}%"></div>
+  {/each}
+{/snippet}
+
+<PageLayout title="Overview" description={info ? `${info.computer_name} · ${info.username}` : "Your PC at a glance"}>
+  <section class="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2" aria-label="System">
+    {#if systemLoading || !info}
+      {#each [0, 1, 2, 3] as i (i)}
+        <div class="space-y-2 rounded-lg border border-border bg-card p-3">{@render skeleton(2)}</div>
+      {/each}
+    {:else}
+      {@const facts = [
+        {
+          icon: "mdi:microsoft-windows",
+          label: "Windows",
+          value: info.windows.product_name,
+          detail: `${info.windows.display_version} · build ${info.windows.build_number}`,
+        },
+        {
+          icon: info.device.pc_type === "Laptop" ? "mdi:laptop" : "mdi:desktop-tower-monitor",
+          label: "Device",
+          value: info.device.model || info.computer_name,
+          detail: info.device.manufacturer,
+        },
+        {
+          icon: "mdi:timer-outline",
+          label: "Uptime",
+          value: formatUptime(info.windows.uptime_seconds),
+          detail: "since last restart",
+        },
+        {
+          icon: info.is_admin ? "mdi:shield-check" : "mdi:account",
+          label: "Account",
+          value: info.username,
+          detail: info.is_admin ? "Administrator" : "Standard user",
+        },
+      ]}
+      {#each facts as f (f.label)}
+        <div class="min-w-0 rounded-lg border border-border bg-card p-3">
+          <div class="flex items-center gap-1.5 text-xs text-foreground-muted">
+            <Icon icon={f.icon} width="14" class="shrink-0" />
+            {f.label}
+          </div>
+          <div class="mt-1 text-sm font-semibold wrap-break-word">{f.value}</div>
+          <div class="text-xs wrap-break-word text-foreground-muted">{f.detail}</div>
         </div>
-      {:else}
-        <div
-          class="grid grid-cols-2 gap-4 gap-y-6 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-0 md:divide-x md:divide-border/50"
+      {/each}
+    {/if}
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="overview-tweaks">
+    <h2 id="overview-tweaks" class="m-0 text-base font-semibold">Your tweaks</h2>
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
+      {#each tiles as t (t.label)}
+        <svelte:element
+          this={t.onclick ? "button" : "div"}
+          type={t.onclick ? "button" : undefined}
+          role={t.onclick ? undefined : "group"}
+          class="flex min-w-0 flex-col items-start rounded-lg border border-border bg-card p-3 text-left {t.onclick
+            ? 'cursor-pointer hover:border-border-hover'
+            : ''}"
+          onclick={t.onclick ?? undefined}
         >
-          <!-- OS -->
-          <div class="flex flex-col gap-1.5 md:pr-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon icon="mdi:microsoft-windows" width="14" class="text-accent" />
-              Operating System
-            </span>
-            <div class="flex flex-col">
-              <span class="text-sm font-semibold text-foreground">
-                {systemStore.info?.windows?.product_name?.replace("Windows ", "Win ") ?? "Windows"}
-              </span>
-              <span class="text-xs text-foreground-muted">
-                {systemStore.info?.windows?.display_version ?? ""} ({systemStore.info?.windows?.build_number ?? ""})
-              </span>
-            </div>
-          </div>
-
-          <!-- Device -->
-          <div class="flex flex-col gap-1.5 md:px-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon
-                icon={systemStore.info?.device?.pc_type === "Laptop" ? "mdi:laptop" : "mdi:desktop-tower-monitor"}
-                width="14"
-                class="text-accent"
-              />
-              Device
-            </span>
-            <div class="flex flex-col">
-              <span class="truncate text-sm font-semibold text-foreground">
-                {systemStore.info?.device?.model ?? systemStore.info?.computer_name ?? "Unknown"}
-              </span>
-              <span class="truncate text-xs text-foreground-muted">
-                {systemStore.info?.device?.manufacturer ?? "Unknown"}
-              </span>
-            </div>
-          </div>
-
-          <!-- Uptime -->
-          <div class="flex flex-col gap-1.5 md:px-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon icon="mdi:timer-outline" width="14" class="text-success" />
-              Uptime
-            </span>
-            <div class="flex flex-col">
-              <span class="text-sm font-semibold text-foreground">
-                {formatUptime(systemStore.info?.windows?.uptime_seconds ?? 0)}
-              </span>
-              <span class="text-xs text-foreground-muted">Since boot</span>
-            </div>
-          </div>
-
-          <!-- User -->
-          <div class="flex flex-col gap-1.5 md:pl-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon
-                icon={systemStore.info?.is_admin ? "mdi:shield-check" : "mdi:account"}
-                width="14"
-                class={systemStore.info?.is_admin ? "text-success" : "text-warning"}
-              />
-              User
-            </span>
-            <div class="flex flex-col">
-              <span class="truncate text-sm font-semibold text-foreground">
-                {systemStore.info?.username ?? "User"}
-              </span>
-              <span class="text-xs {systemStore.info?.is_admin ? 'text-success' : 'text-warning'}">
-                {systemStore.info?.is_admin ? "Admin" : "Standard"}
-              </span>
-            </div>
-          </div>
-        </div>
-      {/if}
+          <span class="flex items-center gap-1.5 text-xs text-foreground-muted">
+            <Icon icon={t.icon} width="14" class="shrink-0 {t.tone}" />
+            {t.label}
+          </span>
+          <span class="mt-1 font-display text-2xl leading-none font-semibold tabular-nums">{t.value}</span>
+          <span class="mt-1 text-xs text-foreground-muted">{t.sub}</span>
+        </svelte:element>
+      {/each}
     </div>
-  </div>
+  </section>
 
-  <!-- Hardware Section -->
-  <div class="flex flex-col gap-2">
-    <div class="flex items-center justify-between">
-      <h2 class="m-0 text-lg font-semibold text-foreground">Hardware</h2>
-      <div class="flex items-center gap-2">
-        {#if systemStore.cachedAt && !systemInfoLoading}
-          <span
-            class="text-xs text-foreground-muted"
-            use:tooltip={`Last updated: ${formatCachedTime(systemStore.cachedAt)}`}
-          >
-            Cached
+  <section class="flex flex-col gap-2" aria-labelledby="overview-categories">
+    <h2 id="overview-categories" class="m-0 text-base font-semibold">Categories</h2>
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
+      {#each categoriesStore.list as category (category.id)}
+        {@const s = categoryStats[category.id]}
+        {@const progress = s?.total ? (s.applied / s.total) * 100 : 0}
+        <button
+          type="button"
+          class="group flex min-w-0 cursor-pointer flex-col gap-2 rounded-lg border border-border bg-card p-3 text-left hover:border-border-hover"
+          onclick={() => navigationStore.navigateToCategory(category.id)}
+          aria-label="{category.name}: {s?.applied ?? 0} of {s?.total ?? 0} applied"
+        >
+          <span class="flex w-full items-center gap-2.5">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">
+              <Icon icon={category.icon || "mdi:folder"} width="18" />
+            </span>
+            <span class="min-w-0 flex-1 text-sm font-semibold wrap-break-word">{category.name}</span>
+            <span
+              class="shrink-0 text-xs tabular-nums {s && s.total > 0 && s.applied === s.total
+                ? 'text-success'
+                : 'text-foreground-muted'}"
+            >
+              {s?.applied ?? 0}/{s?.total ?? 0}
+            </span>
+          </span>
+          <span class="line-clamp-2 text-xs text-foreground-muted">{category.description}</span>
+          <span class="mt-auto block h-1 w-full overflow-hidden rounded-full bg-muted">
+            <span class="block h-full rounded-full bg-accent transition-[width] duration-300" style="width: {progress}%"
+            ></span>
+          </span>
+        </button>
+      {/each}
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="overview-hardware">
+    <div class="flex items-center justify-between gap-3">
+      <h2 id="overview-hardware" class="m-0 text-base font-semibold">Hardware</h2>
+      <div class="flex items-center gap-1">
+        {#if systemStore.cachedAt && !systemLoading}
+          <span class="text-xs text-foreground-subtle">
+            Updated {new Date(systemStore.cachedAt).toLocaleString()}
           </span>
         {/if}
         <button
           type="button"
-          onclick={handleRefreshHardware}
-          disabled={systemInfoLoading || systemInfoRefreshing}
-          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted"
+          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          onclick={() => systemStore.refresh().catch((e) => console.error("Failed to refresh hardware info:", e))}
+          disabled={systemLoading || loadingStateStore.systemInfoRefreshing}
+          aria-label="Refresh hardware info"
           use:tooltip={"Refresh hardware info"}
         >
-          <Icon icon="mdi:refresh" width={18} class={systemInfoRefreshing ? "animate-spin" : ""} />
+          <Icon icon="mdi:refresh" width="18" class={loadingStateStore.systemInfoRefreshing ? "animate-spin" : ""} />
         </button>
       </div>
     </div>
-
-    {#if systemInfoLoading}
-      <!-- Skeleton loading for hardware -->
-      <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        {#each [0, 1, 2, 3, 4, 5] as i (`hardware-skeleton-${i}`)}
-          <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div class="h-10 w-10 animate-pulse rounded-lg bg-surface/60"></div>
-            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <div class="h-3 w-16 animate-pulse rounded bg-surface/80"></div>
-              <div class="h-4 w-40 animate-pulse rounded bg-surface/60"></div>
-              <div class="flex items-center gap-2">
-                <div class="h-3 w-16 animate-pulse rounded bg-surface/40"></div>
-                <div class="h-1 w-1 rounded-full bg-border"></div>
-                <div class="h-3 w-20 animate-pulse rounded bg-surface/40"></div>
-              </div>
+    <div class="divide-y divide-border rounded-lg border border-border bg-card">
+      {#if systemLoading || !hw}
+        <div class="space-y-2 p-3">{@render skeleton(4)}</div>
+      {:else}
+        {#each hardware as row, i (`${row.label}-${i}`)}
+          <div class="flex items-start gap-3 px-3 py-2.5">
+            <Icon icon={row.icon} width="18" class="mt-0.5 shrink-0 text-foreground-muted" />
+            <div class="w-24 shrink-0 text-xs text-foreground-muted max-sm:hidden">{row.label}</div>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs text-foreground-muted sm:hidden">{row.label}</div>
+              <div class="text-[13px] font-medium wrap-break-word select-text">{row.value}</div>
+              {#if row.detail}
+                <div class="text-xs wrap-break-word text-foreground-muted select-text">{row.detail}</div>
+              {/if}
             </div>
+            {#if row.status}
+              <span class="shrink-0 text-xs font-medium {row.status.tone}">{row.status.text}</span>
+            {/if}
           </div>
         {/each}
-      </div>
-    {:else}
-      <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        <!-- CPU -->
-        <SystemInfoCard
-          icon="mdi:cpu-64-bit"
-          label="Processor"
-          title={systemStore.info?.hardware?.cpu?.name ?? "Unknown CPU"}
-        >
-          <span>{systemStore.info?.hardware?.cpu?.cores ?? 0} Cores</span>
-          <span class="h-1 w-1 rounded-full bg-border"></span>
-          <span>{formatClockSpeed(systemStore.info?.hardware?.cpu?.max_clock_mhz ?? 0)}</span>
-        </SystemInfoCard>
-
-        <!-- GPU(s) -->
-        {#if systemStore.info?.hardware?.gpu && systemStore.info.hardware.gpu.length > 0}
-          {#each systemStore.info.hardware.gpu as gpu, i (gpu.name)}
-            <SystemInfoCard
-              icon="mdi:expansion-card"
-              label="Graphics{systemStore.info.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
-              title={gpu.name}
-            >
-              <ScrollingText>
-                <span
-                  >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
-                >
-
-                {#if i === 0 && systemStore.info?.hardware?.monitors && systemStore.info.hardware.monitors.length > 0}
-                  {#each systemStore.info.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
-                    <span class="h-1 w-1 rounded-full bg-border"></span>
-                    <span use:tooltip={`${monitor.name} - ${monitor.resolution}`}>
-                      {monitor.name} <span class="ml-1 text-muted-foreground">{monitor.resolution}</span>
-                    </span>
-                    {#if monitor.refresh_rate > 0}
-                      <span class="self-center rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                        {monitor.refresh_rate}Hz
-                      </span>
-                    {/if}
-                  {/each}
-                {:else if gpu.refresh_rate > 0}
-                  <span class="h-1 w-1 rounded-full bg-border"></span>
-                  <span>{gpu.refresh_rate}Hz</span>
-                {/if}
-              </ScrollingText>
-            </SystemInfoCard>
-          {/each}
-        {/if}
-
-        <!-- Motherboard -->
-        <SystemInfoCard
-          icon="bi:motherboard"
-          label="Motherboard"
-          title={systemStore.info?.hardware?.motherboard?.product ?? "Unknown"}
-        >
-          <span class="truncate">{systemStore.info?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
-          {#if systemStore.info?.hardware?.motherboard?.bios_version}
-            <span class="h-1 w-1 rounded-full bg-border"></span>
-            <span class="truncate">BIOS: {systemStore.info?.hardware?.motherboard?.bios_version}</span>
-          {/if}
-        </SystemInfoCard>
-
-        <!-- Memory -->
-        <SystemInfoCard
-          icon="ri:ram-line"
-          label="Memory"
-          title="{systemStore.info?.hardware?.memory?.total_gb ?? 0} GB {systemStore.info?.hardware?.memory
-            ?.memory_type ?? ''}"
-        >
-          <span>{systemStore.info?.hardware?.memory?.speed_mhz ?? 0} MHz</span>
-          <span class="h-1 w-1 rounded-full bg-border"></span>
-          <span>{systemStore.info?.hardware?.memory?.slots_used ?? 0} / 4 Slots</span>
-        </SystemInfoCard>
-
-        <!-- Storage Drives -->
-        {#if systemStore.info?.hardware?.disks && systemStore.info.hardware.disks.length > 0}
-          {#each systemStore.info.hardware.disks as disk, i (disk.model)}
-            <SystemInfoCard
-              icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
-              label="Storage{systemStore.info.hardware.disks.length > 1 ? ` ${i + 1}` : ''}"
-              title={disk.model}
-            >
-              {#snippet headerExtra()}
-                {#if disk.health_status}
-                  <span
-                    class="text-xs font-medium {disk.health_status === 'Healthy' ? 'text-success' : 'text-warning'}"
-                  >
-                    {disk.health_status}
-                  </span>
-                {/if}
-              {/snippet}
-
-              <span>{formatStorage(disk.size_gb)}</span>
-              {#if disk.interface_type && disk.interface_type !== "Unknown"}
-                <span class="h-1 w-1 rounded-full bg-border"></span>
-                <span>{disk.interface_type}</span>
-              {/if}
-            </SystemInfoCard>
-          {/each}
-        {/if}
-
-        <!-- Network -->
-        {#if systemStore.info?.hardware?.network && systemStore.info.hardware.network.length > 0}
-          {#each systemStore.info.hardware.network as net, i (net.mac_address)}
-            <SystemInfoCard
-              icon="mdi:ethernet"
-              label="Network{systemStore.info.hardware.network.length > 1 ? ` ${i + 1}` : ''}"
-              title={net.name}
-            >
-              <span>{net.ip_address}</span>
-              <span class="h-1 w-1 rounded-full bg-border"></span>
-              <span class="truncate font-mono text-[10px] uppercase">{net.mac_address}</span>
-            </SystemInfoCard>
-          {/each}
-        {/if}
-      </div>
-    {/if}
-  </div>
-
-  <!-- Categories Section -->
-  <div class="flex flex-col gap-3">
-    <div class="flex items-center justify-between">
-      <h2 class="m-0 text-lg font-semibold text-foreground">Tweak Categories</h2>
-      {#if !tweaksLoading}
-        <span class="text-xs text-foreground-muted">{categoriesStore.list.length} available</span>
       {/if}
     </div>
-    {#if tweaksLoading}
-      <!-- Skeleton loading for categories -->
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {#each [0, 1, 2, 3, 4, 5] as i (`category-skeleton-${i}`)}
-          <div class="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
-            <div class="h-10 w-10 animate-pulse rounded-lg bg-surface/60"></div>
-            <div class="flex min-w-0 flex-1 flex-col gap-2">
-              <div class="flex items-center justify-between">
-                <div class="h-4 w-24 animate-pulse rounded bg-surface/60"></div>
-                <div class="h-3 w-8 animate-pulse rounded bg-surface/40"></div>
-              </div>
-              <div class="flex flex-col gap-1">
-                <div class="h-3 w-full animate-pulse rounded bg-surface/40"></div>
-                <div class="h-3 w-3/4 animate-pulse rounded bg-surface/40"></div>
-              </div>
-              <div class="h-1 w-full animate-pulse rounded-full bg-surface/30"></div>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <div
-        class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        role="grid"
-        aria-label="Tweak categories"
-      >
-        {#each categoriesStore.list as category, index (category.id)}
-          {@const stats = categoryStats[category.id]}
-          {@const progress = stats?.total > 0 ? (stats.applied / stats.total) * 100 : 0}
-          <button
-            class="group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-accent/50 hover:shadow-md focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background focus:outline-none"
-            onclick={() => navigationStore.navigateToCategory(category.id)}
-            onkeydown={(e) => handleCategoryKeydown(e, index, categoriesStore.list.length)}
-            aria-label="{category.name}: {stats?.applied ?? 0} of {stats?.total ?? 0} tweaks applied"
-          >
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
-              <Icon icon={category.icon || "mdi:folder"} width="20" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="mb-1 flex items-center justify-between gap-2">
-                <h3 class="m-0 text-sm font-semibold text-foreground">{category.name}</h3>
-                <span
-                  class="shrink-0 text-xs font-medium {progress === 100 && stats?.total > 0
-                    ? 'text-success'
-                    : 'text-foreground-muted'}"
-                >
-                  {stats?.applied ?? 0}/{stats?.total ?? 0}
-                </span>
-              </div>
-              <p class="m-0 mb-2 line-clamp-2 text-xs leading-relaxed text-foreground-muted">
-                {category.description}
-              </p>
-              <div class="h-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  class="h-full rounded-full bg-accent transition-[width] duration-300"
-                  style="width: {progress}%"
-                ></div>
-              </div>
-            </div>
-            <Icon
-              icon="mdi:chevron-right"
-              width="18"
-              class="shrink-0 text-foreground-muted opacity-0 transition-opacity group-hover:opacity-100"
-            />
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </div>
-
-  <!-- Footer Tip -->
-  <div class="mt-auto flex items-center gap-2.5 rounded-lg bg-surface/50 px-3 py-2.5 text-xs text-foreground-muted">
-    <Icon icon="mdi:lightbulb-outline" width="14" class="shrink-0 text-accent" />
-    <span>
-      <strong class="text-foreground">Tip:</strong> Changes are backed up automatically. Hover the sidebar to expand.
-    </span>
-  </div>
-</div>
-
-<style>
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-</style>
+  </section>
+</PageLayout>
