@@ -1,4 +1,5 @@
 export { default as AppCard } from "./AppCard.svelte";
+export { default as CategorySummaryPanel } from "./CategorySummaryPanel.svelte";
 export { default as TweakDetailsPanel } from "./TweakDetailsPanel.svelte";
 export { default as TweakRow } from "./TweakRow.svelte";
 

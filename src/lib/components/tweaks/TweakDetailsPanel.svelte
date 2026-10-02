@@ -326,7 +326,7 @@
 
   <aside
     class="flex flex-col {docked
-      ? 'relative w-[clamp(360px,34%,460px)] shrink-0 border-l border-border bg-surface'
+      ? 'relative w-[clamp(360px,30%,440px)] shrink-0 border-l border-border bg-surface'
       : 'absolute inset-y-0 right-0 z-40 w-full max-w-115 animate-slide-in-right border-l border-border bg-elevated shadow-dialog'}"
     bind:this={panelEl}
     role={docked ? "complementary" : "dialog"}

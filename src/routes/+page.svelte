@@ -2,7 +2,7 @@
   import { PendingBar, RebootBanner } from "$lib/components/feedback";
   import { Sidebar } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { TweakDetailsPanel } from "$lib/components/tweaks";
+  import { CategorySummaryPanel, TweakDetailsPanel } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
@@ -14,11 +14,13 @@
   } from "$lib/components/views";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
+  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
 
   const PANEL_DOCK_MIN_WIDTH = 1040;
+  const SUMMARY_MIN_WIDTH = 1400;
 
   let error = $state<string | null>(null);
   let workspaceWidth = $state(0);
@@ -87,6 +89,9 @@
           <PendingBar />
         </div>
         <TweakDetailsPanel docked={workspaceWidth >= PANEL_DOCK_MIN_WIDTH} />
+        {#if currentCategoryTab && workspaceWidth >= SUMMARY_MIN_WIDTH && !tweakDetailsModalStore.isOpen}
+          <CategorySummaryPanel tab={currentCategoryTab} />
+        {/if}
       </div>
     </main>
   </div>
