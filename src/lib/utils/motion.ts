@@ -21,7 +21,7 @@ function token(name: string): string {
   let value = tokens.get(name);
   if (value === undefined) {
     value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    tokens.set(name, value);
+    if (value) tokens.set(name, value);
   }
   return value;
 }
@@ -90,7 +90,8 @@ export function shift(
   return {
     duration: duration(speed),
     easing: easing("out"),
-    css: (t, u) => `opacity: ${t}; transform: translate${axis}(${u * offset}px)`,
+    // `translate`/`scale`, not `transform`: Svelte's `animate:` keeps a leaving item in place through `transform`.
+    css: (t, u) => `opacity: ${t}; translate: ${axis === "X" ? `${u * offset}px 0` : `0 ${u * offset}px`}`,
   };
 }
 
@@ -100,7 +101,7 @@ export function pop(_node: Element, { speed = "normal" }: MotionParams = {}): Tr
   return {
     duration: duration(speed),
     easing: easing("out"),
-    css: (t) => `opacity: ${t}; transform: scale(${from + (1 - from) * t})`,
+    css: (t) => `opacity: ${t}; scale: ${from + (1 - from) * t}`,
   };
 }
 
@@ -111,6 +112,17 @@ export function expand(
 ): TransitionConfig {
   const base = slide(node, { duration: duration(speed), easing: easing("out"), axis });
   return { ...base, css: (t, u) => `${base.css?.(t, u) ?? ""}; opacity: ${t}` };
+}
+
+/** Slides `to`'s pseudo-element (a selection pill) in from where `from`'s sat; only the control that changed pays. */
+export function glide(from: HTMLElement, to: HTMLElement, pseudoElement = "::before"): void {
+  const ms = duration("normal");
+  if (!ms) return;
+  const offset = from.offsetLeft - to.offsetLeft;
+  to.animate(
+    { transform: [`translateX(${offset}px) scaleX(${from.offsetWidth / to.offsetWidth})`, "none"] },
+    { duration: ms, easing: token("--ease-out"), pseudoElement },
+  );
 }
 
 /** `animate:` for keyed lists whose siblings move when one is added or removed. */

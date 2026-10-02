@@ -279,7 +279,6 @@
   --animate-reveal: fade-in var(--transition-duration-slow) var(--ease-out) var(--transition-delay-reveal) backwards;
   --animate-rise-in: rise-in var(--transition-duration-slow) var(--ease-out);
   --animate-pop-in: pop-in var(--transition-duration-normal) var(--ease-out);
-  --animate-drawer-in: drawer-in var(--transition-duration-slow) var(--ease-out);
   --animate-modal-in: modal-in var(--transition-duration-slow) var(--ease-out);
   --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
   --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
@@ -343,13 +342,6 @@
   }
 }
 
-/* The overlay pane widens out of the compact rail, as WinUI's NavigationView does. */
-@keyframes drawer-in {
-  from {
-    width: var(--spacing-rail);
-  }
-}
-
 /* Dialogs settle from slightly larger, Fluent's ContentDialog entrance. */
 @keyframes modal-in {
   from {
@@ -393,7 +385,8 @@
   /* One iteration too: a near-zero infinite loop (spinners, pulses) flickers. */
   *,
   *::before,
-  *::after {
+  *::after,
+  *::details-content {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

@@ -69,7 +69,8 @@ export function tooltip(node: HTMLElement, text: string | undefined | null) {
     if (!tooltipComponent) return;
 
     const nodeRect = node.getBoundingClientRect();
-    const tooltipRect = tooltipComponent.getBoundingClientRect();
+    // Offset size, not the bounding rect: the entrance pop scales the tooltip.
+    const tooltipRect = { width: tooltipComponent.offsetWidth, height: tooltipComponent.offsetHeight };
 
     // Position above centered
     let top = nodeRect.top - tooltipRect.height - 8;

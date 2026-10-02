@@ -309,12 +309,6 @@ export const searchStore = {
       return;
     }
 
-    // The first keystroke runs at once, so an empty "No results" never flashes; later ones debounce the re-render.
-    if (!cachedQuery) {
-      this.search();
-      return;
-    }
-
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       this.search();

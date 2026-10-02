@@ -88,6 +88,8 @@
       actionText="Focus search"
       onaction={() => navigationStore.focusSearch()}
     />
+  {:else if !searchStore.searchedQuery}
+    <!-- The first search is still debouncing: show nothing rather than a false "No results". -->
   {:else if mappedResults.length === 0}
     <EmptyState
       icon="mdi:file-search-outline"

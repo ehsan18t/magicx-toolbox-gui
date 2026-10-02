@@ -8,6 +8,7 @@
 
   let visible = $state(false);
   let shownAt = 0;
+  let seen = false;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
   $effect(() => {
@@ -18,16 +19,19 @@
       return;
     }
     // Gone before it faded in: drop it now. Once seen, hold it so a batch does not flicker between items.
-    const seen = performance.now() - shownAt >= delay("reveal");
+    seen = performance.now() - shownAt >= delay("reveal");
     hideTimer = setTimeout(() => (visible = false), seen ? delay("settle") : 0);
   });
 
   $effect(() => () => clearTimeout(hideTimer));
+
+  // Never seen: leave at once, or the outro would overlap the inner layer's delayed fade-in.
+  const exit = (node: Element) => (seen ? fade(node, { speed: "fast" }) : { duration: 0 });
 </script>
 
 {#if visible}
   <!-- Blocks input at once; the inner layer only shows if the work outlasts the reveal delay. -->
-  <div class="fixed inset-x-0 top-12 bottom-0 z-busy" role="presentation" aria-busy="true" out:fade={{ speed: "fast" }}>
+  <div class="fixed inset-x-0 top-12 bottom-0 z-busy" role="presentation" aria-busy="true" out:exit>
     <div class="flex h-full animate-reveal items-center justify-center bg-black/40 p-4">
       <div class="w-full max-w-sm rounded-xl border border-border bg-elevated px-6 py-5 shadow-dialog">
         <div class="flex items-center gap-3">
