@@ -18,7 +18,7 @@
 
     --foreground: 210 40% 98%;
     --foreground-muted: 215 20% 70%;
-    --foreground-subtle: 215 16% 52%;
+    --foreground-subtle: 215 16% 56%;
     --muted-foreground: var(--foreground-muted);
 
     --border: 224 40% 17%;
@@ -53,7 +53,7 @@
 
     --foreground: 222 84% 5%;
     --foreground-muted: 215 19% 38%;
-    --foreground-subtle: 215 16% 52%;
+    --foreground-subtle: 215 16% 44%;
 
     --border: 214 32% 89%;
     --border-hover: 213 27% 80%;

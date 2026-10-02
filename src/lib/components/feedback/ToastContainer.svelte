@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { toastStore, type ToastType } from "$lib/stores/toast.svelte";
+  import { pendingRebootStore } from "$lib/stores/tweaks.svelte";
 
   const toasts = $derived(toastStore.list);
 
@@ -28,7 +29,7 @@
 
 {#if toasts.length > 0}
   <div
-    class="fixed top-14 right-4 z-1000 flex flex-col gap-2"
+    class="fixed right-4 z-1000 flex flex-col gap-2 {pendingRebootStore.count > 0 ? 'top-24' : 'top-14'}"
     role="region"
     aria-label="Notifications"
     aria-live="polite"
@@ -39,7 +40,7 @@
       <div
         class="relative flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 overflow-hidden rounded-lg border border-border bg-elevated py-3 pr-2 pl-4 shadow-flyout
           {isDismissing ? 'animate-out' : 'animate-in'}"
-        role="alert"
+        role={toast.type === "error" ? "alert" : "status"}
       >
         <span class="absolute inset-y-0 left-0 w-1 {config.stripe}" aria-hidden="true"></span>
         <Icon icon={config.icon} width="18" class="mt-px shrink-0 {config.color}" />
