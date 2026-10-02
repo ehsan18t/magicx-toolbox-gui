@@ -2,7 +2,7 @@
   import { PendingBar, RebootBanner } from "$lib/components/feedback";
   import { Sidebar } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { CategorySummaryPanel, TweakDetailsPanel } from "$lib/components/tweaks";
+  import { SummaryPanel, TweakDetailsPanel } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
@@ -15,7 +15,8 @@
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
-  import { loadRemainingData } from "$lib/stores/tweaks.svelte";
+  import { favoritesStore } from "$lib/stores/favorites.svelte";
+  import { loadRemainingData, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
 
@@ -39,6 +40,24 @@
   const currentCategoryTab = $derived.by(() => {
     if (!navigationStore.isOnCategoryTab) return null;
     return navigationStore.allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
+  });
+
+  const summary = $derived.by(() => {
+    if (currentCategoryTab) {
+      const id = currentCategoryTab.id;
+      return {
+        title: currentCategoryTab.name,
+        tweaks: tweaksStore.list.filter((t) => t.definition.category_id === id),
+      };
+    }
+    if (activeTab === "favorites") {
+      const ids = new Set(favoritesStore.ids);
+      return { title: "Favorites", tweaks: tweaksStore.list.filter((t) => ids.has(t.definition.id)) };
+    }
+    if (activeTab === "snapshots") {
+      return { title: "Snapshots", tweaks: tweaksStore.list.filter((t) => t.status.has_backup) };
+    }
+    return null;
   });
 </script>
 
@@ -89,8 +108,8 @@
           <PendingBar />
         </div>
         <TweakDetailsPanel docked={workspaceWidth >= PANEL_DOCK_MIN_WIDTH} />
-        {#if currentCategoryTab && workspaceWidth >= SUMMARY_MIN_WIDTH && !tweakDetailsModalStore.isOpen}
-          <CategorySummaryPanel tab={currentCategoryTab} />
+        {#if summary && workspaceWidth >= SUMMARY_MIN_WIDTH && !tweakDetailsModalStore.isOpen}
+          <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />
         {/if}
       </div>
     </main>

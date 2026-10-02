@@ -2,15 +2,18 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ThemeToggle } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
+  import { SearchInput } from "$lib/components/ui";
   import { sidebarStore } from "$lib/stores/layout.svelte";
   import { LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
+  import { navigationStore } from "$lib/stores/navigation.svelte";
+  import { searchStore } from "$lib/stores/search.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
   import { restartAsAdmin } from "$lib/utils/elevation";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import WindowControlButton from "./WindowControlButton.svelte";
 
   let appWindow: ReturnType<typeof getCurrentWindow>;
@@ -21,6 +24,22 @@
   let isRestarting = $state(false);
 
   const isAdmin = $derived(systemStore.info?.is_admin ?? null);
+
+  let searchEl = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    if (navigationStore.focusSearchSignal > 0) tick().then(() => searchEl?.focus());
+  });
+
+  // Leaving Search clears the query; setQuery keeps a go-to-location highlight, clear() would not.
+  $effect(() => {
+    if (navigationStore.activeTab !== "search" && searchStore.query) searchStore.setQuery("");
+  });
+
+  function handleSearch(value: string) {
+    searchStore.setQuery(value);
+    if (value && navigationStore.activeTab !== "search") navigationStore.navigateToSearch();
+  }
 
   onMount(() => {
     let unlisten: (() => void) | undefined;
@@ -79,7 +98,7 @@
 </script>
 
 <header class="flex h-12 shrink-0 items-stretch bg-background text-foreground select-none drag-enable">
-  <div class="flex min-w-0 flex-1 items-center gap-1 pl-1">
+  <div class="flex min-w-0 shrink items-center gap-1 pl-1">
     <button
       type="button"
       class="flex h-9 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground drag-disable hover:bg-muted"
@@ -95,7 +114,7 @@
       {#if appIcon}
         <img src={appIcon} alt="" class="h-4 w-4 shrink-0" onerror={() => (appIcon = "")} />
       {/if}
-      <span class="truncate text-xs text-foreground">{appName}</span>
+      <span class="hidden truncate text-xs text-foreground min-[760px]:inline">{appName}</span>
       {#if appVersion}
         <span class="hidden shrink-0 text-xs text-foreground-subtle min-[720px]:inline">{appVersion}</span>
       {/if}
@@ -113,6 +132,17 @@
         </span>
       {/if}
     </div>
+  </div>
+
+  <div class="flex min-w-36 flex-1 items-center justify-center px-3">
+    <SearchInput
+      bind:inputRef={searchEl}
+      value={searchStore.query}
+      placeholder="Search tweaks and apps (Ctrl+K)"
+      label="Search tweaks and apps"
+      class="w-full max-w-100 drag-disable"
+      onchange={handleSearch}
+    />
   </div>
 
   <div class="flex shrink-0 items-center gap-0.5 pr-0 drag-disable">

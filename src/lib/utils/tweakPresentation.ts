@@ -1,4 +1,4 @@
-import type { Availability, RiskLevel, TweakStatus } from "$lib/types";
+import type { Availability, RiskLevel, TweakStatus, TweakWithStatus } from "$lib/types";
 
 export type Tone = "accent" | "success" | "warning" | "error" | "info" | "neutral";
 
@@ -78,4 +78,10 @@ export function availabilityTitle(availability: Availability): string {
     default:
       return "Administrator required";
   }
+}
+
+export function matchesQuery(tweak: TweakWithStatus, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return tweak.definition.name.toLowerCase().includes(q) || tweak.definition.description.toLowerCase().includes(q);
 }

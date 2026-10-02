@@ -5,20 +5,27 @@
     value: string;
     placeholder?: string;
     class?: string;
+    /** Accessible name; defaults to the placeholder. */
+    label?: string;
+    inputRef?: HTMLInputElement | null;
     onchange?: (value: string) => void;
     onclear?: () => void;
   }
 
-  let { value = "", placeholder = "Search...", class: className = "", onchange, onclear }: Props = $props();
-
-  function handleInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    onchange?.(target.value);
-  }
+  let {
+    value = "",
+    placeholder = "Search...",
+    class: className = "",
+    label,
+    inputRef = $bindable(null),
+    onchange,
+    onclear,
+  }: Props = $props();
 
   function handleClear() {
     onchange?.("");
     onclear?.();
+    inputRef?.focus();
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -29,28 +36,28 @@
   }
 </script>
 
-<div class="relative {className}">
-  <Icon
-    icon="mdi:magnify"
-    width="18"
-    class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-foreground-muted"
-  />
+<label
+  class="flex h-8 min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 focus-within:border-accent {className}"
+>
+  <Icon icon="mdi:magnify" width="16" class="shrink-0 text-foreground-muted" />
   <input
+    bind:this={inputRef}
     type="text"
     {placeholder}
     {value}
-    oninput={handleInput}
+    aria-label={label ?? placeholder}
+    oninput={(e) => onchange?.(e.currentTarget.value)}
     onkeydown={handleKeydown}
-    class="w-full rounded-lg border border-border bg-surface py-2 pr-9 pl-10 text-sm text-foreground placeholder:text-foreground-muted focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none"
+    class="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground outline-none placeholder:text-foreground-subtle"
   />
   {#if value}
     <button
       type="button"
       onclick={handleClear}
-      class="absolute top-1/2 right-2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-colors hover:bg-muted hover:text-foreground"
-      aria-label="Clear search"
+      class="flex shrink-0 cursor-pointer rounded p-0.5 text-foreground-muted hover:bg-muted hover:text-foreground"
+      aria-label="Clear"
     >
-      <Icon icon="mdi:close" width="16" />
+      <Icon icon="mdi:close" width="14" />
     </button>
   {/if}
-</div>
+</label>

@@ -2,20 +2,23 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon, MarkdownText } from "$lib/components/shared";
-  import { Button, IconButton, Modal, ModalBody, ModalHeader, StatusBadge } from "$lib/components/ui";
+  import { Button, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import type { AppView, RiskLevel } from "$lib/types";
   import { permissionInfoFor, RISK_INFO } from "$lib/types";
+  import { RISK_TONE, TONE_TEXT } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
 
   interface Props {
     app: AppView;
     titleSlot?: Snippet;
     descriptionSlot?: Snippet;
+    /** Extra meta-line content, e.g. the category in search results. */
+    context?: Snippet;
   }
 
-  let { app, titleSlot, descriptionSlot }: Props = $props();
+  let { app, titleSlot, descriptionSlot, context }: Props = $props();
 
   const status = $derived(appsStore.status(app.id));
   const presence = $derived(status?.presence);
@@ -25,16 +28,10 @@
 
   const riskLevel = $derived(app.risk.toLowerCase() as RiskLevel);
   const riskInfo = $derived(RISK_INFO[riskLevel]);
-  const riskConfig: Record<RiskLevel, { icon: string; variant: "success" | "warning" | "orange" | "error" }> = {
-    low: { icon: "mdi:check-circle", variant: "success" },
-    medium: { icon: "mdi:alert", variant: "warning" },
-    high: { icon: "mdi:alert-circle", variant: "orange" },
-    critical: { icon: "mdi:alert-octagon", variant: "error" },
-  };
 
   const chip = $derived.by((): { label: string; tip: string; icon: string; tone: string; spin?: boolean } => {
-    const muted = "bg-muted/50 text-foreground-muted";
-    const warn = "bg-warning/10 text-warning";
+    const muted = "text-foreground-muted";
+    const warn = "text-warning";
     if (!presence) {
       return appsStore.scanError
         ? { label: "Unknown", tip: appsStore.scanError, icon: "mdi:help-circle-outline", tone: warn }
@@ -52,20 +49,20 @@
             label: "Provisioned only",
             tip: "Not installed for any account yet, but Windows installs it for every new account.",
             icon: "mdi:package-variant",
-            tone: "bg-info/10 text-info",
+            tone: "text-info",
           }
         : {
             label: "Installed",
             tip: "Installed on this PC",
             icon: "mdi:check-circle",
-            tone: "bg-success/10 text-success",
+            tone: "text-success",
           };
     }
     if (presence.state === "absent") {
       return { label: "Not installed", tip: "Not installed on this PC", icon: "mdi:circle-outline", tone: muted };
     }
     return {
-      label: presence.needs_elevation ? "Unknown · needs elevation" : "Unknown",
+      label: presence.needs_elevation ? "Unknown, needs admin" : "Unknown",
       tip: presence.needs_elevation ? `${presence.reason} Restart as administrator to resolve.` : presence.reason,
       icon: "mdi:help-circle-outline",
       tone: warn,
@@ -91,8 +88,8 @@
   const permissionInfo = $derived(action?.kind === "remove" ? permissionInfoFor("Admin") : null);
 
   const actionConfig = {
-    remove: { label: "Remove", icon: "mdi:delete-outline", aria: "Remove", tone: "text-error hover:bg-error/10" },
-    install: { label: "Install", icon: "mdi:download", aria: "Install", tone: "text-accent hover:bg-accent/10" },
+    remove: { label: "Remove", icon: "mdi:delete-outline", aria: "Remove", tone: "text-error" },
+    install: { label: "Install", icon: "mdi:download", aria: "Install", tone: "text-accent" },
     store: { label: "Get in Store", icon: "mdi:open-in-new", aria: "Open the Microsoft Store page for", tone: "" },
   } as const;
 
@@ -130,109 +127,108 @@
 
 <article
   id="app-{app.id}"
-  class="flex min-w-0 flex-col rounded-lg border border-border bg-card px-3 pt-2.5 pb-2 transition-all duration-200 hover:border-border-hover {isHighlighting
+  class="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card hover:border-border-hover {isHighlighting
     ? 'tweak-highlight'
     : ''}"
   aria-busy={busy}
 >
-  <div class="flex items-start justify-between gap-4">
-    <div class="min-w-0 flex-1">
-      <h3 class="m-0 flex flex-wrap items-center gap-2 text-[13px] leading-tight font-semibold text-foreground">
-        {#if titleSlot}
-          {@render titleSlot()}
-        {:else}
-          {app.name}
-        {/if}
-        <span
-          class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide {chip.tone}"
-          use:tooltip={chip.tip}
-        >
-          <Icon icon={chip.icon} width="10" class={chip.spin ? "animate-spin" : ""} />
-          {chip.label}
-        </span>
-      </h3>
-      <p class="m-0 mt-1.5 mb-1.5 text-[12px] leading-relaxed text-foreground-muted/80">
-        {#if descriptionSlot}
-          {@render descriptionSlot()}
-        {:else}
-          {app.description}
-        {/if}
-      </p>
+  <span
+    class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {presence?.state === 'installed'
+      ? 'bg-accent'
+      : 'bg-transparent'}"
+    aria-hidden="true"
+  ></span>
+
+  <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
+    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2.5">
+      <div class="min-w-0 flex-1 basis-60">
+        <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
+          {#if titleSlot}{@render titleSlot()}{:else}{app.name}{/if}
+        </h3>
+        <p class="m-0 mt-0.5 text-[13px] leading-snug text-foreground-muted">
+          {#if descriptionSlot}{@render descriptionSlot()}{:else}{app.description}{/if}
+        </p>
+      </div>
+
+      {#if action}
+        {@const config = actionConfig[action.kind]}
+        <div class="shrink-0" use:tooltip={action.disabledReason}>
+          <Button
+            variant="secondary"
+            size="md"
+            class={config.tone}
+            loading={busy}
+            disabled={action.disabledReason !== null}
+            onclick={handleAction}
+            aria-label="{config.aria} {app.name}"
+          >
+            {#if !busy}<Icon icon={config.icon} width="16" />{/if}
+            {config.label}
+          </Button>
+        </div>
+      {/if}
     </div>
 
-    {#if action}
-      {@const config = actionConfig[action.kind]}
-      <div class="shrink-0 pt-0.5" use:tooltip={action.disabledReason}>
-        <Button
-          variant="outline"
-          size="xs"
-          class={config.tone}
-          loading={busy}
-          disabled={action.disabledReason !== null}
-          onclick={handleAction}
-          aria-label="{config.aria} {app.name}"
-        >
-          {#if !busy}
-            <Icon icon={config.icon} width="14" />
-          {/if}
-          {config.label}
-        </Button>
+    {#if app.warning}
+      <div class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground">
+        <Icon icon="mdi:alert" width="14" class="mt-px shrink-0 text-warning" />
+        <span class="min-w-0">{app.warning}</span>
       </div>
     {/if}
-  </div>
 
-  {#if appError}
-    <div
-      class="mt-2 flex items-start gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-xs leading-relaxed text-error"
-      role="alert"
-    >
-      <Icon icon="mdi:alert-circle" width="16" class="mt-0.5 shrink-0" />
-      <span class="flex-1 wrap-break-word">{appError}</span>
-      <button
-        type="button"
-        class="flex shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0.5 text-error/70 transition-colors duration-150 hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-error/40 focus-visible:outline-none"
-        onclick={() => appsStore.clearError(app.id)}
-        aria-label="Dismiss error"
+    {#if appError}
+      <div
+        class="flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs text-error"
+        role="alert"
       >
-        <Icon icon="mdi:close" width="16" />
-      </button>
-    </div>
-  {/if}
+        <Icon icon="mdi:alert-circle" width="14" class="mt-px shrink-0" />
+        <span class="min-w-0 flex-1 wrap-break-word">{appError}</span>
+        <button
+          type="button"
+          class="flex shrink-0 cursor-pointer rounded p-0.5 text-error/70 hover:bg-error/10 hover:text-error"
+          onclick={() => appsStore.clearError(app.id)}
+          aria-label="Dismiss error"
+        >
+          <Icon icon="mdi:close" width="14" />
+        </button>
+      </div>
+    {/if}
 
-  <div class="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/40 pt-2.5">
-    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      <StatusBadge
-        variant={riskConfig[riskLevel].variant}
-        icon={riskConfig[riskLevel].icon}
-        label={riskInfo.name}
-        tooltip={riskInfo.description}
-      />
+    <div class="mt-auto flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
+      <span class="inline-flex items-center gap-1 {chip.tone}" use:tooltip={chip.tip}>
+        <Icon icon={chip.icon} width="13" class="shrink-0 {chip.spin ? 'animate-spin' : ''}" />
+        {chip.label}
+      </span>
+      <span class="inline-flex items-center gap-1 {TONE_TEXT[RISK_TONE[riskLevel]]}" use:tooltip={riskInfo.description}>
+        <Icon icon="mdi:shield-half-full" width="13" class="shrink-0" />
+        {riskInfo.name} risk
+      </span>
       {#if permissionInfo}
-        <StatusBadge
-          variant="muted"
-          icon={permissionInfo.icon}
-          label={permissionInfo.name}
-          tooltip={permissionInfo.description}
-        />
+        <span class="inline-flex items-center gap-1 text-foreground-muted" use:tooltip={permissionInfo.description}>
+          <Icon icon={permissionInfo.icon} width="13" class="shrink-0" />
+          {permissionInfo.name}
+        </span>
       {/if}
       {#if permanent}
-        <StatusBadge
-          variant="warning"
-          icon="mdi:alert"
-          label="Permanent"
-          tooltip="No install source on this PC: once removed, it cannot be reinstalled from here"
-        />
+        <span
+          class="inline-flex items-center gap-1 text-warning"
+          use:tooltip={"No install source on this PC: once removed, it cannot be reinstalled from here"}
+        >
+          <Icon icon="mdi:alert" width="13" class="shrink-0" />
+          Permanent
+        </span>
       {/if}
+      {#if context}{@render context()}{/if}
+      <button
+        type="button"
+        class="ml-auto inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-foreground-muted hover:bg-muted hover:text-foreground"
+        onclick={() => (showDetails = true)}
+        aria-label="Open details for {app.name}"
+      >
+        <Icon icon="mdi:chevron-right" width="15" />
+        Details
+      </button>
     </div>
-    <button
-      type="button"
-      class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-all duration-150 hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
-      onclick={() => (showDetails = true)}
-      aria-label="Open details for {app.name}"
-    >
-      Details
-      <Icon icon="mdi:chevron-right" width="18" />
-    </button>
   </div>
 </article>
 
@@ -249,17 +245,15 @@
 <Modal open={showDetails} onclose={() => (showDetails = false)} size="lg" labelledBy="app-details-{app.id}">
   <ModalHeader id="app-details-{app.id}">
     <div class="min-w-0">
-      <h2 class="m-0 truncate text-lg font-bold text-foreground">{app.name}</h2>
+      <h2 class="m-0 font-display text-lg font-semibold wrap-break-word text-foreground">{app.name}</h2>
       <p class="m-0 mt-1 text-sm text-foreground-muted">{app.description}</p>
     </div>
     <IconButton icon="mdi:close" onclick={() => (showDetails = false)} aria-label="Close" />
   </ModalHeader>
   <ModalBody class="flex flex-col gap-4">
     {#if app.warning}
-      <div
-        class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
-      >
-        <Icon icon="mdi:alert" width="16" class="mt-0.5 shrink-0" />
+      <div class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2 text-sm">
+        <Icon icon="mdi:alert" width="16" class="mt-0.5 shrink-0 text-warning" />
         <span>{app.warning}</span>
       </div>
     {/if}

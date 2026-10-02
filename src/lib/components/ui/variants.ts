@@ -12,22 +12,22 @@ import { tv, type VariantProps } from "tailwind-variants";
  * Base button variant - used by Button, ActionButton, LinkButton
  */
 export const button = tv({
-  base: "inline-flex items-center justify-center gap-2 rounded-lg border-0 font-medium transition-all duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
+  base: "inline-flex items-center justify-center gap-2 rounded-md border-0 font-medium transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
   variants: {
     variant: {
       primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
-      secondary: "bg-muted text-foreground hover:bg-muted/80",
+      secondary: "border border-border bg-secondary text-foreground hover:bg-secondary-hover",
       ghost: "bg-transparent text-foreground-muted hover:bg-muted hover:text-foreground",
-      danger: "bg-error text-white hover:bg-error/90",
-      warning: "bg-warning text-black hover:bg-warning/90",
-      success: "bg-success text-white hover:bg-success/90",
-      outline: "border border-border bg-card text-foreground hover:bg-foreground/5 hover:border-foreground-muted",
+      danger: "bg-error text-background hover:bg-error/90",
+      warning: "bg-warning text-warning-foreground hover:bg-warning/90",
+      success: "bg-success text-background hover:bg-success/90",
+      outline: "border border-border bg-transparent text-foreground hover:bg-muted hover:border-border-hover",
     },
     size: {
-      xs: "px-2 py-1 text-[11px]",
-      sm: "px-3 py-1.5 text-xs",
-      md: "px-4 py-2 text-sm",
-      lg: "px-5 py-2.5 text-base",
+      xs: "h-6 px-2 text-xs",
+      sm: "h-7 px-2.5 text-xs",
+      md: "h-8 px-3 text-[13px]",
+      lg: "h-9 px-4 text-sm",
     },
     fullWidth: {
       true: "w-full",
@@ -46,7 +46,7 @@ export type ButtonVariants = VariantProps<typeof button>;
  * Used in CategoryTab, FavoritesTab, SnapshotsTab, SearchTab toolbars
  */
 export const actionButton = tv({
-  base: "flex cursor-pointer items-center gap-2 rounded-lg border bg-card text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50",
+  base: "flex cursor-pointer items-center gap-2 rounded-md border bg-secondary text-[13px] font-medium text-foreground transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
   variants: {
     intent: {
       default: "border-border hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5",
@@ -61,8 +61,8 @@ export const actionButton = tv({
         "border-border hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error",
     },
     size: {
-      sm: "px-3 py-2",
-      md: "px-4 py-2.5",
+      sm: "h-8 px-3",
+      md: "h-8 px-3",
     },
     active: {
       true: "",
@@ -89,7 +89,7 @@ export type ActionButtonVariants = VariantProps<typeof actionButton>;
  * Link button variant - styled links/buttons for AboutModal, etc.
  */
 export const linkButton = tv({
-  base: "flex items-center justify-center gap-2 rounded-lg border border-border bg-surface text-foreground transition-colors hover:bg-muted",
+  base: "flex items-center justify-center gap-2 rounded-md border border-border bg-secondary text-foreground transition-colors hover:bg-secondary-hover",
   variants: {
     size: {
       sm: "px-2.5 py-2 text-xs",
@@ -107,7 +107,7 @@ export type LinkButtonVariants = VariantProps<typeof linkButton>;
  * Icon button variant - small icon-only buttons
  */
 export const iconButton = tv({
-  base: "flex shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted",
+  base: "flex shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted",
   variants: {
     size: {
       sm: "h-6 w-6",
@@ -161,7 +161,7 @@ export const counterBadge = tv({
   base: "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold",
   variants: {
     variant: {
-      warning: "bg-warning text-white",
+      warning: "bg-warning text-warning-foreground",
       error: "bg-error/20 text-error",
       accent: "bg-accent/20 text-accent",
       success: "bg-success/20 text-success",
@@ -192,7 +192,7 @@ export const card = tv({
   variants: {
     variant: {
       default: "border-border bg-card",
-      elevated: "border-border bg-elevated shadow-md",
+      elevated: "border-border bg-elevated shadow-flyout",
       outlined: "border-border bg-transparent",
       ghost: "border-transparent bg-transparent",
       surface: "border-border bg-surface",

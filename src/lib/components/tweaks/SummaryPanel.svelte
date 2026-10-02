@@ -1,18 +1,17 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import type { TabDefinition } from "$lib/stores/navigation.svelte";
   import { openTweakDetailsModal } from "$lib/stores/tweakDetailsModal.svelte";
-  import { pendingChangesStore, pendingRebootStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaks.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { attentionCause } from "$lib/types";
 
   interface Props {
-    tab: TabDefinition;
+    /** Names the pane for assistive tech, e.g. "Security at a glance". */
+    label: string;
+    tweaks: TweakWithStatus[];
   }
 
-  let { tab }: Props = $props();
-
-  const tweaks = $derived(tweaksStore.list.filter((t) => t.definition.category_id === tab.id));
+  let { label, tweaks }: Props = $props();
   const count = (state: string) => tweaks.filter((t) => t.status.state === state).length;
   const applied = $derived(tweaks.filter((t) => t.status.is_applied).length);
   const breakdown = $derived(
@@ -77,10 +76,7 @@
   {/if}
 {/snippet}
 
-<aside
-  class="flex w-[clamp(360px,30%,440px)] shrink-0 flex-col border-l border-border bg-surface"
-  aria-label="{tab.name} at a glance"
->
+<aside class="flex w-[clamp(360px,30%,440px)] shrink-0 flex-col border-l border-border bg-surface" aria-label={label}>
   <header class="shrink-0 border-b border-border px-5 pt-4 pb-3">
     <h2 class="m-0 font-display text-lg font-semibold">At a glance</h2>
     <p class="m-0 mt-0.5 text-[13px] text-foreground-muted">Select a tweak to see its details here.</p>
