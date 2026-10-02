@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use super::apps::app_view;
-use super::tweaks::{category_view, effect_display_name, tweak_view};
+use super::tweaks::{category_view, effect_display_name, tweak_view_with};
 use crate::tweaks::engine::context::SidCheck;
 use crate::tweaks::model::Level;
 use crate::tweaks::winver::WinVer;
@@ -125,7 +125,7 @@ fn generate() -> Value {
     let tweaks: Vec<_> = pick(&corpus.tweaks, TWEAKS, |t| &t.id, "tweak")
         .into_iter()
         .map(|t| {
-            let view = tweak_view(t, corpus, &WINVER, level, sid);
+            let view = tweak_view_with(t, corpus, &WINVER, level, sid, |_| None, None);
             let mut v = without(view, &["availability", "supported"]);
             v["surface"] = t
                 .surface

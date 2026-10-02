@@ -258,6 +258,15 @@ fn needs_elevation(required: Level, current_level: Level) -> bool {
 /// The highest level any effect `apply` would drive runs at, as `context::route` routes it (HKCU
 /// effects as `User`), never below the tweak's declared floor (ADR-0005).
 fn required_level(tweak: &Tweak, corpus: &Corpus, winver: &WinVer) -> Level {
+    required_level_with(tweak, corpus, winver, claims_restore_level)
+}
+
+fn required_level_with(
+    tweak: &Tweak,
+    corpus: &Corpus,
+    winver: &WinVer,
+    restore_level: impl Fn(&SharedId) -> Option<Level>,
+) -> Level {
     // An `optional` effect still counts: whether its resource exists is only known once the apply
     // runs, and over-stating the level beats a refusal from a card that promised it would work.
     let routed = apply::driving_surface(tweak, winver)
@@ -271,7 +280,7 @@ fn required_level(tweak: &Tweak, corpus: &Corpus, winver: &WinVer) -> Level {
         .surface
         .iter()
         .filter_map(|e| match &e.kind {
-            Effect::Shared(id) => claims_restore_level(id),
+            Effect::Shared(id) => restore_level(id),
             _ => None,
         })
         .fold(routed, |max, l| context::effective_level(max, Some(l)))
@@ -697,9 +706,6 @@ fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
     o
 }
 
-/// Builds one IPC [`TweakView`] from a compiled `Tweak` at the given elevation/SID context.
-/// Factored out of [`get_tweaks`] so a command-layer test can assert field carry-through
-/// (e.g. `requires_reboot`, spec §6) without needing a live Tauri runtime.
 pub(super) fn tweak_view(
     t: &Tweak,
     corpus: &Corpus,
@@ -707,6 +713,29 @@ pub(super) fn tweak_view(
     level: Level,
     sid_check: SidCheck,
 ) -> TweakView {
+    tweak_view_with(
+        t,
+        corpus,
+        winver,
+        level,
+        sid_check,
+        claims_restore_level,
+        ti_probe::trusted_installer_blocked().as_deref(),
+    )
+}
+
+/// [`tweak_view`] with its machine lookups (claims store, TI probe) injected, so the preview corpus
+/// stays independent of this machine's state.
+pub(super) fn tweak_view_with(
+    t: &Tweak,
+    corpus: &Corpus,
+    winver: &WinVer,
+    level: Level,
+    sid_check: SidCheck,
+    restore_level: impl Fn(&SharedId) -> Option<Level>,
+    ti_blocked: Option<&str>,
+) -> TweakView {
+    let required = required_level_with(t, corpus, winver, restore_level);
     TweakView {
         id: t.id.clone(),
         name: t.name.clone(),
@@ -722,15 +751,14 @@ pub(super) fn tweak_view(
             .iter()
             .map(|o| option_view(t, o, corpus))
             .collect(),
-        required_level: required_level(t, corpus, winver),
+        required_level: required,
         supported: supported(t, winver),
-        availability: tweak_availability(
-            t,
-            corpus,
-            winver,
+        availability: compute_availability(
+            context::tweak_touches_hkcu(t, corpus),
+            required,
             level,
             sid_check,
-            ti_probe::trusted_installer_blocked().as_deref(),
+            ti_blocked,
         ),
     }
 }
