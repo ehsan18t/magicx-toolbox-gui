@@ -15,7 +15,13 @@ export interface LogGap {
   after: number;
 }
 
-export type LogRow = LogLine | LogGap;
+/** A line with its search text lowercased once, on arrival. */
+export interface LogEntry extends LogLine {
+  msgLower: string;
+  targetLower: string;
+}
+
+export type LogRow = LogEntry | LogGap;
 
 export const isGap = (row: LogRow): row is LogGap => "gap" in row;
 
@@ -37,7 +43,12 @@ let exporting = $state(false);
 function append(requested: number, tail: LogTail) {
   // A poll that overlapped a close/reopen answers for a `since` another poll already consumed.
   if (requested !== since || tail.lines.length === 0) return;
-  const added: LogRow[] = tail.skipped > 0 ? [{ gap: tail.skipped, after: requested }, ...tail.lines] : tail.lines;
+  const lines: LogEntry[] = tail.lines.map((line) => ({
+    ...line,
+    msgLower: line.msg.toLowerCase(),
+    targetLower: line.target.toLowerCase(),
+  }));
+  const added: LogRow[] = tail.skipped > 0 ? [{ gap: tail.skipped, after: requested }, ...lines] : lines;
   const next = rows.concat(added);
   rows = next.length > MAX_ROWS ? next.slice(-MAX_ROWS) : next;
   since = tail.lines[tail.lines.length - 1].seq;

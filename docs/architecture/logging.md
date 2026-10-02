@@ -21,7 +21,7 @@ flowchart LR
 1. **Level check.** Info by default, Debug when Detailed logging is on. A debug build always records Debug. Records from other crates (a target that does not start with `app_lib`) are kept only at Warn and above. Interface and helper lines are pushed in with their source set explicitly, so that filter never judges them by target.
 2. **Format.** One line per record: `2026-10-02T14:03:05.123+06:00 INFO  app    app_lib::commands::tweaks: message`, local time with its UTC offset, the level and the source (`app`, `ui` or `helper`) padded, then the target. A multi-line message continues on lines indented with a tab.
 3. **Redact.** See [Redaction](#redaction). Formatting and redaction run outside every lock.
-4. **Cap.** The input is cut at 16 KiB before redaction, so one huge message cannot stall every logging thread. The whole formatted line is then capped at 4 KiB, cut on a character boundary, ending in `… [truncated N bytes]`.
+4. **Cap.** The input is cut at 8 KiB (twice the record cap) before redaction, so one huge message cannot stall every logging thread. The whole formatted line is then capped at 4 KiB, cut on a character boundary, ending in `… [truncated N bytes]`.
 5. **Session buffer.** The last 2000 lines, each with a sequence number that starts at 1 and only grows.
 6. **Session file.** Written only when saving is on (see [Session files](#session-files)).
 
@@ -51,7 +51,7 @@ The identity to remove is read once, before the logger is installed:
 - **Names** match only as a whole word, with letters, digits and `_` counting as word characters, so a user called Tim never breaks "Optimize" and a user called app never breaks `app_lib`. Names shorter than 3 characters, and generic ones (administrator, admin, user, users, default, defaultuser0, public, system, guest, owner, test, dev, pc), are never redacted.
 - **Email addresses** become `<email>` first, on the raw line, so a name inside one (`smith.alice@contoso.com`) never splits it.
 - **Patterns**, checked after the values above and only when a line contains `S-1-`, `users\` or `users/`: other SIDs (`S-1-5-21-…` and `S-1-12-1-…`, with or without the final RID) become `<sid>`, and any other user's profile folder becomes `<profile>`. The profile pattern takes a drive, UNC or `\Device\…` prefix, any run of `\` or `/` separators, and a name that may hold spaces, up to the next separator, quote or line end.
-- **Cuts.** Where text is cut before redaction (the 16 KiB input cap, the helper's 512-byte lines, the 2 KiB output tail of a failing script), the cut moves to a separator within 64 bytes, or 64 bytes further, so no fragment of a SID, GUID or path slips past redaction. A PowerShell `_x000D_` escape counts as a word boundary, and a script's CLIXML error output is decoded before it is logged.
+- **Cuts.** Where text is cut before redaction (the 8 KiB input cap, the helper's 512-byte lines, the 2 KiB output tail of a failing script), the cut moves to a separator within 64 bytes, or 64 bytes further, so no fragment of a SID, GUID or path slips past redaction. A PowerShell `_x000D_` escape counts as a word boundary, and a script's CLIXML error output is decoded before it is logged.
 
 Redaction never uses Unicode lowercasing, which changes byte lengths, and never panics: it runs inside the logger. The Manual Tests report uses the same code in a different mode, which replaces each match and the rest of its path with `<redacted>` ([MANUAL_TESTS.md](../MANUAL_TESTS.md)).
 

@@ -9,6 +9,7 @@ use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -161,9 +162,13 @@ fn readable(stream: &str) -> String {
     if !stream.contains("#< CLIXML") {
         return stream.to_string();
     }
-    let block = Regex::new(r"(?s)<Objs[^>]*>.*?</Objs>").expect("constant pattern");
-    let string = Regex::new(r#"(?s)<S S="[^"]*">(.*?)</S>"#).expect("constant pattern");
-    let escape = Regex::new(r"_x([0-9A-Fa-f]{4})_").expect("constant pattern");
+    static BLOCK: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?s)<Objs[^>]*>.*?</Objs>").expect("constant pattern"));
+    static STRING: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"(?s)<S S="[^"]*">(.*?)</S>"#).expect("constant pattern"));
+    static ESCAPE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"_x([0-9A-Fa-f]{4})_").expect("constant pattern"));
+    let (block, string, escape) = (&*BLOCK, &*STRING, &*ESCAPE);
     let mut out = String::new();
     let mut last = 0;
     for objs in block.find_iter(stream) {

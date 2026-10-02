@@ -133,18 +133,63 @@ impl Literal {
     }
 }
 
+/// Longest first, behind a gate on the first two lowercased bytes: most positions fail it, so the
+/// per-literal compare runs only where a match can start. Performance: do not drop the gate.
+struct LiteralSet {
+    list: Vec<Literal>,
+    first: [bool; 256],
+    pairs: Box<[u64; 1024]>,
+}
+
+fn pair(a: u8, b: u8) -> usize {
+    usize::from(a.to_ascii_lowercase()) << 8 | usize::from(b.to_ascii_lowercase())
+}
+
+impl LiteralSet {
+    fn new(mut list: Vec<Literal>) -> Self {
+        // Stable: the exe directory, pushed first, wins a tie.
+        list.sort_by_key(|l| std::cmp::Reverse(l.lower.len()));
+        let mut first = [false; 256];
+        let mut pairs = Box::new([0u64; 1024]);
+        for l in &list {
+            let bytes = l.lower.as_bytes();
+            let Some(&lead) = bytes.first() else { continue };
+            first[usize::from(lead)] = true;
+            let seconds = match bytes.get(1) {
+                Some(&b) => b..=b,
+                None => 0..=u8::MAX,
+            };
+            for second in seconds {
+                let k = pair(lead, second);
+                pairs[k >> 6] |= 1 << (k & 63);
+            }
+        }
+        Self { list, first, pairs }
+    }
+
+    fn may_start(&self, bytes: &[u8], at: usize) -> bool {
+        self.first[usize::from(bytes[at].to_ascii_lowercase())]
+            && bytes.get(at + 1).is_none_or(|&b| {
+                let k = pair(bytes[at], b);
+                self.pairs[k >> 6] & (1 << (k & 63)) != 0
+            })
+    }
+}
+
 /// One left-to-right pass, longest literal first at each position, so a placeholder already
 /// written is never matched again.
-fn scan(hay: &str, literals: &[Literal], swallow_path_tail: bool) -> String {
-    let lower = hay.to_ascii_lowercase();
-    let (bytes, folded) = (hay.as_bytes(), lower.as_bytes());
+fn scan(hay: &str, literals: &LiteralSet, swallow_path_tail: bool) -> String {
+    let bytes = hay.as_bytes();
     let mut out = String::with_capacity(hay.len());
     let (mut copied, mut at) = (0, 0);
     while at < bytes.len() {
-        let hit = hay.is_char_boundary(at).then(|| {
-            literals
-                .iter()
-                .find(|l| folded[at..].starts_with(l.lower.as_bytes()) && l.fits(hay, at))
+        let hit = (literals.may_start(bytes, at) && hay.is_char_boundary(at)).then(|| {
+            literals.list.iter().find(|l| {
+                bytes
+                    .get(at..at + l.lower.len())
+                    .is_some_and(|w| w.eq_ignore_ascii_case(l.lower.as_bytes()))
+                    && l.fits(hay, at)
+            })
         });
         let Some(Some(literal)) = hit else {
             at += 1;
@@ -233,7 +278,7 @@ fn env_literals(env: &dyn Fn(&str) -> Option<String>) -> (Literals, Literals) {
 }
 
 pub struct Redactor {
-    literals: Vec<Literal>,
+    literals: LiteralSet,
     sid: Regex,
     email: Regex,
     profile: Regex,
@@ -271,7 +316,7 @@ impl Redactor {
             }
         }
         let mut seen = HashSet::new();
-        let mut literals: Vec<Literal> = literals
+        let literals: Vec<Literal> = literals
             .into_iter()
             .map(|(text, label, kind)| Literal {
                 lower: text.to_ascii_lowercase(),
@@ -280,11 +325,9 @@ impl Redactor {
             })
             .filter(|l| seen.insert(l.lower.clone()))
             .collect();
-        // Stable: the exe directory, pushed first, wins a tie.
-        literals.sort_by_key(|l| std::cmp::Reverse(l.lower.len()));
         let regex = |pattern: &str| Regex::new(pattern).expect("constant pattern");
         Self {
-            literals,
+            literals: LiteralSet::new(literals),
             sid: regex(r"(?i)S-1-5-21-\d+-\d+-\d+(?:-\d+)?|S-1-12-1-\d+-\d+-\d+(?:-\d+)?"),
             email: regex(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"),
             // Drive, UNC or \Device prefix; the profile name runs to the next separator or quote.
@@ -303,8 +346,13 @@ impl Redactor {
             std::borrow::Cow::Borrowed(text)
         };
         let out = scan(&text, &self.literals, false);
-        let lower = out.to_ascii_lowercase();
-        if !(lower.contains("s-1-") || lower.contains("users\\") || lower.contains("users/")) {
+        let bytes = out.as_bytes();
+        let has = |needle: &[u8]| {
+            bytes
+                .windows(needle.len())
+                .any(|w| w.eq_ignore_ascii_case(needle))
+        };
+        if !(has(b"s-1-") || has(b"users\\") || has(b"users/")) {
             return out;
         }
         let out = self.sid.replace_all(&out, "<sid>");
@@ -315,22 +363,21 @@ impl Redactor {
 /// The manual tests' report scrubber: a match followed by a path separator takes the rest of that
 /// path with it, and every match reads `<redacted>`.
 #[cfg(any(test, feature = "test-build"))]
-pub struct Scrubber(Vec<Literal>);
+pub struct Scrubber(LiteralSet);
 
 #[cfg(any(test, feature = "test-build"))]
 impl Scrubber {
     pub fn new(list: &[&str]) -> Self {
-        let mut literals: Vec<Literal> = list
-            .iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| Literal {
-                lower: s.to_ascii_lowercase(),
-                label: "<redacted>",
-                kind: Kind::Substring,
-            })
-            .collect();
-        literals.sort_by_key(|l| std::cmp::Reverse(l.lower.len()));
-        Self(literals)
+        Self(LiteralSet::new(
+            list.iter()
+                .filter(|s| !s.is_empty())
+                .map(|s| Literal {
+                    lower: s.to_ascii_lowercase(),
+                    label: "<redacted>",
+                    kind: Kind::Substring,
+                })
+                .collect(),
+        ))
     }
 
     /// The account name and the profile and temp folders.
@@ -581,5 +628,115 @@ pub(super) mod tests {
             "spawn <redacted> (os error 5)"
         );
         assert_eq!(scrubber.apply("é Alice ü"), "é <redacted> ü");
+    }
+
+    /// The ungated scan the gate must reproduce byte for byte.
+    fn reference_scan(hay: &str, literals: &[Literal], swallow_path_tail: bool) -> String {
+        let lower = hay.to_ascii_lowercase();
+        let (bytes, folded) = (hay.as_bytes(), lower.as_bytes());
+        let mut out = String::with_capacity(hay.len());
+        let (mut copied, mut at) = (0, 0);
+        while at < bytes.len() {
+            let hit = hay.is_char_boundary(at).then(|| {
+                literals
+                    .iter()
+                    .find(|l| folded[at..].starts_with(l.lower.as_bytes()) && l.fits(hay, at))
+            });
+            let Some(Some(literal)) = hit else {
+                at += 1;
+                continue;
+            };
+            out.push_str(hay.get(copied..at).unwrap_or_default());
+            out.push_str(literal.label);
+            let mut end = at + literal.lower.len();
+            let tail = hay.get(end..).unwrap_or_default();
+            if swallow_path_tail && tail.starts_with(['\\', '/']) {
+                end += tail
+                    .find(|c: char| c.is_whitespace() || "\"'(),;".contains(c))
+                    .unwrap_or(tail.len());
+            }
+            copied = end;
+            at = end;
+        }
+        out.push_str(hay.get(copied..).unwrap_or_default());
+        out
+    }
+
+    #[test]
+    fn the_gated_scan_matches_the_reference_on_varied_input() {
+        let mut id = identity("Jörg Smith");
+        id.names.push(("é".into(), "<user>"));
+        let redactor = Redactor::new(&id);
+        let scrubber = Scrubber::new(&[r"C:\Users\Jörg Smith", "Jörg Smith", "x", "é"]);
+        let mut pieces: Vec<String> = [
+            " ",
+            "\\",
+            "/",
+            "_",
+            "-",
+            ":",
+            "\"",
+            "(",
+            "a",
+            "Z",
+            "9",
+            "é",
+            "€",
+            "ö",
+            "Ö",
+            "\u{10FFFF}",
+            "_x000D_",
+            "\r\n",
+            "users\\",
+            "S-1-",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        for l in redactor.literals.list.iter().chain(&scrubber.0.list) {
+            pieces.push(l.lower.clone());
+            pieces.push(l.lower.to_ascii_uppercase());
+            let cut = (1..l.lower.len())
+                .rev()
+                .find(|&i| l.lower.is_char_boundary(i));
+            pieces.extend(cut.map(|i| l.lower[..i].to_string()));
+        }
+        let mut seed = 0x9E37_79B9_7F4A_7C15_u64;
+        let mut next = |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            usize::try_from(seed % n as u64).unwrap()
+        };
+        for _ in 0..20_000 {
+            let mut text = String::new();
+            for _ in 0..next(12) {
+                let piece = &pieces[next(pieces.len())];
+                for c in piece.chars() {
+                    text.push(if next(2) == 0 {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    });
+                }
+            }
+            for (literals, swallow) in [(&redactor.literals, false), (&scrubber.0, true)] {
+                assert_eq!(
+                    scan(&text, literals, swallow),
+                    reference_scan(&text, &literals.list, swallow),
+                    "{text:?}"
+                );
+            }
+            let lower = text.to_ascii_lowercase();
+            let bytes = text.as_bytes();
+            for needle in ["s-1-", "users\\", "users/"] {
+                assert_eq!(
+                    bytes
+                        .windows(needle.len())
+                        .any(|w| w.eq_ignore_ascii_case(needle.as_bytes())),
+                    lower.contains(needle)
+                );
+            }
+        }
     }
 }

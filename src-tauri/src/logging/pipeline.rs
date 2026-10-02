@@ -3,6 +3,7 @@
 
 use std::cell::Cell;
 use std::collections::VecDeque;
+use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -16,7 +17,7 @@ pub const RING_CAPACITY: usize = 2000;
 pub const RECORD_CAP: usize = 4096;
 /// Cut before redaction, so one huge message cannot stall every logging thread; the cut backs off
 /// to a separator so no identifier fragment slips past redaction.
-const INPUT_CAP: usize = 16 * 1024;
+const INPUT_CAP: usize = 8 * 1024;
 const MARKER_ROOM: usize = 40;
 
 thread_local! {
@@ -78,18 +79,35 @@ pub struct Entry {
     pub msg: String,
 }
 
-fn prefix(ts: &str, level: Level, source: Source, target: &str) -> String {
-    format!(
-        "{ts} {:<5} {:<6} {target}: ",
-        level.as_str(),
-        source.as_str()
-    )
+const LEVEL_WIDTH: usize = 5;
+const SOURCE_WIDTH: usize = 6;
+
+fn prefix_len(ts: &str, level: Level, source: Source, target: &str) -> usize {
+    ts.len()
+        + level.as_str().len().max(LEVEL_WIDTH)
+        + source.as_str().len().max(SOURCE_WIDTH)
+        + target.len()
+        + 5
 }
 
 impl Entry {
     /// Continuation lines are indented with a tab.
     pub fn line(&self) -> String {
-        let mut line = prefix(&self.ts, self.level, self.source, &self.target);
+        let newlines = self.msg.bytes().filter(|&b| b == b'\n').count();
+        let mut line = String::with_capacity(
+            prefix_len(&self.ts, self.level, self.source, &self.target)
+                + self.msg.len()
+                + newlines
+                + 1,
+        );
+        let _ = write!(
+            line,
+            "{} {:<LEVEL_WIDTH$} {:<SOURCE_WIDTH$} {}: ",
+            self.ts,
+            self.level.as_str(),
+            self.source.as_str(),
+            self.target
+        );
         for (n, part) in self.msg.split('\n').enumerate() {
             if n > 0 {
                 line.push_str("\n\t");
@@ -194,7 +212,7 @@ impl Pipeline {
     fn ingest(&self, level: Level, source: Source, target: &str, raw: &str) {
         let ts = timestamp();
         // The trailing newline is part of the line.
-        let room = RECORD_CAP.saturating_sub(prefix(&ts, level, source, target).len() + 1);
+        let room = RECORD_CAP.saturating_sub(prefix_len(&ts, level, source, target) + 1);
         let entry = Entry {
             seq: 0,
             ts,
@@ -566,6 +584,30 @@ mod tests {
         assert!(error.is_some());
         p.detach();
         assert_eq!(p.file_state(), (false, None));
+    }
+
+    #[test]
+    fn the_prefix_length_matches_the_formatted_prefix() {
+        for level in [
+            Level::Error,
+            Level::Warn,
+            Level::Info,
+            Level::Debug,
+            Level::Trace,
+        ] {
+            for source in [Source::App, Source::Ui, Source::Helper] {
+                let entry = Entry {
+                    seq: 0,
+                    ts: timestamp(),
+                    level,
+                    source,
+                    target: "app_lib::x".into(),
+                    msg: String::new(),
+                };
+                let len = prefix_len(&entry.ts, level, source, &entry.target);
+                assert_eq!(entry.line().len(), len + 1, "{level} {source:?}");
+            }
+        }
     }
 
     #[test]

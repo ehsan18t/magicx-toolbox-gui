@@ -8,6 +8,8 @@ pub mod pipeline;
 pub mod redact;
 pub mod settings;
 
+use std::fs::File;
+use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -391,31 +393,64 @@ fn unsaved_heading(persist: bool, writing: bool) -> Option<&'static str> {
 }
 
 /// `header`, then every kept session file oldest first, then this session's ring when the files do
-/// not hold all of it. The files are already redacted; the header is redacted here.
-pub fn export(dest: &Path, header: &str) -> std::io::Result<()> {
+/// not hold all of it. The files are already redacted; the header is redacted here. Streamed after
+/// CONTROL is released: an export can run to tens of MiB.
+pub fn export(dest: &Path, header: &str) -> io::Result<()> {
     flush_ui_drops();
-    let mut c = lock(&CONTROL);
     let Some(p) = PIPELINE.get() else {
-        return Err(std::io::Error::other("the logger is not running"));
+        return Err(io::Error::other("the logger is not running"));
     };
-    let mut out = p.redact(header);
-    if let Some(logs) = c.logs_dir().filter(|d| files::checked(d).is_ok()) {
-        for file in files::session_files(&logs) {
-            let name = file.path.file_name().unwrap_or_default().to_string_lossy();
-            out.push_str(&format!("\n===== {name} =====\n"));
-            match std::fs::read(&file.path) {
-                Ok(bytes) => out.push_str(&String::from_utf8_lossy(&bytes)),
-                Err(e) => out.push_str(&format!("(could not be read: {e})\n")),
-            }
+    let (sessions, ring) = {
+        let c = lock(&CONTROL);
+        let sessions = c
+            .logs_dir()
+            .filter(|d| files::checked(d).is_ok())
+            .map(|d| files::session_files(&d))
+            .unwrap_or_default();
+        let ring =
+            unsaved_heading(c.persist, p.file_state().0).map(|heading| (heading, p.ring_text()));
+        (sessions, ring)
+    };
+    write_export(dest, &p.redact(header), &sessions, ring)?;
+    lock(&CONTROL).last_export = Some(dest.to_path_buf());
+    Ok(())
+}
+
+fn write_export(
+    dest: &Path,
+    header: &str,
+    sessions: &[files::SessionFile],
+    ring: Option<(&str, String)>,
+) -> io::Result<()> {
+    let mut out = BufWriter::new(File::create(dest)?);
+    out.write_all(header.as_bytes())?;
+    for file in sessions {
+        let name = file.path.file_name().unwrap_or_default().to_string_lossy();
+        writeln!(out, "\n===== {name} =====")?;
+        copy_session_file(&file.path, &mut out)?;
+    }
+    if let Some((heading, text)) = ring {
+        writeln!(out, "\n===== {heading} =====")?;
+        out.write_all(text.as_bytes())?;
+    }
+    out.flush()
+}
+
+/// A read failure is written into the export; a write failure is the export's own error.
+fn copy_session_file(path: &Path, out: &mut impl Write) -> io::Result<()> {
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) => return writeln!(out, "(could not be read: {e})"),
+    };
+    let mut buf = vec![0; 64 * 1024];
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) => return Ok(()),
+            Ok(n) => out.write_all(&buf[..n])?,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return writeln!(out, "(could not be read: {e})"),
         }
     }
-    if let Some(heading) = unsaved_heading(c.persist, p.file_state().0) {
-        out.push_str(&format!("\n===== {heading} =====\n"));
-        out.push_str(&p.ring_text());
-    }
-    std::fs::write(dest, out)?;
-    c.last_export = Some(dest.to_path_buf());
-    Ok(())
 }
 
 pub fn last_export() -> Option<PathBuf> {
@@ -469,5 +504,46 @@ mod tests {
             Some("this session (not fully saved to disk)")
         );
         assert_eq!(unsaved_heading(true, true), None);
+    }
+
+    #[test]
+    fn the_streamed_export_has_the_documented_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = |name: &str, text: &str| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, text).unwrap();
+            files::SessionFile {
+                path,
+                stamp: String::new(),
+                pid: 0,
+                bytes: 0,
+            }
+        };
+        let mut sessions = vec![
+            session("magicx-20260101-120000-1.log", "one\n"),
+            session("magicx-20260101-120001-2.log", "two é\n"),
+        ];
+        sessions.push(files::SessionFile {
+            path: dir.path().join("magicx-20260101-120002-3.log"),
+            ..sessions[0].clone()
+        });
+        let dest = dir.path().join("export.txt");
+        write_export(
+            &dest,
+            "header\n",
+            &sessions,
+            Some(("this session (not saved to disk)", "ring\n".into())),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&dest).unwrap();
+        let (head, missing) = text.split_once("(could not be read: ").unwrap();
+        assert_eq!(
+            head,
+            "header\n\n===== magicx-20260101-120000-1.log =====\none\n\n===== magicx-20260101-120001-2.log =====\ntwo é\n\n===== magicx-20260101-120002-3.log =====\n"
+        );
+        assert!(
+            missing.ends_with(")\n\n===== this session (not saved to disk) =====\nring\n"),
+            "{missing}"
+        );
     }
 }

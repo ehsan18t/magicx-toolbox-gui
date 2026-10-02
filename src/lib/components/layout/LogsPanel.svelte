@@ -45,7 +45,7 @@
         isGap(row) ||
         (RANK[row.level] <= RANK[minLevel] &&
           (source === "all" || row.source === source) &&
-          (needle === "" || row.msg.toLowerCase().includes(needle) || row.target.toLowerCase().includes(needle))),
+          (needle === "" || row.msgLower.includes(needle) || row.targetLower.includes(needle))),
     ),
   );
   const hasLines = $derived(visible.some((row) => !isGap(row)));
