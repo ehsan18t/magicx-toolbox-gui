@@ -15,6 +15,7 @@
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaks.svelte";
+  import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   const isOpen = $derived(modalStore.current === "profileExport");
@@ -55,16 +56,17 @@
     }
   }
 
-  // Reset state when modal opens
+  // Open edge only: resetSelection reads tweaksStore, so tracking it wipes the form on every status event.
   $effect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    untrack(() => {
       step = 1;
       resetSelection();
       selectAllApplied = true;
       profileName = "";
       profileDescription = "";
       includeSystemState = false;
-    }
+    });
   });
 
   function handleSelectAll(checked: boolean) {
