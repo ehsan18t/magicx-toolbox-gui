@@ -227,7 +227,7 @@
       />
     {:else}
       <!-- Grouped by category -->
-      <div class="flex flex-col gap-6 pb-4">
+      <div class="flex flex-col gap-6 pb-28">
         {#each Object.entries(tweaksByCategory) as [categoryId, tweaks] (categoryId)}
           <div class="flex flex-col gap-3">
             <!-- Category Header -->
@@ -244,7 +244,7 @@
             </button>
 
             <!-- Tweaks Grid -->
-            <div class="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:gap-4">
+            <div class="flex flex-col gap-2">
               {#each tweaks as tweak (tweak.definition.id)}
                 <TweakRow {tweak} />
               {/each}

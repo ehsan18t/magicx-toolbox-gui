@@ -332,7 +332,7 @@
       />
     {:else}
       <!-- Results grid -->
-      <div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
+      <div class="flex flex-col gap-2 pb-28">
         {#each mappedResults as result (result.searchResult.id)}
           {@const searchResult = result.searchResult}
           <div class="search-result-card flex flex-col">

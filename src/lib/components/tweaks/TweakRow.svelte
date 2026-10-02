@@ -117,9 +117,10 @@
     });
   });
 
-  const stackControl = $derived(
-    stacked || (isSegmented && segments.reduce((n, s) => n + s.label.length, 0) > LONG_SEGMENT_LABELS),
+  const longLabels = $derived(
+    isSegmented && segments.length > 1 && segments.reduce((n, s) => n + s.label.length, 0) > LONG_SEGMENT_LABELS,
   );
+  const stackControl = $derived(stacked || longLabels);
 
   const selectValue = $derived(pendingChange?.optionLabel ?? activeOption ?? (atSystemDefault ? SYSTEM_DEFAULT : null));
   // -1 selects no segment (Unknown / loading).
@@ -225,7 +226,7 @@
 <article
   id="tweak-{def.id}"
   bind:clientWidth={rowWidth}
-  class="relative cursor-pointer overflow-hidden rounded-lg border bg-card transition-colors duration-150 {isSelected
+  class="relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-colors duration-150 {isSelected
     ? 'border-accent/70'
     : hasPending
       ? 'border-warning/45'
@@ -234,7 +235,7 @@
 >
   <span class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full {stripe}" aria-hidden="true"></span>
 
-  <div class="flex flex-col gap-2.5 py-3 pr-3 pl-4">
+  <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
     <div class="flex gap-x-6 gap-y-2.5 {stackControl ? 'flex-col' : 'items-start'}">
       <div class="min-w-0 flex-1">
         <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
@@ -260,7 +261,7 @@
             pending={hasPending}
             loading={isLoading}
             disabled={controlDisabled}
-            stretch={stackControl}
+            stretch={longLabels}
             onchange={(i) => {
               const t = segments[i]?.target;
               if (t !== undefined) selectTarget(t);
@@ -341,7 +342,7 @@
       </div>
     {/if}
 
-    <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
+    <div class="mt-auto flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
       {@render metaItem(
         summary.icon,
         summary.label,

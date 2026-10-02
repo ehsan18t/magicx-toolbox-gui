@@ -13,7 +13,7 @@
   let { count = 4 }: Props = $props();
 </script>
 
-<div class="flex flex-col gap-3 pb-4 lg:grid lg:grid-cols-2 lg:gap-4">
+<div class="flex flex-col gap-2 pb-4">
   <!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
   {#each Array(count) as _, i (`tweak-skeleton-${i}`)}
     <div class="relative flex animate-pulse overflow-hidden rounded-lg border border-border bg-card">
