@@ -16,14 +16,22 @@
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { rescanStatuses } from "$lib/stores/tweaks.svelte";
-  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { listenFileDrop } from "$lib/utils/fileDrop";
+  import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   const isOpen = $derived(modalStore.current === "profileImport");
 
-  // Wizard step state
-  type Step = "select" | "review" | "applying" | "complete";
-  let step = $state<Step>("select");
+  // Derived from the store so Back (clear) and a failed apply land on the right step.
+  const step = $derived(
+    profileStore.isApplying
+      ? "applying"
+      : profileStore.applyResult
+        ? "complete"
+        : profileStore.currentProfile && profileStore.validation
+          ? "review"
+          : "select",
+  );
 
   // Options
   let skipAlreadyApplied = $state(true);
@@ -54,75 +62,30 @@
   const warnings = $derived(validation?.warnings ?? []);
   const errors = $derived(validation?.errors ?? []);
 
-  // Reset state when modal opens
-  $effect(() => {
-    if (isOpen) {
-      if (profileStore.currentProfile) {
-        step = "review";
-      } else {
-        step = "select";
-        profileStore.clear();
-      }
-      // Always reset options
-      skipAlreadyApplied = true;
-      skipTweakIds.clear();
-    }
-  });
-
-  // Set up native drag-drop listener when modal is open
+  // Open edge only: tracking store state here would reset options on every import.
   $effect(() => {
     if (!isOpen) return;
-
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-
-    getCurrentWebview()
-      .onDragDropEvent((event) => {
-        if (event.payload.type === "over") {
-          isDragOver = true;
-        } else if (event.payload.type === "drop") {
-          isDragOver = false;
-          const paths = event.payload.paths;
-          if (paths && paths.length > 0) {
-            const filePath = paths[0];
-            if (filePath.endsWith(".mgx")) {
-              handleDroppedFile(filePath);
-            } else {
-              toastStore.show("error", "Please select a .mgx profile file");
-            }
-          }
-        } else {
-          // cancelled
-          isDragOver = false;
-        }
-      })
-      .then((fn) => {
-        // If effect was cancelled before promise resolved, immediately clean up
-        if (cancelled) {
-          fn();
-        } else {
-          unlisten = fn;
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
+    untrack(() => {
+      if (!profileStore.currentProfile) profileStore.clear();
+      skipAlreadyApplied = true;
+      skipTweakIds.clear();
+    });
   });
 
-  // Auto-advance to review when import completes
+  // Drops outside "select" would reset state mid-review or mid-apply.
   $effect(() => {
-    if (profile && validation && step === "select") {
-      step = "review";
-    }
-  });
-
-  // Auto-advance to complete when apply finishes
-  $effect(() => {
-    if (applyResult && step === "applying") {
-      step = "complete";
-    }
+    if (!isOpen) return;
+    return listenFileDrop({
+      extension: ".mgx",
+      onOver: () => (isDragOver = step === "select"),
+      onLeave: () => (isDragOver = false),
+      onDrop: (path) => {
+        if (step === "select") handleDroppedFile(path);
+      },
+      onReject: () => {
+        if (step === "select") toastStore.show("error", "Please select a .mgx profile file");
+      },
+    });
   });
 
   function handleClose() {
@@ -144,21 +107,6 @@
     }
   }
 
-  function handleDragOver(e: DragEvent) {
-    e.preventDefault();
-    // The native Tauri drag-drop event handles the visual state
-  }
-
-  function handleDragLeave() {
-    // The native Tauri drag-drop event handles the visual state
-  }
-
-  async function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    // Native drag-drop is handled by Tauri's onDragDropEvent
-    // This is here to prevent default browser behavior
-  }
-
   function toggleSkipTweak(tweakId: string) {
     if (skipTweakIds.has(tweakId)) {
       skipTweakIds.delete(tweakId);
@@ -168,8 +116,6 @@
   }
 
   async function handleApply() {
-    step = "applying";
-
     const success = await profileStore.applyProfile({
       skipTweakIds: Array.from(skipTweakIds),
       skipAlreadyApplied,
@@ -177,19 +123,26 @@
 
     if (!success && profileStore.applyError) {
       toastStore.show("error", profileStore.applyError);
-      step = "review"; // Go back to review on error
     }
+  }
+
+  function riskVariant(risk: string): "default" | "warning" | "error" {
+    const level = risk.toLowerCase();
+    if (level === "medium") return "warning";
+    if (level === "high" || level === "critical") return "error";
+    return "default";
   }
 
   async function handleFinish() {
     // Re-detect statuses to reflect changes
     await rescanStatuses();
+    const result = applyResult;
     handleClose();
 
-    if (applyResult?.requires_reboot) {
+    if (result?.requires_reboot) {
       toastStore.show("warning", "Some changes require a system restart to take effect", { duration: 5000 });
     } else {
-      toastStore.show("success", `Successfully applied ${applyResult?.applied_count ?? 0} tweaks`);
+      toastStore.show("success", `Successfully applied ${result?.applied_count ?? 0} tweaks`);
     }
   }
 
@@ -211,6 +164,7 @@
   onclose={handleClose}
   size="lg"
   closeOnEscape={step !== "applying"}
+  closeOnBackdrop={step !== "applying"}
   labelledBy="import-modal-title"
 >
   <ModalHeader id="import-modal-title">
@@ -248,9 +202,6 @@
           class="flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 transition-colors
             {isDragOver ? 'border-accent bg-accent/10' : 'border-border hover:border-accent/50 hover:bg-muted/30'}"
           onclick={handleBrowse}
-          ondragover={handleDragOver}
-          ondragleave={handleDragLeave}
-          ondrop={handleDrop}
         >
           <div
             class="flex h-16 w-16 items-center justify-center rounded-full {isDragOver ? 'bg-accent/20' : 'bg-muted'}"
@@ -393,14 +344,7 @@
                       <span class="text-accent">{preview.target_option_label}</span>
                     </div>
                   </div>
-                  <Badge
-                    variant="default"
-                    class="shrink-0 text-xs {preview.risk_level === 'moderate'
-                      ? 'bg-warning/15 text-warning'
-                      : preview.risk_level === 'advanced'
-                        ? 'bg-error/15 text-error'
-                        : ''}"
-                  >
+                  <Badge variant={riskVariant(preview.risk_level)} class="shrink-0 text-xs">
                     {preview.changes.length} changes
                   </Badge>
                 </button>
@@ -481,6 +425,9 @@
                   {/if}
                 </li>
               {/each}
+              {#if applyResult.failures.length > 5}
+                <li class="text-error">...and {applyResult.failures.length - 5} more</li>
+              {/if}
             </ul>
           </div>
         {/if}
@@ -504,7 +451,7 @@
           Browse Files
         </Button>
       {:else if step === "review"}
-        <Button variant="secondary" onclick={() => (step = "select")}>
+        <Button variant="secondary" onclick={() => profileStore.clear()}>
           <Icon icon="mdi:arrow-left" width="18" />
           Back
         </Button>

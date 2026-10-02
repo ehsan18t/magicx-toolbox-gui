@@ -6,9 +6,9 @@
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
+  import { listenFileDrop } from "$lib/utils/fileDrop";
   import { fade, pop, reflow } from "$lib/utils/motion";
   import { appDataDir, join } from "@tauri-apps/api/path";
-  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
@@ -86,11 +86,6 @@
   let isDragOver = $state(false);
 
   async function handleDroppedFile(path: string) {
-    if (!path.endsWith(".mgx")) {
-      toastStore.error("Invalid file type. Please select a .mgx profile file.");
-      return;
-    }
-
     const success = await profileStore.importProfileFromPath(path);
     if (success) {
       modalStore.open("profileImport");
@@ -99,38 +94,23 @@
     }
   }
 
-  onMount(() => {
+  // The import modal owns drops while it is open.
+  const importModalOpen = () => modalStore.current === "profileImport";
+
+  onMount(() =>
     // No loadSavedProfiles(): it errors until the profile backend returns (docs/spec/profile-v1.md).
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-
-    getCurrentWebview()
-      .onDragDropEvent((event) => {
-        if (event.payload.type === "over") {
-          isDragOver = true;
-        } else if (event.payload.type === "drop") {
-          isDragOver = false;
-          const paths = event.payload.paths;
-          if (paths && paths.length > 0) {
-            handleDroppedFile(paths[0]);
-          }
-        } else {
-          isDragOver = false;
-        }
-      })
-      .then((fn) => {
-        if (cancelled) {
-          fn();
-        } else {
-          unlisten = fn;
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  });
+    listenFileDrop({
+      extension: ".mgx",
+      onOver: () => (isDragOver = !importModalOpen()),
+      onLeave: () => (isDragOver = false),
+      onDrop: (path) => {
+        if (!importModalOpen()) handleDroppedFile(path);
+      },
+      onReject: () => {
+        if (!importModalOpen()) toastStore.error("Invalid file type. Please select a .mgx profile file.");
+      },
+    }),
+  );
 </script>
 
 <div class="relative h-full">
