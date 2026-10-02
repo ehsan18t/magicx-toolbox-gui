@@ -24,7 +24,7 @@
   // Global keyboard shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
     // Ctrl+K or Cmd+K to focus search
-    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
       navigationStore.focusSearch();
     }
