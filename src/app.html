@@ -26,6 +26,26 @@
         } else {
           document.documentElement.setAttribute("data-theme", config.default);
         }
+
+        // Mirrors COLOR_SCHEMES in colorScheme.svelte.ts: the saved accent applies before first paint.
+        const schemes = {
+          purple: "#8b5cf6",
+          blue: "#3b82f6",
+          green: "#10b981",
+          orange: "#f97316",
+          pink: "#ec4899",
+          red: "#ef4444",
+          cyan: "#06b6d4",
+        };
+        try {
+          const scheme = JSON.parse(localStorage.getItem("magicx-color-scheme"));
+          if (schemes[scheme]) {
+            document.documentElement.setAttribute("data-scheme", scheme);
+            document.documentElement.style.setProperty("--loader-accent", schemes[scheme]);
+          }
+        } catch {
+          // Unreadable storage keeps the default accent.
+        }
       })();
     </script>
 
@@ -54,13 +74,13 @@
         width: 40px;
         height: 40px;
         border: 3px solid #1c2438;
-        border-top-color: #8b5cf6;
+        border-top-color: var(--loader-accent, #8b5cf6);
         border-radius: 50%;
         animation: initial-spin 0.8s linear infinite;
       }
       [data-theme="light"] .initial-spinner {
         border-color: #dbe2ec;
-        border-top-color: #8b5cf6;
+        border-top-color: var(--loader-accent, #8b5cf6);
       }
       @keyframes initial-spin {
         to {
