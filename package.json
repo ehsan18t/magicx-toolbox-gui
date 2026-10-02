@@ -35,11 +35,12 @@
     "format:rust": "cd src-tauri && cargo fmt",
     "format:rust:check": "cd src-tauri && cargo fmt -- --check",
     "lint": "eslint ./src",
+    "test": "node --test \"src/**/*.test.ts\"",
     "lint:fix": "eslint ./src --fix",
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "lint:rust:fix": "cd src-tauri && cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged",
     "type-check": "tsc --noEmit",
-    "validate": "pnpm run format:check && pnpm run type-check && pnpm run check && pnpm run format:rust:check && pnpm run lint:rust && pnpm run lint",
+    "validate": "pnpm run format:check && pnpm run type-check && pnpm run check && pnpm run format:rust:check && pnpm run lint:rust && pnpm run lint && pnpm run test",
     "tauri": "tauri"
   },
   "dependencies": {
