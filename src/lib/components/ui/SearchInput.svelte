@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import type { Snippet } from "svelte";
 
   interface Props {
     value: string;
@@ -10,6 +11,10 @@
     inputRef?: HTMLInputElement | null;
     onchange?: (value: string) => void;
     onclear?: () => void;
+    /** Replaces the magnifier, e.g. with a scope chip. */
+    leading?: Snippet;
+    /** Backspace in an empty box, e.g. to drop that scope. */
+    onbackspace?: () => void;
   }
 
   let {
@@ -20,7 +25,12 @@
     inputRef = $bindable(null),
     onchange,
     onclear,
+    leading,
+    onbackspace,
   }: Props = $props();
+
+  // `for` pins the label to the input: unpinned, a click is forwarded to a leading button instead.
+  const inputId = $props.id();
 
   function handleClear() {
     onchange?.("");
@@ -32,16 +42,25 @@
     if (e.key === "Escape" && value) {
       e.preventDefault();
       handleClear();
+    } else if (e.key === "Backspace" && !value && onbackspace) {
+      e.preventDefault();
+      onbackspace();
     }
   }
 </script>
 
 <label
+  for={inputId}
   class="flex h-8 min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 focus-within:border-accent {className}"
 >
-  <Icon icon="mdi:magnify" width="16" class="shrink-0 text-foreground-muted" />
+  {#if leading}{@render leading()}{:else}<Icon
+      icon="mdi:magnify"
+      width="16"
+      class="shrink-0 text-foreground-muted"
+    />{/if}
   <input
     bind:this={inputRef}
+    id={inputId}
     type="text"
     {placeholder}
     {value}

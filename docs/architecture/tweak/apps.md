@@ -79,7 +79,7 @@ Each scan also reports how the app could come back on this machine. winget count
 
 ## Frontend
 
-- Apps render as rows in their own "Apps" section of the category view, after the tweak rows and outside their empty state, and only while the All filter chip is selected. A row shows the app's `warning:` as a callout. The category text filter and the global search cover them.
+- Apps render as rows in their own "Apps" section of the category view, after the tweak rows and outside their empty state, and not while the Needs attention pill narrows the list. A row shows the app's `warning:` behind a Warning toggle; the Remove confirmation repeats it. The scoped and the global search both cover them.
 - **Remove** asks for confirmation (a danger dialog that says whether removal covers every account, for AppX items, or only yours, for script items) and then runs at once; it is never staged into pending changes. **Install** runs at once without confirmation. Each row has its own spinner and the UI never blocks.
 - **Visibility**: an app is shown unless it is Absent with no install route. Unknown is always shown, with its buttons disabled, because hiding it would fail open.
 - **Permanent**: an app whose route is `none` is marked Permanent on its row, and its Remove confirmation says the change cannot be undone.

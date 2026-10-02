@@ -1,14 +1,13 @@
 <script lang="ts">
   import { PageLayout } from "$lib/components/layout";
-  import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
   import { AppRow, TweakRow } from "$lib/components/tweaks";
-  import { EmptyState, FilterChips, SearchInput, SkeletonCard } from "$lib/components/ui";
-  import type { FilterChip } from "$lib/components/ui/FilterChips.svelte";
+  import { EmptyState, SkeletonCard } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
+  import { confirm } from "$lib/stores/confirm.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
+  import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { batchRevertTweaks, loadingStateStore, loadingStore, tweaksStore } from "$lib/stores/tweaks.svelte";
-  import type { TweakWithStatus } from "$lib/types";
   import { restartAsAdmin } from "$lib/utils/elevation";
   import { canRestore, matchesQuery, restoreMessage } from "$lib/utils/tweakPresentation";
   import { untrack } from "svelte";
@@ -19,11 +18,7 @@
 
   let { tab }: Props = $props();
 
-  type Filter = "all" | "applied" | "not_applied" | "attention";
-
-  let searchQuery = $state("");
-  let filter = $state<Filter>(navigationStore.takeAttentionFilter() ? "attention" : "all");
-  let showRevertAllDialog = $state(false);
+  let attentionOnly = $state(navigationStore.takeAttentionFilter());
 
   const categoryTweaks = $derived(tweaksStore.list.filter((t) => t.definition.category_id === tab.id));
   const appliedCount = $derived(categoryTweaks.filter((t) => t.status.is_applied).length);
@@ -31,34 +26,21 @@
   const needsAdminCount = $derived(
     categoryTweaks.filter((t) => t.definition.availability.state === "needs_elevation").length,
   );
-  const tweaksWithSnapshots = $derived(categoryTweaks.filter(canRestore));
+  const restorable = $derived(categoryTweaks.filter(canRestore));
 
-  const filters = $derived<FilterChip<Filter>[]>([
-    { id: "all", label: "All", count: categoryTweaks.length },
-    { id: "applied", label: "Applied", count: appliedCount },
-    { id: "not_applied", label: "Not applied", count: categoryTweaks.length - appliedCount },
-    ...(attentionCount > 0
-      ? [{ id: "attention" as const, label: "Needs attention", count: attentionCount, tone: "error" as const }]
-      : []),
-  ]);
-  // Fall back to All once the last item resolves, so a later one cannot silently narrow the list.
+  // Off once the last item resolves, so a later one cannot silently narrow the list.
   $effect(() => {
-    if (attentionCount === 0 && untrack(() => filter) === "attention") filter = "all";
+    if (attentionCount === 0 && untrack(() => attentionOnly)) attentionOnly = false;
   });
 
-  function matchesFilter(t: TweakWithStatus): boolean {
-    if (filter === "applied") return t.status.is_applied;
-    if (filter === "not_applied") return !t.status.is_applied;
-    if (filter === "attention") return t.status.attention !== null;
-    return true;
-  }
-
-  const query = $derived(searchQuery.trim().toLowerCase());
-  const filteredTweaks = $derived(categoryTweaks.filter((t) => matchesFilter(t) && matchesQuery(t, query)));
+  const query = $derived(pageFilterStore.query.trim().toLowerCase());
+  const filteredTweaks = $derived(
+    categoryTweaks.filter((t) => (!attentionOnly || t.status.attention !== null) && matchesQuery(t, query)),
+  );
 
   const categoryApps = $derived(appsStore.byCategory[tab.id] ?? []);
   const filteredApps = $derived(
-    filter !== "all"
+    attentionOnly
       ? []
       : categoryApps.filter(
           (a) => !query || a.name.toLowerCase().includes(query) || a.description.toLowerCase().includes(query),
@@ -68,55 +50,63 @@
     categoryApps.filter((a) => appsStore.status(a.id)?.presence.state === "installed").length,
   );
 
-  async function handleRestoreSnapshots() {
-    showRevertAllDialog = false;
-    await batchRevertTweaks(tweaksWithSnapshots.map((t) => t.definition.id));
-  }
-
-  function resetFilters() {
-    searchQuery = "";
-    filter = "all";
+  async function restoreAll() {
+    const ids = restorable.map((t) => t.definition.id);
+    if (
+      await confirm({
+        title: `Restore ${tab.name}?`,
+        message: restoreMessage(ids.length),
+        confirmText: "Restore",
+        variant: "danger",
+      })
+    )
+      await batchRevertTweaks(ids);
   }
 </script>
 
 <PageLayout title={tab.name} description={tab.description}>
   {#snippet aside()}
-    {#if categoryTweaks.length > 0}
-      <div class="flex w-44 shrink-0 flex-col gap-1.5">
-        <div class="flex items-baseline justify-between text-xs">
-          <span class="text-foreground-muted">Applied</span>
-          <span class="font-semibold tabular-nums">{appliedCount} of {categoryTweaks.length}</span>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {#if attentionCount > 0}
+        <button
+          type="button"
+          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium {attentionOnly
+            ? 'border-error bg-error text-background'
+            : 'border-error/40 bg-error/10 text-error hover:bg-error/15'}"
+          aria-pressed={attentionOnly}
+          onclick={() => (attentionOnly = !attentionOnly)}
+        >
+          <Icon icon="mdi:alert-circle" width="16" />
+          {attentionCount} need{attentionCount === 1 ? "s" : ""} attention
+        </button>
+      {/if}
+      {#if categoryTweaks.length > 0}
+        <div class="flex w-44 shrink-0 flex-col gap-1.5">
+          <div class="flex items-baseline justify-between text-xs">
+            <span class="text-foreground-muted">Applied</span>
+            <span class="font-semibold tabular-nums">{appliedCount} of {categoryTweaks.length}</span>
+          </div>
+          <div class="h-1 overflow-hidden rounded-full bg-muted">
+            <div
+              class="h-full rounded-full bg-accent transition-[width] duration-300"
+              style="width: {(appliedCount / categoryTweaks.length) * 100}%"
+            ></div>
+          </div>
         </div>
-        <div class="h-1 overflow-hidden rounded-full bg-muted">
-          <div
-            class="h-full rounded-full bg-accent transition-[width] duration-300"
-            style="width: {(appliedCount / categoryTweaks.length) * 100}%"
-          ></div>
-        </div>
-      </div>
-    {/if}
-  {/snippet}
-
-  {#snippet toolbar()}
-    <SearchInput
-      value={searchQuery}
-      placeholder="Filter this category"
-      class="min-w-48 flex-1 sm:max-w-80"
-      onchange={(v) => (searchQuery = v)}
-    />
-    <FilterChips options={filters} value={filter} onchange={(v) => (filter = v)} />
-    {#if tweaksWithSnapshots.length > 0}
-      <button
-        type="button"
-        class="ml-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={loadingStore.busy}
-        onclick={() => (showRevertAllDialog = true)}
-      >
-        <Icon icon="mdi:history" width="16" />
-        Restore all
-        <span class="text-xs text-foreground-subtle tabular-nums">{tweaksWithSnapshots.length}</span>
-      </button>
-    {/if}
+      {/if}
+      {#if restorable.length > 0}
+        <button
+          type="button"
+          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={loadingStore.busy}
+          onclick={restoreAll}
+        >
+          <Icon icon="mdi:history" width="16" />
+          Restore all
+          <span class="text-xs text-foreground-subtle tabular-nums">{restorable.length}</span>
+        </button>
+      {/if}
+    </div>
   {/snippet}
 
   {#if needsAdminCount > 0}
@@ -143,17 +133,29 @@
   {#if loadingStateStore.tweaksLoading && categoryTweaks.length === 0}
     <SkeletonCard />
   {:else if filteredTweaks.length === 0 && filteredApps.length === 0}
-    <EmptyState
-      icon={query ? "mdi:file-search-outline" : "mdi:package-variant"}
-      title={query || filter !== "all" ? "Nothing matches" : "No tweaks available"}
-      description={query
-        ? `Nothing in ${tab.name} matches "${searchQuery}"`
-        : filter !== "all"
-          ? "No tweaks in this category match the selected filter"
-          : "This category has no tweaks for your system"}
-      actionText={query || filter !== "all" ? "Show all" : undefined}
-      onaction={resetFilters}
-    />
+    {#if query}
+      <EmptyState
+        icon="mdi:file-search-outline"
+        title="Nothing matches"
+        description={`Nothing in ${tab.name} matches "${pageFilterStore.query.trim()}"`}
+        actionText="Search everywhere"
+        onaction={() => pageFilterStore.searchEverywhere()}
+      />
+    {:else if attentionOnly}
+      <EmptyState
+        icon="mdi:check-circle-outline"
+        title="Nothing needs attention"
+        description="No tweak in this category needs attention."
+        actionText="Show all"
+        onaction={() => (attentionOnly = false)}
+      />
+    {:else}
+      <EmptyState
+        icon="mdi:package-variant"
+        title="No tweaks available"
+        description="This category has no tweaks for your system"
+      />
+    {/if}
   {:else}
     {#if filteredTweaks.length > 0}
       <div class="flex flex-col gap-2">
@@ -176,13 +178,3 @@
     {/if}
   {/if}
 </PageLayout>
-
-<ConfirmDialog
-  open={showRevertAllDialog}
-  title="Restore {tab.name}"
-  message={restoreMessage(tweaksWithSnapshots.length)}
-  confirmText="Restore"
-  variant="danger"
-  onconfirm={handleRestoreSnapshots}
-  oncancel={() => (showRevertAllDialog = false)}
-/>

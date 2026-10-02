@@ -26,6 +26,14 @@ let activeTab = $state<TabId>("overview");
 /** Signal to focus the search input - incremented each time focus is requested */
 let focusSearchSignal = $state(0);
 let attentionFilterRequested = false;
+// Bumped on every page change, so per-page UI state can tell a revisit from staying put.
+let visit = $state(0);
+
+function go(tab: TabId) {
+  if (tab === activeTab) return;
+  activeTab = tab;
+  visit++;
+}
 
 // Overview tab definition (static)
 const overviewTab: TabDefinition = {
@@ -133,6 +141,9 @@ const isOnSnapshotsTab = $derived(activeTab === "snapshots");
 // Derived: Is on profiles tab
 const isOnProfilesTab = $derived(activeTab === "profiles");
 
+// List pages whose rows the title-bar search can filter in place.
+const isScopable = $derived(isOnCategoryTab || isOnFavoritesTab || isOnSnapshotsTab);
+
 // === Export ===
 
 export const navigationStore = {
@@ -181,6 +192,10 @@ export const navigationStore = {
     return isOnSnapshotsTab;
   },
 
+  get isScopable() {
+    return isScopable;
+  },
+
   /** Check if currently on the profiles tab */
   get isOnProfilesTab() {
     return isOnProfilesTab;
@@ -208,13 +223,13 @@ export const navigationStore = {
 
   /** Navigate to a specific tab by ID */
   navigateToTab(tabId: TabId) {
-    activeTab = tabId;
+    go(tabId);
   },
 
   /** Opens a category already filtered to its Needs Attention tweaks. */
   navigateToAttention(categoryId: TabId) {
     attentionFilterRequested = true;
-    activeTab = categoryId;
+    go(categoryId);
   },
 
   /** Read once by the category view as it mounts. */
@@ -226,37 +241,41 @@ export const navigationStore = {
 
   /** Navigate to the overview tab */
   navigateToOverview() {
-    activeTab = "overview";
+    go("overview");
   },
 
   /** Navigate to the search tab */
   navigateToSearch() {
-    activeTab = "search";
+    go("search");
   },
 
   /** Navigate to the favorites tab */
   navigateToFavorites() {
-    activeTab = "favorites";
+    go("favorites");
   },
 
   /** Navigate to the snapshots tab */
   navigateToSnapshots() {
-    activeTab = "snapshots";
+    go("snapshots");
   },
 
   /** Navigate to a specific category */
   navigateToCategory(categoryId: string) {
-    activeTab = categoryId;
+    go(categoryId);
   },
 
   /** Signal to focus the title bar search box. */
+  get visit() {
+    return visit;
+  },
+
   get focusSearchSignal() {
     return focusSearchSignal;
   },
 
-  /** Navigate to search tab and focus the search input */
+  /** Focus the search input; a list page keeps it scoped to itself, any other page goes to Search. */
   focusSearch() {
-    activeTab = "search";
+    if (!isScopable) go("search");
     focusSearchSignal++;
   },
 };
