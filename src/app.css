@@ -1,243 +1,153 @@
-/* Tailwind CSS */
 @import "tailwindcss";
-@import "./assets/fonts/inter/inter.css";
 
 @layer base {
-  /*
-     * Disable selection globally by default on the body.
-	 * This can be overridden by adding
-	 * `select-text` or `select-all` class to any element.
-    */
   body {
     @apply select-none;
   }
 
-  /* Dark Theme (Default) */
+  /* Windows 11 Fluent neutrals. Dark is the default theme. */
   :root,
   [data-theme="dark"] {
     color-scheme: dark;
 
-    /* Background Colors */
-    --background: 224 71% 4%; /* #0a0f1c */
-    --surface: 224 47% 8%; /* #0f1629 */
-    --card: 224 47% 11%; /* #151b2e */
-    --elevated: 224 40% 15%; /* #1e2535 */
-    --muted: 224 40% 18%; /* Muted background */
+    --background: 0 0% 12.5%; /* window base (Mica) */
+    --surface: 0 0% 15.3%; /* content layer */
+    --card: 0 0% 17.6%;
+    --elevated: 0 0% 17.3%; /* flyouts, dialogs */
+    --muted: 0 0% 100% / 0.06; /* subtle fill: hover, tracks */
 
-    /* Text Colors */
-    --foreground: 210 40% 98%; /* #f8fafc */
-    --foreground-muted: 215 16% 65%; /* #94a3b8 */
-    --foreground-subtle: 215 16% 45%; /* #64748b */
-    --muted-foreground: 215 16% 65%; /* Alias for foreground-muted */
+    --foreground: 0 0% 100%;
+    --foreground-muted: 0 0% 79%;
+    --foreground-subtle: 0 0% 58%;
+    --muted-foreground: var(--foreground-muted);
 
-    /* Border & Divider */
-    --border: 224 40% 20%; /* #252b3f */
-    --border-hover: 224 40% 25%; /* #2d3448 */
+    --border: 0 0% 100% / 0.08;
+    --border-hover: 0 0% 100% / 0.14;
 
-    /* Primary Colors */
-    --primary: 221 83% 53%; /* #3b82f6 */
-    --primary-hover: 221 83% 48%; /* #2563eb */
-    --primary-foreground: 0 0% 100%; /* #ffffff */
+    --secondary: 0 0% 100% / 0.06;
+    --secondary-hover: 0 0% 100% / 0.09;
+    --secondary-foreground: 0 0% 100%;
 
-    /* Secondary Colors */
-    --secondary: 224 40% 18%; /* #1f2937 */
-    --secondary-hover: 224 40% 22%; /* #283140 */
-    --secondary-foreground: 210 40% 98%; /* #f8fafc */
+    --accent: 262 100% 80%;
+    --accent-hover: 262 100% 74%;
+    --accent-foreground: 0 0% 0%;
 
-    /* Accent Colors - Updated by color scheme */
-    --accent: 262 83% 58%; /* #8b5cf6 */
-    --accent-hover: 262 83% 53%; /* #7c3aed */
-    --accent-foreground: 0 0% 100%; /* #ffffff */
-    --accent-muted: 262 50% 30%; /* Darker muted for dark theme */
-    --accent-subtle: 262 50% 20%; /* Very subtle for backgrounds */
+    --success: 113 50% 58%;
+    --warning: 42 95% 60%;
+    --warning-foreground: 0 0% 0%;
+    --error: 353 100% 80%;
+    --info: 199 100% 69%;
 
-    /* Ring/Focus Colors - derived from accent */
-    --ring: var(--accent);
-
-    /* Status Colors */
-    --success: 142 76% 36%; /* #10b981 */
-    --warning: 43 96% 56%; /* #f59e0b */
-    --error: 0 84% 60%; /* #ef4444 */
-    --info: 199 89% 48%; /* #0ea5e9 */
-
-    /* Scrollbar Colors */
-    --scroll-bg: var(--surface);
-    --scroll-main: var(--accent);
-    --scroll-main-hover: var(--accent-hover);
+    --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.26);
+    --elev-dialog: 0 32px 64px rgb(0 0 0 / 0.37), 0 2px 21px rgb(0 0 0 / 0.37);
   }
 
-  /* Light Theme */
   [data-theme="light"] {
     color-scheme: light;
 
-    /* Background Colors */
-    --background: 0 0% 100%; /* #ffffff */
-    --surface: 210 20% 98%; /* #f8fafc */
-    --card: 0 0% 100%; /* #ffffff */
-    --elevated: 210 20% 96%; /* #f1f5f9 */
-    --muted: 210 40% 96%; /* Muted background */
+    --background: 0 0% 95.3%;
+    --surface: 0 0% 97.6%;
+    --card: 0 0% 100%;
+    --elevated: 0 0% 98.8%;
+    --muted: 0 0% 0% / 0.04;
 
-    /* Text Colors */
-    --foreground: 222 84% 5%; /* #0f172a */
-    --foreground-muted: 215 16% 47%; /* #64748b */
-    --foreground-subtle: 215 20% 65%; /* #94a3b8 */
-    --muted-foreground: 215 16% 47%; /* Alias for foreground-muted */
+    --foreground: 0 0% 10.6%;
+    --foreground-muted: 0 0% 37%;
+    --foreground-subtle: 0 0% 52%;
 
-    /* Border & Divider */
-    --border: 214 32% 91%; /* #e2e8f0 */
-    --border-hover: 213 27% 84%; /* #cbd5e1 */
+    --border: 0 0% 0% / 0.09;
+    --border-hover: 0 0% 0% / 0.16;
 
-    /* Primary Colors */
-    --primary: 221 83% 53%; /* #3b82f6 */
-    --primary-hover: 221 83% 48%; /* #2563eb */
-    --primary-foreground: 0 0% 100%; /* #ffffff */
+    --secondary: 0 0% 100% / 0.7;
+    --secondary-hover: 0 0% 97% / 0.9;
+    --secondary-foreground: 0 0% 10.6%;
 
-    /* Secondary Colors */
-    --secondary: 210 40% 96%; /* #f1f5f9 */
-    --secondary-hover: 210 40% 92%; /* #e2e8f0 */
-    --secondary-foreground: 222 84% 5%; /* #0f172a */
+    --accent: 262 60% 50%;
+    --accent-hover: 262 60% 44%;
+    --accent-foreground: 0 0% 100%;
 
-    /* Accent Colors - Updated by color scheme */
-    --accent: 262 83% 58%; /* #8b5cf6 */
-    --accent-hover: 262 83% 53%; /* #7c3aed */
-    --accent-foreground: 0 0% 100%; /* #ffffff */
-    --accent-muted: 262 70% 75%; /* Lighter muted for light theme */
-    --accent-subtle: 262 70% 95%; /* Very subtle for backgrounds */
+    --success: 120 78% 27%;
+    --warning: 34 100% 31%;
+    --warning-foreground: 0 0% 100%;
+    --error: 6 75% 44%;
+    --info: 208 100% 36%;
 
-    /* Ring/Focus Colors - derived from accent */
-    --ring: var(--accent);
-
-    /* Status Colors */
-    --success: 142 71% 45%; /* #059669 */
-    --warning: 32 95% 44%; /* #d97706 */
-    --error: 0 72% 51%; /* #dc2626 */
-    --info: 199 89% 48%; /* #0ea5e9 */
-
-    /* Scrollbar Colors */
-    --scroll-bg: var(--surface);
-    --scroll-main: var(--accent);
-    --scroll-main-hover: var(--accent-hover);
+    --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.14);
+    --elev-dialog: 0 32px 64px rgb(0 0 0 / 0.19), 0 2px 21px rgb(0 0 0 / 0.15);
   }
 
-  /*
-   * Color Schemes (Accent Colors)
-   * Works with both light and dark themes.
-   * Default scheme is purple (defined above in :root).
-   */
-
-  /* Purple Scheme (Default) - already defined in :root */
-  [data-scheme="purple"] {
-    --accent: 262 83% 58%; /* #8b5cf6 */
-    --accent-hover: 262 83% 53%; /* #7c3aed */
-  }
-  [data-theme="dark"][data-scheme="purple"],
-  :root[data-scheme="purple"] {
-    --accent-muted: 262 50% 30%;
-    --accent-subtle: 262 50% 20%;
-  }
-  [data-theme="light"][data-scheme="purple"] {
-    --accent-muted: 262 70% 75%;
-    --accent-subtle: 262 70% 95%;
-  }
-
-  /* Blue Scheme */
+  /* Accent schemes: a lighter tone on dark, a deeper tone on light (Fluent AccentLight2 / AccentDark1). */
   [data-scheme="blue"] {
-    --accent: 221 83% 53%; /* #3b82f6 */
-    --accent-hover: 221 83% 48%; /* #2563eb */
-  }
-  [data-theme="dark"][data-scheme="blue"],
-  :root[data-scheme="blue"] {
-    --accent-muted: 221 50% 30%;
-    --accent-subtle: 221 50% 20%;
+    --accent: 199 100% 69%;
+    --accent-hover: 199 100% 62%;
   }
   [data-theme="light"][data-scheme="blue"] {
-    --accent-muted: 221 70% 75%;
-    --accent-subtle: 221 70% 95%;
+    --accent: 207 100% 36%;
+    --accent-hover: 207 100% 31%;
   }
-
-  /* Green Scheme */
   [data-scheme="green"] {
-    --accent: 160 84% 39%; /* #10b981 */
-    --accent-hover: 160 84% 34%; /* #0d9668 */
-  }
-  [data-theme="dark"][data-scheme="green"],
-  :root[data-scheme="green"] {
-    --accent-muted: 160 50% 25%;
-    --accent-subtle: 160 50% 15%;
+    --accent: 150 55% 58%;
+    --accent-hover: 150 55% 50%;
   }
   [data-theme="light"][data-scheme="green"] {
-    --accent-muted: 160 60% 70%;
-    --accent-subtle: 160 60% 92%;
+    --accent: 150 80% 26%;
+    --accent-hover: 150 80% 22%;
   }
-
-  /* Orange Scheme */
   [data-scheme="orange"] {
-    --accent: 25 95% 53%; /* #f97316 */
-    --accent-hover: 25 95% 48%; /* #ea6c0c */
-  }
-  [data-theme="dark"][data-scheme="orange"],
-  :root[data-scheme="orange"] {
-    --accent-muted: 25 60% 30%;
-    --accent-subtle: 25 60% 18%;
+    --accent: 28 100% 66%;
+    --accent-hover: 28 100% 58%;
   }
   [data-theme="light"][data-scheme="orange"] {
-    --accent-muted: 25 80% 75%;
-    --accent-subtle: 25 80% 93%;
+    --accent: 22 90% 40%;
+    --accent-hover: 22 90% 35%;
   }
-
-  /* Pink Scheme */
   [data-scheme="pink"] {
-    --accent: 330 81% 60%; /* #ec4899 */
-    --accent-hover: 330 81% 55%; /* #e4268a */
-  }
-  [data-theme="dark"][data-scheme="pink"],
-  :root[data-scheme="pink"] {
-    --accent-muted: 330 50% 30%;
-    --accent-subtle: 330 50% 18%;
+    --accent: 330 90% 76%;
+    --accent-hover: 330 90% 68%;
   }
   [data-theme="light"][data-scheme="pink"] {
-    --accent-muted: 330 70% 78%;
-    --accent-subtle: 330 70% 95%;
+    --accent: 330 70% 44%;
+    --accent-hover: 330 70% 38%;
   }
-
-  /* Red Scheme */
   [data-scheme="red"] {
-    --accent: 0 84% 60%; /* #ef4444 */
-    --accent-hover: 0 84% 55%; /* #e93030 */
-  }
-  [data-theme="dark"][data-scheme="red"],
-  :root[data-scheme="red"] {
-    --accent-muted: 0 50% 30%;
-    --accent-subtle: 0 50% 18%;
+    --accent: 355 100% 76%;
+    --accent-hover: 355 100% 68%;
   }
   [data-theme="light"][data-scheme="red"] {
-    --accent-muted: 0 70% 78%;
-    --accent-subtle: 0 70% 95%;
+    --accent: 355 72% 45%;
+    --accent-hover: 355 72% 39%;
   }
-
-  /* Cyan Scheme */
   [data-scheme="cyan"] {
-    --accent: 188 94% 43%; /* #06b6d4 */
-    --accent-hover: 188 94% 38%; /* #05a0ba */
-  }
-  [data-theme="dark"][data-scheme="cyan"],
-  :root[data-scheme="cyan"] {
-    --accent-muted: 188 50% 25%;
-    --accent-subtle: 188 50% 15%;
+    --accent: 186 80% 56%;
+    --accent-hover: 186 80% 48%;
   }
   [data-theme="light"][data-scheme="cyan"] {
-    --accent-muted: 188 60% 70%;
-    --accent-subtle: 188 60% 92%;
+    --accent: 190 90% 28%;
+    --accent-hover: 190 90% 24%;
   }
 
-  /*
-   * Theme Transition
-   * Quick fade during theme switch for a clean, unified transition.
-   * The .theme-transitioning class is toggled by JavaScript during switch.
-   *
-   * We exempt .theme-toggle and its children so its specific animations (rotation, scale)
-   * can play smoothly even while the rest of the page is frozen for the color swap.
-   */
+  :root {
+    --ring: var(--accent);
+    --primary: var(--accent);
+    --primary-hover: var(--accent-hover);
+    --primary-foreground: var(--accent-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    font-size: 14px;
+    line-height: 1.43;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 1px;
+  }
+
+  /* Frozen while the theme swaps, except the toggle's own animation. */
   html.theme-transitioning *:not(.theme-toggle):not(.theme-toggle *) {
     transition: none !important;
   }
@@ -247,23 +157,18 @@
     position: fixed;
     inset: 0;
     background: inherit;
-    opacity: 1;
     pointer-events: none;
     z-index: 99999;
     animation: theme-fade 150ms ease-out forwards;
   }
 
-  /*
-   * Restore transitions for interactive elements
-   * Ensures buttons and links feel responsive with smooth hover states.
-   */
   button,
   a,
   [role="button"],
   .theme-toggle {
     transition-property: background-color, border-color, color, fill, stroke, box-shadow, transform, opacity;
-    transition-duration: 200ms;
-    transition-timing-function: ease-out;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0, 0, 0, 1);
   }
 
   @keyframes theme-fade {
@@ -277,10 +182,22 @@
 }
 
 @theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+
+  --shadow-flyout: var(--elev-flyout);
+  --shadow-dialog: var(--elev-dialog);
+
   --color-background: hsl(var(--background));
   --color-surface: hsl(var(--surface));
   --color-card: hsl(var(--card));
   --color-elevated: hsl(var(--elevated));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
 
   --color-foreground: hsl(var(--foreground));
   --color-foreground-muted: hsl(var(--foreground-muted));
@@ -300,25 +217,24 @@
   --color-accent: hsl(var(--accent));
   --color-accent-hover: hsl(var(--accent-hover));
   --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-accent-muted: hsl(var(--accent-muted));
-  --color-accent-subtle: hsl(var(--accent-subtle));
 
-  /* Ring color for focus states */
   --color-ring: hsl(var(--ring));
 
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
   --color-error: hsl(var(--error));
   --color-info: hsl(var(--info));
 
-  /* Define font variable for Tailwind */
-  --font-Inter: "Inter", sans-serif;
-
-  --animate-*: initial;
+  --animate-modal-in: modal-in 0.2s cubic-bezier(0, 0, 0, 1);
+  --animate-modal-out: modal-out 0.15s ease-in forwards;
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-fade-out: fade-out 0.15s ease-in forwards;
+  --animate-slide-in-up: slide-in-up 0.2s cubic-bezier(0, 0, 0, 1);
+  --animate-slide-in-right: slide-in-right 0.25s cubic-bezier(0, 0, 0, 1);
 }
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-@custom-variant hover (&:hover);
 
 @utility drag-enable {
   -webkit-app-region: drag;
@@ -332,45 +248,15 @@
   -webkit-app-region: drag;
 }
 
-/* Custom Scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--scroll-main)) hsl(var(--scroll-bg));
-  scroll-behavior: smooth;
-}
-
-/* Chrome, Edge, and Safari */
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-track {
-  background: hsl(var(--scroll-bg));
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--scroll-main));
-  border-radius: 6px;
-  border: 2px solid hsl(var(--scroll-bg));
-  transition: background-color 0.2s ease;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--scroll-main-hover));
-}
-
-/* Animations */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  scrollbar-color: hsl(var(--foreground) / 0.28) transparent;
 }
 
 @keyframes modal-in {
   from {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(1.04);
   }
   to {
     opacity: 1;
@@ -385,7 +271,7 @@
   }
   to {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(1.02);
   }
 }
 
@@ -418,45 +304,26 @@
   }
 }
 
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes tweak-highlight-pulse {
   0%,
   100% {
     box-shadow: 0 0 0 0 hsl(var(--accent) / 0);
-    border-color: hsl(var(--border));
   }
-  25%,
-  75% {
-    box-shadow: 0 0 0 4px hsl(var(--accent) / 0.3);
-    border-color: hsl(var(--accent));
+  30%,
+  70% {
+    box-shadow: 0 0 0 3px hsl(var(--accent) / 0.45);
   }
-  50% {
-    box-shadow: 0 0 0 6px hsl(var(--accent) / 0.4);
-    border-color: hsl(var(--accent));
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-.animate-modal-in {
-  animation: modal-in 0.2s ease-out;
-}
-
-.animate-modal-out {
-  animation: modal-out 0.15s ease-in forwards;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out;
-}
-
-.animate-fade-out {
-  animation: fade-out 0.15s ease-in forwards;
-}
-
-.animate-slide-in-up {
-  animation: slide-in-up 0.2s ease-out;
 }
 
 .tweak-highlight {
@@ -464,13 +331,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-spin,
-  .animate-modal-in,
-  .animate-modal-out,
-  .animate-fade-in,
-  .animate-fade-out,
-  .animate-slide-in-up,
-  .tweak-highlight {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -226,7 +226,7 @@
     </div>
     <button
       type="button"
-      class="hover:bg-muted/50 inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-all duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
+      class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-all duration-150 hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
       onclick={() => (showDetails = true)}
       aria-label="Open details for {app.name}"
     >
@@ -254,7 +254,7 @@
     </div>
     <IconButton icon="mdi:close" onclick={() => (showDetails = false)} aria-label="Close" />
   </ModalHeader>
-  <ModalBody scrollable class="flex max-h-[calc(100dvh-2.5rem-6rem)] flex-col gap-4">
+  <ModalBody class="flex flex-col gap-4">
     {#if app.warning}
       <div
         class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"

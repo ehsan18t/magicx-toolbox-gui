@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { TweakCard } from "$lib/components/tweaks";
+  import { TweakRow } from "$lib/components/tweaks";
   import { ActionButton, EmptyState, SkeletonCard } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
@@ -158,7 +158,7 @@
       {#if searchQuery}
         <button
           type="button"
-          class="hover:bg-muted flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:text-foreground"
+          class="flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:bg-muted hover:text-foreground"
           onclick={() => (searchQuery = "")}
         >
           <Icon icon="mdi:close" width="16" />
@@ -240,7 +240,7 @@
             <!-- Category Header -->
             <button
               type="button"
-              class="hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1 py-1 transition-all duration-150"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1 py-1 transition-all duration-150 hover:bg-muted/50"
               onclick={() => navigateToCategory(categoryId)}
               use:tooltip={`View ${categoriesStore.getName(categoryId)} category`}
             >
@@ -253,7 +253,7 @@
             <!-- Tweaks Grid -->
             <div class="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:gap-4">
               {#each tweaks as tweak (tweak.definition.id)}
-                <TweakCard {tweak} />
+                <TweakRow {tweak} />
               {/each}
             </div>
           </div>

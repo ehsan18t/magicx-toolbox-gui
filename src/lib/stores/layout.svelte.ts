@@ -1,93 +1,41 @@
-// Sidebar layout state using Svelte 5 runes
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { innerWidth } from "svelte/reactivity/window";
 
-export interface SidebarState {
-  isExpanded: boolean;
-  isPinned: boolean;
-  isWidgetsOpen: boolean;
-}
+/** Window width at which the navigation pane docks expanded (WinUI NavigationView's threshold). */
+const EXPANDED_MIN_WIDTH = 1008;
 
-const SIDEBAR_PIN_KEY = "magicx-sidebar-pinned";
-const SIDEBAR_WIDGETS_OPEN_KEY = "magicx-sidebar-widgets-open";
+const collapsedState = new PersistentStore("magicx-nav-collapsed", false);
 
-// Persistent state
-const pinnedState = new PersistentStore(SIDEBAR_PIN_KEY, false);
-const widgetsOpenState = new PersistentStore(SIDEBAR_WIDGETS_OPEN_KEY, true);
+let overlayOpen = $state(false);
 
-// Reactive state (transient)
-let isExpanded = $state(false);
+const canDockExpanded = $derived((innerWidth.current ?? EXPANDED_MIN_WIDTH) >= EXPANDED_MIN_WIDTH);
+const isDockedExpanded = $derived(canDockExpanded && !collapsedState.value);
+const isOverlay = $derived(overlayOpen && !isDockedExpanded);
 
-// Derived values
-const isOpen = $derived(isExpanded || pinnedState.value);
-const widthClass = $derived(isOpen ? "w-60" : "w-16");
-const contentLeftOffset = $derived(isOpen ? "left-60" : "left-16");
-
-// Export the sidebar store
 export const sidebarStore = {
-  get isExpanded() {
-    return isExpanded;
-  },
-
-  get isPinned() {
-    return pinnedState.value;
-  },
-
-  get isWidgetsOpen() {
-    return widgetsOpenState.value;
-  },
-
+  /** Labels visible: docked expanded, or opened over the content. */
   get isOpen() {
-    return isOpen;
+    return isDockedExpanded || isOverlay;
   },
 
-  get widthClass() {
-    return widthClass;
+  get isDockedExpanded() {
+    return isDockedExpanded;
   },
 
-  get contentLeftOffset() {
-    return contentLeftOffset;
+  get isOverlay() {
+    return isOverlay;
   },
 
-  setExpanded(expanded: boolean) {
-    isExpanded = expanded;
-  },
-
-  setPinned(pinned: boolean) {
-    pinnedState.value = pinned;
-    if (!pinned) {
-      isExpanded = false;
+  toggle() {
+    if (canDockExpanded) {
+      collapsedState.value = !collapsedState.value;
+      overlayOpen = false;
+    } else {
+      overlayOpen = !overlayOpen;
     }
   },
 
-  togglePinned() {
-    pinnedState.value = !pinnedState.value;
-    if (!pinnedState.value) {
-      isExpanded = false;
-    }
-  },
-
-  setWidgetsOpen(open: boolean) {
-    widgetsOpenState.value = open;
-  },
-
-  toggleWidgets() {
-    widgetsOpenState.value = !widgetsOpenState.value;
-  },
-
-  init(pinned: boolean) {
-    isExpanded = false;
-    pinnedState.value = pinned;
-  },
-};
-
-export const isSidebarOpen = {
-  get value() {
-    return isOpen;
-  },
-};
-
-export const sidebarWidthClass = {
-  get value() {
-    return widthClass;
+  closeOverlay() {
+    overlayOpen = false;
   },
 };

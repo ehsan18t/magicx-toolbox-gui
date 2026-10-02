@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ColorSchemePicker } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
   import { Badge, Button, IconButton, Modal, ModalBody, ModalHeader, Spinner, Switch } from "$lib/components/ui";
   import { logsStore } from "$lib/stores/logs.svelte";
@@ -63,6 +64,11 @@
   </ModalHeader>
 
   <ModalBody class="space-y-5">
+    <div class="rounded-lg border border-border bg-surface p-4">
+      <h3 class="m-0 mb-3 text-sm font-semibold text-foreground">Accent colour</h3>
+      <ColorSchemePicker size="md" />
+    </div>
+
     <!-- Configuration Profiles Section -->
     <div class="rounded-lg border border-border bg-surface p-4">
       <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -107,7 +113,7 @@
       <div class="text-xs leading-relaxed text-foreground-muted">
         <p class="m-0">
           <strong>Profiles</strong> save your applied tweak selections as a portable
-          <code class="bg-muted rounded px-1">.mgx</code> file.
+          <code class="rounded bg-muted px-1">.mgx</code> file.
         </p>
         <ul class="m-0 mt-1.5 list-inside list-disc space-y-0.5 pl-0">
           <li>Share your setup with others</li>

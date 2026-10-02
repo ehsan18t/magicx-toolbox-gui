@@ -6,30 +6,22 @@
   export interface SegmentOption {
     value: number;
     label: string;
-    /** Optional icon to show (Iconify format, e.g., 'mdi:check') */
+    /** Iconify name, e.g. 'mdi:check' */
     icon?: string;
-    /** Segment is shown but cannot be selected (e.g. System Default with no snapshot). */
     disabled?: boolean;
   }
 
   interface Props {
-    /** Currently selected value */
     value: number;
-    /** Available options */
     options: SegmentOption[];
-    /** Show pending state styling */
     pending?: boolean;
-    /** Show loading spinner on selected segment */
     loading?: boolean;
-    /** Disable all interactions */
     disabled?: boolean;
-    /** Show icons only (hide labels) */
     iconOnly?: boolean;
-    /** Size variant */
+    /** Segments share the full available width. */
+    stretch?: boolean;
     size?: "sm" | "md";
-    /** Additional CSS classes */
     class?: string;
-    /** Change handler */
     onchange?: (value: number) => void;
   }
 
@@ -40,30 +32,19 @@
     loading = false,
     disabled = false,
     iconOnly = false,
+    stretch = false,
     size = "sm",
     class: className = "",
     onchange,
   }: Props = $props();
 
-  // Size-specific classes
   const sizeClasses = {
-    sm: {
-      track: "p-0.5 gap-0.5",
-      segment: "px-2.5 py-1 text-xs",
-      segmentIconOnly: "px-2 py-1",
-      icon: 16,
-    },
-    md: {
-      track: "p-1 gap-1",
-      segment: "px-3.5 py-1.5 text-sm",
-      segmentIconOnly: "px-2.5 py-1.5",
-      icon: 18,
-    },
+    sm: { segment: "h-7 px-3 text-[13px]", segmentIconOnly: "h-7 px-2", icon: 14 },
+    md: { segment: "h-8 px-3.5 text-sm", segmentIconOnly: "h-8 px-2.5", icon: 16 },
   };
 
   const currentSize = $derived(sizeClasses[size]);
 
-  // Find index of selected option for keyboard navigation
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
   // With nothing selected the group still needs one tab stop.
   const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
@@ -74,7 +55,6 @@
     onchange?.(optValue);
   }
 
-  /** Next selectable segment in `step` direction, skipping disabled ones. Null if there is none. */
   function nextSelectable(from: number, step: number): number | null {
     for (let i = 1; i <= options.length; i++) {
       const idx = (from + step * i + options.length * options.length) % options.length;
@@ -87,26 +67,14 @@
     if (disabled || loading) return;
 
     let newIndex: number | null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") newIndex = nextSelectable(selectedIndex, 1);
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") newIndex = nextSelectable(selectedIndex, -1);
+    else if (e.key === "Home") newIndex = nextSelectable(-1, 1);
+    else if (e.key === "End") newIndex = nextSelectable(options.length, -1);
+    else return;
 
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-      e.preventDefault();
-      newIndex = nextSelectable(selectedIndex, 1);
-    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-      e.preventDefault();
-      newIndex = nextSelectable(selectedIndex, -1);
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      newIndex = nextSelectable(-1, 1);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      newIndex = nextSelectable(options.length, -1);
-    } else {
-      return;
-    }
-
-    if (newIndex !== null && newIndex !== selectedIndex) {
-      onchange?.(options[newIndex].value);
-    }
+    e.preventDefault();
+    if (newIndex !== null && newIndex !== selectedIndex) onchange?.(options[newIndex].value);
   }
 </script>
 
@@ -114,10 +82,10 @@
   role="radiogroup"
   tabindex="-1"
   class={cn(
-    "inline-flex items-center rounded-full  transition-colors duration-200",
-    pending ? "bg-warning/15" : "bg-accent-foreground/15 shadow-inner",
-    disabled && "opacity-60",
-    currentSize.track,
+    "items-center gap-0.5 rounded-md border p-0.5 transition-colors duration-150",
+    stretch ? "flex w-full" : "inline-flex max-w-full",
+    pending ? "border-warning/50 bg-warning/10" : "border-border bg-secondary",
+    disabled && "opacity-55",
     className,
   )}
   onkeydown={handleKeydown}
@@ -128,34 +96,34 @@
       type="button"
       role="radio"
       aria-checked={isSelected}
+      aria-label={iconOnly ? opt.label : undefined}
       tabindex={i === tabStopIndex ? 0 : -1}
       disabled={disabled || loading || opt.disabled}
       class={cn(
-        "relative inline-flex items-center justify-center gap-1.5 font-medium transition-all duration-150",
-        "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
-        "disabled:cursor-not-allowed",
-        currentSize.segment,
-        iconOnly && currentSize.segmentIconOnly,
+        "relative inline-flex min-w-0 items-center justify-center gap-1.5 rounded font-medium whitespace-nowrap",
+        "outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
+        stretch && "flex-1",
+        iconOnly ? currentSize.segmentIconOnly : currentSize.segment,
         isSelected
           ? pending
-            ? "text-warning-foreground scale-[1.02] bg-warning shadow-md"
-            : "scale-[1.02] bg-accent text-accent-foreground shadow-md"
+            ? "bg-warning text-warning-foreground shadow-sm"
+            : "bg-accent text-accent-foreground shadow-sm"
           : cn(
               "text-foreground-muted",
               opt.disabled && "opacity-40",
-              !disabled && !loading && !opt.disabled && "cursor-pointer hover:bg-white/5 hover:text-foreground",
+              !disabled && !loading && !opt.disabled && "cursor-pointer hover:bg-muted hover:text-foreground",
             ),
       )}
       onclick={() => handleClick(opt.value)}
       use:tooltip={opt.label}
     >
       {#if loading && isSelected}
-        <Icon icon="mdi:loading" width={currentSize.icon} class="animate-spin" />
+        <Icon icon="mdi:loading" width={currentSize.icon} class="shrink-0 animate-spin" />
       {:else if opt.icon}
-        <Icon icon={opt.icon} width={currentSize.icon} />
+        <Icon icon={opt.icon} width={currentSize.icon} class="shrink-0" />
       {/if}
       {#if !iconOnly}
-        <span class="select-none">{opt.label}</span>
+        <span class="truncate">{opt.label}</span>
       {/if}
     </button>
   {/each}

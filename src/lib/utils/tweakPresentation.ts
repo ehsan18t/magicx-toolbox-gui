@@ -1,0 +1,81 @@
+import type { Availability, RiskLevel, TweakStatus } from "$lib/types";
+
+export type Tone = "accent" | "success" | "warning" | "error" | "info" | "neutral";
+
+export const TONE_TEXT: Record<Tone, string> = {
+  accent: "text-accent",
+  success: "text-success",
+  warning: "text-warning",
+  error: "text-error",
+  info: "text-info",
+  neutral: "text-foreground-muted",
+};
+
+export const TONE_SOFT: Record<Tone, string> = {
+  accent: "bg-accent/12 text-accent",
+  success: "bg-success/12 text-success",
+  warning: "bg-warning/12 text-warning",
+  error: "bg-error/12 text-error",
+  info: "bg-info/12 text-info",
+  neutral: "bg-muted text-foreground-muted",
+};
+
+export const RISK_TONE: Record<RiskLevel, Tone> = {
+  low: "success",
+  medium: "warning",
+  high: "error",
+  critical: "error",
+};
+
+export interface StateSummary {
+  label: string;
+  tone: Tone;
+  icon: string;
+}
+
+export function stateSummary(status: TweakStatus): StateSummary {
+  switch (status.state) {
+    case "active":
+      return { label: status.activeOption ?? "Active", tone: "accent", icon: "mdi:check-circle" };
+    case "system_default":
+      return { label: "System default", tone: "neutral", icon: "mdi:monitor" };
+    case "unavailable":
+      return { label: "Unavailable", tone: "neutral", icon: "mdi:cancel" };
+    case "unknown":
+      return {
+        label: status.needsElevation ? "Unknown, needs admin" : "Unknown",
+        tone: "warning",
+        icon: "mdi:help-circle-outline",
+      };
+    default:
+      return { label: "Checking", tone: "neutral", icon: "mdi:loading" };
+  }
+}
+
+export function availabilityLabel(availability: Availability): string {
+  switch (availability.state) {
+    case "available":
+      return "";
+    case "sid_mismatch":
+      return "Different account";
+    case "sid_unknown":
+      return "Account unconfirmed";
+    case "elevation_path_unavailable":
+      return "Not available on this PC";
+    default:
+      return "Needs admin";
+  }
+}
+
+export function availabilityTitle(availability: Availability): string {
+  switch (availability.state) {
+    case "sid_mismatch":
+      return "Over-the-shoulder guard";
+    case "sid_unknown":
+      return "Session owner unconfirmed";
+    case "elevation_path_unavailable":
+      return "Not available on this PC";
+    default:
+      return "Administrator required";
+  }
+}

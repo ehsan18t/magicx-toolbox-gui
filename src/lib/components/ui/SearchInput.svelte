@@ -23,6 +23,7 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && value) {
+      e.preventDefault();
       handleClear();
     }
   }
@@ -46,7 +47,7 @@
     <button
       type="button"
       onclick={handleClear}
-      class="hover:bg-muted absolute top-1/2 right-2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground"
+      class="absolute top-1/2 right-2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-colors hover:bg-muted hover:text-foreground"
       aria-label="Clear search"
     >
       <Icon icon="mdi:close" width="16" />

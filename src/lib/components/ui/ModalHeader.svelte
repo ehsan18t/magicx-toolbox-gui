@@ -11,6 +11,6 @@
   let { children, class: className = "", id }: Props = $props();
 </script>
 
-<div {id} class="flex items-start justify-between gap-3 border-b border-border px-5 py-4 {className}">
+<div {id} class="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-3 {className}">
   {@render children()}
 </div>

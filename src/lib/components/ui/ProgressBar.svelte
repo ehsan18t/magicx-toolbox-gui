@@ -35,7 +35,7 @@
 
 <div class="flex w-full items-center gap-3 {className}">
   <div
-    class="bg-muted relative flex-1 overflow-hidden rounded-full {sizeClasses[size]}"
+    class="relative flex-1 overflow-hidden rounded-full bg-muted {sizeClasses[size]}"
     role="progressbar"
     aria-valuenow={Math.round(percentage)}
     aria-valuemin={0}

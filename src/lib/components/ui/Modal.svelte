@@ -118,10 +118,10 @@
   });
 
   const sizeClasses: Record<string, string> = {
-    sm: "w-[min(90vw,360px)]",
-    md: "w-[min(90vw,480px)]",
-    lg: "w-[min(92vw,640px)]",
-    xl: "w-[min(92vw,900px)]",
+    sm: "w-full max-w-[400px]",
+    md: "w-full max-w-[520px]",
+    lg: "w-full max-w-[680px]",
+    xl: "w-full max-w-[920px]",
   };
 
   function handleBackdropClick(e: MouseEvent) {
@@ -200,13 +200,13 @@
 
 {#if isVisible}
   <div
-    class="modal-backdrop fixed inset-0 z-1000 flex items-center justify-center backdrop-blur-sm
-      {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/60'}"
+    class="fixed inset-0 z-1000 flex items-center justify-center p-4
+      {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/40'}"
     role="presentation"
     onclick={handleBackdropClick}
   >
     <div
-      class="modal-content overflow-hidden rounded-xl border border-border bg-card shadow-xl {sizeClasses[
+      class="flex max-h-full flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-dialog {sizeClasses[
         size
       ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'} {className}"
       bind:this={modalEl}

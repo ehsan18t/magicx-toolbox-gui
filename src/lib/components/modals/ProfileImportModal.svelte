@@ -238,7 +238,7 @@
     {/if}
   </ModalHeader>
 
-  <ModalBody scrollable maxHeight="calc(100dvh - 14rem)">
+  <ModalBody>
     {#if step === "select"}
       <!-- Step 1: File Selection -->
       <div class="space-y-4">
@@ -246,7 +246,7 @@
         <button
           type="button"
           class="flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 transition-colors
-            {isDragOver ? 'border-accent bg-accent/10' : 'hover:bg-muted/30 border-border hover:border-accent/50'}"
+            {isDragOver ? 'border-accent bg-accent/10' : 'border-border hover:border-accent/50 hover:bg-muted/30'}"
           onclick={handleBrowse}
           ondragover={handleDragOver}
           ondragleave={handleDragLeave}
@@ -276,7 +276,7 @@
         <div class="flex items-start gap-3 rounded-lg border border-border/50 bg-surface/50 p-3">
           <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
           <p class="m-0 text-xs leading-relaxed text-foreground-muted">
-            Profile files (<code class="bg-muted rounded px-1">.mgx</code>) contain tweak configurations that can be
+            Profile files (<code class="rounded bg-muted px-1">.mgx</code>) contain tweak configurations that can be
             applied to your system. The profile will be validated against your current Windows version and app.
           </p>
         </div>
@@ -350,7 +350,7 @@
 
         <!-- Tweaks to apply -->
         <div class="rounded-lg border border-border">
-          <div class="bg-muted/30 flex items-center justify-between border-b border-border px-3 py-2">
+          <div class="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2">
             <span class="text-sm font-semibold text-foreground">Changes to Apply</span>
             <Badge variant="default">{tweaksToApply.length} tweaks</Badge>
           </div>
@@ -368,7 +368,7 @@
                 {@const isDisabled = skipAlreadyApplied && preview.already_applied}
                 <button
                   type="button"
-                  class="hover:bg-muted/50 focus-visible:bg-muted/50 flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors focus-visible:outline-none {isSkipped
+                  class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none {isSkipped
                     ? 'opacity-50'
                     : ''}"
                   disabled={isDisabled}

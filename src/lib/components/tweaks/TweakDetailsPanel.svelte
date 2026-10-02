@@ -1,5 +1,6 @@
 <script lang="ts">
   import { discardSnapshotEntry, listSnapshotEntries } from "$lib/api/tweaks";
+  import { ConfirmDialog } from "$lib/components/modals";
   import { Icon, MarkdownText } from "$lib/components/shared";
   import {
     FirewallChangeItem,
@@ -8,7 +9,8 @@
     SchedulerChangeItem,
     ServiceChangeItem,
   } from "$lib/components/tweaks/details";
-  import { Badge, IconButton, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
+  import { Badge } from "$lib/components/ui";
+  import { navigationStore } from "$lib/stores/navigation.svelte";
   import { closeTweakDetailsModal, tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import {
@@ -21,54 +23,34 @@
     systemStore,
     tweaksStore,
   } from "$lib/stores/tweaks.svelte";
-  import { errorMessage, isAppExiting } from "$lib/utils/error";
   import type { AttentionItem, EntrySummary, TweakEffectOption } from "$lib/types";
   import { attentionCause, permissionInfoFor, RISK_INFO } from "$lib/types";
-  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { errorMessage, isAppExiting } from "$lib/utils/error";
+  import { availabilityTitle, RISK_TONE, stateSummary, TONE_SOFT, TONE_TEXT } from "$lib/utils/tweakPresentation";
 
-  const isOpen = $derived(tweakDetailsModalStore.isOpen);
+  interface Props {
+    docked: boolean;
+  }
+
+  let { docked }: Props = $props();
 
   const tweak = $derived.by(() => {
-    const state = tweakDetailsModalStore.state;
-    if (!state) return null;
-    return tweaksStore.list.find((t) => t.definition.id === state.tweakId) ?? null;
+    const id = tweakDetailsModalStore.tweakId;
+    return id ? (tweaksStore.list.find((t) => t.definition.id === id) ?? null) : null;
   });
 
   const def = $derived(tweak?.definition ?? null);
   const status = $derived(tweak?.status ?? null);
-
-  const pendingChange = $derived.by(() => {
-    const t = tweak;
-    if (!t) return undefined;
-    return pendingChangesStore.get(t.definition.id);
-  });
-
+  const pendingChange = $derived(def ? pendingChangesStore.get(def.id) : undefined);
   const riskInfo = $derived(def ? RISK_INFO[def.risk_level] : null);
   const isHighRisk = $derived(def?.risk_level === "high" || def?.risk_level === "critical");
   const isLoading = $derived(def ? loadingStore.isLoading(def.id) : false);
   const permissionInfo = $derived(def ? permissionInfoFor(def.required_level) : null);
+  const summary = $derived(status ? stateSummary(status) : null);
 
-  // Drives the "not active on this Windows" dimming inside RegistryChangeItem for version-scoped effects.
   const currentWindowsVersion = $derived(systemStore.info ? (systemStore.info.windows.is_windows_11 ? 11 : 10) : null);
 
-  const stateLabel = $derived.by(() => {
-    if (!status) return "";
-    switch (status.state) {
-      case "active":
-        return `Active · ${status.activeOption}`;
-      case "system_default":
-        return "System Default";
-      case "unavailable":
-        return "Unavailable";
-      case "unknown":
-        return "Unknown";
-      default:
-        return "Checking…";
-    }
-  });
-
-  // Snapshot entries (the discard affordance) — loaded when the modal opens for a tweak
-  // that has restorable history.
+  let closeButton = $state<HTMLButtonElement | null>(null);
   let entries = $state<EntrySummary[]>([]);
   let entriesLoading = $state(false);
   let busySeq = $state<number | null>(null);
@@ -78,27 +60,47 @@
   let showKeepStateConfirmDialog = $state(false);
   let showRestoreConfirmDialog = $state(false);
 
+  let lastTab = navigationStore.activeTab;
   $effect(() => {
-    const t = tweak;
-    const open = isOpen;
+    const tab = navigationStore.activeTab;
+    if (tab !== lastTab) {
+      lastTab = tab;
+      closeTweakDetailsModal();
+    }
+  });
+
+  let panelEl = $state<HTMLElement | null>(null);
+  let returnFocusTo: HTMLElement | null = null;
+
+  // Overlay mode is a modal dialog: focus moves in, and returns to the opener on close.
+  $effect(() => {
+    if (!def?.id || docked) return;
+    if (!returnFocusTo && document.activeElement instanceof HTMLElement) returnFocusTo = document.activeElement;
+    closeButton?.focus();
+    return () => {
+      if (!tweakDetailsModalStore.tweakId) {
+        returnFocusTo?.focus();
+        returnFocusTo = null;
+      }
+    };
+  });
+
+  // Keyed on the whole tweak, so a restore or keep re-reads the list.
+  $effect(() => {
+    const id = tweak?.definition.id;
     let cancelled = false;
 
-    // Not gated on `has_backup`: an all-invalid history reports no restorable head but still has
-    // entries, and ADR-0002's amendment requires a discard path for exactly those.
-    if (open && t) {
+    if (id) {
       entriesLoading = true;
-      listSnapshotEntries(t.definition.id)
+      listSnapshotEntries(id)
         .then((e) => {
-          if (!cancelled) {
-            entries = e;
-            entriesLoading = false;
-          }
+          if (!cancelled) entries = e;
         })
         .catch(() => {
-          if (!cancelled) {
-            entries = [];
-            entriesLoading = false;
-          }
+          if (!cancelled) entries = [];
+        })
+        .finally(() => {
+          if (!cancelled) entriesLoading = false;
         });
     } else {
       entries = [];
@@ -108,6 +110,32 @@
       cancelled = true;
     };
   });
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (!def || e.defaultPrevented) return;
+    const otherModal = [...document.querySelectorAll('[aria-modal="true"]')].some((el) => el !== panelEl);
+    if (otherModal) return;
+    if (e.key === "Escape") {
+      closeTweakDetailsModal();
+      return;
+    }
+    if (e.key !== "Tab" || docked || !panelEl) return;
+    const focusables = [...panelEl.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], [tabindex='0']")];
+    const first = focusables[0];
+    const last = focusables.at(-1);
+    if (!first || !last) return;
+    const active = document.activeElement;
+    if (!panelEl.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    } else if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   function attentionHint(item: AttentionItem): string {
     if (item.kind === "no_undo") return "(this one cannot be retried)";
@@ -143,8 +171,7 @@
     } finally {
       busySeq = null;
     }
-    // The engine owns `has_backup` and the record, and its status arrives stamped, so an in-flight
-    // sweep can never put the badge back.
+    // The engine owns `has_backup` and its status arrives stamped, so an in-flight sweep cannot restore the badge.
     const read = await refreshTweakStatus(t.definition.id);
     if (!read.ok) {
       toastStore.warning(`The entry was discarded, but the tweak's state could not be re-read: ${read.message}`);
@@ -166,8 +193,7 @@
         entries = [];
         return;
       }
-      // Nothing was released. The loader only runs when the modal opens, so without this the panel
-      // claims there are no entries while they are still on disk.
+      // Nothing was released; re-read so the list does not claim the entries are gone.
       entries = await listSnapshotEntries(t.definition.id);
     } catch (e) {
       toastStore.warning(`The snapshot entries could not be re-read: ${errorMessage(e)}`);
@@ -191,324 +217,314 @@
   }
 </script>
 
-<Modal open={isOpen && !!tweak} onclose={closeTweakDetailsModal} size="lg" labelledBy="tweak-details-title">
-  {#if tweak && def && status}
-    <ModalHeader id="tweak-details-title">
-      <div class="min-w-0">
-        <h2 class="m-0 truncate text-lg font-bold text-foreground">{def.name}</h2>
-        <p class="m-0 mt-1 text-sm text-foreground-muted">{def.description}</p>
-      </div>
-      <IconButton icon="mdi:close" onclick={closeTweakDetailsModal} aria-label="Close" />
-    </ModalHeader>
+<svelte:window onkeydown={handleKeydown} />
 
-    <ModalBody scrollable class="max-h-[calc(100dvh-2.5rem-6rem)]">
-      <!-- Status Overview -->
-      <div class="rounded-xl border border-border bg-surface/50 p-4">
-        <div class="flex flex-wrap items-center gap-2">
-          <!-- Detected state -->
-          <div
-            class="flex items-center gap-2 rounded-lg px-3 py-1.5 {status.is_applied
-              ? 'bg-success/10 text-success'
-              : status.state === 'unknown' || status.state === 'unavailable'
-                ? 'bg-warning/10 text-warning'
-                : 'bg-muted text-foreground-muted'}"
-          >
-            <Icon
-              icon={status.is_applied
-                ? "mdi:check-circle"
-                : status.state === "unknown"
-                  ? "mdi:help-circle-outline"
-                  : status.state === "unavailable"
-                    ? "mdi:cancel"
-                    : "mdi:circle-outline"}
-              width="16"
-            />
-            <span class="text-sm font-medium">{stateLabel}</span>
-          </div>
+{#snippet sectionTitle(icon: string, title: string)}
+  <h3 class="m-0 mb-2.5 flex items-center gap-2 text-[13px] font-semibold text-foreground">
+    <Icon {icon} width="16" class="text-foreground-muted" />
+    {title}
+  </h3>
+{/snippet}
 
-          {#if riskInfo}
-            <div class="bg-muted flex items-center gap-1.5 rounded-lg px-3 py-1.5">
-              <Icon icon="mdi:shield-alert-outline" width="14" class="text-foreground-muted" />
-              <span class="text-sm text-foreground-muted">{riskInfo.name} Risk</span>
-            </div>
-          {/if}
+{#snippet fact(label: string, value: string, tone: string, hint?: string)}
+  <div class="flex items-baseline justify-between gap-4 px-3 py-2">
+    <dt class="shrink-0 text-xs text-foreground-muted">{label}</dt>
+    <dd class="m-0 min-w-0 text-right">
+      <span class="text-[13px] font-medium wrap-break-word {tone}">{value}</span>
+      {#if hint}<span class="block text-xs text-foreground-subtle">{hint}</span>{/if}
+    </dd>
+  </div>
+{/snippet}
 
-          {#if permissionInfo}
-            <div class="bg-muted flex items-center gap-1.5 rounded-lg px-3 py-1.5">
-              <Icon icon={permissionInfo.icon} width="14" class="text-foreground-muted" />
-              <span class="text-sm text-foreground-muted">{permissionInfo.name}</span>
-            </div>
-          {/if}
+{#snippet changeLabel(icon: string, title: string, count: number)}
+  <h4 class="m-0 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-foreground-muted uppercase">
+    <Icon {icon} width="13" />
+    {title}
+    <span class="font-normal opacity-60">{count}</span>
+  </h4>
+{/snippet}
 
-          {#if def.requires_reboot}
-            <div class="flex items-center gap-1.5 rounded-lg bg-info/10 px-3 py-1.5 text-info">
-              <Icon icon="mdi:restart" width="14" />
-              <span class="text-sm">Reboot Required</span>
-            </div>
-          {/if}
-
-          {#if status.has_backup}
-            <div class="flex items-center gap-1.5 rounded-lg bg-accent/10 px-3 py-1.5 text-accent">
-              <Icon icon="mdi:history" width="14" />
-              <span class="text-sm">Snapshot Available</span>
-            </div>
-          {/if}
-
-          {#if pendingChange}
-            <div class="flex items-center gap-1.5 rounded-lg bg-warning/10 px-3 py-1.5 text-warning">
-              <Icon icon="mdi:clock-outline" width="14" />
-              <span class="text-sm">Pending · {pendingChange.optionLabel}</span>
-            </div>
-          {/if}
+{#snippet changeList(o: TweakEffectOption)}
+  {@const changeCount =
+    o.registry_changes.length +
+    o.service_changes.length +
+    o.scheduler_changes.length +
+    o.hosts_changes.length +
+    o.firewall_changes.length +
+    o.commands.length}
+  {#if changeCount > 0}
+    <div class="space-y-3 border-t border-border px-3 py-3">
+      {#if o.registry_changes.length > 0}
+        <div class="space-y-1.5">
+          {@render changeLabel("mdi:database", "Registry", o.registry_changes.length)}
+          {#each o.registry_changes as change, idx (idx)}
+            <RegistryChangeItem {change} {currentWindowsVersion} />
+          {/each}
         </div>
-
-        <!-- Restore action -->
-        {#if status.has_backup}
-          <div class="mt-3 border-t border-border/50 pt-3">
-            <button
-              type="button"
-              class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
-              onclick={handleRestoreClick}
-              disabled={isLoading || def.availability.state !== "available"}
-              aria-label="Restore to original state"
+      {/if}
+      {#if o.service_changes.length > 0}
+        <div class="space-y-1.5">
+          {@render changeLabel("mdi:server", "Services", o.service_changes.length)}
+          {#each o.service_changes as change, idx (idx)}
+            <ServiceChangeItem {change} />
+          {/each}
+        </div>
+      {/if}
+      {#if o.scheduler_changes.length > 0}
+        <div class="space-y-1.5">
+          {@render changeLabel("mdi:calendar", "Scheduled Tasks", o.scheduler_changes.length)}
+          {#each o.scheduler_changes as change, idx (idx)}
+            <SchedulerChangeItem {change} />
+          {/each}
+        </div>
+      {/if}
+      {#if o.hosts_changes.length > 0}
+        <div class="space-y-1.5">
+          {@render changeLabel("mdi:file-document-outline", "Hosts File", o.hosts_changes.length)}
+          {#each o.hosts_changes as change, idx (idx)}
+            <HostsChangeItem {change} />
+          {/each}
+        </div>
+      {/if}
+      {#if o.firewall_changes.length > 0}
+        <div class="space-y-1.5">
+          {@render changeLabel("mdi:shield-outline", "Firewall", o.firewall_changes.length)}
+          {#each o.firewall_changes as change, idx (idx)}
+            <FirewallChangeItem {change} />
+          {/each}
+        </div>
+      {/if}
+      {#if o.commands.length > 0}
+        <div class="space-y-1.5">
+          {@render changeLabel("mdi:console", "Commands", o.commands.length)}
+          {#each o.commands as cmd, idx (idx)}
+            <code
+              class="block rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] break-all whitespace-pre-wrap text-foreground/85 select-text"
+              >{cmd}</code
             >
-              <Icon icon="mdi:history" width="16" />
-              {status.attention?.reason === "restore_failed" ? "Retry restore" : "Restore to original state"}
-            </button>
-          </div>
-        {/if}
-      </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <div class="border-t border-border px-3 py-2.5 text-xs text-foreground-muted italic">
+      No system changes. This is the stock Windows default.
+    </div>
+  {/if}
+{/snippet}
 
-      <!-- Availability notice -->
-      {#if def.availability.state !== "available"}
-        <div class="mt-4 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4">
-          <Icon icon="mdi:shield-lock-outline" width="18" class="mt-0.5 shrink-0 text-warning" />
-          <div class="text-sm">
-            <span class="font-medium text-foreground">
-              {def.availability.state === "sid_mismatch"
-                ? "Over-the-shoulder guard"
-                : def.availability.state === "sid_unknown"
-                  ? "Session owner unconfirmed"
-                  : def.availability.state === "elevation_path_unavailable"
-                    ? "Not available on this PC"
-                    : "Elevation required"}.
-            </span>
-            <span class="text-foreground-muted">{def.availability.reason}</span>
-          </div>
+{#if tweak && def && status && summary}
+  {#if !docked}
+    <button
+      type="button"
+      class="absolute inset-0 z-30 animate-fade-in cursor-default bg-black/30"
+      aria-label="Close details"
+      tabindex="-1"
+      onclick={closeTweakDetailsModal}
+    ></button>
+  {/if}
+
+  <aside
+    class="flex flex-col {docked
+      ? 'relative w-[clamp(360px,34%,460px)] shrink-0 border-l border-border bg-surface'
+      : 'absolute inset-y-0 right-0 z-40 w-full max-w-115 animate-slide-in-right border-l border-border bg-elevated shadow-dialog'}"
+    bind:this={panelEl}
+    role={docked ? "complementary" : "dialog"}
+    aria-modal={docked ? undefined : "true"}
+    aria-labelledby="tweak-details-title"
+  >
+    <header class="flex shrink-0 items-start gap-3 border-b border-border px-5 pt-4 pb-3">
+      <div class="min-w-0 flex-1">
+        <h2 id="tweak-details-title" class="m-0 font-display text-lg leading-snug font-semibold wrap-break-word">
+          {def.name}
+        </h2>
+        <p class="m-0 mt-1 text-[13px] leading-relaxed text-foreground-muted">{def.description}</p>
+      </div>
+      <button
+        bind:this={closeButton}
+        type="button"
+        class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
+        aria-label="Close details"
+        onclick={closeTweakDetailsModal}
+      >
+        <Icon icon="mdi:close" width="18" />
+      </button>
+    </header>
+
+    <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 select-text">
+      <section>
+        <dl class="m-0 divide-y divide-border rounded-lg border border-border bg-card">
+          {@render fact(
+            "Current state",
+            summary.label,
+            TONE_TEXT[summary.tone],
+            status.state === "unavailable" ? (status.unavailableReason ?? undefined) : undefined,
+          )}
+          {#if pendingChange}
+            {@render fact("Pending", `→ ${pendingChange.optionLabel}`, "text-warning")}
+          {/if}
+          {#if riskInfo}
+            {@render fact("Risk", riskInfo.name, TONE_TEXT[RISK_TONE[def.risk_level]], riskInfo.description)}
+          {/if}
+          {@render fact(
+            "Runs as",
+            permissionInfo?.name ?? "Standard user",
+            "text-foreground",
+            permissionInfo?.description,
+          )}
+          {@render fact(
+            "Restart",
+            def.requires_reboot ? "Required after apply or restore" : "Not needed",
+            def.requires_reboot ? "text-info" : "text-foreground",
+          )}
+          {@render fact(
+            "Reversible",
+            def.reversible ? "Yes" : "No",
+            def.reversible ? "text-foreground" : "text-warning",
+          )}
+          {@render fact(
+            "Snapshot",
+            status.has_backup ? "Saved, can restore" : "None",
+            status.has_backup ? "text-accent" : "text-foreground-muted",
+          )}
+        </dl>
+
+        {#if status.has_backup}
+          <button
+            type="button"
+            class="mt-3 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            onclick={handleRestoreClick}
+            disabled={isLoading || def.availability.state !== "available"}
+          >
+            <Icon icon="mdi:history" width="16" />
+            {status.attention?.reason === "restore_failed" ? "Retry restore" : "Restore original state"}
+          </button>
+        {/if}
+      </section>
+
+      {#if def.warning}
+        <div class="flex gap-3 rounded-lg border border-warning/30 bg-warning/8 p-3">
+          <Icon icon="mdi:alert" width="18" class="mt-0.5 shrink-0 text-warning" />
+          <p class="m-0 text-[13px] leading-relaxed text-foreground">{def.warning}</p>
         </div>
       {/if}
 
-      <!-- Unknown detail -->
+      {#if def.availability.state !== "available"}
+        <div class="flex gap-3 rounded-lg border border-warning/30 bg-warning/8 p-3">
+          <Icon icon="mdi:shield-lock-outline" width="18" class="mt-0.5 shrink-0 text-warning" />
+          <p class="m-0 text-[13px] leading-relaxed">
+            <span class="font-semibold">{availabilityTitle(def.availability)}.</span>
+            <span class="text-foreground-muted">{def.availability.reason}</span>
+          </p>
+        </div>
+      {/if}
+
       {#if status.state === "unknown" && status.unknownReasons.length > 0}
-        <div class="mt-4 rounded-xl border border-border p-4">
-          <h3 class="m-0 mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <div class="rounded-lg border border-warning/30 bg-warning/8 p-3">
+          <p class="m-0 mb-1.5 flex items-center gap-2 text-[13px] font-semibold">
             <Icon icon="mdi:help-circle-outline" width="16" class="text-warning" />
             Could not determine state
-          </h3>
-          <ul class="m-0 list-none space-y-1 p-0">
+          </p>
+          <ul class="m-0 list-none space-y-1 p-0 pl-6">
             {#each status.unknownReasons as reason, i (`${reason.effect}-${i}`)}
-              <li class="flex items-center gap-2 text-xs text-foreground-muted">
-                <Icon icon="mdi:circle-small" width="14" />
-                <span class="font-mono text-foreground">{reason.effect}</span>
-                <span>({reason.cause}{reason.needs_elevation ? ", restart as admin to resolve" : ""})</span>
+              <li class="text-xs text-foreground-muted">
+                <span class="font-mono break-all text-foreground">{reason.effect}</span>
+                ({reason.cause}{reason.needs_elevation ? ", restart as admin to resolve" : ""})
               </li>
             {/each}
           </ul>
         </div>
       {/if}
 
-      <!-- Needs Attention detail -->
       {#if status.attention}
-        <div class="mt-4 flex items-start gap-3 rounded-xl border border-error/30 bg-error/5 p-4">
-          <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0 text-error" />
-          <div class="text-sm">
-            <span class="font-medium text-foreground">Needs attention.</span>
-            <span class="text-foreground-muted">
-              {attentionCause(status.attention.reason)}{status.has_backup
-                ? ", so the snapshot was kept."
-                : ". There is no snapshot left to restore."}
+        <div class="rounded-lg border border-error/35 bg-error/8 p-3">
+          <p class="m-0 flex gap-2 text-[13px] leading-relaxed">
+            <Icon icon="mdi:alert-circle" width="18" class="mt-0.5 shrink-0 text-error" />
+            <span>
+              <span class="font-semibold">Needs attention.</span>
+              <span class="text-foreground-muted">
+                {attentionCause(status.attention.reason)}{status.has_backup
+                  ? ", so the snapshot was kept."
+                  : ". There is no snapshot left to restore."}
+              </span>
             </span>
-            {#if status.attention.items.length}
-              <ul class="m-0 mt-2 list-none space-y-1 p-0">
-                {#each status.attention.items as item, i (`${item.effect}-${i}`)}
-                  <li class="flex items-start gap-2 text-xs text-foreground-muted">
-                    <Icon icon="mdi:circle-small" width="14" class="mt-0.5 shrink-0" />
-                    <span>
-                      {#if item.effect}<span class="font-mono text-foreground">{item.effect}</span>:{/if}
-                      {item.message}
-                      {attentionHint(item)}
-                    </span>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-            <!-- Consent stays reachable whenever a record exists, entries left or not (ADR-0002). -->
-            <button
-              type="button"
-              class="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-foreground-muted transition-colors hover:border-error/40 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
-              onclick={() => (showKeepStateConfirmDialog = true)}
-              disabled={keeping || isLoading}
-              aria-label="Keep the current state and release the snapshot"
-            >
-              <Icon icon={keeping ? "mdi:loading" : "mdi:check"} width="16" class={keeping ? "animate-spin" : ""} />
-              Keep current state
-            </button>
-          </div>
+          </p>
+          {#if status.attention.items.length}
+            <ul class="m-0 mt-2 list-none space-y-1 p-0 pl-6.5">
+              {#each status.attention.items as item, i (`${item.effect}-${i}`)}
+                <li class="text-xs text-foreground-muted">
+                  {#if item.effect}<span class="font-mono break-all text-foreground">{item.effect}</span>:{/if}
+                  {item.message}
+                  {attentionHint(item)}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <!-- Consent stays reachable whenever a record exists, entries left or not (ADR-0002). -->
+          <button
+            type="button"
+            class="mt-3 ml-6.5 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-[13px] font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            onclick={() => (showKeepStateConfirmDialog = true)}
+            disabled={keeping || isLoading}
+          >
+            <Icon icon={keeping ? "mdi:loading" : "mdi:check"} width="16" class={keeping ? "animate-spin" : ""} />
+            Keep current state
+          </button>
         </div>
       {/if}
 
-      <!-- Residues / shared disclosures -->
       {#if status.residues.length > 0 || status.heldShared.length > 0}
-        <div class="mt-4 rounded-xl border border-border p-4 text-sm">
+        <div class="space-y-2 rounded-lg border border-border bg-card p-3 text-[13px] text-foreground-muted">
           {#if status.residues.length > 0}
-            <div class="flex items-start gap-2 text-foreground-muted">
+            <p class="m-0 flex gap-2">
               <Icon icon="mdi:information-outline" width="16" class="mt-0.5 shrink-0 text-info" />
               <span>Residual settings remain outside the active option: {status.residues.join(", ")}</span>
-            </div>
+            </p>
           {/if}
           {#if status.heldShared.length > 0}
-            <div class="mt-2 flex items-start gap-2 text-foreground-muted">
-              <Icon icon="mdi:link-variant" width="16" class="mt-0.5 shrink-0 text-foreground-muted" />
+            <p class="m-0 flex gap-2">
+              <Icon icon="mdi:link-variant" width="16" class="mt-0.5 shrink-0" />
               <span>
                 Shared settings held: {status.heldShared.map((h) => `${h.shared} (${h.holders.join(", ")})`).join("; ")}
               </span>
-            </div>
+            </p>
           {/if}
         </div>
       {/if}
 
-      <!-- Details (authored markdown info block) -->
       {#if def.info}
-        <div class="mt-6">
-          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Icon icon="mdi:information-outline" width="16" />
-            Details
-          </h3>
+        <section>
+          {@render sectionTitle("mdi:information-outline", "Details")}
           <MarkdownText content={def.info} />
-        </div>
+        </section>
       {/if}
 
-      <!-- Configuration Options: the exact changes each state writes, for power users -->
-      <div class="mt-6">
-        {#snippet sectionLabel(icon: string, title: string, count: number)}
-          <h4 class="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-foreground-muted uppercase">
-            <Icon {icon} width="13" />
-            {title}
-            <span class="font-normal opacity-60">{count}</span>
-          </h4>
-        {/snippet}
-        {#snippet changeList(o: TweakEffectOption)}
-          {@const changeCount =
-            o.registry_changes.length +
-            o.service_changes.length +
-            o.scheduler_changes.length +
-            o.hosts_changes.length +
-            o.firewall_changes.length +
-            o.commands.length}
-          <!-- The concrete changes this option makes -->
-          {#if changeCount > 0}
-            <div class="space-y-3 border-t border-border/50 px-4 py-3">
-              {#if o.registry_changes.length > 0}
-                <div class="space-y-1.5">
-                  {@render sectionLabel("mdi:database", "Registry", o.registry_changes.length)}
-                  {#each o.registry_changes as change, idx (idx)}
-                    <RegistryChangeItem {change} {currentWindowsVersion} />
-                  {/each}
-                </div>
-              {/if}
-              {#if o.service_changes.length > 0}
-                <div class="space-y-1.5">
-                  {@render sectionLabel("mdi:server", "Services", o.service_changes.length)}
-                  {#each o.service_changes as change, idx (idx)}
-                    <ServiceChangeItem {change} />
-                  {/each}
-                </div>
-              {/if}
-              {#if o.scheduler_changes.length > 0}
-                <div class="space-y-1.5">
-                  {@render sectionLabel("mdi:calendar", "Scheduled Tasks", o.scheduler_changes.length)}
-                  {#each o.scheduler_changes as change, idx (idx)}
-                    <SchedulerChangeItem {change} />
-                  {/each}
-                </div>
-              {/if}
-              {#if o.hosts_changes.length > 0}
-                <div class="space-y-1.5">
-                  {@render sectionLabel("mdi:file-document-outline", "Hosts File", o.hosts_changes.length)}
-                  {#each o.hosts_changes as change, idx (idx)}
-                    <HostsChangeItem {change} />
-                  {/each}
-                </div>
-              {/if}
-              {#if o.firewall_changes.length > 0}
-                <div class="space-y-1.5">
-                  {@render sectionLabel("mdi:shield-outline", "Firewall", o.firewall_changes.length)}
-                  {#each o.firewall_changes as change, idx (idx)}
-                    <FirewallChangeItem {change} />
-                  {/each}
-                </div>
-              {/if}
-              {#if o.commands.length > 0}
-                <div class="space-y-1.5">
-                  {@render sectionLabel("mdi:console", "Commands", o.commands.length)}
-                  {#each o.commands as cmd, idx (idx)}
-                    <div class="overflow-hidden rounded-lg border border-border/60 bg-background px-3 py-2">
-                      <code class="block font-mono text-[10px] break-all whitespace-pre-wrap text-foreground/80"
-                        >{cmd}</code
-                      >
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {:else}
-            <div class="border-t border-border/50 px-4 py-2.5 text-xs text-foreground-muted italic">
-              No system changes. This is the stock Windows default.
-            </div>
-          {/if}
-        {/snippet}
-        <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Icon icon="mdi:tune-variant" width="16" class="text-foreground-muted" />
-          Configuration Options
-        </h3>
-        <div class="space-y-3">
-          <!--
-            The machine's own state, as a peer of the options and rendered by the same snippet, so it
-            can be read against them directly. Present only at System Default: when an option matches,
-            that option is already marked Current and says everything this would.
-          -->
+      <section>
+        {@render sectionTitle("mdi:tune-variant", "Options")}
+        <div class="space-y-2.5">
           {#if status.observed}
             {@const obs = status.observed}
-            <div class="overflow-hidden rounded-xl border border-warning/40">
-              <div class="flex items-center justify-between gap-3 bg-warning/5 px-4 py-3">
-                <div class="flex min-w-0 items-center gap-3">
-                  <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
-                    <Icon icon="mdi:desktop-tower-monitor" width="16" />
-                  </div>
-                  <div class="min-w-0">
-                    <span class="block truncate text-sm font-semibold text-foreground">{obs.changes.label}</span>
-                    <span class="text-xs text-foreground-muted">Matches none of the options below</span>
-                  </div>
+            <div class="overflow-hidden rounded-lg border border-warning/40 bg-card">
+              <div class="flex items-center justify-between gap-3 bg-warning/6 px-3 py-2.5">
+                <div class="min-w-0">
+                  <span class="block text-[13px] font-semibold wrap-break-word">{obs.changes.label}</span>
+                  <span class="text-xs text-foreground-muted">Matches none of the options below</span>
                 </div>
                 <Badge variant="warning" size="sm">Current</Badge>
               </div>
               {@render changeList(obs.changes)}
-              <!-- Where the machine straddles: which option each individual setting agrees with. -->
-              <div class="border-t border-border/50 bg-surface/30 px-4 py-3">
-                <ul class="m-0 list-none space-y-1 p-0">
-                  {#each obs.agreement as a (a.effect)}
-                    <li class="flex flex-wrap items-baseline gap-x-2 text-xs">
-                      <Icon icon="mdi:circle-small" width="14" class="shrink-0 text-foreground-muted" />
-                      <span class="font-mono text-foreground">{a.name}</span>
-                      {#if a.wanted_by.length > 0}
-                        <span class="text-foreground-muted">agrees with {a.wanted_by.join(" and ")}</span>
-                      {:else}
-                        <span class="text-warning">agrees with no option</span>
-                      {/if}
-                    </li>
-                  {/each}
-                </ul>
-              </div>
+              <ul class="m-0 list-none space-y-1 border-t border-border px-3 py-2.5">
+                {#each obs.agreement as a (a.effect)}
+                  <li class="text-xs">
+                    <span class="font-mono break-all text-foreground">{a.name}</span>
+                    {#if a.wanted_by.length > 0}
+                      <span class="text-foreground-muted">agrees with {a.wanted_by.join(" and ")}</span>
+                    {:else}
+                      <span class="text-warning">agrees with no option</span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
             </div>
           {/if}
           {#each def.options as option, i (option.label)}
@@ -516,36 +532,27 @@
             {@const isPending = pendingChange?.optionLabel === option.label}
             {@const unavailable = status.unavailableOptions.find((u) => u.label === option.label)}
             <div
-              class="overflow-hidden rounded-xl border {isCurrent
-                ? 'border-accent/40'
+              class="overflow-hidden rounded-lg border bg-card {isCurrent
+                ? 'border-accent/50'
                 : isPending
-                  ? 'border-warning/40'
+                  ? 'border-warning/50'
                   : 'border-border'}"
             >
-              <!-- Option header -->
-              <div
-                class="flex items-center justify-between gap-3 px-4 py-3 {isCurrent
-                  ? 'bg-accent/5'
-                  : isPending
-                    ? 'bg-warning/5'
-                    : 'bg-surface/40'}"
-              >
-                <div class="flex min-w-0 items-center gap-3">
-                  <div
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold {isCurrent
-                      ? 'bg-accent/15 text-accent'
-                      : 'bg-muted text-foreground-muted'}"
+              <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div class="flex min-w-0 items-center gap-2.5">
+                  <span
+                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs font-bold {isCurrent
+                      ? TONE_SOFT.accent
+                      : TONE_SOFT.neutral}"
                   >
                     {i + 1}
-                  </div>
+                  </span>
                   <div class="min-w-0">
-                    <span class="block truncate text-sm font-semibold text-foreground">{option.label}</span>
-                    {#if unavailable}
-                      <span class="text-xs text-warning">{unavailable.reason}</span>
-                    {/if}
+                    <span class="block text-[13px] font-semibold wrap-break-word">{option.label}</span>
+                    {#if unavailable}<span class="block text-xs text-warning">{unavailable.reason}</span>{/if}
                   </div>
                 </div>
-                <div class="flex shrink-0 items-center gap-2">
+                <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
                   {#if isCurrent}<Badge variant="accent" size="sm">Current</Badge>{/if}
                   {#if isPending}<Badge variant="warning" size="sm">Pending</Badge>{/if}
                   {#if unavailable}<Badge variant="warning" size="sm">Unavailable</Badge>{/if}
@@ -555,39 +562,31 @@
             </div>
           {/each}
         </div>
-      </div>
+      </section>
 
-      <!-- Snapshot entries (discard affordance). An all-invalid history has no restorable head but
-           still has entries, so this cannot gate on `has_backup` (ADR-0002's amendment). -->
+      <!-- Gated on entries, not `has_backup`: an all-invalid history still needs a discard path (ADR-0002). -->
       {#if status.has_backup || entriesLoading || entries.length > 0}
-        <div class="mt-6">
-          <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Icon icon="mdi:history" width="16" class="text-foreground-muted" />
-            Snapshot Entries
-          </h3>
+        <section>
+          {@render sectionTitle("mdi:history", "Snapshot entries")}
           {#if entriesLoading}
-            <div class="flex items-center gap-2 text-sm text-foreground-muted">
+            <div class="flex items-center gap-2 text-[13px] text-foreground-muted">
               <Icon icon="mdi:loading" width="16" class="animate-spin" />
               Loading…
             </div>
           {:else if entries.length === 0}
-            <p class="m-0 text-sm text-foreground-muted italic">No snapshot entries.</p>
+            <p class="m-0 text-[13px] text-foreground-muted italic">No snapshot entries.</p>
           {:else}
-            <div class="space-y-2">
+            <div class="space-y-1.5">
               {#each entries as entry (entry.seq)}
-                <div
-                  class="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
-                >
-                  <div class="min-w-0 text-xs">
-                    <span class="font-medium text-foreground">#{entry.seq}</span>
+                <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2">
+                  <div class="min-w-0 text-xs wrap-break-word">
+                    <span class="font-semibold">#{entry.seq}</span>
                     <span class="text-foreground-muted"> · {entryValidity(entry)}</span>
-                    {#if entry.timestamp}
-                      <span class="text-foreground-muted"> · {entry.timestamp}</span>
-                    {/if}
+                    {#if entry.timestamp}<span class="text-foreground-muted"> · {entry.timestamp}</span>{/if}
                   </div>
                   <button
                     type="button"
-                    class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border bg-transparent px-2 py-1 text-[11px] font-medium text-foreground-muted transition-colors hover:border-error/40 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                    class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-foreground-muted hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
                     onclick={() => {
                       discardSeq = entry.seq;
                       showDiscardConfirmDialog = true;
@@ -606,11 +605,11 @@
               {/each}
             </div>
           {/if}
-        </div>
+        </section>
       {/if}
-    </ModalBody>
-  {/if}
-</Modal>
+    </div>
+  </aside>
+{/if}
 
 <ConfirmDialog
   open={showRestoreConfirmDialog}

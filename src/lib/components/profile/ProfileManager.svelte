@@ -220,8 +220,8 @@
   <div class="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
     {#if isLoading}
       <div class="space-y-3">
-        <div class="animate-pulse bg-muted/50 h-24 w-full rounded-lg"></div>
-        <div class="animate-pulse bg-muted/50 h-24 w-full rounded-lg"></div>
+        <div class="h-24 w-full animate-pulse rounded-lg bg-muted/50"></div>
+        <div class="h-24 w-full animate-pulse rounded-lg bg-muted/50"></div>
       </div>
     {:else if profiles.length === 0}
       <EmptyState
@@ -288,7 +288,7 @@
     <div
       class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm transition-all"
     >
-      <div class="animate-bounce flex h-32 w-32 items-center justify-center rounded-3xl bg-accent/20">
+      <div class="flex h-32 w-32 animate-bounce items-center justify-center rounded-3xl bg-accent/20">
         <Icon icon="mdi:file-import" width="64" class="text-accent" />
       </div>
       <h2 class="mt-8 text-2xl font-bold tracking-tight text-foreground">Drop to Import Profile</h2>

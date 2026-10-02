@@ -1,6 +1,5 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { ColorSchemePicker } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { sidebarStore } from "$lib/stores/layout.svelte";
@@ -8,302 +7,176 @@
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { categoriesStore, getCategoryStats, tweaksStore } from "$lib/stores/tweaks.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
-  import { slide } from "svelte/transition";
 
-  // Derived values from stores
-  const fixedTabs = $derived(navigationStore.fixedTabs);
-  const categoryTabs = $derived(navigationStore.categoryTabs);
+  const isOpen = $derived(sidebarStore.isOpen);
   const activeTab = $derived(navigationStore.activeTab);
-  const stats = $derived(tweaksStore.stats);
   const categoryStats = $derived(getCategoryStats());
-  const isUpdateAvailable = $derived(updateStore.isAvailable);
-  const isCategoriesLoading = $derived(categoriesStore.isLoading);
-
-  // Count tweaks with snapshots for badge
   const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.has_backup).length);
 
-  // Count favorites for badge
-  const favoritesCount = $derived(favoritesStore.count);
-
-  // State for collapsible widgets section
-  const isWidgetsOpen = $derived(sidebarStore.isWidgetsOpen);
-
-  function handleNavClick(tab: TabDefinition) {
+  function go(tab: TabDefinition) {
     navigationStore.navigateToTab(tab.id);
+    sidebarStore.closeOverlay();
   }
 
-  function togglePin() {
-    sidebarStore.togglePinned();
+  function fixedCount(id: string): number {
+    if (id === "favorites") return favoritesStore.count;
+    if (id === "snapshots") return snapshotCount;
+    return 0;
   }
 
-  function handleMouseEnter() {
-    if (!sidebarStore.isPinned) {
-      sidebarStore.setExpanded(true);
-    }
-  }
-
-  function handleMouseLeave() {
-    if (!sidebarStore.isPinned) {
-      sidebarStore.setExpanded(false);
-    }
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape" || !sidebarStore.isOverlay) return;
+    e.preventDefault();
+    sidebarStore.closeOverlay();
   }
 </script>
 
-<aside
-  class="relative z-100 flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-250 ease-out {sidebarStore.isOpen
-    ? 'w-60'
-    : 'w-16'}"
-  onmouseenter={handleMouseEnter}
-  onmouseleave={handleMouseLeave}
->
-  <!-- Navigation -->
-  <nav class="nav-scrollbar flex flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-2 pt-3">
-    <!-- Fixed Tabs (Overview, Search, Favorites, Snapshots) -->
-    {#each fixedTabs as tab (tab.id)}
-      {@const isActive = activeTab === tab.id}
-      {@const isSnapshots = tab.id === "snapshots"}
-      {@const isFavorites = tab.id === "favorites"}
-      {@const badgeCount = isSnapshots ? snapshotCount : isFavorites ? favoritesCount : 0}
-      {@const badgeColor = isFavorites ? "bg-warning" : "bg-accent"}
-      {@const badgeTextColor = isFavorites ? "text-warning" : "text-accent"}
-      {@const badgeBgColor = isFavorites ? "bg-warning/15" : "bg-accent/15"}
-      <button
-        class="group relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 transition-all duration-150 {isActive
-          ? 'bg-accent/15'
-          : 'hover:bg-muted'}"
-        onclick={() => handleNavClick(tab)}
-        use:tooltip={!sidebarStore.isOpen ? (badgeCount > 0 ? `${tab.name} (${badgeCount})` : tab.name) : null}
-      >
-        <div
-          class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
-            ? isFavorites
-              ? 'text-warning'
-              : 'text-accent'
-            : 'text-foreground-muted group-hover:text-accent'}"
-        >
-          <Icon icon={tab.icon || "mdi:folder"} width="22" />
-          {#if badgeCount > 0 && !sidebarStore.isOpen}
-            <span
-              class="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-surface px-0.5 text-[9px] font-bold text-white {badgeColor}"
-            >
-              {badgeCount > 99 ? "99+" : badgeCount}
-            </span>
-          {/if}
-        </div>
-        <span
-          class="flex-1 text-left text-sm font-medium whitespace-nowrap transition-all duration-200 {isActive
-            ? isFavorites
-              ? 'text-warning'
-              : 'text-accent'
-            : 'text-foreground'} {sidebarStore.isOpen ? 'translate-x-0 opacity-100' : '-translate-x-2.5 opacity-0'}"
-        >
-          {tab.name}
-        </span>
-        {#if badgeCount > 0}
-          <span
-            class="rounded-full px-2 py-0.5 text-xs font-semibold transition-all duration-200 {badgeBgColor} {badgeTextColor} {sidebarStore.isOpen
-              ? 'translate-x-0 opacity-100'
-              : '-translate-x-2.5 opacity-0'}"
-          >
-            {badgeCount}
-          </span>
-        {/if}
-        {#if isActive}
-          <div
-            class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm {isFavorites
-              ? 'bg-warning'
-              : 'bg-accent'}"
-          ></div>
-        {/if}
-      </button>
-    {/each}
+<svelte:window onkeydown={handleKeydown} />
 
-    <!-- Divider -->
-    <div class="border-b border-border"></div>
-
-    <!-- Categories Header -->
-    {#if sidebarStore.isOpen}
-      <div class="px-3 py-2">
-        <span class="text-xs font-semibold tracking-wider text-foreground-muted uppercase">Categories</span>
-      </div>
-    {:else}
-      <div class="flex justify-center py-2">
-        <div class="h-1 w-1 rounded-full bg-foreground-muted"></div>
-      </div>
+{#snippet navItem(
+  label: string,
+  icon: string,
+  active: boolean,
+  onclick: () => void,
+  trailing: string,
+  trailingTone: string,
+  dot: string | null,
+)}
+  <button
+    type="button"
+    class="group relative flex h-9 w-full shrink-0 cursor-pointer items-center gap-3 rounded-md px-3 text-left text-sm text-foreground {active
+      ? 'bg-muted'
+      : 'hover:bg-muted'}"
+    aria-current={active ? "page" : undefined}
+    aria-label={isOpen ? undefined : trailing ? `${label} (${trailing})` : label}
+    use:tooltip={isOpen ? null : trailing ? `${label} · ${trailing}` : label}
+    {onclick}
+  >
+    {#if active}
+      <span class="absolute top-1/2 left-0 h-4 w-0.75 -translate-y-1/2 rounded-full bg-accent"></span>
     {/if}
-
-    <!-- Category Tabs -->
-    {#each categoryTabs as tab (tab.id)}
-      {@const tabStats = tab.id !== "overview" ? categoryStats[tab.id] : null}
-      {@const isActive = activeTab === tab.id}
-      <button
-        class="group relative flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 transition-all duration-150 {isActive
-          ? 'bg-accent/15'
-          : 'hover:bg-muted'}"
-        onclick={() => handleNavClick(tab)}
-        use:tooltip={!sidebarStore.isOpen ? tab.name : null}
-      >
-        <div
-          class="relative flex h-6 w-6 shrink-0 items-center justify-center transition-colors duration-150 {isActive
-            ? 'text-accent'
-            : 'text-foreground-muted group-hover:text-accent'}"
-        >
-          <Icon icon={tab.icon || "mdi:folder"} width="22" />
-          {#if tabStats && tabStats.applied > 0 && !sidebarStore.isOpen}
-            <span class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-surface bg-success"></span>
-          {/if}
-        </div>
-        <span
-          class="min-w-0 flex-1 truncate text-left text-xs font-medium transition-all duration-200 {isActive
-            ? 'text-accent'
-            : 'text-foreground'} {sidebarStore.isOpen ? 'translate-x-0 opacity-100' : '-translate-x-2.5 opacity-0'}"
-        >
-          {tab.name}
-        </span>
-        {#if tabStats}
-          <span
-            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold transition-all duration-200 {sidebarStore.isOpen
-              ? 'translate-x-0 opacity-100'
-              : '-translate-x-2.5 opacity-0'} {tabStats.applied === tabStats.total && tabStats.total > 0
-              ? 'bg-success/15 text-success'
-              : 'bg-muted text-foreground-muted'}"
-          >
-            {tabStats.applied}/{tabStats.total}
-          </span>
-        {/if}
-        {#if isActive}
-          <div class="absolute top-1/2 left-0 h-5 w-0.75 -translate-y-1/2 rounded-r-sm bg-accent"></div>
-        {/if}
-      </button>
-    {/each}
-
-    <!-- Skeleton loading for category tabs while loading -->
-    {#if isCategoriesLoading}
-      {#each [0, 1, 2, 3, 4, 5] as i (`nav-skeleton-${i}`)}
-        <div class="flex min-h-11 items-center gap-3 px-3 py-2.5">
-          <div class="animate-pulse bg-muted h-6 w-6 shrink-0 rounded"></div>
-          {#if sidebarStore.isOpen}
-            <div class="animate-pulse bg-muted h-4 flex-1 rounded"></div>
-          {/if}
-        </div>
-      {/each}
-    {/if}
-  </nav>
-
-  <!-- Sidebar Footer -->
-  <div class="flex flex-col gap-3 border-t border-border p-3">
-    {#if sidebarStore.isOpen}
-      {#if isWidgetsOpen}
-        <div transition:slide={{ duration: 200, axis: "y" }}>
-          <div class="flex items-center justify-center gap-4 py-2">
-            <div class="flex flex-col items-center gap-0.5">
-              <span class="text-lg font-bold text-foreground">{stats.applied}</span>
-              <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Applied</span>
-            </div>
-            <div class="h-6 w-px bg-border"></div>
-            <div class="flex flex-col items-center gap-0.5">
-              <span class="text-lg font-bold text-foreground">{stats.total}</span>
-              <span class="text-[10px] font-medium tracking-wide text-foreground-muted uppercase">Total</span>
-            </div>
-          </div>
-
-          <!-- Color Scheme Picker (only visible when expanded) -->
-          <div class="flex items-center justify-center gap-2 py-1">
-            <ColorSchemePicker />
-          </div>
-        </div>
+    <span class="relative flex w-5 shrink-0 justify-center">
+      <Icon {icon} width="18" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
+      {#if dot && !isOpen}
+        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full ring-2 ring-background {dot}"></span>
+      {/if}
+    </span>
+    {#if isOpen}
+      <span class="min-w-0 flex-1 truncate">{label}</span>
+      {#if trailing}
+        <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
       {/if}
     {/if}
+  </button>
+{/snippet}
 
-    <!-- Control buttons: Pin, Update, Settings, About -->
-    <div
-      class="sidebar-controls flex items-center gap-2 transition-all duration-200 {sidebarStore.isOpen
-        ? 'flex-row-reverse justify-center'
-        : 'flex-col justify-center'}"
-    >
-      <!-- Pin toggle button -->
-      <button
-        type="button"
-        aria-label={sidebarStore.isPinned ? "Unpin sidebar" : "Pin sidebar"}
-        aria-pressed={sidebarStore.isPinned}
-        class="{sidebarStore.isPinned ? 'text-accent' : 'text-foreground-muted'}
-        {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
-        onclick={togglePin}
-        use:tooltip={sidebarStore.isPinned ? "Unpin sidebar" : "Pin sidebar"}
-      >
-        <Icon icon={sidebarStore.isPinned ? "mdi:pin" : "mdi:pin-outline"} width="22" />
-      </button>
+{#if sidebarStore.isOverlay}
+  <button
+    type="button"
+    class="fixed inset-x-0 top-12 bottom-0 z-40 cursor-default bg-black/20"
+    aria-label="Close navigation"
+    tabindex="-1"
+    onclick={() => sidebarStore.closeOverlay()}
+  ></button>
+{/if}
 
-      <!-- Widgets toggle button -->
-      <button
-        type="button"
-        aria-label={isWidgetsOpen ? "Hide widgets" : "Show widgets"}
-        aria-pressed={isWidgetsOpen}
-        class="{isWidgetsOpen ? 'text-accent' : 'text-foreground-muted'}
-        {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
-        onclick={() => sidebarStore.toggleWidgets()}
-        use:tooltip={isWidgetsOpen ? "Hide widgets" : "Show widgets"}
-      >
-        <Icon icon="mdi:widgets" width="22" />
-      </button>
+<nav
+  class="relative h-full shrink-0 transition-[width] duration-200 ease-out {sidebarStore.isDockedExpanded
+    ? 'w-64'
+    : 'w-14'}"
+  aria-label="Main"
+>
+  <div
+    class="flex h-full flex-col {sidebarStore.isOverlay
+      ? 'absolute inset-y-0 left-0 z-50 w-72 animate-slide-in-up rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout'
+      : 'w-full'}"
+  >
+    <div class="nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2">
+      {#each navigationStore.fixedTabs as tab (tab.id)}
+        {@const count = fixedCount(tab.id)}
+        {@render navItem(
+          tab.name,
+          tab.icon || "mdi:folder",
+          activeTab === tab.id,
+          () => go(tab),
+          count > 0 ? String(count) : "",
+          "text-foreground-subtle",
+          count > 0 ? (tab.id === "favorites" ? "bg-warning" : "bg-accent") : null,
+        )}
+      {/each}
 
-      <!-- Update button -->
-      <button
-        type="button"
-        aria-label={isUpdateAvailable ? "Update available" : "Updates"}
-        class="relative {isUpdateAvailable ? 'text-success' : 'text-foreground-muted'} {sidebarStore.isOpen
-          ? 'shrink-0'
-          : 'w-full'}"
-        onclick={openUpdateModal}
-        use:tooltip={isUpdateAvailable ? "Update available!" : "Updates"}
-      >
-        <Icon icon="mdi:update" width="22" />
-        {#if isUpdateAvailable}
-          <span class="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success"></span>
-        {/if}
-      </button>
+      <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
+      {#if isOpen}
+        <div class="shrink-0 px-3 pb-1 text-xs font-semibold text-foreground-muted">Categories</div>
+      {/if}
 
-      <!-- Settings button -->
-      <button
-        type="button"
-        aria-label="Settings"
-        class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
-        onclick={openSettingsModal}
-        use:tooltip={"Settings"}
-      >
-        <Icon icon="mdi:settings-outline" width="22" />
-      </button>
+      {#each navigationStore.categoryTabs as tab (tab.id)}
+        {@const s = categoryStats[tab.id]}
+        {@const complete = !!s && s.total > 0 && s.applied === s.total}
+        {@render navItem(
+          tab.name,
+          tab.icon || "mdi:folder",
+          activeTab === tab.id,
+          () => go(tab),
+          s ? `${s.applied}/${s.total}` : "",
+          complete ? "text-success" : "text-foreground-subtle",
+          s && s.applied > 0 ? "bg-success" : null,
+        )}
+      {/each}
 
-      <!-- About button -->
-      <button
-        type="button"
-        aria-label="About"
-        class="text-foreground-muted {sidebarStore.isOpen ? 'shrink-0' : 'w-full'}"
-        onclick={openAboutModal}
-        use:tooltip={"About"}
-      >
-        <Icon icon="mdi:information-outline" width="22" />
-      </button>
+      {#if categoriesStore.isLoading}
+        {#each [0, 1, 2, 3, 4, 5] as i (i)}
+          <div class="flex h-9 shrink-0 items-center gap-3 px-3">
+            <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>
+            {#if isOpen}<div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>{/if}
+          </div>
+        {/each}
+      {/if}
+    </div>
+
+    <div class="flex shrink-0 flex-col gap-0.5 border-t border-border px-1.5 py-1.5">
+      {@render navItem(
+        updateStore.isAvailable ? "Update available" : "Updates",
+        "mdi:update",
+        false,
+        () => {
+          sidebarStore.closeOverlay();
+          openUpdateModal();
+        },
+        "",
+        "",
+        updateStore.isAvailable ? "bg-success" : null,
+      )}
+      {@render navItem(
+        "Settings",
+        "mdi:cog-outline",
+        false,
+        () => {
+          sidebarStore.closeOverlay();
+          openSettingsModal();
+        },
+        "",
+        "",
+        null,
+      )}
+      {@render navItem(
+        "About",
+        "mdi:information-outline",
+        false,
+        () => {
+          sidebarStore.closeOverlay();
+          openAboutModal();
+        },
+        "",
+        "",
+        null,
+      )}
     </div>
   </div>
-</aside>
+</nav>
 
-<style lang="postcss">
-  @reference "@/app.css";
-
-  .sidebar-controls {
-    & > button {
-      @apply flex cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-2 transition-all duration-150 hover:bg-accent/10 hover:text-accent;
-    }
-  }
-
-  /* Hide scrollbar but keep scrolling */
-  .nav-scrollbar {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
-
-    &::-webkit-scrollbar {
-      display: none; /* Chrome/Safari/Opera */
-    }
+<style>
+  .nav-scroll {
+    scrollbar-width: none;
   }
 </style>

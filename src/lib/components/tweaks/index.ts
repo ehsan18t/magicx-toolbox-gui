@@ -1,5 +1,5 @@
 export { default as AppCard } from "./AppCard.svelte";
-export { default as TweakCard } from "./TweakCard.svelte";
+export { default as TweakDetailsPanel } from "./TweakDetailsPanel.svelte";
+export { default as TweakRow } from "./TweakRow.svelte";
 
-// Re-export details components
 export * from "./details";

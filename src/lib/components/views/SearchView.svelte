@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { ConfirmDialog } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
-  import { AppCard, TweakCard } from "$lib/components/tweaks";
+  import { AppCard, TweakRow } from "$lib/components/tweaks";
   import { ActionButton, EmptyState, HighlightedText } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
@@ -231,7 +231,7 @@
       class="flex max-w-full min-w-60 flex-1 items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-3 transition-all duration-200 focus-within:border-accent focus-within:bg-card"
     >
       {#if isSearching}
-        <Icon icon="mdi:loading" width="20" class="animate-spin shrink-0 text-accent" />
+        <Icon icon="mdi:loading" width="20" class="shrink-0 animate-spin text-accent" />
       {:else}
         <Icon icon="mdi:magnify" width="20" class="shrink-0 text-foreground-muted" />
       {/if}
@@ -246,7 +246,7 @@
       {#if searchInput}
         <button
           type="button"
-          class="hover:bg-muted flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:text-foreground"
+          class="flex cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1 text-foreground-muted transition-all duration-150 hover:bg-muted hover:text-foreground"
           onclick={handleClear}
           aria-label="Clear search"
         >
@@ -337,14 +337,14 @@
           {@const searchResult = result.searchResult}
           <div class="search-result-card flex flex-col">
             {#if result.kind === "tweak"}
-              <TweakCard tweak={result.tweak}>
+              <TweakRow tweak={result.tweak}>
                 {#snippet titleSlot()}
                   {@render highlightedName(result.tweak.definition.name, searchResult)}
                 {/snippet}
                 {#snippet descriptionSlot()}
                   {@render highlightedDescription(result.tweak.definition.description, searchResult)}
                 {/snippet}
-              </TweakCard>
+              </TweakRow>
             {:else}
               <AppCard app={result.app}>
                 {#snippet titleSlot()}

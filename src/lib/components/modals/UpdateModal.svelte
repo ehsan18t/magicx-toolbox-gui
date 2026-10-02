@@ -134,7 +134,7 @@
         </div>
 
         {#if updateInfo.releaseNotes}
-          <div class="bg-muted/50 mb-4 max-h-32 overflow-y-auto rounded-lg p-3">
+          <div class="mb-4 max-h-32 overflow-y-auto rounded-lg bg-muted/50 p-3">
             <h4 class="m-0 mb-2 text-xs font-semibold tracking-wide text-foreground-muted uppercase">Release Notes</h4>
             <p class="m-0 text-sm whitespace-pre-wrap text-foreground">
               {updateInfo.releaseNotes}
@@ -159,7 +159,7 @@
           {#if updateInfo.downloadUrl}
             <ExternalLink
               href={updateInfo.downloadUrl}
-              class="bg-muted hover:bg-muted/80 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors"
+              class="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/80"
               title="Download manually"
             >
               <Icon icon="mdi:open-in-new" width="16" />
@@ -180,7 +180,7 @@
         </div>
       {:else}
         <div class="flex items-center gap-3">
-          <div class="bg-muted flex h-10 w-10 items-center justify-center rounded-full">
+          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
             <Icon icon="mdi:help-circle" width="24" class="text-foreground-muted" />
           </div>
           <div>

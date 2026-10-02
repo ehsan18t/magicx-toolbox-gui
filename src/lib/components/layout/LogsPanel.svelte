@@ -3,7 +3,6 @@
   import type { LogLevel, LogSource } from "$lib/api/logs";
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput } from "$lib/components/ui";
-  import { sidebarStore } from "$lib/stores/layout.svelte";
   import { formatLogLine, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { systemStore } from "$lib/stores/tweaks.svelte";
@@ -71,6 +70,7 @@
       if (e.key !== "Escape") return;
       // The search box clears itself on the first Escape.
       if (e.target instanceof HTMLInputElement && e.target.value !== "") return;
+      e.preventDefault();
       close();
     };
     node.addEventListener("keydown", onKeydown);
@@ -99,9 +99,9 @@
     aria-label="Logs"
     tabindex="-1"
     {@attach panel}
-    class="fixed right-0 bottom-0 z-50 flex h-72 flex-col border-t border-border bg-background shadow-lg transition-[left] duration-250 ease-out outline-none {sidebarStore.contentLeftOffset}"
+    class="flex h-72 max-h-[45%] min-h-40 shrink-0 flex-col border-t border-border bg-background outline-none"
   >
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-elevated px-3 py-1.5">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">
         <Icon icon="tabler:file-text" width="18" height="18" class="text-accent" />
         <h2 class="m-0 text-sm font-semibold">Logs</h2>
@@ -109,9 +109,11 @@
           <Badge variant="info">Detailed</Badge>
         {/if}
       </div>
-      <p class="m-0 text-xs text-foreground-muted">This session. Earlier sessions: Export or Open folder.</p>
+      <p class="m-0 hidden text-xs text-foreground-muted min-[1100px]:block">
+        This session. Earlier sessions: Export or Open folder.
+      </p>
 
-      <div class="ml-auto flex items-center gap-1.5">
+      <div class="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
         <select bind:value={minLevel} aria-label="Level" class={selectClass}>
           {#each LEVEL_FILTERS as f (f.value)}
             <option value={f.value}>{f.label}</option>
@@ -122,7 +124,7 @@
             <option value={f.value}>{f.label}</option>
           {/each}
         </select>
-        <SearchInput value={query} placeholder="Search logs" class="w-48" onchange={(v) => (query = v)} />
+        <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" onchange={(v) => (query = v)} />
 
         <IconButton
           icon="mdi:broom"

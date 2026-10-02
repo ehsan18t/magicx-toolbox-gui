@@ -31,7 +31,7 @@
 
 <div class="flex flex-col items-center justify-center gap-3 px-6 py-15 text-center text-foreground-muted">
   {#if showIconCircle}
-    <div class="bg-muted/50 flex h-20 w-20 items-center justify-center rounded-full">
+    <div class="flex h-20 w-20 items-center justify-center rounded-full bg-muted/50">
       <Icon {icon} width="48" class="text-foreground-muted/50" />
     </div>
   {:else}

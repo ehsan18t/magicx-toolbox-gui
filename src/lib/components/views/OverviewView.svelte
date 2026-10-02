@@ -127,12 +127,12 @@
           {#each [0, 1, 2, 3] as i (`system-skeleton-${i}`)}
             <div class="flex flex-col gap-1.5 {i === 0 ? 'md:pr-4' : i === 3 ? 'md:pl-4' : 'md:px-4'}">
               <span class="flex items-center gap-2">
-                <div class="animate-pulse h-3.5 w-3.5 rounded bg-surface/80"></div>
-                <div class="animate-pulse h-3 w-24 rounded bg-surface/80"></div>
+                <div class="h-3.5 w-3.5 animate-pulse rounded bg-surface/80"></div>
+                <div class="h-3 w-24 animate-pulse rounded bg-surface/80"></div>
               </span>
               <div class="flex flex-col gap-1">
-                <div class="animate-pulse h-5 w-32 rounded bg-surface/60"></div>
-                <div class="animate-pulse h-3 w-20 rounded bg-surface/40"></div>
+                <div class="h-5 w-32 animate-pulse rounded bg-surface/60"></div>
+                <div class="h-3 w-20 animate-pulse rounded bg-surface/40"></div>
               </div>
             </div>
           {/each}
@@ -232,7 +232,7 @@
           type="button"
           onclick={handleRefreshHardware}
           disabled={systemInfoLoading || systemInfoRefreshing}
-          class="hover:bg-muted flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted"
+          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted"
           use:tooltip={"Refresh hardware info"}
         >
           <Icon icon="mdi:refresh" width={18} class={systemInfoRefreshing ? "animate-spin" : ""} />
@@ -245,14 +245,14 @@
       <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {#each [0, 1, 2, 3, 4, 5] as i (`hardware-skeleton-${i}`)}
           <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div class="animate-pulse h-10 w-10 rounded-lg bg-surface/60"></div>
+            <div class="h-10 w-10 animate-pulse rounded-lg bg-surface/60"></div>
             <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <div class="animate-pulse h-3 w-16 rounded bg-surface/80"></div>
-              <div class="animate-pulse h-4 w-40 rounded bg-surface/60"></div>
+              <div class="h-3 w-16 animate-pulse rounded bg-surface/80"></div>
+              <div class="h-4 w-40 animate-pulse rounded bg-surface/60"></div>
               <div class="flex items-center gap-2">
-                <div class="animate-pulse h-3 w-16 rounded bg-surface/40"></div>
+                <div class="h-3 w-16 animate-pulse rounded bg-surface/40"></div>
                 <div class="h-1 w-1 rounded-full bg-border"></div>
-                <div class="animate-pulse h-3 w-20 rounded bg-surface/40"></div>
+                <div class="h-3 w-20 animate-pulse rounded bg-surface/40"></div>
               </div>
             </div>
           </div>
@@ -288,10 +288,10 @@
                   {#each systemStore.info.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
                     <span class="h-1 w-1 rounded-full bg-border"></span>
                     <span use:tooltip={`${monitor.name} - ${monitor.resolution}`}>
-                      {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>
+                      {monitor.name} <span class="ml-1 text-muted-foreground">{monitor.resolution}</span>
                     </span>
                     {#if monitor.refresh_rate > 0}
-                      <span class="text-muted-foreground bg-muted self-center rounded-md px-1.5 py-0.5 text-xs">
+                      <span class="self-center rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                         {monitor.refresh_rate}Hz
                       </span>
                     {/if}
@@ -388,17 +388,17 @@
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {#each [0, 1, 2, 3, 4, 5] as i (`category-skeleton-${i}`)}
           <div class="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
-            <div class="animate-pulse h-10 w-10 rounded-lg bg-surface/60"></div>
+            <div class="h-10 w-10 animate-pulse rounded-lg bg-surface/60"></div>
             <div class="flex min-w-0 flex-1 flex-col gap-2">
               <div class="flex items-center justify-between">
-                <div class="animate-pulse h-4 w-24 rounded bg-surface/60"></div>
-                <div class="animate-pulse h-3 w-8 rounded bg-surface/40"></div>
+                <div class="h-4 w-24 animate-pulse rounded bg-surface/60"></div>
+                <div class="h-3 w-8 animate-pulse rounded bg-surface/40"></div>
               </div>
               <div class="flex flex-col gap-1">
-                <div class="animate-pulse h-3 w-full rounded bg-surface/40"></div>
-                <div class="animate-pulse h-3 w-3/4 rounded bg-surface/40"></div>
+                <div class="h-3 w-full animate-pulse rounded bg-surface/40"></div>
+                <div class="h-3 w-3/4 animate-pulse rounded bg-surface/40"></div>
               </div>
-              <div class="animate-pulse h-1 w-full rounded-full bg-surface/30"></div>
+              <div class="h-1 w-full animate-pulse rounded-full bg-surface/30"></div>
             </div>
           </div>
         {/each}
@@ -435,7 +435,7 @@
               <p class="m-0 mb-2 line-clamp-2 text-xs leading-relaxed text-foreground-muted">
                 {category.description}
               </p>
-              <div class="bg-muted h-1 overflow-hidden rounded-full">
+              <div class="h-1 overflow-hidden rounded-full bg-muted">
                 <div
                   class="h-full rounded-full bg-accent transition-[width] duration-300"
                   style="width: {progress}%"

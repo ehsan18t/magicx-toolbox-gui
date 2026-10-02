@@ -42,13 +42,13 @@
 
 {#if visible}
   <div
-    class="fixed inset-0 z-1000 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    class="fixed inset-x-0 top-12 bottom-0 z-1000 flex items-center justify-center bg-black/40 p-4"
     role="presentation"
     aria-busy="true"
   >
-    <div class="w-[min(92vw,420px)] rounded-xl border border-border bg-card px-6 py-5">
+    <div class="w-full max-w-sm rounded-xl border border-border bg-elevated px-6 py-5 shadow-dialog">
       <div class="flex items-center gap-3">
-        <span class="animate-spin inline-flex text-accent">
+        <span class="inline-flex animate-spin text-accent">
           <Icon icon="mdi:loading" width="24" class="text-accent" />
         </span>
         <div class="min-w-0">

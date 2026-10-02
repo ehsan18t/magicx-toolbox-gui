@@ -6,7 +6,6 @@
     ProfileExportModal,
     ProfileImportModal,
     SettingsModal,
-    TweakDetailsModal,
     UpdateModal,
   } from "$lib/components/modals";
   import { Icon } from "$lib/components/shared";
@@ -99,38 +98,37 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
-<TitleBar />
-<!-- TitleBar height=h-10 == 2.5rem -->
-<main class="h-[calc(100dvh-2.5rem)] w-full overflow-auto">
-  {#if initError}
-    <div class="flex min-h-full items-center justify-center p-6">
-      <div class="w-[min(92vw,420px)] rounded-xl border border-border bg-card p-6 text-center">
-        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
-          <Icon icon="mdi:alert-circle" width="28" />
+<div class="flex h-dvh flex-col overflow-hidden">
+  <TitleBar />
+  <div class="min-h-0 flex-1">
+    {#if initError}
+      <div class="flex min-h-full items-center justify-center p-6">
+        <div class="w-[min(92vw,420px)] rounded-xl border border-border bg-card p-6 text-center">
+          <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
+            <Icon icon="mdi:alert-circle" width="28" />
+          </div>
+          <h2 class="mt-4 mb-1 text-base font-semibold text-foreground">Failed to Load</h2>
+          <p class="m-0 text-sm text-foreground-muted">{initError}</p>
+          <button
+            type="button"
+            class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+            onclick={() => window.location.reload()}
+          >
+            <Icon icon="mdi:refresh" width="18" />
+            Retry
+          </button>
         </div>
-        <h2 class="mt-4 mb-1 text-base font-semibold text-foreground">Failed to Load</h2>
-        <p class="m-0 text-sm text-foreground-muted">{initError}</p>
-        <button
-          type="button"
-          class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
-          onclick={() => window.location.reload()}
-        >
-          <Icon icon="mdi:refresh" width="18" />
-          Retry
-        </button>
       </div>
-    </div>
-  {:else}
-    {@render children()}
-  {/if}
-</main>
-<LogsPanel />
+    {:else}
+      {@render children()}
+    {/if}
+  </div>
+  <LogsPanel />
+</div>
 
-<!-- Global Modals -->
 <AboutModal />
 <SettingsModal />
 <UpdateModal />
-<TweakDetailsModal />
 <ProfileExportModal />
 <ProfileImportModal />
 

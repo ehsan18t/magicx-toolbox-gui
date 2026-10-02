@@ -2,7 +2,6 @@
   // Pre-import all icons used in the app for build-time bundling
   // MDI Icons
   import BiMotherboard from "~icons/bi/motherboard";
-  import MdiMinimize20Filled from "~icons/fluent/minimize-20-filled";
   import MdiAccount from "~icons/mdi/account";
   import MdiAccountCircle from "~icons/mdi/account-circle";
   import MdiAlert from "~icons/mdi/alert";
@@ -29,9 +28,7 @@
   import MdiCircle from "~icons/mdi/circle";
   import MdiCircleHalfFull from "~icons/mdi/circle-half-full";
   import MdiCircleOutline from "~icons/mdi/circle-outline";
-  import MdiCircleSmall from "~icons/mdi/circle-small";
   import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";
-  import MdiClockOutline from "~icons/mdi/clock-outline";
   import MdiClose from "~icons/mdi/close";
   import MdiCloseCircle from "~icons/mdi/close-circle";
   import MdiCloseCircleOutline from "~icons/mdi/close-circle-outline";
@@ -90,8 +87,6 @@
   import MdiOpenInNew from "~icons/mdi/open-in-new";
   import MdiPackageVariant from "~icons/mdi/package-variant";
   import MdiPalette from "~icons/mdi/palette";
-  import MdiPin from "~icons/mdi/pin";
-  import MdiPinOutline from "~icons/mdi/pin-outline";
   import MdiPlay from "~icons/mdi/play";
   import MdiPlus from "~icons/mdi/plus";
   import MdiPowershell from "~icons/mdi/powershell";
@@ -102,10 +97,8 @@
   import MdiRobotOutline from "~icons/mdi/robot-outline";
   import MdiSecurity from "~icons/mdi/security";
   import MdiServer from "~icons/mdi/server";
-  import MdiSettingsOutline from "~icons/mdi/settings-outline";
   import MdiShieldAccountOutline from "~icons/mdi/shield-account-outline";
   import MdiShieldAlert from "~icons/mdi/shield-alert";
-  import MdiShieldAlertOutline from "~icons/mdi/shield-alert-outline";
   import MdiShieldCheck from "~icons/mdi/shield-check";
   import MdiShieldKey from "~icons/mdi/shield-key";
   import MdiShieldLock from "~icons/mdi/shield-lock";
@@ -126,7 +119,6 @@
   import MdiUpdate from "~icons/mdi/update";
   import MdiViewDashboard from "~icons/mdi/view-dashboard";
   import MdiWeb from "~icons/mdi/web";
-  import MdiWidgets from "~icons/mdi/widgets";
   import MdiWifi from "~icons/mdi/wifi";
   // Effect-detail icons (per-option change breakdown in the tweak details modal)
   import MdiArrowDownBold from "~icons/mdi/arrow-down-bold";
@@ -138,20 +130,22 @@
   import RiRamLine from "~icons/ri/ram-line";
 
   // Tabler Icons
-  import TablerAppWindow from "~icons/tabler/app-window";
-  import TablerCopy from "~icons/tabler/copy";
   import TablerFileText from "~icons/tabler/file-text";
-  import TablerLoader2 from "~icons/tabler/loader-2";
   import TablerMinus from "~icons/tabler/minus";
   import TablerMoon from "~icons/tabler/moon";
-  import TablerShieldCheckFilled from "~icons/tabler/shield-check-filled";
-  import TablerShieldUp from "~icons/tabler/shield-up";
-  import TablerShieldX from "~icons/tabler/shield-x";
   import TablerSun from "~icons/tabler/sun";
-  import TablerX from "~icons/tabler/x";
 
   // Fluent Icons
-  import FluentMaximize20Filled from "~icons/fluent/maximize-20-filled";
+  import FluentNavigation20Regular from "~icons/fluent/navigation-20-regular";
+  import FluentShieldCheckmark16Filled from "~icons/fluent/shield-checkmark-16-filled";
+  import FluentShieldError16Filled from "~icons/fluent/shield-error-16-filled";
+  import FluentShieldKeyhole16Regular from "~icons/fluent/shield-keyhole-16-regular";
+  import FluentDocumentText20Regular from "~icons/fluent/document-text-20-regular";
+  import FluentMinimize20Regular from "~icons/fluent/minimize-20-regular";
+  import FluentSquareMultiple20Regular from "~icons/fluent/square-multiple-20-regular";
+  import FluentMaximize20Regular from "~icons/fluent/maximize-20-regular";
+  import FluentDismiss20Regular from "~icons/fluent/dismiss-20-regular";
+  import MdiShieldHalfFull from "~icons/mdi/shield-half-full";
 
   // Icon Park Twotone Icons
   import IconParkTwotoneNewComputer from "~icons/icon-park-twotone/new-computer";
@@ -186,7 +180,6 @@
     "mdi:robot-outline": MdiRobotOutline,
     "mdi:information-outline": MdiInformationOutline,
     "mdi:database-cog-outline": MdiDatabaseCogOutline,
-    "mdi:settings-outline": MdiSettingsOutline,
     "mdi:key-variant": MdiKeyVariant,
     "mdi:chevron-up": MdiChevronUp,
     "mdi:chevron-down": MdiChevronDown,
@@ -197,7 +190,6 @@
     "mdi:account": MdiAccount,
     "mdi:shield-check": MdiShieldCheck,
     "mdi:shield-alert": MdiShieldAlert,
-    "mdi:shield-alert-outline": MdiShieldAlertOutline,
     "mdi:text-search": MdiTextSearch,
     "mdi:tune-variant": MdiTuneVariant,
     "mdi:cpu-64-bit": MdiCpu64Bit,
@@ -225,8 +217,6 @@
     "mdi:close-circle-outline": MdiCloseCircleOutline,
     "mdi:restore": MdiRestore,
     "mdi:lightbulb-outline": MdiLightbulbOutline,
-    "mdi:pin": MdiPin,
-    "mdi:pin-outline": MdiPinOutline,
     "mdi:eye-off-outline": MdiEyeOffOutline,
     "mdi:help-circle": MdiHelpCircle,
     "mdi:chart-bar": MdiChartBar,
@@ -263,8 +253,6 @@
     "mdi:close-circle": MdiCloseCircle,
     "mdi:history": MdiHistory,
     "mdi:cancel": MdiCancel,
-    "mdi:circle-small": MdiCircleSmall,
-    "mdi:clock-outline": MdiClockOutline,
     "mdi:delete-outline": MdiDeleteOutline,
     "mdi:help-circle-outline": MdiHelpCircleOutline,
     "mdi:link-variant": MdiLinkVariant,
@@ -280,24 +268,24 @@
     "mdi:star": MdiStar,
     "mdi:star-off": MdiStarOff,
     "mdi:star-outline": MdiStarOutline,
-    "mdi:widgets": MdiWidgets,
 
     // Tabler icons
-    "tabler:x": TablerX,
-    "tabler:app-window": TablerAppWindow,
-    "tabler:shield-check-filled": TablerShieldCheckFilled,
-    "tabler:shield-x": TablerShieldX,
-    "tabler:shield-up": TablerShieldUp,
-    "tabler:loader-2": TablerLoader2,
     "tabler:moon": TablerMoon,
     "tabler:sun": TablerSun,
-    "tabler:copy": TablerCopy,
     "tabler:file-text": TablerFileText,
     "tabler:minus": TablerMinus,
 
     // Fluent icons
-    "fluent:minimize-20-filled": MdiMinimize20Filled,
-    "fluent:maximize-20-filled": FluentMaximize20Filled,
+    "fluent:navigation-20-regular": FluentNavigation20Regular,
+    "fluent:shield-checkmark-16-filled": FluentShieldCheckmark16Filled,
+    "fluent:shield-error-16-filled": FluentShieldError16Filled,
+    "fluent:shield-keyhole-16-regular": FluentShieldKeyhole16Regular,
+    "fluent:document-text-20-regular": FluentDocumentText20Regular,
+    "fluent:minimize-20-regular": FluentMinimize20Regular,
+    "fluent:square-multiple-20-regular": FluentSquareMultiple20Regular,
+    "fluent:maximize-20-regular": FluentMaximize20Regular,
+    "fluent:dismiss-20-regular": FluentDismiss20Regular,
+    "mdi:shield-half-full": MdiShieldHalfFull,
 
     // Bi icons
     "bi:motherboard": BiMotherboard,

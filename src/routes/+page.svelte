@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { RebootBanner } from "$lib/components/feedback";
+  import { PendingBar, RebootBanner } from "$lib/components/feedback";
   import { Sidebar } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
+  import { TweakDetailsPanel } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
@@ -11,20 +12,20 @@
     SearchView,
     SnapshotsView,
   } from "$lib/components/views";
-  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
+  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { loadRemainingData } from "$lib/stores/tweaks.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { onMount } from "svelte";
 
+  const PANEL_DOCK_MIN_WIDTH = 1040;
+
   let error = $state<string | null>(null);
+  let workspaceWidth = $state(0);
 
   onMount(async () => {
     void manualTestsStore.init();
     try {
-      // Categories are always loaded by +layout (it awaits initializeQuick)
-      // No need for defensive checks - if categories failed to load, layout already errored
-      // Simply load remaining data (system info + tweak statuses)
       await loadRemainingData();
     } catch (e) {
       error = errorMessage(e);
@@ -32,158 +33,61 @@
     }
   });
 
-  // Derived values from navigation store
   const activeTab = $derived(navigationStore.activeTab);
-  const allTabs = $derived(navigationStore.allTabs);
-
-  // Get the current tab definition for CategoryTab
   const currentCategoryTab = $derived.by(() => {
-    if (activeTab === "overview" || activeTab === "search" || activeTab === "favorites" || activeTab === "snapshots")
-      return null;
-    return allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
+    if (!navigationStore.isOnCategoryTab) return null;
+    return navigationStore.allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
   });
 </script>
 
-<div class="page-container">
-  {#if error}
-    <div class="error-screen">
-      <div class="error-content">
-        <div class="error-icon-wrapper">
-          <Icon icon="mdi:alert-circle" width="48" />
-        </div>
-        <h2>Failed to Load</h2>
-        <p class="error-message">{error}</p>
-        <button class="retry-button" onclick={() => window.location.reload()}>
-          <Icon icon="mdi:refresh" width="18" />
-          Retry
-        </button>
+{#if error}
+  <div class="flex h-full items-center justify-center p-6">
+    <div class="w-full max-w-sm rounded-xl border border-border bg-card p-6 text-center">
+      <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
+        <Icon icon="mdi:alert-circle" width="28" />
       </div>
+      <h2 class="mt-4 mb-1 text-base font-semibold">Failed to load</h2>
+      <p class="m-0 text-sm wrap-break-word text-foreground-muted">{error}</p>
+      <button
+        type="button"
+        class="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
+        onclick={() => window.location.reload()}
+      >
+        <Icon icon="mdi:refresh" width="18" />
+        Retry
+      </button>
     </div>
-  {:else}
-    <!-- Always show app shell - components handle their own loading states -->
-    <div class="app-layout">
-      <Sidebar />
-      <main class="main-content">
-        <div class="">
-          <RebootBanner />
+  </div>
+{:else}
+  <div class="flex h-full min-h-0">
+    <Sidebar />
+    <main class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-lg border-t border-l border-border bg-surface">
+      <RebootBanner />
+      <div class="relative flex min-h-0 flex-1" bind:clientWidth={workspaceWidth}>
+        <div class="relative flex min-w-0 flex-1 flex-col">
+          {#key activeTab}
+            <div class="min-h-0 flex-1 animate-fade-in">
+              {#if activeTab === "overview"}
+                <OverviewView />
+              {:else if activeTab === "search"}
+                <SearchView />
+              {:else if activeTab === "favorites"}
+                <FavoritesView />
+              {:else if activeTab === "snapshots"}
+                <SnapshotsView />
+              {:else if activeTab === "profiles"}
+                <ProfileManager />
+              {:else if activeTab === "manual-tests"}
+                <ManualTestsView />
+              {:else if currentCategoryTab}
+                <CategoryView tab={currentCategoryTab} />
+              {/if}
+            </div>
+          {/key}
+          <PendingBar />
         </div>
-        <div class="content-area">
-          {#if activeTab === "overview"}
-            <OverviewView />
-          {:else if activeTab === "search"}
-            <SearchView />
-          {:else if activeTab === "favorites"}
-            <FavoritesView />
-          {:else if activeTab === "snapshots"}
-            <SnapshotsView />
-          {:else if activeTab === "profiles"}
-            <ProfileManager />
-          {:else if activeTab === "manual-tests"}
-            <ManualTestsView />
-          {:else if currentCategoryTab}
-            <CategoryView tab={currentCategoryTab} />
-          {/if}
-        </div>
-      </main>
-    </div>
-  {/if}
-</div>
-
-<style>
-  .page-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    background: hsl(var(--background));
-  }
-
-  /* Error Screen */
-  .error-screen {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-  }
-
-  .error-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    text-align: center;
-    max-width: 360px;
-    padding: 32px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 16px;
-  }
-
-  .error-icon-wrapper {
-    width: 72px;
-    height: 72px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: hsl(0 84% 60% / 0.1);
-    border-radius: 50%;
-    color: hsl(0 84% 60%);
-  }
-
-  .error-content h2 {
-    margin: 8px 0 0;
-    font-size: 18px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-  }
-
-  .error-message {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.5;
-    color: hsl(var(--muted-foreground));
-  }
-
-  .retry-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 10px;
-    background: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .retry-button:hover {
-    background: hsl(var(--primary) / 0.9);
-    transform: translateY(-1px);
-  }
-
-  /* Main App Layout */
-  .app-layout {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .main-content {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .content-area {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-</style>
+        <TweakDetailsPanel docked={workspaceWidth >= PANEL_DOCK_MIN_WIDTH} />
+      </div>
+    </main>
+  </div>
+{/if}

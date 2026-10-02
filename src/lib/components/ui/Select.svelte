@@ -45,7 +45,7 @@
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let menuEl = $state<HTMLDivElement | null>(null);
   let highlightedIndex = $state(-1);
-  let menuPosition = $state({ top: 0, left: 0, width: 0 });
+  let menuPosition = $state({ top: 0, left: 0, minWidth: 0, maxWidth: 0 });
 
   const selectedOption = $derived(options.find((o) => o.value === value));
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
@@ -58,32 +58,19 @@
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
 
-    // Initial position (downwards)
-    let top = rect.bottom + 4;
-    const left = rect.left;
-    const width = rect.width;
+    const gutter = 8;
+    const maxWidth = window.innerWidth - gutter * 2;
+    menuPosition = { top: rect.bottom + 4, left: rect.left, minWidth: Math.min(rect.width, maxWidth), maxWidth };
 
-    // Wait for the menu to be rendered to measure its height
     await tick();
-
-    if (menuEl) {
-      const menuRect = menuEl.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-
-      // Check if it overflows the bottom
-      if (top + menuRect.height > viewportHeight) {
-        // Check if there is enough space above
-        if (rect.top - menuRect.height - 4 > 0) {
-          top = rect.top - menuRect.height - 4;
-        }
-      }
+    if (!menuEl) return;
+    const menuRect = menuEl.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    if (top + menuRect.height > window.innerHeight - gutter && rect.top - menuRect.height - 4 > gutter) {
+      top = rect.top - menuRect.height - 4;
     }
-
-    menuPosition = {
-      top,
-      left,
-      width,
-    };
+    const left = Math.max(gutter, Math.min(rect.left, window.innerWidth - gutter - menuRect.width));
+    menuPosition = { ...menuPosition, top, left };
   }
 
   async function open() {
@@ -231,12 +218,10 @@
     aria-controls={listboxId}
     aria-activedescendant={highlightedOptionId}
     class={cn(
-      "flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border bg-surface px-3 text-sm transition-all duration-150",
-      "border-border text-foreground",
-      "hover:border-border-hover",
-      "focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none",
-      isOpen && "border-accent ring-2 ring-accent/20",
-      pending && "border-warning/60 bg-warning/5 text-warning",
+      "flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border bg-secondary px-3 text-[13px]",
+      "border-border text-foreground hover:border-border-hover hover:bg-secondary-hover",
+      isOpen && "border-accent",
+      pending && "border-warning/60 bg-warning/10 text-warning",
       loading && "cursor-wait opacity-70",
       disabled && "cursor-not-allowed opacity-60",
     )}
@@ -264,8 +249,8 @@
     id={listboxId}
     role="listbox"
     transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
-    class="fixed z-9999 max-h-60 w-fit space-y-1 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
-    style="top: {menuPosition.top}px; left: {menuPosition.left}px;"
+    class="fixed z-9999 max-h-72 space-y-0.5 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-flyout"
+    style="top: {menuPosition.top}px; left: {menuPosition.left}px; min-width: {menuPosition.minWidth}px; max-width: {menuPosition.maxWidth}px;"
   >
     {#each options as opt, i (opt.value)}
       <button
@@ -279,17 +264,16 @@
         onclick={() => selectOption(opt)}
         onmouseenter={() => (highlightedIndex = i)}
         class={cn(
-          "flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors duration-100",
-          "text-foreground",
-          highlightedIndex === i && "bg-accent/10",
-          opt.value === value && "bg-accent/15 font-medium text-accent",
+          "relative flex w-full cursor-pointer items-center rounded px-3 py-1.5 text-left text-[13px] text-foreground",
+          highlightedIndex === i && "bg-muted",
+          opt.value === value && "bg-muted font-medium",
           opt.disabled && "cursor-not-allowed text-foreground-muted opacity-50",
         )}
       >
-        <span>{opt.label}</span>
         {#if opt.value === value}
-          <Icon icon="mdi:check" class="h-4 w-4 shrink-0 text-accent" />
+          <span class="absolute top-1/2 left-0 h-4 w-0.75 -translate-y-1/2 rounded-full bg-accent"></span>
         {/if}
+        <span class="min-w-0 wrap-break-word">{opt.label}</span>
       </button>
     {/each}
   </div>

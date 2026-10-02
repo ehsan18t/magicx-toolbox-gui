@@ -52,6 +52,10 @@ export const pendingChangesStore = {
     pendingChanges.delete(tweakId);
   },
 
+  clearAll() {
+    pendingChanges.clear();
+  },
+
   /** Clear pending changes for a specific category */
   clearCategory(categoryId: string, tweaks: TweakWithStatus[]) {
     const categoryTweakIds = tweaks.filter((t) => t.definition.category_id === categoryId).map((t) => t.definition.id);

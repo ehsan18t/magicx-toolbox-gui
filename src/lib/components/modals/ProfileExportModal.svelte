@@ -138,7 +138,7 @@
     </div>
     <div class="flex items-center gap-2">
       <!-- Step indicator -->
-      <div class="bg-muted flex items-center gap-1.5 rounded-full px-3 py-1.5">
+      <div class="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5">
         <span
           class="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold {step === 1
             ? 'bg-accent text-white'
@@ -159,14 +159,14 @@
     </div>
   </ModalHeader>
 
-  <ModalBody scrollable maxHeight="calc(100dvh - 14rem)">
+  <ModalBody>
     {#if step === 1}
       <!-- Step 1: Select Tweaks -->
       <div class="space-y-4">
         <!-- Select all toggle -->
         <button
           type="button"
-          class="hover:bg-muted/30 flex w-full items-center justify-between rounded-lg border border-border bg-surface p-3 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+          class="flex w-full items-center justify-between rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
           onclick={() => handleSelectAll(!selectAllApplied)}
           aria-label="Select all applied tweaks"
         >
@@ -190,7 +190,7 @@
               {@const categorySelected = categoryTweaks.filter((t) => selectedTweakIds.has(t.definition.id)).length}
               <div class="rounded-lg border border-border">
                 <!-- Category header -->
-                <div class="bg-muted/30 flex items-center gap-2 border-b border-border px-3 py-2">
+                <div class="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
                   <Icon icon={getCategoryIcon(categoryId)} width="18" class="text-accent" />
                   <span class="flex-1 text-sm font-semibold text-foreground">{getCategoryName(categoryId)}</span>
                   <span class="text-xs text-foreground-muted">{categorySelected}/{categoryTweaks.length}</span>
@@ -203,7 +203,7 @@
                     {@const currentLabel = tweak.status.activeOption ?? "System Default"}
                     <button
                       type="button"
-                      class="hover:bg-muted/50 focus-visible:bg-muted/50 flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors focus-visible:outline-none"
+                      class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
                       onclick={() => toggleTweak(tweak.definition.id)}
                       aria-label="Toggle {tweak.definition.name}"
                     >
@@ -274,7 +274,7 @@
         <div class="flex items-start gap-3 rounded-lg border border-border/50 bg-surface/50 p-3">
           <Icon icon="mdi:information" width="18" class="mt-0.5 shrink-0 text-accent" />
           <p class="m-0 text-xs leading-relaxed text-foreground-muted">
-            Profiles are saved as <code class="bg-muted rounded px-1">.mgx</code> files that can be imported on other machines
+            Profiles are saved as <code class="rounded bg-muted px-1">.mgx</code> files that can be imported on other machines
             or after reinstalling Windows. They only store which tweaks you picked and the settings you chose. The actual
             changes to your system come from the app's built-in tweak definitions.
           </p>

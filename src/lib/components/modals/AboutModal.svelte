@@ -59,7 +59,7 @@
     </div>
   </div>
 
-  <ModalBody class="space-y-4 px-6 py-5">
+  <ModalBody class="space-y-4">
     <p class="m-0 text-center text-sm leading-relaxed text-foreground-muted">
       A powerful Windows system optimization and tweaking application for privacy, performance, and customization.
     </p>
@@ -67,28 +67,28 @@
     <div class="grid grid-cols-2 gap-2">
       <ExternalLink
         href={links.repository}
-        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
+        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
       >
         <Icon icon="mdi:github" width="18" />
         <span>Source</span>
       </ExternalLink>
       <ExternalLink
         href={links.releases}
-        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
+        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
       >
         <Icon icon="mdi:download" width="18" />
         <span>Releases</span>
       </ExternalLink>
       <ExternalLink
         href={links.issues}
-        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
+        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
       >
         <Icon icon="mdi:bug" width="18" />
         <span>Report Bug</span>
       </ExternalLink>
       <ExternalLink
         href={links.license}
-        class="hover:bg-muted flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors"
+        class="flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
       >
         <Icon icon="mdi:license" width="18" />
         <span>MIT License</span>

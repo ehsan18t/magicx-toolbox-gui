@@ -3,7 +3,7 @@
 
 // Theme & UI
 export { COLOR_SCHEMES, colorSchemeStore, type ColorSchemeId } from "./colorScheme.svelte";
-export { isSidebarOpen, sidebarStore, sidebarWidthClass, type SidebarState } from "./layout.svelte";
+export { sidebarStore } from "./layout.svelte";
 export { isGap, logsStore, type LogGap, type LogRow } from "./logs.svelte";
 export { settingsStore } from "./settings.svelte";
 export { themeStore, type Theme } from "./theme.svelte";
