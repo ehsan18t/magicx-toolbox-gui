@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Availability, TweakDefinition, TweakStatus, TweakWithStatus } from "$lib/types";
-import { isComplete, restoreState, tallies } from "./tweakPresentation.ts";
+import { controlShowsState, isComplete, restoreState, tallies } from "./tweakPresentation.ts";
 
 const definition = (availability: Availability = { state: "available" }): TweakDefinition => ({
   id: "t",
@@ -82,4 +82,18 @@ test("isComplete needs every tweak applied and at least one tweak", () => {
   assert.equal(isComplete({ applied: 0, total: 0 }), false);
   assert.equal(isComplete({ applied: 1, total: 2 }), false);
   assert.equal(isComplete({ applied: 2, total: 2 }), true);
+});
+
+test("controlShowsState only when the control highlights the current state", () => {
+  const withOptions = (...labels: string[]): TweakDefinition => ({
+    ...definition(),
+    options: labels.map((label) => ({ label }) as TweakDefinition["options"][number]),
+  });
+  const two = withOptions("Off", "On");
+  assert.equal(controlShowsState(two, status({ state: "active", activeOption: "On" })), true);
+  assert.equal(controlShowsState(two, status({ state: "active", activeOption: "Gone" })), false);
+  assert.equal(controlShowsState(two, status({ state: "system_default" })), false);
+  assert.equal(controlShowsState(withOptions("Off"), status({ state: "system_default" })), true);
+  assert.equal(controlShowsState(two, status({ state: "unknown" })), false);
+  assert.equal(controlShowsState(two, status({ state: "loading" })), false);
 });

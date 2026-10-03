@@ -115,8 +115,8 @@ sequenceDiagram
 | State | Shown as |
 | --- | --- |
 | Checking | "Checking" with a spinner on the row's meta line, nothing selected, until the first status arrives. |
-| Active | The option is selected and named on the meta line; accent stripe on the row's left edge. |
-| System Default | The state line says System default and the control selects nothing, except a one-option switch, whose System default segment is selected. The details window shows the observed values in its This PC now column. |
+| Active | The option is selected in the control, which is the only place it is named while nothing is staged (the meta line repeats it only beside a pending change); accent stripe on the row's left edge. |
+| System Default | The control selects nothing and the meta line says System default, except a one-option switch, whose System default segment is selected and the meta line stays silent. The details window shows the observed values in its This PC now column. |
 | Unknown | "Unknown" in warning colour on the meta line ("Unknown, needs admin" when elevation is the cause), the unreadable effects in its tooltip, nothing selected. |
 | Unavailable | "Unavailable" on the meta line; control disabled, the reason in its tooltip. |
 | Unavailable option | The option is labelled "(unavailable)" and cannot be chosen. |

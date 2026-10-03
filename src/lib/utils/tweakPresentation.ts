@@ -177,6 +177,12 @@ function stateLook(status: TweakStatus): MetaFact {
 
 export const stateSummary = (status: TweakStatus): MetaFact => ({ ...stateLook(status), tooltip: stateTip(status) });
 
+/** Whether the tweak's control already highlights its current state, making a state fact redundant. */
+export function controlShowsState(def: TweakDefinition, status: TweakStatus): boolean {
+  if (status.state === "active") return status.activeOption !== null && labelsOf(def).includes(status.activeOption);
+  return status.state === "system_default" && def.options.length === 1;
+}
+
 export const residueText = (status: TweakStatus): string =>
   `Residual settings remain outside the active option: ${status.residues.join(", ")}`;
 

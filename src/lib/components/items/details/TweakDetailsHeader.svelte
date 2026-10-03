@@ -3,7 +3,7 @@
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { pendingFact, tweakMeta } from "$lib/utils/tweakPresentation";
+  import { controlShowsState, pendingFact, tweakMeta } from "$lib/utils/tweakPresentation";
   import { type MetaFact } from "$lib/utils/presentation";
   import FavoriteButton from "../FavoriteButton.svelte";
   import RestoreButton from "../RestoreButton.svelte";
@@ -40,7 +40,7 @@
 
   <div class="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
     <div class={META_LINE}>
-      {@render fact(facts.state)}
+      {#if pendingChange || !controlShowsState(def, status)}{@render fact(facts.state)}{/if}
       {#if pendingChange}{@render fact(pendingFact(pendingChange.optionLabel))}{/if}
       {@render fact(facts.risk)}
       {@render fact(facts.permission)}

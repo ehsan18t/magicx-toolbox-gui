@@ -7,7 +7,7 @@
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { expand, pop } from "$lib/utils/motion";
-  import { pendingFact, rowDomId, tweakMeta, usesDropdown } from "$lib/utils/tweakPresentation";
+  import { controlShowsState, pendingFact, rowDomId, tweakMeta, usesDropdown } from "$lib/utils/tweakPresentation";
   import { type MetaFact } from "$lib/utils/presentation";
   import type { Snippet } from "svelte";
   import AttentionNotice from "./AttentionNotice.svelte";
@@ -86,7 +86,7 @@
   {/snippet}
 
   {#snippet meta()}
-    {@render fact(facts.state)}
+    {#if pendingChange || !controlShowsState(def, status)}{@render fact(facts.state)}{/if}
     {#if pendingChange}
       <!-- in:, not animate-pop-in: a local transition skips the row's own mount, so filtering never replays it. -->
       <span class="inline-flex max-w-full items-center gap-1 text-warning" in:pop>
