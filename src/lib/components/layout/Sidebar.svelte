@@ -76,7 +76,9 @@
   ]);
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape" || !sidebarStore.isOverlay) return;
+    if (e.key !== "Escape" || e.defaultPrevented || !sidebarStore.isOverlay) return;
+    // An open dialog takes Escape, whichever window listener runs first.
+    if (document.querySelector('[aria-modal="true"]')) return;
     e.preventDefault();
     sidebarStore.closeOverlay();
   }
