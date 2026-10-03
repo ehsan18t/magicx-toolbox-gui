@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { ToggleChip } from "$lib/components/ui";
-  import { fromAction } from "svelte/attachments";
+  import { HELD, ToggleChip } from "$lib/components/ui";
 
   interface Props {
     open: boolean;
@@ -22,7 +20,8 @@
   aria-expanded={open}
   aria-controls={open ? controls : undefined}
   disabled={lockedReason !== null}
-  {@attach fromAction(tooltip, () => lockedReason ?? (open ? "Hide warning" : "Show warning"))}
+  tooltip={lockedReason ?? (open ? "Hide warning" : "Show warning")}
+  class={lockedReason !== null ? HELD : undefined}
   onclick={ontoggle}
 >
   Warning
