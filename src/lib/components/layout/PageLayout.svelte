@@ -15,7 +15,7 @@
   let { title, description, announce = false, aside, children }: Props = $props();
 </script>
 
-<div class="h-full overflow-y-auto">
+<div class="h-full scrollbar-gutter-stable overflow-y-auto">
   <div class="mx-auto flex max-w-page flex-col gap-4 px-4 pt-5 pb-dock-clearance sm:px-6">
     <header class="flex flex-col gap-3">
       <div class="min-w-0">

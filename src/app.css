@@ -191,22 +191,20 @@
   }
 
   /* <details> opens and closes with the expand timing; interpolate-size lets height reach `auto`. */
-  @supports (interpolate-size: allow-keywords) {
-    :root {
-      interpolate-size: allow-keywords;
-    }
+  :root {
+    interpolate-size: allow-keywords;
+  }
 
-    details::details-content {
-      block-size: 0;
-      overflow-y: clip;
-      transition:
-        block-size var(--transition-duration-normal) var(--ease-out),
-        content-visibility var(--transition-duration-normal) allow-discrete;
-    }
+  details::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition:
+      block-size var(--transition-duration-normal) var(--ease-out),
+      content-visibility var(--transition-duration-normal) allow-discrete;
+  }
 
-    details[open]::details-content {
-      block-size: auto;
-    }
+  details[open]::details-content {
+    block-size: auto;
   }
 
   button,
@@ -401,10 +399,6 @@
 /* Descendants style off this scroller's overflow; the scroller itself cannot query it. */
 @utility scroll-state-container {
   container-type: scroll-state;
-}
-
-@utility scrollbar-none {
-  scrollbar-width: none;
 }
 
 @keyframes fade-in {
