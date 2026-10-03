@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
   import type { Snippet } from "svelte";
   import Button from "./Button.svelte";
   import { ICON_SIZE } from "./icon";
@@ -10,7 +10,7 @@
     description: string;
     action?: { label: string; onclick: () => void };
     children?: Snippet;
-  } & ({ icon: string; loading?: false; showIconCircle?: boolean } | { icon?: never; loading: true });
+  } & ({ icon: IconName; loading?: false; showIconCircle?: boolean } | { icon?: never; loading: true });
 
   let { title, description, action, children, ...visual }: Props = $props();
 </script>

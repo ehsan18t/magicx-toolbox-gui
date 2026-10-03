@@ -1,3 +1,4 @@
+import type { IconName } from "$lib/components/shared";
 import { manualTestsStore } from "./manualTests.svelte";
 import { searchStore } from "./search.svelte";
 import { categoriesStore } from "./tweaksData.svelte";
@@ -12,7 +13,7 @@ export type TabId = PageId | (string & {});
 export interface TabDefinition {
   id: TabId;
   name: string;
-  icon: string;
+  icon: IconName;
   description?: string;
 }
 

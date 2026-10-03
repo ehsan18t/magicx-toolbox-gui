@@ -1,7 +1,8 @@
 <script lang="ts">
   import { overflowHints } from "$lib/actions/overflowHints";
   import { tooltip } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
+  import { ICON_SIZE } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
@@ -9,7 +10,23 @@
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
+  import { plural } from "$lib/utils/format";
   import { fade, reducedMotion } from "$lib/utils/motion";
+
+  interface NavItem {
+    label: string;
+    icon: IconName;
+    active: boolean;
+    onclick: () => void;
+    trailing?: string;
+    trailingTone?: string;
+    alert?: string;
+    pending?: string;
+  }
+
+  const SKELETON_ROWS = 6;
+  const SCROLL_PAGE_FRACTION = 0.6;
+  const RAIL_MARKER = "absolute -top-0.5 -right-1 ring-2 ring-background";
 
   const isOpen = $derived(sidebarStore.isOpen);
   let moreAbove = $state(false);
@@ -29,7 +46,7 @@
     indicatorTab = activeTab;
     indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide } : null;
   });
-  const snapshotCount = $derived(tweaksStore.list.filter((t) => t.status.hasHistory).length);
+  const fadeFrom = $derived(sidebarStore.isOverlay ? "from-elevated" : "from-background");
   // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
   const pendingByCategory = $derived.by(() => {
     const counts: Record<string, number> = {};
@@ -47,11 +64,11 @@
 
   function fixedCount(id: TabId): number {
     if (id === "favorites") return favoritesStore.count;
-    if (id === "snapshots") return snapshotCount;
+    if (id === "snapshots") return tweaksStore.withSnapshot.length;
     return 0;
   }
 
-  const footerItems = $derived([
+  const footerItems: { label: string; icon: IconName; open: () => void; dot: boolean; active: boolean }[] = $derived([
     {
       label: updateStore.isAvailable ? "Update available" : "Updates",
       icon: "mdi:update",
@@ -86,16 +103,20 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#snippet navItem(
-  label: string,
-  icon: string,
-  active: boolean,
-  onclick: () => void,
-  trailing: string,
-  trailingTone: string,
+{#snippet dot(classes: string)}
+  <span class={["h-2 w-2 rounded-full", classes]} aria-hidden="true"></span>
+{/snippet}
+
+{#snippet navItem({
+  label,
+  icon,
+  active,
+  onclick,
+  trailing = "",
+  trailingTone = "text-foreground-subtle",
   alert = "",
   pending = "",
-)}
+}: NavItem)}
   <button
     type="button"
     class="group relative flex h-9 w-full shrink-0 cursor-pointer items-center gap-3 rounded-md px-3 text-left text-sm text-foreground {active
@@ -109,20 +130,24 @@
     {onclick}
   >
     <span class="relative flex w-5 shrink-0 justify-center">
-      <Icon {icon} width="18" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
+      <Icon
+        {icon}
+        width={ICON_SIZE.lg}
+        class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"}
+      />
       {#if alert && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-error ring-2 ring-background"></span>
+        {@render dot(`${RAIL_MARKER} bg-error`)}
       {:else if pending && !isOpen}
-        <span class="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-warning ring-2 ring-background"></span>
+        {@render dot(`${RAIL_MARKER} bg-warning`)}
       {/if}
     </span>
     {#if isOpen}
       <span class="min-w-0 flex-1 truncate">{label}</span>
       {#if alert}
-        <Icon icon="mdi:alert-circle" width="14" class="shrink-0 text-error" />
+        <Icon icon="mdi:alert-circle" width={ICON_SIZE.sm} class="shrink-0 text-error" />
       {/if}
       {#if pending}
-        <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>
+        {@render dot("shrink-0 bg-warning")}
       {/if}
       {#if trailing}
         <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
@@ -155,7 +180,7 @@
     <div class="relative flex min-h-0 flex-1 flex-col">
       <div
         bind:this={scrollEl}
-        class="nav-scroll relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
+        class="relative flex min-h-0 flex-1 scrollbar-none flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
         use:overflowHints={(above, below) => {
           moreAbove = above;
           moreBelow = below;
@@ -172,14 +197,13 @@
         {/if}
         {#each navigationStore.fixedTabs as tab (tab.id)}
           {@const count = fixedCount(tab.id)}
-          {@render navItem(
-            tab.name,
-            tab.icon || "mdi:folder",
-            activeTab === tab.id,
-            () => go(tab),
-            count > 0 ? String(count) : "",
-            "text-foreground-subtle",
-          )}
+          {@render navItem({
+            label: tab.name,
+            icon: tab.icon,
+            active: activeTab === tab.id,
+            onclick: () => go(tab),
+            trailing: count > 0 ? String(count) : "",
+          })}
         {/each}
 
         <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
@@ -190,20 +214,20 @@
         {#each navigationStore.categoryTabs as tab (tab.id)}
           {@const s = categoryStats[tab.id]}
           {@const complete = !!s && s.total > 0 && s.applied === s.total}
-          {@render navItem(
-            tab.name,
-            tab.icon || "mdi:folder",
-            activeTab === tab.id,
-            () => go(tab),
-            s ? `${s.applied}/${s.total}` : "",
-            complete ? "text-success" : "text-foreground-subtle",
-            s?.attention ? `${s.attention} need${s.attention === 1 ? "s" : ""} attention` : "",
-            pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
-          )}
+          {@render navItem({
+            label: tab.name,
+            icon: tab.icon,
+            active: activeTab === tab.id,
+            onclick: () => go(tab),
+            trailing: s ? `${s.applied}/${s.total}` : "",
+            trailingTone: complete ? "text-success" : undefined,
+            alert: s?.attention ? `${plural(s.attention, "needs", "need")} attention` : "",
+            pending: pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
+          })}
         {/each}
 
         {#if tweaksStore.isLoading}
-          {#each [0, 1, 2, 3, 4, 5] as i (i)}
+          {#each { length: SKELETON_ROWS }, i (i)}
             <div class="flex h-9 shrink-0 items-center gap-3 px-3">
               <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>
               {#if isOpen}<div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>{/if}
@@ -214,18 +238,14 @@
       {#if moreAbove}
         <div
           transition:fade={{ speed: "fast" }}
-          class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b to-transparent {sidebarStore.isOverlay
-            ? 'from-elevated'
-            : 'from-background'}"
+          class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b to-transparent {fadeFrom}"
           aria-hidden="true"
         ></div>
       {/if}
       {#if moreBelow}
         <div
           transition:fade={{ speed: "fast" }}
-          class="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 {sidebarStore.isOverlay
-            ? 'from-elevated'
-            : 'from-background'}"
+          class="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 {fadeFrom}"
         >
           <button
             type="button"
@@ -234,11 +254,11 @@
             use:tooltip={"More below"}
             onclick={() =>
               scrollEl?.scrollBy({
-                top: scrollEl.clientHeight * 0.6,
+                top: scrollEl.clientHeight * SCROLL_PAGE_FRACTION,
                 behavior: reducedMotion() ? "auto" : "smooth",
               })}
           >
-            <Icon icon="mdi:chevron-down" width="18" />
+            <Icon icon="mdi:chevron-down" width={ICON_SIZE.lg} />
           </button>
         </div>
       {/if}
@@ -263,20 +283,12 @@
             item.open();
           }}
         >
-          <Icon icon={item.icon} width="18" />
+          <Icon icon={item.icon} width={ICON_SIZE.lg} />
           {#if item.dot}
-            <span
-              class="absolute top-1.5 right-1/2 h-2 w-2 translate-x-3 animate-pop-in rounded-full bg-success ring-2 ring-background"
-            ></span>
+            {@render dot("absolute top-1.5 right-1/2 translate-x-3 animate-pop-in bg-success ring-2 ring-background")}
           {/if}
         </button>
       {/each}
     </div>
   </div>
 </nav>
-
-<style>
-  .nav-scroll {
-    scrollbar-width: none;
-  }
-</style>

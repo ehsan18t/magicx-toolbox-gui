@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
   import { ICON_SIZE } from "./icon";
   import { TONE_TEXT, type TextTone } from "./tone";
 
   interface Props {
-    icon: string;
+    icon: IconName;
     tone?: TextTone;
     id?: string;
     class?: string;

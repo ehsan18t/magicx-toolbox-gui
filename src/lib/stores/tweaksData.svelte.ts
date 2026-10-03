@@ -2,6 +2,7 @@
 // from the `tweak-status` event stream (spec §8.4).
 
 import * as tweaksApi from "$lib/api/tweaks";
+import { type IconName, isIconName } from "$lib/components/shared/icons";
 import type {
   CategoryDefinition,
   CategoryMeta,
@@ -16,7 +17,7 @@ import { tallies, toRiskLevel } from "$lib/utils/tweakPresentation";
 import { favoritesStore } from "./favorites.svelte";
 import { settingsStore } from "./settings.svelte";
 
-const DEFAULT_CATEGORY_ICON = "mdi:folder";
+const DEFAULT_CATEGORY_ICON: IconName = "mdi:folder";
 
 // Raw: replaced whole on every status batch, so a deep proxy over hundreds of rows would only cost.
 let tweaks = $state.raw<TweakWithStatus[]>([]);
@@ -117,7 +118,7 @@ const categories = $derived.by((): CategoryDefinition[] => {
       id: c.id,
       name: c.name,
       description: c.description,
-      icon: c.icon || DEFAULT_CATEGORY_ICON,
+      icon: isIconName(c.icon) ? c.icon : DEFAULT_CATEGORY_ICON,
       order: i,
     }));
   }
@@ -158,7 +159,7 @@ export const categoriesStore = {
     return categories.find((c) => c.id === categoryId)?.name ?? categoryId;
   },
 
-  icon(categoryId: string): string {
+  icon(categoryId: string): IconName {
     return categories.find((c) => c.id === categoryId)?.icon ?? DEFAULT_CATEGORY_ICON;
   },
 };

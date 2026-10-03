@@ -181,8 +181,7 @@
 
   button,
   a,
-  [role="button"],
-  .theme-toggle {
+  [role="button"] {
     transition-property: background-color, border-color, color, fill, stroke, box-shadow, transform, opacity;
     transition-duration: var(--transition-duration-fast);
     transition-timing-function: var(--ease-out);
@@ -235,9 +234,8 @@
 
   --spacing-rail: 3.5rem;
   --spacing-titlebar: 3rem;
-  /* Toasts clear the titlebar, and the reboot banner while it shows. */
-  --spacing-toast-offset: calc(var(--spacing-titlebar) + 0.5rem);
-  --spacing-toast-offset-banner: calc(var(--spacing-titlebar) + 3rem);
+  /* Toasts clear the titlebar and the reboot banner, whose height RebootBanner measures into the var. */
+  --spacing-toast-offset: calc(var(--spacing-titlebar) + var(--reboot-banner-height, 0px) + 0.5rem);
   --spacing-dock-clearance: 7rem;
 
   --grid-template-columns-item-row: minmax(0, 1fr) auto;
@@ -420,10 +418,6 @@
   }
 }
 
-.activity-bar {
-  animation: var(--animate-activity);
-}
-
 @media (prefers-reduced-motion: reduce) {
   /* One iteration too: a near-zero infinite loop (spinners, pulses) flickers. */
   *,
@@ -433,12 +427,5 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-
-  /* One pass ends off-track: hold a static, dimmed full bar. */
-  .activity-bar {
-    width: 100%;
-    animation: none;
-    opacity: 0.5;
   }
 }

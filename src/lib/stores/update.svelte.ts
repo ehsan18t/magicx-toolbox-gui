@@ -78,7 +78,8 @@ export const updateStore = {
   autoCheckIfDue() {
     if (!settingsStore.autoCheckUpdates) return;
     const lastCheck = settingsStore.lastUpdateCheck;
-    const due = !lastCheck || Date.now() - Date.parse(lastCheck) > UPDATE_CHECK_INTERVAL_MS;
+    // Negated so an unparseable stamp (NaN) counts as due.
+    const due = !lastCheck || !(Date.now() - Date.parse(lastCheck) <= UPDATE_CHECK_INTERVAL_MS);
     if (due) void checkForUpdate(true);
   },
 

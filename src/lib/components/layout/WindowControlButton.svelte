@@ -1,11 +1,13 @@
 <script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
+
   interface Props {
-    title: string;
+    label: string;
     glyph: "minimize" | "maximize" | "restore" | "close";
     onclick: () => void;
   }
 
-  let { title, glyph, onclick }: Props = $props();
+  let { label, glyph, onclick }: Props = $props();
 </script>
 
 <button
@@ -14,8 +16,8 @@
     ? 'hover:bg-caption-close hover:text-white active:bg-caption-close/85'
     : 'hover:bg-muted active:bg-foreground/10'}"
   type="button"
-  aria-label={title}
-  {title}
+  aria-label={label}
+  use:tooltip={label}
   {onclick}
 >
   <!-- 1px line glyphs on a 10px grid, drawn like the Windows 11 caption icons. -->

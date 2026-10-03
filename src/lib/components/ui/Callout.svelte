@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
   import type { Snippet } from "svelte";
   import type { HTMLAttributes } from "svelte/elements";
   import { ICON_SIZE } from "./icon";
@@ -7,7 +7,7 @@
 
   interface Props extends Omit<HTMLAttributes<HTMLDivElement>, "class">, CalloutVariants {
     /** Leading icon in the tone's colour, top-aligned with the first line. */
-    icon?: string;
+    icon?: IconName;
     class?: string;
     children: Snippet;
   }

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { PageLayout } from "$lib/components/layout";
+  import { NoMatches, PageLayout, PageStats } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { GroupedTweakList } from "$lib/components/tweaks";
-  import { EmptyState, SkeletonList } from "$lib/components/ui";
+  import { GroupedTweakList, RestoreAllButton } from "$lib/components/tweaks";
+  import { Button, EmptyState, ICON_SIZE, SkeletonList } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
@@ -10,29 +10,18 @@
   import { toastStore } from "$lib/stores/toast.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
-  import { canRestore, restoreMessage } from "$lib/utils/tweakPresentation";
+  import { plural } from "$lib/utils/format";
+  import { canRestore, tallies } from "$lib/utils/tweakPresentation";
 
-  const favoriteTweaks = $derived(tweaksStore.list.filter((t) => favoritesStore.ids.includes(t.definition.id)));
-  const filteredTweaks = $derived(favoriteTweaks.filter((t) => pageFilterStore.passes(t.definition.id)));
-  const restorable = $derived(favoriteTweaks.filter(canRestore));
-  const appliedCount = $derived(favoriteTweaks.filter((t) => t.status.state === "active").length);
-
-  async function restoreAll() {
-    const ids = restorable.map((t) => t.definition.id);
-    const ok = await confirmStore.ask({
-      title: "Restore favorites?",
-      message: restoreMessage(ids.length),
-      confirmText: "Restore",
-      variant: "danger",
-    });
-    if (ok) await tweakActionsStore.restoreAll(ids);
-  }
+  const favorites = $derived(tweaksStore.favorites);
+  const filteredTweaks = $derived(favorites.filter((t) => pageFilterStore.passes(t.definition.id)));
+  const restorable = $derived(favorites.filter(canRestore));
+  const applied = $derived(tallies(favorites).applied);
 
   async function clearAll() {
-    const n = favoriteTweaks.length;
     const ok = await confirmStore.ask({
       title: "Clear all favorites?",
-      message: `Remove ${n === 1 ? "1 tweak" : `${n} tweaks`} from your favorites? This won't change the tweaks themselves.`,
+      message: `Remove ${plural(favorites.length, "tweak")} from your favorites? This won't change the tweaks themselves.`,
       confirmText: "Clear favorites",
       variant: "danger",
     });
@@ -44,42 +33,30 @@
 
 <PageLayout title="Favorites" description="Quick access to the tweaks you starred.">
   {#snippet aside()}
-    {#if favoriteTweaks.length > 0}
+    {#if favorites.length > 0}
       <div class="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
-        <p class="m-0 text-xs text-foreground-muted">
-          <span class="font-semibold text-foreground tabular-nums">{favoriteTweaks.length}</span> starred ·
-          <span class="font-semibold text-foreground tabular-nums">{appliedCount}</span> applied
-        </p>
+        <PageStats
+          items={[
+            { value: favorites.length, label: "starred" },
+            { value: applied, label: "applied" },
+          ]}
+        />
         <div class="ml-auto flex flex-wrap gap-2">
           {#if restorable.length > 0}
-            <button
-              type="button"
-              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-ui font-medium hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={tweakActionsStore.isBusy}
-              onclick={restoreAll}
-            >
-              <Icon icon="mdi:history" width="16" />
-              Restore all
-              <span class="text-xs text-foreground-subtle tabular-nums">{restorable.length}</span>
-            </button>
+            <RestoreAllButton title="Restore favorites?" tweaks={restorable} />
           {/if}
-          <button
-            type="button"
-            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-ui font-medium text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={tweakActionsStore.isBusy}
-            onclick={clearAll}
-          >
-            <Icon icon="mdi:star-off" width="16" />
+          <Button variant="ghost" disabled={tweakActionsStore.isBusy} onclick={clearAll}>
+            <Icon icon="mdi:star-off" width={ICON_SIZE.md} />
             Clear favorites
-          </button>
+          </Button>
         </div>
       </div>
     {/if}
   {/snippet}
 
-  {#if tweaksStore.isLoading && favoriteTweaks.length === 0}
+  {#if tweaksStore.isLoading && favorites.length === 0}
     <SkeletonList />
-  {:else if favoriteTweaks.length === 0}
+  {:else if favorites.length === 0}
     <EmptyState
       icon="mdi:star-outline"
       title="No favorites yet"
@@ -88,12 +65,7 @@
       showIconCircle
     />
   {:else if filteredTweaks.length === 0}
-    <EmptyState
-      icon="mdi:file-search-outline"
-      title="Nothing matches"
-      description={`No favorites match "${pageFilterStore.query.trim()}"`}
-      action={{ label: "Search everywhere", onclick: () => pageFilterStore.searchEverywhere() }}
-    />
+    <NoMatches description={`No favorites match "${pageFilterStore.query.trim()}"`} />
   {:else}
     <GroupedTweakList tweaks={filteredTweaks} />
   {/if}

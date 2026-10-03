@@ -15,8 +15,6 @@ export const APP_CONFIG = {
   },
 } as const;
 
-export type AppConfig = typeof APP_CONFIG;
-
 // app.html reads `theme` and `colorScheme` before the bundle loads: rename them there too.
 export const STORAGE_KEYS = {
   theme: "theme",

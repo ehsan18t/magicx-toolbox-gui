@@ -2,11 +2,9 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite";
-import { APP_CONFIG } from "./src/lib/config/app.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 
-// https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [
     sveltekit(),
@@ -17,16 +15,8 @@ export default defineConfig(async () => ({
     }),
   ],
 
-  // Define the config as build-time constants
-  define: {
-    __APP_CONFIG__: JSON.stringify(APP_CONFIG),
-  },
-
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent vite from obscuring rust errors
+  // Tauri loads a fixed port, and a cleared screen would hide its Rust errors.
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,
     strictPort: true,
@@ -39,7 +29,6 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
   },

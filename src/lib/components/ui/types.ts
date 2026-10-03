@@ -1,3 +1,5 @@
+import type { IconName } from "$lib/components/shared";
+
 export interface SelectOption<T extends string | number = string | number> {
   value: T;
   label: string;
@@ -5,7 +7,7 @@ export interface SelectOption<T extends string | number = string | number> {
 }
 
 export interface SegmentOption<T extends string | number = string | number> extends SelectOption<T> {
-  icon?: string;
+  icon?: IconName;
   /** In place of the label's own tooltip, e.g. why the segment is disabled. */
   tooltip?: string;
   /** Choosing it asks first, so arrow keys focus it without choosing it. */

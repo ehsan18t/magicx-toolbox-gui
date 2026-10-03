@@ -1,48 +1,62 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
+  import { Button, ICON_SIZE, IconButton } from "$lib/components/ui";
   import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
+  import { plural } from "$lib/utils/format";
   import { expand } from "$lib/utils/motion";
+  import type { Attachment } from "svelte/attachments";
+
+  // app.css's toast offset reads it, so toasts sit below the banner however it wraps.
+  const HEIGHT_VAR = "--reboot-banner-height";
 
   let showDetails = $state(false);
 
   const rebootCount = $derived(pendingRebootStore.count);
-  const rebootTweaks = $derived(pendingRebootStore.tweaks);
+
+  const publishHeight: Attachment<HTMLElement> = (node) => {
+    const rootStyle = document.documentElement.style;
+    const observer = new ResizeObserver(() => rootStyle.setProperty(HEIGHT_VAR, `${node.offsetHeight}px`));
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      rootStyle.removeProperty(HEIGHT_VAR);
+    };
+  };
 </script>
 
 {#if rebootCount > 0}
-  <div class="shrink-0 border-b border-border bg-info/8 px-4 py-2" transition:expand>
+  <div class="shrink-0 border-b border-border bg-info/8 px-4 py-2" transition:expand {@attach publishHeight}>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Icon icon="mdi:restart" width="16" class="shrink-0 text-info" />
+      <Icon icon="mdi:restart" width={ICON_SIZE.md} class="shrink-0 text-info" />
       <p class="m-0 min-w-0 flex-1 text-ui">
         <span class="font-semibold">Restart required.</span>
         <span class="text-foreground-muted">
-          {rebootCount === 1 ? "1 change takes" : `${rebootCount} changes take`} effect after you restart Windows.
+          {plural(rebootCount, "change")}
+          {rebootCount === 1 ? "takes" : "take"} effect after you restart Windows.
         </span>
       </p>
       <div class="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          class="h-7 cursor-pointer rounded-md px-2 text-xs font-medium text-foreground hover:bg-muted"
+        <Button
+          variant="ghost"
+          size="sm"
+          class="px-2 text-foreground"
           aria-expanded={showDetails}
           onclick={() => (showDetails = !showDetails)}
         >
           {showDetails ? "Hide list" : "Show which"}
-        </button>
-        <button
-          type="button"
-          class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
-          aria-label="Dismiss restart notice"
+        </Button>
+        <IconButton
+          icon="mdi:close"
+          size="sm"
+          label="Dismiss restart notice"
+          tooltip="Dismiss (changes still apply after restart)"
           onclick={() => pendingRebootStore.clear()}
-          use:tooltip={"Dismiss (changes still apply after restart)"}
-        >
-          <Icon icon="mdi:close" width="16" />
-        </button>
+        />
       </div>
     </div>
     {#if showDetails}
       <ul class="m-0 mt-1.5 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 pl-7" transition:expand>
-        {#each rebootTweaks as tweak (tweak.definition.id)}
+        {#each pendingRebootStore.tweaks as tweak (tweak.definition.id)}
           <li class="min-w-0 text-xs wrap-break-word text-foreground-muted">{tweak.definition.name}</li>
         {/each}
       </ul>

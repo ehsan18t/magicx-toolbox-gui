@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
-  import { Count } from "$lib/components/ui";
+  import { Icon, type IconName } from "$lib/components/shared";
+  import { Card, Count, ICON_SIZE, PanelHeading, type TextTone } from "$lib/components/ui";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { expand, fade, reducedMotion } from "$lib/utils/motion";
-  import { attentionCause } from "$lib/utils/tweakPresentation";
+  import { attentionCause, rowDomId, tallies } from "$lib/utils/tweakPresentation";
 
   interface Props {
     /** Names the pane for assistive tech, e.g. "Security at a glance". */
@@ -14,15 +14,15 @@
   }
 
   let { label, tweaks }: Props = $props();
-  const count = (state: string) => tweaks.filter((t) => t.status.state === state).length;
-  const applied = $derived(tweaks.filter((t) => t.status.state === "active").length);
+
+  const stats = $derived(tallies(tweaks));
   const breakdown = $derived(
     [
-      { label: "Applied", value: applied, tone: "bg-accent" },
-      { label: "System default", value: count("system_default"), tone: "bg-foreground-subtle" },
-      { label: "Unknown", value: count("unknown"), tone: "bg-warning" },
-      { label: "Unavailable", value: count("unavailable"), tone: "bg-border-hover" },
-      { label: "Checking", value: count("loading"), tone: "bg-border" },
+      { label: "Applied", value: stats.applied, tone: "bg-accent" },
+      { label: "System default", value: stats.byState.system_default, tone: "bg-foreground-subtle" },
+      { label: "Unknown", value: stats.byState.unknown, tone: "bg-warning" },
+      { label: "Unavailable", value: stats.byState.unavailable, tone: "bg-border-hover" },
+      { label: "Checking", value: stats.byState.loading, tone: "bg-border" },
     ].filter((b) => b.value > 0),
   );
 
@@ -31,12 +31,12 @@
   const unknown = $derived(tweaks.filter((t) => t.status.state === "unknown"));
   const reboot = $derived(tweaks.filter((t) => pendingRebootStore.has(t.definition.id)));
   const allClear = $derived(
-    attention.length + pending.length + unknown.length + reboot.length + count("loading") === 0,
+    attention.length + pending.length + unknown.length + reboot.length + stats.byState.loading === 0,
   );
 
   function reveal(id: string) {
     tweakDetailsModalStore.open(id);
-    document.getElementById(`tweak-${id}`)?.scrollIntoView({
+    document.getElementById(rowDomId("tweak", id))?.scrollIntoView({
       block: "nearest",
       behavior: reducedMotion() ? "auto" : "smooth",
     });
@@ -44,23 +44,22 @@
 </script>
 
 {#snippet group(
-  icon: string,
-  tone: string,
+  icon: IconName,
+  tone: TextTone,
   title: string,
   items: TweakWithStatus[],
   detail: (t: TweakWithStatus) => string,
 )}
   {#if items.length > 0}
     <section transition:expand>
-      <h3 class="m-0 mb-1.5 flex items-center gap-2 text-ui font-semibold">
-        <Icon {icon} width="16" class={tone} />
+      <PanelHeading {icon} {tone} class="mb-1.5">
         {title}
         <Count value={items.length} class="font-normal" />
-      </h3>
+      </PanelHeading>
       <ul class="m-0 list-none space-y-0.5 p-0">
         {#each items as t (t.definition.id)}
           {@const d = detail(t)}
-          <li transition:expand>
+          <li>
             <button
               type="button"
               class="group flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
@@ -72,7 +71,7 @@
               </span>
               <Icon
                 icon="mdi:chevron-right"
-                width="16"
+                width={ICON_SIZE.md}
                 class="mt-0.5 shrink-0 text-foreground-subtle group-hover:text-foreground"
               />
             </button>
@@ -93,17 +92,17 @@
   </header>
 
   <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-    {#if tweaks.length > 0}
-      <section class="rounded-lg border border-border bg-card p-3">
+    {#if stats.total > 0}
+      <Card as="section" class="p-3">
         <div class="flex items-baseline justify-between">
           <span class="text-ui text-foreground-muted">Applied</span>
-          <span class="text-sm font-semibold tabular-nums">{applied} of {tweaks.length}</span>
+          <span class="text-sm font-semibold tabular-nums">{stats.applied} of {stats.total}</span>
         </div>
         <div class="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted">
           {#each breakdown as b (b.label)}
             <div
               class="transition-[width] duration-slower ease-out {b.tone}"
-              style:width="{(b.value / tweaks.length) * 100}%"
+              style:width="{(b.value / stats.total) * 100}%"
             ></div>
           {/each}
         </div>
@@ -116,27 +115,27 @@
             </li>
           {/each}
         </ul>
-      </section>
+      </Card>
     {/if}
 
-    {@render group("mdi:alert-circle", "text-error", "Needs attention", attention, (t) =>
+    {@render group("mdi:alert-circle", "error", "Needs attention", attention, (t) =>
       attentionCause(t.status.attention?.reason),
     )}
     {@render group(
       "mdi:arrow-right",
-      "text-warning",
+      "warning",
       "Ready to apply",
       pending,
       (t) => `→ ${pendingChangesStore.change(t.definition.id)?.optionLabel ?? ""}`,
     )}
-    {@render group("mdi:help-circle-outline", "text-warning", "State unknown", unknown, (t) =>
+    {@render group("mdi:help-circle-outline", "warning", "State unknown", unknown, (t) =>
       t.status.needsElevation ? "Restart as administrator to read it" : "",
     )}
-    {@render group("mdi:restart", "text-info", "Waiting for a restart", reboot, () => "")}
+    {@render group("mdi:restart", "info", "Waiting for a restart", reboot, () => "")}
 
-    {#if allClear && tweaks.length > 0}
+    {#if allClear && stats.total > 0}
       <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-ui" in:fade>
-        <Icon icon="mdi:check-circle" width="18" class="shrink-0 text-success" />
+        <Icon icon="mdi:check-circle" width={ICON_SIZE.lg} class="shrink-0 text-success" />
         <span class="text-foreground-muted">Nothing here needs your attention.</span>
       </div>
     {/if}

@@ -11,7 +11,7 @@ const twMergeConfig = {
       text: ["body", "badge-sm", "badge-md", "caption", "code", "ui", "lead", "title", "hero"],
       tracking: ["display"],
       container: ["item-row", "overview-split", "dialog-sm", "dialog-md", "dialog-lg", "dialog-full"],
-      spacing: ["rail", "titlebar", "toast-offset", "toast-offset-banner", "dock-clearance"],
+      spacing: ["rail", "titlebar", "toast-offset", "dock-clearance"],
       shadow: ["flyout", "dialog"],
       animate: [
         "fade-in",

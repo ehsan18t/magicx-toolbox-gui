@@ -1,11 +1,11 @@
 <script lang="ts">
   import { tooltip as tooltipAction } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
   import { ICON_SIZE, TONE_TEXT, type TextTone } from "$lib/components/ui";
   import { cn } from "$lib/utils/cn";
 
   interface Props {
-    icon: string;
+    icon: IconName;
     label: string;
     /** Omitted: inherits the line's colour. */
     tone?: TextTone;

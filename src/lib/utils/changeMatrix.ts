@@ -1,7 +1,31 @@
+import type { IconName } from "$lib/components/shared";
 import type { EffectAgreement, RegistryChange, RegistryValueType, TweakEffectOption } from "$lib/types";
 import { capitalize } from "$lib/utils/format";
 
 export type ChangeKind = "registry" | "service" | "task" | "hosts" | "firewall";
+
+export const KIND_META: Record<ChangeKind, { label: string; icon: IconName }> = {
+  registry: { label: "Registry", icon: "mdi:database" },
+  service: { label: "Services", icon: "mdi:server" },
+  task: { label: "Scheduled tasks", icon: "mdi:calendar" },
+  hosts: { label: "Hosts file", icon: "mdi:file-document-outline" },
+  firewall: { label: "Firewall", icon: "mdi:shield-outline" },
+};
+
+/** A highlighted column: the live values, the applied option, or the staged one. */
+export type ColumnTone = "now" | "current" | "pending";
+
+export const COLUMN_TINT: Record<ColumnTone, { head: string; cell: string }> = {
+  now: { head: "bg-warning/8", cell: "bg-warning/5" },
+  current: { head: "bg-accent/12", cell: "bg-accent/8" },
+  pending: { head: "bg-warning/10", cell: "bg-warning/6" },
+};
+
+export function optionTone(label: string, activeOption: string | null, pendingLabel?: string): ColumnTone | null {
+  if (label === activeOption) return "current";
+  if (label === pendingLabel) return "pending";
+  return null;
+}
 
 export interface MatrixCell {
   text: string;

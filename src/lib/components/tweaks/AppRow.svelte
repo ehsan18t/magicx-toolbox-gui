@@ -1,128 +1,70 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { Icon, MarkdownText } from "$lib/components/shared";
-  import { Button, HighlightedText, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import { Button, ICON_SIZE, TONE_TEXT } from "$lib/components/ui";
+  import { appDetailsModalStore } from "$lib/stores/appDetailsModal.svelte";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { confirmStore } from "$lib/stores/confirm.svelte";
-  import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
+  import type { SearchResult } from "$lib/stores/search.svelte";
   import type { AppView } from "$lib/types";
-  import { APP_OPERATION_LABEL } from "$lib/utils/appPresentation";
+  import {
+    APP_ACTION_UI,
+    APP_OPERATION_LABEL,
+    appAction,
+    appPresenceChip,
+    elapsedClock,
+    isPermanent,
+    removeConfirmMessage,
+    SECOND_MS,
+  } from "$lib/utils/appPresentation";
   import { expand } from "$lib/utils/motion";
-  import { TONE_TEXT } from "$lib/components/ui";
-  import { permissionInfoFor, RISK_INFO, RISK_TONE, toRiskLevel } from "$lib/utils/tweakPresentation";
+  import { permissionInfoFor, RISK_INFO, RISK_TONE, rowDomId, toRiskLevel } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
-  import { searchHighlight } from "./searchHighlight.svelte";
+  import ItemRow from "./ItemRow.svelte";
+  import MetaItem from "./MetaItem.svelte";
+  import RowAction from "./RowAction.svelte";
+  import WarningNotice from "./WarningNotice.svelte";
+  import WarningToggle from "./WarningToggle.svelte";
 
   interface Props {
     app: AppView;
-    titleSlot?: Snippet;
-    descriptionSlot?: Snippet;
-    /** Extra meta-line content, e.g. the category in search results. */
+    match?: SearchResult;
     context?: Snippet;
   }
 
-  let { app, titleSlot, descriptionSlot, context }: Props = $props();
+  let { app, match, context }: Props = $props();
 
   const status = $derived(appsStore.status(app.id));
-  const filterMatch = $derived(titleSlot ? null : pageFilterStore.match(app.id));
-  const presence = $derived(status?.presence);
   const operation = $derived(appsStore.operation(app.id));
   const busy = $derived(operation !== undefined);
-  const appError = $derived(appsStore.error(app.id));
-  const permanent = $derived(status?.install_route === "none" && presence?.state !== "absent");
-
+  const permanent = $derived(isPermanent(status));
+  const chip = $derived(appPresenceChip(status, appsStore.scanError));
+  const action = $derived(appAction(app, status, appsStore.scanError));
+  const permissionInfo = $derived(action?.kind === "remove" ? permissionInfoFor("Admin") : null);
   const riskLevel = $derived(toRiskLevel(app.risk));
   const riskInfo = $derived(RISK_INFO[riskLevel]);
+  const warningId = $derived(`${rowDomId("app", app.id)}-warning`);
 
-  const chip = $derived.by((): { label: string; tip: string; icon: string; tone: string; spin?: boolean } => {
-    const muted = "text-foreground-muted";
-    const warn = "text-warning";
-    if (!presence) {
-      return appsStore.scanError
-        ? { label: "Unknown", tip: appsStore.scanError, icon: "mdi:help-circle-outline", tone: warn }
-        : {
-            label: "Checking",
-            tip: "Checking whether this app is installed…",
-            icon: "mdi:loading",
-            tone: muted,
-            spin: true,
-          };
-    }
-    if (presence.state === "installed") {
-      return presence.provisioned_only
-        ? {
-            label: "Provisioned only",
-            tip: "Not installed for any account yet, but Windows installs it for every new account.",
-            icon: "mdi:package-variant",
-            tone: "text-info",
-          }
-        : {
-            label: "Installed",
-            tip: "Installed on this PC",
-            icon: "mdi:check-circle",
-            tone: "text-success",
-          };
-    }
-    if (presence.state === "absent") {
-      return { label: "Not installed", tip: "Not installed on this PC", icon: "mdi:circle-outline", tone: muted };
-    }
-    return {
-      label: presence.needs_elevation ? "Unknown, needs admin" : "Unknown",
-      tip: presence.needs_elevation ? `${presence.reason} Restart as administrator to resolve.` : presence.reason,
-      icon: "mdi:help-circle-outline",
-      tone: warn,
-    };
-  });
-
-  // One action per card; null only for an absent app with no install route, which is hidden anyway.
-  const action = $derived.by((): { kind: "remove" | "install" | "store"; disabledReason: string | null } | null => {
-    if (!presence) return { kind: "remove", disabledReason: chip.tip };
-    if (presence.state === "unknown") return { kind: "remove", disabledReason: presence.reason };
-    if (presence.state === "installed") {
-      const a = app.remove_availability;
-      return { kind: "remove", disabledReason: a.state === "available" ? null : a.reason };
-    }
-    if (status?.install_route === "winget") {
-      const a = app.install_availability;
-      return { kind: "install", disabledReason: a.state === "available" ? null : a.reason };
-    }
-    if (status?.install_route === "store_page") return { kind: "store", disabledReason: null };
-    return null;
-  });
-
-  const permissionInfo = $derived(action?.kind === "remove" ? permissionInfoFor("Admin") : null);
-
-  const actionConfig = {
-    remove: { label: "Remove", icon: "mdi:delete-outline", aria: "Remove", tone: "text-error" },
-    install: { label: "Install", icon: "mdi:download", aria: "Install", tone: "text-accent" },
-    store: { label: "Get in Store", icon: "mdi:open-in-new", aria: "Open the Microsoft Store page for", tone: "" },
-  } as const;
-
-  let showDetails = $state(false);
   let warningOpen = $state(false);
-
-  const scope = $derived(app.source === "appx" ? "for every account on this PC" : "for your account");
-  const confirmMessage = $derived(
-    (permanent
-      ? `${app.name} is removed ${scope} and has no install source on this PC, so this cannot be undone.`
-      : `${app.name} is removed ${scope}. You can reinstall it later from here.`) +
-      (app.warning ? ` ${app.warning}` : ""),
-  );
 
   async function handleAction() {
     if (!action || action.disabledReason !== null) return;
-    if (action.kind === "install") {
-      void appsStore.install(app.id);
-    } else if (action.kind === "store") void appsStore.openStorePage(app.id);
-    else if (
-      await confirmStore.ask({
-        title: `Remove ${app.name}?`,
-        message: confirmMessage,
-        confirmText: "Remove",
-        variant: "danger",
-      })
-    ) {
-      void appsStore.remove(app.id);
+    switch (action.kind) {
+      case "install":
+        void appsStore.install(app.id);
+        break;
+      case "store":
+        void appsStore.openStorePage(app.id);
+        break;
+      case "remove": {
+        const confirmed = await confirmStore.ask({
+          title: `Remove ${app.name}?`,
+          message: removeConfirmMessage(app, permanent),
+          confirmText: "Remove",
+          variant: "danger",
+        });
+        if (confirmed) void appsStore.remove(app.id);
+      }
     }
   }
 
@@ -132,183 +74,93 @@
   $effect(() => {
     if (!operation) return;
     now = Date.now();
-    const timer = setInterval(() => (now = Date.now()), 1000);
+    const timer = setInterval(() => (now = Date.now()), SECOND_MS);
     return () => clearInterval(timer);
   });
-  const busyLabel = $derived(operation ? APP_OPERATION_LABEL[operation.kind] : "");
-  const elapsed = $derived(operation ? Math.max(0, Math.floor((now - operation.startedAt) / 1000)) : 0);
-  const elapsedText = $derived(`${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`);
-
-  let rowEl = $state<HTMLElement | null>(null);
-  const highlight = searchHighlight(
-    () => app.id,
-    () => rowEl,
-  );
 </script>
 
-<article
-  id="app-{app.id}"
-  bind:this={rowEl}
-  class="@container relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-border-hover {highlight.active
-    ? 'animate-highlight'
-    : ''}"
+<ItemRow
+  kind="app"
+  id={app.id}
+  title={app.name}
+  description={app.description}
+  {match}
+  stripe={status?.presence.state === "installed" ? "accent" : null}
+  error={appsStore.error(app.id)}
+  ondismisserror={() => appsStore.clearError(app.id)}
+  {context}
   aria-busy={busy}
 >
-  <span
-    class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full transition-colors {presence?.state === 'installed'
-      ? 'bg-accent'
-      : 'bg-transparent'}"
-    aria-hidden="true"
-  ></span>
+  {#snippet control()}
+    {#if action}
+      {@const ui = APP_ACTION_UI[action.kind]}
+      <div class="justify-self-start" use:tooltip={action.disabledReason}>
+        <Button
+          class={ui.tone && TONE_TEXT[ui.tone]}
+          loading={busy}
+          disabled={action.disabledReason !== null}
+          onclick={handleAction}
+          aria-label="{ui.aria} {app.name}"
+        >
+          {#if !busy}<Icon icon={ui.icon} width={ICON_SIZE.md} />{/if}
+          {ui.label}
+        </Button>
+      </div>
+    {/if}
+  {/snippet}
 
-  <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
-    <div class="grid grid-cols-item-row items-center gap-x-6 gap-y-1 @max-item-row:grid-cols-1 @max-item-row:gap-y-2">
-      <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
-        {#if titleSlot}{@render titleSlot()}{:else if filterMatch}<HighlightedText
-            text={app.name}
-            ranges={filterMatch.nameRanges}
-          />{:else}{app.name}{/if}
-      </h3>
-
-      {#if action}
-        {@const config = actionConfig[action.kind]}
-        <div class="justify-self-start" use:tooltip={action.disabledReason}>
-          <Button
-            variant="secondary"
-            size="md"
-            class={config.tone}
-            loading={busy}
-            disabled={action.disabledReason !== null}
-            onclick={handleAction}
-            aria-label="{config.aria} {app.name}"
-          >
-            {#if !busy}<Icon icon={config.icon} width="16" />{/if}
-            {config.label}
-          </Button>
-        </div>
-      {/if}
-
-      <p class="col-span-full m-0 text-ui leading-snug text-foreground-muted">
-        {#if descriptionSlot}{@render descriptionSlot()}{:else if filterMatch}<HighlightedText
-            text={app.description}
-            ranges={filterMatch.descriptionRanges}
-          />{:else}{app.description}{/if}
-      </p>
-    </div>
-
-    {#if busy}
+  {#snippet notices()}
+    {#if operation}
       <div class="flex items-center gap-3 text-xs text-foreground-muted" role="status" transition:expand>
         <div class="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-          <div class="activity-bar h-full w-1/3 rounded-full bg-accent"></div>
+          <!-- Reduced motion: one pass would end off-track, so hold a static, dimmed full bar. -->
+          <div
+            class="h-full w-1/3 animate-activity rounded-full bg-accent motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-50"
+          ></div>
         </div>
-        <span class="tabular-nums">{busyLabel}… {elapsedText}</span>
+        <span class="tabular-nums">{APP_OPERATION_LABEL[operation.kind]}… {elapsedClock(operation.startedAt, now)}</span
+        >
       </div>
     {/if}
 
-    {#if app.warning && warningOpen}
-      <div
-        id="app-warning-{app.id}"
-        transition:expand
-        class="flex gap-2 rounded-md bg-warning/8 px-2.5 py-2 text-xs leading-relaxed text-foreground"
-      >
-        <Icon icon="mdi:alert" width="14" class="mt-px shrink-0 text-warning" />
-        <span class="min-w-0">{app.warning}</span>
-      </div>
-    {/if}
+    <WarningNotice id={warningId} text={app.warning} open={warningOpen} />
+  {/snippet}
 
-    {#if appError}
-      <div
-        class="flex items-start gap-2 rounded-md border border-error/30 bg-error/8 px-2.5 py-2 text-xs text-error"
-        role="alert"
-        transition:expand
-      >
-        <Icon icon="mdi:alert-circle" width="14" class="mt-px shrink-0" />
-        <span class="min-w-0 flex-1 wrap-break-word">{appError}</span>
-        <button
-          type="button"
-          class="flex shrink-0 cursor-pointer rounded p-0.5 text-error/70 hover:bg-error/10 hover:text-error"
-          onclick={() => appsStore.clearError(app.id)}
-          aria-label="Dismiss error"
-        >
-          <Icon icon="mdi:close" width="14" />
-        </button>
-      </div>
-    {/if}
-
-    <div class="mt-auto flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
-      <span class="inline-flex items-center gap-1 {chip.tone}" use:tooltip={chip.tip}>
-        <Icon icon={chip.icon} width="13" class="shrink-0 {chip.spin ? 'animate-spin' : ''}" />
-        {chip.label}
-      </span>
-      <span class="inline-flex items-center gap-1 {TONE_TEXT[RISK_TONE[riskLevel]]}" use:tooltip={riskInfo.description}>
-        <Icon icon="mdi:shield-half-full" width="13" class="shrink-0" />
-        {riskInfo.name} risk
-      </span>
-      {#if app.warning}
-        <button
-          type="button"
-          class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-warning/35 bg-warning/10 py-0.5 pr-1 pl-2 font-medium text-warning hover:bg-warning/20"
-          aria-expanded={warningOpen}
-          aria-controls={warningOpen ? `app-warning-${app.id}` : undefined}
-          use:tooltip={warningOpen ? "Hide warning" : "Show warning"}
-          onclick={() => (warningOpen = !warningOpen)}
-        >
-          <Icon icon="mdi:alert" width="13" class="shrink-0" />
-          Warning
-          <Icon
-            icon="mdi:chevron-down"
-            width="14"
-            class="shrink-0 transition-transform duration-normal {warningOpen ? 'rotate-180' : ''}"
-          />
-        </button>
-      {/if}
-      {#if permissionInfo}
-        <span class="inline-flex items-center gap-1 text-foreground-muted" use:tooltip={permissionInfo.description}>
-          <Icon icon={permissionInfo.icon} width="13" class="shrink-0" />
-          {permissionInfo.name}
-        </span>
-      {/if}
-      {#if permanent}
-        <span
-          class="inline-flex items-center gap-1 text-warning"
-          use:tooltip={"No install source on this PC: once removed, it cannot be reinstalled from here"}
-        >
-          <Icon icon="mdi:alert" width="13" class="shrink-0" />
-          Permanent
-        </span>
-      {/if}
-      {#if context}{@render context()}{/if}
-      <button
-        type="button"
-        class="ml-auto inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-foreground-muted hover:bg-muted hover:text-foreground"
-        onclick={() => (showDetails = true)}
-        aria-label="Open details for {app.name}"
-      >
-        <Icon icon="mdi:chevron-right" width="15" />
-        Details
-      </button>
-    </div>
-  </div>
-</article>
-
-<Modal open={showDetails} onclose={() => (showDetails = false)} size="lg">
-  <ModalHeader title={app.name} size="lg" onclose={() => (showDetails = false)}>
-    <p class="m-0 mt-1 text-sm text-foreground-muted">{app.description}</p>
-  </ModalHeader>
-  <ModalBody class="flex flex-col gap-4">
+  {#snippet meta()}
+    <MetaItem icon={chip.icon} label={chip.label} tone={chip.tone} tooltip={chip.tip} spin={chip.spin} />
+    <MetaItem
+      icon="mdi:shield-half-full"
+      label="{riskInfo.name} risk"
+      tone={RISK_TONE[riskLevel]}
+      tooltip={riskInfo.description}
+    />
     {#if app.warning}
-      <div class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2 text-sm">
-        <Icon icon="mdi:alert" width="16" class="mt-0.5 shrink-0 text-warning" />
-        <span>{app.warning}</span>
-      </div>
+      <WarningToggle open={warningOpen} controls={warningId} ontoggle={() => (warningOpen = !warningOpen)} />
+    {/if}
+    {#if permissionInfo}
+      <MetaItem
+        icon={permissionInfo.icon}
+        label={permissionInfo.name}
+        tone="neutral"
+        tooltip={permissionInfo.description}
+      />
     {/if}
     {#if permanent}
-      <p class="m-0 text-sm text-foreground-muted">
-        There is no install source for this app on this PC, so removing it cannot be undone from here.
-      </p>
+      <MetaItem
+        icon="mdi:alert"
+        label="Permanent"
+        tone="warning"
+        tooltip="No install source on this PC: once removed, it cannot be reinstalled from here"
+      />
     {/if}
-    {#if app.info}
-      <MarkdownText content={app.info} />
-    {/if}
-  </ModalBody>
-</Modal>
+  {/snippet}
+
+  {#snippet actions()}
+    <RowAction
+      icon="mdi:chevron-right"
+      label="Details"
+      ariaLabel="Open details for {app.name}"
+      onclick={() => appDetailsModalStore.open(app.id)}
+    />
+  {/snippet}
+</ItemRow>

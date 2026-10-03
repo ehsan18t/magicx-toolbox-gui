@@ -41,18 +41,16 @@
     </script>
 
     <style>
-      /* Initial loading spinner - uses hardcoded colors since CSS vars aren't loaded yet */
+      /* Literal colours: app.css and its tokens load after this. */
       #initial-loader {
         position: fixed;
         inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        /* Dark theme default */
         background: #0a0f1c;
         z-index: 9999;
       }
-      /* Light theme support */
       [data-theme="light"] #initial-loader {
         background: #eef1f6;
       }
@@ -80,11 +78,9 @@
       }
     </style>
 
-    <!-- SvelteKit injects app.css here to make sure other CSS loading does not get blocked by SvelteKit head content -->
     %sveltekit.head%
   </head>
-  <body class="overflow-hidden" data-sveltekit-preload-data="hover">
-    <!-- Initial loader shown before JS loads - hidden by Svelte when ready -->
+  <body class="overflow-hidden">
     <div id="initial-loader">
       <div class="initial-spinner"></div>
     </div>

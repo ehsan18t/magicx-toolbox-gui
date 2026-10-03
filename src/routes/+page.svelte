@@ -1,27 +1,36 @@
 <script lang="ts">
-  import { PendingBar, RebootBanner } from "$lib/components/feedback";
+  import { LoadError, PendingBar, RebootBanner } from "$lib/components/feedback";
   import { LogsPanel, Sidebar } from "$lib/components/layout";
-  import { Icon } from "$lib/components/shared";
-  import { SummaryPanel, TweakDetailsModal } from "$lib/components/tweaks";
+  import { AppDetailsModal, SummaryPanel, TweakDetailsModal } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
     ManualTestsView,
     OverviewView,
-    ProfileManager,
+    ProfilesView,
     SearchView,
     SettingsView,
     SnapshotsView,
   } from "$lib/components/views";
   import { bootStore } from "$lib/stores/boot.svelte";
-  import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
-  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
+  import { navigationStore, type TabId } from "$lib/stores/navigation.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { errorMessage } from "$lib/utils/error";
-  import { onMount } from "svelte";
+  import { logError } from "$lib/utils/logger";
+  import { onMount, type Component } from "svelte";
 
   const SUMMARY_MIN_WIDTH = 1400;
+
+  const PAGE_VIEWS: Partial<Record<TabId, Component>> = {
+    overview: OverviewView,
+    search: SearchView,
+    favorites: FavoritesView,
+    snapshots: SnapshotsView,
+    profiles: ProfilesView,
+    settings: SettingsView,
+    "manual-tests": ManualTestsView,
+  };
 
   let loadError = $state<string | null>(null);
   let workspaceWidth = $state(0);
@@ -32,31 +41,20 @@
       await bootStore.load();
     } catch (error) {
       loadError = errorMessage(error);
-      console.error("Failed to initialize:", error);
+      logError("Failed to initialize", error);
     }
   });
 
   const activeTab = $derived(navigationStore.activeTab);
-  const currentCategoryTab = $derived.by(() => {
-    if (!navigationStore.isOnCategoryTab) return null;
-    return navigationStore.allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
-  });
+  const PageView = $derived(PAGE_VIEWS[activeTab]);
+  const categoryTab = $derived(
+    navigationStore.isOnCategoryTab ? navigationStore.categoryTabs.find((t) => t.id === activeTab) : undefined,
+  );
 
   const summary = $derived.by(() => {
-    if (currentCategoryTab) {
-      const id = currentCategoryTab.id;
-      return {
-        title: currentCategoryTab.name,
-        tweaks: tweaksStore.list.filter((t) => t.definition.categoryId === id),
-      };
-    }
-    if (activeTab === "favorites") {
-      const ids = new Set(favoritesStore.ids);
-      return { title: "Favorites", tweaks: tweaksStore.list.filter((t) => ids.has(t.definition.id)) };
-    }
-    if (activeTab === "snapshots") {
-      return { title: "Snapshots", tweaks: tweaksStore.list.filter((t) => t.status.hasHistory) };
-    }
+    if (categoryTab) return { title: categoryTab.name, tweaks: tweaksStore.byCategory[categoryTab.id] ?? [] };
+    if (activeTab === "favorites") return { title: "Favorites", tweaks: tweaksStore.favorites };
+    if (activeTab === "snapshots") return { title: "Snapshots", tweaks: tweaksStore.withSnapshot };
     return null;
   });
 </script>
@@ -64,21 +62,7 @@
 {#if loadError}
   <div class="flex h-full flex-col">
     <div class="flex min-h-0 flex-1 items-center justify-center p-6">
-      <div class="w-full max-w-sm rounded-lg border border-border bg-card p-6 text-center">
-        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-error/15 text-error">
-          <Icon icon="mdi:alert-circle" width="28" />
-        </div>
-        <h2 class="mt-4 mb-1 text-base font-semibold">Failed to load</h2>
-        <p class="m-0 text-sm wrap-break-word text-foreground-muted">{loadError}</p>
-        <button
-          type="button"
-          class="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
-          onclick={() => window.location.reload()}
-        >
-          <Icon icon="mdi:refresh" width="18" />
-          Retry
-        </button>
-      </div>
+      <LoadError message={loadError} />
     </div>
     <LogsPanel />
   </div>
@@ -91,29 +75,17 @@
         <div class="relative flex min-w-0 flex-1 flex-col">
           {#key activeTab}
             <div class="min-h-0 flex-1 animate-rise-in">
-              {#if activeTab === "overview"}
-                <OverviewView />
-              {:else if activeTab === "search"}
-                <SearchView />
-              {:else if activeTab === "favorites"}
-                <FavoritesView />
-              {:else if activeTab === "snapshots"}
-                <SnapshotsView />
-              {:else if activeTab === "profiles"}
-                <ProfileManager />
-              {:else if activeTab === "settings"}
-                <SettingsView />
-              {:else if activeTab === "manual-tests"}
-                <ManualTestsView />
-              {:else if currentCategoryTab}
-                <CategoryView tab={currentCategoryTab} />
+              {#if PageView}
+                <PageView />
+              {:else if categoryTab}
+                <CategoryView tab={categoryTab} />
               {/if}
             </div>
           {/key}
           <PendingBar />
         </div>
         {#if summary && workspaceWidth >= SUMMARY_MIN_WIDTH}
-          <!-- Keyed: switching pages remounts it rather than animating every row out and in. -->
+          <!-- Keyed: switching pages remounts it rather than animating every group out and in. -->
           {#key summary.title}
             <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />
           {/key}
@@ -123,4 +95,5 @@
     </main>
   </div>
   <TweakDetailsModal />
+  <AppDetailsModal />
 {/if}

@@ -7,13 +7,13 @@
 
 <script lang="ts">
   import { tooltip as tooltipAction } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
   import type { HTMLButtonAttributes } from "svelte/elements";
   import { iconButton } from "./variants";
 
   // The name is `label`, else the tooltip; given both, the tooltip becomes the description.
   type Props = Omit<HTMLButtonAttributes, "children" | "class" | "aria-label" | "aria-labelledby"> & {
-    icon: string;
+    icon: IconName;
     size?: IconButtonSize;
     class?: string;
   } & ({ label: string; tooltip?: string } | { label?: string; tooltip: string });

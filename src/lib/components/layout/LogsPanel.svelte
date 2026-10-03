@@ -1,22 +1,27 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Badge, IconButton, SearchInput, Select } from "$lib/components/ui";
-  import { formatLogLine, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
+  import { Badge, ICON_SIZE, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
+  import { appInfoStore } from "$lib/stores/appInfo.svelte";
+  import { formatLogLine, gapLabel, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import type { LogLevel, LogSource } from "$lib/types";
+  import { copyText } from "$lib/utils/clipboard";
   import { expand } from "$lib/utils/motion";
-  import { getVersion } from "@tauri-apps/api/app";
   import type { Attachment } from "svelte/attachments";
 
+  type SourceFilter = "all" | LogSource;
+
+  // Scrolled within this of the bottom, the view keeps following new lines.
+  const FOLLOW_THRESHOLD_PX = 24;
   const RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
-  const LEVEL_FILTERS: { value: LogLevel; label: string }[] = [
+  const LEVEL_FILTERS: SelectOption<LogLevel>[] = [
     { value: "trace", label: "All levels" },
     { value: "info", label: "Info and above" },
     { value: "warn", label: "Warnings and errors" },
     { value: "error", label: "Errors only" },
   ];
-  const SOURCE_FILTERS: { value: "all" | LogSource; label: string }[] = [
+  const SOURCE_FILTERS: SelectOption<SourceFilter>[] = [
     { value: "all", label: "All sources" },
     { value: "app", label: "App" },
     { value: "ui", label: "Interface" },
@@ -30,7 +35,7 @@
     trace: "text-foreground-subtle",
   };
   let minLevel = $state<LogLevel>("trace");
-  let source = $state<"all" | LogSource>("all");
+  let source = $state<SourceFilter>("all");
   let query = $state("");
   let stuck = $state(true);
 
@@ -73,17 +78,12 @@
 
   async function copyVisible() {
     const info = systemStore.info;
-    const version = await getVersion().catch(() => "unknown");
-    const header = `MagicX Toolbox ${version}, Windows build ${info?.windows.build_number ?? "unknown"}, elevated: ${
+    const header = `${appInfoStore.name} ${appInfoStore.version || "unknown"}, Windows build ${info?.windows.build_number ?? "unknown"}, elevated: ${
       info ? (info.is_admin ? "yes" : "no") : "unknown"
     }`;
-    const lines = visible.map((row) => (isGap(row) ? `[${row.gap} lines skipped]` : formatLogLine(row)));
-    try {
-      await navigator.clipboard.writeText([header, ...lines].join("\n") + "\n");
-      toastStore.success("Visible lines copied");
-    } catch {
-      toastStore.error("Could not copy the lines");
-    }
+    const lines = visible.map((row) => (isGap(row) ? `[${gapLabel(row)}]` : formatLogLine(row)));
+    const text = [header, ...lines].join("\n") + "\n";
+    if (await copyText(text, "Could not copy the lines")) toastStore.success("Visible lines copied");
   }
 </script>
 
@@ -101,7 +101,7 @@
   >
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">
-        <Icon icon="tabler:file-text" width="18" height="18" class="text-accent" />
+        <Icon icon="tabler:file-text" width={ICON_SIZE.lg} class="text-accent" />
         <h2 class="m-0 text-sm font-semibold">Logs</h2>
         {#if logsStore.settings?.detailed}
           <Badge tone="info">Detailed</Badge>
@@ -112,20 +112,8 @@
       </p>
 
       <div class="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
-        <Select
-          value={minLevel}
-          options={LEVEL_FILTERS}
-          label="Level"
-          class="w-32"
-          onchange={(v) => (minLevel = v as LogLevel)}
-        />
-        <Select
-          value={source}
-          options={SOURCE_FILTERS}
-          label="Source"
-          class="w-32"
-          onchange={(v) => (source = v as "all" | LogSource)}
-        />
+        <Select value={minLevel} options={LEVEL_FILTERS} label="Level" class="w-32" onchange={(v) => (minLevel = v)} />
+        <Select value={source} options={SOURCE_FILTERS} label="Source" class="w-32" onchange={(v) => (source = v)} />
         <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" onchange={(v) => (query = v)} />
 
         <IconButton
@@ -166,7 +154,7 @@
       class="flex-1 overflow-y-auto py-1 font-mono text-xs"
       onscroll={(e) => {
         const el = e.currentTarget;
-        stuck = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        stuck = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD_PX;
       }}
       {@attach follow(visible)}
     >
@@ -179,16 +167,14 @@
       {:else}
         {#each visible as row (isGap(row) ? `gap-${row.after}` : row.seq)}
           {#if isGap(row)}
-            <div class="log-row px-3 py-0.5 text-center text-foreground-muted italic">
-              {row.gap} lines skipped
-            </div>
+            <div class="log-row px-3 py-0.5 text-center text-foreground-muted italic">{gapLabel(row)}</div>
           {:else}
             <div class="log-row flex gap-2 px-3 py-0.5 hover:bg-foreground/5">
-              <span class="shrink-0 text-foreground-muted">{row.ts.slice(11, 23)}</span>
+              <span class="shrink-0 text-foreground-muted">{row.time}</span>
               <span class="w-10 shrink-0 font-semibold uppercase {LEVEL_CLASS[row.level]}">{row.level}</span>
               <span class="w-11 shrink-0 text-foreground-muted">{row.source}</span>
               <span class="min-w-0 flex-1 wrap-break-word whitespace-pre-wrap text-foreground"
-                ><span class="text-foreground-muted">{row.target.replace(/^app_lib::/, "")}:</span> {row.msg}</span
+                ><span class="text-foreground-muted">{row.module}:</span> {row.msg}</span
               >
             </div>
           {/if}
@@ -199,6 +185,7 @@
 {/if}
 
 <style>
+  /* Skips layout and paint for off-screen rows of a long log; no utility sets these. */
   .log-row {
     content-visibility: auto;
     contain-intrinsic-size: auto 1.25rem;

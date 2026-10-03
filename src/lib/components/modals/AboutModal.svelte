@@ -1,69 +1,70 @@
-<script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
-  import { ExternalLink, Icon } from "$lib/components/shared";
-  import { Modal } from "$lib/components/ui";
+<script lang="ts" module>
   import { APP_CONFIG } from "$lib/config/app";
-  import { modalStore } from "$lib/stores/modal.svelte";
-  import { systemStore } from "$lib/stores/system.svelte";
-  import { toastStore } from "$lib/stores/toast.svelte";
-  import { delay } from "$lib/utils/motion";
-  import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
-  import { onMount } from "svelte";
 
-  let appVersion = $state("");
-  let tauriVersion = $state("");
-  let copied = $state(false);
+  const { githubRepo: repo, author } = APP_CONFIG;
 
-  const isOpen = $derived(modalStore.current === "about");
-  const info = $derived(systemStore.info);
-
-  onMount(async () => {
-    const [app, tauri] = await Promise.allSettled([getVersion(), getTauriVersion()]);
-    if (app.status === "fulfilled") appVersion = app.value;
-    if (tauri.status === "fulfilled") tauriVersion = tauri.value;
-  });
-
-  const repo = APP_CONFIG.githubRepo;
-  const links = [
+  const PROJECT_LINKS = [
     { label: "Source code", href: repo },
     { label: "Releases", href: `${repo}/releases` },
     { label: "Report a problem", href: `${repo}/issues/new` },
   ];
+
+  const AUTHOR_LINKS: { icon: IconName; label: string; href: string }[] = [
+    { icon: "mdi:github", label: `${author.name} on GitHub`, href: author.github },
+    { icon: "mdi:web", label: new URL(author.website).host, href: author.website },
+    { icon: "mdi:email", label: `Email ${author.name}`, href: `mailto:${author.email}` },
+  ];
+</script>
+
+<script lang="ts">
+  import { tooltip } from "$lib/actions/tooltip";
+  import { ExternalLink, Icon, type IconName } from "$lib/components/shared";
+  import { IconButton, Modal, textLink } from "$lib/components/ui";
+  import { button } from "$lib/components/ui/variants";
+  import { appInfoStore } from "$lib/stores/appInfo.svelte";
+  import { modalStore } from "$lib/stores/modal.svelte";
+  import { systemStore } from "$lib/stores/system.svelte";
+  import { copyText } from "$lib/utils/clipboard";
+  import { delay } from "$lib/utils/motion";
+  import { onMount } from "svelte";
+
+  const titleId = $props.id();
+  let copied = $state(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const isOpen = $derived(modalStore.current === "about");
+  const info = $derived(systemStore.info);
+  const appVersion = $derived(appInfoStore.version);
+
+  onMount(() => {
+    void appInfoStore.load();
+    return () => clearTimeout(copiedTimer);
+  });
 
   const facts = $derived(
     [
       { label: "Windows", value: info ? `${info.windows.product_name} ${info.windows.display_version}` : null },
       { label: "Build", value: info?.windows.build_number ?? null },
       { label: "Running as", value: info ? (info.is_admin ? "Administrator" : "Standard user") : null },
-      { label: "Engine", value: tauriVersion ? `Tauri ${tauriVersion}` : null },
+      { label: "Engine", value: appInfoStore.tauriVersion ? `Tauri ${appInfoStore.tauriVersion}` : null },
     ].filter((f): f is { label: string; value: string } => f.value !== null),
   );
 
   async function copyDetails() {
     const text = [`${APP_CONFIG.appName} ${appVersion}`, ...facts.map((f) => `${f.label}: ${f.value}`)].join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-      setTimeout(() => (copied = false), delay("feedback"));
-    } catch {
-      toastStore.error("Could not copy to the clipboard");
-    }
+    if (!(await copyText(text, "Could not copy to the clipboard"))) return;
+    copied = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied = false), delay("feedback"));
   }
 </script>
 
-<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy="about-title">
+<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy={titleId}>
   <div class="relative overflow-y-auto px-7 pt-7 pb-6">
-    <button
-      type="button"
-      class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
-      aria-label="Close"
-      onclick={modalStore.close}
-    >
-      <Icon icon="mdi:close" width="18" />
-    </button>
+    <IconButton icon="mdi:close" label="Close" class="absolute top-3 right-3" onclick={modalStore.close} />
 
-    <img src="/icons/Toolbox.ico" alt="" width="44" height="44" class="block" />
-    <h2 id="about-title" class="m-0 mt-4 font-display text-hero leading-none font-semibold tracking-display">
+    <img src={APP_CONFIG.appIcon} alt="" width="44" height="44" class="block" />
+    <h2 id={titleId} class="m-0 mt-4 font-display text-hero leading-none font-semibold tracking-display">
       {APP_CONFIG.appName}
     </h2>
     <p class="m-0 mt-2 text-sm text-foreground-muted">
@@ -76,7 +77,7 @@
 
     <div class="mt-6 border-t border-border pt-4">
       <div class="flex items-start justify-between gap-4">
-        <dl class="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-ui">
+        <dl class="m-0 grid grid-cols-label-value gap-x-6 gap-y-1.5 text-ui">
           {#each facts as fact (fact.label)}
             <dt class="text-foreground-muted">{fact.label}</dt>
             <dd class="m-0 select-text">{fact.value}</dd>
@@ -84,7 +85,7 @@
         </dl>
         <button
           type="button"
-          class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-ui font-medium hover:bg-muted"
+          class={button({ variant: "outline", class: "shrink-0" })}
           onclick={copyDetails}
           use:tooltip={"Copy the version and system details for a bug report"}
         >
@@ -99,19 +100,14 @@
     </div>
 
     <nav class="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4 text-ui" aria-label="Project links">
-      {#each links as link (link.label)}
-        <ExternalLink
-          href={link.href}
-          class="font-medium text-foreground underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent"
-        >
-          {link.label}
-        </ExternalLink>
+      {#each PROJECT_LINKS as link (link.label)}
+        <ExternalLink href={link.href} class="text-foreground {textLink}">{link.label}</ExternalLink>
       {/each}
     </nav>
 
     <footer class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs">
       <p class="m-0 text-foreground-muted">
-        Made by Ehsan Khan. Free and open source under the
+        Made by {author.name}. Free and open source under the
         <ExternalLink
           href="{repo}/blob/main/LICENSE"
           class="text-foreground underline underline-offset-2 hover:text-accent"
@@ -120,22 +116,15 @@
         >.
       </p>
       <div class="flex gap-0.5">
-        {#each [{ icon: "mdi:github", label: "Ehsan Khan on GitHub", href: "https://github.com/ehsan18t" }, { icon: "mdi:web", label: "ehsankhan.me", href: "https://ehsankhan.me" }] as profile (profile.href)}
+        {#each AUTHOR_LINKS as link (link.href)}
           <ExternalLink
-            href={profile.href}
+            href={link.href}
             class="flex h-7 w-7 items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
-            aria-label={profile.label}
+            aria-label={link.label}
           >
-            <Icon icon={profile.icon} width="16" />
+            <Icon icon={link.icon} width="16" />
           </ExternalLink>
         {/each}
-        <a
-          href="mailto:ehsan18t@gmail.com"
-          class="flex h-7 w-7 items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
-          aria-label="Email Ehsan Khan"
-        >
-          <Icon icon="mdi:email" width="16" />
-        </a>
       </div>
     </footer>
   </div>

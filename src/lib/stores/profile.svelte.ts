@@ -11,9 +11,13 @@ import type {
 import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
 const PROFILE_FILTERS = [{ name: "MagicX Profile", extensions: [PROFILE_EXT] }];
+const DEFAULT_PROFILE_SUBDIR = "profiles";
+
+const profileFileName = (name: string) => `${name.replace(/[^a-z0-9\-_]/gi, "")}.${PROFILE_EXT}`;
 
 let isExporting = $state(false);
 let exportError = $state<string | null>(null);
@@ -181,6 +185,14 @@ export const profileStore = {
   /** For a dropped file. */
   importProfileFromPath(filePath: string): Promise<boolean> {
     return importFrom(async () => filePath);
+  },
+
+  /** A saved profile by name, from the chosen folder or the app data default. */
+  importSaved(name: string): Promise<boolean> {
+    return importFrom(async () => {
+      const dir = profileDir.value ?? (await join(await appDataDir(), DEFAULT_PROFILE_SUBDIR));
+      return join(dir, profileFileName(name));
+    });
   },
 
   async applyProfile(options?: ApplyOptions): Promise<boolean> {

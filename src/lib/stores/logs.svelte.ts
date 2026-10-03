@@ -8,6 +8,10 @@ export const LOGS_TOGGLE_ID = "logs-toggle";
 
 const MAX_ROWS = 2000;
 const POLL_MS = 500;
+// `ts` is RFC 3339: these bound HH:MM:SS.mmm.
+const TIME_START = 11;
+const TIME_END = 23;
+const CRATE_PREFIX = /^app_lib::/;
 
 /** Lines that left the backend's buffer before the panel read them. */
 export interface LogGap {
@@ -15,8 +19,10 @@ export interface LogGap {
   after: number;
 }
 
-/** A line with its search text lowercased once, on arrival. */
+/** A line with its display and search text derived once, on arrival. */
 export interface LogEntry extends LogLine {
+  time: string;
+  module: string;
   msgLower: string;
   targetLower: string;
 }
@@ -24,6 +30,8 @@ export interface LogEntry extends LogLine {
 export type LogRow = LogEntry | LogGap;
 
 export const isGap = (row: LogRow): row is LogGap => "gap" in row;
+
+export const gapLabel = (row: LogGap) => `${row.gap} lines skipped`;
 
 /** The session-file layout, continuation lines indented with a tab. */
 export function formatLogLine(line: LogLine): string {
@@ -45,6 +53,8 @@ function append(requested: number, tail: LogTail) {
   if (requested !== since || tail.lines.length === 0) return;
   const lines: LogEntry[] = tail.lines.map((line) => ({
     ...line,
+    time: line.ts.slice(TIME_START, TIME_END),
+    module: line.target.replace(CRATE_PREFIX, ""),
     msgLower: line.msg.toLowerCase(),
     targetLower: line.target.toLowerCase(),
   }));

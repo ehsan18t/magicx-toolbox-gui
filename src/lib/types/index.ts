@@ -1,6 +1,8 @@
 // Wire DTOs mirror the serde shapes from src-tauri/src/commands/*.rs and live here; api/ only wraps commands.
 // Only the tweak model is adapted to camelCase (frontend models, below); every other DTO stays as the wire sends it.
 
+import type { IconName } from "$lib/components/shared";
+
 export type RegistryHive = "HKCU" | "HKLM";
 
 export type RegistryValueType = "REG_DWORD" | "REG_SZ" | "REG_EXPAND_SZ" | "REG_BINARY" | "REG_MULTI_SZ" | "REG_QWORD";
@@ -330,8 +332,7 @@ export interface CategoryDefinition {
   id: string;
   name: string;
   description: string;
-  /** Iconify name, e.g. "mdi:shield-lock". */
-  icon: string;
+  icon: IconName;
   order: number;
 }
 
@@ -680,7 +681,7 @@ export interface TweakChangePreview {
   target_option_label: string;
   applicable: boolean;
   skip_reason?: string;
-  risk_level: string;
+  risk_level: BackendRiskLevel;
   already_applied: boolean;
   has_skipped_commands: boolean;
   changes: ChangeDetail[];

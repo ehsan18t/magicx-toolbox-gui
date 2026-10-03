@@ -1,30 +1,30 @@
+<script lang="ts" module>
+  // Lets the installer start before the app exits.
+  const EXIT_AFTER_INSTALL_MS = 1000;
+</script>
+
 <script lang="ts">
   import { ExternalLink, Icon, MarkdownText } from "$lib/components/shared";
-  import { Button, Modal, Switch } from "$lib/components/ui";
+  import { Button, Callout, IconButton, Modal, SettingRow, Switch, textLink } from "$lib/components/ui";
+  import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
-  import { getVersion } from "@tauri-apps/api/app";
+  import { formatBytes, formatDate } from "$lib/utils/format";
   import { exit } from "@tauri-apps/plugin-process";
-  import type { Snippet } from "svelte";
   import { onMount } from "svelte";
 
-  let appVersion = $state("");
+  const titleId = $props.id();
 
   const isOpen = $derived(modalStore.current === "update");
+  const appVersion = $derived(appInfoStore.version);
   const isChecking = $derived(updateStore.isChecking);
   const isInstalling = $derived(updateStore.isInstalling);
   const updateInfo = $derived(updateStore.updateInfo);
   const error = $derived(updateStore.error);
 
-  onMount(async () => {
-    try {
-      appVersion = await getVersion();
-    } catch (error) {
-      console.error("Failed to get app version:", error);
-    }
-  });
+  onMount(() => void appInfoStore.load());
 
   function checkForUpdate() {
     void updateStore.checkForUpdate(false);
@@ -38,69 +38,36 @@
 
   async function installUpdate() {
     if (isInstalling || !updateInfo?.available) return;
-    const success = await updateStore.installUpdate();
-    if (success) {
-      setTimeout(async () => {
-        try {
-          await exit(0);
-        } catch {
-          // The installer is already running, and the backend keeps refusing applies until exit.
-          modalStore.close();
-          toastStore.warning(
-            "The installer is running, but the app could not close itself. Close the app to finish the update.",
-          );
-        }
-      }, 1000);
-    }
+    if (!(await updateStore.installUpdate())) return;
+    setTimeout(async () => {
+      try {
+        await exit(0);
+      } catch {
+        // The installer is already running, and the backend keeps refusing applies until exit.
+        modalStore.close();
+        toastStore.warning(
+          "The installer is running, but the app could not close itself. Close the app to finish the update.",
+        );
+      }
+    }, EXIT_AFTER_INSTALL_MS);
   }
 
-  function formatDate(dateString: string | undefined | null): string {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return Number.isNaN(date.getTime())
-      ? dateString
-      : date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-  }
-
-  const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-
-  function formatDateTime(dateString: string): string {
-    const date = new Date(dateString);
-    return Number.isNaN(date.getTime())
-      ? dateString
-      : date.toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" });
-  }
-
-  const lastChecked = $derived(
-    settingsStore.lastUpdateCheck ? `Last checked ${formatDateTime(settingsStore.lastUpdateCheck)}` : "Not checked yet",
-  );
+  const lastChecked = $derived.by(() => {
+    const at = formatDate(settingsStore.lastUpdateCheck, { month: "long", time: "minutes" });
+    return at ? `Last checked ${at}` : "Not checked yet";
+  });
 </script>
 
-{#snippet row(title: string, description: string, control: Snippet)}
-  <div class="flex items-center justify-between gap-6 py-3">
-    <div class="min-w-0">
-      <p class="m-0 text-ui font-medium">{title}</p>
-      <p class="m-0 mt-0.5 text-xs text-foreground-muted">{description}</p>
-    </div>
-    {@render control()}
-  </div>
-{/snippet}
-
-<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy="update-title">
+<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy={titleId}>
   <div class="relative overflow-y-auto px-7 pt-6 pb-5">
-    <button
-      type="button"
-      class="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
-      aria-label="Close"
-      onclick={modalStore.close}
-    >
-      <Icon icon="mdi:close" width="18" />
-    </button>
+    <IconButton icon="mdi:close" label="Close" class="absolute top-3 right-3" onclick={modalStore.close} />
 
-    <h2 id="update-title" class="m-0 font-display text-xl font-semibold">Updates</h2>
+    <h2 id={titleId} class="m-0 font-display text-xl font-semibold">Updates</h2>
 
     <section class="mt-5" aria-live="polite">
       {#if updateInfo?.available}
+        {@const released = formatDate(updateInfo.publishedAt, { month: "long" })}
+        {@const size = updateInfo.assetSize ? formatBytes(updateInfo.assetSize) : ""}
         <div class="flex animate-fade-in flex-wrap items-baseline gap-x-2 gap-y-1">
           <p class="m-0 text-lg font-semibold">Version {updateInfo.latestVersion} is available</p>
           {#if updateInfo.prerelease}
@@ -111,8 +78,8 @@
         </div>
         <p class="m-0 mt-1 text-ui text-foreground-muted">
           You have {appVersion || updateInfo.currentVersion}.
-          {#if updateInfo.publishedAt}Released {formatDate(updateInfo.publishedAt)}.{/if}
-          {#if updateInfo.assetSize}{formatBytes(updateInfo.assetSize)} download.{/if}
+          {#if released}Released {released}.{/if}
+          {#if size}{size} download.{/if}
         </p>
 
         {#if updateInfo.releaseNotes}
@@ -131,12 +98,7 @@
             <span class="text-ui text-foreground-muted">No installer for this PC in the release.</span>
           {/if}
           {#if updateInfo.downloadUrl}
-            <ExternalLink
-              href={updateInfo.downloadUrl}
-              class="text-ui font-medium underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent"
-            >
-              Download manually
-            </ExternalLink>
+            <ExternalLink href={updateInfo.downloadUrl} class="text-ui {textLink}">Download manually</ExternalLink>
           {/if}
         </div>
       {:else}
@@ -163,10 +125,7 @@
       {/if}
 
       {#if error}
-        <div
-          class="mt-4 flex animate-fade-in items-start gap-2 rounded-lg border border-error/30 bg-error/8 px-3 py-2.5 text-ui"
-        >
-          <Icon icon="mdi:alert-circle" width="16" class="mt-0.5 shrink-0 text-error" />
+        <Callout tone="error" icon="mdi:alert-circle" class="mt-4 animate-fade-in text-ui">
           <span class="min-w-0 flex-1">{error}</span>
           <button
             type="button"
@@ -175,40 +134,36 @@
           >
             Dismiss
           </button>
-        </div>
+        </Callout>
       {/if}
     </section>
 
     <section class="mt-6 divide-y divide-border border-t border-border" aria-label="Update settings">
-      {#snippet autoCheck()}
+      <SettingRow
+        title="Check for updates at startup"
+        description="At most once an hour, in the background."
+        density="flush"
+      >
         <Switch
           checked={settingsStore.autoCheckUpdates}
           label="Check for updates at startup"
           onchange={(on) => settingsStore.setAutoCheckUpdates(on)}
         />
-      {/snippet}
-      {#snippet prereleases()}
+      </SettingRow>
+      <SettingRow
+        title="Include pre-releases"
+        description="Also offer test builds marked pre-release on GitHub. They are newer but less tested."
+        density="flush"
+      >
         <Switch
           checked={settingsStore.includePrereleases}
           label="Include pre-releases"
           onchange={setIncludePrereleases}
         />
-      {/snippet}
-      {#snippet autoInstall()}
-        <Switch
-          checked={settingsStore.autoInstallUpdates}
-          label="Install updates automatically"
-          disabled
-          onchange={(on) => settingsStore.setAutoInstallUpdates(on)}
-        />
-      {/snippet}
-      {@render row("Check for updates at startup", "At most once an hour, in the background.", autoCheck)}
-      {@render row(
-        "Include pre-releases",
-        "Also offer test builds marked pre-release on GitHub. They are newer but less tested.",
-        prereleases,
-      )}
-      {@render row("Install updates automatically", "Not available yet.", autoInstall)}
+      </SettingRow>
+      <SettingRow title="Install updates automatically" description="Not available yet." density="flush">
+        <Switch checked={settingsStore.autoInstallUpdates} label="Install updates automatically" disabled />
+      </SettingRow>
     </section>
   </div>
 </Modal>

@@ -46,6 +46,8 @@ function isVisible(app: AppView): boolean {
   return !status || status.presence.state !== "absent" || status.install_route !== "none";
 }
 
+const appsById = $derived(new Map(apps.map((a) => [a.id, a])));
+
 const appsByCategory = $derived.by(() => {
   const byCategory: Record<string, AppView[]> = {};
   for (const app of apps) if (isVisible(app)) (byCategory[app.category] ??= []).push(app);
@@ -82,7 +84,7 @@ async function run(id: string, kind: AppOperationKind, done: string): Promise<vo
   operations.set(id, { kind, startedAt: Date.now() });
   errors.delete(id);
   let failed = false;
-  const subject = apps.find((a) => a.id === id)?.name;
+  const subject = appsById.get(id)?.name;
   try {
     adopt(await (kind === "remove" ? appsApi.removeApp(id) : appsApi.installApp(id)));
     toastStore.success(done, { subject });
@@ -124,8 +126,12 @@ export const appsStore = {
     return statuses.get(id);
   },
 
+  app(id: string): AppView | undefined {
+    return appsById.get(id);
+  },
+
   isVisible(id: string): boolean {
-    const app = apps.find((a) => a.id === id);
+    const app = appsById.get(id);
     return !!app && isVisible(app);
   },
 
@@ -169,7 +175,7 @@ export const appsStore = {
 
   /** The Store install is unverified, so presence is re-read when the user comes back. */
   async openStorePage(id: string): Promise<void> {
-    const productId = apps.find((a) => a.id === id)?.install?.id;
+    const productId = appsById.get(id)?.install?.id;
     if (!productId) return;
     errors.delete(id);
     try {

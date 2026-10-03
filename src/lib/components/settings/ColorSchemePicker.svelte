@@ -1,45 +1,32 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { COLOR_SCHEMES, type ColorSchemeId, colorSchemeStore } from "$lib/stores/colorScheme.svelte";
+  import { COLOR_SCHEMES, colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { cn } from "$lib/utils/cn";
 
-  interface Props {
-    /** Size of color circles */
-    size?: "sm" | "md";
-  }
+  const SWATCH = { sm: "w-4 h-4", md: "w-5 h-5" };
 
-  let { size = "sm" }: Props = $props();
-
-  const currentScheme = $derived(colorSchemeStore.current);
-
-  const sizeClasses = {
-    sm: "w-4 h-4",
-    md: "w-5 h-5",
-  };
-
-  function handleSchemeChange(schemeId: ColorSchemeId) {
-    colorSchemeStore.set(schemeId);
-  }
+  let { size = "sm" }: { size?: keyof typeof SWATCH } = $props();
 </script>
 
 <div class="flex items-center gap-1.5">
   {#each COLOR_SCHEMES as scheme (scheme.id)}
+    {@const selected = colorSchemeStore.current === scheme.id}
     <button
       type="button"
-      onclick={() => handleSchemeChange(scheme.id)}
+      onclick={() => colorSchemeStore.set(scheme.id)}
       class={cn(
         "flex cursor-pointer items-center justify-center rounded-full transition duration-normal",
         "hover:scale-110 hover:ring-2 hover:ring-white/30",
         "focus:ring-2 focus:ring-white/50 focus:outline-none",
-        sizeClasses[size],
-        currentScheme === scheme.id && "scale-110 ring-2 ring-white/60",
+        SWATCH[size],
+        selected && "scale-110 ring-2 ring-white/60",
       )}
-      style="background-color: {scheme.color}"
+      style:background-color={scheme.color}
       use:tooltip={scheme.name}
       aria-label="Set {scheme.name} color scheme"
-      aria-pressed={currentScheme === scheme.id}
+      aria-pressed={selected}
     >
-      {#if currentScheme === scheme.id}
+      {#if selected}
         <svg class="h-2.5 w-2.5 animate-pop-in text-white drop-shadow-sm" viewBox="0 0 20 20" fill="currentColor">
           <path
             fill-rule="evenodd"

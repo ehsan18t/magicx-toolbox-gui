@@ -1,6 +1,16 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
-  import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
+  import { Icon, type IconName } from "$lib/components/shared";
+  import {
+    Button,
+    ICON_SIZE,
+    Modal,
+    ModalBody,
+    ModalFooter,
+    ModalHeader,
+    TONE_TEXT,
+    type Tone,
+  } from "$lib/components/ui";
+  import type { ButtonVariants } from "$lib/components/ui/variants";
   import type { ConfirmVariant as Variant } from "$lib/stores/confirm.svelte";
 
   interface Props {
@@ -25,22 +35,23 @@
     oncancel,
   }: Props = $props();
 
-  const variantConfig: Record<
-    Variant,
-    { icon: string; iconColor: string; buttonVariant: "primary" | "warning" | "danger" }
-  > = {
-    default: { icon: "mdi:help-circle", iconColor: "text-accent", buttonVariant: "primary" },
-    warning: { icon: "mdi:alert", iconColor: "text-warning", buttonVariant: "warning" },
-    danger: { icon: "mdi:alert-octagon", iconColor: "text-error", buttonVariant: "danger" },
+  const VARIANT: Record<Variant, { icon: IconName; tone: Tone; button: ButtonVariants["variant"] }> = {
+    default: { icon: "mdi:help-circle", tone: "accent", button: "primary" },
+    warning: { icon: "mdi:alert", tone: "warning", button: "warning" },
+    danger: { icon: "mdi:alert-octagon", tone: "error", button: "danger" },
   };
 
-  const config = $derived(variantConfig[variant]);
+  const config = $derived(VARIANT[variant]);
   const messageId = $props.id();
 </script>
 
 <Modal {open} onclose={oncancel} size="sm" role="alertdialog" describedBy={messageId}>
   <ModalHeader {title}>
-    {#snippet leading()}<Icon icon={config.icon} width={24} class="shrink-0 {config.iconColor}" />{/snippet}
+    {#snippet leading()}<Icon
+        icon={config.icon}
+        width={ICON_SIZE.xl}
+        class="shrink-0 {TONE_TEXT[config.tone]}"
+      />{/snippet}
   </ModalHeader>
 
   <ModalBody>
@@ -49,6 +60,6 @@
 
   <ModalFooter>
     <Button variant="secondary" onclick={oncancel}>{cancelText}</Button>
-    <Button variant={config.buttonVariant} onclick={onconfirm}>{confirmText}</Button>
+    <Button variant={config.button} onclick={onconfirm}>{confirmText}</Button>
   </ModalFooter>
 </Modal>

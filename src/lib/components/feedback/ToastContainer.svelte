@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
+  import { Icon, type IconName } from "$lib/components/shared";
+  import { ICON_SIZE } from "$lib/components/ui";
   import { toastStore, type ToastType } from "$lib/stores/toast.svelte";
-  import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import { reflow, shift } from "$lib/utils/motion";
 
-  const typeConfig: Record<ToastType, { icon: string; color: string; stripe: string }> = {
+  const typeConfig: Record<ToastType, { icon: IconName; color: string; stripe: string }> = {
     success: { icon: "mdi:check-circle", color: "text-success", stripe: "bg-success" },
     error: { icon: "mdi:alert-circle", color: "text-error", stripe: "bg-error" },
     warning: { icon: "mdi:alert", color: "text-warning", stripe: "bg-warning" },
@@ -14,9 +14,7 @@
 
 <!-- Always mounted: a live region must exist before its content arrives, and the last toast still animates out. -->
 <div
-  class="fixed right-4 z-toast flex flex-col gap-2 transition-[top] duration-slow {pendingRebootStore.count > 0
-    ? 'top-toast-offset-banner'
-    : 'top-toast-offset'}"
+  class="fixed top-toast-offset right-4 z-toast flex flex-col gap-2"
   role="region"
   aria-label="Notifications"
   aria-live="polite"
@@ -30,7 +28,7 @@
       animate:reflow
     >
       <span class="absolute inset-y-0 left-0 w-1 {config.stripe}" aria-hidden="true"></span>
-      <Icon icon={config.icon} width="18" class="mt-px shrink-0 {config.color}" />
+      <Icon icon={config.icon} width={ICON_SIZE.lg} class="mt-px shrink-0 {config.color}" />
       <div class="min-w-0 flex-1">
         {#if toast.subject}
           <div class="text-xs font-medium text-foreground-muted">{toast.subject}</div>
@@ -51,11 +49,12 @@
         {/if}
       </div>
       <button
+        type="button"
         class="shrink-0 cursor-pointer rounded border-0 bg-transparent p-1 text-foreground-muted hover:bg-muted hover:text-foreground"
         onclick={() => toastStore.dismiss(toast.id)}
         aria-label="Dismiss notification"
       >
-        <Icon icon="mdi:close" width="16" />
+        <Icon icon="mdi:close" width={ICON_SIZE.md} />
       </button>
     </div>
   {/each}

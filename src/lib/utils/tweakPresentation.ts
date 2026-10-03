@@ -1,3 +1,4 @@
+import type { IconName } from "$lib/components/shared";
 import type {
   Attention,
   Availability,
@@ -45,7 +46,7 @@ export const isHighRisk = (level: RiskLevel): boolean => level === "high" || lev
 export interface PermissionInfo {
   name: string;
   description: string;
-  icon: string;
+  icon: IconName;
 }
 
 const PERMISSION_INFO: Record<Exclude<Level, "User">, PermissionInfo> = {
@@ -128,8 +129,26 @@ export function tallies(list: TweakWithStatus[]): Tallies {
 export interface StateSummary {
   label: string;
   tone: Tone;
-  icon: string;
+  icon: IconName;
   spin?: boolean;
+}
+
+export const unavailableReason = (status: TweakStatus): string =>
+  status.unavailableReason ?? "Not available on this system";
+
+/** The tooltip on a row's state line. */
+export function stateTip(status: TweakStatus): string {
+  switch (status.state) {
+    case "unknown": {
+      const causes = status.unknownReasons.map((r) => `${r.effect}: ${r.cause}`).join("; ");
+      const base = `Could not read this tweak's state (${causes || "unknown"}).`;
+      return status.needsElevation ? `${base} ${ELEVATE_HINT}` : base;
+    }
+    case "unavailable":
+      return unavailableReason(status);
+    default:
+      return "Current state";
+  }
 }
 
 // Each switch keeps a default: a state added in Rust must not crash the rows.
