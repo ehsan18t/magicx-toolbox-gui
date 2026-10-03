@@ -212,8 +212,8 @@ export interface TweakDefinition {
   supported: boolean;
   /** Apply targets are addressed by label, not index. */
   options: TweakEffectOption[];
-  info?: string;
-  warning?: string;
+  info: string | null;
+  warning: string | null;
 }
 
 /** "loading" until the tweak's first `tweak-status` event arrives. */

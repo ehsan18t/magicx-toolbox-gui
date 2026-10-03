@@ -13,9 +13,9 @@
     inputRef?: HTMLInputElement | null;
     onchange?: (value: string) => void;
     /** After the clear button, e.g. a scope toggle. */
-    trailing?: Snippet;
+    trailing?: Snippet | undefined;
     /** Backspace in an empty box, e.g. to drop that scope. */
-    onbackspace?: () => void;
+    onbackspace?: (() => void) | undefined;
   }
 
   let {

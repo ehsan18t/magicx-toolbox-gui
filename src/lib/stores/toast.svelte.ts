@@ -15,13 +15,13 @@ export interface Toast {
   /** Milliseconds; 0 stays until dismissed. */
   duration: number;
   /** The tweak or app the toast is about, shown as its title. */
-  subject?: string;
-  action?: ToastAction;
+  subject?: string | undefined;
+  action?: ToastAction | undefined;
 }
 
 interface ToastOptions {
   duration?: number;
-  subject?: string;
+  subject?: string | undefined;
   action?: ToastAction;
 }
 
@@ -38,7 +38,7 @@ const MAX_TOASTS = 5;
 interface Timer {
   remaining: number;
   startedAt: number;
-  handle?: ReturnType<typeof setTimeout>;
+  handle?: ReturnType<typeof setTimeout> | undefined;
 }
 
 let toasts = $state.raw<Toast[]>([]);

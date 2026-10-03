@@ -6,7 +6,7 @@
   interface Props {
     /** Null runs the bar indeterminate. */
     value: number | null;
-    max?: number;
+    max?: number | undefined;
     label: string;
     showValue?: boolean;
     class?: string;

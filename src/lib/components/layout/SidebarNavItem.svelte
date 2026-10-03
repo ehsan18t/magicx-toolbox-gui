@@ -18,7 +18,7 @@
     active: boolean;
     onclick: () => void;
     trailing?: string;
-    trailingTone?: TextTone;
+    trailingTone?: TextTone | undefined;
     alert?: string;
     pending?: string;
   }

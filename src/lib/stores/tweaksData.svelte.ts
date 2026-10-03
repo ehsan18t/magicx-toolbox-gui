@@ -40,8 +40,8 @@ function mapView(view: TweakView): TweakDefinition {
     availability: view.availability,
     supported: view.supported,
     options: view.options,
-    info: view.info ?? undefined,
-    warning: view.warning ?? undefined,
+    info: view.info,
+    warning: view.warning,
   };
 }
 

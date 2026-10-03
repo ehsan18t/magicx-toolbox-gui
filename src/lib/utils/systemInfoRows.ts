@@ -88,9 +88,9 @@ export function systemInfoRows(info: SystemInfo): { summary: HardwareRow[]; devi
       label: numbered("Storage", i, disks.length),
       value: d.model,
       detail: details(formatStorage(d.size_gb), d.drive_type, d.interface_type !== "Unknown" && d.interface_type),
-      status: d.health_status
-        ? { text: d.health_status, tone: d.health_status === "Healthy" ? "success" : "warning" }
-        : undefined,
+      ...(d.health_status && {
+        status: { text: d.health_status, tone: d.health_status === "Healthy" ? "success" : "warning" },
+      }),
     })),
     ...network.map((n, i): HardwareRow => ({
       icon: "mdi:ethernet",

@@ -21,6 +21,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
+    "exactOptionalPropertyTypes": true,
     "moduleResolution": "bundler",
     "noImplicitReturns": true,
     "noImplicitThis": true,

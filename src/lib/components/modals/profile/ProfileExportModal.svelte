@@ -66,8 +66,9 @@
 
   async function exportProfile() {
     const trimmed = name.trim();
+    const trimmedDescription = description.trim();
     const exported = await profileStore.exportProfile(trimmed, selectedIds, {
-      description: description.trim() || undefined,
+      ...(trimmedDescription && { description: trimmedDescription }),
       includeSystemState,
     });
     if (exported) {

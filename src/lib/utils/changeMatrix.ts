@@ -45,10 +45,10 @@ const lastSegment = (path: string) => path.split("\\").filter(Boolean).at(-1) ??
 const humanize = (s: string) => capitalize(s.replaceAll("_", " "));
 
 function registryCell(c: RegistryChange): MatrixCell {
-  const note = c.windows_versions?.length ? `Win ${c.windows_versions.join(", ")}` : undefined;
-  if (c.action === "delete_value") return { text: "Not set", removal: true, note };
-  if (c.action === "delete_key") return { text: "Key removed", removal: true, note };
-  if (c.action === "create_key") return { text: "Key created", note };
+  const scope = c.windows_versions?.length ? { note: `Win ${c.windows_versions.join(", ")}` } : {};
+  if (c.action === "delete_value") return { text: "Not set", removal: true, ...scope };
+  if (c.action === "delete_key") return { text: "Key removed", removal: true, ...scope };
+  if (c.action === "create_key") return { text: "Key created", ...scope };
   const v = c.value;
   const text =
     v === null
@@ -60,7 +60,7 @@ function registryCell(c: RegistryChange): MatrixCell {
             ? '""'
             : v
           : JSON.stringify(v);
-  return { text, note };
+  return { text, ...scope };
 }
 
 interface MatrixEntry {
@@ -80,7 +80,7 @@ function matrixEntries(o: TweakEffectOption): MatrixEntry[] {
           title: isKey ? "(key)" : c.value_name || "(Default)",
           name: isKey ? lastSegment(c.key) : c.value_name,
           location: `${c.hive}\\${c.key}`,
-          type: isKey ? undefined : (c.value_type ?? undefined),
+          ...(!isKey && c.value_type !== null && { type: c.value_type }),
         },
         cell: registryCell(c),
       };

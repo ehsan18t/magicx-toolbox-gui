@@ -63,10 +63,10 @@ test("registry cells describe each action and value shape", () => {
   )[0].cells;
   assert.deepEqual(cells, [
     { text: "255 (0xFF)", note: "Win 11" },
-    { text: "Not set", removal: true, note: undefined },
-    { text: '""', note: undefined },
-    { text: '["x","y"]', note: undefined },
-    { text: "(empty)", note: undefined },
+    { text: "Not set", removal: true },
+    { text: '""' },
+    { text: '["x","y"]' },
+    { text: "(empty)" },
   ]);
 });
 
@@ -80,7 +80,7 @@ test("a key action gets its own row, apart from values under that key", () => {
   assert.ok(key);
   assert.equal(key.name, "Test");
   assert.equal(key.type, undefined);
-  assert.deepEqual(key.cells[0], { text: "Key removed", removal: true, note: undefined });
+  assert.deepEqual(key.cells[0], { text: "Key removed", removal: true });
 });
 
 test("an untouched setting leaves the option's cell null, and rows sort by kind", () => {
@@ -125,7 +125,7 @@ test("the observed state fills the now column and can add a row", () => {
       service_changes: [{ name: "Svc", startup: "manual", skip_validation: false }],
     }),
   );
-  assert.deepEqual(rows[0].now, { text: "0 (0x0)", note: undefined });
+  assert.deepEqual(rows[0].now, { text: "0 (0x0)" });
   assert.deepEqual(rows[1].cells, [null]);
   assert.deepEqual(rows[1].now, { text: "Manual" });
 });
