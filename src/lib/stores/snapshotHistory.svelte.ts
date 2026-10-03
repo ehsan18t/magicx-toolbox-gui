@@ -2,6 +2,7 @@ import * as tweaksApi from "$lib/api/tweaks";
 import type { EntrySummary, TweakWithStatus } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
+import { SvelteSet } from "svelte/reactivity";
 import { confirmStore } from "./confirm.svelte";
 import { toastStore } from "./toast.svelte";
 import { tweakActionsStore } from "./tweakActions.svelte";
@@ -19,7 +20,9 @@ interface Listing {
  */
 export function createSnapshotHistory(tweak: () => TweakWithStatus | null, active: () => boolean) {
   let listing = $state<Listing | null>(null);
-  let busy = $state<{ tweakId: string; seq: number } | null>(null);
+  // One key per entry being discarded, so one finishing never clears another's spinner.
+  const busy = new SvelteSet<string>();
+  const busyKey = (tweakId: string, seq: number) => `${tweakId}#${seq}`;
   let latestRequest = 0;
 
   const own = $derived(listing?.tweakId === tweak()?.definition.id ? listing : null);
@@ -43,7 +46,8 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
   });
 
   async function discard(tweakId: string, seq: number) {
-    busy = { tweakId, seq };
+    const key = busyKey(tweakId, seq);
+    busy.add(key);
     try {
       await tweaksApi.discardSnapshotEntry(tweakId, seq);
       if (listing?.tweakId === tweakId) {
@@ -57,7 +61,7 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
     } catch (error) {
       toastStore.failure("Failed to discard snapshot entry", error);
     } finally {
-      busy = null;
+      busy.delete(key);
     }
   }
 
@@ -76,7 +80,8 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
       return !!tweak()?.status.hasHistory || (own !== null && (own.entries.length > 0 || own.error !== null));
     },
     isBusy(seq: number): boolean {
-      return busy?.seq === seq && busy.tweakId === tweak()?.definition.id;
+      const tweakId = tweak()?.definition.id;
+      return tweakId !== undefined && busy.has(busyKey(tweakId, seq));
     },
 
     async discardWithConfirm(seq: number): Promise<void> {
