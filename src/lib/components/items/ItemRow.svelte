@@ -7,11 +7,13 @@
 </script>
 
 <script lang="ts">
+  import { Icon } from "$lib/components/shared";
   import { Callout, HighlightedText, IconButton, indicator, META_LINE } from "$lib/components/ui";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import type { SearchResult } from "$lib/stores/search.svelte";
   import type { ItemKind } from "$lib/types";
   import { cn } from "$lib/utils/cn";
+  import { infoExcerpt } from "$lib/utils/excerpt";
   import { expand } from "$lib/utils/motion";
   import { rowDomId } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
@@ -23,6 +25,8 @@
     id: string;
     title: string;
     description: string;
+    /** The Details markdown; a match found only here shows as an excerpt. */
+    info?: string | null;
     /** Highlight ranges; defaults to the page filter's. */
     match?: SearchResult | null;
     stripe?: RowStripe | null;
@@ -45,6 +49,7 @@
     id,
     title,
     description,
+    info,
     match,
     stripe = null,
     emphasis = "none",
@@ -60,6 +65,11 @@
   }: Props = $props();
 
   const ranges = $derived(match ?? pageFilterStore.match(id));
+  const excerpt = $derived(
+    info && ranges?.infoRanges.length && !ranges.nameRanges.length && !ranges.descriptionRanges.length
+      ? infoExcerpt(info, ranges.infoRanges)
+      : null,
+  );
 
   let rowEl = $state<HTMLElement | null>(null);
   const highlight = searchHighlight(
@@ -98,6 +108,14 @@
       <p class="col-span-full m-0 text-ui leading-snug text-foreground-muted">
         {#if ranges}<HighlightedText text={description} ranges={ranges.descriptionRanges} />{:else}{description}{/if}
       </p>
+
+      {#if excerpt}
+        <p class="col-span-full m-0 flex min-w-0 items-center gap-1 text-xs leading-snug text-foreground-muted">
+          <Icon icon="mdi:text-search" size="2xs" class="shrink-0" />
+          <span class="sr-only">Matched in details:</span>
+          <HighlightedText text={excerpt.text} ranges={excerpt.ranges} class="min-w-0 truncate" />
+        </p>
+      {/if}
     </div>
 
     {@render notices?.()}

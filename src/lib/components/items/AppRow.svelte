@@ -77,6 +77,7 @@
   id={app.id}
   title={app.name}
   description={app.description}
+  info={app.info}
   {match}
   stripe={status?.presence.state === "installed" ? "accent" : null}
   error={appsStore.error(app.id)}

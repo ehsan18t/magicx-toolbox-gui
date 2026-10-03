@@ -61,6 +61,7 @@
   id={def.id}
   title={def.name}
   description={def.description}
+  info={def.info}
   {match}
   {stripe}
   emphasis={tweakDetailsModalStore.openId === def.id ? "selected" : hasPending ? "pending" : "none"}
