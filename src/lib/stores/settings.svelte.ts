@@ -4,7 +4,6 @@ import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
 const DEFAULT_SETTINGS: AppSettings = {
   autoCheckUpdates: true,
-  autoInstallUpdates: false,
   lastUpdateCheck: null,
   showUnsupported: false,
   includePrereleases: false,

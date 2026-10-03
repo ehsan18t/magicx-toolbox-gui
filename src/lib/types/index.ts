@@ -479,7 +479,6 @@ export interface PendingChange {
 /** Persisted in localStorage. */
 export interface AppSettings {
   autoCheckUpdates: boolean;
-  autoInstallUpdates: boolean;
   /** ISO 8601. */
   lastUpdateCheck: string | null;
   /** List tweaks and apps this Windows build cannot run, shown as unavailable. */
