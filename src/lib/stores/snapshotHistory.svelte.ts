@@ -50,6 +50,8 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
     busy.add(key);
     try {
       await tweaksApi.discardSnapshotEntry(tweakId, seq);
+      // A listing still in flight was read before the discard and would bring the entry back.
+      latestRequest++;
       if (listing?.tweakId === tweakId) {
         listing = { ...listing, entries: listing.entries.filter((entry) => entry.seq !== seq) };
       }
