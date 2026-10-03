@@ -52,7 +52,7 @@ Fix every issue the gate reports, whether or not your change caused it. Tests to
 - **Never `git add -A` / `git add .`.** `PROGRESS.md` at the repo root is untracked scratch, and `-A` sweeps it in. Always stage explicit paths.
 - **Commit by task, not by file.** Conventional-commit titles (`fix(registry): …`, `feat(ui): …`), imperative mood, **no internal labels** ("WP", "Stage N", "wip"). Don't group unrelated changes.
 - **Batch docs.** Don't commit status docs after each work-package; fold them into one docs commit at the end of a stage.
-- **CRLF is enforced** (`.gitattributes eol=crlf`, `rustfmt.toml newline_style = "Windows"`, and a CI job asserts every tracked text file is CRLF). The Edit/Write tools emit LF; git normalizes to CRLF on commit, so committing is fine. To discard an LF-only working-tree diff, `git checkout -- <file>`.
+- **CRLF is enforced** (`.gitattributes eol=crlf`, `rustfmt.toml newline_style = "Windows"`, and a CI job asserts every tracked text file is CRLF; the ts-rs bindings in `src/lib/types/generated/` are the one LF exception, matching what ts-rs writes). The Edit/Write tools emit LF; git normalizes to CRLF on commit, so committing is fine. To discard an LF-only working-tree diff, `git checkout -- <file>`.
 - Multi-step work: branch per unit → `git merge --squash` onto `main` with a proper message (or commit directly on `main` with explicit staging). `git rebase -i` is not available here.
 
 ## Backend (Rust / Tauri) — `src-tauri/`

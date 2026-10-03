@@ -63,7 +63,7 @@ jobs:
           rm -rf src/lib/types/generated
           pnpm run validate
 
-      # ts-rs writes LF; eol=crlf normalizes it, so only a real change shows.
+      # The bindings are checked out LF, as ts-rs writes them, so only a real change shows.
       - name: IPC bindings are current
         shell: bash
         run: |
@@ -123,7 +123,7 @@ jobs:
         run: |
           fail=0
           while IFS= read -r f; do
-            case "$f" in *.woff2|*.png|*.ico|*.jpg|*.jpeg|*.gif|*.webp|*.pdf|LICENSE) continue;; esac
+            case "$f" in *.woff2|*.png|*.ico|*.jpg|*.jpeg|*.gif|*.webp|*.pdf|LICENSE|src/lib/types/generated/*) continue;; esac
             [ -f "$f" ] || continue
             # A tracked text file with no CRLF at all is suspicious; empty and
             # single-line-without-newline files are not, so require at least one LF.
