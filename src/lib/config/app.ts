@@ -11,7 +11,7 @@ export const APP_CONFIG = {
   update: {
     // Matches MagicX-Toolbox_x.x.x_x64-setup.exe and MagicX-Toolbox_x.x.x_x64_en-US.msi.
     assetPattern: /MagicX[-_]Toolbox.*x64.*\.(exe|msi)$/i,
-    releasesApiUrl: "https://api.github.com/repos/ehsan18t/magicx-toolbox-gui/releases/latest",
+    releasesApiUrl: "https://api.github.com/repos/ehsan18t/magicx-toolbox-gui/releases",
   },
 } as const;
 

@@ -78,7 +78,7 @@ fn strip_v_prefix(version: &str) -> &str {
 }
 
 /// `major.minor.patch[-pre]`; an empty `pre` is a release, which outranks every pre-release of it.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 struct Version {
     core: (u64, u64, u64),
     pre: Vec<String>,
@@ -129,6 +129,15 @@ impl Ord for Version {
     }
 }
 
+// Equality follows `cmp`, not the strings: `rc.01` and `rc.1` are one version.
+impl PartialEq for Version {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Version {}
+
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -143,14 +152,19 @@ fn is_newer_version(current: &str, latest: &str) -> bool {
 }
 
 /// The newest published release, skipping drafts, and pre-releases unless they are wanted.
+/// A `-pre` tag counts as a pre-release even when GitHub's flag is unset.
 fn newest_release(
     releases: Vec<GitHubRelease>,
     include_prereleases: bool,
 ) -> Option<GitHubRelease> {
     releases
         .into_iter()
-        .filter(|r| !r.draft && (include_prereleases || !r.prerelease))
-        .filter_map(|r| parse_version(&r.tag_name).map(|v| (v, r)))
+        .filter(|r| !r.draft)
+        .filter_map(|mut r| {
+            let v = parse_version(&r.tag_name)?;
+            r.prerelease |= !v.pre.is_empty();
+            (include_prereleases || !r.prerelease).then_some((v, r))
+        })
         .max_by(|(a, _), (b, _)| a.cmp(b))
         .map(|(_, r)| r)
 }
@@ -173,10 +187,7 @@ fn check_for_update_in(current_version: String, config: UpdateConfig) -> Result<
         .into();
 
     // `/releases/latest` never returns a pre-release, so read the list and choose here.
-    let list_url = format!(
-        "{}?per_page={RELEASES_PER_PAGE}",
-        config.releases_api_url.trim_end_matches("/latest")
-    );
+    let list_url = format!("{}?per_page={RELEASES_PER_PAGE}", config.releases_api_url);
     let mut response = agent
         .get(&list_url)
         .header("User-Agent", "MagicX-Toolbox-Updater")
@@ -201,9 +212,12 @@ fn check_for_update_in(current_version: String, config: UpdateConfig) -> Result<
                 "GitHub API rate limit exceeded. Please try again later.".into(),
             ));
         }
+        // The list endpoint answers an empty repo with `[]`; 404 means the repo or URL is wrong.
         404 => {
-            log::warn!("No releases found");
-            return Ok(UpdateInfo::none(current_version));
+            log::error!("Releases endpoint not found: {}", list_url);
+            return Err(Error::Update(
+                "Could not find the release feed. Please try again later.".into(),
+            ));
         }
         code => {
             return Err(Error::Update(format!(
@@ -655,6 +669,30 @@ mod tests {
             Some("v3.1.0-beta.1".into())
         );
         assert!(newest_release(Vec::new(), true).is_none());
+    }
+
+    #[test]
+    fn a_pre_release_tag_counts_as_prerelease_without_githubs_flag() {
+        let list = || {
+            vec![
+                release("v3.0.0", false, false),
+                release("v3.1.0-rc.1", false, false),
+            ]
+        };
+        assert_eq!(
+            newest_release(list(), false).map(|r| r.tag_name),
+            Some("v3.0.0".into())
+        );
+        assert!(newest_release(list(), true).is_some_and(|r| r.prerelease));
+    }
+
+    #[test]
+    fn equality_agrees_with_ordering() {
+        let a = parse_version("3.1.0-rc.01").unwrap();
+        let b = parse_version("3.1.0-rc.1").unwrap();
+        assert_eq!(a.cmp(&b), Ordering::Equal);
+        assert_eq!(a, b);
+        assert_ne!(a, parse_version("3.1.0-rc.2").unwrap());
     }
 
     #[test]
