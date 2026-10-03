@@ -118,9 +118,9 @@
           />
         {/if}
       {:else}
-        <div class="flex animate-fade-in flex-wrap items-center justify-between gap-4">
-          <div class="min-w-0">
-            <p class={["m-0 flex items-center gap-2", HEADING.status]}>
+        <div class="animate-fade-in">
+          <div class="flex items-center justify-between gap-4">
+            <p class={["m-0 flex min-w-0 items-center gap-2", HEADING.status]}>
               {#if updateInfo}
                 <Icon icon="mdi:check-circle" size="xl" class="text-success" />
                 You're up to date
@@ -128,14 +128,20 @@
                 {versionLabel()}
               {/if}
             </p>
-            <p class="m-0 mt-1 text-ui text-foreground-muted">
-              {#if updateInfo}Version {appVersion || updateInfo.currentVersion}.{/if}
-              {lastChecked}.
-            </p>
+            <Button
+              variant="secondary"
+              icon="mdi:refresh"
+              class="shrink-0"
+              loading={isChecking}
+              onclick={checkForUpdate}
+            >
+              {isChecking ? "Checking…" : updateInfo ? "Check again" : "Check for updates"}
+            </Button>
           </div>
-          <Button variant="secondary" icon="mdi:refresh" loading={isChecking} onclick={checkForUpdate}>
-            {isChecking ? "Checking…" : updateInfo ? "Check again" : "Check for updates"}
-          </Button>
+          <p class="m-0 mt-1 text-ui text-foreground-muted">
+            {#if updateInfo}Version {appVersion || updateInfo.currentVersion}.{/if}
+            {lastChecked}.
+          </p>
         </div>
       {/if}
 
