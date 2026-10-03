@@ -170,6 +170,8 @@ pub struct LiveSystemInfo {
 pub struct MachineHardware {
     pub hardware: HardwareInfo,
     pub device: DeviceInfo,
+    /// A WMI class failed to read and shows its default.
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

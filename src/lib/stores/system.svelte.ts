@@ -4,7 +4,7 @@ import type { CachedSystemInfo, LiveSystemInfo, SystemInfo, SystemReading } from
 import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
-import { composeSystemInfo, firstPaint, parseSystemCache } from "$lib/utils/systemCache";
+import { composeSystemInfo, firstPaint, parseSystemCache, replacesCache } from "$lib/utils/systemCache";
 import { toastStore } from "./toast.svelte";
 
 // The hardware read is slow WMI: the last good one paints at once, and every load rereads it behind.
@@ -17,21 +17,22 @@ let loadError = $state<string | null>(null);
 
 const cachedAt = $derived(cache.value?.cachedAt ?? null);
 
-/** Shows a full reading and caches its hardware. */
+/** Shows a full reading and caches its hardware unless that would put a partial read over a complete one. */
 function adoptFull(reading: SystemReading): SystemInfo {
   const machine = reading.machine;
   if (!machine) throw new Error("The system info read returned no hardware.");
-  cache.value = { ...machine, cachedAt: new Date().toISOString() };
+  if (replacesCache(cache.value, machine)) cache.value = { ...machine, cachedAt: new Date().toISOString() };
   info = composeSystemInfo(reading.live, machine);
   return info;
 }
 
-/** Rereads everything, hardware included; a failure is toasted and keeps what is shown. */
-async function refresh(): Promise<SystemInfo | null> {
+/** Rereads everything, hardware included; a failure is toasted and keeps what is shown. Only a user's refresh mentions a partial read. */
+async function reread(announcePartial: boolean): Promise<SystemInfo | null> {
   isRefreshing = true;
   try {
     const fresh = adoptFull(await systemApi.getSystemInfo(true));
     loadError = null;
+    if (announcePartial && fresh.partial) toastStore.info("Some hardware details could not be read; see the log.");
     return fresh;
   } catch (error) {
     toastStore.failure("Could not refresh system info", error, { withContext: true });
@@ -78,7 +79,7 @@ export const systemStore = {
         logError("Failed to read live system info", error);
       }
       info = firstPaint(live, cached);
-      void refresh();
+      void reread(false);
       return info;
     } catch (error) {
       logError("Failed to load system info", error);
@@ -89,5 +90,5 @@ export const systemStore = {
     }
   },
 
-  refresh,
+  refresh: () => reread(true),
 };

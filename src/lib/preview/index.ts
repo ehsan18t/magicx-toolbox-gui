@@ -336,8 +336,8 @@ export function installPreview(admin: boolean): void {
             location.search = "?preview";
             return null;
           case "get_system_info": {
-            const { hardware, device, ...live } = systemInfo(admin);
-            return { live, machine: args.withHardware ? { hardware, device } : null } satisfies SystemReading;
+            const { hardware, device, partial, ...live } = systemInfo(admin);
+            return { live, machine: args.withHardware ? { hardware, device, partial } : null } satisfies SystemReading;
           }
           case "get_elevation_state":
             return { level: admin ? "Admin" : "User", sid_mismatch: false };

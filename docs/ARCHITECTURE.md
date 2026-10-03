@@ -44,7 +44,7 @@ const derived = $derived(store.value);
 | `tweaksPending` | `pendingChangesStore`, `pendingRebootStore` | Staged changes, and tweaks waiting for a restart |
 | `apps` | `appsStore` | App items, their presence, and Remove, Install and Get in Store (ADR-0009) |
 | `boot` | `bootStore` | The launch sequence: the tweak model, the status stream, system info and elevation start together; app presence follows the model |
-| `system` | `systemStore` | Windows and hardware info. The last good hardware read is cached across launches and painted at once under freshly read Windows fields; every launch then rereads the hardware (WMI) in the background and replaces the cache only when that read fully succeeds. With nothing cached, the card waits for the full read |
+| `system` | `systemStore` | Windows and hardware info. The last good hardware read is cached across launches and painted at once under freshly read Windows fields; every launch then rereads the hardware (WMI) in the background and replaces the cache with that read unless it is partial (a WMI class failed and shows defaults) and the cache is complete; a failed read never replaces it. With nothing cached, the card waits for the full read |
 | `elevation` | `elevationStore` | The app's elevation ceiling, whether it runs as admin, and Restart as admin |
 | `favorites` | `favoritesStore` | Starred tweak ids |
 | `snapshotHistory` | `createSnapshotHistory()` | One details window's snapshot entries and discard |

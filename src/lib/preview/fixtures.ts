@@ -312,6 +312,7 @@ export function systemInfo(admin: boolean): SystemInfo {
       system_type: "x64-based PC",
       pc_type: "Workstation",
     },
+    partial: false,
   };
 }
 

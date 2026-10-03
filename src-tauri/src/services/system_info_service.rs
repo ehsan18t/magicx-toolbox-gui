@@ -149,7 +149,6 @@ fn install_date_iso(unix_seconds: u32) -> Option<String> {
         .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
-/// A failed WMI connection or query, so a partial read is never mistaken for the hardware.
 fn wmi_failed(what: &'static str) -> impl Fn(wmi::WMIError) -> Error {
     move |e| Error::WindowsApi(format!("WMI {what}: {e}"))
 }
@@ -167,35 +166,53 @@ fn joined<T>(
         .map_err(|_| Error::WindowsApi(format!("the {what} read panicked")))?
 }
 
+/// One class query failing (damaged WMI repository, some VMs) costs only its own fields.
+fn or_default<T: Default>(read: Result<T, Error>, partial: &mut bool) -> T {
+    read.unwrap_or_else(|e| {
+        log::warn!("{e}; showing its default");
+        *partial = true;
+        T::default()
+    })
+}
+
 /// Every WMI read, on three threads that each own a COM apartment and a connection: one
-/// connection per query costs more in setup than the queries take.
+/// connection per query costs more in setup than the queries take. Only a failed connection or
+/// a panicked thread fails the read.
 fn read_machine_hardware() -> Result<MachineHardware, Error> {
     let start = std::time::Instant::now();
     let (cimv2, display, storage) = std::thread::scope(|s| {
         let cimv2 = s.spawn(|| -> Result<_, Error> {
             let con = connect()?;
-            Ok((
-                get_cpu_info(&con)?,
-                get_memory_info(&con)?,
-                get_motherboard_info(&con)?,
-                get_network_info(&con)?,
-                get_device_info(&con)?,
-            ))
+            let mut partial = false;
+            let read = (
+                or_default(get_cpu_info(&con), &mut partial),
+                or_default(get_memory_info(&con), &mut partial),
+                or_default(get_motherboard_info(&con), &mut partial),
+                or_default(get_network_info(&con), &mut partial),
+                or_default(get_device_info(&con), &mut partial),
+            );
+            Ok((read, partial))
         });
         let display = s.spawn(|| -> Result<_, Error> {
             let con = connect()?;
-            Ok((get_gpu_info(&con)?, get_monitor_info(&con)))
+            let mut partial = false;
+            let gpu = or_default(get_gpu_info(&con), &mut partial);
+            Ok(((gpu, get_monitor_info(&con)), partial))
         });
-        let storage = s.spawn(|| get_disk_info(&connect()?));
+        let storage = s.spawn(|| -> Result<_, Error> {
+            let mut partial = false;
+            let disks = or_default(get_disk_info(&connect()?), &mut partial);
+            Ok((disks, partial))
+        });
         (
             joined(cimv2, "CPU, memory, board and network"),
             joined(display, "GPU and monitor"),
             joined(storage, "disk"),
         )
     });
-    let (cpu, memory, motherboard, network, device) = cimv2?;
-    let (gpu, monitors) = display?;
-    let disks = storage?;
+    let ((cpu, memory, motherboard, network, device), cimv2_partial) = cimv2?;
+    let ((gpu, monitors), display_partial) = display?;
+    let (disks, storage_partial) = storage?;
     log::debug!("Hardware info gathered in {:?}", start.elapsed());
 
     let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
@@ -211,6 +228,7 @@ fn read_machine_hardware() -> Result<MachineHardware, Error> {
             total_storage_gb,
         },
         device,
+        partial: cimv2_partial || display_partial || storage_partial,
     })
 }
 
@@ -805,7 +823,7 @@ fn get_device_info(wmi_con: &WMIConnection) -> Result<DeviceInfo, Error> {
     })
 }
 
-/// The live fields, plus the WMI hardware read when `with_hardware`; a failed or partial read is `Err`.
+/// The live fields, plus the WMI hardware read when `with_hardware`; a failed connection is `Err`.
 pub fn get_system_info(with_hardware: bool) -> Result<SystemReading, Error> {
     let live = LiveSystemInfo {
         windows: get_windows_info()?,
@@ -894,6 +912,18 @@ mod tests {
             product_name("Microsoft Windows 10 Pro", 22631),
             "Windows 11 Pro"
         );
+    }
+
+    #[test]
+    fn a_failed_class_falls_back_to_its_default_and_marks_the_read_partial() {
+        let mut partial = false;
+        assert_eq!(or_default(Ok(3u32), &mut partial), 3);
+        assert!(!partial);
+        let failed: Result<u32, Error> = Err(Error::WindowsApi("WMI processor: x".into()));
+        assert_eq!(or_default(failed, &mut partial), 0);
+        assert!(partial);
+        assert_eq!(or_default(Ok(5u32), &mut partial), 5);
+        assert!(partial, "a later success does not clear it");
     }
 
     #[test]

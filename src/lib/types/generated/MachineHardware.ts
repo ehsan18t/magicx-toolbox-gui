@@ -5,4 +5,8 @@ import type { HardwareInfo } from "./HardwareInfo";
 /**
  * The WMI-read part: slow, so the frontend shows its cached copy while it rereads.
  */
-export type MachineHardware = { hardware: HardwareInfo, device: DeviceInfo, };
+export type MachineHardware = { hardware: HardwareInfo, device: DeviceInfo, 
+/**
+ * A WMI class failed to read and shows its default.
+ */
+partial: boolean, };

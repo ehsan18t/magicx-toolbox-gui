@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CachedSystemInfo, LiveSystemInfo } from "$lib/types";
-import { firstPaint, parseSystemCache, UNKNOWN_LIVE } from "./systemCache.ts";
+import { firstPaint, parseSystemCache, replacesCache, UNKNOWN_LIVE } from "./systemCache.ts";
 
 const cached: CachedSystemInfo = {
   hardware: {
@@ -15,6 +15,7 @@ const cached: CachedSystemInfo = {
     total_storage_gb: 0,
   },
   device: { manufacturer: "Maker", model: "Model", system_type: "x64-based PC", pc_type: "Laptop" },
+  partial: false,
   cachedAt: "2026-01-01T00:00:00.000Z",
 };
 
@@ -23,6 +24,11 @@ const live: LiveSystemInfo = { ...UNKNOWN_LIVE, computer_name: "PC", username: "
 test("parseSystemCache adopts a valid cache and an empty one", () => {
   assert.deepEqual(parseSystemCache(JSON.parse(JSON.stringify(cached))), cached);
   assert.equal(parseSystemCache(null), null);
+});
+
+test("parseSystemCache reads a cache without the partial flag as complete", () => {
+  const { partial: _partial, ...unflagged } = cached;
+  assert.equal(parseSystemCache(unflagged)?.partial, false);
 });
 
 test("parseSystemCache rejects a cache an older build wrote", () => {
@@ -48,4 +54,15 @@ test("firstPaint shows the cached hardware under the live fields, or placeholder
   assert.equal(shown?.hardware, cached.hardware);
   assert.equal(shown && "cachedAt" in shown, false);
   assert.equal(firstPaint(null, cached)?.windows.product_name, "Windows");
+});
+
+test("a partial read is cached only while nothing complete is", () => {
+  const partialCache = { ...cached, partial: true };
+  const complete = { ...cached, partial: false };
+  const partial = { ...cached, partial: true };
+  assert.equal(replacesCache(null, partial), true);
+  assert.equal(replacesCache(partialCache, partial), true);
+  assert.equal(replacesCache(cached, partial), false);
+  assert.equal(replacesCache(cached, complete), true);
+  assert.equal(replacesCache(partialCache, complete), true);
 });

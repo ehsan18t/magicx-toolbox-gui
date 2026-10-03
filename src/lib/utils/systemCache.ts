@@ -27,13 +27,21 @@ export function parseSystemCache(stored: unknown): CachedSystemInfo | null | und
     typeof stored.cachedAt === "string" &&
     [cpu, memory, motherboard].every(isObject) &&
     [gpu, monitors, disks, network].every(Array.isArray);
-  return valid ? (stored as CachedSystemInfo) : undefined;
+  return valid ? ({ ...stored, partial: stored.partial === true } as CachedSystemInfo) : undefined;
 }
 
-export const composeSystemInfo = (live: LiveSystemInfo, { hardware, device }: MachineHardware): SystemInfo => ({
+/** A partial read is cached only while nothing complete is: it never overwrites a complete one. */
+export const replacesCache = (cached: CachedSystemInfo | null, machine: MachineHardware): boolean =>
+  !machine.partial || !cached || cached.partial;
+
+export const composeSystemInfo = (
+  live: LiveSystemInfo,
+  { hardware, device, partial }: MachineHardware,
+): SystemInfo => ({
   ...live,
   hardware,
   device,
+  partial,
 });
 
 /** What the card paints before the hardware read: the cache under the live fields (placeholders if unread), or null for a skeleton. */
