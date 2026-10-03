@@ -3520,10 +3520,6 @@ mod tests {
             .is_none());
     }
 
-    /// A failed acquisition is charged to the run's first item but reached none of them, so that
-    /// item reading as captured proves nothing about the rest; a plain refusal of it does.
-    /// A captured power reading goes back to the plan it came from, whichever plan is active
-    /// at restore, and a plan deleted since leaves nothing to restore.
     #[test]
     fn a_power_capture_restores_to_its_own_plan_or_to_nothing_once_deleted() {
         use crate::tweaks::kinds::power::{fake::Plans, PowerKind};
@@ -3585,6 +3581,8 @@ mod tests {
         assert_eq!(deleted.holding(HIGH), Some((1, 1)));
     }
 
+    /// A failed acquisition is charged to the run's first item but reached none of them, so that
+    /// item reading as captured proves nothing about the rest; a plain refusal of it does.
     #[test]
     fn only_a_refusal_of_the_item_itself_is_cleared_by_its_read() {
         use crate::services::elevation::{AcquireReason, OpFailureClass};
