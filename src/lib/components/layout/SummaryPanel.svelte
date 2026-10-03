@@ -104,7 +104,7 @@
     <p class="m-0 mt-0.5 text-ui text-foreground-muted">Select a tweak to open its details.</p>
   </header>
 
-  <div class="min-h-0 flex-1 scrollbar-gutter-stable space-y-5 overflow-y-auto px-5 py-4">
+  <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
     {#if stats.total > 0}
       <Card as="section" class="p-3">
         <AppliedMeter applied={stats.applied} total={stats.total} segments={breakdown} />

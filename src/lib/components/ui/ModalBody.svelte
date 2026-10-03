@@ -10,6 +10,6 @@
   let { class: className, children }: Props = $props();
 </script>
 
-<div class={cn("min-h-0 flex-1 scrollbar-gutter-both overflow-y-auto px-6 py-5", className)}>
+<div class={cn("min-h-0 flex-1 overflow-y-auto px-6 py-5", className)}>
   {@render children()}
 </div>
