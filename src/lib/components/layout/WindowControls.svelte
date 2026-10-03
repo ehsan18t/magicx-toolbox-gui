@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as systemApi from "$lib/api/system";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import { logError } from "$lib/utils/logger";
   import { onMount } from "svelte";
   import WindowControlButton from "./WindowControlButton.svelte";
@@ -26,8 +27,13 @@
     try {
       await run();
     } catch (error) {
-      logError(`Window ${action} failed`, error);
+      toastStore.failure(`Could not ${action} the window`, error, { withContext: true });
     }
+  }
+
+  async function close() {
+    const hint = await systemApi.closeWindowOrHint();
+    if (hint) toastStore.error(hint);
   }
 </script>
 
@@ -40,7 +46,7 @@
   <WindowControlButton
     label={isMaximized ? "Restore" : "Maximize"}
     glyph={isMaximized ? "restore" : "maximize"}
-    onclick={() => windowCall("maximize", () => systemApi.setWindowMaximized(!isMaximized))}
+    onclick={() => windowCall(isMaximized ? "restore" : "maximize", () => systemApi.setWindowMaximized(!isMaximized))}
   />
-  <WindowControlButton label="Close" glyph="close" onclick={() => windowCall("close", systemApi.closeWindow)} />
+  <WindowControlButton label="Close" glyph="close" onclick={close} />
 </div>
