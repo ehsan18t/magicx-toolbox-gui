@@ -29,15 +29,15 @@
   const isOpen = $derived(modalStore.current === "profileImport");
 
   // From the store, so Back (clear) and a failed apply land on the right step.
-  function readView() {
+  const live = $derived.by(() => {
     const { isApplying, applyResult, currentProfile: profile, validation } = profileStore;
     const step: Step = isApplying ? "applying" : applyResult ? "result" : profile && validation ? "review" : "select";
     return { step, profile, validation, applyResult };
-  }
+  });
 
-  // Frozen while closed: Done and Cancel clear the store, and the exit animation must keep the last step.
-  let lastView = readView();
-  const view = $derived.by(() => (isOpen ? (lastView = readView()) : lastView));
+  // Taken by close(): Done and Cancel clear the store, and the exit animation must keep the last step.
+  let closingView = $state.raw<typeof live | null>(null);
+  const view = $derived(isOpen || !closingView ? live : closingView);
 
   let skipAlreadyApplied = $state(true);
   const skipTweakIds = new SvelteSet<string>();
@@ -47,6 +47,7 @@
   $effect(() => {
     if (!isOpen) return;
     untrack(() => {
+      closingView = null;
       if (!profileStore.currentProfile) profileStore.clear();
       skipAlreadyApplied = true;
       skipTweakIds.clear();
@@ -70,6 +71,7 @@
   });
 
   function close() {
+    closingView = live;
     profileStore.clear();
     modalStore.close();
   }
