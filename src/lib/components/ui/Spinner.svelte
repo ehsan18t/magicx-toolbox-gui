@@ -1,7 +1,7 @@
 <script lang="ts" module>
-  import { ICON_SIZE } from "./icon";
+  import type { IconSize } from "$lib/design";
 
-  const GLYPH = { sm: ICON_SIZE.md, md: ICON_SIZE.xl, lg: ICON_SIZE["3xl"] } as const;
+  const GLYPH = { sm: "md", md: "3xl", lg: "6xl" } as const satisfies Record<string, IconSize>;
 </script>
 
 <script lang="ts">
@@ -24,5 +24,5 @@
   aria-hidden={label ? undefined : "true"}
   class={cn("inline-flex text-accent", className)}
 >
-  <Icon icon="mdi:loading" width={GLYPH[size]} class="animate-spin" />
+  <Icon icon="mdi:loading" size={GLYPH[size]} class="animate-spin" />
 </span>

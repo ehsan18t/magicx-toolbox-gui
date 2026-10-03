@@ -208,12 +208,12 @@ apps: # OPTIONAL: app items, removable apps that are not tweaks (§20)
 Category is declared **once per file** and applies to every tweak in that file. There is **no per-tweak
 `category` field**: a tweak inherits its file's category.
 
-| field         | required | meaning                                                     |
-| ------------- | -------- | ----------------------------------------------------------- |
-| `id`          | yes      | stable category id (kebab/snake case)                       |
-| `name`        | yes      | display name                                                |
-| `icon`        | yes      | icon name (e.g. `"mdi:speedometer"`), the frontend icon set |
-| `description` | yes      | one-line category description                               |
+| field         | required | meaning                                                                                               |
+| ------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `id`          | yes      | stable category id (kebab/snake case)                                                                 |
+| `name`        | yes      | display name                                                                                          |
+| `icon`        | yes      | icon name (e.g. `"mdi:speedometer"`); must be registered in `src/lib/design/icons.ts` (a test checks) |
+| `description` | yes      | one-line category description                                                                         |
 
 All four are required strings. Put related tweaks in the same file to share a category; put a different
 category's tweaks in a different file.

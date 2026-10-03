@@ -1,12 +1,9 @@
-import type { IconName } from "$lib/components/shared";
-import type { TextTone } from "$lib/components/ui/tone";
+import type { IconName, TextTone } from "$lib/design";
 import type { SystemInfo } from "$lib/types";
+import { formatDuration } from "./time";
 
 const MHZ_PER_GHZ = 1000;
 const GB_PER_TB = 1000;
-const SECONDS_PER_MINUTE = 60;
-const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
-const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR;
 const SEP = " · ";
 
 export interface HardwareRow {
@@ -20,16 +17,6 @@ export interface HardwareRow {
 const formatClock = (mhz: number) => (mhz >= MHZ_PER_GHZ ? `${(mhz / MHZ_PER_GHZ).toFixed(1)} GHz` : `${mhz} MHz`);
 
 const formatStorage = (gb: number) => (gb >= GB_PER_TB ? `${(gb / GB_PER_TB).toFixed(1)} TB` : `${gb.toFixed(0)} GB`);
-
-function formatUptime(seconds: number): string {
-  if (!seconds || seconds <= 0) return "Unknown";
-  const days = Math.floor(seconds / SECONDS_PER_DAY);
-  const hours = Math.floor((seconds % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
-  const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
 
 const details = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(SEP);
 
@@ -54,7 +41,7 @@ export function systemInfoRows(info: SystemInfo): { summary: HardwareRow[]; devi
     {
       icon: "mdi:timer-outline",
       label: "Uptime",
-      value: formatUptime(info.windows.uptime_seconds),
+      value: formatDuration(info.windows.uptime_seconds) || "Unknown",
       detail: "since last restart",
     },
     {

@@ -113,7 +113,9 @@ explicitly with `cargo test -- --ignored`.
   `@/*` → `src/*`. Import components from their folder barrel (`$lib/components/<group>`) and
   stores from their own module (`$lib/stores/<name>.svelte`).
 - Reuse the UI primitives in `$lib/components/ui` (`Button`, `Badge`, `Card`, `Modal`, `Select`,
-  `Switch`, `Spinner`, …) before building new ones. Any new icon must be imported in `Icon.svelte`.
+  `Switch`, `Spinner`, …) before building new ones. Design data (icon registry, `ICON_SIZE`, tone maps) lives in
+  `$lib/design`; any new icon must be registered in `$lib/design/icons.ts`, and tone opacity steps are named in
+  `$lib/design/tone.ts`, never written in a caller.
 - No direct `fetch` to local files — go through Tauri commands. External links use the `ExternalLink`
   component. Include aria labels, keep focus styles, and don't block the UI on long-running calls.
 - After editing a component, the official Svelte MCP `svelte-autofixer` is the expected check.

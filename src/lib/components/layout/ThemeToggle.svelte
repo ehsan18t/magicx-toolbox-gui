@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { Icon, type IconName } from "$lib/components/shared";
-  import { ICON_SIZE } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import type { IconName } from "$lib/design";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { duration } from "$lib/utils/motion";
 
@@ -23,7 +23,7 @@
       active ? "group-hover:text-accent" : "scale-50 -rotate-90 opacity-0",
     ]}
   >
-    <Icon icon={name} width={ICON_SIZE.md} />
+    <Icon icon={name} size="md" />
   </span>
 {/snippet}
 

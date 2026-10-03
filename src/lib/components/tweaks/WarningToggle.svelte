@@ -1,7 +1,6 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { ICON_SIZE } from "$lib/components/ui";
 
   interface Props {
     open: boolean;
@@ -24,11 +23,11 @@
   use:tooltip={lockedReason ?? (open ? "Hide warning" : "Show warning")}
   onclick={ontoggle}
 >
-  <Icon icon="mdi:alert" width={ICON_SIZE.xs} class="shrink-0" />
+  <Icon icon="mdi:alert" size="2xs" class="shrink-0" />
   Warning
   <Icon
     icon="mdi:chevron-down"
-    width={ICON_SIZE.sm}
+    size="xs"
     class="shrink-0 transition-transform duration-normal {open ? 'rotate-180' : ''}"
   />
 </button>

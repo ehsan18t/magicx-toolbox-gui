@@ -4,9 +4,10 @@
 
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { type IconName, TONE_SOFT } from "$lib/design";
   import { PageLayout, PageStats } from "$lib/components/layout";
-  import { Icon, type IconName } from "$lib/components/shared";
-  import { Badge, Button, Callout, EmptyState, ICON_SIZE, TONE_SOFT } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import { Badge, Button, Callout, EmptyState } from "$lib/components/ui";
   import type { ButtonVariants } from "$lib/components/ui/variants";
   import { PROFILE_EXT } from "$lib/config/app";
   import { confirmStore } from "$lib/stores/confirm.svelte";
@@ -14,7 +15,7 @@
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { listenFileDrop } from "$lib/utils/fileDrop";
-  import { formatDate } from "$lib/utils/format";
+  import { formatDate } from "$lib/utils/time";
   import { logError } from "$lib/utils/logger";
   import { fade, pop, reflow } from "$lib/utils/motion";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -91,7 +92,7 @@
 )}
   <span class="inline-flex" use:tooltip={tip}>
     <Button {variant} {onclick} disabled={!onclick}>
-      <Icon {icon} width={ICON_SIZE.md} />
+      <Icon {icon} size="md" />
       {label}
     </Button>
   </span>
@@ -109,7 +110,7 @@
           class="m-0 flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground-muted"
           use:tooltip={currentProfileDir}
         >
-          <Icon icon="mdi:folder-open" width={ICON_SIZE.sm} class="shrink-0" />
+          <Icon icon="mdi:folder-open" size="xs" class="shrink-0" />
           <span class="truncate font-mono">{currentProfileDir}</span>
         </p>
       {/if}
@@ -170,7 +171,7 @@
           >
             <div class="flex items-start gap-2.5">
               <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md {TONE_SOFT.accent}">
-                <Icon icon="mdi:file-cog" width={ICON_SIZE.lg} />
+                <Icon icon="mdi:file-cog" size="lg" />
               </span>
               <div class="min-w-0 flex-1">
                 <h3 class="m-0 text-sm font-semibold wrap-break-word">{profile.name}</h3>
@@ -192,10 +193,10 @@
                   onclick={() => handleDelete(profile.name)}
                   loading={deleting}
                 >
-                  {#if !deleting}<Icon icon="mdi:delete" width={ICON_SIZE.md} />{/if}
+                  {#if !deleting}<Icon icon="mdi:delete" size="md" />{/if}
                 </Button>
                 <Button size="sm" variant="primary" onclick={() => openImport(profileStore.importSaved(profile.name))}>
-                  <Icon icon="mdi:play" width={ICON_SIZE.md} />
+                  <Icon icon="mdi:play" size="md" />
                   Apply
                 </Button>
               </div>
@@ -212,7 +213,7 @@
       transition:fade={{ speed: "fast" }}
     >
       <div class="flex h-24 w-24 items-center justify-center rounded-xl {TONE_SOFT.accent}">
-        <Icon icon="mdi:file-import" width="48" />
+        <Icon icon="mdi:file-import" size="7xl" />
       </div>
       <h2 class="mt-6 text-xl font-semibold">Drop to import profile</h2>
       <p class="mt-1 text-sm text-foreground-muted">Release the file to start importing</p>

@@ -1,6 +1,6 @@
 import * as tweaksApi from "$lib/api/tweaks";
 import type { EntrySummary, TweakWithStatus } from "$lib/types";
-import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { confirmStore } from "./confirm.svelte";
 import { toastStore } from "./toast.svelte";
@@ -55,8 +55,7 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
         toastStore.warning(`The entry was discarded, but the tweak's state could not be re-read: ${read.message}`);
       }
     } catch (error) {
-      logError("Failed to discard snapshot entry", error);
-      toastStore[isAppExiting(error) ? "warning" : "error"](errorMessage(error));
+      toastStore.failure("Failed to discard snapshot entry", error);
     } finally {
       busySeq = null;
     }

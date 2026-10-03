@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Button, Callout, ICON_SIZE } from "$lib/components/ui";
+  import { Button, Callout } from "$lib/components/ui";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
@@ -58,7 +58,7 @@
 {#if status.state === "unknown" && status.unknownReasons.length > 0}
   <Callout tone="warning" density="panel">
     <p class="m-0 mb-1.5 flex items-center gap-2 text-ui font-semibold">
-      <Icon icon="mdi:help-circle-outline" width={ICON_SIZE.md} class="text-warning" />
+      <Icon icon="mdi:help-circle-outline" size="md" class="text-warning" />
       Could not determine state
     </p>
     <ul class="m-0 list-none space-y-1 p-0 pl-6">
@@ -75,7 +75,7 @@
 {#if status.attention}
   <Callout tone="error" density="panel">
     <p class="m-0 flex gap-2 text-ui leading-relaxed">
-      <Icon icon="mdi:alert-circle" width={ICON_SIZE.lg} class="mt-0.5 shrink-0 text-error" />
+      <Icon icon="mdi:alert-circle" size="lg" class="mt-0.5 shrink-0 text-error" />
       <span>
         <span class="font-semibold">Needs attention.</span>
         <span class="text-foreground-muted">
@@ -100,7 +100,7 @@
       {#if status.hasHistory}<RestoreButton {tweak} />{/if}
       <!-- Consent stays reachable whenever a record exists, entries left or not (ADR-0002). -->
       <Button loading={keeping} disabled={tweakActionsStore.isRunning(def.id)} onclick={keepCurrent}>
-        {#if !keeping}<Icon icon="mdi:check" width={ICON_SIZE.md} />{/if}
+        {#if !keeping}<Icon icon="mdi:check" size="md" />{/if}
         Keep current state
       </Button>
     </div>
@@ -111,13 +111,13 @@
   <Callout density="panel" class="space-y-2 bg-card text-ui text-foreground-muted">
     {#if status.residues.length > 0}
       <p class="m-0 flex gap-2">
-        <Icon icon="mdi:information-outline" width={ICON_SIZE.md} class="mt-0.5 shrink-0 text-info" />
+        <Icon icon="mdi:information-outline" size="md" class="mt-0.5 shrink-0 text-info" />
         <span>Residual settings remain outside the active option: {status.residues.join(", ")}</span>
       </p>
     {/if}
     {#if status.heldShared.length > 0}
       <p class="m-0 flex gap-2">
-        <Icon icon="mdi:link-variant" width={ICON_SIZE.md} class="mt-0.5 shrink-0" />
+        <Icon icon="mdi:link-variant" size="md" class="mt-0.5 shrink-0" />
         <span>
           Shared settings held: {status.heldShared
             .map((h) => `${h.shared} (${h.holders.map(holderName).join(", ")})`)

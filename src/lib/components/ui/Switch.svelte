@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
-  import { ICON_SIZE } from "./icon";
   import { DISABLED } from "./variants";
 
   interface Props {
@@ -48,9 +47,9 @@
         {loading ? 'text-foreground-muted' : 'text-accent'}"
     >
       {#if loading}
-        <Icon icon="mdi:loading" width={ICON_SIZE.sm} class="animate-spin" />
+        <Icon icon="mdi:loading" size="xs" class="animate-spin" />
       {:else if checked}
-        <Icon icon="mdi:check" width={ICON_SIZE.sm} class="animate-pop-in" />
+        <Icon icon="mdi:check" size="xs" class="animate-pop-in" />
       {/if}
     </span>
   </span>

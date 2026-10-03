@@ -1,15 +1,7 @@
 <script lang="ts">
-  import { Icon, type IconName } from "$lib/components/shared";
-  import {
-    Button,
-    ICON_SIZE,
-    Modal,
-    ModalBody,
-    ModalFooter,
-    ModalHeader,
-    TONE_TEXT,
-    type Tone,
-  } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import { type IconName, type Tone, TONE_TEXT } from "$lib/design";
+  import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
   import type { ButtonVariants } from "$lib/components/ui/variants";
   import type { ConfirmVariant as Variant } from "$lib/stores/confirm.svelte";
 
@@ -47,11 +39,7 @@
 
 <Modal {open} onclose={oncancel} size="sm" role="alertdialog" describedBy={messageId}>
   <ModalHeader {title}>
-    {#snippet leading()}<Icon
-        icon={config.icon}
-        width={ICON_SIZE.xl}
-        class="shrink-0 {TONE_TEXT[config.tone]}"
-      />{/snippet}
+    {#snippet leading()}<Icon icon={config.icon} size="3xl" class="shrink-0 {TONE_TEXT[config.tone]}" />{/snippet}
   </ModalHeader>
 
   <ModalBody>

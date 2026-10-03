@@ -1,7 +1,7 @@
 // Wire DTOs mirror the serde shapes from src-tauri/src/commands/*.rs and live here; api/ only wraps commands.
 // Only the tweak model is adapted to camelCase (frontend models, below); every other DTO stays as the wire sends it.
 
-import type { IconName } from "$lib/components/shared";
+import type { IconName } from "$lib/design";
 
 export type RegistryHive = "HKCU" | "HKLM";
 

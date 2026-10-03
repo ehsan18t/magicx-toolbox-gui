@@ -18,6 +18,7 @@
   label="Favorite"
   tooltip={isFavorite ? "Remove from favorites" : "Add to favorites"}
   aria-pressed={isFavorite}
-  class={isFavorite ? "text-warning enabled:hover:text-warning" : undefined}
+  active={isFavorite}
+  tone="warning"
   onclick={() => favoritesStore.toggle(tweakId)}
 />

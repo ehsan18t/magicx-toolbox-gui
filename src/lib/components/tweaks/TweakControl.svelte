@@ -4,8 +4,6 @@
   // ADR-0003: System Default joins a control only beside a lone option, where choosing it restores
   // the snapshot; elsewhere the state line names it and Restore is the way back.
   const SYSTEM_DEFAULT = "__system_default__";
-  // SegmentedSwitch takes no null value; this matches no segment.
-  const NO_SEGMENT = "__no_segment__";
 
   const PLACEHOLDER: Partial<Record<TweakStatus["state"], string>> = {
     system_default: "System default",
@@ -93,7 +91,7 @@
     />
   {:else}
     <SegmentedSwitch
-      value={selected ?? NO_SEGMENT}
+      value={selected}
       {options}
       pending={hasPending}
       loading={isLoading}

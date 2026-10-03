@@ -1,3 +1,6 @@
+import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
+
 export type ToastType = "success" | "error" | "warning" | "info";
 
 export interface ToastAction {
@@ -67,4 +70,9 @@ export const toastStore = {
   error: (message: string, options?: ToastOptions) => show("error", message, options),
   warning: (message: string, options?: ToastOptions) => show("warning", message, options),
   info: (message: string, options?: ToastOptions) => show("info", message, options),
+  /** Logs the failure, then toasts it: a warning when the app refused because it is exiting, as nothing ran. */
+  failure(context: string, error: unknown, options?: ToastOptions) {
+    logError(context, error);
+    return show(isAppExiting(error) ? "warning" : "error", errorMessage(error), options);
+  },
 };

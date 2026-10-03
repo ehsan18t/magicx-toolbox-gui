@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Button, ICON_SIZE, IconButton, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
+  import { Button, IconButton, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
@@ -103,7 +103,7 @@
           </span>
           <Icon
             icon="mdi:chevron-up"
-            width={ICON_SIZE.md}
+            size="md"
             class="shrink-0 text-foreground-muted transition-transform duration-normal {expanded ? 'rotate-180' : ''}"
           />
         </button>
@@ -127,7 +127,7 @@
 
 <Modal open={reviewOpen} onclose={() => (reviewing = false)} size="lg">
   <ModalHeader title="Review {plural(count, 'change')}">
-    {#snippet leading()}<Icon icon="mdi:alert" width={22} class="shrink-0 text-warning" />{/snippet}
+    {#snippet leading()}<Icon icon="mdi:alert" size="2xl" class="shrink-0 text-warning" />{/snippet}
     <p class="m-0 mt-0.5 text-ui text-foreground-muted">
       {plural(highRiskCount, "change")}
       {highRiskCount === 1 ? "is" : "are"} high risk. Check them before applying.

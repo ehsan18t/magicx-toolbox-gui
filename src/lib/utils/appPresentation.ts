@@ -1,10 +1,6 @@
-import type { IconName } from "$lib/components/shared";
-import type { TextTone } from "$lib/components/ui/tone";
+import type { IconName, TextTone } from "$lib/design";
 import type { AppActionKind, AppOperationKind, AppStatusView, AppView, Availability } from "$lib/types";
 import { CHECKING, ELEVATE_HINT, type StateSummary, UNKNOWN_ICON, UNKNOWN_NEEDS_ADMIN } from "./tweakPresentation";
-
-export const SECOND_MS = 1000;
-const MINUTE_S = 60;
 
 export interface AppAction {
   kind: AppActionKind;
@@ -81,10 +77,4 @@ export function removeConfirmMessage(app: AppView, permanent: boolean): string {
     ? `${app.name} is removed ${scope} and has no install source on this PC, so this cannot be undone.`
     : `${app.name} is removed ${scope}. You can reinstall it later from here.`;
   return app.warning ? `${outcome} ${app.warning}` : outcome;
-}
-
-/** `m:ss` since `startedAt`. */
-export function elapsedClock(startedAt: number, now: number): string {
-  const seconds = Math.max(0, Math.floor((now - startedAt) / SECOND_MS));
-  return `${Math.floor(seconds / MINUTE_S)}:${String(seconds % MINUTE_S).padStart(2, "0")}`;
 }

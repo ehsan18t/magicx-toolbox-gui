@@ -3,10 +3,11 @@ import { APP_CONFIG } from "$lib/config/app";
 import type { UpdateInfo } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
+import { HOUR_MS } from "$lib/utils/time";
 import { settingsStore } from "./settings.svelte";
 import { toastStore } from "./toast.svelte";
 
-const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL_MS = HOUR_MS;
 
 let isChecking = $state(false);
 let isInstalling = $state(false);

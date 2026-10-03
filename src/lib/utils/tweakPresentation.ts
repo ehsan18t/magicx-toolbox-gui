@@ -1,4 +1,4 @@
-import type { IconName } from "$lib/components/shared";
+import type { IconName, Tone } from "$lib/design";
 import type {
   Attention,
   Availability,
@@ -10,7 +10,6 @@ import type {
   TweakStatus,
   TweakWithStatus,
 } from "$lib/types";
-import type { Tone } from "$lib/components/ui/tone";
 import { plural } from "$lib/utils/format";
 
 export const CHECKING = { label: "Checking", icon: "mdi:loading" } as const;

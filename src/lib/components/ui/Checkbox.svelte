@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
-  import { ICON_SIZE } from "./icon";
 
   // Decorative: the selectable row around it carries the role and state.
   interface Props {
@@ -23,6 +22,6 @@
   )}
 >
   {#if checked}
-    <Icon icon="mdi:check" width={ICON_SIZE["2xs"]} class="pointer-events-none animate-pop-in text-accent-foreground" />
+    <Icon icon="mdi:check" size="3xs" class="pointer-events-none animate-pop-in text-accent-foreground" />
   {/if}
 </span>

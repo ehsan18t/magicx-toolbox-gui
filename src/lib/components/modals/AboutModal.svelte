@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import { APP_CONFIG } from "$lib/config/app";
+  import type { IconName } from "$lib/design";
 
   const { githubRepo: repo, author } = APP_CONFIG;
 
@@ -18,7 +19,7 @@
 
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { ExternalLink, Icon, type IconName } from "$lib/components/shared";
+  import { ExternalLink, Icon } from "$lib/components/shared";
   import { IconButton, Modal, textLink } from "$lib/components/ui";
   import { button } from "$lib/components/ui/variants";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
@@ -91,7 +92,7 @@
         >
           <Icon
             icon={copied ? "mdi:check" : "mdi:content-copy"}
-            width="15"
+            size="sm"
             class={copied ? "animate-pop-in text-success" : ""}
           />
           {copied ? "Copied" : "Copy details"}
@@ -122,7 +123,7 @@
             class="flex h-7 w-7 items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
             aria-label={link.label}
           >
-            <Icon icon={link.icon} width="16" />
+            <Icon icon={link.icon} size="md" />
           </ExternalLink>
         {/each}
       </div>

@@ -34,3 +34,27 @@ export const TONE_TINT: Record<TintTone, string> = {
 
 /** A staged value not applied yet. */
 export const PENDING_TINT = "border-warning/50 bg-warning/10";
+
+/** Tones a control can be filled with: each has a matching `-foreground` text token. */
+export type FillTone = "accent" | "warning" | "error";
+
+/** A chip at rest: tinted fill and border in its tone. */
+export const CHIP_TINT: Record<FillTone, string> = {
+  accent: "border-accent/40 bg-accent/10 text-accent enabled:hover:bg-accent/15",
+  warning: "border-warning/40 bg-warning/10 text-warning enabled:hover:bg-warning/15",
+  error: "border-error/40 bg-error/10 text-error enabled:hover:bg-error/15",
+};
+
+/** A chip switched on: solid fill. */
+export const CHIP_SOLID: Record<FillTone, string> = {
+  accent: "border-accent bg-accent text-accent-foreground",
+  warning: "border-warning bg-warning text-warning-foreground",
+  error: "border-error bg-error text-error-foreground",
+};
+
+/** Hover wash for a neutral control that acts in a tone, e.g. a delete in a list. */
+export const TONE_WASH: Record<FillTone, string> = {
+  accent: "enabled:hover:bg-accent/10 enabled:hover:text-accent",
+  warning: "enabled:hover:bg-warning/10 enabled:hover:text-warning",
+  error: "enabled:hover:bg-error/10 enabled:hover:text-error",
+};

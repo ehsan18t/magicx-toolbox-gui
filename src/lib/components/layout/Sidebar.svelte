@@ -1,8 +1,8 @@
 <script lang="ts">
   import { overflowHints } from "$lib/actions/overflowHints";
   import { tooltip } from "$lib/actions/tooltip";
-  import { Icon, type IconName } from "$lib/components/shared";
-  import { ICON_SIZE } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import type { IconName } from "$lib/design";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
@@ -130,11 +130,7 @@
     {onclick}
   >
     <span class="relative flex w-5 shrink-0 justify-center">
-      <Icon
-        {icon}
-        width={ICON_SIZE.lg}
-        class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"}
-      />
+      <Icon {icon} size="lg" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
       {#if alert && !isOpen}
         {@render dot(`${RAIL_MARKER} bg-error`)}
       {:else if pending && !isOpen}
@@ -144,7 +140,7 @@
     {#if isOpen}
       <span class="min-w-0 flex-1 truncate">{label}</span>
       {#if alert}
-        <Icon icon="mdi:alert-circle" width={ICON_SIZE.sm} class="shrink-0 text-error" />
+        <Icon icon="mdi:alert-circle" size="xs" class="shrink-0 text-error" />
       {/if}
       {#if pending}
         {@render dot("shrink-0 bg-warning")}
@@ -258,7 +254,7 @@
                 behavior: reducedMotion() ? "auto" : "smooth",
               })}
           >
-            <Icon icon="mdi:chevron-down" width={ICON_SIZE.lg} />
+            <Icon icon="mdi:chevron-down" size="lg" />
           </button>
         </div>
       {/if}
@@ -283,7 +279,7 @@
             item.open();
           }}
         >
-          <Icon icon={item.icon} width={ICON_SIZE.lg} />
+          <Icon icon={item.icon} size="lg" />
           {#if item.dot}
             {@render dot("absolute top-1.5 right-1/2 translate-x-3 animate-pop-in bg-success ring-2 ring-background")}
           {/if}

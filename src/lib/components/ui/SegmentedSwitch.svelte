@@ -13,14 +13,14 @@
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import { glide } from "$lib/utils/motion";
-  import { ICON_SIZE } from "./icon";
+  import { PENDING_TINT } from "$lib/design";
   import { nextEnabledIndex } from "./listNav";
-  import { PENDING_TINT } from "./tone";
   import type { SegmentOption } from "./types";
   import { DIMMED } from "./variants";
 
   interface Props {
-    value: T;
+    /** Null selects nothing, e.g. while the current state matches no option. */
+    value: T | null;
     options: SegmentOption<T>[];
     label: string;
     pending?: boolean;
@@ -127,9 +127,9 @@
       use:tooltip={opt.tooltip ?? labelIfCut(opt.label)}
     >
       {#if loading && isSelected}
-        <Icon icon="mdi:loading" width={ICON_SIZE.sm} class="shrink-0 animate-spin" />
+        <Icon icon="mdi:loading" size="xs" class="shrink-0 animate-spin" />
       {:else if opt.icon}
-        <Icon icon={opt.icon} width={ICON_SIZE.sm} class="shrink-0" />
+        <Icon icon={opt.icon} size="xs" class="shrink-0" />
       {/if}
       <span class="truncate">{opt.label}</span>
     </button>

@@ -1,17 +1,22 @@
 <script lang="ts">
-  import { ICON_SIZE } from "$lib/components/ui/icon";
-  import { type IconName, iconRegistry } from "./icons";
+  import { ICON_SIZE, type IconName, type IconSize, iconRegistry } from "$lib/design";
 
   interface Props {
     icon: IconName;
-    width?: number | string;
-    height?: number | string;
+    size?: IconSize;
     class?: string;
   }
 
-  let { icon, width = ICON_SIZE.xl, height, class: className }: Props = $props();
+  let { icon, size = "3xl", class: className }: Props = $props();
 
   const IconComponent = $derived(iconRegistry[icon]);
+
+  $effect(() => {
+    // A name from data (tweak YAML, stored state) can miss the registry and would render nothing.
+    if (import.meta.env.DEV && !IconComponent) console.warn(`Icon "${icon}" is not registered in $lib/design/icons.ts`);
+  });
 </script>
 
-<IconComponent {width} height={height ?? width} class={className} />
+{#if IconComponent}
+  <IconComponent width={ICON_SIZE[size]} height={ICON_SIZE[size]} class={className} />
+{/if}

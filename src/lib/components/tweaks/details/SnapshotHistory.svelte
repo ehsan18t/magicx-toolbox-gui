@@ -1,9 +1,9 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Callout, ICON_SIZE, PanelHeading, Spinner } from "$lib/components/ui";
+  import { Callout, PanelHeading, Spinner } from "$lib/components/ui";
   import type { SnapshotHistory } from "$lib/stores/snapshotHistory.svelte";
   import type { EntrySummary } from "$lib/types";
-  import { formatDate } from "$lib/utils/format";
+  import { formatDate } from "$lib/utils/time";
   import { expand } from "$lib/utils/motion";
 
   interface Props {
@@ -54,11 +54,7 @@
               disabled={busy}
               aria-label="Discard snapshot entry {entry.seq}"
             >
-              <Icon
-                icon={busy ? "mdi:loading" : "mdi:delete-outline"}
-                width={ICON_SIZE.sm}
-                class={busy ? "animate-spin" : ""}
-              />
+              <Icon icon={busy ? "mdi:loading" : "mdi:delete-outline"} size="xs" class={busy ? "animate-spin" : ""} />
               Discard
             </button>
           </div>

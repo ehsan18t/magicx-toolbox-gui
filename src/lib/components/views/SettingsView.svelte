@@ -2,15 +2,7 @@
   import { PageLayout } from "$lib/components/layout";
   import { ColorSchemePicker } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
-  import {
-    Button,
-    ICON_SIZE,
-    SegmentedSwitch,
-    SettingRow,
-    Spinner,
-    Switch,
-    type SegmentOption,
-  } from "$lib/components/ui";
+  import { Button, SegmentedSwitch, SettingRow, Spinner, Switch, type SegmentOption } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { logsStore } from "$lib/stores/logs.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
@@ -103,15 +95,15 @@
       {#if logs.error}<p class="m-0 animate-fade-in text-xs text-error">Logging problem: {logs.error}</p>{/if}
       <div class="flex flex-wrap gap-2">
         <Button size="sm" onclick={() => logsStore.openFolder()}>
-          <Icon icon="mdi:folder-open" width={ICON_SIZE.md} />
+          <Icon icon="mdi:folder-open" size="md" />
           Open folder
         </Button>
         <Button size="sm" loading={logsStore.isExporting} onclick={() => logsStore.exportDiagnostics()}>
-          {#if !logsStore.isExporting}<Icon icon="mdi:export" width={ICON_SIZE.md} />{/if}
+          {#if !logsStore.isExporting}<Icon icon="mdi:export" size="md" />{/if}
           Export diagnostics
         </Button>
         <Button size="sm" class="text-error" disabled={logsStore.isSettingsBusy} onclick={deleteLogs}>
-          <Icon icon="mdi:delete-outline" width={ICON_SIZE.md} />
+          <Icon icon="mdi:delete-outline" size="md" />
           Delete logs
         </Button>
       </div>

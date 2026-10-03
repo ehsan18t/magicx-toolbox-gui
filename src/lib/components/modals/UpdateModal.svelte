@@ -11,7 +11,8 @@
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
-  import { formatBytes, formatDate } from "$lib/utils/format";
+  import { formatBytes } from "$lib/utils/format";
+  import { formatDate } from "$lib/utils/time";
   import { exit } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
 
@@ -91,7 +92,7 @@
         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
           {#if updateInfo.downloadUrl && updateInfo.assetName}
             <Button variant="primary" onclick={installUpdate} loading={isInstalling}>
-              {#if !isInstalling}<Icon icon="mdi:download" width="18" />{/if}
+              {#if !isInstalling}<Icon icon="mdi:download" size="lg" />{/if}
               {isInstalling ? "Downloading…" : "Install update"}
             </Button>
           {:else}
@@ -106,7 +107,7 @@
           <div class="min-w-0">
             <p class="m-0 flex items-center gap-2 text-lg font-semibold">
               {#if updateInfo}
-                <Icon icon="mdi:check-circle" width="20" class="text-success" />
+                <Icon icon="mdi:check-circle" size="xl" class="text-success" />
                 You're up to date
               {:else}
                 Version {appVersion}
@@ -118,7 +119,7 @@
             </p>
           </div>
           <Button variant="secondary" onclick={checkForUpdate} loading={isChecking}>
-            {#if !isChecking}<Icon icon="mdi:refresh" width="16" />{/if}
+            {#if !isChecking}<Icon icon="mdi:refresh" size="md" />{/if}
             {isChecking ? "Checking…" : updateInfo ? "Check again" : "Check for updates"}
           </Button>
         </div>

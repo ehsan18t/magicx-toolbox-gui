@@ -2,7 +2,6 @@
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
-  import { ICON_SIZE } from "./icon";
   import IconButton from "./IconButton.svelte";
 
   interface Props {
@@ -56,7 +55,7 @@
     className,
   )}
 >
-  <Icon icon="mdi:magnify" width={ICON_SIZE.md} class="shrink-0 text-foreground-muted" />
+  <Icon icon="mdi:magnify" size="md" class="shrink-0 text-foreground-muted" />
   <input
     bind:this={inputRef}
     id={inputId}

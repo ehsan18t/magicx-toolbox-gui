@@ -8,10 +8,9 @@
   import { cn } from "$lib/utils/cn";
   import { pop } from "$lib/utils/motion";
   import { tick } from "svelte";
-  import { ICON_SIZE } from "./icon";
+  import { PENDING_TINT } from "$lib/design";
   import { nextEnabledIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
-  import { PENDING_TINT } from "./tone";
   import type { SelectOption } from "./types";
   import { BUSY, DIMMED } from "./variants";
 
@@ -211,7 +210,7 @@
       {:else}
         <Icon
           icon="mdi:chevron-down"
-          width={ICON_SIZE.md}
+          size="md"
           class={cn("text-foreground-muted transition-transform duration-normal", isOpen && "rotate-180")}
         />
       {/if}

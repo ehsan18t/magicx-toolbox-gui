@@ -2,7 +2,7 @@
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { AppRow, MetaItem, TweakRow } from "$lib/components/tweaks";
-  import { EmptyState, ICON_SIZE } from "$lib/components/ui";
+  import { EmptyState } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { type SearchResult, searchStore } from "$lib/stores/search.svelte";
@@ -50,7 +50,7 @@
     onclick={() => goToItem(result.searchResult)}
   >
     Go to
-    <Icon icon="mdi:arrow-right" width={ICON_SIZE.xs} />
+    <Icon icon="mdi:arrow-right" size="2xs" />
   </button>
 {/snippet}
 

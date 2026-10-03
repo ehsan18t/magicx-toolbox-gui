@@ -1,4 +1,4 @@
-import type { IconName } from "$lib/components/shared";
+import type { IconName } from "$lib/design";
 import type { EffectAgreement, RegistryChange, RegistryValueType, TweakEffectOption } from "$lib/types";
 import { capitalize } from "$lib/utils/format";
 

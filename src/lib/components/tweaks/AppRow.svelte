@@ -1,7 +1,8 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { TONE_TEXT } from "$lib/design";
   import { Icon } from "$lib/components/shared";
-  import { Button, ICON_SIZE, TONE_TEXT } from "$lib/components/ui";
+  import { Button } from "$lib/components/ui";
   import { appDetailsModalStore } from "$lib/stores/appDetailsModal.svelte";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { confirmStore } from "$lib/stores/confirm.svelte";
@@ -12,11 +13,10 @@
     APP_OPERATION_LABEL,
     appAction,
     appPresenceChip,
-    elapsedClock,
     isPermanent,
     removeConfirmMessage,
-    SECOND_MS,
   } from "$lib/utils/appPresentation";
+  import { elapsedClock, SECOND_MS } from "$lib/utils/time";
   import { expand } from "$lib/utils/motion";
   import { permissionInfoFor, RISK_INFO, RISK_TONE, rowDomId, toRiskLevel } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
@@ -102,7 +102,7 @@
           onclick={handleAction}
           aria-label="{ui.aria} {app.name}"
         >
-          {#if !busy}<Icon icon={ui.icon} width={ICON_SIZE.md} />{/if}
+          {#if !busy}<Icon icon={ui.icon} size="md" />{/if}
           {ui.label}
         </Button>
       </div>

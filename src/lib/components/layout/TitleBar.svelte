@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { ICON_SIZE, IconButton } from "$lib/components/ui";
+  import { IconButton } from "$lib/components/ui";
   import { APP_CONFIG } from "$lib/config/app";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
@@ -28,7 +28,7 @@
       onclick={() => sidebarStore.toggle()}
       use:tooltip={navLabel}
     >
-      <Icon icon="fluent:navigation-20-regular" width={ICON_SIZE.lg} />
+      <Icon icon="fluent:navigation-20-regular" size="lg" />
     </button>
 
     <div class="flex min-w-0 items-center gap-2.5 pl-1.5">
@@ -50,10 +50,7 @@
             ? "Running as administrator"
             : "Running as a standard user: some tweaks need administrator"}
         >
-          <Icon
-            icon={isAdmin ? "fluent:shield-checkmark-16-filled" : "fluent:shield-error-16-filled"}
-            width={ICON_SIZE["2xs"]}
-          />
+          <Icon icon={isAdmin ? "fluent:shield-checkmark-16-filled" : "fluent:shield-error-16-filled"} size="3xs" />
           {isAdmin ? "Admin" : "Standard user"}
         </span>
       {/if}
@@ -76,7 +73,7 @@
       >
         <Icon
           icon={elevationStore.isRestarting ? "mdi:loading" : "fluent:shield-keyhole-16-regular"}
-          width={ICON_SIZE.md}
+          size="md"
           class={elevationStore.isRestarting ? "animate-spin" : ""}
         />
         <span class="hidden titlebar-admin:inline">Restart as admin</span>

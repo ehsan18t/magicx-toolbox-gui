@@ -2,7 +2,7 @@
   import { NoMatches, PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { AppRow, RestoreAllButton, TweakRow } from "$lib/components/tweaks";
-  import { Button, Callout, EmptyState, ICON_SIZE, Meter, SkeletonList } from "$lib/components/ui";
+  import { Button, Callout, EmptyState, Meter, SkeletonList } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
@@ -54,7 +54,7 @@
           aria-pressed={attentionOnly}
           onclick={() => (attentionOnly = !attentionOnly)}
         >
-          <Icon icon="mdi:alert-circle" width={ICON_SIZE.md} />
+          <Icon icon="mdi:alert-circle" size="md" />
           {plural(stats.attention, "needs", "need")} attention
         </button>
       {/if}
@@ -75,7 +75,7 @@
 
   {#if stats.needsAdmin > 0}
     <Callout tone="warning" class="flex animate-fade-in flex-wrap items-center gap-y-2">
-      <Icon icon="mdi:shield-lock-outline" width={ICON_SIZE.lg} class="shrink-0 text-warning" />
+      <Icon icon="mdi:shield-lock-outline" size="lg" class="shrink-0 text-warning" />
       <p class="m-0 min-w-0 flex-1 text-ui">
         <span class="font-semibold">
           {plural(stats.needsAdmin, "tweak here needs", "tweaks here need")} administrator rights.

@@ -14,7 +14,7 @@
   } from "$lib/components/views";
   import { bootStore } from "$lib/stores/boot.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
-  import { navigationStore, type TabId } from "$lib/stores/navigation.svelte";
+  import { isPageId, navigationStore, type PageId } from "$lib/stores/navigation.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { errorMessage } from "$lib/utils/error";
   import { logError } from "$lib/utils/logger";
@@ -22,7 +22,7 @@
 
   const SUMMARY_MIN_WIDTH = 1400;
 
-  const PAGE_VIEWS: Partial<Record<TabId, Component>> = {
+  const PAGE_VIEWS: Record<PageId, Component> = {
     overview: OverviewView,
     search: SearchView,
     favorites: FavoritesView,
@@ -46,7 +46,7 @@
   });
 
   const activeTab = $derived(navigationStore.activeTab);
-  const PageView = $derived(PAGE_VIEWS[activeTab]);
+  const PageView = $derived(isPageId(activeTab) ? PAGE_VIEWS[activeTab] : undefined);
   const categoryTab = $derived(
     navigationStore.isOnCategoryTab ? navigationStore.categoryTabs.find((t) => t.id === activeTab) : undefined,
   );

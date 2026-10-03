@@ -222,8 +222,11 @@
   --container-dialog-md: 32.5rem;
   --container-dialog-lg: 42.5rem;
   --container-dialog-full: 75rem;
+  --container-page: 68.75rem;
 
   --width-toast: min(22rem, calc(100vw - 2rem));
+  --width-sidebar: 16rem;
+  --width-drawer: 18rem;
   --width-summary-panel: clamp(22.5rem, 30%, 27.5rem);
   --max-width-item-row-control: 45cqw;
 
@@ -291,11 +294,16 @@
   --color-error-hover: color-mix(in oklab, var(--color-error) 90%, transparent);
   --color-warning-hover: color-mix(in oklab, var(--color-warning) 90%, transparent);
   --color-scrim: rgb(0 0 0 / 0.4);
+  /* Behind the navigation drawer, which leaves the page readable. */
+  --color-scrim-light: rgb(0 0 0 / 0.2);
+  /* Code and command text, a step down from body text. */
+  --color-foreground-soft: color-mix(in oklab, var(--color-foreground) 85%, transparent);
   /* Unchecked switch knob, white in both themes; a checked one takes accent-foreground. */
   --color-thumb: #fff;
 
   /* Windows caption close red, the same in both themes. */
   --color-caption-close: #c42b1c;
+  --color-caption-close-foreground: #fff;
 }
 
 /* Motion tokens. Static: $lib/utils/motion reads the durations, delays, easings and distances at runtime.
@@ -345,6 +353,11 @@
 
 @utility drag-disable {
   -webkit-app-region: no-drag;
+}
+
+/* A pressed control shrinks by two motion steps. */
+@utility scale-pressed {
+  scale: calc(1 - 2 * var(--motion-scale-delta));
 }
 
 @utility scrollbar-none {

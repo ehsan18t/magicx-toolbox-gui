@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { Icon, type IconName } from "$lib/components/shared";
-  import { Card, Count, ICON_SIZE, PanelHeading, type TextTone } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import type { IconName, TextTone } from "$lib/design";
+  import { Card, Count, PanelHeading } from "$lib/components/ui";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
@@ -71,7 +72,7 @@
               </span>
               <Icon
                 icon="mdi:chevron-right"
-                width={ICON_SIZE.md}
+                size="md"
                 class="mt-0.5 shrink-0 text-foreground-subtle group-hover:text-foreground"
               />
             </button>
@@ -135,7 +136,7 @@
 
     {#if allClear && stats.total > 0}
       <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-ui" in:fade>
-        <Icon icon="mdi:check-circle" width={ICON_SIZE.lg} class="shrink-0 text-success" />
+        <Icon icon="mdi:check-circle" size="lg" class="shrink-0 text-success" />
         <span class="text-foreground-muted">Nothing here needs your attention.</span>
       </div>
     {/if}

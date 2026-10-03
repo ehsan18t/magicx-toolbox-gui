@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Badge, ICON_SIZE, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
+  import { Badge, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { formatLogLine, gapLabel, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
@@ -101,7 +101,7 @@
   >
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">
-        <Icon icon="tabler:file-text" width={ICON_SIZE.lg} class="text-accent" />
+        <Icon icon="tabler:file-text" size="lg" class="text-accent" />
         <h2 class="m-0 text-sm font-semibold">Logs</h2>
         {#if logsStore.settings?.detailed}
           <Badge tone="info">Detailed</Badge>

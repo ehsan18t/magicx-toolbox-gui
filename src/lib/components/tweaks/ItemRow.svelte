@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { Tone } from "$lib/components/ui";
+  import type { Tone } from "$lib/design";
 
   export type RowStripe = Extract<Tone, "accent" | "warning" | "error">;
 
@@ -14,7 +14,7 @@
 
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Callout, HighlightedText, ICON_SIZE } from "$lib/components/ui";
+  import { Callout, HighlightedText } from "$lib/components/ui";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import type { SearchResult } from "$lib/stores/search.svelte";
   import type { ItemKind } from "$lib/types";
@@ -119,7 +119,7 @@
             onclick={ondismisserror}
             aria-label="Dismiss error"
           >
-            <Icon icon="mdi:close" width={ICON_SIZE.sm} />
+            <Icon icon="mdi:close" size="xs" />
           </button>
         </Callout>
       </div>

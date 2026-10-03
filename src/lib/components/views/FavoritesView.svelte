@@ -2,7 +2,7 @@
   import { NoMatches, PageLayout, PageStats } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { GroupedTweakList, RestoreAllButton } from "$lib/components/tweaks";
-  import { Button, EmptyState, ICON_SIZE, SkeletonList } from "$lib/components/ui";
+  import { Button, EmptyState, SkeletonList } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
@@ -46,7 +46,7 @@
             <RestoreAllButton title="Restore favorites?" tweaks={restorable} />
           {/if}
           <Button variant="ghost" disabled={tweakActionsStore.isBusy} onclick={clearAll}>
-            <Icon icon="mdi:star-off" width={ICON_SIZE.md} />
+            <Icon icon="mdi:star-off" size="md" />
             Clear favorites
           </Button>
         </div>

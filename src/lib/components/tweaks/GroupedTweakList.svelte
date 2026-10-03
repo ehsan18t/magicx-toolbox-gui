@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Count, ICON_SIZE } from "$lib/components/ui";
+  import { Count } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { categoriesStore } from "$lib/stores/tweaksData.svelte";
   import type { TweakWithStatus } from "$lib/types";
@@ -28,12 +28,12 @@
           class="group flex w-fit max-w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-muted"
           onclick={() => navigationStore.navigateToTab(categoryId)}
         >
-          <Icon icon={categoriesStore.icon(categoryId)} width={ICON_SIZE.md} class="shrink-0 text-foreground-muted" />
+          <Icon icon={categoriesStore.icon(categoryId)} size="md" class="shrink-0 text-foreground-muted" />
           <span class="truncate">{categoriesStore.name(categoryId)}</span>
           <Count value={list.length} class="font-normal" />
           <Icon
             icon="mdi:chevron-right"
-            width={ICON_SIZE.md}
+            size="md"
             class="shrink-0 text-foreground-subtle group-hover:text-foreground"
           />
         </button>

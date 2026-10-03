@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { Tone } from "$lib/components/ui";
+  import type { Tone } from "$lib/design";
   import type { ManualTestStatus } from "$lib/types";
 
   const MIN_MINUTES = 1;
@@ -18,7 +18,7 @@
 <script lang="ts">
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Badge, Button, Card, ICON_SIZE, Spinner } from "$lib/components/ui";
+  import { Badge, Button, Card, Spinner } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -112,7 +112,7 @@
           aria-label="Run {test.title}"
           onclick={() => run(test)}
         >
-          <Icon icon="mdi:play" width={ICON_SIZE.md} />
+          <Icon icon="mdi:play" size="md" />
           Run
         </Button>
         {#if isRunning && test.minutes !== null}
@@ -123,7 +123,7 @@
             aria-label="Cancel {test.title}"
             onclick={() => manualTestsStore.cancel()}
           >
-            <Icon icon="mdi:stop" width={ICON_SIZE.md} />
+            <Icon icon="mdi:stop" size="md" />
             {manualTestsStore.isCancelling ? "Stopping and restoring" : "Cancel"}
           </Button>
         {/if}
@@ -135,7 +135,7 @@
             aria-label="Copy the report for {test.title}"
             onclick={() => copyReport(test.id)}
           >
-            <Icon icon="mdi:content-copy" width={ICON_SIZE.md} />
+            <Icon icon="mdi:content-copy" size="md" />
             Copy report
           </Button>
         {/if}

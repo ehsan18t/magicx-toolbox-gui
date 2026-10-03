@@ -2,7 +2,7 @@
 // from the `tweak-status` event stream (spec §8.4).
 
 import * as tweaksApi from "$lib/api/tweaks";
-import { type IconName, isIconName } from "$lib/components/shared/icons";
+import { type IconName, isIconName } from "$lib/design";
 import type {
   CategoryDefinition,
   CategoryMeta,

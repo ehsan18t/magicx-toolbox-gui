@@ -1,3 +1,4 @@
+import { INLINE_CODE } from "$lib/design";
 type ListType = "ul" | "ol";
 
 const LIST_OPEN: Record<ListType, string> = {
@@ -21,7 +22,7 @@ function emphasis(text: string): string {
     .replace(/__(.+?)__/g, STRONG)
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(/_(.+?)_/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, '<code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-accent">$1</code>');
+    .replace(/`(.+?)`/g, `<code class="${INLINE_CODE}">$1</code>`);
 }
 
 function inline(text: string): string {

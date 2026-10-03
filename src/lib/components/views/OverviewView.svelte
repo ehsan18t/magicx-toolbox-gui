@@ -4,14 +4,15 @@
 
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
   import { PageLayout } from "$lib/components/layout";
-  import { Icon, type IconName } from "$lib/components/shared";
-  import { ICON_SIZE, Meter, SectionCard, TONE_TEXT, type TextTone } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import { Meter, SectionCard } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
-  import { formatDate } from "$lib/utils/format";
+  import { formatDate } from "$lib/utils/time";
   import { systemInfoRows, type HardwareRow } from "$lib/utils/systemInfoRows";
   import { tallies } from "$lib/utils/tweakPresentation";
 
@@ -86,7 +87,7 @@
   <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-overview-split:grid-cols-2' : ''}">
     {#each list as row, i (`${row.label}-${i}`)}
       <div class="grid grid-cols-icon-label-value items-baseline gap-x-2.5 px-2 py-1.5">
-        <Icon icon={row.icon} width="15" class="self-center text-foreground-muted" />
+        <Icon icon={row.icon} size="sm" class="self-center text-foreground-muted" />
         <dt class="truncate text-xs text-foreground-muted">{row.label}</dt>
         <dd class="m-0 min-w-0 text-ui wrap-break-word select-text">
           <span class="font-medium">{row.value}</span>
@@ -113,7 +114,7 @@
     {#each tiles as t (t.label)}
       {#snippet tileBody()}
         <span class="flex items-center gap-1.5 text-xs text-foreground-muted">
-          <Icon icon={t.icon} width={ICON_SIZE.sm} class="shrink-0 {TONE_TEXT[t.tone]}" />
+          <Icon icon={t.icon} size="xs" class="shrink-0 {TONE_TEXT[t.tone]}" />
           {t.label}
         </span>
         <span class="mt-1 flex w-full min-w-0 items-baseline gap-1.5">
@@ -156,11 +157,11 @@
                   ? `, ${s.attention} need attention`
                   : ''}"
               >
-                <Icon icon={category.icon} width={ICON_SIZE.md} class="text-accent" />
+                <Icon icon={category.icon} size="md" class="text-accent" />
                 <span class="flex min-w-0 items-center gap-1.5 text-ui font-medium">
                   <span class="truncate">{category.name}</span>
                   {#if s.attention}
-                    <Icon icon="mdi:alert-circle" width={ICON_SIZE.sm} class="shrink-0 text-error" />
+                    <Icon icon="mdi:alert-circle" size="xs" class="shrink-0 text-error" />
                   {/if}
                 </span>
                 <Meter value={s.applied} max={s.total} label={category.name} />
@@ -190,7 +191,7 @@
               ? `Updated ${formatDate(systemStore.cachedAt, { time: "seconds" })}. Select to refresh.`
               : "Refresh system info"}
           >
-            <Icon icon="mdi:refresh" width={ICON_SIZE.md} class={systemStore.isRefreshing ? "animate-spin" : ""} />
+            <Icon icon="mdi:refresh" size="md" class={systemStore.isRefreshing ? "animate-spin" : ""} />
           </button>
         {/snippet}
         {#if systemLoading || !rows}

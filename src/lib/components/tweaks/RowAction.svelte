@@ -1,11 +1,7 @@
-<script lang="ts" module>
-  // Off the ICON_SIZE scale, between sm and md.
-  const GLYPH_PX = 15;
-</script>
-
 <script lang="ts">
   import { tooltip as tooltipAction } from "$lib/actions/tooltip";
-  import { Icon, type IconName } from "$lib/components/shared";
+  import type { IconName } from "$lib/design";
+  import { Icon } from "$lib/components/shared";
   import { button } from "$lib/components/ui/variants";
   import { cn } from "$lib/utils/cn";
 
@@ -36,6 +32,6 @@
   {disabled}
   {onclick}
 >
-  <Icon {icon} width={GLYPH_PX} class="shrink-0" />
+  <Icon {icon} size="sm" class="shrink-0" />
   <span class={collapses ? "@max-item-row:hidden" : undefined}>{label}</span>
 </button>

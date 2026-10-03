@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { ICON_SIZE, SearchInput } from "$lib/components/ui";
+  import { SearchInput } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
@@ -46,7 +46,7 @@
       : `Search only in ${scopeName}`}
     onclick={toggleScope}
   >
-    <Icon icon={scoped ? "mdi:filter-variant" : "mdi:filter-variant-remove"} width={ICON_SIZE.xs} class="shrink-0" />
+    <Icon icon={scoped ? "mdi:filter-variant" : "mdi:filter-variant-remove"} size="2xs" class="shrink-0" />
     <span class="truncate">{scopeName}</span>
   </button>
 {/snippet}

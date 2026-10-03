@@ -1,11 +1,11 @@
-import type { IconName } from "$lib/components/shared";
+import type { IconName } from "$lib/design";
 import { manualTestsStore } from "./manualTests.svelte";
 import { searchStore } from "./search.svelte";
 import { categoriesStore } from "./tweaksData.svelte";
 
 const PAGE_IDS = ["overview", "search", "favorites", "snapshots", "profiles", "settings", "manual-tests"] as const;
 
-type PageId = (typeof PAGE_IDS)[number];
+export type PageId = (typeof PAGE_IDS)[number];
 
 /** A fixed page, or a category id (any string the corpus defines). */
 export type TabId = PageId | (string & {});
@@ -17,7 +17,7 @@ export interface TabDefinition {
   description?: string;
 }
 
-const isPageId = (tab: TabId): tab is PageId => (PAGE_IDS as readonly string[]).includes(tab);
+export const isPageId = (tab: TabId): tab is PageId => (PAGE_IDS as readonly string[]).includes(tab);
 
 let activeTab = $state<TabId>("overview");
 let focusSearchSignal = $state(0);

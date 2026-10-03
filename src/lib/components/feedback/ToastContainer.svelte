@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Icon, type IconName } from "$lib/components/shared";
-  import { ICON_SIZE } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import type { IconName } from "$lib/design";
   import { toastStore, type ToastType } from "$lib/stores/toast.svelte";
   import { reflow, shift } from "$lib/utils/motion";
 
@@ -28,7 +28,7 @@
       animate:reflow
     >
       <span class="absolute inset-y-0 left-0 w-1 {config.stripe}" aria-hidden="true"></span>
-      <Icon icon={config.icon} width={ICON_SIZE.lg} class="mt-px shrink-0 {config.color}" />
+      <Icon icon={config.icon} size="lg" class="mt-px shrink-0 {config.color}" />
       <div class="min-w-0 flex-1">
         {#if toast.subject}
           <div class="text-xs font-medium text-foreground-muted">{toast.subject}</div>
@@ -54,7 +54,7 @@
         onclick={() => toastStore.dismiss(toast.id)}
         aria-label="Dismiss notification"
       >
-        <Icon icon="mdi:close" width={ICON_SIZE.md} />
+        <Icon icon="mdi:close" size="md" />
       </button>
     </div>
   {/each}

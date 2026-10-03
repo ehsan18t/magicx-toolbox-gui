@@ -1,17 +1,18 @@
 <script lang="ts">
-  import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
   import type { HTMLAttributes } from "svelte/elements";
+  import { card, type CardElevation } from "./variants";
 
   interface Props extends Omit<HTMLAttributes<HTMLElement>, "class"> {
-    class?: string;
     as?: "div" | "section";
+    elevation?: CardElevation;
+    class?: string;
     children: Snippet;
   }
 
-  let { as = "div", class: className, children, ...rest }: Props = $props();
+  let { as = "div", elevation, class: className, children, ...rest }: Props = $props();
 </script>
 
-<svelte:element this={as} class={cn("rounded-lg border border-border bg-card", className)} {...rest}>
+<svelte:element this={as} class={card({ elevation, class: className })} {...rest}>
   {@render children()}
 </svelte:element>

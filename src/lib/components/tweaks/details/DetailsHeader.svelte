@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { IconName } from "$lib/components/shared";
+  import type { IconName } from "$lib/design";
 
   const STANDARD_USER: { name: string; icon: IconName } = { name: "Standard user", icon: "mdi:account" };
 </script>

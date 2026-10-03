@@ -12,20 +12,18 @@
 </script>
 
 <script lang="ts">
-  import { Icon, type IconName } from "$lib/components/shared";
+  import { Icon } from "$lib/components/shared";
+  import { type IconName, TONE_SOFT, TONE_TEXT } from "$lib/design";
   import {
     Badge,
     Button,
     Callout,
     Checkbox,
-    ICON_SIZE,
     Modal,
     ModalBody,
     ModalFooter,
     ProgressBar,
     Switch,
-    TONE_SOFT,
-    TONE_TEXT,
   } from "$lib/components/ui";
   import { PROFILE_EXT } from "$lib/config/app";
   import { bootStore } from "$lib/stores/boot.svelte";
@@ -33,7 +31,8 @@
   import { profileStore } from "$lib/stores/profile.svelte";
   import { TOAST_DURATION, toastStore } from "$lib/stores/toast.svelte";
   import { listenFileDrop } from "$lib/utils/fileDrop";
-  import { formatDate, plural } from "$lib/utils/format";
+  import { plural } from "$lib/utils/format";
+  import { formatDate } from "$lib/utils/time";
   import { RISK_TONE, toRiskLevel } from "$lib/utils/tweakPresentation";
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
@@ -149,7 +148,7 @@
 {#snippet issueList(tone: "warning" | "error", icon: IconName, heading: string, issues: Issue[], className = "")}
   <Callout {tone} density="panel" class={className}>
     <div class="flex items-center gap-2 text-sm font-medium {TONE_TEXT[tone]}">
-      <Icon {icon} width={ICON_SIZE.lg} />
+      <Icon {icon} size="lg" />
       {heading}
     </div>
     <ul class="m-0 mt-2 list-inside list-disc space-y-1 pl-1 text-sm text-foreground-muted">
@@ -193,11 +192,7 @@
           <div
             class="flex h-16 w-16 items-center justify-center rounded-full {isDragOver ? 'bg-accent/20' : 'bg-muted'}"
           >
-            <Icon
-              icon="mdi:file-import"
-              width={ICON_SIZE["2xl"]}
-              class={isDragOver ? "text-accent" : "text-foreground-muted"}
-            />
+            <Icon icon="mdi:file-import" size="5xl" class={isDragOver ? "text-accent" : "text-foreground-muted"} />
           </div>
           <div class="text-center">
             <p class="font-medium text-foreground">
@@ -209,7 +204,7 @@
 
         {#if isImporting}
           <div class="flex items-center justify-center gap-2 py-4">
-            <Icon icon="mdi:loading" width="20" class="animate-spin text-accent" />
+            <Icon icon="mdi:loading" size="xl" class="animate-spin text-accent" />
             <span class="text-sm text-foreground-muted">Loading profile…</span>
           </div>
         {/if}
@@ -226,7 +221,7 @@
         <div class="rounded-lg border border-border bg-surface p-4">
           <div class="flex items-start gap-3">
             <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg {TONE_SOFT.accent}">
-              <Icon icon="mdi:file-document" width={ICON_SIZE.xl} />
+              <Icon icon="mdi:file-document" size="3xl" />
             </div>
             <div class="min-w-0 flex-1">
               <h3 class="m-0 truncate text-base font-semibold text-foreground">{profile.metadata.name}</h3>
@@ -235,12 +230,12 @@
               {/if}
               <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground-muted">
                 <span class="flex items-center gap-1">
-                  <Icon icon="mdi:calendar" width={ICON_SIZE.sm} />
+                  <Icon icon="mdi:calendar" size="xs" />
                   {formatDate(profile.metadata.created_at, { month: "short" }) || profile.metadata.created_at}
                 </span>
                 <span class="text-border">•</span>
                 <span class="flex items-center gap-1">
-                  <Icon icon="mdi:microsoft-windows" width={ICON_SIZE.sm} />
+                  <Icon icon="mdi:microsoft-windows" size="xs" />
                   Windows {profile.metadata.source_windows_version}
                 </span>
                 <span class="text-border">•</span>
@@ -271,7 +266,7 @@
 
           {#if applicableTweaks.length === 0}
             <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
-              <Icon icon="mdi:alert-circle-outline" width={ICON_SIZE["2xl"]} class="text-foreground-muted" />
+              <Icon icon="mdi:alert-circle-outline" size="5xl" class="text-foreground-muted" />
               <p class="text-sm text-foreground-muted">No applicable tweaks found in this profile.</p>
             </div>
           {:else}
@@ -298,7 +293,7 @@
                     </div>
                     <div class="mt-0.5 flex items-center gap-1 text-xs text-foreground-muted">
                       <span>{preview.current_option_label ?? "Default"}</span>
-                      <Icon icon="mdi:arrow-right" width={ICON_SIZE["2xs"]} />
+                      <Icon icon="mdi:arrow-right" size="3xs" />
                       <span class="text-accent">{preview.target_option_label}</span>
                     </div>
                   </div>
@@ -323,7 +318,7 @@
     {:else if step === "applying"}
       <div class="flex animate-fade-in flex-col items-center justify-center gap-6 py-8">
         <div class="flex h-20 w-20 items-center justify-center rounded-full {TONE_SOFT.accent}">
-          <Icon icon="mdi:cog" width={ICON_SIZE["3xl"]} class="animate-spin" />
+          <Icon icon="mdi:cog" size="6xl" class="animate-spin" />
         </div>
 
         <div class="w-full max-w-sm text-center">
@@ -345,7 +340,7 @@
       {@const tone = applyResult.success ? "success" : "warning"}
       <div class="flex animate-fade-in flex-col items-center justify-center gap-6 py-8">
         <div class="flex h-20 w-20 items-center justify-center rounded-full {TONE_SOFT[tone]}">
-          <Icon icon={applyResult.success ? "mdi:check-circle" : "mdi:alert-circle"} width="48" />
+          <Icon icon={applyResult.success ? "mdi:check-circle" : "mdi:alert-circle"} size="7xl" />
         </div>
 
         <div class="text-center">
@@ -383,21 +378,21 @@
           disabled={isImporting}
           loading={isImporting}
         >
-          <Icon icon="mdi:folder-open" width={ICON_SIZE.lg} />
+          <Icon icon="mdi:folder-open" size="lg" />
           Browse Files
         </Button>
       {:else if step === "review"}
         <Button variant="secondary" onclick={() => profileStore.clear()}>
-          <Icon icon="mdi:arrow-left" width={ICON_SIZE.lg} />
+          <Icon icon="mdi:arrow-left" size="lg" />
           Back
         </Button>
         <Button variant="primary" onclick={handleApply} disabled={tweaksToApply.length === 0}>
-          <Icon icon="mdi:check" width={ICON_SIZE.lg} />
+          <Icon icon="mdi:check" size="lg" />
           Apply {plural(tweaksToApply.length, "Tweak")}
         </Button>
       {:else if step === "complete"}
         <Button variant="primary" onclick={handleFinish}>
-          <Icon icon="mdi:check" width={ICON_SIZE.lg} />
+          <Icon icon="mdi:check" size="lg" />
           Done
         </Button>
       {/if}

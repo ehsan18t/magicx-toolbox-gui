@@ -1,4 +1,4 @@
-import type { IconName } from "$lib/components/shared";
+import type { IconName } from "$lib/design";
 
 export interface SelectOption<T extends string | number = string | number> {
   value: T;

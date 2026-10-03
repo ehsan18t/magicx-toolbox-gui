@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { ICON_SIZE, PanelHeading } from "$lib/components/ui";
+  import { PanelHeading } from "$lib/components/ui";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import {
@@ -92,7 +92,7 @@
                   class="px-3 pt-3 pb-1.5 text-caption font-semibold tracking-wide text-foreground-muted uppercase"
                 >
                   <span class="sticky left-3 inline-flex items-center gap-1.5">
-                    <Icon icon={KIND_META[row.kind].icon} width={ICON_SIZE.xs} />
+                    <Icon icon={KIND_META[row.kind].icon} size="2xs" />
                     {KIND_META[row.kind].label}
                   </span>
                 </th>

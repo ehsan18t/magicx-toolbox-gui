@@ -5,17 +5,7 @@
 
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import {
-    Badge,
-    Button,
-    Callout,
-    Checkbox,
-    ICON_SIZE,
-    Modal,
-    ModalBody,
-    ModalFooter,
-    Switch,
-  } from "$lib/components/ui";
+  import { Badge, Button, Callout, Checkbox, Modal, ModalBody, ModalFooter, Switch } from "$lib/components/ui";
   import { PROFILE_EXT } from "$lib/config/app";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
@@ -129,7 +119,7 @@
 
         {#if appliedTweaks.length === 0}
           <div class="flex flex-col items-center justify-center gap-3 py-12 text-center">
-            <Icon icon="mdi:information-outline" width="48" class="text-foreground-muted" />
+            <Icon icon="mdi:information-outline" size="7xl" class="text-foreground-muted" />
             <p class="text-foreground-muted">No tweaks have been applied yet.</p>
             <p class="text-sm text-foreground-muted">Apply some tweaks first, then export them as a profile.</p>
           </div>
@@ -139,7 +129,7 @@
               {@const categorySelected = categoryTweaks.filter((t) => !excludedIds.has(t.definition.id)).length}
               <div class="rounded-lg border border-border">
                 <div class="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
-                  <Icon icon={categoriesStore.icon(categoryId)} width={ICON_SIZE.lg} class="text-accent" />
+                  <Icon icon={categoriesStore.icon(categoryId)} size="lg" class="text-accent" />
                   <span class="flex-1 text-sm font-semibold text-foreground">{categoriesStore.name(categoryId)}</span>
                   <span class="text-xs text-foreground-muted">{categorySelected}/{categoryTweaks.length}</span>
                 </div>
@@ -197,7 +187,7 @@
         <div class="flex items-center justify-between rounded-lg border border-border bg-surface p-4">
           <div class="flex-1">
             <div class="flex items-center gap-2">
-              <Icon icon="mdi:database" width={ICON_SIZE.lg} class="text-accent" />
+              <Icon icon="mdi:database" size="lg" class="text-accent" />
               <span class="font-medium text-foreground">Include Baseline System State</span>
             </div>
             <p class="mt-1 text-sm text-foreground-muted">
@@ -228,15 +218,15 @@
       <Button variant="secondary" onclick={modalStore.close}>Cancel</Button>
       <Button variant="primary" onclick={() => (step = 2)} disabled={selectedIds.length === 0}>
         Continue
-        <Icon icon="mdi:arrow-right" width={ICON_SIZE.lg} />
+        <Icon icon="mdi:arrow-right" size="lg" />
       </Button>
     {:else}
       <Button variant="secondary" onclick={() => (step = 1)}>
-        <Icon icon="mdi:arrow-left" width={ICON_SIZE.lg} />
+        <Icon icon="mdi:arrow-left" size="lg" />
         Back
       </Button>
       <Button variant="primary" onclick={handleExport} disabled={!canExport} loading={profileStore.isExporting}>
-        <Icon icon="mdi:export" width={ICON_SIZE.lg} />
+        <Icon icon="mdi:export" size="lg" />
         Export Profile
       </Button>
     {/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon, MarkdownText } from "$lib/components/shared";
-  import { Callout, ICON_SIZE, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
+  import { Callout, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { appDetailsModalStore } from "$lib/stores/appDetailsModal.svelte";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { isPermanent } from "$lib/utils/appPresentation";
@@ -18,7 +18,7 @@
       {#if app.warning}
         <!-- The icon is a child: Callout sizes its own icon per density, and this one is between sizes. -->
         <Callout tone="warning" class="flex items-start gap-2 py-2 text-sm">
-          <Icon icon="mdi:alert" width={ICON_SIZE.md} class="mt-0.5 shrink-0 text-warning" />
+          <Icon icon="mdi:alert" size="md" class="mt-0.5 shrink-0 text-warning" />
           <span>{app.warning}</span>
         </Callout>
       {/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Button, Count, ICON_SIZE } from "$lib/components/ui";
+  import { Button, Count } from "$lib/components/ui";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import type { TweakWithStatus } from "$lib/types";
 
@@ -20,7 +20,7 @@
   disabled={tweakActionsStore.isBusy || tweaks.length === 0}
   onclick={() => tweakActionsStore.restoreAllWithConfirm(title, tweaks)}
 >
-  <Icon icon="mdi:history" width={ICON_SIZE.md} />
+  <Icon icon="mdi:history" size="md" />
   Restore all
   <Count value={tweaks.length} />
 </Button>

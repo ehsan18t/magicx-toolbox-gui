@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Icon, type IconName } from "$lib/components/shared";
+  import { Icon } from "$lib/components/shared";
+  import type { IconName } from "$lib/design";
   import type { Snippet } from "svelte";
   import Button from "./Button.svelte";
-  import { ICON_SIZE } from "./icon";
+  import IconTile from "./IconTile.svelte";
   import Spinner from "./Spinner.svelte";
 
   type Props = {
@@ -21,11 +22,9 @@
   {#if visual.loading}
     <Spinner size="lg" label={description} class="mb-1 text-foreground-muted" />
   {:else if visual.showIconCircle}
-    <div class="mb-1 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-      <Icon icon={visual.icon} width={ICON_SIZE["2xl"]} />
-    </div>
+    <IconTile icon={visual.icon} size="2xl" shape="circle" tone="neutral" class="mb-1" />
   {:else}
-    <Icon icon={visual.icon} width={ICON_SIZE["3xl"]} class="mb-1" />
+    <Icon icon={visual.icon} size="6xl" class="mb-1" />
   {/if}
 
   {#if title}<h3 class="m-0 text-base font-semibold text-foreground">{title}</h3>{/if}

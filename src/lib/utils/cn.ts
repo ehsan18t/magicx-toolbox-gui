@@ -10,7 +10,7 @@ const twMergeConfig = {
     theme: {
       text: ["body", "badge-sm", "badge-md", "caption", "code", "ui", "lead", "title", "hero"],
       tracking: ["display"],
-      container: ["item-row", "overview-split", "dialog-sm", "dialog-md", "dialog-lg", "dialog-full"],
+      container: ["item-row", "overview-split", "dialog-sm", "dialog-md", "dialog-lg", "dialog-full", "page"],
       spacing: ["rail", "titlebar", "toast-offset", "dock-clearance"],
       shadow: ["flyout", "dialog"],
       animate: [
@@ -28,7 +28,8 @@ const twMergeConfig = {
       ease: ["overshoot"],
     },
     classGroups: {
-      w: [{ w: ["toast", "summary-panel"] }],
+      w: [{ w: ["toast", "summary-panel", "sidebar", "drawer"] }],
+      scale: [{ scale: ["pressed"] }],
       "max-w": [{ "max-w": ["item-row-control"] }],
       "grid-cols": [
         {

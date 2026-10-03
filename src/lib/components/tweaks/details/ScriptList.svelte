@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { ICON_SIZE, PanelHeading } from "$lib/components/ui";
+  import { PanelHeading } from "$lib/components/ui";
   import type { TweakEffectOption } from "$lib/types";
   import { plural } from "$lib/utils/format";
 
@@ -17,7 +17,7 @@
         <summary class="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-ui">
           <Icon
             icon="mdi:chevron-right"
-            width={ICON_SIZE.md}
+            size="md"
             class="shrink-0 transition-transform duration-normal group-open:rotate-90"
           />
           <span class="font-medium">{option.label}</span>
