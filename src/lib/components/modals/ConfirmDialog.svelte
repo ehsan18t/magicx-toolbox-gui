@@ -1,8 +1,19 @@
+<script lang="ts" module>
+  import type { IconName, Tone } from "$lib/design";
+  import type { ButtonVariants } from "$lib/components/ui";
+  import type { ConfirmVariant as Variant } from "$lib/stores/confirm.svelte";
+
+  const VARIANT: Record<Variant, { icon: IconName; tone: Tone; button: ButtonVariants["variant"] }> = {
+    default: { icon: "mdi:help-circle", tone: "accent", button: "primary" },
+    warning: { icon: "mdi:alert", tone: "warning", button: "warning" },
+    danger: { icon: "mdi:alert-octagon", tone: "error", button: "danger" },
+  };
+</script>
+
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import { TONE_TEXT } from "$lib/design";
   import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
-
-  type Variant = "default" | "warning" | "danger";
 
   interface Props {
     open: boolean;
@@ -26,32 +37,21 @@
     oncancel,
   }: Props = $props();
 
-  const variantConfig: Record<
-    Variant,
-    { icon: string; iconColor: string; buttonVariant: "primary" | "warning" | "danger" }
-  > = {
-    default: { icon: "mdi:help-circle", iconColor: "text-accent", buttonVariant: "primary" },
-    warning: { icon: "mdi:alert", iconColor: "text-warning", buttonVariant: "warning" },
-    danger: { icon: "mdi:alert-octagon", iconColor: "text-error", buttonVariant: "danger" },
-  };
-
-  const config = $derived(variantConfig[variant]);
+  const config = $derived(VARIANT[variant]);
+  const messageId = $props.id();
 </script>
 
-<Modal {open} onclose={oncancel} size="sm" role="alertdialog" labelledBy="confirm-dialog-title">
-  <ModalHeader id="confirm-dialog-title">
-    <div class="flex items-center gap-3">
-      <Icon icon={config.icon} width="24" class="shrink-0 {config.iconColor}" />
-      <h2 class="m-0 text-base font-semibold text-foreground">{title}</h2>
-    </div>
+<Modal {open} onclose={oncancel} size="sm" role="alertdialog" describedBy={messageId}>
+  <ModalHeader {title}>
+    {#snippet leading()}<Icon icon={config.icon} size="3xl" class="shrink-0 {TONE_TEXT[config.tone]}" />{/snippet}
   </ModalHeader>
 
   <ModalBody>
-    <p class="m-0 text-sm leading-relaxed text-foreground-muted">{message}</p>
+    <p id={messageId} class="m-0 text-sm leading-relaxed text-foreground-muted">{message}</p>
   </ModalBody>
 
   <ModalFooter>
     <Button variant="secondary" onclick={oncancel}>{cancelText}</Button>
-    <Button variant={config.buttonVariant} onclick={onconfirm}>{confirmText}</Button>
+    <Button variant={config.button} onclick={onconfirm}>{confirmText}</Button>
   </ModalFooter>
 </Modal>

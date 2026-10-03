@@ -47,3 +47,6 @@ coverage
 # Misc
 *.local
 *.tsbuildinfo
+
+# Playwright MCP output
+.playwright-mcp

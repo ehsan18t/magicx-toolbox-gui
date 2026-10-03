@@ -1,100 +1,68 @@
-/**
- * Tweaks Data Store - Svelte 5 Runes
- *
- * Manages core data for the tweak engine: system info, the tweak model
- * (`get_tweaks`), categories (derived from the model), and live per-tweak statuses
- * filled in INCREMENTALLY from the `tweak-status` event stream (spec §8.4).
- * System hardware info is cached in localStorage since it rarely changes.
- */
+// The tweak model (`get_tweaks`), its categories, and live per-tweak statuses filled in incrementally
+// from the `tweak-status` event stream.
 
-import * as api from "$lib/api/tweaks";
+import * as tweaksApi from "$lib/api/tweaks";
+import { type IconName, isIconName } from "$lib/design";
 import type {
-  CachedSystemInfo,
   CategoryDefinition,
   CategoryMeta,
-  ElevationState,
-  RiskLevel,
-  SystemInfo,
   TweakDefinition,
   TweakStatus,
   TweakStatusView,
   TweakView,
   TweakWithStatus,
 } from "$lib/types";
-import { PersistentStore } from "$lib/utils/persistentStore.svelte";
-import { appsStore } from "./apps.svelte";
+import { logError } from "$lib/utils/logger";
+import { isStaleReading } from "$lib/utils/stamp";
+import { tallies, toRiskLevel } from "$lib/utils/tweakPresentation";
 import { favoritesStore } from "./favorites.svelte";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import { settingsStore } from "./settings.svelte";
 
-// Storage key for cached hardware info
-const SYSTEM_INFO_CACHE_KEY = "magicx-system-info-cache";
+const DEFAULT_CATEGORY_ICON: IconName = "mdi:folder";
 
-// Cached hardware info (static data that rarely changes)
-const systemInfoCache = new PersistentStore<CachedSystemInfo | null>(SYSTEM_INFO_CACHE_KEY, null);
-
-// === Loading States ===
-let systemInfoLoading = $state(true);
-let systemInfoRefreshing = $state(false);
-let tweaksLoading = $state(true);
-let initialLoadComplete = $state(false);
-
-// === System Info State ===
-let systemInfo = $state<SystemInfo | null>(null);
-
-// === Elevation State (app ceiling + over-the-shoulder SID guard) ===
-let elevationState = $state<ElevationState | null>(null);
-
-// === Tweaks State ===
-let tweaks = $state<TweakWithStatus[]>([]);
-let tweaksVersion = $state(0);
-// Corpus category metadata from `get_categories` (real names/icons, not derived from ids).
-let categoryMeta = $state<CategoryMeta[]>([]);
-
-// === Adapters: engine DTOs -> the presentation model the components consume ===
+// Raw: replaced whole on every status batch, so a deep proxy over hundreds of rows would only cost.
+let tweaks = $state.raw<TweakWithStatus[]>([]);
+let modelVersion = $state(0);
+let isModelLoaded = false;
+let isLoading = $state(true);
+let categoryMeta = $state.raw<CategoryMeta[]>([]);
 
 function mapView(view: TweakView): TweakDefinition {
   return {
     id: view.id,
     name: view.name,
     description: view.description,
-    category_id: view.category,
-    risk_level: view.risk.toLowerCase() as RiskLevel,
+    categoryId: view.category,
+    riskLevel: toRiskLevel(view.risk),
     reversible: view.reversible,
-    requires_reboot: view.requires_reboot,
-    required_level: view.required_level,
+    requiresReboot: view.requires_reboot,
+    requiredLevel: view.required_level,
     availability: view.availability,
-    optionLabels: view.options.map((o) => o.label),
+    supported: view.supported,
     options: view.options,
     info: view.info ?? undefined,
+    warning: view.warning ?? undefined,
   };
 }
 
-/** Placeholder status shown until this tweak's first `tweak-status` event arrives. */
-function loadingStatus(tweakId: string): TweakStatus {
-  return {
-    tweak_id: tweakId,
-    loaded: false,
-    state: "loading",
-    activeOption: null,
-    unavailableReason: null,
-    unknownReasons: [],
-    needsElevation: false,
-    unavailableOptions: [],
-    residues: [],
-    heldShared: [],
-    observed: null,
-    is_applied: false,
-    has_backup: false,
-    attention: null,
-  };
-}
+const LOADING_STATUS: TweakStatus = {
+  state: "loading",
+  activeOption: null,
+  unavailableReason: null,
+  unknownReasons: [],
+  needsElevation: false,
+  unavailableOptions: [],
+  residues: [],
+  heldShared: [],
+  observed: null,
+  hasHistory: false,
+  attention: null,
+};
 
-function mapStatusView(tweakId: string, view: TweakStatusView): TweakStatus {
+function mapStatusView(view: TweakStatusView): TweakStatus {
   const s = view.state;
   const unknownReasons = s.state === "unknown" ? s.reasons : [];
   return {
-    tweak_id: tweakId,
-    loaded: true,
     state: s.state,
     activeOption: s.state === "active" ? s.option : null,
     unavailableReason: s.state === "unavailable" ? s.reason : null,
@@ -104,255 +72,159 @@ function mapStatusView(tweakId: string, view: TweakStatusView): TweakStatus {
     residues: view.residues,
     heldShared: view.held_shared,
     observed: view.observed,
-    is_applied: s.state === "active",
-    has_backup: view.has_history,
-    // The engine owns Needs Attention: it keeps a per-tweak record, so it survives a rescan, a
-    // restart, and any snapshot entry being released (ADR-0001/0002).
+    hasHistory: view.has_history,
+    // Engine-owned, so it survives a rescan, a restart, and any snapshot entry being released (ADR-0001/0002).
     attention: view.attention,
   };
 }
 
-/**
- * Status views that arrived before their tweak existed in `tweaks`. The scan thread can outrun
- * `loadModel`, and without this the event would be dropped and the card would spin forever.
- */
+// Lookups by id read the full list: a pending change or a status event can name a hidden tweak.
+const tweaksById = $derived(new Map(tweaks.map((t) => [t.definition.id, t])));
+
+// The scan thread can outrun the model load: without this an early status is dropped and the row spins forever.
 let pendingStatusViews: Record<string, TweakStatusView> = {};
 
 /** Highest stamp adopted per tweak, so an older reading can never replace a newer one. */
-let statusStamps: Record<string, number> = {};
+const statusStamps: Record<string, number> = {};
 
-// Derived: tweaks grouped by category
-const tweaksByCategory = $derived.by(() => {
-  const byCategory: Record<string, TweakWithStatus[]> = {};
-  for (const cat of categories) {
-    byCategory[cat.id] = [];
+/** Adopts each view the stamp rule admits, replacing `tweaks` once for the whole set. */
+function adoptStatusViews(views: Iterable<[string, TweakStatusView]>) {
+  // A sweep event whose reads began before an apply recorded Needs Attention would otherwise land
+  // afterwards and clear it. The backend stamps each status when its reads begin.
+  const fresh: Record<string, TweakStatusView> = {};
+  let adopted = false;
+  for (const [tweakId, view] of views) {
+    if (isStaleReading(view.stamp, statusStamps[tweakId])) continue;
+    statusStamps[tweakId] = view.stamp;
+    if (tweaksById.has(tweakId)) {
+      fresh[tweakId] = view;
+      adopted = true;
+    } else pendingStatusViews[tweakId] = view;
   }
-  for (const tweak of tweaks) {
-    const categoryId = tweak.definition.category_id;
-    if (byCategory[categoryId]) {
-      byCategory[categoryId].push(tweak);
-    }
-  }
-  return byCategory;
-});
+  if (!adopted) return;
+  tweaks = tweaks.map((t) => {
+    const view = fresh[t.definition.id];
+    return view ? { ...t, status: mapStatusView(view) } : t;
+  });
+}
 
-// Derived: categories. Prefer real corpus metadata from `get_categories` (name/icon/description
-// in corpus order); fall back to ids discovered from the tweak model until that load resolves.
+const visibleTweaks = $derived(settingsStore.showUnsupported ? tweaks : tweaks.filter((t) => t.definition.supported));
+const withSnapshot = $derived(visibleTweaks.filter((t) => t.status.hasHistory));
+const favoriteTweaks = $derived(visibleTweaks.filter((t) => favoritesStore.isFavorite(t.definition.id)));
+
+// Corpus metadata once `get_categories` resolves; until then, ids discovered from the model.
 const categories = $derived.by((): CategoryDefinition[] => {
   if (categoryMeta.length > 0) {
     return categoryMeta.map((c, i) => ({
       id: c.id,
       name: c.name,
       description: c.description,
-      icon: c.icon || "mdi:folder",
+      icon: isIconName(c.icon) ? c.icon : DEFAULT_CATEGORY_ICON,
       order: i,
     }));
   }
   const seen: Record<string, true> = {};
   const list: CategoryDefinition[] = [];
   for (const tweak of tweaks) {
-    const id = tweak.definition.category_id;
-    if (!seen[id]) {
-      seen[id] = true;
-      list.push({ id, name: id, description: "", icon: "mdi:folder", order: list.length });
-    }
+    const id = tweak.definition.categoryId;
+    if (seen[id]) continue;
+    seen[id] = true;
+    list.push({ id, name: id, description: "", icon: DEFAULT_CATEGORY_ICON, order: list.length });
   }
   return list;
 });
 
-// Derived: overall stats
-const stats = $derived({
-  total: tweaks.length,
-  applied: tweaks.filter((t) => t.status.is_applied).length,
-  pending: tweaks.filter((t) => !t.status.is_applied).length,
+const tweaksByCategory = $derived.by(() => {
+  const byCategory: Record<string, TweakWithStatus[]> = {};
+  for (const cat of categories) byCategory[cat.id] = [];
+  for (const tweak of visibleTweaks) byCategory[tweak.definition.categoryId]?.push(tweak);
+  return byCategory;
 });
 
-// Derived: stats per category
-const categoryStats = $derived.by(() => {
-  const result: Record<string, { total: number; applied: number }> = {};
-  for (const cat of categories) {
-    const catTweaks = tweaksByCategory[cat.id] || [];
-    result[cat.id] = {
-      total: catTweaks.length,
-      applied: catTweaks.filter((t) => t.status.is_applied).length,
-    };
-  }
-  return result;
-});
-
-// Derived: cache timestamp for display
-const cacheTimestamp = $derived(systemInfoCache.value?.cachedAt ?? null);
-
-// === Helper Functions ===
-
-/** Update the cache with hardware info from fresh system info */
-function updateCache(info: SystemInfo): void {
-  systemInfoCache.value = {
-    hardware: info.hardware,
-    device: info.device,
-    computer_name: info.computer_name,
-    cachedAt: new Date().toISOString(),
-  };
-}
-
-/** Build a SystemInfo object using cached hardware data and fresh dynamic data */
-function buildSystemInfoFromCache(cache: CachedSystemInfo, freshInfo: SystemInfo): SystemInfo {
-  return {
-    windows: freshInfo.windows,
-    username: freshInfo.username,
-    is_admin: freshInfo.is_admin,
-    hardware: cache.hardware,
-    device: cache.device,
-    computer_name: cache.computer_name,
-  };
-}
-
-// === Exports ===
-
-export const systemStore = {
-  get info() {
-    return systemInfo;
-  },
-
-  get isLoading() {
-    return systemInfoLoading;
-  },
-
-  /** Whether a manual refresh is in progress */
-  get isRefreshing() {
-    return systemInfoRefreshing;
-  },
-
-  /** ISO timestamp of when hardware info was last cached */
-  get cachedAt() {
-    return cacheTimestamp;
-  },
-
-  /**
-   * Load system info, using cache for hardware if available.
-   * On first load with no cache, fetches everything fresh.
-   * On subsequent loads, uses cached hardware + fresh dynamic info.
-   */
-  async load() {
-    systemInfoLoading = true;
-    try {
-      const cached = systemInfoCache.value;
-      const freshInfo = await api.getSystemInfo();
-
-      if (cached) {
-        systemInfo = buildSystemInfoFromCache(cached, freshInfo);
-      } else {
-        systemInfo = freshInfo;
-        updateCache(freshInfo);
-      }
-
-      return systemInfo;
-    } catch (error) {
-      console.error("Failed to load system info:", error);
-      const cached = systemInfoCache.value;
-      if (cached) {
-        systemInfo = {
-          windows: {
-            version_string: "",
-            display_version: "",
-            build_number: "",
-            product_name: "Windows",
-            uptime_seconds: 0,
-            is_windows_11: false,
-            is_windows_server: false,
-            install_date: null,
-          },
-          username: "",
-          is_admin: false,
-          hardware: cached.hardware,
-          device: cached.device,
-          computer_name: cached.computer_name,
-        };
-        return systemInfo;
-      }
-      return null;
-    } finally {
-      systemInfoLoading = false;
-    }
-  },
-
-  /**
-   * Force refresh all system info including hardware (ignores cache).
-   * Use this when user wants to refresh hardware info.
-   */
-  async refresh() {
-    systemInfoRefreshing = true;
-    try {
-      const freshInfo = await api.getSystemInfo();
-      systemInfo = freshInfo;
-      updateCache(freshInfo);
-      return freshInfo;
-    } catch (error) {
-      console.error("Failed to refresh system info:", error);
-      throw error;
-    } finally {
-      systemInfoRefreshing = false;
-    }
-  },
-
-  /** Clear the cache (useful for debugging) */
-  clearCache() {
-    systemInfoCache.value = null;
-  },
-};
-
-/**
- * App elevation ceiling + SID guard (spec §9). `level` drives the elevate affordance; `sidMismatch`
- * means "per-user tweaks are blocked" without saying why (see `ElevationState`) and currently has no
- * consumer, since the per-tweak `availability` carries the reason the UI actually shows.
- */
-export const elevationStore = {
-  get state() {
-    return elevationState;
-  },
-  get level() {
-    return elevationState?.level ?? "User";
-  },
-  get sidMismatch() {
-    return elevationState?.sid_mismatch ?? false;
-  },
-  async load() {
-    try {
-      elevationState = await api.getElevationState();
-    } catch (error) {
-      console.error("Failed to load elevation state:", error);
-    }
-    return elevationState;
-  },
-};
+const categoryStats = $derived(
+  Object.fromEntries(categories.map((cat) => [cat.id, tallies(tweaksByCategory[cat.id] ?? [])])),
+);
+const attentionCategoryIds = $derived(
+  categories.filter((cat) => categoryStats[cat.id].attention > 0).map((cat) => cat.id),
+);
 
 export const categoriesStore = {
   get list() {
     return categories;
   },
 
-  get isLoading() {
-    return tweaksLoading;
+  /** Tallies of the visible tweaks, per category id. */
+  get stats() {
+    return categoryStats;
   },
 
-  /** Get category by ID */
-  getById(categoryId: string): CategoryDefinition | undefined {
-    return categories.find((c) => c.id === categoryId);
+  /** Ids of the categories holding a tweak that needs attention, in sidebar order. */
+  get withAttention(): string[] {
+    return attentionCategoryIds;
   },
 
-  /** Get category name by ID, returns the ID if not found */
-  getName(categoryId: string): string {
+  /** The id itself when unknown. */
+  name(categoryId: string): string {
     return categories.find((c) => c.id === categoryId)?.name ?? categoryId;
   },
 
-  /** Get category icon by ID, returns default folder icon if not found */
-  getIcon(categoryId: string): string {
-    return categories.find((c) => c.id === categoryId)?.icon ?? "mdi:folder";
+  icon(categoryId: string): IconName {
+    return categories.find((c) => c.id === categoryId)?.icon ?? DEFAULT_CATEGORY_ICON;
   },
 };
 
+let loadPromise: Promise<void> | null = null;
+
+async function loadModel(): Promise<void> {
+  isLoading = true;
+  try {
+    const [views, cats] = await Promise.all([tweaksApi.getTweaks(), tweaksApi.getCategories()]);
+    categoryMeta = cats;
+    tweaks = views.map((v) => {
+      const early = pendingStatusViews[v.id];
+      return { definition: mapView(v), status: early ? mapStatusView(early) : LOADING_STATUS };
+    });
+    pendingStatusViews = {};
+    favoritesStore.prune((id) => tweaksById.has(id));
+    modelVersion++;
+    isModelLoaded = true;
+  } catch (error) {
+    logError("Failed to load tweaks", error);
+    // The app cannot function without the tweak model.
+    throw error;
+  } finally {
+    isLoading = false;
+  }
+}
+
+// A full scan emits one event per tweak; replacing `tweaks` per event re-derives every list each time.
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- a queue, never rendered
+let queuedStatuses = new Map<string, TweakStatusView>();
+let flushFrame = 0;
+
+function flushStatuses() {
+  flushFrame = 0;
+  const batch = queuedStatuses;
+  queuedStatuses = new Map();
+  adoptStatusViews(batch);
+}
+
+function queueStatus(tweakId: string, view: TweakStatusView) {
+  const queued = queuedStatuses.get(tweakId);
+  if (!queued || view.stamp >= queued.stamp) queuedStatuses.set(tweakId, view);
+  flushFrame ||= requestAnimationFrame(flushStatuses);
+}
+
+let listening: Promise<unknown> | null = null;
+
 export const tweaksStore = {
+  /** Visible tweaks: unsupported ones only when the setting shows them. */
   get list() {
+    return visibleTweaks;
+  },
+
+  /** Every tweak, hidden ones included. */
+  get all() {
     return tweaks;
   },
 
@@ -360,180 +232,53 @@ export const tweaksStore = {
     return tweaksByCategory;
   },
 
-  get stats() {
-    return stats;
+  get withSnapshot() {
+    return withSnapshot;
+  },
+
+  get favorites() {
+    return favoriteTweaks;
   },
 
   get isLoading() {
-    return tweaksLoading;
+    return isLoading;
   },
 
-  /** Load the compiled tweak model (`get_tweaks`); statuses arrive later via the stream. */
-  async loadModel() {
-    tweaksLoading = true;
-    try {
-      const [views, cats] = await Promise.all([api.getTweaks(), api.getCategories()]);
-      categoryMeta = cats;
-      tweaks = views.map((v) => {
-        const early = pendingStatusViews[v.id];
-        return {
-          definition: mapView(v),
-          status: early ? mapStatusView(v.id, early) : loadingStatus(v.id),
-        };
-      });
-      pendingStatusViews = {};
-      favoritesStore.prune(views.map((v) => v.id));
-      tweaksVersion++;
-      return tweaks;
-    } catch (error) {
-      console.error("Failed to load tweaks:", error);
-      // Surface the error: the app cannot function without the tweak model.
-      throw error;
-    } finally {
-      tweaksLoading = false;
-    }
+  /** Bumped when the model reloads; status events do not bump it. */
+  get modelVersion() {
+    return modelVersion;
   },
 
-  /** Replace a tweak's status from a freshly detected engine status view. */
+  /** Searches the full list. */
+  tweak(tweakId: string): TweakWithStatus | undefined {
+    return tweaksById.get(tweakId);
+  },
+
+  /** Loads the compiled model once so rows and categories render; concurrent calls share one load. */
+  load(): Promise<void> {
+    if (isModelLoaded) return Promise.resolve();
+    loadPromise ??= loadModel().finally(() => {
+      loadPromise = null;
+    });
+    return loadPromise;
+  },
+
+  /** Adopts a freshly detected status at once, unlike the batched stream. */
   setStatusView(tweakId: string, view: TweakStatusView) {
-    // A sweep event whose reads began before an apply recorded Needs Attention would otherwise
-    // land afterwards and clear it. The backend stamps each status when its reads begin.
-    if (view.stamp < (statusStamps[tweakId] ?? 0)) return;
-    statusStamps[tweakId] = view.stamp;
-    if (!tweaks.some((t) => t.definition.id === tweakId)) {
-      pendingStatusViews[tweakId] = view;
-      return;
-    }
-    tweaks = tweaks.map((t) => (t.definition.id === tweakId ? { ...t, status: mapStatusView(tweakId, view) } : t));
+    adoptStatusViews([[tweakId, view]]);
   },
 
-  /** Get a tweak by ID */
-  getById(tweakId: string): TweakWithStatus | undefined {
-    return tweaks.find((t) => t.definition.id === tweakId);
-  },
-
-  get version() {
-    return tweaksVersion;
+  /** Registers the `tweak-status` listener once, then kicks the background scan. */
+  async streamStatuses(): Promise<void> {
+    // Shared, so a concurrent call also waits for it; reset on failure, so a retry registers again.
+    listening ??= tweaksApi
+      .onTweakStatus((event) => queueStatus(event.tweak_id, event.status))
+      .catch((error: unknown) => {
+        listening = null;
+        throw error;
+      });
+    // Registered before the scan starts, so no early event is missed.
+    await listening;
+    await tweaksApi.getStatusesStream();
   },
 };
-
-/** Category stats getter - exposed separately for components that need it */
-export const getCategoryStats = () => categoryStats;
-
-/** Loading state store for progressive loading */
-export const loadingStateStore = {
-  get systemInfoLoading() {
-    return systemInfoLoading;
-  },
-  get systemInfoRefreshing() {
-    return systemInfoRefreshing;
-  },
-  get categoriesLoading() {
-    return tweaksLoading;
-  },
-  get tweaksLoading() {
-    return tweaksLoading;
-  },
-  get initialLoadComplete() {
-    return initialLoadComplete;
-  },
-};
-
-// === Status event stream (incremental, spec §8.4) ===
-
-let statusStreamStarted = false;
-let unlistenStatus: UnlistenFn | null = null;
-
-/**
- * Register the `tweak-status` listener once, then kick the background scan. Each event
- * fills in one tweak's status as the backend detects it, never awaiting one bulk result.
- */
-async function startStatusStream(): Promise<void> {
-  if (statusStreamStarted) {
-    await api.getStatusesStream();
-    return;
-  }
-  statusStreamStarted = true;
-  // Register BEFORE kicking the scan so no early event is missed.
-  unlistenStatus = await api.onTweakStatus((event) => {
-    tweaksStore.setStatusView(event.tweak_id, event.status);
-  });
-  await api.getStatusesStream();
-}
-
-/**
- * Re-run the full scan after an elevation change so Unknowns become readable
- * (the listener is already registered by `startStatusStream`).
- */
-export async function rescanStatuses(): Promise<void> {
-  await elevationStore.load();
-  void appsStore.load();
-  await api.rescanAfterElevation();
-}
-
-// Promise cache for deduplicating concurrent initialization calls
-let quickInitPromise: Promise<void> | null = null;
-let remainingDataPromise: Promise<void> | null = null;
-
-/**
- * Quick initialize - load the tweak model so cards + categories render immediately.
- * Call loadRemainingData() after to load system info and start the status stream.
- */
-export async function initializeQuick(): Promise<void> {
-  if (quickInitPromise) {
-    return quickInitPromise;
-  }
-  if (tweaks.length > 0) {
-    return;
-  }
-
-  quickInitPromise = tweaksStore
-    .loadModel()
-    .then(() => {
-      // Discard result to match Promise<void> signature
-    })
-    .finally(() => {
-      quickInitPromise = null;
-    });
-
-  return quickInitPromise;
-}
-
-/**
- * Load remaining data after quick init: system info, elevation state, and the
- * background-progressive status stream (statuses fill in incrementally).
- *
- * The model load is awaited first, not assumed: Svelte mounts `+page` before `+layout`, so this
- * runs before the layout's `initializeQuick()` and would otherwise kick the scan against an empty
- * `tweaks` array (the call is promise-cached, so it joins the layout's load rather than repeating it).
- */
-export async function loadRemainingData(): Promise<void> {
-  if (remainingDataPromise) {
-    return remainingDataPromise;
-  }
-  if (initialLoadComplete) {
-    return;
-  }
-
-  remainingDataPromise = initializeQuick()
-    .then(() => {
-      // Not awaited: the app presence scan is slow and must not hold up the tweak UI.
-      void appsStore.load();
-      return Promise.all([systemStore.load(), elevationStore.load(), startStatusStream()]);
-    })
-    .then(() => {
-      initialLoadComplete = true;
-    })
-    .finally(() => {
-      remainingDataPromise = null;
-    });
-
-  return remainingDataPromise;
-}
-
-/** Stop listening to the status stream (app-lifetime; exposed for completeness). */
-export function stopStatusStream(): void {
-  unlistenStatus?.();
-  unlistenStatus = null;
-  statusStreamStarted = false;
-}

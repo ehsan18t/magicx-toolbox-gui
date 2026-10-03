@@ -83,11 +83,11 @@ Script probes spawn a process, so their answers are cached for the app session, 
 | Elevate | The app relaunches elevated, and the new process runs its own launch scan. |
 | Profile import finished | A full re-scan through `rescan_after_elevation` (the profile flow is not reachable today; see [commands-and-ui.md](commands-and-ui.md#profiles)). |
 
-There is no periodic or focus-triggered refresh. If Windows or another tool changes a setting while the app is open, the card shows the old status until the next launch or the next operation on that tweak.
+There is no periodic or focus-triggered refresh. If Windows or another tool changes a setting while the app is open, the row shows the old status until the next launch or the next operation on that tweak.
 
 ### Ordering and concurrency
 
-- The scan skips any tweak whose lock is held at that moment (apply, restore, discard or keep current state), and emits nothing for it; the operation's own outcome will update the card.
+- The scan skips any tweak whose lock is held at that moment (apply, restore, discard or keep current state), and emits nothing for it; the operation's own outcome will update the row.
 - Every status carries a stamp from one process-wide counter. The frontend drops a status whose stamp is older than the one it already holds, so a slow scan result can never overwrite a newer apply outcome (and hide a Needs Attention it recorded).
 - A single-tweak status request made while that tweak is locked is refused rather than queued.
 

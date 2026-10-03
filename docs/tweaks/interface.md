@@ -72,7 +72,7 @@ Two facts apply to the whole category. First, Microsoft publishes no reference f
 | Dark | `0` | `0` |
 | Light | `1` | `1` |
 
-System Default is shown when the two values do not match either option, for example apps dark with the shell light (the mixed state Settings can produce) or either value missing; selecting it restores the values captured in the snapshot before the tweak was first applied. Stock Windows is Light, `1` for both.
+System Default is shown when the two values do not match either option, for example apps dark with the shell light (the mixed state Settings can produce) or either value missing; the Restore button restores the values captured in the snapshot before the tweak was first applied. Stock Windows is Light, `1` for both.
 
 #### How it works
 
@@ -128,7 +128,7 @@ Apply it if you work in a dim room or simply prefer dark surfaces. Skip it if yo
 | Off | `0` |
 | On | `1` |
 
-System Default is shown when the value is missing or holds anything other than 0 or 1; selecting it restores the snapshot. Stock Windows 10 and 11 ship transparency on (`1`).
+System Default is shown when the value is missing or holds anything other than 0 or 1; the Restore button restores the snapshot. Stock Windows 10 and 11 ship transparency on (`1`).
 
 #### How it works
 
@@ -183,7 +183,7 @@ Apply it if the blur makes taskbar and Start text hard to read against your wall
 | Off | `0` | `"0"` |
 | On | `1` | `"1"` |
 
-System Default is shown when the two values disagree (for example taskbar animation off but window animation on) or either is missing; selecting it restores the snapshot. Both are enabled on a stock machine; whether a fresh profile stores `TaskbarAnimations` as `1` or leaves it absent is not settled, so an untouched machine may read System Default with animations on.
+System Default is shown when the two values disagree (for example taskbar animation off but window animation on) or either is missing; the Restore button restores the snapshot. Both are enabled on a stock machine; whether a fresh profile stores `TaskbarAnimations` as `1` or leaves it absent is not settled, so an untouched machine may read System Default with animations on.
 
 #### How it works
 
@@ -238,7 +238,7 @@ Worth it on low-end hardware or over remote desktop, where the animation delay i
 | Disabled | `1` |
 | Enabled | `0` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Windows 11 ships the gesture off, and from Windows 10 build 21277 it is off by default too; whether that stock state is stored as `DisallowShaking = 1` or as the value being absent is not established, so on a stock machine the tweak may read System Default while behaving exactly like Disabled. Note the polarity: "Enabled" (`0`) turns the gesture on, which is an opt-in on every supported build, not a restore.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Windows 11 ships the gesture off, and from Windows 10 build 21277 it is off by default too; whether that stock state is stored as `DisallowShaking = 1` or as the value being absent is not established, so on a stock machine the tweak may read System Default while behaving exactly like Disabled. Note the polarity: "Enabled" (`0`) turns the gesture on, which is an opt-in on every supported build, not a restore.
 
 #### How it works
 
@@ -293,7 +293,7 @@ Apply it on a machine where the gesture has been turned on and keeps firing by a
 | Show | `0` |
 | Hide | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Stock Windows hides extensions (`1`): Windows itself declares that default under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Folder\HideFileExt` with `DefaultValue = 1`.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Stock Windows hides extensions (`1`): Windows itself declares that default under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Folder\HideFileExt` with `DefaultValue = 1`.
 
 #### How it works
 
@@ -348,7 +348,7 @@ Apply it on any machine you administer. The only reason to skip it is a shared f
 | Show | `1` |
 | Hide | `2` |
 
-System Default is shown when the value is missing or holds anything other than 1 or 2 (including `0`, which is not a defined state); selecting it restores the snapshot. Stock Windows hides them (`2`), declared by Windows under `HKLM\...\Explorer\Advanced\Folder\Hidden` with `DefaultValue = 2`.
+System Default is shown when the value is missing or holds anything other than 1 or 2 (including `0`, which is not a defined state); the Restore button restores the snapshot. Stock Windows hides them (`2`), declared by Windows under `HKLM\...\Explorer\Advanced\Folder\Hidden` with `DefaultValue = 2`.
 
 #### How it works
 
@@ -404,7 +404,7 @@ Apply it if you edit configuration files or troubleshoot apps. Leave it off on a
 | This PC | `1` |
 | Home / Quick Access | `2` |
 
-System Default is shown when the value is missing or holds another number (some sources mention `0` and `3`); selecting it restores the snapshot. The stock landing page is value `2`: Home on Windows 11, Quick Access on Windows 10.
+System Default is shown when the value is missing or holds another number (some sources mention `0` and `3`); the Restore button restores the snapshot. The stock landing page is value `2`: Home on Windows 11, Quick Access on Windows 10.
 
 #### How it works
 
@@ -458,7 +458,7 @@ Apply it if you navigate by folder tree or drives. Skip it if you work mainly fr
 | On | `1` |
 | Off | `0` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Stock is Off (`0`).
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Stock is Off (`0`).
 
 #### How it works
 
@@ -513,7 +513,7 @@ Apply it if you juggle several similarly named folders. On Windows 11 alone the 
 | Off | `0` | `0` |
 | On | `1` | `1` |
 
-System Default is shown when the values disagree or either is missing; selecting it restores the snapshot. Stock is both on (`1`).
+System Default is shown when the values disagree or either is missing; the Restore button restores the snapshot. Stock is both on (`1`).
 
 #### How it works
 
@@ -568,7 +568,7 @@ Apply it on a machine whose screen other people see, such as a shared desk or a 
 | Off | `0` |
 | On | `absent` |
 
-System Default is shown when the value is present with anything other than `0`, in practice `1`, which Settings writes once its toggle has been moved; selecting it restores the snapshot. On a stock 26100 install the value does not exist, and the shell treats absence as tracking on, which is why the On option deletes the value.
+System Default is shown when the value is present with anything other than `0`, in practice `1`, which Settings writes once its toggle has been moved; the Restore button restores the snapshot. On a stock 26100 install the value does not exist, and the shell treats absence as tracking on, which is why the On option deletes the value.
 
 #### How it works
 
@@ -623,7 +623,7 @@ Apply it if the shell surfacing your documents bothers you or the machine is sha
 | Hidden | `0` |
 | Shown | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Stock is Shown on Windows 10 and 11; whether a fresh profile stores it as `1` or leaves it absent is not settled (it was present on the inspected live 26100 profile), so a never-touched profile may read System Default while the button is visible.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Stock is Shown on Windows 10 and 11; whether a fresh profile stores it as `1` or leaves it absent is not settled (it was present on the inspected live 26100 profile), so a never-touched profile may read System Default while the button is visible.
 
 #### How it works
 
@@ -677,7 +677,7 @@ Apply it if you switch desktops from the keyboard or do not use them. Leave it i
 | Shown | `1` |
 | Hidden | `0` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Windows ships seconds off.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Windows ships seconds off.
 
 #### How it works
 
@@ -731,7 +731,7 @@ Apply it on a desktop where you time things or want a precise clock. Skip it on 
 | Off | `0` |
 | On | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Highlights are on by default; whether a fresh profile stores `1` or leaves the value absent could not be sourced, so an untouched machine may read System Default with highlights showing.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Highlights are on by default; whether a fresh profile stores `1` or leaves the value absent could not be sourced, so an untouched machine may read System Default with highlights showing.
 
 #### How it works
 
@@ -788,7 +788,7 @@ Apply it. There is no functional cost, and a search box is a poor place for prom
 | Icon only | `1` | `1` |
 | Search box | `2` | `absent` |
 
-System Default is shown when the pair matches no row; selecting it restores the snapshot. The stock state is the search box (`2`), which the "Search box" option reproduces.
+System Default is shown when the pair matches no row; the Restore button restores the snapshot. The stock state is the search box (`2`), which the "Search box" option reproduces.
 
 #### How it works
 
@@ -842,7 +842,7 @@ Icon only frees the space without losing the mouse route. Choose Hidden only if 
 | Search icon and label | `3` | `1` |
 | Search box | `2` | `absent` |
 
-The options follow the order and wording of Settings > Personalization > Taskbar > Search. System Default is shown when the pair matches no row, for example mode `2` with a cache value present; selecting it restores the snapshot. The stock state is the search box (`2`), which the "Search box" option reproduces.
+The options follow the order and wording of Settings > Personalization > Taskbar > Search. System Default is shown when the pair matches no row, for example mode `2` with a cache value present; the Restore button restores the snapshot. The stock state is the search box (`2`), which the "Search box" option reproduces.
 
 #### How it works
 
@@ -897,7 +897,7 @@ Search icon only is the sweet spot for most people: it frees the space without l
 | Combine when the taskbar is full | `1` | `1` |
 | Always combine, hide labels | `0` | `0` |
 
-System Default is shown when the two values differ (for example a different setting for other displays) or either is missing; selecting it restores the snapshot. Stock is "Always combine, hide labels" (`0`).
+System Default is shown when the two values differ (for example a different setting for other displays) or either is missing; the Restore button restores the snapshot. Stock is "Always combine, hide labels" (`0`).
 
 #### How it works
 
@@ -952,7 +952,7 @@ Choose "Never combine" on a wide monitor where you keep fewer than a dozen windo
 | Instant | `1` |
 | 400 ms | `absent` |
 
-System Default is shown when the value holds any other number (a custom delay); selecting it restores the snapshot. Stock is value-absent, confirmed by registry inspection on 26100.4061, with the shell falling back to an internal 400 ms. The tweak is gated to build 22631 and older, because it is widely reported to do nothing on Windows 11 24H2 and newer.
+System Default is shown when the value holds any other number (a custom delay); the Restore button restores the snapshot. Stock is value-absent, confirmed by registry inspection on 26100.4061, with the shell falling back to an internal 400 ms. The tweak is gated to build 22631 and older, because it is widely reported to do nothing on Windows 11 24H2 and newer.
 
 #### How it works
 
@@ -1010,7 +1010,7 @@ Worth applying on Windows 10 and on Windows 11 up to 23H2 if the thumbnail delay
 | Left | `0` |
 | Center | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Stock is centred (`1`); whether a fresh profile stores the `1` or leaves it absent is not settled.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Stock is centred (`1`); whether a fresh profile stores the `1` or leaves it absent is not settled.
 
 #### How it works
 
@@ -1063,7 +1063,7 @@ Apply it if icons moving under your cursor annoys you. On a very wide monitor, l
 | Off | `0` |
 | On | `absent` |
 
-System Default is shown when the value is present with anything other than `0` (in practice `1`, which Settings writes once its checkbox has been moved); selecting it restores the snapshot. On a stock 26100 install the value does not exist and the flyout is on.
+System Default is shown when the value is present with anything other than `0` (in practice `1`, which Settings writes once its checkbox has been moved); the Restore button restores the snapshot. On a stock 26100 install the value does not exist and the flyout is on.
 
 #### How it works
 
@@ -1118,7 +1118,7 @@ Apply it if the flyout keeps appearing when you reach for the window controls. S
 | On | `1` |
 | Off | `0` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Stock is Off (`0`), declared by Windows under `HKLM\...\Explorer\Advanced\Folder\UseCompactMode` with `DefaultValue = 0`.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Stock is Off (`0`), declared by Windows under `HKLM\...\Explorer\Advanced\Folder\UseCompactMode` with `DefaultValue = 0`.
 
 #### How it works
 
@@ -1172,7 +1172,7 @@ Apply it on a keyboard-and-mouse machine, where the extra padding buys nothing. 
 | Off | `0` |
 | On | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Recommendations are on by default.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Recommendations are on by default.
 
 #### How it works
 
@@ -1227,7 +1227,7 @@ Apply it. There is no functional loss worth naming. Pair it with [Hide the Recom
 | On | `1` |
 | Off | `0` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Stock is Off.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Stock is Off.
 
 #### How it works
 
@@ -1281,7 +1281,7 @@ Apply it if you develop software or regularly deal with apps that stop respondin
 | Hidden | `0` |
 | Shown | `absent` |
 
-System Default is shown when the per-user value is present with anything other than `0`; selecting it restores the snapshot. On a clean install the per-user CLSID key does not exist, so stock is value-absent and Gallery is shown.
+System Default is shown when the per-user value is present with anything other than `0`; the Restore button restores the snapshot. On a clean install the per-user CLSID key does not exist, so stock is value-absent and Gallery is shown.
 
 #### How it works
 
@@ -1335,7 +1335,7 @@ Apply it if you never browse photos through Explorer. Leave it if Gallery is how
 | Hidden | `0` |
 | Shown | `absent` |
 
-System Default is shown when the per-user value is present with anything other than `0`; selecting it restores the snapshot. Stock is value-absent, with Home shown.
+System Default is shown when the per-user value is present with anything other than `0`; the Restore button restores the snapshot. Stock is value-absent, with Home shown.
 
 #### How it works
 
@@ -1390,7 +1390,7 @@ Apply it together with opening File Explorer to This PC. Skip it if you rely on 
 | Hidden | `0` |
 | Shown | `1` |
 
-System Default is shown when the value is absent or holds another number; on a machine without OneDrive Personal the value does not exist, so the tweak reads System Default there. Selecting it restores the snapshot. With OneDrive Personal installed, stock is `1`.
+System Default is shown when the value is absent or holds another number; on a machine without OneDrive Personal the value does not exist, so the tweak reads System Default there. The Restore button restores the snapshot. With OneDrive Personal installed, stock is `1`.
 
 #### How it works
 
@@ -1444,7 +1444,7 @@ Apply it if OneDrive is installed but you store nothing there. If OneDrive is yo
 | Off | `0` |
 | On | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Notifications are on by default; whether a fresh profile stores `1` or leaves the value absent is not settled.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Notifications are on by default; whether a fresh profile stores `1` or leaves the value absent is not settled.
 
 #### How it works
 
@@ -1499,7 +1499,7 @@ Use it only for a specific situation such as a demo, a recording session or a ki
 | On | `1` |
 | Off | `absent` |
 
-System Default is shown when the value is present with anything other than `1` (for example an explicit `0`); selecting it restores the snapshot. Stock is value-absent, the unconfigured policy state.
+System Default is shown when the value is present with anything other than `1` (for example an explicit `0`); the Restore button restores the snapshot. Stock is value-absent, the unconfigured policy state.
 
 #### How it works
 
@@ -1555,7 +1555,7 @@ Apply it while diagnosing a slow or hanging sign-in, and on any machine you main
 | Silent | `1` |
 | Play the startup sound | `0` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. The stock value is not settled: one Windows 11 24H2 IoT Enterprise LTSC 2024 machine (26100.4061) carries `1`, but that evidence may be contaminated (see Validation), and retail Home and Pro images were not checked. Note the polarity: "Play the startup sound" (`0`) turns the chime on; it is an explicit choice, not a restore.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. The stock value is not settled: one Windows 11 24H2 IoT Enterprise LTSC 2024 machine (26100.4061) carries `1`, but that evidence may be contaminated (see Validation), and retail Home and Pro images were not checked. Note the polarity: "Play the startup sound" (`0`) turns the chime on; it is an explicit choice, not a restore.
 
 #### How it works
 
@@ -1671,7 +1671,7 @@ Apply it if you game or type fast and the prompts keep interrupting you. Do not 
 | Classic | `""` (empty string) |
 | Modern | `absent` |
 
-System Default is shown when the default value holds a non-empty string; selecting it restores the snapshot. Stock is value-absent: the per-user key does not exist on a clean install.
+System Default is shown when the default value holds a non-empty string; the Restore button restores the snapshot. Stock is value-absent: the per-user key does not exist on a clean install.
 
 #### How it works
 
@@ -1730,7 +1730,7 @@ Apply it if you use shell-extension tools daily; the extra click is a constant t
 | NumLock on | `"2147483650"` |
 | NumLock off | `"0"` |
 
-System Default is shown when the value holds any other string, such as `"2"` or `"2147483648"`, or is missing; selecting it restores the snapshot. Microsoft documents the default as `"0"` (NumLock off), and the value exists on essentially every profile because Windows writes it itself.
+System Default is shown when the value holds any other string, such as `"2"` or `"2147483648"`, or is missing; the Restore button restores the snapshot. Microsoft documents the default as `"0"` (NumLock off), and the value exists on essentially every profile because Windows writes it itself.
 
 #### How it works
 
@@ -1787,7 +1787,7 @@ Apply it on a desktop with a full-size keyboard where you enter numbers often. S
 | Hidden | `1` |
 | Shown | `absent` |
 
-System Default is shown when the value is present with anything other than `1`, for example an explicit `0`; selecting it restores the snapshot. Stock is value-absent, the unconfigured policy.
+System Default is shown when the value is present with anything other than `1`, for example an explicit `0`; the Restore button restores the snapshot. Stock is value-absent, the unconfigured policy.
 
 #### How it works
 
@@ -1842,7 +1842,7 @@ Apply it if you use Start purely as an app launcher. Skip it if you reopen recen
 | Hidden | `1` |
 | Shown | `absent` |
 
-System Default is shown when the value is present with anything other than `1`; selecting it restores the snapshot. Stock is value-absent.
+System Default is shown when the value is present with anything other than `1`; the Restore button restores the snapshot. Stock is value-absent.
 
 #### How it works
 
@@ -1896,7 +1896,7 @@ Apply it on a machine you deliberately run Windows 11 on despite the hardware ch
 | Hidden | `0` |
 | Shown | `absent` |
 
-System Default is shown when the value is present with anything other than `0`, for example `1` written by the Settings toggle; selecting it restores the snapshot. Stock is value-absent, in which case Start falls back to the default the Phone Link package declares.
+System Default is shown when the value is present with anything other than `0`, for example `1` written by the Settings toggle; the Restore button restores the snapshot. Stock is value-absent, in which case Start falls back to the default the Phone Link package declares.
 
 #### How it works
 
@@ -1953,7 +1953,7 @@ Apply it if you do not pair a phone or find the panel makes Start too wide. Skip
 | Off | `0` |
 | On | `absent` |
 
-System Default is shown when the value is present with anything other than `0`, for example `1` written by the Settings toggle; selecting it restores the snapshot. Stock is value-absent, which means on.
+System Default is shown when the value is present with anything other than `0`, for example `1` written by the Settings toggle; the Restore button restores the snapshot. Stock is value-absent, which means on.
 
 #### How it works
 
@@ -2013,7 +2013,7 @@ Apply it if you drag files between Explorer windows often and the overlay gets i
 | Windows and 20 most recent tabs | `1` |
 | Windows decides | `absent` |
 
-"Windows decides" is the unconfigured policy, which is also the stock state; System Default is shown only when the value holds a number outside 1 to 4. Selecting it restores the snapshot.
+"Windows decides" is the unconfigured policy, which is also the stock state; System Default is shown only when the value holds a number outside 1 to 4. The Restore button restores the snapshot.
 
 #### How it works
 
@@ -2068,7 +2068,7 @@ Choose "Open windows only" if you keep many tabs open and Alt+Tab has become use
 | Off | `0` |
 | On | `1` |
 
-System Default is shown when the value is missing or holds another number; selecting it restores the snapshot. Snap Assist is on by default; whether a stock profile stores `1` or leaves the value absent could not be established, so an untouched machine may read System Default with the picker on.
+System Default is shown when the value is missing or holds another number; the Restore button restores the snapshot. Snap Assist is on by default; whether a stock profile stores `1` or leaves the value absent could not be established, so an untouched machine may read System Default with the picker on.
 
 #### How it works
 
@@ -2123,7 +2123,7 @@ Apply it if you snap windows constantly and always know what goes beside them. S
 | Expand | `1` |
 | Do not expand | `absent` |
 
-System Default is shown when the value is present with anything other than `1`, for example `0` written by Folder Options; selecting it restores the snapshot. Stock is value-absent, with the tree not expanding.
+System Default is shown when the value is present with anything other than `1`, for example `0` written by Folder Options; the Restore button restores the snapshot. Stock is value-absent, with the tree not expanding.
 
 #### How it works
 
@@ -2178,7 +2178,7 @@ Apply it if you navigate by the folder tree and keep losing your place. Skip it 
 | Restore | `1` |
 | Do not restore | `absent` |
 
-System Default is shown when the value is present with anything other than `1`, for example `0` written by Folder Options; selecting it restores the snapshot. Stock is value-absent, with no windows restored.
+System Default is shown when the value is present with anything other than `1`, for example `0` written by Folder Options; the Restore button restores the snapshot. Stock is value-absent, with no windows restored.
 
 #### How it works
 
@@ -2233,7 +2233,7 @@ Apply it on a personal workstation where you keep a fixed set of folders open. S
 | Full format | `1` |
 | Abbreviated | `absent` |
 
-System Default is shown when the value is present with anything other than `1`, for example the policy's explicit disabled value `0`; selecting it restores the snapshot. Stock is value-absent, the unconfigured policy.
+System Default is shown when the value is present with anything other than `1`, for example the policy's explicit disabled value `0`; the Restore button restores the snapshot. Stock is value-absent, the unconfigured policy.
 
 #### How it works
 
@@ -2287,7 +2287,7 @@ Apply it if you use a 12-hour clock and keep misreading the tray. On a narrow la
 | Hidden | `1` |
 | Shown | `absent` |
 
-System Default is shown when the value is present with anything other than `1`; selecting it restores the snapshot. Stock is value-absent, the unconfigured policy.
+System Default is shown when the value is present with anything other than `1`; the Restore button restores the snapshot. Stock is value-absent, the unconfigured policy.
 
 #### How it works
 
@@ -2343,7 +2343,7 @@ Apply it if you want a Start menu that stays where you put it, particularly wher
 | Focus the last active window | `1` |
 | Show the thumbnail chooser | `absent` |
 
-System Default is shown when the value is present with anything other than `1`; selecting it restores the snapshot. Stock is value-absent, with a click on a grouped button showing the thumbnail chooser.
+System Default is shown when the value is present with anything other than `1`; the Restore button restores the snapshot. Stock is value-absent, with a click on a grouped button showing the thumbnail chooser.
 
 #### How it works
 
@@ -2397,7 +2397,7 @@ Apply it if you keep several windows of one app open and mostly return to the la
 | Removed | `1` |
 | Shown | `absent` |
 
-System Default is shown when the value is present with anything other than `1`, for example the policy's disabled value `0`; selecting it restores the snapshot. Stock is value-absent.
+System Default is shown when the value is present with anything other than `1`, for example the policy's disabled value `0`; the Restore button restores the snapshot. Stock is value-absent.
 
 #### How it works
 

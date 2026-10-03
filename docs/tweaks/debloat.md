@@ -45,7 +45,7 @@ Every tweak here authors two options, so each shows as a segmented switch; Syste
 | Off | `0` |
 | On | `absent` |
 
-System Default is any state that matches neither option, for example an explicit `1` written by Settings or another tool; selecting it restores the snapshot taken before the tweak was first applied. A fresh profile carries no value at all, so a stock machine reads as "On".
+System Default is any state that matches neither option, for example an explicit `1` written by Settings or another tool; the Restore button restores the snapshot taken before the tweak was first applied. A fresh profile carries no value at all, so a stock machine reads as "On".
 
 #### How it works
 
@@ -111,7 +111,7 @@ Apply it if you want every Start suggestion channel closed; it costs nothing. If
 | Off | `0` | `0` | `0` |
 | On | `1` | `1` | `1` |
 
-System Default is any mix that matches neither option (for example one value at 0 and the others at 1, or a value deleted); selecting it restores the snapshot. The shipped Default user hive seeds all three at 1, so a stock profile reads as "On".
+System Default is any mix that matches neither option (for example one value at 0 and the others at 1, or a value deleted); the Restore button restores the snapshot. The shipped Default user hive seeds all three at 1, so a stock profile reads as "On".
 
 #### How it works
 
@@ -173,7 +173,7 @@ Apply it. There is no scenario where you want Windows quietly installing sponsor
 | Off | `0` |
 | On | `absent` |
 
-System Default is any other state, such as an explicit `1` written when the Settings toggle is flipped; selecting it restores the snapshot. A fresh profile has no value, so a stock machine reads as "On".
+System Default is any other state, such as an explicit `1` written when the Settings toggle is flipped; the Restore button restores the snapshot. A fresh profile has no value, so a stock machine reads as "On".
 
 #### How it works
 
@@ -233,7 +233,7 @@ Apply it if you already follow what changes in Windows updates or simply do not 
 | Off | `0` |
 | On | `absent` |
 
-System Default is any other state, such as an explicit `1` from the Settings checkbox; selecting it restores the snapshot. Neither the value nor its parent key exists on a fresh profile, so a stock machine reads as "On"; applying "Off" creates the key.
+System Default is any other state, such as an explicit `1` from the Settings checkbox; the Restore button restores the snapshot. Neither the value nor its parent key exists on a fresh profile, so a stock machine reads as "On"; applying "Off" creates the key.
 
 #### How it works
 
@@ -354,7 +354,7 @@ Apply it unless you rely on OneDrive status messages inside Explorer. For everyo
 | Off | `1` | `0` | `0` |
 | On | `absent` | `absent` | `absent` |
 
-System Default is any mix that matches neither option, for example the policy at 1 while a feature update has reset `BingSearchEnabled`; selecting it restores the snapshot. None of the three values exists on a fresh install, so a stock machine reads as "On".
+System Default is any mix that matches neither option, for example the policy at 1 while a feature update has reset `BingSearchEnabled`; the Restore button restores the snapshot. None of the three values exists on a fresh install, so a stock machine reads as "On".
 
 #### How it works
 
@@ -418,7 +418,7 @@ Apply it if you use Start to launch apps and open settings, which is most people
 | Off | `0` |
 | On | `absent` |
 
-System Default is any other value (for example an explicit `1` set by an administrator); selecting it restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
+System Default is any other value (for example an explicit `1` set by an administrator); the Restore button restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -473,7 +473,7 @@ Apply it if you never open the widgets board. Leave it alone if you glance at th
 | Off | `1` |
 | On | `absent` |
 
-System Default is any other value (for example `0`, "policy explicitly disabled"); selecting it restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
+System Default is any other value (for example `0`, "policy explicitly disabled"); the Restore button restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -531,7 +531,7 @@ Apply it if you use a Microsoft account and are tired of the user tile selling s
 | Off | `1` |
 | On | `absent` |
 
-System Default is any other value; selecting it restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
+System Default is any other value; the Restore button restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -589,7 +589,7 @@ Apply it on Enterprise, Education or IoT Enterprise, where it works. On Home and
 | Off | `1` |
 | On | `absent` |
 
-System Default is any other value; selecting it restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
+System Default is any other value; the Restore button restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -649,7 +649,7 @@ Apply it if you want the whole Spotlight system off and do not care about the wa
 | Off | `1` |
 | On | `absent` |
 
-System Default is any other value; selecting it restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
+System Default is any other value; the Restore button restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -706,7 +706,7 @@ Apply it if you want lock screen Spotlight but control of your own desktop. If y
 | Silenced | `0` | `0` |
 | On | `absent` | `absent` |
 
-System Default is any mix that matches neither option (for example one channel silenced in Settings and the other not); selecting it restores the snapshot. The per-app keys do not exist on a fresh profile, so a stock machine reads as "On".
+System Default is any mix that matches neither option (for example one channel silenced in Settings and the other not); the Restore button restores the snapshot. The per-app keys do not exist on a fresh profile, so a stock machine reads as "On".
 
 #### How it works
 
@@ -763,7 +763,7 @@ Apply it if you want notifications in general but not the Microsoft service ads.
 | Off | `1` |
 | On | `absent` |
 
-System Default is any other value (for example `0` set by an administrator); selecting it restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
+System Default is any other value (for example `0` set by an administrator); the Restore button restores the snapshot. The policy is unset out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -818,7 +818,7 @@ Apply it, especially on new setups. The only cost is a walkthrough whose job is 
 | Off | `0` | `0` |
 | On | `absent` | `absent` |
 
-System Default is any mix that matches neither option; selecting it restores the snapshot. Neither policy is set out of the box, so a stock machine reads as "On".
+System Default is any mix that matches neither option; the Restore button restores the snapshot. Neither policy is set out of the box, so a stock machine reads as "On".
 
 #### How it works
 
@@ -873,7 +873,7 @@ Apply it if Edge is not your main browser, or you want nothing resident when the
 | Off | `0` | `0` |
 | On | `absent` | `absent` |
 
-System Default is any mix that matches neither option; selecting it restores the snapshot. Neither policy is set out of the box, so a stock machine reads as "On".
+System Default is any mix that matches neither option; the Restore button restores the snapshot. Neither policy is set out of the box, so a stock machine reads as "On".
 
 #### How it works
 

@@ -2,7 +2,7 @@
 
 This category controls how Windows Update behaves on the machine: Delivery Optimization peering, quality and feature update deferral, version pinning, mid-cycle feature control, Insider enrolment, active hours and restarts, driver delivery, Microsoft Store app updates, metered downloads, the automatic-update mode, and a full block of the update pipeline. The primary platform is Windows 11 24H2 (build 26100) and newer; Windows 10 IoT Enterprise LTSC 2021 (build 19044) is a secondary target and is called out per tweak only where it differs. Most tweaks here are Windows Update client policies under `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate`, which Microsoft documents for Pro, Education, Enterprise and IoT Enterprise only: **Windows Home ignores them**. The exceptions are Delivery Optimization, active hours, the Store policy (Home undocumented) and the services-and-tasks half of the pipeline block, which do not depend on edition.
 
-"Switch" means one or two authored options, shown as a segmented switch; "Dropdown" means three or more. The app adds the computed **System Default** state to either while it is the live state (the state when the machine matches no authored option; selecting it restores the snapshot).
+"Switch" means one authored option (shown as System default | option) or two (a segmented switch); "Dropdown" means three or more. The computed **System Default** state (the machine matches no authored option) shows on the row's state line; only a one-option switch offers it, and choosing it restores the snapshot.
 
 ## Index
 
@@ -42,7 +42,7 @@ This category controls how Windows Update behaves on the machine: Delivery Optim
 | HTTP only, no peering | `0` |
 | Peering allowed | `absent` |
 
-System Default: the live `DODownloadMode` policy value is something other than 0 or absent (for example 1, 2 or 3 set by another tool or an organization); selecting it restores the snapshot. The stock state is value-absent: the policy key was absent on the 26100.4061 test machine (measured), which matches the "Peering allowed" option.
+System Default: the live `DODownloadMode` policy value is something other than 0 or absent (for example 1, 2 or 3 set by another tool or an organization); the Restore button restores the snapshot. The stock state is value-absent: the policy key was absent on the 26100.4061 test machine (measured), which matches the "Peering allowed" option.
 
 #### How it works
 
@@ -106,7 +106,7 @@ A sensible choice for a single-PC household, particularly on a connection with l
 | Defer 14 days | `1` | `14` |
 | No deferral | `absent` | `absent` |
 
-System Default: any other combination (for example a 3-day or 30-day deferral set elsewhere); selecting it restores the snapshot. The stock state is both values absent, which is the "No deferral" option.
+System Default: any other combination (for example a 3-day or 30-day deferral set elsewhere); the Restore button restores the snapshot. The stock state is both values absent, which is the "No deferral" option.
 
 #### How it works
 
@@ -169,7 +169,7 @@ Use it on Pro and above if you want to dodge bad patches, and prefer the 7-day o
 | Defer 365 days | `1` | `365` |
 | No deferral | `absent` | `absent` |
 
-System Default: any other combination; selecting it restores the snapshot. The stock state is both values absent ("No deferral").
+System Default: any other combination; the Restore button restores the snapshot. The stock state is both values absent ("No deferral").
 
 The tweak carries a UI warning: feature update deferrals are not in effect while a target release version is pinned, so it must not be combined with [Pin Windows feature version](#pin-windows-feature-version).
 
@@ -236,7 +236,7 @@ A better choice than pinning for most people who want caution without risk. Use 
 | Pinned to 26H1 | `1` | `"26H1"` | `"Windows 11"` |
 | Not pinned | `absent` | `absent` | `absent` |
 
-System Default: any other combination (for example a pin to 24H2 set elsewhere); selecting it restores the snapshot. The stock state is all three absent ("Not pinned").
+System Default: any other combination (for example a pin to 24H2 set elsewhere); the Restore button restores the snapshot. The stock state is all three absent ("Not pinned").
 
 The tweak carries a UI warning: a pinned release stops receiving security updates the day its servicing ends (25H2 on 2027-10-12, 26H1 on 2028-03-14), and 24H2 is deliberately not offered because its Home and Pro servicing ends 2026-10-13.
 
@@ -306,7 +306,7 @@ Good on Pro and above if you want to decide when to take a feature upgrade, prov
 | Receive optional content and gradual feature rollouts | `1` | `1` | `1` |
 | Windows decides | `absent` | `absent` | `absent` |
 
-System Default: any other combination (for example `AllowOptionalContent = 2` or `3` set elsewhere); selecting it restores the snapshot. The stock state is all three absent ("Windows decides"). On a build below 22621 the first effect is out of scope and the options are told apart by the other two.
+System Default: any other combination (for example `AllowOptionalContent = 2` or `3` set elsewhere); the Restore button restores the snapshot. The stock state is all three absent ("Windows decides"). On a build below 22621 the first effect is out of scope and the options are told apart by the other two.
 
 #### How it works
 
@@ -372,7 +372,7 @@ Worth applying on a Pro machine you want to stop changing shape month to month, 
 | Preview builds blocked | `1` |
 | Preview builds allowed | `absent` |
 
-System Default: the value holds something else (for example 2, the policy's Enabled state set elsewhere); selecting it restores the snapshot. The stock state is value-absent ("Preview builds allowed").
+System Default: the value holds something else (for example 2, the policy's Enabled state set elsewhere); the Restore button restores the snapshot. The stock state is value-absent ("Preview builds allowed").
 
 #### How it works
 
@@ -493,7 +493,7 @@ Worth setting for anyone annoyed by mistimed restarts whose working day fits ins
 | Blocked | `1` |
 | Allowed | `absent` |
 
-System Default: the value holds something else (for example 0 written by an organization); selecting it restores the snapshot. The stock state is value-absent ("Allowed").
+System Default: the value holds something else (for example 0 written by an organization); the Restore button restores the snapshot. The stock state is value-absent ("Allowed").
 
 The tweak carries a UI warning: Microsoft applies this policy only when Configure Automatic Updates is set to option 4; on a machine that has not configured automatic updates the value is written but has no effect.
 
@@ -556,7 +556,7 @@ Use it on Pro alongside Windows Update mode set to Automatic if you keep long wo
 | Excluded | `1` |
 | Included | `absent` |
 
-System Default: the policy value holds something else (for example 0); selecting it restores the snapshot. The stock state is value-absent ("Included").
+System Default: the policy value holds something else (for example 0); the Restore button restores the snapshot. The stock state is value-absent ("Included").
 
 #### How it works
 
@@ -616,7 +616,7 @@ Good for anyone who manages drivers from vendor sites and has been bitten by an 
 | Disabled | `0` | `1` |
 | Enabled | `absent` | `absent` |
 
-System Default: any other combination; selecting it restores the snapshot. The stock state is both policy values absent ("Enabled"); on the test machine the `Policies\...\Device Metadata` key did not exist (measured).
+System Default: any other combination; the Restore button restores the snapshot. The stock state is both policy values absent ("Enabled"); on the test machine the `Policies\...\Device Metadata` key did not exist (measured).
 
 #### How it works
 
@@ -675,7 +675,7 @@ For power users who want to approve every driver, ideally alongside excluding dr
 | Disabled | `2` |
 | Enabled | `absent` |
 
-System Default: the value holds something else, typically 4 (the policy's Disabled state, which forces auto-updates on); selecting it restores the snapshot. The stock state is value-absent ("Enabled").
+System Default: the value holds something else, typically 4 (the policy's Disabled state, which forces auto-updates on); the Restore button restores the snapshot. The stock state is value-absent ("Enabled").
 
 #### How it works
 
@@ -731,7 +731,7 @@ Reasonable on a metered connection or where you want app versions pinned, if you
 | Blocked | `0` |
 | Allowed | `absent` |
 
-System Default: the value holds something else (1, allowed); selecting it restores the snapshot. The stock state is value-absent ("Allowed" as labelled, which in practice means "decided by the Settings toggle").
+System Default: the value holds something else (1, allowed); the Restore button restores the snapshot. The stock state is value-absent ("Allowed" as labelled, which in practice means "decided by the Settings toggle").
 
 #### How it works
 
@@ -794,7 +794,7 @@ Worth setting on a Pro machine that regularly runs on a hotspot or capped plan, 
 | Notify only: nothing downloads unprompted | `0` | `2` |
 | Off by policy | `1` | `absent` |
 
-System Default: any other state, which on a stock machine is both values absent (no Configure Automatic Updates policy, so Windows uses its unmanaged default of automatic install and restart); selecting it restores the snapshot, so a machine that had no policy goes back to having none.
+System Default: any other state, which on a stock machine is both values absent (no Configure Automatic Updates policy, so Windows uses its unmanaged default of automatic install and restart); the Restore button restores the snapshot, so a machine that had no policy goes back to having none.
 
 The tweak carries a UI warning: Windows Home ignores the AU policy entirely, and every mode except Automatic delays security patches.
 

@@ -1,30 +1,22 @@
-/**
- * Manual Tests store (test build only). `available` stays false in a normal build, which hides the view.
- */
+// Test build only: `isAvailable` stays false in a normal build, which hides the view.
 
-import {
-  cancelManualTest,
-  listManualTests,
-  manualTestsAvailable,
-  onManualTestLog,
-  runManualTest,
-  type ManualTest,
-  type ManualTestReport,
-} from "$lib/api/manualTests";
+import * as manualTestsApi from "$lib/api/manualTests";
+import type { ManualTest, ManualTestReport } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
 
-let available = $state(false);
-let tests = $state<ManualTest[]>([]);
+let isAvailable = $state(false);
+let tests = $state.raw<ManualTest[]>([]);
 let runningId = $state<string | null>(null);
-let cancelling = $state(false);
+let isCancelling = $state(false);
 let logs = $state<Record<string, string[]>>({});
 let results = $state<Record<string, ManualTestReport>>({});
 let failures = $state<Record<string, string>>({});
-let initialized = false;
+let isLoaded = false;
 
 export const manualTestsStore = {
-  get available() {
-    return available;
+  get isAvailable() {
+    return isAvailable;
   },
   get tests() {
     return tests;
@@ -32,65 +24,65 @@ export const manualTestsStore = {
   get runningId() {
     return runningId;
   },
-  get cancelling() {
-    return cancelling;
+  get isCancelling() {
+    return isCancelling;
   },
-  logFor(id: string): string[] {
+  log(id: string): string[] {
     return logs[id] ?? [];
   },
-  resultFor(id: string): ManualTestReport | undefined {
+  result(id: string): ManualTestReport | undefined {
     return results[id];
   },
-  failureFor(id: string): string | undefined {
+  failure(id: string): string | undefined {
     return failures[id];
   },
 
-  async init() {
-    if (initialized) return;
-    initialized = true;
+  async load() {
+    if (isLoaded) return;
+    isLoaded = true;
     try {
-      available = await manualTestsAvailable();
-      if (!available) return;
-      tests = await listManualTests();
-      await onManualTestLog(({ test_id, line }) => {
+      isAvailable = await manualTestsApi.manualTestsAvailable();
+      if (!isAvailable) return;
+      tests = await manualTestsApi.listManualTests();
+      await manualTestsApi.onManualTestLog(({ test_id, line }) => {
         (logs[test_id] ??= []).push(line);
       });
-    } catch (e) {
-      console.error("Manual tests unavailable:", e);
-      available = false;
+    } catch (error) {
+      logError("Manual tests unavailable", error);
+      isAvailable = false;
     }
   },
 
   async run(id: string, minutes: number | null) {
     if (runningId) return;
     runningId = id;
-    cancelling = false;
+    isCancelling = false;
     logs[id] = [];
     delete results[id];
     delete failures[id];
     try {
-      results[id] = await runManualTest(id, minutes);
-    } catch (e) {
-      failures[id] = errorMessage(e);
+      results[id] = await manualTestsApi.runManualTest(id, minutes);
+    } catch (error) {
+      failures[id] = errorMessage(error);
     } finally {
       runningId = null;
-      cancelling = false;
+      isCancelling = false;
     }
   },
 
   async cancel() {
     if (!runningId) return;
-    cancelling = true;
+    isCancelling = true;
     try {
-      await cancelManualTest();
-    } catch (e) {
-      cancelling = false;
-      console.error("Cancel failed:", e);
+      await manualTestsApi.cancelManualTest();
+    } catch (error) {
+      isCancelling = false;
+      logError("Cancel failed", error);
     }
   },
 
   /** The backend's plain-text report, or the streamed log when the run never produced one. */
-  reportFor(id: string): string {
+  report(id: string): string {
     const result = results[id];
     if (result) return result.report;
     const lines = [`Test: ${id}`, `Error: ${failures[id] ?? "no result"}`, "", "Log:", ...(logs[id] ?? [])];

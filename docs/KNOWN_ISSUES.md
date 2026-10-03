@@ -2,19 +2,15 @@
 
 Defects that are **confirmed to exist and are meant to be fixed**, just not yet.
 
-An entry here is an open bug with its diagnosis already done: what goes wrong, whether it can bite
-today, and what the fix looks like. The point is that nobody re-derives the analysis when the work is
-picked up. Entries leave this file by being **fixed**.
+An entry here is an open bug with its diagnosis already done: what goes wrong, whether it can bite today, and what the fix looks like. The point is that nobody re-derives the analysis when the work is picked up. Entries leave this file by being **fixed**.
 
-This is not a place to park things we have decided not to do. A deliberate "we are not fixing this,
-and here is why" is an architecture decision and belongs in `docs/adr/`, where the reasoning is
-durable and reviewable. If an entry below turns out to be something we accept rather than fix, write
-the ADR and delete the entry.
+This is not a place to park things we have decided not to do. A deliberate "we are not fixing this, and here is why" is an architecture decision and belongs in `docs/adr/`, where the reasoning is durable and reviewable. If an entry below turns out to be something we accept rather than fix, write the ADR and delete the entry.
 
-| #   | Issue                                           | Bites today?                                 | Found      |
-| --- | ----------------------------------------------- | -------------------------------------------- | ---------- |
-| 2   | Broker transport falls back to user TEMP where SystemTemp is missing | only there, and only as a forced false failure | 2026-09-12 |
-| 3   | A broker child that is killed or cannot write its response loses its log lines | only as thin support detail after a failure | 2026-09-12 |
+| #   | Issue                                                                          | Bites today?                                               | Found      |
+| --- | ------------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------- |
+| 2   | Broker transport falls back to user TEMP where SystemTemp is missing           | only there, and only as a forced false failure             | 2026-09-12 |
+| 3   | A broker child that is killed or cannot write its response loses its log lines | only as thin support detail after a failure                | 2026-09-12 |
+| 4   | Profiles have no backend: every profile call rejects                           | yes, the Profiles page and both profile dialogs do nothing | 2026-10-03 |
 
 ---
 
@@ -35,3 +31,9 @@ the ADR and delete the entry.
 **Candidate fix, and why it waits.** Only a log the child writes as it goes survives a kill. That file would be created as TrustedInstaller, need the `CREATE_NEW` and reparse-point guards the response write already uses, and live either beside the response, which inherits issue 2's directory decision, or in the app's logs folder, which the unelevated app also writes, so the ACL question moves rather than disappears. ADR-0010 rejected a child log file for the common case; for these two cases the cost is still open, and a real elevated run is what settles it.
 
 **The order.** Settle issue 2 first: the transport directory then holds the request, the response and any such file under a single decision.
+
+## 4. Profiles have no backend: every profile call rejects
+
+**What happens.** The profile commands were removed while the format is rebuilt (`docs/spec/profile-v1.md`). `src/lib/api/profile.ts` keeps the frontend surface but rejects every call at one choke point, so no `invoke()` reaches an unregistered command. The Profiles page shows a "Profiles are being rebuilt" notice, keeps New profile disabled, and does not load saved profiles on mount, since that load can only fail. The export wizard (`modals/profile/ProfileExportModal.svelte`) has no opener, so it is kept but parked unmounted. Open folder and Reset folder still trigger a load, which fails and shows the error on the page.
+
+**The fix.** Once the backend returns: register the commands and drop the rejections in `api/profile.ts`, load saved profiles when `ProfilesView` mounts, remove the notice, enable New profile, and mount `ProfileExportModal` in `+layout.svelte` again with New profile as its opener.

@@ -1,75 +1,56 @@
-/**
- * Favorites Store - Svelte 5 Runes
- *
- * Manages favorite tweaks with localStorage persistence.
- * Only stores tweak IDs - tweak data comes from tweaksStore.
- */
-
+import { STORAGE_KEYS } from "$lib/config/app";
+import { plural } from "$lib/utils/format";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { confirmStore } from "./confirm.svelte";
+import { toastStore } from "./toast.svelte";
 
-const STORAGE_KEY = "magicx-favorites";
+const favoritesState = new PersistentStore<readonly string[]>(STORAGE_KEYS.favorites, [], (stored) =>
+  Array.isArray(stored) && stored.every((id) => typeof id === "string") ? stored : undefined,
+);
 
-// Persistent state
-const favoritesState = new PersistentStore<string[]>(STORAGE_KEY, []);
-
-// === Derived Values ===
-const count = $derived(favoritesState.value.length);
-const isEmpty = $derived(favoritesState.value.length === 0);
 const ids = $derived(favoritesState.value);
+const idSet = $derived(new Set(ids));
 
-// === Export ===
+function add(tweakId: string) {
+  if (!idSet.has(tweakId)) favoritesState.value = [...ids, tweakId];
+}
+
+function remove(tweakId: string) {
+  favoritesState.value = ids.filter((id) => id !== tweakId);
+}
+
+/** Tweak ids only; the tweak data lives in tweaksStore. */
 export const favoritesStore = {
-  /** Get the count of favorites */
-  get count() {
-    return count;
-  },
-
-  /** Check if favorites is empty */
-  get isEmpty() {
-    return isEmpty;
-  },
-
-  /** Get all favorite IDs as array */
-  get ids() {
-    return ids;
-  },
-
-  /** Check if a tweak is favorited */
   isFavorite(tweakId: string): boolean {
-    return favoritesState.value.includes(tweakId);
+    return idSet.has(tweakId);
   },
 
-  /** Add a tweak to favorites */
-  add(tweakId: string): void {
-    if (!favoritesState.value.includes(tweakId)) {
-      favoritesState.value = [...favoritesState.value, tweakId];
-    }
-  },
-
-  /** Remove a tweak from favorites */
-  remove(tweakId: string): void {
-    favoritesState.value = favoritesState.value.filter((id) => id !== tweakId);
-  },
-
-  /** Toggle a tweak's favorite status */
+  /** Whether the tweak is now a favorite. */
   toggle(tweakId: string): boolean {
-    if (favoritesState.value.includes(tweakId)) {
-      this.remove(tweakId);
+    if (idSet.has(tweakId)) {
+      remove(tweakId);
       return false;
-    } else {
-      this.add(tweakId);
-      return true;
     }
+    add(tweakId);
+    return true;
   },
 
-  /** Drop ids the tweak model does not define, so they don't inflate the count. */
-  prune(knownIds: string[]): void {
-    const kept = favoritesState.value.filter((id) => knownIds.includes(id));
-    if (kept.length !== favoritesState.value.length) favoritesState.value = kept;
+  /** Drops ids the tweak model does not define, so they don't inflate the count. */
+  prune(isKnown: (id: string) => boolean): void {
+    const kept = ids.filter(isKnown);
+    if (kept.length !== ids.length) favoritesState.value = kept;
   },
 
-  /** Clear all favorites */
-  clear(): void {
-    favoritesState.value = [];
+  /** Clears only what the Favorites page lists, as its other actions do: hidden favorites stay. */
+  async clearWithConfirm(shownIds: readonly string[]): Promise<void> {
+    const ok = await confirmStore.ask({
+      title: "Clear favorites?",
+      message: `Remove ${plural(shownIds.length, "tweak")} from your favorites? This won't change the tweaks themselves.`,
+      confirmText: "Clear favorites",
+      variant: "danger",
+    });
+    if (!ok) return;
+    favoritesState.value = ids.filter((id) => !shownIds.includes(id));
+    toastStore.success("Favorites cleared");
   },
 };

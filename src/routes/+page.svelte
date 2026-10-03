@@ -1,189 +1,74 @@
 <script lang="ts">
-  import { RebootBanner } from "$lib/components/feedback";
-  import { Sidebar } from "$lib/components/layout";
-  import { Icon } from "$lib/components/shared";
+  import { PendingBar, RebootBanner } from "$lib/components/feedback";
+  import { LogsPanel, Sidebar, SummaryPanel } from "$lib/components/layout";
+  import { AppDetailsModal, TweakDetailsModal } from "$lib/components/items";
   import {
     CategoryView,
     FavoritesView,
     ManualTestsView,
     OverviewView,
-    ProfileManager,
+    ProfilesView,
     SearchView,
+    SettingsView,
     SnapshotsView,
   } from "$lib/components/views";
-  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
-  import { manualTestsStore } from "$lib/stores/manualTests.svelte";
-  import { loadRemainingData } from "$lib/stores/tweaks.svelte";
-  import { errorMessage } from "$lib/utils/error";
-  import { onMount } from "svelte";
+  import { isPageId, navigationStore, type PageId, pageTweaks } from "$lib/stores/navigation.svelte";
+  import { remToken } from "$lib/utils/cssToken";
+  import type { Component } from "svelte";
 
-  let error = $state<string | null>(null);
+  const PAGE_VIEWS: Record<PageId, Component> = {
+    overview: OverviewView,
+    search: SearchView,
+    favorites: FavoritesView,
+    snapshots: SnapshotsView,
+    profiles: ProfilesView,
+    settings: SettingsView,
+    "manual-tests": ManualTestsView,
+  };
 
-  onMount(async () => {
-    void manualTestsStore.init();
-    try {
-      // Categories are always loaded by +layout (it awaits initializeQuick)
-      // No need for defensive checks - if categories failed to load, layout already errored
-      // Simply load remaining data (system info + tweak statuses)
-      await loadRemainingData();
-    } catch (e) {
-      error = errorMessage(e);
-      console.error("Failed to initialize:", e);
-    }
-  });
-
-  // Derived values from navigation store
   const activeTab = $derived(navigationStore.activeTab);
-  const allTabs = $derived(navigationStore.allTabs);
+  const PageView = $derived(isPageId(activeTab) ? PAGE_VIEWS[activeTab] : undefined);
+  const categoryTab = $derived(
+    navigationStore.isOnCategoryTab ? navigationStore.categoryTabs.find((t) => t.id === activeTab) : undefined,
+  );
 
-  // Get the current tab definition for CategoryTab
-  const currentCategoryTab = $derived.by(() => {
-    if (activeTab === "overview" || activeTab === "search" || activeTab === "favorites" || activeTab === "snapshots")
-      return null;
-    return allTabs.find((t: TabDefinition) => t.id === activeTab) ?? null;
+  // Mounted only once it fits: hidden by CSS alone, it would still recompute on every status change.
+  let workspaceWidth = $state(0);
+  const summaryFits = $derived(workspaceWidth >= remToken("--container-summary-panel"));
+
+  const summary = $derived.by(() => {
+    const tweaks = pageTweaks(activeTab);
+    const title = navigationStore.allTabs.find((t) => t.id === activeTab)?.name;
+    return tweaks && title ? { title, tweaks } : null;
   });
 </script>
 
-<div class="page-container">
-  {#if error}
-    <div class="error-screen">
-      <div class="error-content">
-        <div class="error-icon-wrapper">
-          <Icon icon="mdi:alert-circle" width="48" />
-        </div>
-        <h2>Failed to Load</h2>
-        <p class="error-message">{error}</p>
-        <button class="retry-button" onclick={() => window.location.reload()}>
-          <Icon icon="mdi:refresh" width="18" />
-          Retry
-        </button>
+<div class="flex h-full min-h-0">
+  <Sidebar />
+  <main class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-lg border-t border-l border-border bg-surface">
+    <RebootBanner />
+    <div class="relative flex min-h-0 flex-1" bind:clientWidth={workspaceWidth}>
+      <div class="relative flex min-w-0 flex-1 flex-col">
+        {#key activeTab}
+          <div class="min-h-0 flex-1 animate-rise-in">
+            {#if PageView}
+              <PageView />
+            {:else if categoryTab}
+              <CategoryView tab={categoryTab} />
+            {/if}
+          </div>
+        {/key}
+        <PendingBar />
       </div>
+      {#if summary && summaryFits}
+        <!-- Keyed: switching pages remounts it rather than animating every group out and in. -->
+        {#key summary.title}
+          <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />
+        {/key}
+      {/if}
     </div>
-  {:else}
-    <!-- Always show app shell - components handle their own loading states -->
-    <div class="app-layout">
-      <Sidebar />
-      <main class="main-content">
-        <div class="">
-          <RebootBanner />
-        </div>
-        <div class="content-area">
-          {#if activeTab === "overview"}
-            <OverviewView />
-          {:else if activeTab === "search"}
-            <SearchView />
-          {:else if activeTab === "favorites"}
-            <FavoritesView />
-          {:else if activeTab === "snapshots"}
-            <SnapshotsView />
-          {:else if activeTab === "profiles"}
-            <ProfileManager />
-          {:else if activeTab === "manual-tests"}
-            <ManualTestsView />
-          {:else if currentCategoryTab}
-            <CategoryView tab={currentCategoryTab} />
-          {/if}
-        </div>
-      </main>
-    </div>
-  {/if}
+    <LogsPanel />
+  </main>
 </div>
-
-<style>
-  .page-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    background: hsl(var(--background));
-  }
-
-  /* Error Screen */
-  .error-screen {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-  }
-
-  .error-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    text-align: center;
-    max-width: 360px;
-    padding: 32px;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: 16px;
-  }
-
-  .error-icon-wrapper {
-    width: 72px;
-    height: 72px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: hsl(0 84% 60% / 0.1);
-    border-radius: 50%;
-    color: hsl(0 84% 60%);
-  }
-
-  .error-content h2 {
-    margin: 8px 0 0;
-    font-size: 18px;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-  }
-
-  .error-message {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.5;
-    color: hsl(var(--muted-foreground));
-  }
-
-  .retry-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 10px;
-    background: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .retry-button:hover {
-    background: hsl(var(--primary) / 0.9);
-    transform: translateY(-1px);
-  }
-
-  /* Main App Layout */
-  .app-layout {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .main-content {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .content-area {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-</style>
+<TweakDetailsModal />
+<AppDetailsModal />

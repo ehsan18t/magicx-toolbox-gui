@@ -1,106 +1,45 @@
-<!--
-  HighlightedText.svelte
-
-  Renders text with highlighted match ranges from uFuzzy search.
-  Uses semantic <mark> elements for accessibility.
-
-  Props:
-  - text: The full text string
-  - ranges: Array of [start, end, start, end, ...] indices to highlight
-  - class: Optional CSS classes for the container
-  - highlightClass: CSS classes for the <mark> elements
--->
 <script lang="ts">
+  import { MATCH_HIGHLIGHT } from "$lib/design";
+
   interface Props {
-    /** The text to render */
     text: string;
-    /** Highlight ranges: [start, end, start, end, ...] */
+    /** uFuzzy match ranges, flat: [start, end, start, end, …]. */
     ranges?: number[];
-    /** Optional container class */
     class?: string;
-    /** CSS class for highlight marks */
-    highlightClass?: string;
   }
 
-  let { text, ranges = [], class: className = "", highlightClass = "" }: Props = $props();
+  let { text, ranges = [], class: className }: Props = $props();
 
-  /** Build text segments from ranges */
   const segments = $derived.by(() => {
-    if (!ranges || ranges.length === 0 || !text) {
-      return [{ text, highlighted: false }];
-    }
-
-    // Sanitize ranges: Sort and merge overlapping intervals
-    // uFuzzy usually returns sorted non-overlapping ranges; normalize for robustness.
-    const sortedRanges: Array<{ start: number; end: number }> = [];
-
-    // 1. Convert flat array to objects
+    const spans: { start: number; end: number }[] = [];
     for (let i = 0; i < ranges.length; i += 2) {
       const start = ranges[i];
       const end = ranges[i + 1];
-      if (start >= 0 && end <= text.length && start < end) {
-        sortedRanges.push({ start, end });
-      }
+      if (start >= 0 && end <= text.length && start < end) spans.push({ start, end });
+    }
+    spans.sort((a, b) => a.start - b.start);
+
+    const merged: { start: number; end: number }[] = [];
+    for (const span of spans) {
+      const last = merged.at(-1);
+      if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
+      else merged.push(span);
     }
 
-    // 2. Sort by start position
-    sortedRanges.sort((a, b) => a.start - b.start);
-
-    // 3. Merge overlaps
-    const mergedRanges: Array<{ start: number; end: number }> = [];
-    if (sortedRanges.length > 0) {
-      let current = sortedRanges[0];
-
-      for (let i = 1; i < sortedRanges.length; i++) {
-        const next = sortedRanges[i];
-        if (next.start <= current.end) {
-          // Overlap or adjacent - merge
-          current.end = Math.max(current.end, next.end);
-        } else {
-          // No overlap - push current and start new
-          mergedRanges.push(current);
-          current = next;
-        }
-      }
-      mergedRanges.push(current);
+    const result: { text: string; highlighted: boolean }[] = [];
+    let cursor = 0;
+    for (const { start, end } of merged) {
+      if (start > cursor) result.push({ text: text.slice(cursor, start), highlighted: false });
+      result.push({ text: text.slice(start, end), highlighted: true });
+      cursor = end;
     }
-
-    const result: Array<{ text: string; highlighted: boolean }> = [];
-    let lastEnd = 0;
-
-    // Process merged range pairs
-    for (const { start, end } of mergedRanges) {
-      // Add non-highlighted segment before this match
-      if (start > lastEnd) {
-        result.push({
-          text: text.slice(lastEnd, start),
-          highlighted: false,
-        });
-      }
-
-      // Add highlighted segment
-      result.push({
-        text: text.slice(start, end),
-        highlighted: true,
-      });
-
-      lastEnd = end;
-    }
-
-    // Add remaining text after last match
-    if (lastEnd < text.length) {
-      result.push({
-        text: text.slice(lastEnd),
-        highlighted: false,
-      });
-    }
-
-    return result.length > 0 ? result : [{ text, highlighted: false }];
+    if (cursor < text.length || result.length === 0) result.push({ text: text.slice(cursor), highlighted: false });
+    return result;
   });
 </script>
 
 <span class={className}
-  >{#each segments as segment, i (`highlight-seg-${i}-${segment.highlighted}-${segment.text.slice(0, 8)}`)}{#if segment.highlighted}<mark
-        class={highlightClass}>{segment.text}</mark
+  >{#each segments as segment, i (i)}{#if segment.highlighted}<mark class="rounded-sm {MATCH_HIGHLIGHT} text-foreground"
+        >{segment.text}</mark
       >{:else}{segment.text}{/if}{/each}</span
 >

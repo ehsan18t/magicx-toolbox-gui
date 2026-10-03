@@ -42,7 +42,7 @@ flowchart LR
 
 ### Valid and invalid entries
 
-An entry that cannot be trusted is **invalid**: kept on disk, skipped by Restore, listed in the details view with its reason, and removed only by the user.
+An entry that cannot be trusted is **invalid**: kept on disk, skipped by Restore, listed in the details window with its reason, and removed only by the user.
 
 | Reason | Meaning |
 | --- | --- |

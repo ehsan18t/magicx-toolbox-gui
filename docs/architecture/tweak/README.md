@@ -14,7 +14,7 @@ flowchart TB
   end
 
   subgraph Frontend["Frontend (Svelte 5)"]
-    Cards["Tweak cards and views"] <--> Stores["Rune stores<br/>catalog, statuses, pending changes"]
+    Rows["Tweak rows and views"] <--> Stores["Rune stores<br/>catalog, statuses, pending changes"]
   end
 
   subgraph Backend["Backend (Rust)"]
@@ -65,7 +65,7 @@ These are the ideas every component serves. When a change seems to fight one of 
 | Effect kinds | Read and drive one kind of Windows setting; run scripts | `src-tauri/src/tweaks/kinds/`, `src-tauri/src/services/` | [effect-kinds.md](effect-kinds.md) |
 | Persistence | Snapshot history, Needs Attention records, the action journal, crash recovery, shared claims | `src-tauri/src/tweaks/{snapshot,shared_claims}.rs` | [persistence.md](persistence.md) |
 | Elevation | Privilege levels, routing, the over-the-shoulder guard, the TrustedInstaller broker | `src-tauri/src/tweaks/engine/context.rs`, `src-tauri/src/services/elevation/` | [elevation.md](elevation.md) |
-| Commands and UI | The Tauri command surface, gates, launch sequence, frontend stores, what each state looks like | `src-tauri/src/commands/tweaks.rs`, `src/lib/stores/tweaks*.svelte.ts`, `src/lib/components/tweaks/` | [commands-and-ui.md](commands-and-ui.md) |
+| Commands and UI | The Tauri command surface, gates, launch sequence, frontend stores, what each state looks like | `src-tauri/src/commands/tweaks.rs`, `src/lib/stores/{tweaksData,tweakActions,tweaksPending}.svelte.ts`, `src/lib/components/items/` | [commands-and-ui.md](commands-and-ui.md) |
 | App items | Removable apps outside the tweak model: presence, Remove, Install, the install route | `src-tauri/src/apps/`, `src-tauri/src/commands/apps.rs`, `src-tauri/src/services/appx_index.rs`, `src/lib/stores/apps.svelte.ts` | [apps.md](apps.md) |
 
 Suggested reading order for someone new: this page, then corpus-and-build, detection, apply-and-restore, persistence, and the rest as needed. App items share the build pipeline, the action runner and the per-id lock, but nothing else; read [apps.md](apps.md) on its own.
@@ -75,7 +75,7 @@ Suggested reading order for someone new: this page, then corpus-and-build, detec
 1. **Authoring.** An author adds a tweak to a category YAML file: its surface (the effects it manages) and its options (a value for each effect).
 2. **Build.** `build.rs` loads every YAML file, validates the corpus against four Windows milestones, and embeds it as JSON.
 3. **Launch.** The frontend loads the catalog, then starts a background scan. The backend detects every tweak in parallel and streams one status event per tweak.
-4. **Choosing.** The user picks an option on a card. That only stages the change; nothing happens until they press Apply.
+4. **Choosing.** The user picks an option on a tweak row. That only stages the change; nothing happens until they press Apply in the pending bar.
 5. **Apply.** The command layer checks the tweak is available and takes its lock. The engine re-detects, captures the current values, writes a snapshot entry, then drives each effect and verifies it by reading it back.
 6. **Failure.** If any step fails, the engine rolls back what it did, from the entry it just wrote. If the rollback cannot be verified, the tweak shows Needs Attention and the entry is kept.
 7. **Restore.** Later the user presses Restore. The engine walks back to the most recent snapshot entry and, once that is verified, deletes the entry. Pressing Restore again steps one entry further back.

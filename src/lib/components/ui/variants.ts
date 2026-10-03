@@ -1,36 +1,44 @@
-/**
- * Shared tailwind-variants definitions for the UI component system
- * @see https://www.tailwind-variants.org/
- */
-import { tv, type VariantProps } from "tailwind-variants";
+import { tv, type VariantProps } from "$lib/utils/cn";
+import { CHIP_QUIET_HOVER, CHIP_SOLID, CHIP_TINT, TONE_SOFT, TONE_TEXT, TONE_TINT } from "$lib/design";
 
-// =============================================================================
-// BUTTON VARIANTS
-// =============================================================================
+/** Every control dims the same when disabled: `DISABLED` through either attribute, `DIMMED` by hand. */
+export const DISABLED =
+  "disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
+export const DIMMED = "opacity-50";
+/** A control busy with its own action: dimmed less, still readable. */
+export const BUSY = "cursor-wait opacity-70";
+/** Disabled because something holds it in its state, e.g. a warning kept open: dimmed like BUSY. */
+export const HELD = "disabled:cursor-default disabled:opacity-70";
 
-/**
- * Base button variant - used by Button, ActionButton, LinkButton
- */
+// `enabled:hover:`, not `hover:` plus a `disabled:hover:` reset: a disabled control never reacts.
+const GHOST = "bg-transparent text-foreground-muted enabled:hover:bg-muted enabled:hover:text-foreground";
+// `not-disabled:`, as `enabled:` never matches an <a>: link icon buttons share the look.
+const GHOST_LINKABLE =
+  "bg-transparent text-foreground-muted not-disabled:hover:bg-muted not-disabled:hover:text-foreground";
+
 export const button = tv({
-  base: "inline-flex items-center justify-center gap-2 rounded-lg border-0 font-medium transition-all duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
+  base: ["inline-flex items-center justify-center gap-1.5 rounded-md border-0 font-medium cursor-pointer", DISABLED],
   variants: {
+    // Intent names, not tones: `danger` is a destructive action, as in ConfirmOptions.
     variant: {
-      primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
-      secondary: "bg-muted text-foreground hover:bg-muted/80",
-      ghost: "bg-transparent text-foreground-muted hover:bg-muted hover:text-foreground",
-      danger: "bg-error text-white hover:bg-error/90",
-      warning: "bg-warning text-black hover:bg-warning/90",
-      success: "bg-success text-white hover:bg-success/90",
-      outline: "border border-border bg-card text-foreground hover:bg-foreground/5 hover:border-foreground-muted",
+      primary: "bg-accent text-accent-foreground enabled:hover:bg-accent-hover",
+      secondary: "border border-border bg-secondary text-foreground enabled:hover:bg-secondary-hover",
+      ghost: GHOST,
+      danger: "bg-error text-error-foreground enabled:hover:bg-error-hover",
+      warning: "bg-warning text-warning-foreground enabled:hover:bg-warning-hover",
+      outline:
+        "border border-border bg-transparent text-foreground enabled:hover:bg-muted enabled:hover:border-border-hover",
     },
     size: {
-      xs: "px-2 py-1 text-[11px]",
-      sm: "px-3 py-1.5 text-xs",
-      md: "px-4 py-2 text-sm",
-      lg: "px-5 py-2.5 text-base",
+      sm: "h-7 px-2.5 text-xs",
+      md: "h-8 px-3 text-ui",
     },
-    fullWidth: {
-      true: "w-full",
+    /** Text colour on a neutral variant, e.g. a secondary Remove in error. */
+    tone: {
+      foreground: "text-foreground",
+      accent: "text-accent enabled:hover:text-accent",
+      warning: "text-warning enabled:hover:text-warning",
+      error: "text-error enabled:hover:text-error",
     },
   },
   defaultVariants: {
@@ -41,258 +49,321 @@ export const button = tv({
 
 export type ButtonVariants = VariantProps<typeof button>;
 
-/**
- * Action button variant - toolbar buttons with icon + optional badge
- * Used in CategoryTab, FavoritesTab, SnapshotsTab, SearchTab toolbars
- */
-export const actionButton = tv({
-  base: "flex cursor-pointer items-center gap-2 rounded-lg border bg-card text-sm font-medium text-foreground transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50",
+export const iconButton = tv({
+  base: ["inline-flex shrink-0 cursor-pointer items-center justify-center border-0", GHOST_LINKABLE, DISABLED],
   variants: {
-    intent: {
-      default: "border-border hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5",
-      apply:
-        "border-border hover:not-disabled:border-success hover:not-disabled:bg-success/15 hover:not-disabled:text-success",
-      discard: "border-border hover:not-disabled:border-foreground-muted hover:not-disabled:bg-foreground/5",
-      restore:
-        "border-border hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error",
-      accent:
-        "border-border hover:not-disabled:border-accent hover:not-disabled:bg-accent/15 hover:not-disabled:text-accent",
-      danger:
-        "border-border hover:not-disabled:border-error hover:not-disabled:bg-error/15 hover:not-disabled:text-error",
-    },
     size: {
-      sm: "px-3 py-2",
-      md: "px-4 py-2.5",
+      xs: "h-6 w-6 rounded",
+      sm: "h-7 w-7 rounded-md",
+      md: "h-8 w-8 rounded-md",
+    },
+    /** The colour while `active`: an open panel, a starred item. */
+    tone: {
+      accent: "",
+      warning: "",
     },
     active: {
       true: "",
-      false: "",
     },
   },
   compoundVariants: [
-    {
-      intent: "apply",
-      active: true,
-      class: "border-warning bg-warning/15 text-warning",
-    },
+    { active: true, tone: "accent", class: "text-accent not-disabled:hover:text-accent" },
+    { active: true, tone: "warning", class: "text-warning not-disabled:hover:text-warning" },
   ],
   defaultVariants: {
-    intent: "default",
     size: "md",
-    active: false,
-  },
-});
-
-export type ActionButtonVariants = VariantProps<typeof actionButton>;
-
-/**
- * Link button variant - styled links/buttons for AboutModal, etc.
- */
-export const linkButton = tv({
-  base: "flex items-center justify-center gap-2 rounded-lg border border-border bg-surface text-foreground transition-colors hover:bg-muted",
-  variants: {
-    size: {
-      sm: "px-2.5 py-2 text-xs",
-      md: "px-3 py-2.5 text-sm",
-    },
-  },
-  defaultVariants: {
-    size: "md",
-  },
-});
-
-export type LinkButtonVariants = VariantProps<typeof linkButton>;
-
-/**
- * Icon button variant - small icon-only buttons
- */
-export const iconButton = tv({
-  base: "flex shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted",
-  variants: {
-    size: {
-      sm: "h-6 w-6",
-      md: "h-8 w-8",
-      lg: "h-10 w-10",
-    },
-    variant: {
-      ghost: "hover:bg-muted",
-      subtle: "hover:bg-foreground/5",
-    },
-  },
-  defaultVariants: {
-    size: "md",
-    variant: "ghost",
+    tone: "accent",
   },
 });
 
 export type IconButtonVariants = VariantProps<typeof iconButton>;
+export type IconButtonSize = NonNullable<IconButtonVariants["size"]>;
 
-// =============================================================================
-// BADGE VARIANTS
-// =============================================================================
-
-/**
- * Status pill/badge variant - for risk level, permission, reboot required, etc.
- */
-export const statusBadge = tv({
-  base: "inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase transition-colors duration-150",
+export const badge = tv({
+  base: "inline-flex items-center gap-1 font-semibold",
   variants: {
-    variant: {
-      success: "bg-success/8 text-success hover:bg-success/15",
-      warning: "bg-warning/8 text-warning hover:bg-warning/15",
-      error: "bg-error/8 text-error hover:bg-error/15",
-      orange: "bg-orange-500/8 text-orange-500 hover:bg-orange-500/15",
-      info: "bg-info/8 text-info hover:bg-info/15",
-      muted: "bg-muted/50 text-foreground-muted hover:bg-muted hover:text-foreground-muted",
-      accent: "bg-accent/10 text-accent",
+    tone: {
+      accent: TONE_SOFT.accent,
+      success: TONE_SOFT.success,
+      warning: TONE_SOFT.warning,
+      error: TONE_SOFT.error,
+      info: TONE_SOFT.info,
+      neutral: TONE_SOFT.neutral,
     },
-  },
-  defaultVariants: {
-    variant: "muted",
-  },
-});
-
-export type StatusBadgeVariants = VariantProps<typeof statusBadge>;
-
-/**
- * Counter badge - small round badge for counts
- */
-export const counterBadge = tv({
-  base: "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold",
-  variants: {
-    variant: {
-      warning: "bg-warning text-white",
-      error: "bg-error/20 text-error",
-      accent: "bg-accent/20 text-accent",
-      success: "bg-success/20 text-success",
-      muted: "bg-muted text-foreground-muted",
-    },
+    /** `caption`: a status chip in running text; `count`: a number in a pill. */
     size: {
-      sm: "h-4 min-w-4 text-[10px]",
-      md: "h-5 min-w-5 text-xs",
+      sm: "rounded-md px-1.5 py-0.5 text-badge-sm",
+      md: "rounded-md px-2 py-1 text-badge-md",
+      caption: "rounded px-1.5 py-0.5 text-caption",
+      count: "h-6 min-w-6 justify-center rounded-full px-1.5 text-xs font-bold tabular-nums",
+    },
+    case: {
+      upper: "tracking-wide uppercase",
+      none: "",
+    },
+    solid: {
+      true: "",
     },
   },
+  compoundVariants: [
+    { solid: true, tone: "accent", class: CHIP_SOLID.accent },
+    { solid: true, tone: "warning", class: CHIP_SOLID.warning },
+    { solid: true, tone: "error", class: CHIP_SOLID.error },
+  ],
   defaultVariants: {
-    variant: "warning",
-    size: "md",
+    tone: "neutral",
+    size: "sm",
+    case: "upper",
   },
 });
 
-export type CounterBadgeVariants = VariantProps<typeof counterBadge>;
+export type BadgeVariants = VariantProps<typeof badge>;
 
-// =============================================================================
-// CARD VARIANTS
-// =============================================================================
-
-/**
- * Card container variant
- */
-export const card = tv({
-  base: "rounded-lg border transition-all duration-200",
+export const callout = tv({
+  slots: {
+    base: "border",
+    icon: "shrink-0",
+  },
   variants: {
-    variant: {
-      default: "border-border bg-card",
-      elevated: "border-border bg-elevated shadow-md",
-      outlined: "border-border bg-transparent",
-      ghost: "border-transparent bg-transparent",
-      surface: "border-border bg-surface",
+    tone: {
+      success: { base: TONE_TINT.success, icon: TONE_TEXT.success },
+      warning: { base: TONE_TINT.warning, icon: TONE_TEXT.warning },
+      error: { base: TONE_TINT.error, icon: TONE_TEXT.error },
+      info: { base: TONE_TINT.info, icon: TONE_TEXT.info },
+      neutral: { base: TONE_TINT.neutral, icon: TONE_TEXT.neutral },
+      /** Neutral on the card colour, for notes that are not warnings. */
+      surface: { base: "border-border bg-card", icon: TONE_TEXT.neutral },
     },
-    hover: {
-      true: "hover:border-border-hover hover:shadow-md",
+    density: {
+      compact: { base: "gap-2 rounded-md px-2.5 py-2 text-xs", icon: "mt-px" },
+      banner: { base: "gap-3 rounded-lg px-3 py-2.5", icon: "mt-0.5" },
+      panel: { base: "gap-3 rounded-lg p-3", icon: "mt-0.5" },
+      /** A short note in a dialog. */
+      note: { base: "gap-2 rounded-lg px-3 py-2 text-sm", icon: "mt-0.5" },
     },
-    padding: {
-      none: "",
-      sm: "p-2",
-      md: "p-4",
-      lg: "p-6",
+    withIcon: {
+      true: { base: "flex items-start" },
+    },
+    bordered: {
+      true: {},
+      false: { base: "border-0" },
     },
   },
   defaultVariants: {
-    variant: "default",
-    hover: false,
-    padding: "md",
+    tone: "neutral",
+    density: "banner",
+    bordered: true,
+  },
+});
+
+export type CalloutVariants = Omit<VariantProps<typeof callout>, "withIcon">;
+
+export const card = tv({
+  base: "border border-border",
+  variants: {
+    radius: {
+      md: "rounded-md",
+      lg: "rounded-lg",
+    },
+    /** Raised above the page, e.g. a toast, drawer or busy panel. */
+    elevation: {
+      none: "bg-card",
+      flyout: "bg-elevated shadow-flyout",
+      dialog: "bg-elevated shadow-dialog",
+    },
+  },
+  defaultVariants: {
+    radius: "lg",
+    elevation: "none",
   },
 });
 
 export type CardVariants = VariantProps<typeof card>;
 
-/**
- * Panel variant - for sections like toolbar panels
- */
-export const panel = tv({
-  base: "flex items-center gap-4 rounded-xl border border-border bg-card",
+/** A row of MetaItems under a title. */
+export const META_LINE = "flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs";
+
+/** A list row that is one button, e.g. a summary entry or a category link. */
+export const rowButton = tv({
+  base: "cursor-pointer text-left hover:bg-muted",
   variants: {
-    size: {
-      sm: "px-3 py-2",
-      md: "px-5 py-3",
-    },
-  },
-  defaultVariants: {
-    size: "md",
-  },
-});
-
-export type PanelVariants = VariantProps<typeof panel>;
-
-// =============================================================================
-// LAYOUT VARIANTS
-// =============================================================================
-
-/**
- * Flex row variant - common flex patterns
- */
-export const flexRow = tv({
-  base: "flex items-center",
-  variants: {
-    gap: {
+    radius: {
+      md: "rounded-md",
+      sm: "rounded",
       none: "",
-      xs: "gap-1",
-      sm: "gap-2",
-      md: "gap-3",
-      lg: "gap-4",
-    },
-    justify: {
-      start: "justify-start",
-      center: "justify-center",
-      end: "justify-end",
-      between: "justify-between",
-    },
-    wrap: {
-      true: "flex-wrap",
     },
   },
   defaultVariants: {
-    gap: "sm",
-    justify: "start",
-    wrap: false,
+    radius: "md",
   },
 });
 
-export type FlexRowVariants = VariantProps<typeof flexRow>;
-
-// =============================================================================
-// TEXT VARIANTS
-// =============================================================================
-
-/**
- * Section heading variant
- */
-export const sectionHeading = tv({
-  base: "m-0 flex items-center gap-2 font-semibold text-foreground",
+export const toggleChip = tv({
+  base: ["inline-flex cursor-pointer items-center rounded-full border font-medium whitespace-nowrap", DISABLED],
   variants: {
     size: {
-      xs: "mb-2 text-xs tracking-wide text-foreground-muted",
-      sm: "mb-3 text-sm",
-      md: "mb-4 text-base",
+      sm: "gap-1 px-2 py-0.5 text-xs",
+      md: "h-8 gap-1.5 px-3 text-ui",
     },
-    uppercase: {
-      true: "uppercase",
+    /** `quiet` is neutral until its tone shows on hover; `tint` and `solid` are the off and on looks. */
+    variant: {
+      quiet: "border-border-hover bg-muted text-foreground-muted",
+      tint: "",
+      solid: "",
+    },
+    tone: {
+      accent: "",
+      warning: "",
+      error: "",
+    },
+  },
+  compoundVariants: [
+    { variant: "quiet", tone: "accent", class: CHIP_QUIET_HOVER.accent },
+    { variant: "quiet", tone: "warning", class: CHIP_QUIET_HOVER.warning },
+    { variant: "quiet", tone: "error", class: CHIP_QUIET_HOVER.error },
+    { variant: "tint", tone: "accent", class: CHIP_TINT.accent },
+    { variant: "tint", tone: "warning", class: CHIP_TINT.warning },
+    { variant: "tint", tone: "error", class: CHIP_TINT.error },
+    { variant: "solid", tone: "accent", class: CHIP_SOLID.accent },
+    { variant: "solid", tone: "warning", class: CHIP_SOLID.warning },
+    { variant: "solid", tone: "error", class: CHIP_SOLID.error },
+  ],
+  defaultVariants: {
+    size: "sm",
+    variant: "tint",
+    tone: "accent",
+  },
+});
+
+export type ToggleChipVariants = VariantProps<typeof toggleChip>;
+
+export const iconTile = tv({
+  base: "flex shrink-0 items-center justify-center",
+  variants: {
+    size: {
+      sm: "h-8 w-8",
+      md: "h-10 w-10",
+      lg: "h-12 w-12",
+      xl: "h-14 w-14",
+      "2xl": "h-16 w-16",
+      "3xl": "h-20 w-20",
+      "4xl": "h-24 w-24",
+    },
+    shape: {
+      square: "",
+      circle: "rounded-full",
+    },
+    tone: {
+      accent: TONE_SOFT.accent,
+      success: TONE_SOFT.success,
+      warning: TONE_SOFT.warning,
+      error: TONE_SOFT.error,
+      info: TONE_SOFT.info,
+      neutral: TONE_SOFT.neutral,
+    },
+  },
+  // A square's corner grows with it.
+  compoundVariants: [
+    { shape: "square", size: "sm", class: "rounded-md" },
+    { shape: "square", size: ["md", "lg"], class: "rounded-lg" },
+    { shape: "square", size: ["xl", "2xl", "3xl", "4xl"], class: "rounded-xl" },
+  ],
+  defaultVariants: {
+    size: "md",
+    shape: "square",
+    tone: "accent",
+  },
+});
+
+export type IconTileVariants = VariantProps<typeof iconTile>;
+
+export const link = tv({
+  base: "cursor-pointer font-medium",
+  variants: {
+    /** `underline`: always underlined, for links in prose; `hover`: underlined on hover, for inline actions. */
+    variant: {
+      underline:
+        "underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent focus-visible:text-accent focus-visible:decoration-accent",
+      hover: "underline-offset-2 hover:underline focus-visible:underline",
+    },
+    /** `inherit` takes the surrounding text colour. */
+    tone: {
+      inherit: "",
+      foreground: "text-foreground",
+      accent: "text-accent",
+      muted: "text-foreground-muted",
+    },
+  },
+  defaultVariants: {
+    variant: "underline",
+    tone: "inherit",
+  },
+});
+
+export type LinkVariants = VariantProps<typeof link>;
+
+/** The box every input shares: TextField, TextArea, SearchInput and Select's trigger. */
+export const field = tv({
+  base: "rounded-md border border-border bg-secondary text-ui text-foreground",
+  variants: {
+    /** Where focus lights the border: `self` an input, `within` a box around one, `none` a trigger that shows its open state. */
+    focus: {
+      self: ["w-full px-2.5 outline-none placeholder:text-foreground-subtle focus:border-accent", DISABLED],
+      within: "flex min-w-0 items-center gap-2 px-2.5 transition-colors focus-within:border-accent",
+      none: "",
+    },
+    multiline: {
+      false: "h-8",
+      true: "resize-none py-2",
+    },
+  },
+  defaultVariants: {
+    focus: "self",
+    multiline: false,
+  },
+});
+
+export const modal = tv({
+  slots: {
+    scrim: "fixed inset-0 z-modal flex items-center justify-center bg-scrim p-4 backdrop-blur-xs",
+    panel: "flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-elevated shadow-dialog",
+  },
+  variants: {
+    size: {
+      sm: { panel: "max-w-dialog-sm" },
+      md: { panel: "max-w-dialog-md" },
+      lg: { panel: "max-w-dialog-lg" },
+      full: { panel: "h-full max-w-dialog-full" },
+    },
+    closing: {
+      false: { scrim: "animate-fade-in", panel: "animate-modal-in" },
+      true: { scrim: "animate-fade-out", panel: "animate-modal-out" },
     },
   },
   defaultVariants: {
     size: "md",
-    uppercase: false,
+    closing: false,
   },
 });
 
-export type SectionHeadingVariants = VariantProps<typeof sectionHeading>;
+export type ModalSize = NonNullable<VariantProps<typeof modal>["size"]>;
+
+/** A close button pinned to a dialog's corner, over a layout with no header row. */
+export const FLOATING_CLOSE = "absolute top-3 right-3";
+
+/** Side padding of a dialog led by a large title under a floating close (About, Updates): a step past px-6. */
+export const WIDE_DIALOG_INSET = "px-7";
+
+/** The bar that marks an item: a `pill` beside the current entry, a `stripe` down a row's edge. */
+export const indicator = tv({
+  base: "absolute left-0 w-0.75",
+  variants: {
+    shape: {
+      pill: "h-4 -translate-y-1/2 rounded-full bg-accent",
+      stripe: "top-3 bottom-3 rounded-r-full",
+    },
+  },
+  defaultVariants: {
+    shape: "pill",
+  },
+});

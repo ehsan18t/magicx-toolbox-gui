@@ -1,473 +1,213 @@
-<script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
-  import { navigationStore } from "$lib/stores/navigation.svelte";
-  import { categoriesStore, getCategoryStats, loadingStateStore, systemStore } from "$lib/stores/tweaks.svelte";
-  import ScrollingText from "./ScrollingText.svelte";
-  import SystemInfoCard from "./SystemInfoCard.svelte";
-
-  // Get category stats reactively
-  const categoryStats = $derived(getCategoryStats());
-
-  // Loading states
-  const systemInfoLoading = $derived(loadingStateStore.systemInfoLoading);
-  const systemInfoRefreshing = $derived(loadingStateStore.systemInfoRefreshing);
-  const tweaksLoading = $derived(loadingStateStore.tweaksLoading);
-
-  // Handle refresh button click
-  async function handleRefreshHardware() {
-    try {
-      await systemStore.refresh();
-    } catch (error) {
-      console.error("Failed to refresh hardware info:", error);
-    }
-  }
-
-  // Format cached time for tooltip
-  function formatCachedTime(isoString: string | null): string {
-    if (!isoString) return "Never";
-    const date = new Date(isoString);
-    return date.toLocaleString();
-  }
-
-  /**
-   * Handle keyboard navigation for category grid.
-   * Arrow keys move focus between category cards in a grid pattern.
-   */
-  function handleCategoryKeydown(event: KeyboardEvent, index: number, totalItems: number) {
-    const key = event.key;
-    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
-      return;
-    }
-
-    event.preventDefault();
-    const grid = event.currentTarget as HTMLElement;
-    const parent = grid.parentElement;
-    if (!parent) return;
-
-    const buttons = Array.from(parent.querySelectorAll("button"));
-    if (buttons.length === 0) return;
-
-    // Calculate columns based on container width (match Tailwind breakpoints)
-    // sm:2, lg:3, xl:4 columns
-    const containerWidth = parent.getBoundingClientRect().width;
-    let cols = 1;
-    if (containerWidth >= 1280)
-      cols = 4; // xl
-    else if (containerWidth >= 1024)
-      cols = 3; // lg
-    else if (containerWidth >= 640) cols = 2; // sm
-
-    let targetIndex = index;
-
-    switch (key) {
-      case "ArrowRight":
-        targetIndex = Math.min(index + 1, totalItems - 1);
-        break;
-      case "ArrowLeft":
-        targetIndex = Math.max(index - 1, 0);
-        break;
-      case "ArrowDown":
-        targetIndex = Math.min(index + cols, totalItems - 1);
-        break;
-      case "ArrowUp":
-        targetIndex = Math.max(index - cols, 0);
-        break;
-      case "Home":
-        targetIndex = 0;
-        break;
-      case "End":
-        targetIndex = totalItems - 1;
-        break;
-    }
-
-    if (targetIndex !== index && buttons[targetIndex]) {
-      (buttons[targetIndex] as HTMLElement).focus();
-    }
-  }
-
-  // Format clock speed
-  const formatClockSpeed = (mhz: number) => {
-    if (mhz >= 1000) {
-      return `${(mhz / 1000).toFixed(1)} GHz`;
-    }
-    return `${mhz} MHz`;
-  };
-
-  // Format storage size
-  const formatStorage = (gb: number) => {
-    if (gb >= 1000) {
-      return `${(gb / 1000).toFixed(1)} TB`;
-    }
-    return `${gb.toFixed(0)} GB`;
-  };
-
-  // Format uptime
-  const formatUptime = (seconds: number): string => {
-    if (!seconds || seconds <= 0) return "Unknown";
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
+<script lang="ts" module>
+  const SKELETON_WIDTHS = [90, 75, 60, 45, 30, 15];
 </script>
 
-<div class="flex h-full w-full flex-col gap-5 overflow-y-auto p-5">
-  <!-- System Overview -->
-  <div class="flex flex-col gap-2">
-    <h2 class="m-0 text-lg font-semibold text-foreground">System</h2>
-    <div class="rounded-xl border border-border bg-card p-4">
-      {#if systemInfoLoading}
-        <!-- Skeleton loading for system info -->
-        <div
-          class="grid grid-cols-2 gap-4 gap-y-6 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-0 md:divide-x md:divide-border/50"
-        >
-          {#each [0, 1, 2, 3] as i (`system-skeleton-${i}`)}
-            <div class="flex flex-col gap-1.5 {i === 0 ? 'md:pr-4' : i === 3 ? 'md:pl-4' : 'md:px-4'}">
-              <span class="flex items-center gap-2">
-                <div class="animate-pulse h-3.5 w-3.5 rounded bg-surface/80"></div>
-                <div class="animate-pulse h-3 w-24 rounded bg-surface/80"></div>
-              </span>
-              <div class="flex flex-col gap-1">
-                <div class="animate-pulse h-5 w-32 rounded bg-surface/60"></div>
-                <div class="animate-pulse h-3 w-20 rounded bg-surface/40"></div>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <div
-          class="grid grid-cols-2 gap-4 gap-y-6 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-0 md:divide-x md:divide-border/50"
-        >
-          <!-- OS -->
-          <div class="flex flex-col gap-1.5 md:pr-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon icon="mdi:microsoft-windows" width="14" class="text-accent" />
-              Operating System
-            </span>
-            <div class="flex flex-col">
-              <span class="text-sm font-semibold text-foreground">
-                {systemStore.info?.windows?.product_name?.replace("Windows ", "Win ") ?? "Windows"}
-              </span>
-              <span class="text-xs text-foreground-muted">
-                {systemStore.info?.windows?.display_version ?? ""} ({systemStore.info?.windows?.build_number ?? ""})
-              </span>
-            </div>
-          </div>
+<script lang="ts">
+  import { textIfCut, tooltip } from "$lib/attachments/tooltip.svelte";
+  import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
+  import { PageLayout } from "$lib/components/layout";
+  import { Icon } from "$lib/components/shared";
+  import { Button, Callout, Card, IconButton, Meter, rowButton, SectionCard, Skeleton } from "$lib/components/ui";
+  import { elevationStore } from "$lib/stores/elevation.svelte";
+  import { navigationStore } from "$lib/stores/navigation.svelte";
+  import { systemStore } from "$lib/stores/system.svelte";
+  import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
+  import { SEP } from "$lib/utils/format";
+  import { formatDate } from "$lib/utils/time";
+  import { systemInfoRows, type HardwareRow } from "$lib/utils/systemInfoRows";
+  import { CHECKING } from "$lib/utils/presentation";
+  import { isComplete, tallies } from "$lib/utils/tweakPresentation";
 
-          <!-- Device -->
-          <div class="flex flex-col gap-1.5 md:px-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon
-                icon={systemStore.info?.device?.pc_type === "Laptop" ? "mdi:laptop" : "mdi:desktop-tower-monitor"}
-                width="14"
-                class="text-accent"
-              />
-              Device
-            </span>
-            <div class="flex flex-col">
-              <span class="truncate text-sm font-semibold text-foreground">
-                {systemStore.info?.device?.model ?? systemStore.info?.computer_name ?? "Unknown"}
-              </span>
-              <span class="truncate text-xs text-foreground-muted">
-                {systemStore.info?.device?.manufacturer ?? "Unknown"}
-              </span>
-            </div>
-          </div>
+  interface Tile {
+    label: string;
+    value: number;
+    sub: string;
+    icon: IconName;
+    tone: TextTone;
+    onclick?: () => void;
+    meter?: { value: number; max: number };
+  }
 
-          <!-- Uptime -->
-          <div class="flex flex-col gap-1.5 md:px-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon icon="mdi:timer-outline" width="14" class="text-success" />
-              Uptime
-            </span>
-            <div class="flex flex-col">
-              <span class="text-sm font-semibold text-foreground">
-                {formatUptime(systemStore.info?.windows?.uptime_seconds ?? 0)}
-              </span>
-              <span class="text-xs text-foreground-muted">Since boot</span>
-            </div>
-          </div>
+  const info = $derived(systemStore.info);
+  const systemLoading = $derived(systemStore.isLoading);
+  const rows = $derived(info ? systemInfoRows(info) : null);
 
-          <!-- User -->
-          <div class="flex flex-col gap-1.5 md:pl-4">
-            <span class="flex items-center gap-2 text-[10px] font-bold tracking-wider text-foreground-muted uppercase">
-              <Icon
-                icon={systemStore.info?.is_admin ? "mdi:shield-check" : "mdi:account"}
-                width="14"
-                class={systemStore.info?.is_admin ? "text-success" : "text-warning"}
-              />
-              User
-            </span>
-            <div class="flex flex-col">
-              <span class="truncate text-sm font-semibold text-foreground">
-                {systemStore.info?.username ?? "User"}
-              </span>
-              <span class="text-xs {systemStore.info?.is_admin ? 'text-success' : 'text-warning'}">
-                {systemStore.info?.is_admin ? "Admin" : "Standard"}
-              </span>
-            </div>
-          </div>
-        </div>
-      {/if}
-    </div>
-  </div>
+  const stats = $derived(tallies(tweaksStore.list));
 
-  <!-- Hardware Section -->
-  <div class="flex flex-col gap-2">
-    <div class="flex items-center justify-between">
-      <h2 class="m-0 text-lg font-semibold text-foreground">Hardware</h2>
-      <div class="flex items-center gap-2">
-        {#if systemStore.cachedAt && !systemInfoLoading}
-          <span
-            class="text-xs text-foreground-muted"
-            use:tooltip={`Last updated: ${formatCachedTime(systemStore.cachedAt)}`}
-          >
-            Cached
-          </span>
+  // "All verified" only once every state is read: loading and unknown are not verified.
+  const attentionTile = $derived.by((): Pick<Tile, "sub" | "tone" | "onclick"> => {
+    if (stats.attention) {
+      const [first, ...rest] = categoriesStore.withAttention;
+      const more = rest.length;
+      return {
+        sub: `in ${categoriesStore.name(first)}${more ? ` and ${more} more` : ""}`,
+        tone: "error",
+        onclick: () => navigationStore.navigateToAttention(first),
+      };
+    }
+    if (stats.byState.loading || tweaksStore.isLoading) return { sub: CHECKING.label, tone: "neutral" };
+    if (stats.byState.unknown) return { sub: `${stats.byState.unknown} could not be read`, tone: "warning" };
+    return { sub: "All verified", tone: "success" };
+  });
+
+  const tiles = $derived<Tile[]>([
+    {
+      label: "Applied",
+      value: stats.applied,
+      sub: `of ${stats.total} tweaks`,
+      icon: "mdi:check-circle",
+      tone: "accent",
+      meter: stats.total ? { value: stats.applied, max: stats.total } : undefined,
+    },
+    { label: "Needs attention", value: stats.attention, icon: "mdi:alert-circle", ...attentionTile },
+    {
+      label: "Snapshots",
+      value: stats.withSnapshot,
+      sub: "restorable",
+      icon: "mdi:history",
+      tone: "neutral",
+      onclick: () => navigationStore.navigateToPage("snapshots"),
+    },
+    {
+      label: "Ready to apply",
+      value: pendingChangesStore.count,
+      sub: pendingChangesStore.count ? "staged changes" : "nothing staged",
+      icon: "mdi:arrow-right",
+      tone: pendingChangesStore.count ? "warning" : "neutral",
+    },
+  ]);
+</script>
+
+{#snippet pcList(list: HardwareRow[], columns: boolean)}
+  <dl class="m-0 grid animate-fade-in p-1 {columns ? '@min-overview-split:grid-cols-2' : ''}">
+    {#each list as row, i (`${row.label}-${i}`)}
+      <div class="grid grid-cols-icon-label-value items-baseline gap-x-2.5 px-2 py-1.5">
+        <Icon icon={row.icon} size="sm" class="self-center text-foreground-muted" />
+        <dt class="truncate text-xs text-foreground-muted">{row.label}</dt>
+        <dd class="m-0 min-w-0 text-ui wrap-break-word select-text">
+          <span class="font-medium">{row.value}</span>
+          {#if row.detail}<span class="text-xs text-foreground-muted">{SEP}{row.detail}</span>{/if}
+          {#if row.status}
+            <span class="text-xs font-medium {TONE_TEXT[row.status.tone]}">{SEP}{row.status.text}</span>
+          {/if}
+        </dd>
+      </div>
+    {/each}
+  </dl>
+{/snippet}
+
+<PageLayout
+  title="Overview"
+  description={info
+    ? `${info.computer_name}${SEP}${info.username}${elevationStore.runningAs ? ` (${elevationStore.runningAs})` : ""}`
+    : "Your PC at a glance"}
+>
+  <Card as="section" class="grid grid-cols-2 gap-px overflow-hidden bg-border sm:grid-cols-4" aria-label="Your tweaks">
+    {#each tiles as t (t.label)}
+      {#snippet tileBody()}
+        <span class="flex items-center gap-1.5 text-xs text-foreground-muted">
+          <Icon icon={t.icon} size="xs" class="shrink-0 {TONE_TEXT[t.tone]}" />
+          {t.label}
+        </span>
+        <span class="mt-1 flex w-full min-w-0 items-baseline gap-1.5">
+          <span class="font-display text-xl leading-none font-semibold tabular-nums">{t.value}</span>
+          <span class="truncate text-xs text-foreground-muted" {@attach tooltip(() => textIfCut(t.sub))}>{t.sub}</span>
+        </span>
+        {#if t.meter}
+          <Meter {...t.meter} label={t.label} class="mt-2 w-full" />
         {/if}
+      {/snippet}
+      {#if t.onclick}
         <button
           type="button"
-          onclick={handleRefreshHardware}
-          disabled={systemInfoLoading || systemInfoRefreshing}
-          class="hover:bg-muted flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-foreground-muted"
-          use:tooltip={"Refresh hardware info"}
+          class={rowButton({ radius: "none", class: "flex min-w-0 flex-col items-start bg-card px-3 py-2.5" })}
+          onclick={t.onclick}
         >
-          <Icon icon="mdi:refresh" width={18} class={systemInfoRefreshing ? "animate-spin" : ""} />
+          {@render tileBody()}
         </button>
-      </div>
-    </div>
-
-    {#if systemInfoLoading}
-      <!-- Skeleton loading for hardware -->
-      <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        {#each [0, 1, 2, 3, 4, 5] as i (`hardware-skeleton-${i}`)}
-          <div class="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div class="animate-pulse h-10 w-10 rounded-lg bg-surface/60"></div>
-            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <div class="animate-pulse h-3 w-16 rounded bg-surface/80"></div>
-              <div class="animate-pulse h-4 w-40 rounded bg-surface/60"></div>
-              <div class="flex items-center gap-2">
-                <div class="animate-pulse h-3 w-16 rounded bg-surface/40"></div>
-                <div class="h-1 w-1 rounded-full bg-border"></div>
-                <div class="animate-pulse h-3 w-20 rounded bg-surface/40"></div>
-              </div>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        <!-- CPU -->
-        <SystemInfoCard
-          icon="mdi:cpu-64-bit"
-          label="Processor"
-          title={systemStore.info?.hardware?.cpu?.name ?? "Unknown CPU"}
-        >
-          <span>{systemStore.info?.hardware?.cpu?.cores ?? 0} Cores</span>
-          <span class="h-1 w-1 rounded-full bg-border"></span>
-          <span>{formatClockSpeed(systemStore.info?.hardware?.cpu?.max_clock_mhz ?? 0)}</span>
-        </SystemInfoCard>
-
-        <!-- GPU(s) -->
-        {#if systemStore.info?.hardware?.gpu && systemStore.info.hardware.gpu.length > 0}
-          {#each systemStore.info.hardware.gpu as gpu, i (gpu.name)}
-            <SystemInfoCard
-              icon="mdi:expansion-card"
-              label="Graphics{systemStore.info.hardware.gpu.length > 1 ? ` ${i + 1}` : ''}"
-              title={gpu.name}
-            >
-              <ScrollingText>
-                <span
-                  >{#if gpu.memory_gb > 0}{gpu.memory_gb} GB{:else}Shared{/if}</span
-                >
-
-                {#if i === 0 && systemStore.info?.hardware?.monitors && systemStore.info.hardware.monitors.length > 0}
-                  {#each systemStore.info.hardware.monitors as monitor, monitorIndex (monitor.name + monitorIndex)}
-                    <span class="h-1 w-1 rounded-full bg-border"></span>
-                    <span use:tooltip={`${monitor.name} - ${monitor.resolution}`}>
-                      {monitor.name} <span class="text-muted-foreground ml-1">{monitor.resolution}</span>
-                    </span>
-                    {#if monitor.refresh_rate > 0}
-                      <span class="text-muted-foreground bg-muted self-center rounded-md px-1.5 py-0.5 text-xs">
-                        {monitor.refresh_rate}Hz
-                      </span>
-                    {/if}
-                  {/each}
-                {:else if gpu.refresh_rate > 0}
-                  <span class="h-1 w-1 rounded-full bg-border"></span>
-                  <span>{gpu.refresh_rate}Hz</span>
-                {/if}
-              </ScrollingText>
-            </SystemInfoCard>
-          {/each}
-        {/if}
-
-        <!-- Motherboard -->
-        <SystemInfoCard
-          icon="bi:motherboard"
-          label="Motherboard"
-          title={systemStore.info?.hardware?.motherboard?.product ?? "Unknown"}
-        >
-          <span class="truncate">{systemStore.info?.hardware?.motherboard?.manufacturer ?? "Unknown"}</span>
-          {#if systemStore.info?.hardware?.motherboard?.bios_version}
-            <span class="h-1 w-1 rounded-full bg-border"></span>
-            <span class="truncate">BIOS: {systemStore.info?.hardware?.motherboard?.bios_version}</span>
-          {/if}
-        </SystemInfoCard>
-
-        <!-- Memory -->
-        <SystemInfoCard
-          icon="ri:ram-line"
-          label="Memory"
-          title="{systemStore.info?.hardware?.memory?.total_gb ?? 0} GB {systemStore.info?.hardware?.memory
-            ?.memory_type ?? ''}"
-        >
-          <span>{systemStore.info?.hardware?.memory?.speed_mhz ?? 0} MHz</span>
-          <span class="h-1 w-1 rounded-full bg-border"></span>
-          <span>{systemStore.info?.hardware?.memory?.slots_used ?? 0} / 4 Slots</span>
-        </SystemInfoCard>
-
-        <!-- Storage Drives -->
-        {#if systemStore.info?.hardware?.disks && systemStore.info.hardware.disks.length > 0}
-          {#each systemStore.info.hardware.disks as disk, i (disk.model)}
-            <SystemInfoCard
-              icon={disk.drive_type === "SSD" ? "mdi:harddisk" : "mdi:harddisk-plus"}
-              label="Storage{systemStore.info.hardware.disks.length > 1 ? ` ${i + 1}` : ''}"
-              title={disk.model}
-            >
-              {#snippet headerExtra()}
-                {#if disk.health_status}
-                  <span
-                    class="text-xs font-medium {disk.health_status === 'Healthy' ? 'text-success' : 'text-warning'}"
-                  >
-                    {disk.health_status}
-                  </span>
-                {/if}
-              {/snippet}
-
-              <span>{formatStorage(disk.size_gb)}</span>
-              {#if disk.interface_type && disk.interface_type !== "Unknown"}
-                <span class="h-1 w-1 rounded-full bg-border"></span>
-                <span>{disk.interface_type}</span>
-              {/if}
-            </SystemInfoCard>
-          {/each}
-        {/if}
-
-        <!-- Network -->
-        {#if systemStore.info?.hardware?.network && systemStore.info.hardware.network.length > 0}
-          {#each systemStore.info.hardware.network as net, i (net.mac_address)}
-            <SystemInfoCard
-              icon="mdi:ethernet"
-              label="Network{systemStore.info.hardware.network.length > 1 ? ` ${i + 1}` : ''}"
-              title={net.name}
-            >
-              <span>{net.ip_address}</span>
-              <span class="h-1 w-1 rounded-full bg-border"></span>
-              <span class="truncate font-mono text-[10px] uppercase">{net.mac_address}</span>
-            </SystemInfoCard>
-          {/each}
-        {/if}
-      </div>
-    {/if}
-  </div>
-
-  <!-- Categories Section -->
-  <div class="flex flex-col gap-3">
-    <div class="flex items-center justify-between">
-      <h2 class="m-0 text-lg font-semibold text-foreground">Tweak Categories</h2>
-      {#if !tweaksLoading}
-        <span class="text-xs text-foreground-muted">{categoriesStore.list.length} available</span>
+      {:else}
+        <div class="flex min-w-0 flex-col items-start bg-card px-3 py-2.5">{@render tileBody()}</div>
       {/if}
-    </div>
-    {#if tweaksLoading}
-      <!-- Skeleton loading for categories -->
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {#each [0, 1, 2, 3, 4, 5] as i (`category-skeleton-${i}`)}
-          <div class="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
-            <div class="animate-pulse h-10 w-10 rounded-lg bg-surface/60"></div>
-            <div class="flex min-w-0 flex-1 flex-col gap-2">
-              <div class="flex items-center justify-between">
-                <div class="animate-pulse h-4 w-24 rounded bg-surface/60"></div>
-                <div class="animate-pulse h-3 w-8 rounded bg-surface/40"></div>
-              </div>
-              <div class="flex flex-col gap-1">
-                <div class="animate-pulse h-3 w-full rounded bg-surface/40"></div>
-                <div class="animate-pulse h-3 w-3/4 rounded bg-surface/40"></div>
-              </div>
-              <div class="animate-pulse h-1 w-full rounded-full bg-surface/30"></div>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <div
-        class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        role="grid"
-        aria-label="Tweak categories"
-      >
-        {#each categoriesStore.list as category, index (category.id)}
-          {@const stats = categoryStats[category.id]}
-          {@const progress = stats?.total > 0 ? (stats.applied / stats.total) * 100 : 0}
-          <button
-            class="group relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-accent/50 hover:shadow-md focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background focus:outline-none"
-            onclick={() => navigationStore.navigateToCategory(category.id)}
-            onkeydown={(e) => handleCategoryKeydown(e, index, categoriesStore.list.length)}
-            aria-label="{category.name}: {stats?.applied ?? 0} of {stats?.total ?? 0} tweaks applied"
-          >
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
-              <Icon icon={category.icon || "mdi:folder"} width="20" />
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="mb-1 flex items-center justify-between gap-2">
-                <h3 class="m-0 text-sm font-semibold text-foreground">{category.name}</h3>
-                <span
-                  class="shrink-0 text-xs font-medium {progress === 100 && stats?.total > 0
-                    ? 'text-success'
-                    : 'text-foreground-muted'}"
-                >
-                  {stats?.applied ?? 0}/{stats?.total ?? 0}
+    {/each}
+  </Card>
+
+  <div class="@container">
+    <div class="grid items-start gap-3 @min-overview-split:grid-cols-2">
+      <SectionCard title="Categories">
+        <ul class="m-0 list-none p-1">
+          {#each categoriesStore.list as category (category.id)}
+            {@const s = categoriesStore.stats[category.id]}
+            <li>
+              <button
+                type="button"
+                class={rowButton({
+                  class: "grid w-full grid-cols-icon-label-meter-value items-center gap-x-2.5 px-2 py-2",
+                })}
+                onclick={() =>
+                  s.attention
+                    ? navigationStore.navigateToAttention(category.id)
+                    : navigationStore.navigateToCategory(category.id)}
+                aria-label="{category.name}: {s.applied} of {s.total} applied{s.attention
+                  ? `, ${s.attention} need attention`
+                  : ''}"
+              >
+                <Icon icon={category.icon} size="md" class="text-accent" />
+                <span class="flex min-w-0 items-center gap-1.5 text-ui font-medium">
+                  <span class="truncate">{category.name}</span>
+                  {#if s.attention}
+                    <Icon icon="mdi:alert-circle" size="xs" class="shrink-0 text-error" />
+                  {/if}
                 </span>
-              </div>
-              <p class="m-0 mb-2 line-clamp-2 text-xs leading-relaxed text-foreground-muted">
-                {category.description}
-              </p>
-              <div class="bg-muted h-1 overflow-hidden rounded-full">
-                <div
-                  class="h-full rounded-full bg-accent transition-[width] duration-300"
-                  style="width: {progress}%"
-                ></div>
-              </div>
+                <Meter value={s.applied} max={s.total} label={category.name} />
+                <span
+                  class={["text-right text-xs tabular-nums", isComplete(s) ? "text-success" : "text-foreground-muted"]}
+                >
+                  {s.applied}/{s.total}
+                </span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </SectionCard>
+
+      <SectionCard title="This PC">
+        {#snippet actions()}
+          <IconButton
+            icon="mdi:refresh"
+            size="sm"
+            label="Refresh system info"
+            tooltip={systemStore.cachedAt && !systemLoading
+              ? `Updated ${formatDate(systemStore.cachedAt, { time: "seconds" })}. Select to refresh.`
+              : "Refresh system info"}
+            loading={systemStore.isRefreshing}
+            disabled={systemLoading}
+            onclick={() => systemStore.refresh()}
+          />
+        {/snippet}
+        {#if rows && !systemLoading}
+          {@render pcList(rows.summary, false)}
+        {:else if systemStore.loadError && !systemLoading}
+          <Callout tone="error" icon="mdi:alert-circle" role="alert" class="m-3">
+            <div class="min-w-0 flex-1">
+              <p class="m-0 text-ui">Could not read this PC's details. {systemStore.loadError}</p>
+              <Button size="sm" icon="mdi:refresh" class="mt-2" onclick={() => systemStore.load()}>Retry</Button>
             </div>
-            <Icon
-              icon="mdi:chevron-right"
-              width="18"
-              class="shrink-0 text-foreground-muted opacity-0 transition-opacity group-hover:opacity-100"
-            />
-          </button>
-        {/each}
-      </div>
+          </Callout>
+        {:else}
+          <div class="space-y-2 p-3">
+            {#each SKELETON_WIDTHS as width (width)}
+              <Skeleton class="h-4" style="width: {width}%" />
+            {/each}
+          </div>
+        {/if}
+      </SectionCard>
+    </div>
+
+    {#if rows && rows.devices.length > 0}
+      <SectionCard title="Devices" class="mt-3 animate-fade-in">
+        {@render pcList(rows.devices, true)}
+      </SectionCard>
     {/if}
   </div>
-
-  <!-- Footer Tip -->
-  <div class="mt-auto flex items-center gap-2.5 rounded-lg bg-surface/50 px-3 py-2.5 text-xs text-foreground-muted">
-    <Icon icon="mdi:lightbulb-outline" width="14" class="shrink-0 text-accent" />
-    <span>
-      <strong class="text-foreground">Tip:</strong> Changes are backed up automatically. Hover the sidebar to expand.
-    </span>
-  </div>
-</div>
-
-<style>
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-</style>
+</PageLayout>

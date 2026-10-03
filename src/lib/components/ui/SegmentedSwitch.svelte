@@ -1,162 +1,143 @@
-<script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
-  import { cn } from "@/utils";
+<script lang="ts" module>
+  const SHRINK_LABEL_CHARS = 16;
+</script>
 
-  export interface SegmentOption {
-    value: number;
-    label: string;
-    /** Optional icon to show (Iconify format, e.g., 'mdi:check') */
-    icon?: string;
-    /** Segment is shown but cannot be selected (e.g. System Default with no snapshot). */
-    disabled?: boolean;
-  }
+<script lang="ts" generics="T extends string | number">
+  import { textIfCut, tooltip } from "$lib/attachments/tooltip.svelte";
+  import { Icon } from "$lib/components/shared";
+  import { cn } from "$lib/utils/cn";
+  import { glide } from "$lib/utils/motion";
+  import { PENDING_TINT } from "$lib/design";
+  import DisabledReason from "./DisabledReason.svelte";
+  import { blockedReason, reasonAttrs } from "./disabledReason";
+  import { nextEnabledIndex, radioKeyIndex } from "./listNav";
+  import Spinner from "./Spinner.svelte";
+  import type { SegmentOption } from "./types";
+  import { DIMMED } from "./variants";
 
   interface Props {
-    /** Currently selected value */
-    value: number;
-    /** Available options */
-    options: SegmentOption[];
-    /** Show pending state styling */
+    /** Null selects nothing, e.g. while the current state matches no option. */
+    value: T | null;
+    options: SegmentOption<T>[];
+    label: string;
     pending?: boolean;
-    /** Show loading spinner on selected segment */
     loading?: boolean;
-    /** Disable all interactions */
     disabled?: boolean;
-    /** Show icons only (hide labels) */
-    iconOnly?: boolean;
-    /** Size variant */
-    size?: "sm" | "md";
-    /** Additional CSS classes */
+    /** Why it is disabled: keeps the group focusable and describes it. */
+    disabledReason?: string | null;
     class?: string;
-    /** Change handler */
-    onchange?: (value: number) => void;
+    onchange?: (value: T) => void;
   }
 
   let {
     value,
     options,
+    label,
     pending = false,
     loading = false,
     disabled = false,
-    iconOnly = false,
-    size = "sm",
-    class: className = "",
+    disabledReason,
+    class: className,
     onchange,
   }: Props = $props();
 
-  // Size-specific classes
-  const sizeClasses = {
-    sm: {
-      track: "p-0.5 gap-0.5",
-      segment: "px-2.5 py-1 text-xs",
-      segmentIconOnly: "px-2 py-1",
-      icon: 16,
-    },
-    md: {
-      track: "p-1 gap-1",
-      segment: "px-3.5 py-1.5 text-sm",
-      segmentIconOnly: "px-2.5 py-1.5",
-      icon: 18,
-    },
-  };
+  const id = $props.id();
+  const reasonId = (i: number) => `${id}-reason-${i}`;
+  const groupReason = $derived(blockedReason(disabled, loading, disabledReason));
+  // A disabled option that says why stays reachable by arrow keys; `choose` still refuses it.
+  const isReasoned = (opt: SegmentOption<T>) => !!opt.disabled && !!opt.tooltip;
+  const navItems = $derived(options.map((o) => ({ disabled: o.disabled && !isReasoned(o) })));
+  const reasonOf = (opt: SegmentOption<T>) => groupReason ?? (isReasoned(opt) ? opt.tooltip : null);
 
-  const currentSize = $derived(sizeClasses[size]);
-
-  // Find index of selected option for keyboard navigation
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
+  // Only long labels give up width, so a short sibling is never cut to make room for them.
+  const longestIndex = $derived(
+    options.reduce((best, o, i) => (o.label.length > options[best].label.length ? i : best), 0),
+  );
+  const shrinks = (i: number) => i === longestIndex || options[i].label.length > SHRINK_LABEL_CHARS;
   // With nothing selected the group still needs one tab stop.
-  const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : options.findIndex((o) => !o.disabled));
+  const tabStopIndex = $derived(selectedIndex >= 0 ? selectedIndex : nextEnabledIndex(options, -1, 1));
 
-  function handleClick(optValue: number) {
-    if (disabled || loading || optValue === value) return;
-    if (options.find((o) => o.value === optValue)?.disabled) return;
-    onchange?.(optValue);
-  }
+  // The pill is the selected segment's ::before, free at mount; a change glides it over from the old segment.
+  let group = $state<HTMLElement | null>(null);
+  let previousIndex = -1;
+  $effect(() => {
+    const from = previousIndex;
+    previousIndex = selectedIndex;
+    if (from < 0 || selectedIndex < 0 || from === selectedIndex || !group) return;
+    const segments = group.querySelectorAll<HTMLElement>("[role='radio']");
+    if (segments[from] && segments[selectedIndex]) glide(segments[from], segments[selectedIndex]);
+  });
 
-  /** Next selectable segment in `step` direction, skipping disabled ones. Null if there is none. */
-  function nextSelectable(from: number, step: number): number | null {
-    for (let i = 1; i <= options.length; i++) {
-      const idx = (from + step * i + options.length * options.length) % options.length;
-      if (!options[idx].disabled) return idx;
-    }
-    return null;
+  function choose(opt: SegmentOption<T>) {
+    if (!disabled && !loading && !opt.disabled && opt.value !== value) onchange?.(opt.value);
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (disabled || loading) return;
+    if (disabled || loading || !group) return;
+    const segments = [...group.querySelectorAll<HTMLElement>("[role='radio']")];
+    const focused = segments.indexOf(document.activeElement as HTMLElement);
+    const from = focused >= 0 ? focused : selectedIndex;
 
-    let newIndex: number | null;
-
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-      e.preventDefault();
-      newIndex = nextSelectable(selectedIndex, 1);
-    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-      e.preventDefault();
-      newIndex = nextSelectable(selectedIndex, -1);
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      newIndex = nextSelectable(-1, 1);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      newIndex = nextSelectable(options.length, -1);
-    } else {
-      return;
-    }
-
-    if (newIndex !== null && newIndex !== selectedIndex) {
-      onchange?.(options[newIndex].value);
-    }
+    const next = radioKeyIndex(navItems, from, e.key);
+    if (next === null) return;
+    e.preventDefault();
+    if (next < 0) return;
+    segments[next].focus();
+    if (!options[next].confirms) choose(options[next]);
   }
 </script>
 
+<!-- Svelte requires a tabindex on a radiogroup that takes keys; -1 keeps the group itself out of the tab order. -->
 <div
+  bind:this={group}
   role="radiogroup"
+  aria-label={label}
   tabindex="-1"
   class={cn(
-    "inline-flex items-center rounded-full  transition-colors duration-200",
-    pending ? "bg-warning/15" : "bg-accent-foreground/15 shadow-inner",
-    disabled && "opacity-60",
-    currentSize.track,
+    "relative isolate inline-flex max-w-full items-center gap-0.5 rounded-md border p-0.5 transition-colors",
+    pending ? PENDING_TINT : "border-border bg-secondary",
+    disabled && DIMMED,
     className,
   )}
   onkeydown={handleKeydown}
 >
   {#each options as opt, i (opt.value)}
     {@const isSelected = opt.value === value}
+    {@const reason = reasonOf(opt)}
     <button
       type="button"
       role="radio"
       aria-checked={isSelected}
+      {...reasonAttrs(reason, reasonId(i), loading)}
       tabindex={i === tabStopIndex ? 0 : -1}
-      disabled={disabled || loading || opt.disabled}
+      disabled={(disabled && !groupReason) || (opt.disabled && !reason)}
       class={cn(
-        "relative inline-flex items-center justify-center gap-1.5 font-medium transition-all duration-150",
-        "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
-        "disabled:cursor-not-allowed",
-        currentSize.segment,
-        iconOnly && currentSize.segmentIconOnly,
+        "relative inline-flex h-7 items-center justify-center gap-1.5 rounded px-3 text-ui font-medium whitespace-nowrap",
+        shrinks(i) ? "min-w-0" : "shrink-0",
+        "outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed aria-disabled:cursor-wait",
+        reason && !loading && "aria-disabled:cursor-not-allowed",
         isSelected
-          ? pending
-            ? "text-warning-foreground scale-[1.02] bg-warning shadow-md"
-            : "scale-[1.02] bg-accent text-accent-foreground shadow-md"
+          ? cn(
+              "before:absolute before:inset-0 before:-z-1 before:origin-left before:rounded before:shadow-sm before:transition-colors",
+              pending ? "text-warning-foreground before:bg-warning" : "text-accent-foreground before:bg-accent",
+            )
           : cn(
               "text-foreground-muted",
-              opt.disabled && "opacity-40",
-              !disabled && !loading && !opt.disabled && "cursor-pointer hover:bg-white/5 hover:text-foreground",
+              opt.disabled && !disabled && DIMMED,
+              !disabled && !loading && !opt.disabled && "cursor-pointer hover:bg-muted hover:text-foreground",
             ),
       )}
-      onclick={() => handleClick(opt.value)}
-      use:tooltip={opt.label}
+      onclick={() => choose(opt)}
+      {@attach tooltip(() => opt.tooltip ?? textIfCut(opt.label, (node) => node.lastElementChild))}
     >
       {#if loading && isSelected}
-        <Icon icon="mdi:loading" width={currentSize.icon} class="animate-spin" />
+        <Spinner size="xs" tone="current" class="shrink-0" />
       {:else if opt.icon}
-        <Icon icon={opt.icon} width={currentSize.icon} />
+        <Icon icon={opt.icon} size="xs" class="shrink-0" />
       {/if}
-      {#if !iconOnly}
-        <span class="select-none">{opt.label}</span>
-      {/if}
+      <span class="truncate">{opt.label}</span>
+      <DisabledReason id={reasonId(i)} {reason} />
     </button>
   {/each}
 </div>

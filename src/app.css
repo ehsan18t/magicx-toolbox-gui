@@ -1,243 +1,163 @@
-/* Tailwind CSS */
 @import "tailwindcss";
-@import "./assets/fonts/inter/inter.css";
+
+/* An aria-disabled control (focusable, with its reason) reacts no more than a natively disabled one. */
+@custom-variant enabled (&:enabled:not([aria-disabled="true"]));
 
 @layer base {
-  /*
-     * Disable selection globally by default on the body.
-	 * This can be overridden by adding
-	 * `select-text` or `select-all` class to any element.
-    */
-  body {
-    @apply select-none;
-  }
-
-  /* Dark Theme (Default) */
+  /* Navy neutrals; dark is the default theme. Layers lighten upward: base, content, card. */
   :root,
   [data-theme="dark"] {
     color-scheme: dark;
 
-    /* Background Colors */
-    --background: 224 71% 4%; /* #0a0f1c */
-    --surface: 224 47% 8%; /* #0f1629 */
-    --card: 224 47% 11%; /* #151b2e */
-    --elevated: 224 40% 15%; /* #1e2535 */
-    --muted: 224 40% 18%; /* Muted background */
+    --background: 224 71% 4%;
+    --surface: 224 52% 6.5%;
+    --card: 224 47% 10%;
+    --elevated: 224 42% 12%;
+    --muted: 220 60% 80% / 0.07;
 
-    /* Text Colors */
-    --foreground: 210 40% 98%; /* #f8fafc */
-    --foreground-muted: 215 16% 65%; /* #94a3b8 */
-    --foreground-subtle: 215 16% 45%; /* #64748b */
-    --muted-foreground: 215 16% 65%; /* Alias for foreground-muted */
+    --foreground: 210 40% 98%;
+    --foreground-muted: 215 20% 70%;
+    --foreground-subtle: 215 16% 56%;
 
-    /* Border & Divider */
-    --border: 224 40% 20%; /* #252b3f */
-    --border-hover: 224 40% 25%; /* #2d3448 */
+    --border: 224 40% 17%;
+    --border-hover: 224 38% 24%;
 
-    /* Primary Colors */
-    --primary: 221 83% 53%; /* #3b82f6 */
-    --primary-hover: 221 83% 48%; /* #2563eb */
-    --primary-foreground: 0 0% 100%; /* #ffffff */
+    --secondary: 224 42% 14%;
+    --secondary-hover: 224 40% 18%;
 
-    /* Secondary Colors */
-    --secondary: 224 40% 18%; /* #1f2937 */
-    --secondary-hover: 224 40% 22%; /* #283140 */
-    --secondary-foreground: 210 40% 98%; /* #f8fafc */
+    --accent: 262 100% 80%;
+    --accent-hover: 262 100% 74%;
+    --accent-foreground: 0 0% 0%;
 
-    /* Accent Colors - Updated by color scheme */
-    --accent: 262 83% 58%; /* #8b5cf6 */
-    --accent-hover: 262 83% 53%; /* #7c3aed */
-    --accent-foreground: 0 0% 100%; /* #ffffff */
-    --accent-muted: 262 50% 30%; /* Darker muted for dark theme */
-    --accent-subtle: 262 50% 20%; /* Very subtle for backgrounds */
+    --success: 113 50% 58%;
+    --warning: 42 95% 60%;
+    --warning-foreground: 0 0% 0%;
+    --error: 353 100% 80%;
+    --error-foreground: 224 71% 4%;
+    --info: 199 100% 69%;
 
-    /* Ring/Focus Colors - derived from accent */
-    --ring: var(--accent);
-
-    /* Status Colors */
-    --success: 142 76% 36%; /* #10b981 */
-    --warning: 43 96% 56%; /* #f59e0b */
-    --error: 0 84% 60%; /* #ef4444 */
-    --info: 199 89% 48%; /* #0ea5e9 */
-
-    /* Scrollbar Colors */
-    --scroll-bg: var(--surface);
-    --scroll-main: var(--accent);
-    --scroll-main-hover: var(--accent-hover);
+    --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.4);
+    --elev-dialog: 0 32px 64px rgb(0 0 0 / 0.5), 0 2px 21px rgb(0 0 0 / 0.4);
   }
 
-  /* Light Theme */
   [data-theme="light"] {
     color-scheme: light;
 
-    /* Background Colors */
-    --background: 0 0% 100%; /* #ffffff */
-    --surface: 210 20% 98%; /* #f8fafc */
-    --card: 0 0% 100%; /* #ffffff */
-    --elevated: 210 20% 96%; /* #f1f5f9 */
-    --muted: 210 40% 96%; /* Muted background */
+    --background: 214 32% 95%;
+    --surface: 210 40% 98.5%;
+    --card: 0 0% 100%;
+    --elevated: 0 0% 100%;
+    --muted: 215 40% 40% / 0.07;
 
-    /* Text Colors */
-    --foreground: 222 84% 5%; /* #0f172a */
-    --foreground-muted: 215 16% 47%; /* #64748b */
-    --foreground-subtle: 215 20% 65%; /* #94a3b8 */
-    --muted-foreground: 215 16% 47%; /* Alias for foreground-muted */
+    --foreground: 222 84% 5%;
+    --foreground-muted: 215 19% 38%;
+    --foreground-subtle: 215 16% 44%;
 
-    /* Border & Divider */
-    --border: 214 32% 91%; /* #e2e8f0 */
-    --border-hover: 213 27% 84%; /* #cbd5e1 */
+    --border: 214 32% 89%;
+    --border-hover: 213 27% 80%;
 
-    /* Primary Colors */
-    --primary: 221 83% 53%; /* #3b82f6 */
-    --primary-hover: 221 83% 48%; /* #2563eb */
-    --primary-foreground: 0 0% 100%; /* #ffffff */
+    --secondary: 210 40% 98%;
+    --secondary-hover: 210 40% 95%;
 
-    /* Secondary Colors */
-    --secondary: 210 40% 96%; /* #f1f5f9 */
-    --secondary-hover: 210 40% 92%; /* #e2e8f0 */
-    --secondary-foreground: 222 84% 5%; /* #0f172a */
+    --accent: 262 60% 50%;
+    --accent-hover: 262 60% 44%;
+    --accent-foreground: 0 0% 100%;
 
-    /* Accent Colors - Updated by color scheme */
-    --accent: 262 83% 58%; /* #8b5cf6 */
-    --accent-hover: 262 83% 53%; /* #7c3aed */
-    --accent-foreground: 0 0% 100%; /* #ffffff */
-    --accent-muted: 262 70% 75%; /* Lighter muted for light theme */
-    --accent-subtle: 262 70% 95%; /* Very subtle for backgrounds */
+    --success: 120 78% 27%;
+    --warning: 34 100% 31%;
+    --warning-foreground: 0 0% 100%;
+    --error: 6 75% 44%;
+    --error-foreground: 214 32% 95%;
+    --info: 208 100% 36%;
 
-    /* Ring/Focus Colors - derived from accent */
-    --ring: var(--accent);
-
-    /* Status Colors */
-    --success: 142 71% 45%; /* #059669 */
-    --warning: 32 95% 44%; /* #d97706 */
-    --error: 0 72% 51%; /* #dc2626 */
-    --info: 199 89% 48%; /* #0ea5e9 */
-
-    /* Scrollbar Colors */
-    --scroll-bg: var(--surface);
-    --scroll-main: var(--accent);
-    --scroll-main-hover: var(--accent-hover);
+    --elev-flyout: 0 8px 16px rgb(15 23 42 / 0.12);
+    --elev-dialog: 0 32px 64px rgb(15 23 42 / 0.18), 0 2px 21px rgb(15 23 42 / 0.12);
   }
 
-  /*
-   * Color Schemes (Accent Colors)
-   * Works with both light and dark themes.
-   * Default scheme is purple (defined above in :root).
-   */
-
-  /* Purple Scheme (Default) - already defined in :root */
-  [data-scheme="purple"] {
-    --accent: 262 83% 58%; /* #8b5cf6 */
-    --accent-hover: 262 83% 53%; /* #7c3aed */
-  }
-  [data-theme="dark"][data-scheme="purple"],
-  :root[data-scheme="purple"] {
-    --accent-muted: 262 50% 30%;
-    --accent-subtle: 262 50% 20%;
-  }
-  [data-theme="light"][data-scheme="purple"] {
-    --accent-muted: 262 70% 75%;
-    --accent-subtle: 262 70% 95%;
-  }
-
-  /* Blue Scheme */
+  /* Accent schemes: a lighter tone on dark, a deeper tone on light, so text on either stays readable. */
   [data-scheme="blue"] {
-    --accent: 221 83% 53%; /* #3b82f6 */
-    --accent-hover: 221 83% 48%; /* #2563eb */
-  }
-  [data-theme="dark"][data-scheme="blue"],
-  :root[data-scheme="blue"] {
-    --accent-muted: 221 50% 30%;
-    --accent-subtle: 221 50% 20%;
+    --accent: 199 100% 69%;
+    --accent-hover: 199 100% 62%;
   }
   [data-theme="light"][data-scheme="blue"] {
-    --accent-muted: 221 70% 75%;
-    --accent-subtle: 221 70% 95%;
+    --accent: 207 100% 36%;
+    --accent-hover: 207 100% 31%;
   }
-
-  /* Green Scheme */
   [data-scheme="green"] {
-    --accent: 160 84% 39%; /* #10b981 */
-    --accent-hover: 160 84% 34%; /* #0d9668 */
-  }
-  [data-theme="dark"][data-scheme="green"],
-  :root[data-scheme="green"] {
-    --accent-muted: 160 50% 25%;
-    --accent-subtle: 160 50% 15%;
+    --accent: 150 55% 58%;
+    --accent-hover: 150 55% 50%;
   }
   [data-theme="light"][data-scheme="green"] {
-    --accent-muted: 160 60% 70%;
-    --accent-subtle: 160 60% 92%;
+    --accent: 150 80% 26%;
+    --accent-hover: 150 80% 22%;
   }
-
-  /* Orange Scheme */
   [data-scheme="orange"] {
-    --accent: 25 95% 53%; /* #f97316 */
-    --accent-hover: 25 95% 48%; /* #ea6c0c */
-  }
-  [data-theme="dark"][data-scheme="orange"],
-  :root[data-scheme="orange"] {
-    --accent-muted: 25 60% 30%;
-    --accent-subtle: 25 60% 18%;
+    --accent: 28 100% 66%;
+    --accent-hover: 28 100% 58%;
   }
   [data-theme="light"][data-scheme="orange"] {
-    --accent-muted: 25 80% 75%;
-    --accent-subtle: 25 80% 93%;
+    --accent: 22 90% 40%;
+    --accent-hover: 22 90% 35%;
   }
-
-  /* Pink Scheme */
   [data-scheme="pink"] {
-    --accent: 330 81% 60%; /* #ec4899 */
-    --accent-hover: 330 81% 55%; /* #e4268a */
-  }
-  [data-theme="dark"][data-scheme="pink"],
-  :root[data-scheme="pink"] {
-    --accent-muted: 330 50% 30%;
-    --accent-subtle: 330 50% 18%;
+    --accent: 330 90% 76%;
+    --accent-hover: 330 90% 68%;
   }
   [data-theme="light"][data-scheme="pink"] {
-    --accent-muted: 330 70% 78%;
-    --accent-subtle: 330 70% 95%;
+    --accent: 330 70% 44%;
+    --accent-hover: 330 70% 38%;
   }
-
-  /* Red Scheme */
   [data-scheme="red"] {
-    --accent: 0 84% 60%; /* #ef4444 */
-    --accent-hover: 0 84% 55%; /* #e93030 */
-  }
-  [data-theme="dark"][data-scheme="red"],
-  :root[data-scheme="red"] {
-    --accent-muted: 0 50% 30%;
-    --accent-subtle: 0 50% 18%;
+    --accent: 355 100% 76%;
+    --accent-hover: 355 100% 68%;
   }
   [data-theme="light"][data-scheme="red"] {
-    --accent-muted: 0 70% 78%;
-    --accent-subtle: 0 70% 95%;
+    --accent: 355 72% 45%;
+    --accent-hover: 355 72% 39%;
   }
-
-  /* Cyan Scheme */
   [data-scheme="cyan"] {
-    --accent: 188 94% 43%; /* #06b6d4 */
-    --accent-hover: 188 94% 38%; /* #05a0ba */
-  }
-  [data-theme="dark"][data-scheme="cyan"],
-  :root[data-scheme="cyan"] {
-    --accent-muted: 188 50% 25%;
-    --accent-subtle: 188 50% 15%;
+    --accent: 186 80% 56%;
+    --accent-hover: 186 80% 48%;
   }
   [data-theme="light"][data-scheme="cyan"] {
-    --accent-muted: 188 60% 70%;
-    --accent-subtle: 188 60% 92%;
+    --accent: 190 90% 28%;
+    --accent-hover: 190 90% 24%;
   }
 
-  /*
-   * Theme Transition
-   * Quick fade during theme switch for a clean, unified transition.
-   * The .theme-transitioning class is toggled by JavaScript during switch.
-   *
-   * We exempt .theme-toggle and its children so its specific animations (rotation, scale)
-   * can play smoothly even while the rest of the page is frozen for the color swap.
-   */
+  :root {
+    /* Picker swatches, one fixed tone per scheme whatever the theme; app.html mirrors them for first paint. */
+    --swatch-purple: #8b5cf6;
+    --swatch-blue: #3b82f6;
+    --swatch-green: #10b981;
+    --swatch-orange: #f97316;
+    --swatch-pink: #ec4899;
+    --swatch-red: #ef4444;
+    --swatch-cyan: #06b6d4;
+
+    --ring: var(--accent);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply select-none;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 1px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--foreground) / 0.28) transparent;
+  }
+
+  /* Frozen while the theme swaps, except the toggle's own animation. */
   html.theme-transitioning *:not(.theme-toggle):not(.theme-toggle *) {
     transition: none !important;
   }
@@ -247,23 +167,36 @@
     position: fixed;
     inset: 0;
     background: inherit;
-    opacity: 1;
     pointer-events: none;
-    z-index: 99999;
-    animation: theme-fade 150ms ease-out forwards;
+    z-index: var(--z-index-theme-fade);
+    animation: theme-fade var(--transition-duration-normal) var(--ease-out) forwards;
   }
 
-  /*
-   * Restore transitions for interactive elements
-   * Ensures buttons and links feel responsive with smooth hover states.
-   */
+  /* <details> opens and closes with the expand timing; interpolate-size lets height reach `auto`. */
+  @supports (interpolate-size: allow-keywords) {
+    :root {
+      interpolate-size: allow-keywords;
+    }
+
+    details::details-content {
+      block-size: 0;
+      overflow-y: clip;
+      transition:
+        block-size var(--transition-duration-normal) var(--ease-out),
+        content-visibility var(--transition-duration-normal) allow-discrete;
+    }
+
+    details[open]::details-content {
+      block-size: auto;
+    }
+  }
+
   button,
   a,
-  [role="button"],
-  .theme-toggle {
+  [role="button"] {
     transition-property: background-color, border-color, color, fill, stroke, box-shadow, transform, opacity;
-    transition-duration: 200ms;
-    transition-timing-function: ease-out;
+    transition-duration: var(--transition-duration-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   @keyframes theme-fade {
@@ -277,10 +210,74 @@
 }
 
 @theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.43;
+  /* No --line-height companion below: line height stays inherited. */
+  --text-badge-sm: 0.5625rem;
+  --text-badge-md: 0.625rem;
+  --text-caption: 0.6875rem;
+  --text-code: 0.75rem;
+  --text-ui: 0.8125rem;
+  --text-lead: 0.9375rem;
+  --text-title: 1.625rem;
+  --text-hero: 2.125rem;
+
+  --tracking-display: -0.02em;
+
+  --container-item-row: 32.5rem;
+  --container-overview-split: 52rem;
+  --container-dialog-sm: 25rem;
+  --container-dialog-md: 32.5rem;
+  --container-dialog-lg: 42.5rem;
+  --container-dialog-full: 75rem;
+  --container-page: 68.75rem;
+
+  --width-toast: min(22rem, calc(100vw - 2rem));
+  --width-sidebar: 16rem;
+  --width-drawer: 18rem;
+  --width-summary-panel: clamp(22.5rem, 30%, 27.5rem);
+  --max-width-item-row-control: 45cqw;
+
+  --breakpoint-titlebar-version: 45rem;
+  --breakpoint-titlebar-name: 47.5rem;
+  --breakpoint-titlebar-admin: 51.25rem;
+  --breakpoint-logs-hint: 68.75rem;
+
+  --spacing-rail: 3.5rem;
+  --spacing-titlebar: 3rem;
+  /* Toasts clear the titlebar and the reboot banner, whose height RebootBanner measures into the var. */
+  --spacing-toast-offset: calc(var(--spacing-titlebar) + var(--reboot-banner-height, 0px) + 0.5rem);
+  --spacing-dock-clearance: 7rem;
+
+  --grid-template-columns-item-row: minmax(0, 1fr) auto;
+  --grid-template-columns-label-value: auto minmax(0, 1fr);
+  --grid-template-columns-icon-label-value: 1.25rem 5.5rem minmax(0, 1fr);
+  --grid-template-columns-icon-label-meter-value: 1.25rem minmax(0, 1fr) 5rem 2.75rem;
+  --grid-template-columns-main-aside: minmax(0, 2fr) minmax(0, 1fr);
+  --grid-template-columns-cards: repeat(auto-fill, minmax(16.25rem, 1fr));
+
+  --z-index-raised: 10;
+  --z-index-dock: 30;
+  --z-index-scrim: 40;
+  --z-index-drawer: 50;
+  --z-index-modal: 1000;
+  --z-index-busy: 1050;
+  --z-index-toast: 1100;
+  --z-index-popover: 1200;
+  --z-index-theme-fade: 9000;
+
+  --shadow-flyout: var(--elev-flyout);
+  --shadow-dialog: var(--elev-dialog);
+
   --color-background: hsl(var(--background));
   --color-surface: hsl(var(--surface));
   --color-card: hsl(var(--card));
   --color-elevated: hsl(var(--elevated));
+  --color-muted: hsl(var(--muted));
 
   --color-foreground: hsl(var(--foreground));
   --color-foreground-muted: hsl(var(--foreground-muted));
@@ -289,36 +286,86 @@
   --color-border: hsl(var(--border));
   --color-border-hover: hsl(var(--border-hover));
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-hover: hsl(var(--primary-hover));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
   --color-secondary: hsl(var(--secondary));
   --color-secondary-hover: hsl(var(--secondary-hover));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
 
   --color-accent: hsl(var(--accent));
   --color-accent-hover: hsl(var(--accent-hover));
   --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-accent-muted: hsl(var(--accent-muted));
-  --color-accent-subtle: hsl(var(--accent-subtle));
 
-  /* Ring color for focus states */
   --color-ring: hsl(var(--ring));
 
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
   --color-error: hsl(var(--error));
+  --color-error-foreground: hsl(var(--error-foreground));
   --color-info: hsl(var(--info));
 
-  /* Define font variable for Tailwind */
-  --font-Inter: "Inter", sans-serif;
+  /* Hover is the fill at 90%; accent has its own tuned hover per scheme instead. */
+  --color-error-hover: color-mix(in oklab, var(--color-error) 90%, transparent);
+  --color-warning-hover: color-mix(in oklab, var(--color-warning) 90%, transparent);
+  --color-scrim: rgb(0 0 0 / 0.4);
+  /* Behind the navigation drawer, which leaves the page readable. */
+  --color-scrim-light: rgb(0 0 0 / 0.2);
+  /* Code and command text, a step down from body text. */
+  --color-foreground-soft: color-mix(in oklab, var(--color-foreground) 85%, transparent);
+  /* Unchecked switch knob, white in both themes; a checked one takes accent-foreground. */
+  --color-thumb: #fff;
 
-  --animate-*: initial;
+  /* Windows caption close red, the same in both themes. */
+  --color-caption-close: #c42b1c;
+  --color-caption-close-foreground: #fff;
 }
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-@custom-variant hover (&:hover);
+/* Static: read at runtime, by +page and the sidebar store. */
+@theme static {
+  /* The workspace width at which the summary panel fits beside the page. */
+  --container-summary-panel: 87.5rem;
+  /* The window width at which the navigation pane docks expanded (WinUI NavigationView's threshold). */
+  --breakpoint-nav-expanded: 63rem;
+}
+
+/* Motion tokens. Static: $lib/utils/motion reads the durations, delays, easings and distances at runtime.
+   Fluent timing: entrances decelerate (ease-out), exits accelerate (ease-in) and run one step faster. */
+@theme static {
+  --transition-duration-fast: 100ms;
+  --transition-duration-normal: 150ms;
+  --transition-duration-slow: 200ms;
+  --transition-duration-slower: 300ms;
+  --transition-duration-highlight: 1500ms;
+  --transition-duration-activity: 1400ms;
+  --transition-duration-pulse: 2000ms;
+
+  --transition-delay-reveal: 150ms;
+  --transition-delay-settle: 250ms;
+  --transition-delay-tooltip: 400ms;
+  --transition-delay-feedback: 1500ms;
+
+  --ease-out: cubic-bezier(0, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --default-transition-duration: var(--transition-duration-fast);
+  --default-transition-timing-function: var(--ease-out);
+
+  --motion-distance-md: 8px;
+  --motion-distance-lg: 16px;
+  --motion-scale-delta: 0.04;
+
+  --animate-fade-in: fade-in var(--transition-duration-slow) var(--ease-out);
+  --animate-fade-out: fade-out var(--transition-duration-normal) var(--ease-in) forwards;
+  /* Anti-flicker: stays invisible unless whatever it covers outlasts the reveal delay. */
+  --animate-reveal: fade-in var(--transition-duration-slow) var(--ease-out) var(--transition-delay-reveal) backwards;
+  --animate-rise-in: rise-in var(--transition-duration-slow) var(--ease-out);
+  --animate-pop-in: pop-in var(--transition-duration-normal) var(--ease-out);
+  --animate-modal-in: modal-in var(--transition-duration-slow) var(--ease-out);
+  --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
+  --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
+  --animate-activity: activity-slide var(--transition-duration-activity) var(--ease-in-out) infinite;
+  --animate-pulse: pulse var(--transition-duration-pulse) var(--ease-in-out) infinite;
+}
 
 @utility drag-enable {
   -webkit-app-region: drag;
@@ -328,149 +375,90 @@
   -webkit-app-region: no-drag;
 }
 
-*[data-tauri-drag-region] {
-  -webkit-app-region: drag;
+/* A pressed control shrinks by two motion steps. */
+@utility scale-pressed {
+  scale: calc(1 - 2 * var(--motion-scale-delta));
 }
 
-/* Custom Scrollbar */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--scroll-main)) hsl(var(--scroll-bg));
-  scroll-behavior: smooth;
-}
-
-/* Chrome, Edge, and Safari */
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-track {
-  background: hsl(var(--scroll-bg));
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--scroll-main));
-  border-radius: 6px;
-  border: 2px solid hsl(var(--scroll-bg));
-  transition: background-color 0.2s ease;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--scroll-main-hover));
-}
-
-/* Animations */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes modal-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes modal-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-}
-
-@keyframes fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
+@utility scrollbar-none {
+  scrollbar-width: none;
 }
 
 @keyframes fade-in {
   from {
     opacity: 0;
   }
+}
+
+@keyframes fade-out {
   to {
-    opacity: 1;
+    opacity: 0;
   }
 }
 
-@keyframes slide-in-up {
+@keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateY(var(--motion-distance-md));
   }
 }
 
-@keyframes tweak-highlight-pulse {
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(calc(1 - var(--motion-scale-delta)));
+  }
+}
+
+/* Dialogs settle from slightly larger, Fluent's ContentDialog entrance. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(calc(1 + var(--motion-scale-delta)));
+  }
+}
+
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: scale(calc(1 + var(--motion-scale-delta) / 2));
+  }
+}
+
+@keyframes highlight-pulse {
   0%,
   100% {
     box-shadow: 0 0 0 0 hsl(var(--accent) / 0);
-    border-color: hsl(var(--border));
   }
-  25%,
-  75% {
-    box-shadow: 0 0 0 4px hsl(var(--accent) / 0.3);
-    border-color: hsl(var(--accent));
+  30%,
+  70% {
+    box-shadow: 0 0 0 3px hsl(var(--accent) / 0.45);
   }
+}
+
+@keyframes pulse {
   50% {
-    box-shadow: 0 0 0 6px hsl(var(--accent) / 0.4);
-    border-color: hsl(var(--accent));
+    opacity: 0.5;
   }
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-.animate-modal-in {
-  animation: modal-in 0.2s ease-out;
-}
-
-.animate-modal-out {
-  animation: modal-out 0.15s ease-in forwards;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out;
-}
-
-.animate-fade-out {
-  animation: fade-out 0.15s ease-in forwards;
-}
-
-.animate-slide-in-up {
-  animation: slide-in-up 0.2s ease-out;
-}
-
-.tweak-highlight {
-  animation: tweak-highlight-pulse 1.5s ease-in-out;
+@keyframes activity-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-spin,
-  .animate-modal-in,
-  .animate-modal-out,
-  .animate-fade-in,
-  .animate-fade-out,
-  .animate-slide-in-up,
-  .tweak-highlight {
-    animation: none;
+  /* One iteration too: a near-zero infinite loop (spinners, pulses) flickers. */
+  *,
+  *::before,
+  *::after,
+  *::details-content {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

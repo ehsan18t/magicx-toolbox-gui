@@ -1,32 +1,16 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
   import type { Snippet } from "svelte";
-  import { linkButton, type LinkButtonVariants } from "./variants";
+  import type { HTMLButtonAttributes } from "svelte/elements";
+  import { link, type LinkVariants } from "./variants";
 
-  /**
-   * LinkButton - Button styled to look like a link button.
-   * For actual navigation links, use ExternalLink component instead.
-   */
-
-  interface Props {
-    /** Button size */
-    size?: LinkButtonVariants["size"];
-    /** Icon name (mdi icon) */
-    icon?: string;
-    /** Additional classes */
+  interface Props extends Omit<HTMLButtonAttributes, "class">, LinkVariants {
     class?: string;
-    /** Button content */
     children: Snippet;
-    /** Rest props */
-    [key: string]: unknown;
   }
 
-  let { size = "md", icon, class: className = "", children, ...rest }: Props = $props();
+  let { variant, tone, class: className, children, ...rest }: Props = $props();
 </script>
 
-<button type="button" class={linkButton({ size, class: className })} {...rest}>
-  {#if icon}
-    <Icon {icon} width="18" />
-  {/if}
+<button type="button" class={link({ variant, tone, class: ["border-0 bg-transparent p-0", className] })} {...rest}>
   {@render children()}
 </button>

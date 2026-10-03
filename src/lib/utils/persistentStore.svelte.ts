@@ -1,37 +1,41 @@
 import { browser } from "$app/environment";
+import { logError, logWarning } from "$lib/utils/logger";
 
-/**
- * A persistent store implementation using Svelte 5 runes.
- * Automatically syncs with localStorage throughout the application lifecycle.
- */
+/** A rune-backed value mirrored to localStorage as JSON. */
 export class PersistentStore<T> {
-  #value: T = $state(undefined as unknown as T);
+  #value = $state() as T;
   #key: string;
+  /** A valid stored value was adopted at construction. */
+  readonly restored: boolean = false;
 
-  constructor(key: string, initialValue: T) {
+  /** `parse` vets what was stored: undefined rejects it, and the default is written back. */
+  constructor(key: string, initialValue: T, parse: (stored: unknown) => T | undefined) {
     this.#key = key;
-    // Set initial value first
     this.#value = initialValue;
+    if (!browser) return;
 
-    if (browser) {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored === null) return;
+      let parsed: T | undefined;
       try {
-        const stored = localStorage.getItem(key);
-        if (stored !== null) {
-          try {
-            this.#value = JSON.parse(stored);
-          } catch {
-            console.warn(`Invalid JSON in ${key}, resetting to default.`);
-            // Self-heal: Overwrite corrupted data with initial value immediately
-            try {
-              localStorage.setItem(key, JSON.stringify(initialValue));
-            } catch (writeErr) {
-              console.error(`Failed to reset ${key}:`, writeErr);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`Error loading ${key} from localStorage:`, error);
+        parsed = parse(JSON.parse(stored));
+      } catch {
+        parsed = undefined;
       }
+      if (parsed !== undefined) {
+        this.#value = parsed;
+        this.restored = true;
+        return;
+      }
+      logWarning(`Invalid value in ${key}, resetting to default.`);
+      try {
+        localStorage.setItem(key, JSON.stringify(initialValue));
+      } catch (writeError) {
+        logError(`Failed to reset ${key}`, writeError);
+      }
+    } catch (error) {
+      logError(`Error loading ${key} from localStorage`, error);
     }
   }
 
@@ -41,36 +45,11 @@ export class PersistentStore<T> {
 
   set value(newValue: T) {
     this.#value = newValue;
-    if (browser) {
-      try {
-        localStorage.setItem(this.#key, JSON.stringify(newValue));
-      } catch (error) {
-        console.error(`Error saving ${this.#key} to localStorage:`, error);
-      }
-    }
-  }
-
-  /**
-   * Resets the store to the provided default value (or the one passed in constructor if I stored it)
-   * For now, just a helper to set value
-   */
-  set(newValue: T) {
-    this.value = newValue;
-  }
-
-  /**
-   * Manually reload from local storage (useful if modified externally)
-   */
-  load() {
-    if (browser) {
-      try {
-        const stored = localStorage.getItem(this.#key);
-        if (stored !== null) {
-          this.#value = JSON.parse(stored);
-        }
-      } catch (error) {
-        console.error(`Error reloading ${this.#key}:`, error);
-      }
+    if (!browser) return;
+    try {
+      localStorage.setItem(this.#key, JSON.stringify(newValue));
+    } catch (error) {
+      logError(`Error saving ${this.#key} to localStorage`, error);
     }
   }
 }

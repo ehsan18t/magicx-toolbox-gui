@@ -7,14 +7,17 @@ MagicX Toolbox is a modern, safe, and easy-to-use application designed to help y
 ## Screenshots
 
 <div align="center">
-  <img src="static/screenshots/01-overview.png" alt="Overview Tab" width="800">
-  <p><em>Overview - System information and statistics at a glance</em></p>
+  <img src="static/screenshots/01-overview.png" alt="Overview page" width="800">
+  <p><em>Overview: your PC, your tweaks and every category at a glance</em></p>
 
-  <img src="static/screenshots/02-search.png" alt="Search Tab" width="800">
-  <p><em>Search - Find tweaks quickly with fuzzy search</em></p>
+  <img src="static/screenshots/02-search.png" alt="Search results" width="800">
+  <p><em>Search: find any tweak or app from the title bar with Ctrl+K</em></p>
 
-  <img src="static/screenshots/03-gaming-tweaks.png" alt="Gaming Tweaks" width="800">
-  <p><em>Gaming Tweaks - Optimize your system for better gaming performance</em></p>
+  <img src="static/screenshots/03-category.png" alt="Performance and Gaming category" width="800">
+  <p><em>Categories: risk, warnings and attention on the row, with staged changes applied from one bar</em></p>
+
+  <img src="static/screenshots/04-details-panel.png" alt="Tweak details dialog" width="800">
+  <p><em>Details: what each option changes, why, and the snapshot history, in one dialog</em></p>
 </div>
 
 ## Key Features
@@ -35,10 +38,10 @@ MagicX Toolbox is a modern, safe, and easy-to-use application designed to help y
 
 ## How to Use
 
-1. **Browse Categories**: Navigate through tabs like *Gaming*, *Privacy*, and *System* to find tweaks.
+1. **Browse Categories**: Pick a category such as *Privacy*, *Performance* or *Security* in the navigation pane, or search from the title bar (Ctrl+K).
 2. **Review Tweaks**: Read the description and check the risk level for each tweak.
-3. **Apply**: Toggle the switch to apply a tweak. The app will automatically create a restore point.
-4. **Revert**: If you change your mind, simply toggle the switch off to revert the change or restore a snapshot from the "Backups" section.
+3. **Apply**: Pick an option on the tweak's switch or dropdown, then press **Apply** in the pending changes bar. The app saves a snapshot of the current state first.
+4. **Revert**: If you change your mind, press **Restore** on the tweak, or restore it from the **Snapshots** view.
 
 ## Reporting a problem
 
@@ -75,7 +78,9 @@ If you are a developer looking to contribute or build from source, read the sect
 | `pnpm run clean`        | Removes all build artifacts and temporary directories.                                |
 | `pnpm run prepare`      | SvelteKit's command to generate types                                                 |
 
-The test build adds a Manual Tests view for checking behaviour on a real machine: build it with `pnpm run build:test` (or run `pnpm run dev:test`), copy the binary to the target PC, run it as administrator, and use the sidebar's Manual Tests entry. A normal build contains none of that code and never shows the view. See [docs/MANUAL_TESTS.md](docs/MANUAL_TESTS.md).
+The test build adds a Manual Tests view for checking behaviour on a real machine: build it with `pnpm run build:test` (or run `pnpm run dev:test`), copy the binary to the target PC, run it as administrator, and use the Manual Tests entry in the navigation pane. A normal build contains none of that code and never shows the view. See [docs/MANUAL_TESTS.md](docs/MANUAL_TESTS.md).
+
+**Preview mode.** To work on the interface without the Tauri backend, run `pnpm exec vite dev` and open http://localhost:1420/?preview (add `&user` to run as a standard user). Tauri commands are mocked with the fixtures in `src/lib/preview/`, so nothing touches Windows. Only dev builds include it (`import.meta.env.DEV` in `src/hooks.client.ts`).
 
 ### Project Structure
 
@@ -85,12 +90,12 @@ The test build adds a Manual Tests view for checking behaviour on a real machine
 │   │   ├── api/              # Tauri command wrappers
 │   │   ├── components/       # Svelte components
 │   │   │   ├── ui/           # Reusable UI primitives
-│   │   │   └── tweak-details/# Tweak display sub-components
+│   │   │   └── tweaks/       # Tweak and app rows, details panel, details sub-components
 │   │   ├── stores/           # Svelte 5 rune-based stores (.svelte.ts)
 │   │   │   ├── index.ts      # Barrel export for all stores
 │   │   │   ├── tweaks.svelte.ts # Tweaks system (data, loading, pending, actions)
 │   │   │   ├── navigation.svelte.ts # Tab navigation
-│   │   │   └── ...           # Theme, modal, sidebar, settings, etc.
+│   │   │   └── ...           # Theme, modal, layout, settings, etc.
 │   │   ├── config/           # App configuration
 │   │   └── types/            # TypeScript types
 │   ├── routes/               # SvelteKit routes

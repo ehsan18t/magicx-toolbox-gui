@@ -25,9 +25,9 @@ use crate::tweaks::engine::{
     Phase, ProbeCache, RealActions, RealProbe,
 };
 use crate::tweaks::model::{
-    ActionDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol, Hive, Level,
-    Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType, Tweak,
-    TypedRegValue, Value,
+    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol,
+    Hive, Level, Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType,
+    Tweak, TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{
@@ -36,11 +36,9 @@ use crate::tweaks::snapshot::{
 use crate::tweaks::validate::applicable_surface;
 use crate::tweaks::winver::{running_winver, WinVer};
 
-/// App-lifetime singletons the engine needs across every tweak command: managed once via Tauri
-/// state (`TweakEngineState::new` in `setup.rs`), never re-opened per call. A fresh
-/// `SnapshotStore`/`ClaimsStore` per command would still be correct (both are pure on-disk stores
-/// with no in-memory state of their own), but a fresh `ProbeCache` per call would silently defeat
-/// the whole point of caching probeable-Action reads across a session (spec §7).
+/// App-lifetime singletons, managed once via Tauri state, never re-opened per call: a fresh
+/// `ProbeCache` per call would silently drop the session's cached Action probes
+/// (docs/architecture/tweak/detection.md).
 pub struct TweakEngineState {
     claims: ClaimsStore,
     snapshots: SnapshotStore,
@@ -58,7 +56,7 @@ impl TweakEngineState {
         })
     }
 
-    /// Startup carry-forward (spec §8.1 invariant 5): records Needs Attention for every tweak whose
+    /// Startup carry-forward: records Needs Attention for every tweak whose
     /// history still holds an open drive, an interrupted action step or an outstanding journal row,
     /// so a crash mid-apply or mid-restore reaches the UI like any other kept failure (ADR-0001).
     pub fn scan_startup_crash_residue(&self) {
@@ -93,7 +91,7 @@ impl TweakEngineState {
         ]
     }
 
-    /// A record naming a tweak this build no longer defines has no card to badge and no clear path,
+    /// A record naming a tweak this build does not define has no card to badge and no clear path,
     /// so it is named once here. Never deleted: ADR-0002 releases user data on consent alone.
     fn report_unreachable_records(&self, corpus: &Corpus) {
         let recorded = match self.snapshots.recorded_tweaks() {
@@ -166,7 +164,7 @@ pub(crate) fn build_deps(state: &TweakEngineState) -> Deps<'_> {
 
 /// The app's current elevation ceiling: `User` if not running elevated,
 /// else `Admin` -- never `Ti` itself (the whole PROCESS never runs at that level; only
-/// individual effects escalate there per-op through the broker, spec §9).
+/// individual effects escalate there per-op through the broker, ADR-0005).
 pub(crate) fn current_app_level() -> Level {
     if system_info_service::is_running_as_admin() {
         Level::Admin
@@ -175,8 +173,7 @@ pub(crate) fn current_app_level() -> Level {
     }
 }
 
-/// Whether the current app elevation/SID state permits applying/restoring a tweak right now (spec
-/// §9). Detection itself never consults this -- only `apply_tweak`/`restore_tweak` refuse on it.
+/// Whether elevation and SID permit apply or restore now (ADR-0005); detection never consults it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Availability {
@@ -187,17 +184,14 @@ pub enum Availability {
     SidMismatch {
         reason: String,
     },
-    /// The SID guard could not read one of the two SIDs, so it does not know whose hive an HKCU
-    /// write would land in. Distinct from `SidMismatch` on purpose: telling the user another admin
-    /// elevated the app when we simply could not tell is a fabricated accusation, and it sends them
-    /// chasing a cause that does not exist.
+    /// The SID guard could not read one of the two SIDs, so whose hive an HKCU write hits is
+    /// unknown. Not `SidMismatch`: blaming another admin when we cannot tell sends the user chasing
+    /// a cause that does not exist.
     SidUnknown {
         reason: String,
     },
-    /// The declared elevation level cannot be reached on this machine at all, whatever the app is
-    /// running as. Distinct from `NeedsElevation`, which the user can fix by restarting as
-    /// administrator: this one they cannot, and telling them to restart would send them in a
-    /// circle.
+    /// The declared elevation level cannot be reached on this machine at all. Not `NeedsElevation`
+    /// (fixed by restarting as administrator): advising a restart here sends the user in a circle.
     ElevationPathUnavailable {
         reason: String,
     },
@@ -258,6 +252,15 @@ fn needs_elevation(required: Level, current_level: Level) -> bool {
 /// The highest level any effect `apply` would drive runs at, as `context::route` routes it (HKCU
 /// effects as `User`), never below the tweak's declared floor (ADR-0005).
 fn required_level(tweak: &Tweak, corpus: &Corpus, winver: &WinVer) -> Level {
+    required_level_with(tweak, corpus, winver, claims_restore_level)
+}
+
+fn required_level_with(
+    tweak: &Tweak,
+    corpus: &Corpus,
+    winver: &WinVer,
+    restore_level: impl Fn(&SharedId) -> Option<Level>,
+) -> Level {
     // An `optional` effect still counts: whether its resource exists is only known once the apply
     // runs, and over-stating the level beats a refusal from a card that promised it would work.
     let routed = apply::driving_surface(tweak, winver)
@@ -271,7 +274,7 @@ fn required_level(tweak: &Tweak, corpus: &Corpus, winver: &WinVer) -> Level {
         .surface
         .iter()
         .filter_map(|e| match &e.kind {
-            Effect::Shared(id) => claims_restore_level(id),
+            Effect::Shared(id) => restore_level(id),
             _ => None,
         })
         .fold(routed, |max, l| context::effective_level(max, Some(l)))
@@ -369,8 +372,6 @@ fn map_snapshot_err(what: &str, e: SnapshotError) -> Error {
     Error::Tweak(format!("{what} failed: {why}"))
 }
 
-// --- view/event DTOs (IPC-safe projections of the engine's own result types) ---------------------
-
 /// The compiled tweak model for the UI: identity/display metadata plus
 /// this moment's [`Availability`] -- everything the frontend needs to render a tweak before any
 /// status has arrived from `get_statuses_stream`.
@@ -379,12 +380,11 @@ pub struct TweakView {
     pub id: String,
     pub name: String,
     pub description: String,
-    /// Rich markdown detail shown in the tweak's Details modal (spec: authored `info:`).
     pub info: Option<String>,
+    pub warning: Option<String>,
     pub category: String,
     pub risk: RiskLevel,
     pub reversible: bool,
-    /// Whether applying/restoring this tweak needs a reboot to take full effect (spec §6).
     pub requires_reboot: bool,
     /// Each option with the concrete effects it drives, so the Details modal can show a power
     /// user exactly what a state writes (registry values, service start-types, tasks, and so on).
@@ -393,12 +393,13 @@ pub struct TweakView {
     /// to name the level used (ADR-0005).
     pub required_level: Level,
     pub availability: Availability,
+    /// False when this Windows build can run none of its effects; the UI hides it unless asked.
+    pub supported: bool,
 }
 
-/// One option projected as the exact per-address changes it makes. The `*_changes` shapes mirror
-/// the frontend's long-standing detail types (`RegistryChange`/`ServiceChange`/…), so the existing
-/// detail components render them unchanged; the projection just joins the tweak's surface (address
-/// per `EffectId`) with this option's value for that same id.
+/// One option projected as the exact per-address changes it makes: the tweak's surface joined with
+/// this option's value per `EffectId`. The `*_changes` shapes mirror the frontend's detail types
+/// (`RegistryChange`/`ServiceChange`/…).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TweakOptionView {
     pub label: String,
@@ -660,7 +661,7 @@ fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
                     push_setting_change(setting, &sv.value, effect, &mut o);
                 }
             }
-            // A claimed shared setting resolves to its declared target value (spec §6.5); an
+            // A claimed shared setting resolves to its declared target value (ADR-0006); an
             // unclaimed/absent option makes no change to that address.
             Effect::Shared(shared_id) => {
                 if matches!(value_for_effect, Some(OptValue::Claim(_))) {
@@ -694,21 +695,42 @@ fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
     o
 }
 
-/// Builds one IPC [`TweakView`] from a compiled `Tweak` at the given elevation/SID context.
-/// Factored out of [`get_tweaks`] so a command-layer test can assert field carry-through
-/// (e.g. `requires_reboot`, spec §6) without needing a live Tauri runtime.
-fn tweak_view(
+pub(super) fn tweak_view(
     t: &Tweak,
     corpus: &Corpus,
     winver: &WinVer,
     level: Level,
     sid_check: SidCheck,
 ) -> TweakView {
+    tweak_view_with(
+        t,
+        corpus,
+        winver,
+        level,
+        sid_check,
+        claims_restore_level,
+        ti_probe::trusted_installer_blocked().as_deref(),
+    )
+}
+
+/// [`tweak_view`] with its machine lookups (claims store, TI probe) injected, so the preview corpus
+/// stays independent of this machine's state.
+pub(super) fn tweak_view_with(
+    t: &Tweak,
+    corpus: &Corpus,
+    winver: &WinVer,
+    level: Level,
+    sid_check: SidCheck,
+    restore_level: impl Fn(&SharedId) -> Option<Level>,
+    ti_blocked: Option<&str>,
+) -> TweakView {
+    let required = required_level_with(t, corpus, winver, restore_level);
     TweakView {
         id: t.id.clone(),
         name: t.name.clone(),
         description: t.description.clone(),
         info: t.info.clone(),
+        warning: t.warning.clone(),
         category: t.category.clone(),
         risk: t.risk_level,
         reversible: t.reversible,
@@ -718,31 +740,28 @@ fn tweak_view(
             .iter()
             .map(|o| option_view(t, o, corpus))
             .collect(),
-        required_level: required_level(t, corpus, winver),
-        availability: tweak_availability(
-            t,
-            corpus,
-            winver,
+        required_level: required,
+        supported: supported(t, winver),
+        availability: compute_availability(
+            context::tweak_touches_hkcu(t, corpus),
+            required,
             level,
             sid_check,
-            ti_probe::trusted_installer_blocked().as_deref(),
+            ti_blocked,
         ),
     }
 }
 
 /// `get_elevation_state`'s result: the app's own elevation ceiling plus the over-the-shoulder SID
-/// guard's current reading (spec §9, ADR-0005).
-///
-/// `sid_mismatch` stays a `bool` for the UI's benefit -- it only ever asks "are per-user tweaks
-/// blocked" -- but it is now `SidCheck::blocks_hkcu()`, which is true for `Undetermined` as well as
-/// `DifferentUser`. The per-tweak `Availability` carries the distinction where it matters.
+/// guard's current reading (ADR-0005). `sid_mismatch` is `SidCheck::blocks_hkcu()`, true for
+/// `Undetermined` too; the per-tweak `Availability` carries the distinction.
 #[derive(Debug, Clone, Serialize)]
 pub struct ElevationState {
     pub level: Level,
     pub sid_mismatch: bool,
 }
 
-/// `tweak-status`'s event payload (spec §8.4): one tweak's freshly detected status,
+/// `tweak-status`'s event payload: one tweak's freshly detected status,
 /// emitted per-tweak by [`scan_and_emit`] -- never batched into one final blob.
 #[derive(Debug, Clone, Serialize)]
 pub struct TweakStatusEvent {
@@ -784,11 +803,8 @@ impl TweakStatusView {
     }
 }
 
-/// What the machine actually reads when it matches no authored option (spec §8.4, ADR-0003).
-///
-/// `changes` is deliberately a [`TweakOptionView`]: the frontend renders it with the same
-/// components as the options it failed to match, so the user compares like with like instead of
-/// reading a value dump and doing the translation in their head.
+/// What the machine actually reads when it matches no authored option (ADR-0003). `changes` is a
+/// [`TweakOptionView`] so the UI renders it like the options it failed to match, not as a value dump.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ObservedStateView {
     pub changes: TweakOptionView,
@@ -809,7 +825,7 @@ pub struct EffectAgreementView {
 /// The concrete thing an effect addresses, named the way the change list above already names it.
 /// Paths are dropped: the row directly above carries the full address, so the short name is what
 /// tells the two rows apart. Falls back to the effect id for the kinds that have no address.
-fn effect_display_name(effect: &EffectDef) -> String {
+pub(super) fn effect_display_name(effect: &EffectDef) -> String {
     let Effect::Setting(setting) = &effect.kind else {
         return effect.id.0.clone();
     };
@@ -1065,30 +1081,17 @@ fn scan_one_stamped(
     }
 }
 
-/// Runs `detect` for every tweak in `corpus`, invoking `emit` once per tweak (spec §8.4:
-/// incremental, never one final blob). Takes an injectable emitter so tests need no Tauri runtime.
-///
-/// Detection is a pure read, so tweaks are independent and run on a rayon pool. That is worth real
-/// wall-clock: a handful of Action probes each spawn a process, and serially those dominate the
-/// whole sweep. Results are streamed back over a channel and emitted on the calling thread, which
-/// keeps `emit` free of any `Send` bound and preserves the progressive arrival the UI is built
-/// around. **Emission order is therefore completion order, not corpus order** -- every event names
-/// its `tweak_id` and the frontend keys on it, so order carries no meaning.
-///
-/// Shared state the workers touch is already prepared for this: `ProbeCache` is behind a mutex, the
-/// two stores are immutable path holders that re-read per call, and `scheduler_service` serializes
-/// its own COM activation behind a lock with a once-per-thread MTA init.
+/// Emits one status per tweak as it completes, never one final blob. Parallel on rayon (performance:
+/// Action probes spawn processes); `emit` runs on the calling thread, so it needs no `Send`.
+/// Emission is completion order: the UI keys on `tweak_id`.
 fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakStatusEvent)) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::scope(|s| {
         s.spawn(move || {
             corpus.tweaks.par_iter().for_each_with(tx, |tx, tweak| {
-                // A tweak that is mid-apply or mid-restore has a half-driven surface: detect would
-                // read some effects already driven and some not, and publish a status that was
-                // never true of the machine. The sweep takes no lock of its own (it is a pure
-                // read), so the only correct move is to leave that card showing what it had until
-                // the apply finishes and emits its own status.
-                // Stamped before the check: an apply that locks after it stamps higher and wins.
+                // Skip a tweak mid-apply/restore: its half-driven surface would publish a status
+                // never true of the machine; the apply emits its own. Stamped before the check:
+                // an apply that locks after it stamps higher and wins.
                 let stamp = next_status_stamp();
                 if lifecycle::is_locked(&tweak.id) {
                     log::debug!("skipping {} in the sweep: apply in flight", tweak.id);
@@ -1112,11 +1115,7 @@ fn spawn_full_scan(app: AppHandle) {
         let state = app.state::<TweakEngineState>();
         let deps = build_deps(state.inner());
         let corpus = compiled_corpus();
-        let winver = running_winver();
         scan_and_emit(corpus, &deps, |event| {
-            if !find_tweak(corpus, &event.tweak_id).is_ok_and(|t| listed(t, &winver)) {
-                return;
-            }
             if let Err(e) = app.emit("tweak-status", &event) {
                 log::warn!(
                     "tweak status scan: failed to emit for '{}': {e}",
@@ -1178,19 +1177,9 @@ pub(crate) async fn run_locked<T: Send + 'static>(
     .await
 }
 
-/// Release builds leave out tweaks and apps this Windows build cannot run at all; debug and test
-/// builds list them, shown as unavailable, so every gate stays reviewable on one machine.
-pub(crate) const SHOW_UNSUPPORTED: bool = cfg!(any(debug_assertions, feature = "test-build"));
-
-fn listed(tweak: &Tweak, winver: &WinVer) -> bool {
-    listed_in(tweak, winver, SHOW_UNSUPPORTED)
+fn supported(tweak: &Tweak, winver: &WinVer) -> bool {
+    !applicable_surface(tweak, &winver.to_milestone()).is_empty()
 }
-
-fn listed_in(tweak: &Tweak, winver: &WinVer, show_unsupported: bool) -> bool {
-    show_unsupported || !applicable_surface(tweak, &winver.to_milestone()).is_empty()
-}
-
-// --- commands -------------------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn get_tweaks() -> Result<Vec<TweakView>> {
@@ -1203,7 +1192,6 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
         Ok(corpus
             .tweaks
             .iter()
-            .filter(|t| listed(t, &winver))
             .map(|t| tweak_view(t, corpus, &winver, level, sid_check))
             .collect())
     })
@@ -1220,22 +1208,26 @@ pub struct CategoryView {
     pub description: String,
 }
 
+pub(super) fn category_view(c: &CategoryDef) -> CategoryView {
+    CategoryView {
+        id: c.id.clone(),
+        name: c.name.clone(),
+        icon: c.icon.clone(),
+        description: c.description.clone(),
+    }
+}
+
 #[tauri::command]
 pub async fn get_categories() -> Result<Vec<CategoryView>> {
     log::info!("get_categories: corpus category metadata for the UI");
     Ok(compiled_corpus()
         .categories
         .iter()
-        .map(|c| CategoryView {
-            id: c.id.clone(),
-            name: c.name.clone(),
-            icon: c.icon.clone(),
-            description: c.description.clone(),
-        })
+        .map(category_view)
         .collect())
 }
 
-/// Kicks the background-progressive full scan (spec §8.4) and returns immediately -- the
+/// Kicks the background-progressive full scan and returns immediately -- the
 /// scan itself runs on a separate OS thread and streams results back via `tweak-status` events.
 #[tauri::command]
 pub async fn get_statuses_stream(app: AppHandle) -> Result<()> {
@@ -1244,8 +1236,7 @@ pub async fn get_statuses_stream(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// The full re-scan run after the user Elevates (spec §8.4: the moment Unknowns become
-/// readable) -- reuses the exact same scan path as `get_statuses_stream`.
+/// Full re-scan after Elevate, when Unknowns become readable.
 #[tauri::command]
 pub async fn rescan_after_elevation(app: AppHandle) -> Result<()> {
     log::info!("rescan_after_elevation: kicking a full re-scan after an elevation change");
@@ -1510,8 +1501,6 @@ pub async fn get_elevation_state() -> Result<ElevationState> {
     .await
 }
 
-// --- tests ------------------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1537,8 +1526,7 @@ mod tests {
         assert_eq!(line, "kept, locked (unreadable: permission denied)");
     }
 
-    // --- minimal mocks (mirrors engine::apply's own test-harness pattern; kept local since those
-    // fixtures are `#[cfg(test)]`-private to that module) ---------------------------------------
+    // Mocks mirror engine::apply's test harness, whose fixtures are private to that module.
 
     /// A single shared live `Value`, regardless of which `Setting` is asked -- adequate here since
     /// every fixture tweak below has exactly one Setting effect; counts every `read` call so the
@@ -1590,8 +1578,6 @@ mod tests {
             unreachable!("no Action effects on these fixtures")
         }
     }
-
-    // --- fixture builders --------------------------------------------------------------------
 
     fn svc_effect() -> EffectDef {
         EffectDef {
@@ -1903,10 +1889,6 @@ mod tests {
             "the restart-as-administrator advice keys off this"
         );
     }
-
-    // --- availability + SID/elevation gating (pure logic, no Tauri runtime, no OS) --------------
-
-    // --- Needs Attention at the command seam ----------------------------------------------------
 
     /// CRITICAL: a record whose entries have all gone must still be releasable. That state is
     /// ordinary (a verified restore whose clear failed, then consuming the last entry), and without
@@ -2372,10 +2354,8 @@ mod tests {
 
     #[test]
     fn apply_and_restore_refuse_unavailable_before_the_engine() {
-        // `refuse_if_unavailable` is the exact gate `apply_tweak`/`restore_tweak` call before ever
-        // building `Deps` or reaching the engine -- calling it directly (never `build_deps`, never
-        // `apply::apply`/`revert::restore`) is itself the proof that the refusal happens ahead of
-        // any engine call: there is no engine call in this test at all, only the gate.
+        // `refuse_if_unavailable` is the gate `apply_tweak`/`restore_tweak` call before building
+        // `Deps`; this test makes no engine call, which proves the refusal precedes the engine.
         let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
         let c = corpus(vec![]);
 
@@ -2396,9 +2376,8 @@ mod tests {
 
     #[test]
     fn get_tweaks_carries_requires_reboot() {
-        // spec §6: `requires_reboot` must reach the UI. `tweak_view` is exactly the mapping
-        // `get_tweaks` runs over every corpus tweak, so asserting on it proves the field is
-        // carried through without a live Tauri runtime or the embedded corpus.
+        // `tweak_view` is the mapping `get_tweaks` runs, so this proves `requires_reboot` reaches
+        // the UI without a Tauri runtime.
         let mut t = tweak("demo", vec![opt("On", StartupType::Manual)]);
         let c = corpus(vec![]);
         t.requires_reboot = true;
@@ -2416,7 +2395,7 @@ mod tests {
     }
 
     #[test]
-    fn release_builds_leave_out_tweaks_this_windows_build_cannot_run() {
+    fn a_tweak_this_windows_build_cannot_run_is_flagged_unsupported() {
         let mut win11_only = tweak("win11_only", vec![opt("On", StartupType::Manual)]);
         win11_only.windows = Some(crate::tweaks::model::WindowsScope {
             products: Some(vec![11]),
@@ -2425,12 +2404,8 @@ mod tests {
         });
         let everywhere = tweak("everywhere", vec![opt("On", StartupType::Manual)]);
         // WINVER is Windows 10 (19045).
-        assert!(!listed_in(&win11_only, &WINVER, false));
-        assert!(listed_in(&everywhere, &WINVER, false));
-        assert!(
-            listed_in(&win11_only, &WINVER, true),
-            "debug and test builds list every tweak"
-        );
+        assert!(!supported(&win11_only, &WINVER));
+        assert!(supported(&everywhere, &WINVER));
     }
 
     #[test]
@@ -2470,11 +2445,8 @@ mod tests {
         assert!(view.commands.is_empty());
     }
 
-    /// One event per tweak, never one final blob, and every tweak covered exactly
-    /// once. Deliberately asserts the SET of ids rather than their positions: the sweep runs in
-    /// parallel, so events arrive in completion order and position carries no meaning. Comparing
-    /// sets is also the stronger check, since it catches a duplicate or a dropped tweak, which
-    /// indexing into the first three events would not.
+    /// One event per tweak, each tweak exactly once. Asserts the set of ids, not positions: the
+    /// parallel sweep emits in completion order, and a set also catches duplicates and drops.
     #[test]
     fn statuses_emit_incrementally() {
         let h = Harness::new(Value::Startup(StartupType::Manual));
@@ -2556,10 +2528,8 @@ mod tests {
         // Isolate the next call's own read count.
         h.kind.reads.store(0, Ordering::SeqCst);
 
-        // Re-applying the SAME target is the engine's verified no-op fast path (apply.rs step 0):
-        // exactly ONE read (the pre-status detect), nothing driven. If this command layer ever
-        // performed its own extra `detect` before/after handing back the outcome, this would read
-        // more than once.
+        // Re-applying the same target is apply's verified no-op: exactly one read (the pre-status
+        // detect). An extra `detect` in the command layer would read more than once.
         let second = apply_tweak_logic(&t, &c, &OptLabel("On".into()), &deps, next_status_stamp())
             .expect("no-op apply succeeds");
         assert_eq!(
@@ -2576,11 +2546,9 @@ mod tests {
         assert!(second.effects.is_empty(), "a verified no-op drives nothing");
     }
 
-    /// The details UI renders one section per change kind straight off `TweakOptionView`. If
-    /// `push_setting_change` ever stops projecting a kind, that section silently renders empty and
-    /// the tweak looks like it only touches the registry -- a wrong answer that no other test would
-    /// catch, since apply/detect keep working perfectly. So: across the whole shipped corpus, every
-    /// Setting effect an option actually values must land in exactly one of the six change lists.
+    /// A kind `push_setting_change` stops projecting renders as a silently empty details section,
+    /// which apply/detect tests never catch. So every valued Setting effect in the shipped corpus
+    /// must land in exactly one of the six change lists.
     #[test]
     fn every_valued_setting_effect_reaches_the_option_view() {
         let corpus = compiled_corpus();

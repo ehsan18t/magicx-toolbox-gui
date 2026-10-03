@@ -1,41 +1,12 @@
-// API for the Logs panel and Settings > Diagnostics. Every function maps 1:1 to a command in
-// src-tauri/src/commands/logging.rs.
+// One function per command in src-tauri/src/commands/logging.rs.
 import { invoke } from "@tauri-apps/api/core";
-
-export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
-export type LogSource = "app" | "ui" | "helper";
-
-export interface LogLine {
-  seq: number;
-  ts: string;
-  level: LogLevel;
-  source: LogSource;
-  target: string;
-  msg: string;
-}
-
-export interface LogTail {
-  lines: LogLine[];
-  /** Lines after `since` that left the in-memory buffer before they could be read. */
-  skipped: number;
-}
-
-export interface LogSettings {
-  persist: boolean;
-  detailed: boolean;
-  folder: string;
-  writing: boolean;
-  error: string | null;
-  files: number;
-  bytes: number;
-}
+import type { ForwardedLogLevel, LogSettings, LogTail } from "$lib/types";
 
 export async function getLogTail(since: number): Promise<LogTail> {
   return await invoke<LogTail>("get_log_tail", { since });
 }
 
-/** The backend records anything but "error" and "warn" as info. */
-export async function logFrontend(level: "error" | "warn" | "info", message: string): Promise<void> {
+export async function logFrontend(level: ForwardedLogLevel, message: string): Promise<void> {
   await invoke("log_frontend", { level, message });
 }
 

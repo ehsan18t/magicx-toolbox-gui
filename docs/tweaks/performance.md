@@ -1294,7 +1294,7 @@ Windows mitigates speculative-execution side channels in the kernel. CVE-2017-57
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build and edition; the largest effect is on older CPUs without silicon-level fixes.
 - **Takes effect**: after a reboot.
-- **Reverting**: "Enabled" deletes both values, the stock state, which also deletes any unrelated override that was there before. The Restore button restores the snapshot, which puts back whatever was there, including an administrator's own override. On a managed machine, check the current value before applying and prefer System Default when reverting.
+- **Reverting**: "Enabled" deletes both values, the stock state, which also deletes any unrelated override that was there before. The Restore button restores the snapshot, which puts back whatever was there, including an administrator's own override. On a managed machine, check the current value before applying and prefer Restore when reverting.
 
 #### Interactions
 `disable_vbs_hvci` is the other critical CPU-security-for-throughput trade in this category; the research recommended keeping them separate. No other tweak in the corpus writes `FeatureSettingsOverride`.

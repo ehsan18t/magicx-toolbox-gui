@@ -1,14 +1,15 @@
 <script lang="ts">
+  import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
 
   interface Props {
-    children: Snippet;
     class?: string;
+    children: Snippet;
   }
 
-  let { children, class: className = "" }: Props = $props();
+  let { class: className, children }: Props = $props();
 </script>
 
-<div class="bg-muted/30 flex justify-end gap-2 border-t border-border px-5 py-3 {className}">
+<div class={cn("flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-background px-6 py-4", className)}>
   {@render children()}
 </div>

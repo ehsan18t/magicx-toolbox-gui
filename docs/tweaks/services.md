@@ -61,7 +61,7 @@ Two engine facts apply to every entry on this page. First, a service effect chan
 | Disabled | `disabled` (`Start=4`) |
 | Automatic | `automatic` (`Start=2`, `DelayedAutostart=0`) |
 
-System Default: the status shown when `DiagTrack` is at any start type other than Disabled or plain Automatic (for example Manual, or Automatic (Delayed Start)); selecting it restores the start type captured in the snapshot. The stock start type on 24H2 is **Automatic**, not delayed and not trigger-started, so a stock machine reads as the "Automatic" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: Feedback Hub diagnostic submission, Microsoft Defender for Endpoint, Windows Update for Business reports and Update Compliance.
+System Default: the status shown when `DiagTrack` is at any start type other than Disabled or plain Automatic (for example Manual, or Automatic (Delayed Start)); the Restore button restores the start type captured in the snapshot. The stock start type on 24H2 is **Automatic**, not delayed and not trigger-started, so a stock machine reads as the "Automatic" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: Feedback Hub diagnostic submission, Microsoft Defender for Endpoint, Windows Update for Business reports and Update Compliance.
 
 #### How it works
 
@@ -124,7 +124,7 @@ Apply it on a personal machine where privacy matters more than Feedback Hub. Do 
 | Disabled | `disabled` (`Start=4`) |
 | Automatic | `automatic` (`Start=2`, `DelayedAutostart=0`) |
 
-System Default: the status shown when `Spooler` is at a start type other than Disabled or plain Automatic; selecting it restores the snapshot. The stock start type on 24H2 is **Automatic**, so a stock machine reads as the "Automatic" option. Depends on: `RPCSS`, `http`. Required by: no other service. Features that rely on it: every print path, including Microsoft Print to PDF, Microsoft XPS Document Writer, printer enumeration in application print dialogs, and print-based export in label, receipt and some scanner software.
+System Default: the status shown when `Spooler` is at a start type other than Disabled or plain Automatic; the Restore button restores the snapshot. The stock start type on 24H2 is **Automatic**, so a stock machine reads as the "Automatic" option. Depends on: `RPCSS`, `http`. Required by: no other service. Features that rely on it: every print path, including Microsoft Print to PDF, Microsoft XPS Document Writer, printer enumeration in application print dialogs, and print-based export in label, receipt and some scanner software.
 
 #### How it works
 
@@ -183,7 +183,7 @@ Apply it on a machine that genuinely never prints, such as a kiosk, a server, or
 | Disabled | `1` | `disabled` (`Start=4`) |
 | Manual | `0` | `manual` (`Start=3`) |
 
-System Default: shown until you pick an option, because the app's own marker value (`FaxService`) does not exist on a machine where the tweak was never applied; selecting it restores the snapshot, which deletes the marker and puts the service back to its captured start type. The stock start type on Windows 10 is **Manual**. On Windows 11 22H2 and newer, which includes the whole primary platform, the service does not exist, and its `windows` gate shows the tweak as Unavailable there, with the reason. Depends on / required by: not observed (the service is absent from the build 26100 reference machine); no Windows feature other than Windows Fax and Scan uses it.
+System Default: shown until you pick an option, because the app's own marker value (`FaxService`) does not exist on a machine where the tweak was never applied; the Restore button restores the snapshot, which deletes the marker and puts the service back to its captured start type. The stock start type on Windows 10 is **Manual**. On Windows 11 22H2 and newer, which includes the whole primary platform, the service does not exist, and its `windows` gate shows the tweak as Unavailable there, with the reason. Depends on / required by: not observed (the service is absent from the build 26100 reference machine); no Windows feature other than Windows Fax and Scan uses it.
 
 #### How it works
 
@@ -242,7 +242,7 @@ Apply it on a Windows 10 LTSC machine with no fax hardware, where it costs nothi
 | Automatic (Delayed) | `automatic_delayed` (`Start=2`, `DelayedAutostart=1`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `PcaSvc` is at a start type none of the three options names (for example plain Automatic without the delayed flag); selecting it restores the snapshot. The stock start type is release-dependent: **Automatic (Delayed Start, Trigger Start)** on Windows 11 24H2, so a stock 24H2 machine reads as "Automatic (Delayed)"; **Manual (Trigger Start)** on Windows 10, so a stock LTSC 2021 machine reads as "Manual". Depends on: `RpcSs`. Required by: no other service. Features that rely on it: automatic compatibility shims and PCA prompts for legacy programs.
+System Default: the status shown when `PcaSvc` is at a start type none of the three options names (for example plain Automatic without the delayed flag); the Restore button restores the snapshot. The stock start type is release-dependent: **Automatic (Delayed Start, Trigger Start)** on Windows 11 24H2, so a stock 24H2 machine reads as "Automatic (Delayed)"; **Manual (Trigger Start)** on Windows 10, so a stock LTSC 2021 machine reads as "Manual". Depends on: `RpcSs`. Required by: no other service. Features that rely on it: automatic compatibility shims and PCA prompts for legacy programs.
 
 #### How it works
 
@@ -303,7 +303,7 @@ Apply it if the prompts annoy you and you do not run finicky legacy software. Le
 | Disabled | `disabled` (`Start=4`) |
 | Automatic | `automatic` (`Start=2`, `DelayedAutostart=0`) |
 
-System Default: the status shown when `TrkWks` is at a start type other than Disabled or plain Automatic; selecting it restores the snapshot. The stock start type on 24H2 is **Automatic**, not delayed and not trigger-started, so a stock machine reads as the "Automatic" option and the service really is running. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: automatic repair of shell shortcuts and embedded OLE links whose target moved.
+System Default: the status shown when `TrkWks` is at a start type other than Disabled or plain Automatic; the Restore button restores the snapshot. The stock start type on 24H2 is **Automatic**, not delayed and not trigger-started, so a stock machine reads as the "Automatic" option and the service really is running. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: automatic repair of shell shortcuts and embedded OLE links whose target moved.
 
 #### How it works
 
@@ -361,7 +361,7 @@ Apply it on a single-drive machine or any system where shortcuts point at fixed 
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `RetailDemo` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual**, not trigger-started, so a stock machine reads as the "Manual" option. Depends on: nothing. Required by: no other service. Features that rely on it: Retail Demo Experience only.
+System Default: the status shown when `RetailDemo` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual**, not trigger-started, so a stock machine reads as the "Manual" option. Depends on: nothing. Required by: no other service. Features that rely on it: Retail Demo Experience only.
 
 #### How it works
 
@@ -416,7 +416,7 @@ Apply it on any personally owned machine; no home or work PC needs Retail Demo. 
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `WalletService` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual**, so a stock machine reads as the "Manual" option. Depends on: nothing. Required by: no other service. Features that rely on it: Microsoft Wallet and tap-to-pay payments from Windows.
+System Default: the status shown when `WalletService` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual**, so a stock machine reads as the "Manual" option. Depends on: nothing. Required by: no other service. Features that rely on it: Microsoft Wallet and tap-to-pay payments from Windows.
 
 #### How it works
 
@@ -472,7 +472,7 @@ Apply it on any machine where you do not pay from Windows, which is nearly every
 | Disabled | `1` | `disabled` (`Start=4`) |
 | Manual | `0` | `manual` (`Start=3`) |
 
-System Default: shown until you pick an option, because the marker value does not exist on a machine where the tweak was never applied; selecting it restores the snapshot. The stock start type on Windows 10 is **Manual (Trigger Start)**. The service is absent on Windows 11 22H2, 23H2 and 24H2 in all editions, and its `windows` gate shows the tweak as Unavailable there, with the reason. Depends on / required by: not observed (absent from the build 26100 reference machine). Features that rely on it on Windows 10: the on-screen touch keyboard, pen and handwriting input, and the emoji and symbol panel (Win and period).
+System Default: shown until you pick an option, because the marker value does not exist on a machine where the tweak was never applied; the Restore button restores the snapshot. The stock start type on Windows 10 is **Manual (Trigger Start)**. The service is absent on Windows 11 22H2, 23H2 and 24H2 in all editions, and its `windows` gate shows the tweak as Unavailable there, with the reason. Depends on / required by: not observed (absent from the build 26100 reference machine). Features that rely on it on Windows 10: the on-screen touch keyboard, pen and handwriting input, and the emoji and symbol panel (Win and period).
 
 #### How it works
 
@@ -535,7 +535,7 @@ Skip this one. Microsoft rates the service "Do not disable", a trigger-started s
 | Disabled | `disabled` | `disabled` | `disabled` |
 | Manual | `manual` | `manual` | `manual` |
 
-System Default: the status shown when the three services do not all match one option (for example one of them Disabled and the others Manual); selecting it restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)** for all three, so a stock machine reads as the "Manual" option. Dependencies: `bthserv` depends on nothing and is required by the per-user `BluetoothUserService` (so that per-user service cannot start while `bthserv` is disabled); `BTAGService` and `BthAvctpSvc` each depend on `RpcSs` and nothing depends on them. Features that rely on them: every Bluetooth device and function (mice, keyboards, headsets, controllers, file transfer, Bluetooth audio).
+System Default: the status shown when the three services do not all match one option (for example one of them Disabled and the others Manual); the Restore button restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)** for all three, so a stock machine reads as the "Manual" option. Dependencies: `bthserv` depends on nothing and is required by the per-user `BluetoothUserService` (so that per-user service cannot start while `bthserv` is disabled); `BTAGService` and `BthAvctpSvc` each depend on `RpcSs` and nothing depends on them. Features that rely on them: every Bluetooth device and function (mice, keyboards, headsets, controllers, file transfer, Bluetooth audio).
 
 #### How it works
 
@@ -595,7 +595,7 @@ Apply it on a wired desktop with no Bluetooth radio and no wireless peripherals.
 | Disabled | `1` | `disabled` (`Start=4`) |
 | Manual | `0` | `manual` (`Start=3`) |
 
-System Default: shown until you pick an option, because the marker value does not exist on a machine where the tweak was never applied; selecting it restores the snapshot. The stock start type on Windows 10 (and Windows 11 21H2 through 23H2) is **Manual (Trigger Start)**. The service is **absent on Windows 11 24H2 and newer**, and its `windows` gate shows the tweak as Unavailable there, with the reason. Depends on / required by: not observed (absent from the build 26100 reference machine). Features that rely on it: AllJoyn-based smart devices only.
+System Default: shown until you pick an option, because the marker value does not exist on a machine where the tweak was never applied; the Restore button restores the snapshot. The stock start type on Windows 10 (and Windows 11 21H2 through 23H2) is **Manual (Trigger Start)**. The service is **absent on Windows 11 24H2 and newer**, and its `windows` gate shows the tweak as Unavailable there, with the reason. Depends on / required by: not observed (absent from the build 26100 reference machine). Features that rely on it: AllJoyn-based smart devices only.
 
 #### How it works
 
@@ -654,7 +654,7 @@ Apply it on a Windows 10 LTSC machine with no AllJoyn smart devices, which is al
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `PhoneSvc` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: telephony and call-state handling on hardware with a built-in cellular modem. Phone Link does not use it.
+System Default: the status shown when `PhoneSvc` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: telephony and call-state handling on hardware with a built-in cellular modem. Phone Link does not use it.
 
 #### How it works
 
@@ -711,7 +711,7 @@ Apply it on a desktop or any laptop without a cellular modem. Leave it enabled o
 | Disabled | `disabled` | `disabled` |
 | Manual | `manual` | `manual` |
 
-System Default: the status shown when the two services do not match one option together; selecting it restores the snapshot. The stock start type on 24H2 is **Manual** for both, and neither is trigger-started, so a stock machine reads as the "Manual" option. Dependencies: `SSDPSRV` depends on `HTTP` and `NSI` and is required by `upnphost`; `upnphost` depends on `SSDPSRV` and `HTTP`. Features that rely on them: Cast to Device, DLNA and UPnP media discovery in both directions, UPnP port mapping requested by applications, and SSDP-based smart-home discovery. Windows Media Player network sharing rides on this transport.
+System Default: the status shown when the two services do not match one option together; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual** for both, and neither is trigger-started, so a stock machine reads as the "Manual" option. Dependencies: `SSDPSRV` depends on `HTTP` and `NSI` and is required by `upnphost`; `upnphost` depends on `SSDPSRV` and `HTTP`. Features that rely on them: Cast to Device, DLNA and UPnP media discovery in both directions, UPnP port mapping requested by applications, and SSDP-based smart-home discovery. Windows Media Player network sharing rides on this transport.
 
 #### How it works
 
@@ -769,7 +769,7 @@ Apply it on a security-focused machine that does not cast, stream or rely on UPn
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `wisvc` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `rpcss`. Required by: no other service. Features that rely on it: Windows Insider Program enrolment, channel selection and preview-build delivery. Normal Windows Update servicing does not.
+System Default: the status shown when `wisvc` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `rpcss`. Required by: no other service. Features that rely on it: Windows Insider Program enrolment, channel selection and preview-build delivery. Normal Windows Update servicing does not.
 
 #### How it works
 
@@ -824,7 +824,7 @@ Apply it on any machine you keep on stable Windows, which is nearly all of them.
 | Disabled | `disabled` (`Start=4`) |
 | Automatic (Delayed) | `automatic_delayed` (`Start=2`, `DelayedAutostart=1`) |
 
-System Default: the status shown when `MapsBroker` is at a start type other than Disabled or Automatic (Delayed), for example plain Automatic or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Automatic (Delayed Start)**, so a stock machine reads as the "Automatic (Delayed)" option. Depends on: `rpcss`. Required by: no other service. Features that rely on it: offline map download and update, the `MapsToastTask` notification (which `MapsBroker` invokes), and any application built on the Windows Maps platform.
+System Default: the status shown when `MapsBroker` is at a start type other than Disabled or Automatic (Delayed), for example plain Automatic or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Automatic (Delayed Start)**, so a stock machine reads as the "Automatic (Delayed)" option. Depends on: `rpcss`. Required by: no other service. Features that rely on it: offline map download and update, the `MapsToastTask` notification (which `MapsBroker` invokes), and any application built on the Windows Maps platform.
 
 #### How it works
 
@@ -882,7 +882,7 @@ Apply it if you do not use offline maps or the Maps app, which on 24H2 is most p
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `lfsvc` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service registers a dependency. Features that rely on it: location for every app, Find My Device, automatic time zone (the Auto Time Zone Updater depends on it), location-based weather and maps.
+System Default: the status shown when `lfsvc` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service registers a dependency. Features that rely on it: location for every app, Find My Device, automatic time zone (the Auto Time Zone Updater depends on it), location-based weather and maps.
 
 #### How it works
 
@@ -945,7 +945,7 @@ Apply it on a stationary desktop where privacy matters and nothing needs to know
 | Xbox Live disabled, accessories kept | `disabled` | `disabled` | `disabled` | `manual` |
 | Manual | `manual` | `manual` | `manual` | `manual` |
 
-System Default: the status shown when the four services match none of the three combinations; selecting it restores the snapshot. The stock start type on 24H2 is **Manual** for all four (`XblGameSave` and `XboxGipSvc` additionally trigger-started; `XblAuthManager` and `XboxNetApiSvc` plain Manual), so a stock machine reads as the "Manual" option. Dependencies: `XblAuthManager` depends on `RpcSs` and is required by `XblGameSave`; `XblGameSave` depends on `UserManager` and `XblAuthManager`; `XboxNetApiSvc` depends on `BFE`, `mpssvc`, `IKEEXT` and `KeyIso`; `XboxGipSvc` has no registered dependencies either way. Features that rely on them: the Xbox app, PC Game Pass, Xbox Live sign-in, cloud save sync, Game Bar sign-in and capture features, and (for `XboxGipSvc`) connected Xbox accessories.
+System Default: the status shown when the four services match none of the three combinations; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual** for all four (`XblGameSave` and `XboxGipSvc` additionally trigger-started; `XblAuthManager` and `XboxNetApiSvc` plain Manual), so a stock machine reads as the "Manual" option. Dependencies: `XblAuthManager` depends on `RpcSs` and is required by `XblGameSave`; `XblGameSave` depends on `UserManager` and `XblAuthManager`; `XboxNetApiSvc` depends on `BFE`, `mpssvc`, `IKEEXT` and `KeyIso`; `XboxGipSvc` has no registered dependencies either way. Features that rely on them: the Xbox app, PC Game Pass, Xbox Live sign-in, cloud save sync, Game Bar sign-in and capture features, and (for `XboxGipSvc`) connected Xbox accessories.
 
 #### How it works
 
@@ -1007,7 +1007,7 @@ Apply the full disable on a PC that never uses Xbox, Game Pass or an Xbox contro
 | Disabled | `disabled` (`Start=4`) |
 | Automatic (Delayed) | `automatic_delayed` (`Start=2`, `DelayedAutostart=1`) |
 
-System Default: the status shown when `CDPSvc` is at a start type other than Disabled or Automatic (Delayed); selecting it restores the snapshot. The stock start type on 24H2 is **Automatic (Delayed Start, Trigger Start)**, so a stock machine reads as the "Automatic (Delayed)" option. Depends on: `ncbservice`, `RpcSS`, `Tcpip`. Required by: no service registers a dependency, but the per-user companion `CDPUserSvc_*` relies on it functionally. Features that rely on it: Phone Link, Nearby Sharing, the shared (cross-device) clipboard and "resume on other devices" handoff.
+System Default: the status shown when `CDPSvc` is at a start type other than Disabled or Automatic (Delayed); the Restore button restores the snapshot. The stock start type on 24H2 is **Automatic (Delayed Start, Trigger Start)**, so a stock machine reads as the "Automatic (Delayed)" option. Depends on: `ncbservice`, `RpcSS`, `Tcpip`. Required by: no service registers a dependency, but the per-user companion `CDPUserSvc_*` relies on it functionally. Features that rely on it: Phone Link, Nearby Sharing, the shared (cross-device) clipboard and "resume on other devices" handoff.
 
 #### How it works
 
@@ -1067,7 +1067,7 @@ Apply it on a single-device machine that does not use Phone Link, Nearby Sharing
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `WbioSrvc` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: Windows Hello fingerprint and facial recognition sign-in, and any app or credential provider that uses biometric samples.
+System Default: the status shown when `WbioSrvc` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: Windows Hello fingerprint and facial recognition sign-in, and any app or credential provider that uses biometric samples.
 
 #### How it works
 
@@ -1126,7 +1126,7 @@ Apply it if you sign in only with a password or PIN and have no fingerprint read
 | Disabled | `disabled` | `disabled` | `disabled` |
 | Manual | `manual` | `manual` | `manual` |
 
-System Default: the status shown when the three services do not match one option together; selecting it restores the snapshot. The stock start type on client 24H2 is **Manual (Trigger Start)** for `SCardSvr` and `ScDeviceEnum`, and plain **Manual** for `SCPolicySvc`, so a stock machine reads as the "Manual" option. (Windows Server ships `SCardSvr` Disabled; that is a Server-only default.) Dependencies: `SCardSvr` and `ScDeviceEnum` have no registered service dependencies either way; `SCPolicySvc` depends on `RpcSs`. Features that rely on them: every smart card component (the smart card credential provider, CAC, PIV and YubiKey PIV sign-in, certificate authentication from a card, card-based VPN), and lock-on-card-removal.
+System Default: the status shown when the three services do not match one option together; the Restore button restores the snapshot. The stock start type on client 24H2 is **Manual (Trigger Start)** for `SCardSvr` and `ScDeviceEnum`, and plain **Manual** for `SCPolicySvc`, so a stock machine reads as the "Manual" option. (Windows Server ships `SCardSvr` Disabled; that is a Server-only default.) Dependencies: `SCardSvr` and `ScDeviceEnum` have no registered service dependencies either way; `SCPolicySvc` depends on `RpcSs`. Features that rely on them: every smart card component (the smart card credential provider, CAC, PIV and YubiKey PIV sign-in, certificate authentication from a card, card-based VPN), and lock-on-card-removal.
 
 #### How it works
 
@@ -1188,7 +1188,7 @@ Apply it only on a personal PC with no card reader and no card-based sign-in. Ne
 | Disabled | `disabled` | `disabled` | `disabled` |
 | Manual | `manual` | `manual` | `manual` |
 
-System Default: the status shown when the three services do not match one option together; selecting it restores the snapshot. The stock start type on 24H2 (and on LTSC 2021) is **Manual (Trigger Start)** for all three, so a stock machine reads as the "Manual" option. Dependencies: none of the three registers a service dependency either way. Features that rely on them: adaptive (automatic) brightness, automatic screen rotation, and any app that reads orientation, light or motion sensors.
+System Default: the status shown when the three services do not match one option together; the Restore button restores the snapshot. The stock start type on 24H2 (and on LTSC 2021) is **Manual (Trigger Start)** for all three, so a stock machine reads as the "Manual" option. Dependencies: none of the three registers a service dependency either way. Features that rely on them: adaptive (automatic) brightness, automatic screen rotation, and any app that reads orientation, light or motion sensors.
 
 #### How it works
 
@@ -1247,7 +1247,7 @@ Apply it on a desktop you have confirmed has no sensors listed in Device Manager
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `WpcMonSvc` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual**, not trigger-started, so a stock machine reads as the "Manual" option. Depends on: nothing. Required by: no other service. Features that rely on it: Microsoft Family Safety enforcement on this device (screen time limits, app and content filtering, activity reporting).
+System Default: the status shown when `WpcMonSvc` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual**, not trigger-started, so a stock machine reads as the "Manual" option. Depends on: nothing. Required by: no other service. Features that rely on it: Microsoft Family Safety enforcement on this device (screen time limits, app and content filtering, activity reporting).
 
 #### How it works
 
@@ -1305,7 +1305,7 @@ Apply it on an adult or standalone account that has never used Microsoft Family 
 | Disabled | `disabled` (`Start=4`) |
 | Manual | `manual` (`Start=3`) |
 
-System Default: the status shown when `SEMgrSvc` is at a start type other than Disabled or Manual; selecting it restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: NFC tap-to-pay and secure-element wallet operations.
+System Default: the status shown when `SEMgrSvc` is at a start type other than Disabled or Manual; the Restore button restores the snapshot. The stock start type on 24H2 is **Manual (Trigger Start)**, so a stock machine reads as the "Manual" option. Depends on: `RpcSs`. Required by: no other service. Features that rely on it: NFC tap-to-pay and secure-element wallet operations.
 
 #### How it works
 
@@ -1363,7 +1363,7 @@ Apply it on any desktop, and on any laptop without NFC. Leave it enabled if you 
 | Disabled | `1` | `disabled` (`Start=4`) |
 | Manual | `0` | `manual` (`Start=3`) |
 
-System Default: shown until you pick an option, because the marker value does not exist on a machine where the tweak was never applied; selecting it restores the snapshot. Where the service exists, its stock start type is **Manual**, with no trigger registration. The service is **not part of the base OS**: it is absent on Windows 11 24H2 IoT Enterprise LTSC 2024 (and on any image without the Windows Media Player Legacy feature), and whether retail Home and Pro 24H2 images still install that feature by default was not verified. Depends on / required by: not observed (absent from the build 26100 reference machine). Features that rely on it: serving the Windows Media Player library over DLNA and UPnP to TVs and network players.
+System Default: shown until you pick an option, because the marker value does not exist on a machine where the tweak was never applied; the Restore button restores the snapshot. Where the service exists, its stock start type is **Manual**, with no trigger registration. The service is **not part of the base OS**: it is absent on Windows 11 24H2 IoT Enterprise LTSC 2024 (and on any image without the Windows Media Player Legacy feature), and whether retail Home and Pro 24H2 images still install that feature by default was not verified. Depends on / required by: not observed (absent from the build 26100 reference machine). Features that rely on it: serving the Windows Media Player library over DLNA and UPnP to TVs and network players.
 
 #### How it works
 
@@ -1483,7 +1483,7 @@ Apply it if you want fewer diagnostic uploads leaving the machine; there is no f
 | Disabled | `disabled` | `disabled` |
 | Enabled | `enabled` | `enabled` |
 
-System Default: the status shown when the two tasks are in different states (one enabled, one disabled); selecting it restores the snapshot. The shipped enabled state of both tasks is not established from a clean image; the absence of an `<Enabled>` element in their definitions suggests they were never rewritten (so Enabled), but the research did not treat that as proof.
+System Default: the status shown when the two tasks are in different states (one enabled, one disabled); the Restore button restores the snapshot. The shipped enabled state of both tasks is not established from a clean image; the absence of an `<Enabled>` element in their definitions suggests they were never rewritten (so Enabled), but the research did not treat that as proof.
 
 #### How it works
 
@@ -1722,7 +1722,7 @@ Apply it if you want the control to be explicit, but expect no observable change
 | Disabled | `disabled` | `disabled` |
 | Enabled | `enabled` | `enabled` |
 
-System Default: the status shown when the two tasks are in different states; selecting it restores the snapshot. On a build without `Device User`, that task reads as disabled, so the tweak is driven by the `Device` task alone and "Enabled" is shown as unavailable there (the engine never creates tasks). The shipped enabled state of both tasks is not established from a clean image (presumed Enabled; if so, a stock machine reads as "Enabled").
+System Default: the status shown when the two tasks are in different states; the Restore button restores the snapshot. On a build without `Device User`, that task reads as disabled, so the tweak is driven by the `Device` task alone and "Enabled" is shown as unavailable there (the engine never creates tasks). The shipped enabled state of both tasks is not established from a clean image (presumed Enabled; if so, a stock machine reads as "Enabled").
 
 #### How it works
 

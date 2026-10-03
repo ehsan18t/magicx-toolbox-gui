@@ -22,7 +22,7 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 
 ## Tweak System
 
-Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One or two authored options render as a segmented switch; three or more render as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option (ADR-0003).
+Tweaks live in `src-tauri/tweaks/*.yaml` (one `category:` header per file) and are validated and compiled at build time by `src-tauri/build.rs`. The model is effect-centric: a tweak declares its managed surface once as a list of `effects:`, and each option is a value map over that surface. One authored option renders as a segmented switch pairing it with System default, two as a segmented switch, three or more as a dropdown. "System Default" is never authored: it is the computed status when the live surface matches no option, shown on the row's state line; only beside a lone option does a control offer it, and choosing it restores the snapshot (ADR-0003).
 
 Effect kinds:
 
@@ -79,9 +79,13 @@ The profile system (`.mgx` export/import) was removed in the current build and i
 - `src/lib/api/`: Tauri invoke wrappers.
 - `src/lib/stores/*.svelte.ts`: Svelte 5 rune stores.
 - `src/lib/components/ui/`: shared UI primitives.
-- `src/lib/components/tweaks/`: tweak cards and detail views.
-- `src/lib/components/modals/`: tweak/profile/settings/update modals.
-- `src/lib/components/views/`: main app views.
+- `src/lib/components/items/`: tweak and app rows, the shared option control, and the details windows (`items/details/`); the At a glance pane is `layout/SummaryPanel.svelte`.
+- `src/lib/components/modals/`: profile, update, about and confirm dialogs.
+- `src/lib/components/views/`: main app views, Settings included (it is a view, not a dialog).
+- `src/lib/components/layout/`: the title bar, navigation pane, Logs panel, page layout and summary pane.
+- `src/lib/components/feedback/`: the pending-changes bar and review, reboot banner, applying overlay, load errors and toasts.
+- `src/lib/design/`: design data (icon registry, sizes, tone maps, surfaces, the type scale).
+- `src/lib/preview/`: the mocked IPC and corpus for the `?preview` browser harness (dev builds only).
 
 Use existing UI primitives before creating new components.
 
@@ -97,6 +101,4 @@ Use existing UI primitives before creating new components.
 
 ## Validation
 
-- Full stack: `pnpm run validate`
-- Frontend only: `pnpm run lint && pnpm run type-check`
-- Backend only: `cd src-tauri && cargo check && cargo clippy --all-targets --all-features -- -D warnings`
+See `CLAUDE.md` § The gate for the full-stack, backend-only and frontend-only commands.

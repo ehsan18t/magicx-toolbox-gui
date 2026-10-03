@@ -185,7 +185,7 @@ Apply it on any standalone or home machine. Skip it only if you knowingly run so
 | Disabled | `1` |
 | Allowed | `0` |
 
-System Default is shown when `fDenyTSConnections` is absent or holds any value other than 0 or 1; selecting it restores the value captured in the snapshot. Microsoft states "By default, remote connections aren't allowed", so the stock value is 1 and a clean machine already reads as "Disabled". Note the polarity: "Allowed" writes 0, which opens inbound RDP.
+System Default is shown when `fDenyTSConnections` is absent or holds any value other than 0 or 1; the Restore button restores the value captured in the snapshot. Microsoft states "By default, remote connections aren't allowed", so the stock value is 1 and a clean machine already reads as "Disabled". Note the polarity: "Allowed" writes 0, which opens inbound RDP.
 
 #### How it works
 
@@ -251,7 +251,7 @@ Apply it unless you deliberately connect into this PC over Remote Desktop. If yo
 | Removed | `0` | `run` (apply: disable the feature) |
 | Installed | `absent` | omitted (undo: re-enable the feature) |
 
-System Default is shown when the live state matches neither row, for example `SMB1` absent with the feature disabled (the common stock state on Windows 11); selecting it restores the snapshot. Applying "Removed" there writes `SMB1` = 0 and leaves the already-disabled feature alone: the engine does not run an action whose probe already reads present, so nothing is recorded that a revert could undo, and a revert only deletes `SMB1` again. SMBv1 is never installed on a machine that did not have it. Microsoft states the `SMB1` value's default is 1 (Enabled) and "no registry key is created", so absent is the stock registry state; the feature itself is not installed by default on Windows 11 or on Windows 10 1709 and later, except Windows 10 Home and Pro.
+System Default is shown when the live state matches neither row, for example `SMB1` absent with the feature disabled (the common stock state on Windows 11); the Restore button restores the snapshot. Applying "Removed" there writes `SMB1` = 0 and leaves the already-disabled feature alone: the engine does not run an action whose probe already reads present, so nothing is recorded that a revert could undo, and a revert only deletes `SMB1` again. SMBv1 is never installed on a machine that did not have it. Microsoft states the `SMB1` value's default is 1 (Enabled) and "no registry key is created", so absent is the stock registry state; the feature itself is not installed by default on Windows 11 or on Windows 10 1709 and later, except Windows 10 Home and Pro.
 
 #### How it works
 
@@ -315,7 +315,7 @@ Apply it on any modern setup; SMBv1 has no place on today's networks. Hold off o
 | Disabled | `0` |
 | Not configured | `absent` |
 
-System Default is shown when `UseLogonCredential` holds any value other than 0 (for example 1, the value credential-theft tooling writes); selecting it restores the snapshot. The stock state is absent. "Not configured" deletes the value, and Microsoft documents that with the value absent WDigest does **not** cache credentials on Windows 8.1 and later, so "Not configured" is the Windows default, not "caching turned on".
+System Default is shown when `UseLogonCredential` holds any value other than 0 (for example 1, the value credential-theft tooling writes); the Restore button restores the snapshot. The stock state is absent. "Not configured" deletes the value, and Microsoft documents that with the value absent WDigest does **not** cache credentials on Windows 8.1 and later, so "Not configured" is the Windows default, not "caching turned on".
 
 #### How it works
 
@@ -371,7 +371,7 @@ Apply it. There is no practical downside and it pins a default an attacker other
 | Enabled | `2` |
 | Off | `absent` |
 
-System Default is shown when `RunAsPPL` holds any value other than 2 (for example 1, the UEFI-locked form, or 0); selecting it restores the snapshot. The stock registry state is absent on a typical consumer install.
+System Default is shown when `RunAsPPL` holds any value other than 2 (for example 1, the UEFI-locked form, or 0); the Restore button restores the snapshot. The stock registry state is absent on a typical consumer install.
 
 #### How it works
 
@@ -434,7 +434,7 @@ Strongly worth it if you do not depend on unusual authentication add-ins. Test s
 | NTLMv2 only | `5` |
 | Not configured | `absent` |
 
-System Default is shown when `LmCompatibilityLevel` is set to any level from 0 to 4 (or any other value); selecting it restores the snapshot. The stock state is absent: Microsoft's default-values table gives "Client Computer Effective Default Settings: Not defined".
+System Default is shown when `LmCompatibilityLevel` is set to any level from 0 to 4 (or any other value); the Restore button restores the snapshot. The stock state is absent: Microsoft's default-values table gives "Client Computer Effective Default Settings: Not defined".
 
 #### How it works
 
@@ -505,7 +505,7 @@ Apply it on modern networks. Hold off only if you still authenticate against leg
 | Required | `1` | `1` |
 | Not configured | `absent` | `absent` |
 
-System Default is shown for any mixed or other state (for example 1 on one side only, or an explicit 0); selecting it restores the snapshot. "Not configured" deletes both values so the OS default for the installed version and edition applies. Microsoft documents that Windows 11 24H2 Enterprise, Pro and Education require both outbound and inbound signing by default, while Windows 11 24H2 Home and Windows 10 require neither; so on 24H2 Pro and above, "Not configured" still means signing is required by the OS default. Whether the default is expressed as a physical registry value or as a built-in default is not settled.
+System Default is shown for any mixed or other state (for example 1 on one side only, or an explicit 0); the Restore button restores the snapshot. "Not configured" deletes both values so the OS default for the installed version and edition applies. Microsoft documents that Windows 11 24H2 Enterprise, Pro and Education require both outbound and inbound signing by default, while Windows 11 24H2 Home and Windows 10 require neither; so on 24H2 Pro and above, "Not configured" still means signing is required by the OS default. Whether the default is expressed as a physical registry value or as a built-in default is not settled.
 
 #### How it works
 
@@ -635,7 +635,7 @@ If you use Remote Desktop, apply this; NLA plus TLS should be treated as mandato
 | Disabled | `0` |
 | Enabled | `absent` |
 
-System Default is shown when `AutoShareWks` holds any value other than 0 (for example an explicit 1); selecting it restores the snapshot. The stock state is absent, which means the Server service creates the administrative shares automatically.
+System Default is shown when `AutoShareWks` holds any value other than 0 (for example an explicit 1); the Restore button restores the snapshot. The stock state is absent, which means the Server service creates the administrative shares automatically.
 
 #### How it works
 
@@ -757,7 +757,7 @@ Apply it. It is pure upside on current Windows, and pinning the value means a fu
 | Restricted | `1` | `1` | `0` |
 | Standard restrictions | `1` | `0` | `0` |
 
-System Default is shown for any other combination (for example the legacy `RestrictAnonymous` = 2, or `EveryoneIncludesAnonymous` = 1); selecting it restores the snapshot. The stock state is exactly "Standard restrictions" (1 / 0 / 0): Microsoft's default-values tables give that triple as the client effective default, and the shipped default security template `C:\Windows\inf\defltbase.inf` seeds all three explicitly.
+System Default is shown for any other combination (for example the legacy `RestrictAnonymous` = 2, or `EveryoneIncludesAnonymous` = 1); the Restore button restores the snapshot. The stock state is exactly "Standard restrictions" (1 / 0 / 0): Microsoft's default-values tables give that triple as the client effective default, and the shipped default security template `C:\Windows\inf\defltbase.inf` seeds all three explicitly.
 
 #### How it works
 
@@ -827,7 +827,7 @@ Apply it on standalone or home networks. Be cautious in older domain environment
 | Limit to 4 | `"4"` |
 | Cache 10 logons | `"10"` |
 
-System Default is shown for any other count (for example "2", "0" or "25") or if the value is absent; selecting it restores the snapshot. Microsoft's documented client default is 10 logons, which is what "Cache 10 logons" writes.
+System Default is shown for any other count (for example "2", "0" or "25") or if the value is absent; the Restore button restores the snapshot. Microsoft's documented client default is 10 logons, which is what "Cache 10 logons" writes.
 
 #### How it works
 
@@ -889,7 +889,7 @@ Useful on managed or domain-joined laptops, especially ones shared between sever
 | Enabled | `1` |
 | Not configured | `absent` |
 
-System Default is shown when the value holds anything other than 1 (for example 0, which the Windows Security toggle's off position is reported to write); selecting it restores the snapshot. "Not configured" deletes the value, which returns control to the Windows Security app toggle and Microsoft's default. Microsoft states "Since the Windows 11 2022 update, the vulnerable driver blocklist is enabled by default for all devices", so "Not configured" does not necessarily switch the blocklist off.
+System Default is shown when the value holds anything other than 1 (for example 0, which the Windows Security toggle's off position is reported to write); the Restore button restores the snapshot. "Not configured" deletes the value, which returns control to the Windows Security app toggle and Microsoft's default. Microsoft states "Since the Windows 11 2022 update, the vulnerable driver blocklist is enabled by default for all devices", so "Not configured" does not necessarily switch the blocklist off.
 
 #### How it works
 
@@ -952,7 +952,7 @@ Apply it. The small chance of a blocked legacy driver is well worth closing the 
 | Disabled | `1` |
 | Enabled | `absent` |
 
-System Default is shown when the value holds anything other than 1 (for example an explicit 0); selecting it restores the snapshot. The stock state is absent, meaning WPBT execution is allowed.
+System Default is shown when the value holds anything other than 1 (for example an explicit 0); the Restore button restores the snapshot. The stock state is absent, meaning WPBT execution is allowed.
 
 #### How it works
 
@@ -1018,7 +1018,7 @@ A solid hardening step for a clean, self-managed install where you do not want O
 | Required | `0` | `0` |
 | Not required | `absent` | `1` |
 
-System Default is shown for any other combination (for example policy absent with Winlogon 0, or policy 1); selecting it restores the snapshot. The research's read of a 26100.4061 machine found the policy value absent and the Winlogon value present as REG_DWORD 1, which is exactly "Not required" and matches the observed stock behaviour of no Ctrl+Alt+Del prompt on a non-domain install.
+System Default is shown for any other combination (for example policy absent with Winlogon 0, or policy 1); the Restore button restores the snapshot. The research's read of a 26100.4061 machine found the policy value absent and the Winlogon value present as REG_DWORD 1, which is exactly "Not required" and matches the observed stock behaviour of no Ctrl+Alt+Del prompt on a non-domain install.
 
 #### How it works
 
@@ -1082,7 +1082,7 @@ Worth it on desktops and laptops that care about sign-in security. Skip it on to
 | Disabled | `255` | `1` |
 | Enabled | `absent` | `absent` |
 
-System Default is shown for any other combination (for example a partial bitmask such as 0x91, or only one of the two values set); selecting it restores the snapshot. The stock state is both values absent, which leaves Windows' own AutoPlay behaviour in charge.
+System Default is shown for any other combination (for example a partial bitmask such as 0x91, or only one of the two values set); the Restore button restores the snapshot. The stock state is both values absent, which leaves Windows' own AutoPlay behaviour in charge.
 
 #### How it works
 
@@ -2285,7 +2285,7 @@ Apply it on almost every machine; the security gain is real and the compatibilit
 | Enforced on all profiles | `1` | `1` | `1` | `1` | `1` | `1` |
 | User's choice | `absent` | `absent` | `absent` | `absent` | `absent` | `absent` |
 
-System Default is shown when the six values match neither option (for example only some profiles set, or a value of `0` written by a Group Policy object); selecting it restores the values captured before the first apply. Stock Windows has no firewall policy values, so a stock machine reads as "User's choice"; the firewall itself is on by default with inbound blocked, controlled through the non-policy store.
+System Default is shown when the six values match neither option (for example only some profiles set, or a value of `0` written by a Group Policy object); the Restore button restores the values captured before the first apply. Stock Windows has no firewall policy values, so a stock machine reads as "User's choice"; the firewall itself is on by default with inbound blocked, controlled through the non-policy store.
 
 #### How it works
 
@@ -2479,7 +2479,7 @@ Apply it on laptops and any PC used in shared or public spaces. On a physically 
 | Enabled | `2` | `1` |
 | Off | `0` | `absent` |
 
-System Default is shown when the two values match neither option. On many machines `LsaCfgFlags` is absent, so the tweak reads as System Default; on eligible Windows 11 22H2 and later installs Credential Guard may be on by default regardless. The Restore button restores the captured values (deleting any that did not exist). Note that "Off" is not the Windows default: `LsaCfgFlags` = 0 explicitly disables Credential Guard, including on machines where Windows had turned it on by default. To return to the Windows default, use System Default. Credential Guard is on by default on eligible Windows 11 22H2 and later installs.
+System Default is shown when the two values match neither option. On many machines `LsaCfgFlags` is absent, so the tweak reads as System Default; on eligible Windows 11 22H2 and later installs Credential Guard may be on by default regardless. The Restore button restores the captured values (deleting any that did not exist). Note that "Off" is not the Windows default: `LsaCfgFlags` = 0 explicitly disables Credential Guard, including on machines where Windows had turned it on by default. To return to the Windows default, use Restore. Credential Guard is on by default on eligible Windows 11 22H2 and later installs.
 
 #### How it works
 
@@ -2503,7 +2503,7 @@ Hardware and edition requirements: 64-bit Windows, Secure Boot, CPU virtualizati
 - **Requires VBS**: it cannot run if virtualization-based security is off, so it directly conflicts with any tweak that disables VBS or memory integrity.
 - **Costs memory and, on older hardware, performance**.
 - **Little benefit standalone**: on a home PC signed in with a local or personal Microsoft account there are few domain secrets to protect.
-- **"Off" really turns it off**: on a machine where Windows enabled Credential Guard by default, choosing "Off" disables it; use System Default to go back to what Windows chose.
+- **"Off" really turns it off**: on a machine where Windows enabled Credential Guard by default, choosing "Off" disables it; use Restore to go back to what Windows chose.
 - **Not available on Home**, even though the tweak is offered there.
 
 #### Applies to, takes effect, reverting
@@ -2552,7 +2552,7 @@ Apply it on domain-joined or Entra-joined Windows 11 Enterprise or Education mac
 | High, prompt before sending samples | `2` | `0` | `0` | `2` | `50` |
 | User's choice | `absent` | `absent` | `absent` | `absent` | `absent` |
 
-System Default is shown when the five values match no option (for example a partial set written by another tool); selecting it restores the captured values. Stock Windows has none of these policy values, so a stock machine reads as "User's choice", where Defender's own defaults and the Windows Security app decide. Those defaults are: cloud protection on (forced on by Tamper Protection on consumer Windows 11) and sample submission at Send safe samples, which Microsoft calls "the default, recommended setting".
+System Default is shown when the five values match no option (for example a partial set written by another tool); the Restore button restores the captured values. Stock Windows has none of these policy values, so a stock machine reads as "User's choice", where Defender's own defaults and the Windows Security app decide. Those defaults are: cloud protection on (forced on by Tamper Protection on consumer Windows 11) and sample submission at Send safe samples, which Microsoft calls "the default, recommended setting".
 
 #### How it works
 
@@ -2630,7 +2630,7 @@ Apply "High, send safe samples" if Defender is your antivirus and you want maxim
 | Blocked | `1` |
 | Allowed | `absent` |
 
-System Default is shown when the value holds anything other than `1` or nothing (for example `0`, written by a Group Policy object); selecting it restores the captured value. Stock Windows has no value, so a stock machine reads as "Allowed", and the SMB client uses NTLM when Kerberos is not available.
+System Default is shown when the value holds anything other than `1` or nothing (for example `0`, written by a Group Policy object); the Restore button restores the captured value. Stock Windows has no value, so a stock machine reads as "Allowed", and the SMB client uses NTLM when Kerberos is not available.
 
 #### How it works
 
@@ -2703,7 +2703,7 @@ Apply it if all your SMB targets are reachable by name and can do Kerberos, whic
 | Warnings on, with screenshot upload | `1` | `1` | `1` | `1` | `1` |
 | Not configured | `absent` | `absent` | `absent` | `absent` | `absent` |
 
-System Default is shown when the five values match no option; selecting it restores the captured values. Stock Windows has none of these policy values, so a stock machine reads as "Not configured". "Not configured" means "no policy": the shipped behaviour then applies, which is not fully off. The effective defaults on a consumer 26100 machine are:
+System Default is shown when the five values match no option; the Restore button restores the captured values. Stock Windows has none of these policy values, so a stock machine reads as "Not configured". "Not configured" means "no policy": the shipped behaviour then applies, which is not fully off. The effective defaults on a consumer 26100 machine are:
 
 | Value | Effective default with no policy |
 |---|---|
@@ -2782,7 +2782,7 @@ Apply "Warnings on, no screenshot upload" on a machine signed in with a work or 
 | Audit only | `"2"` | `"2"` | claim |
 | Off | `absent` | `absent` | unclaimed |
 
-System Default is shown when the two rule values match no option (for example one rule set to Warn, `"6"`, by another tool); selecting it restores the captured rule values. The shared parent value is not part of this tweak's snapshot: it is released through the shared-setting refcount. Stock Windows has no ASR policy values, so a stock machine reads as "Off".
+System Default is shown when the two rule values match no option (for example one rule set to Warn, `"6"`, by another tool); the Restore button restores the captured rule values. The shared parent value is not part of this tweak's snapshot: it is released through the shared-setting refcount. Stock Windows has no ASR policy values, so a stock machine reads as "Off".
 
 #### How it works
 
@@ -2935,7 +2935,7 @@ Apply it on a standalone or home machine that never accepts PowerShell Remoting.
 | Module logging only | `1` | `"*"` | `absent` | `absent` | `absent` |
 | Off | `absent` | `absent` | `absent` | `absent` | `absent` |
 
-System Default is shown when the five values match no option (for example a module list configured by an administrator); selecting it restores the captured values. Stock Windows has none of these values, so a stock machine reads as "Off".
+System Default is shown when the five values match no option (for example a module list configured by an administrator); the Restore button restores the captured values. Stock Windows has none of these values, so a stock machine reads as "Off".
 
 #### How it works
 
@@ -3005,7 +3005,7 @@ Choose "Module logging and transcription" if you investigate incidents or want a
 | Administrators only | `O:BAG:BAD:(A;;RC;;;BA)` |
 | Not configured | `absent` |
 
-System Default is shown when the value holds any other string (a custom descriptor); selecting it restores the captured value. Stock Windows has no value, so a stock machine reads as "Not configured". With the value absent, Windows 10 1607 and later apply a built-in default that already restricts remote SAM calls to administrators, so on every supported build both options currently grant the same access.
+System Default is shown when the value holds any other string (a custom descriptor); the Restore button restores the captured value. Stock Windows has no value, so a stock machine reads as "Not configured". With the value absent, Windows 10 1607 and later apply a built-in default that already restricts remote SAM calls to administrators, so on every supported build both options currently grant the same access.
 
 #### How it works
 
@@ -3069,7 +3069,7 @@ Apply "Administrators only". It costs nothing on a consumer machine, pins a stat
 | Blocked | `0` | `0` |
 | Not configured | `absent` | `absent` |
 
-System Default is shown when the two values match neither option (for example one of them set to 1 by a deployment script); selecting it restores the captured values. Stock Windows has neither value, so a stock machine reads as "Not configured". That means no policy: with both values absent the escalation is not enabled, so "Not configured" is the safe shipped state, not an open one.
+System Default is shown when the two values match neither option (for example one of them set to 1 by a deployment script); the Restore button restores the captured values. Stock Windows has neither value, so a stock machine reads as "Not configured". That means no policy: with both values absent the escalation is not enabled, so "Not configured" is the safe shipped state, not an open one.
 
 #### How it works
 
@@ -3131,7 +3131,7 @@ Apply "Blocked" on every machine. It costs nothing, cannot break a working insta
 | Allow only after sign-in | `1` | `1` |
 | Not configured | `absent` | `absent` |
 
-System Default is shown when the two values match no option (for example `DeviceEnumerationPolicy` = 2 set by another tool); selecting it restores the captured values. Stock Windows has neither value, so a stock machine reads as "Not configured": with the values absent, Windows applies its own default, which Microsoft labels "Only while logged in (default)" (the behaviour of value 1). The tweak never writes 2, the real "Allow all" enum value, because that would be less protective than the Windows default.
+System Default is shown when the two values match no option (for example `DeviceEnumerationPolicy` = 2 set by another tool); the Restore button restores the captured values. Stock Windows has neither value, so a stock machine reads as "Not configured": with the values absent, Windows applies its own default, which Microsoft labels "Only while logged in (default)" (the behaviour of value 1). The tweak never writes 2, the real "Allow all" enum value, because that would be less protective than the Windows default.
 
 #### How it works
 
@@ -3205,7 +3205,7 @@ Apply "Block all" on a laptop you carry, where the drive-by DMA threat is real, 
 | Audit only | `"2"` | `"2"` | `"2"` | `"2"` | `"2"` | `"2"` | claim |
 | Off | absent | absent | absent | absent | absent | absent | unclaimed |
 
-System Default is shown when the six rule values match none of the three options (for example a mix of Block and Audit, or a mode written by other management tooling); selecting it restores the snapshot captured before the first apply. Stock Windows has none of the six values and no `ExploitGuard_ASR_Rules` value, so a clean machine matches "Off". The shared parent value is not part of this tweak's snapshot: it is refcounted across the four ASR tweaks (see [Shared settings](#shared-settings)).
+System Default is shown when the six rule values match none of the three options (for example a mix of Block and Audit, or a mode written by other management tooling); the Restore button restores the snapshot captured before the first apply. Stock Windows has none of the six values and no `ExploitGuard_ASR_Rules` value, so a clean machine matches "Off". The shared parent value is not part of this tweak's snapshot: it is refcounted across the four ASR tweaks (see [Shared settings](#shared-settings)).
 
 #### How it works
 
@@ -3288,7 +3288,7 @@ Worth applying on a consumer machine, where these six behaviours are almost alwa
 | Deny outgoing NTLM | `2` | `2` | `0x20080000` | `0x20080000` |
 | Allow all | absent | absent | absent | absent |
 
-System Default is shown when the four values match none of the options (for example if a Group Policy or another tool wrote a different session-security value); selecting it restores the snapshot captured before the first apply. Stock Windows has none of the four values, which matches "Allow all"; with the values absent, Windows behaves as "Allow all" for outgoing NTLM and as `0x20000000` (require 128-bit encryption) for session security.
+System Default is shown when the four values match none of the options (for example if a Group Policy or another tool wrote a different session-security value); the Restore button restores the snapshot captured before the first apply. Stock Windows has none of the four values, which matches "Allow all"; with the values absent, Windows behaves as "Allow all" for outgoing NTLM and as `0x20000000` (require 128-bit encryption) for session security.
 
 #### How it works
 
@@ -3366,7 +3366,7 @@ Apply "Audit outgoing NTLM" on any machine: it logs NTLM use and adds the NTLMv2
 | Hardened, keep drive redirection | `3` | `1` | `1` | `1` | absent |
 | Not hardened | absent | absent | absent | absent | absent |
 
-System Default is shown when the five values match none of the options (for example a Group Policy that sets only some of them, or `fDisableCdm` = 0); selecting it restores the snapshot captured before the first apply. Stock Windows has none of the five policy values, which matches "Not hardened".
+System Default is shown when the five values match none of the options (for example a Group Policy that sets only some of them, or `fDisableCdm` = 0); the Restore button restores the snapshot captured before the first apply. Stock Windows has none of the five policy values, which matches "Not hardened".
 
 #### How it works
 
@@ -3500,7 +3500,7 @@ Apply it on a single-account consumer machine, where Secondary Logon is essentia
 | Good and unknown | `1` |
 | Windows decides | absent |
 
-System Default is shown when the value is something none of the options writes (`8` or `7`, for example if other software set it); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Windows decides"; the effective behaviour with no value is `3`.
+System Default is shown when the value is something none of the options writes (`8` or `7`, for example if other software set it); the Restore button restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Windows decides"; the effective behaviour with no value is `3`.
 
 #### How it works
 
@@ -3564,7 +3564,7 @@ Apply it at "Good, unknown and bad but critical" on any machine: it costs a rebo
 | Force updated clients | `0` |
 | Mitigated | absent |
 
-System Default is shown when the value is present with anything other than `0` (an explicit `1` or `2` written by Group Policy or another tool); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Mitigated"; the effective default with no value is `1` (Mitigated) since the May 8, 2018 update.
+System Default is shown when the value is present with anything other than `0` (an explicit `1` or `2` written by Group Policy or another tool); the Restore button restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Mitigated"; the effective default with no value is `1` (Mitigated) since the May 8, 2018 update.
 
 #### How it works
 
@@ -3628,7 +3628,7 @@ Apply it. On a modern network nothing legitimate is still unpatched, and it clos
 | Prevent automatic encryption | `1` |
 | Automatic encryption allowed | absent |
 
-System Default is shown when the value is present with anything other than `1` (for example `0`); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Automatic encryption allowed".
+System Default is shown when the value is present with anything other than `1` (for example `0`); the Restore button restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Automatic encryption allowed".
 
 #### How it works
 
@@ -3690,7 +3690,7 @@ Use it only if you deliberately want to manage encryption and recovery keys your
 | Hidden | `0` | `1` | `1` |
 | Shown | absent | absent | absent |
 
-System Default is shown when the three values match neither option (for example only one of them set, or `EnumerateAdministrators` = 1); selecting it restores the snapshot captured before the first apply. Stock Windows has none of the three values, which matches "Shown".
+System Default is shown when the three values match neither option (for example only one of them set, or `EnumerateAdministrators` = 1); the Restore button restores the snapshot captured before the first apply. Stock Windows has none of the three values, which matches "Shown".
 
 #### How it works
 
@@ -3757,7 +3757,7 @@ Apply it on any machine used where other people can see the screen. On a private
 | Large, STIG (32 MB / 32 MB / 1 GB) | `32768` | `32768` | `1024000` |
 | Windows decides | absent | absent | absent |
 
-System Default is shown when the three values match none of the options (for example sizes set by a Group Policy); selecting it restores the snapshot captured before the first apply. Stock Windows has none of the three policy values, which matches "Windows decides".
+System Default is shown when the three values match none of the options (for example sizes set by a Group Policy); the Restore button restores the snapshot captured before the first apply. Stock Windows has none of the three policy values, which matches "Windows decides".
 
 #### How it works
 
@@ -3833,7 +3833,7 @@ The action's scripts:
 
 The setting is read as a number because the text `auditpol /get` prints ("No Auditing", "Success") is translated on non-English Windows.
 
-System Default is shown when the live state matches neither option: for example `ProcessCreationIncludeCmdLine_Enabled` = 1 while process-creation success auditing is off, or the value absent while success auditing is on (set by another tool or policy). Selecting it restores the snapshot. "Enabled" expects the value at 1 and the probe present; "Off" expects the value absent and the probe absent. The shipped default of the Process Creation subcategory was not established by the research.
+System Default is shown when the live state matches neither option: for example `ProcessCreationIncludeCmdLine_Enabled` = 1 while process-creation success auditing is off, or the value absent while success auditing is on (set by another tool or policy). The Restore button restores the snapshot. "Enabled" expects the value at 1 and the probe present; "Off" expects the value absent and the probe absent. The shipped default of the Process Creation subcategory was not established by the research.
 
 #### How it works
 
@@ -3898,7 +3898,7 @@ Enable it if you have enabled logon auditing or care about forensic evidence; wi
 | No client connections | `2` | `1` |
 | Client connections allowed | absent | absent |
 
-System Default is shown when the two values match neither option (for example `RegisterSpoolerRemoteRpcEndPoint` = 1, or only one of the two set); selecting it restores the snapshot captured before the first apply. Stock Windows has neither value, which matches "Client connections allowed"; with the policy value absent the spooler accepts client connections.
+System Default is shown when the two values match neither option (for example `RegisterSpoolerRemoteRpcEndPoint` = 1, or only one of the two set); the Restore button restores the snapshot captured before the first apply. Stock Windows has neither value, which matches "Client connections allowed"; with the policy value absent the spooler accepts client connections.
 
 #### How it works
 
@@ -4028,7 +4028,7 @@ Apply "Filtered" on any machine that is not administered remotely with a local a
 | Enabled | `0` |
 | Not configured | absent |
 
-The option labelled "Not configured" deletes the value; it does not turn SEHOP off. With the value absent, SEHOP is on for 64-bit Windows, exactly as with `0`. System Default is shown when the value is present with anything other than `0` (for example `1`, which does disable SEHOP); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Not configured".
+The option labelled "Not configured" deletes the value; it does not turn SEHOP off. With the value absent, SEHOP is on for 64-bit Windows, exactly as with `0`. System Default is shown when the value is present with anything other than `0` (for example `1`, which does disable SEHOP); the Restore button restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Not configured".
 
 #### How it works
 
@@ -4088,7 +4088,7 @@ Apply it if you want a baseline-clean machine that passes the STIG check, or you
 | Blocked | `0` |
 | Allowed | absent |
 
-System Default is shown when the value is present with anything other than `0` (for example an explicit `1`); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Allowed"; on a standalone Windows 11 client the effective default is enabled.
+System Default is shown when the value is present with anything other than `0` (for example an explicit `1`); the Restore button restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Allowed"; on a standalone Windows 11 client the effective default is enabled.
 
 #### How it works
 
@@ -4147,7 +4147,7 @@ Apply it on a machine that never authenticates peer-to-peer with another non-dom
 | Not indexed | `0` |
 | Not configured | absent |
 
-The option labelled "Not configured" deletes the policy value, which hands control back to the Control Panel setting; by default that setting does not index encrypted content either, so "Not configured" does not by itself turn indexing of encrypted files on. System Default is shown when the value is present with anything other than `0` (an explicit `1`); selecting it restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Not configured".
+The option labelled "Not configured" deletes the policy value, which hands control back to the Control Panel setting; by default that setting does not index encrypted content either, so "Not configured" does not by itself turn indexing of encrypted files on. System Default is shown when the value is present with anything other than `0` (an explicit `1`); the Restore button restores the snapshot captured before the first apply. Stock Windows has no value, which matches "Not configured".
 
 #### How it works
 
@@ -4210,7 +4210,7 @@ Apply it if you use EFS at all: it guarantees encrypted content never reaches th
 | Disallowed | `1` | `1` |
 | Allowed | absent | absent |
 
-System Default is shown when the two values match neither option (for example only one hive set); selecting it restores the snapshot captured before the first apply. Stock Windows has neither value, which matches "Allowed".
+System Default is shown when the two values match neither option (for example only one hive set); the Restore button restores the snapshot captured before the first apply. Stock Windows has neither value, which matches "Allowed".
 
 #### How it works
 

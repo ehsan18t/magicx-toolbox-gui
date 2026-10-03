@@ -1,61 +1,61 @@
 <script lang="ts">
-  import { Icon } from "$lib/components/shared";
-  import { loadingStore } from "$lib/stores/tweaks.svelte";
+  import { Card, Spinner } from "$lib/components/ui";
+  import { HEADING } from "$lib/design";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
+  import { reclaimFocus } from "$lib/utils/focus";
+  import { delay, fade } from "$lib/utils/motion";
+  import { untrack } from "svelte";
+  import { BUSY_HINT } from "./busy";
 
-  const isApplying = $derived(loadingStore.isAnyLoading);
+  /** The app behind the overlay, inert while it shows. */
+  let { shell }: { shell: HTMLElement | null } = $props();
+
+  const isApplying = $derived(tweakActionsStore.isBusy);
 
   let visible = $state(false);
-  let hideTimer: ReturnType<typeof setTimeout> | null = null;
+  let shownAt = 0;
+  let seen = false;
 
   $effect(() => {
-    const applying = isApplying;
-
-    if (applying) {
-      if (hideTimer) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
+    if (isApplying) {
+      if (!untrack(() => visible)) shownAt = performance.now();
       visible = true;
       return;
     }
-
-    if (hideTimer) {
-      clearTimeout(hideTimer);
-    }
-
-    // Small delay prevents flicker during sequential/batch operations.
-    hideTimer = setTimeout(() => {
-      visible = false;
-      hideTimer = null;
-    }, 250);
+    // Gone before it faded in: drop it now. Once seen, hold it so a batch does not flicker between items.
+    seen = performance.now() - shownAt >= delay("reveal");
+    const hideTimer = setTimeout(() => (visible = false), seen ? delay("settle") : 0);
+    return () => clearTimeout(hideTimer);
   });
 
+  // Inert drops focus to the body, so it goes back where it was, or to the fallback if that control is gone.
   $effect(() => {
+    if (!visible || !shell) return;
+    const blocked = shell;
+    const focused = document.activeElement;
+    blocked.inert = true;
     return () => {
-      if (hideTimer) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
+      blocked.inert = false;
+      if (focused instanceof HTMLElement) focused.focus();
+      reclaimFocus();
     };
   });
+
+  // Never seen: leave at once, or the outro would overlap the inner layer's delayed fade-in.
+  const exit = (node: Element) => (seen ? fade(node, { speed: "fast" }) : { duration: 0 });
 </script>
 
 {#if visible}
-  <div
-    class="fixed inset-0 z-1000 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    role="presentation"
-    aria-busy="true"
-  >
-    <div class="w-[min(92vw,420px)] rounded-xl border border-border bg-card px-6 py-5">
-      <div class="flex items-center gap-3">
-        <span class="animate-spin inline-flex text-accent">
-          <Icon icon="mdi:loading" width="24" class="text-accent" />
-        </span>
+  <!-- Blocks input at once; the inner layer only shows if the work outlasts the reveal delay. -->
+  <div class="fixed inset-x-0 top-titlebar bottom-0 z-busy" role="presentation" aria-busy="true" out:exit>
+    <div class="flex h-full animate-reveal items-center justify-center bg-scrim p-4">
+      <Card elevation="dialog" class="flex w-full max-w-sm items-center gap-3 px-6 py-5" role="status">
+        <Spinner />
         <div class="min-w-0">
-          <div class="text-base font-semibold text-foreground">Applying tweaks…</div>
-          <div class="mt-0.5 text-sm text-foreground-muted">Please wait and do not close the app.</div>
+          <div class={["text-foreground", HEADING.section]}>Changing system settings…</div>
+          <div class="mt-0.5 text-sm text-foreground-muted">{BUSY_HINT}</div>
         </div>
-      </div>
+      </Card>
     </div>
   </div>
 {/if}

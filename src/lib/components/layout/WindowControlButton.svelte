@@ -1,43 +1,36 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
-
-  type Variant = "default" | "theme" | "danger";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
+  import { CAPTION_BUTTON } from "$lib/design";
 
   interface Props {
-    title: string;
-    icon: string;
-    variant?: Variant;
+    label: string;
+    glyph: "minimize" | "maximize" | "restore" | "close";
     onclick: () => void;
   }
 
-  let { title, icon, variant = "default", onclick }: Props = $props();
-
-  const variantClasses: Record<Variant, string> = {
-    default: "hover:bg-foreground/8 active:bg-foreground/12 focus-visible:bg-foreground/12",
-    theme: "hover:bg-accent/12 active:bg-accent/18 focus-visible:bg-accent/18",
-    danger: "hover:bg-error/12 active:bg-error/18 focus-visible:bg-error/18",
-  };
-
-  const iconClasses: Record<Variant, string> = {
-    default: "text-foreground-muted group-hover:text-foreground",
-    theme: "text-foreground-muted group-hover:text-accent",
-    danger: "text-foreground-muted group-hover:text-error",
-  };
-
-  // Derived classes based on variant
-  const btnClass = $derived(variantClasses[variant]);
-  const iconClass = $derived(iconClasses[variant]);
+  let { label, glyph, onclick }: Props = $props();
 </script>
 
 <button
-  class="group relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded border-0 bg-transparent transition-colors duration-150 outline-none active:scale-90 disabled:pointer-events-none disabled:cursor-default disabled:opacity-40 {btnClass}"
+  class="flex h-8 w-10 cursor-default items-center justify-center rounded-md text-foreground-muted {CAPTION_BUTTON[
+    glyph === 'close' ? 'close' : 'other'
+  ]}"
   type="button"
-  aria-label={title}
-  use:tooltip={title}
+  aria-label={label}
+  {@attach tooltip(() => label)}
   {onclick}
 >
-  <span class="relative z-10 flex items-center justify-center transition-transform duration-150 {iconClass}">
-    <Icon {icon} width="16" height="16" />
-  </span>
+  <!-- 1px line glyphs on a 10px grid, drawn like the Windows 11 caption icons. -->
+  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" aria-hidden="true">
+    {#if glyph === "minimize"}
+      <path d="M0 5.5h10" />
+    {:else if glyph === "maximize"}
+      <rect x="0.5" y="0.5" width="9" height="9" rx="1.5" />
+    {:else if glyph === "restore"}
+      <rect x="0.5" y="2.5" width="7" height="7" rx="1.5" />
+      <path d="M2.5 0.5h5.5a1.5 1.5 0 0 1 1.5 1.5v5.5" />
+    {:else}
+      <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
+    {/if}
+  </svg>
 </button>

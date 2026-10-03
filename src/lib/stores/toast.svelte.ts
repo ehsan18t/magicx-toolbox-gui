@@ -1,133 +1,124 @@
-/**
- * Toast Store - Svelte 5 Runes
- *
- * Manages toast notifications for the application.
- */
+import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
 
 export type ToastType = "success" | "error" | "warning" | "info";
-
-export interface Toast {
-  id: string;
-  type: ToastType;
-  message: string;
-  duration?: number;
-  tweakName?: string;
-  action?: ToastAction;
-}
 
 export interface ToastAction {
   label: string;
   run: () => void;
 }
 
-type ToastOptions = { duration?: number; tweakName?: string; action?: ToastAction };
+export interface Toast {
+  id: string;
+  type: ToastType;
+  message: string;
+  /** Milliseconds; 0 stays until dismissed. */
+  duration: number;
+  /** The tweak or app the toast is about, shown as its title. */
+  subject?: string;
+  action?: ToastAction;
+}
 
-let toasts = $state<Toast[]>([]);
-let idCounter = 0;
+interface ToastOptions {
+  duration?: number;
+  subject?: string;
+  action?: ToastAction;
+}
 
-// Store timeout IDs so we can clear them when toasts are manually dismissed
-// Note: Intentionally using plain Map since this is not rendered and doesn't need reactivity
-/* eslint-disable svelte/prefer-svelte-reactivity -- Intentionally using a plain Map for timeout IDs.
-    This Map is used only for internal timeout tracking and is not used in any reactive context,
-    so Svelte reactivity is not needed or desired here. */
-// Store timeout IDs so we can clear them when toasts are manually dismissed
-const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
-/* eslint-enable svelte/prefer-svelte-reactivity */
+interface FailureOptions extends ToastOptions {
+  /** Prefix the message with the context, for a bare error that does not say what failed. */
+  withContext?: boolean;
+}
 
-/** Maximum number of toasts to display at once */
+/** Milliseconds per severity; `long` for a toast with something to act on. */
+export const TOAST_DURATION = { success: 3000, info: 3000, warning: 5000, error: 5000, long: 10000 } as const;
+
 const MAX_TOASTS = 5;
 
-function generateId(): string {
-  return `toast-${++idCounter}-${Date.now()}`;
+interface Timer {
+  remaining: number;
+  startedAt: number;
+  handle?: ReturnType<typeof setTimeout>;
+}
+
+let toasts = $state.raw<Toast[]>([]);
+let announcement = $state.raw<{ id: string; text: string; assertive: boolean } | null>(null);
+let idCounter = 0;
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- timers, never rendered
+const timers = new Map<string, Timer>();
+let paused = false;
+let heldId: string | null = null;
+
+function start(id: string, timer: Timer) {
+  timer.startedAt = Date.now();
+  timer.handle = setTimeout(() => dismiss(id), timer.remaining);
+}
+
+function stop(timer: Timer) {
+  if (timer.handle === undefined) return;
+  clearTimeout(timer.handle);
+  timer.handle = undefined;
+  timer.remaining -= Date.now() - timer.startedAt;
+}
+
+function dismiss(id: string) {
+  const timer = timers.get(id);
+  if (timer) clearTimeout(timer.handle);
+  timers.delete(id);
+  toasts = toasts.filter((t) => t.id !== id);
+}
+
+function show(type: ToastType, message: string, options?: ToastOptions) {
+  const id = `toast-${++idCounter}`;
+  const duration = options?.duration ?? TOAST_DURATION[type];
+
+  while (toasts.length >= MAX_TOASTS) dismiss((toasts.find((t) => t.id !== heldId) ?? toasts[0]).id);
+  toasts = [...toasts, { id, type, message, duration, subject: options?.subject, action: options?.action }];
+  const text = options?.subject ? `${options.subject}: ${message}` : message;
+  announcement = { id, text, assertive: type === "error" };
+
+  if (duration > 0) {
+    const timer: Timer = { remaining: duration, startedAt: 0 };
+    timers.set(id, timer);
+    if (!paused) start(id, timer);
+  }
+  return id;
 }
 
 export const toastStore = {
   get list() {
     return toasts;
   },
-
-  /**
-   * Show a toast notification
-   */
-  show(type: ToastType, message: string, options?: ToastOptions) {
-    const id = generateId();
-    const duration = options?.duration ?? (type === "error" ? 5000 : 3000);
-
-    const toast: Toast = {
-      id,
-      type,
-      message,
-      duration,
-      tweakName: options?.tweakName,
-      action: options?.action,
-    };
-
-    // Remove oldest toast(s) if at max capacity
-    while (toasts.length >= MAX_TOASTS) {
-      const oldest = toasts[0];
-      if (oldest) {
-        // Clear any pending timeout for the removed toast
-        const oldestTimeout = timeoutIds.get(oldest.id);
-        if (oldestTimeout) {
-          clearTimeout(oldestTimeout);
-          timeoutIds.delete(oldest.id);
-        }
-      }
-      toasts = toasts.slice(1);
+  /** The newest toast's text, for the live regions: removals never re-announce an older one. */
+  get announcement() {
+    return announcement;
+  },
+  dismiss,
+  /** Held while hovered or focused (WCAG 2.2.1); time left resumes on release. */
+  setPaused(next: boolean) {
+    if (next === paused) return;
+    paused = next;
+    for (const [id, timer] of timers) {
+      if (next) stop(timer);
+      else start(id, timer);
     }
-
-    toasts = [...toasts, toast];
-
-    // Auto-dismiss with proper cleanup
-    if (duration > 0) {
-      const timeoutId = setTimeout(() => {
-        toastStore.dismiss(id);
-      }, duration);
-      timeoutIds.set(id, timeoutId);
-    }
-
-    return id;
   },
-
-  /**
-   * Dismiss a specific toast
-   */
-  dismiss(id: string) {
-    // Clear the auto-dismiss timeout if it exists
-    const timeoutId = timeoutIds.get(id);
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutIds.delete(id);
-    }
-    toasts = toasts.filter((t) => t.id !== id);
+  /** The toast holding focus, kept when the stack overflows. */
+  hold(id: string | null) {
+    heldId = id;
   },
-
-  /**
-   * Clear all toasts
-   */
-  clear() {
-    // Clear all pending timeouts
-    for (const timeoutId of timeoutIds.values()) {
-      clearTimeout(timeoutId);
-    }
-    timeoutIds.clear();
-    toasts = [];
-  },
-
-  // Convenience methods
-  success(message: string, options?: ToastOptions) {
-    return this.show("success", message, options);
-  },
-
-  error(message: string, options?: ToastOptions) {
-    return this.show("error", message, options);
-  },
-
-  warning(message: string, options?: ToastOptions) {
-    return this.show("warning", message, options);
-  },
-
-  info(message: string, options?: ToastOptions) {
-    return this.show("info", message, options);
+  success: (message: string, options?: ToastOptions) => show("success", message, options),
+  error: (message: string, options?: ToastOptions) => show("error", message, options),
+  warning: (message: string, options?: ToastOptions) => show("warning", message, options),
+  info: (message: string, options?: ToastOptions) => show("info", message, options),
+  /** Logs the failure, then toasts it: a warning when the app refused because it is exiting, as nothing ran. */
+  failure(context: string, error: unknown, options?: FailureOptions) {
+    logError(context, error);
+    const message = errorMessage(error);
+    return show(
+      isAppExiting(error) ? "warning" : "error",
+      options?.withContext ? `${context}: ${message}` : message,
+      options,
+    );
   },
 };

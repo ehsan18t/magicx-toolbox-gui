@@ -1,64 +1,58 @@
-// App settings store with localStorage persistence using Svelte 5 runes
-
+import { STORAGE_KEYS } from "$lib/config/app";
+import type { AppSettings } from "$lib/types";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
-import type { AppSettings } from "../types";
 
-const SETTINGS_STORAGE_KEY = "magicx-app-settings";
-
-const defaultSettings: AppSettings = {
+const DEFAULT_SETTINGS: AppSettings = {
   autoCheckUpdates: true,
-  autoInstallUpdates: false,
-  checkUpdateInterval: 24, // hours
   lastUpdateCheck: null,
+  showUnsupported: false,
+  includePrereleases: false,
 };
 
-// Persistent state
-const settingsState = new PersistentStore<AppSettings>(SETTINGS_STORAGE_KEY, defaultSettings);
+// A stored object can predate a key: the default fills it.
+const settingsState = new PersistentStore<AppSettings>(STORAGE_KEYS.settings, DEFAULT_SETTINGS, (stored) =>
+  typeof stored === "object" && stored !== null ? { ...DEFAULT_SETTINGS, ...stored } : undefined,
+);
 
-// Derived values for convenience
 const autoCheckUpdates = $derived(settingsState.value.autoCheckUpdates);
-const autoInstallUpdates = $derived(settingsState.value.autoInstallUpdates);
-const checkUpdateInterval = $derived(settingsState.value.checkUpdateInterval);
 const lastUpdateCheck = $derived(settingsState.value.lastUpdateCheck);
+const showUnsupported = $derived(settingsState.value.showUnsupported);
+const includePrereleases = $derived(settingsState.value.includePrereleases);
+
+function update(changes: Partial<AppSettings>) {
+  settingsState.value = { ...settingsState.value, ...changes };
+}
 
 export const settingsStore = {
-  get settings() {
-    return settingsState.value;
-  },
-
   get autoCheckUpdates() {
     return autoCheckUpdates;
-  },
-
-  get autoInstallUpdates() {
-    return autoInstallUpdates;
-  },
-
-  get checkUpdateInterval() {
-    return checkUpdateInterval;
   },
 
   get lastUpdateCheck() {
     return lastUpdateCheck;
   },
 
-  update(newSettings: Partial<AppSettings>) {
-    settingsState.value = { ...settingsState.value, ...newSettings };
+  get showUnsupported() {
+    return showUnsupported;
   },
 
-  reset() {
-    settingsState.value = { ...defaultSettings };
+  get includePrereleases() {
+    return includePrereleases;
+  },
+
+  setShowUnsupported(show: boolean) {
+    update({ showUnsupported: show });
+  },
+
+  setIncludePrereleases(include: boolean) {
+    update({ includePrereleases: include });
   },
 
   setAutoCheckUpdates(enabled: boolean) {
-    this.update({ autoCheckUpdates: enabled });
-  },
-
-  setAutoInstallUpdates(enabled: boolean) {
-    this.update({ autoInstallUpdates: enabled });
+    update({ autoCheckUpdates: enabled });
   },
 
   setLastUpdateCheck(date: string | null) {
-    this.update({ lastUpdateCheck: date });
+    update({ lastUpdateCheck: date });
   },
 };

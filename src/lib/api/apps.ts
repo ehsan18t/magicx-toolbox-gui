@@ -1,6 +1,6 @@
-// API for app items. Every function maps 1:1 to a command in src-tauri/src/lib.rs's generate_handler!.
+// One function per command in src-tauri/src/commands/apps.rs.
 import { invoke } from "@tauri-apps/api/core";
-import type { AppStatusView, AppView } from "../types";
+import type { AppStatusView, AppView } from "$lib/types";
 
 export async function getApps(): Promise<AppView[]> {
   return await invoke<AppView[]>("get_apps");

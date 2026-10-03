@@ -145,7 +145,7 @@ tweaks:
       - No measurable gain on an SSD with enough RAM.
 
       ## Notes
-      - To revert, prefer System Default: it restores your PC's real prior start type.
+      - To revert, prefer Restore: it puts back your PC's real prior start type from the snapshot.
 
       ## Related
       - **Disable RAM memory compression** controls memory compression, which stays on with this tweak.
@@ -821,7 +821,7 @@ tweaks:
 
       ## Caveats
       - VBS itself keeps running when Hyper-V, WSL2, Windows Sandbox or Credential Guard need it, so the gain is smaller than advertised.
-      - Windows turns Memory Integrity on by default only on clean Windows 11 installs on qualifying hardware. Choosing "Memory integrity enabled" turns it on even if your PC never had it, so check driver compatibility or revert with System Default instead.
+      - Windows turns Memory Integrity on by default only on clean Windows 11 installs on qualifying hardware. Choosing "Memory integrity enabled" turns it on even if your PC never had it, so check driver compatibility first, or revert with Restore to put back your snapshot.
 
       ## Recommendation
       Only on a personal gaming PC where you knowingly accept weaker security, after confirming your anti-cheat allows it. Never on a work, shared or sensitive PC.
@@ -860,7 +860,7 @@ tweaks:
 
       ## Notes
       - Other mitigations (MDS, L1TF, Downfall and more) stay on.
-      - To revert, prefer System Default: it puts back any override that was there before.
+      - To revert, prefer Restore: it puts back any override that was there before.
 
       ## Recommendation
       Hard to justify on modern hardware. Only on an isolated, older, personal PC where you knowingly accept the risk.

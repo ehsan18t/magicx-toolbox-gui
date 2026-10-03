@@ -1,55 +1,68 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import type { Snippet } from "svelte";
+  import IconButton from "./IconButton.svelte";
+  import { field } from "./variants";
 
   interface Props {
     value: string;
-    placeholder?: string;
+    placeholder: string;
     class?: string;
+    /** Accessible name; defaults to the placeholder. */
+    label?: string;
+    inputRef?: HTMLInputElement | null;
     onchange?: (value: string) => void;
-    onclear?: () => void;
+    /** After the clear button, e.g. a scope toggle. */
+    trailing?: Snippet;
+    /** Backspace in an empty box, e.g. to drop that scope. */
+    onbackspace?: () => void;
   }
 
-  let { value = "", placeholder = "Search...", class: className = "", onchange, onclear }: Props = $props();
+  let {
+    value,
+    placeholder,
+    class: className,
+    label,
+    inputRef = $bindable(null),
+    onchange,
+    trailing,
+    onbackspace,
+  }: Props = $props();
 
-  function handleInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    onchange?.(target.value);
-  }
+  // `for` pins the label to the input: unpinned, a click is forwarded to a leading button instead.
+  const inputId = $props.id();
 
   function handleClear() {
     onchange?.("");
-    onclear?.();
+    inputRef?.focus();
   }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && value) {
+      e.preventDefault();
       handleClear();
+    } else if (e.key === "Backspace" && !value && onbackspace) {
+      e.preventDefault();
+      onbackspace();
     }
   }
 </script>
 
-<div class="relative {className}">
-  <Icon
-    icon="mdi:magnify"
-    width="18"
-    class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-foreground-muted"
-  />
+<label for={inputId} class={field({ focus: "within", class: className })}>
+  <Icon icon="mdi:magnify" size="md" class="shrink-0 text-foreground-muted" />
   <input
+    bind:this={inputRef}
+    id={inputId}
     type="text"
     {placeholder}
     {value}
-    oninput={handleInput}
+    aria-label={label ?? placeholder}
+    oninput={(e) => onchange?.(e.currentTarget.value)}
     onkeydown={handleKeydown}
-    class="w-full rounded-lg border border-border bg-surface py-2 pr-9 pl-10 text-sm text-foreground placeholder:text-foreground-muted focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none"
+    class="min-w-0 flex-1 border-0 bg-transparent text-ui text-foreground outline-none placeholder:text-foreground-subtle"
   />
   {#if value}
-    <button
-      type="button"
-      onclick={handleClear}
-      class="hover:bg-muted absolute top-1/2 right-2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-foreground-muted transition-colors hover:text-foreground"
-      aria-label="Clear search"
-    >
-      <Icon icon="mdi:close" width="16" />
-    </button>
+    <IconButton icon="mdi:close" size="xs" label="Clear search" class="animate-pop-in" onclick={handleClear} />
   {/if}
-</div>
+  {@render trailing?.()}
+</label>

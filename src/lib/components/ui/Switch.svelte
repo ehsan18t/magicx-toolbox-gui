@@ -1,37 +1,29 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import { cn } from "$lib/utils/cn";
+  import Spinner from "./Spinner.svelte";
+  import { DISABLED } from "./variants";
 
   interface Props {
     checked: boolean;
+    label: string;
     disabled?: boolean;
     loading?: boolean;
-    pending?: boolean;
     class?: string;
-    ariaLabel?: string;
     onchange?: (checked: boolean) => void;
   }
 
-  const {
-    checked,
-    disabled = false,
-    loading = false,
-    pending = false,
-    class: className = "",
-    ariaLabel = "Toggle",
-    onchange,
-  }: Props = $props();
+  let { checked, label, disabled = false, loading = false, class: className, onchange }: Props = $props();
 
-  function handleClick() {
-    if (!disabled && !loading) {
-      onchange?.(!checked);
-    }
+  function toggle() {
+    if (!disabled && !loading) onchange?.(!checked);
   }
 
+  // Toggles on keydown: the native click fires on Space keyup, a beat later.
   function handleKeydown(e: KeyboardEvent) {
-    if ((e.key === "Enter" || e.key === " ") && !disabled && !loading) {
-      e.preventDefault();
-      onchange?.(!checked);
-    }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    toggle();
   }
 </script>
 
@@ -39,25 +31,26 @@
   type="button"
   role="switch"
   aria-checked={checked}
-  aria-label={ariaLabel}
+  aria-label={label}
+  aria-busy={loading}
   {disabled}
-  class="switch shrink-0 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-70 {className}"
-  onclick={handleClick}
+  class={cn("shrink-0 cursor-pointer border-0 bg-transparent p-0", DISABLED, className)}
+  onclick={toggle}
   onkeydown={handleKeydown}
 >
   <span
-    class="switch-track flex h-6 w-11 items-center rounded-full p-0.5 transition-colors duration-200 hover:brightness-95
-      {checked ? (pending ? 'bg-warning' : 'bg-accent') : 'bg-muted'}"
+    class="flex h-6 w-11 items-center rounded-full p-0.5 transition-[background-color,filter] duration-normal hover:brightness-95
+      {checked ? 'bg-accent' : 'bg-muted'}"
   >
     <span
-      class="switch-thumb flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-200
-        {checked ? 'translate-x-5' : 'translate-x-0'}
+      class="flex h-5 w-5 items-center justify-center rounded-full shadow-md transition-transform duration-normal
+        {checked ? 'translate-x-5 bg-accent-foreground' : 'translate-x-0 bg-thumb'}
         {loading ? 'text-foreground-muted' : 'text-accent'}"
     >
       {#if loading}
-        <Icon icon="mdi:loading" width={14} class="animate-spin" />
+        <Spinner size="xs" tone="current" />
       {:else if checked}
-        <Icon icon="mdi:check" width={14} />
+        <Icon icon="mdi:check" size="xs" class="animate-pop-in" />
       {/if}
     </span>
   </span>

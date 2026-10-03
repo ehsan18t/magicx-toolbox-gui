@@ -1,414 +1,190 @@
-/**
- * Search Store - Svelte 5 Runes
- *
- * High-performance fuzzy search using uFuzzy.
- * Features:
- * - Out-of-order term matching (e.g., "telemetry disable" matches "disable_telemetry")
- * - Term exclusion support (e.g., "privacy -feedback")
- * - Match highlighting with character ranges
- * - Efficient haystack preparation (search strings cached)
- * - Single uFuzzy instance (no memory leaks)
- * - Result caching to avoid redundant searches
- */
+// Fuzzy search over tweaks and apps (uFuzzy): out-of-order terms, `-term` exclusion, per-field highlights.
 
-import { appsStore } from "$lib/stores/apps.svelte";
-import { tweaksStore } from "$lib/stores/tweaks.svelte";
+import type { ItemKind } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
+import { FIELD_SEP, type FieldBounds, fieldRanges } from "$lib/utils/fieldRanges";
+import { logError } from "$lib/utils/logger";
 import uFuzzy from "@leeoniya/ufuzzy";
+import { untrack } from "svelte";
+import { appsStore } from "./apps.svelte";
+import { settingsStore } from "./settings.svelte";
+import { tweaksStore } from "./tweaksData.svelte";
 
-// === Types ===
-
-/** A search result with match information */
 export interface SearchResult {
-  /** Apps only render as cards; apply, discard and restore flows read tweak results alone. */
-  kind: "tweak" | "app";
-  /** Tweak or app id (unique across both) */
+  /** Restore on the results page reads tweak results alone. */
+  kind: ItemKind;
+  /** Unique across tweaks and apps. */
   id: string;
-  /** Category ID for navigation */
   categoryId: string;
-  /** The original haystack index */
-  haystackIndex: number;
-  /** Highlight ranges for name field: [start, end, start, end, ...] */
+  /** Highlight ranges as flat [start, end, start, end, …] pairs, per field. */
   nameRanges: number[];
-  /** Highlight ranges for description field */
   descriptionRanges: number[];
-  /** Highlight ranges for info field */
   infoRanges: number[];
 }
 
-/** Prepared haystack entry for efficient searching */
-interface HaystackEntry {
-  /** Combined searchable text: "name | description | info" */
-  searchText: string;
-  kind: SearchResult["kind"];
+interface HaystackEntry extends FieldBounds {
+  kind: ItemKind;
   id: string;
   categoryId: string;
-  /** Pre-computed field boundaries for highlight extraction */
-  nameEnd: number;
-  descEnd: number;
 }
 
-// === uFuzzy Configuration ===
+/** Permutations tried for out-of-order terms (2 = 2!). */
+const OUT_OF_ORDER = 2;
+/** Matches ranked and highlighted; beyond this uFuzzy only filters. */
+const INFO_THRESHOLD = 1000;
+const MAX_RESULTS = 100;
+const DEBOUNCE_MS = 200;
 
-/**
- * Create uFuzzy instance with optimal settings for tweak search:
- * - intraMode: 1 (SingleError) - tolerate typos like "telmetry" -> "telemetry"
- * - interLft/interRgt: 1 (Loose) - match at word boundaries for better relevance
- */
 const uf = new uFuzzy({
-  intraMode: 1, // Allow single-char typos
-  intraIns: 1, // Allow 1 char insertion within terms
-  intraSub: 1, // Allow 1 substitution
-  intraTrn: 1, // Allow 1 transposition
-  intraDel: 1, // Allow 1 deletion
-  interLft: 1, // Loose left boundary (word starts)
-  interRgt: 0, // Any right boundary (allow partial matches)
+  // SingleError: tolerates one typo per term, e.g. "telmetry".
+  intraMode: 1,
+  intraIns: 1,
+  intraSub: 1,
+  intraTrn: 1,
+  intraDel: 1,
+  // Terms start at word boundaries but may end anywhere.
+  interLft: 1,
+  interRgt: 0,
 });
 
-// === State ===
-
-/** Current search query (user input) */
 let query = $state("");
-
-/** Cached search results */
-let results = $state<SearchResult[]>([]);
-
-/** Whether a search is in progress */
-let isSearching = $state(false);
-
-/** Error message if search failed */
-let error = $state<string | null>(null);
-
-/** Query that produced current cached results */
-let cachedQuery = "";
-
-/** Tweak ID to highlight after navigation */
-let highlightTweakId = $state<string | null>(null);
-
-/** Debounce timer for search queries */
+let searchedQuery = $state("");
+// Bumped by search(), so a retry re-runs the same query.
+let runs = $state(0);
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Debounce delay in milliseconds */
-const DEBOUNCE_DELAY = 200;
-
-// === Haystack Cache ===
-
-/** Cached haystack data - rebuilt when tweaks or apps change */
-let haystackCache: {
-  /** Array of searchable strings for uFuzzy */
-  strings: string[];
-  /** Parallel array of metadata */
-  entries: HaystackEntry[];
-  /** Tweak and app list hash to detect changes */
-  tweaksHash: string;
-} | null = null;
-
-/**
- * Build or retrieve cached haystack from current tweaks.
- * The haystack is an array of strings combining name, description, and info
- * with separators that allow us to extract highlight ranges per field.
- */
-function getHaystack(): { strings: string[]; entries: HaystackEntry[] } {
-  const tweaks = tweaksStore.list;
-
-  // Create a composite hash of length + version to detect any changes
-  // version increments on status updates or reloads
-  // Use string concatenation to avoid arithmetic collisions (e.g., 10+5 vs 11+4)
-  const apps = appsStore.list;
-  const tweaksHash = `${tweaks.length}-${tweaksStore.version}-${apps.length}-${appsStore.version}`;
-
-  // Return cached if still valid
-  if (haystackCache && haystackCache.tweaksHash === tweaksHash) {
-    return haystackCache;
-  }
-
-  // Build new haystack
-  const strings: string[] = [];
-  const entries: HaystackEntry[] = [];
-
-  const items = [
-    ...tweaks.map(({ definition: d }) => ({
-      kind: "tweak" as const,
-      id: d.id,
-      categoryId: d.category_id,
-      name: d.name,
-      description: d.description || "",
-      info: d.info || "",
-    })),
-    ...apps.map((a) => ({
-      kind: "app" as const,
-      id: a.id,
-      categoryId: a.category,
-      name: a.name,
-      description: a.description || "",
-      info: a.info || "",
-    })),
-  ];
-
-  for (const { name, description, info, ...item } of items) {
-    // Combine fields with separator for single-string search
-    // Format: "name | description | info"
-    const searchText = `${name} | ${description} | ${info}`;
-
-    strings.push(searchText);
-    entries.push({
-      searchText,
-      ...item,
-      nameEnd: name.length,
-      descEnd: name.length + 3 + description.length, // +3 for " | "
-    });
-  }
-
-  haystackCache = { strings, entries, tweaksHash };
-  return haystackCache;
-}
-
-/**
- * Extract per-field highlight ranges from combined string ranges.
- * uFuzzy returns ranges for the combined "name | description | info" string,
- * we need to split them back into individual field ranges.
- */
-function extractFieldRanges(
-  ranges: number[],
-  entry: HaystackEntry,
-): { nameRanges: number[]; descriptionRanges: number[]; infoRanges: number[] } {
-  const nameRanges: number[] = [];
-  const descriptionRanges: number[] = [];
-  const infoRanges: number[] = [];
-
-  const nameEnd = entry.nameEnd;
-  const descStart = nameEnd + 3; // After " | "
-  const descEnd = entry.descEnd;
-  const infoStart = descEnd + 3; // After second " | "
-
-  // Process range pairs [start, end, start, end, ...]
-  for (let i = 0; i < ranges.length; i += 2) {
-    const start = ranges[i];
-    const end = ranges[i + 1];
-
-    // Check which field(s) this range overlaps
-    if (end <= nameEnd) {
-      // Entirely in name
-      nameRanges.push(start, end);
-    } else if (start >= infoStart) {
-      // Entirely in info
-      infoRanges.push(start - infoStart, end - infoStart);
-    } else if (start >= descStart && end <= descEnd) {
-      // Entirely in description
-      descriptionRanges.push(start - descStart, end - descStart);
-    } else {
-      // Range spans multiple fields - split it
-      if (start < nameEnd) {
-        nameRanges.push(start, Math.min(end, nameEnd));
-      }
-      if (start < descEnd && end > descStart) {
-        descriptionRanges.push(Math.max(0, start - descStart), Math.min(end - descStart, descEnd - descStart));
-      }
-      if (end > infoStart) {
-        infoRanges.push(Math.max(0, start - infoStart), end - infoStart);
-      }
+// Keyed on the model versions, not the lists: status events replace the tweak list but never its text.
+const haystack = $derived.by(() => {
+  void [tweaksStore.modelVersion, appsStore.modelVersion, settingsStore.showUnsupported];
+  return untrack(() => {
+    const items = [
+      ...tweaksStore.list.map(({ definition: d }) => ({
+        kind: "tweak" as const,
+        id: d.id,
+        categoryId: d.categoryId,
+        name: d.name,
+        description: d.description,
+        info: d.info ?? "",
+      })),
+      ...appsStore.list.map((a) => ({
+        kind: "app" as const,
+        id: a.id,
+        categoryId: a.category,
+        name: a.name,
+        description: a.description,
+        info: a.info ?? "",
+      })),
+    ];
+    const strings: string[] = [];
+    const entries: HaystackEntry[] = [];
+    for (const { name, description, info, ...item } of items) {
+      strings.push([name, description, info].join(FIELD_SEP));
+      entries.push({ ...item, nameEnd: name.length, descEnd: name.length + FIELD_SEP.length + description.length });
     }
-  }
+    return { strings, entries };
+  });
+});
 
-  return { nameRanges, descriptionRanges, infoRanges };
+function toResult(idx: number, ranges: number[]): SearchResult {
+  const entry = haystack.entries[idx];
+  return {
+    kind: entry.kind,
+    id: entry.id,
+    categoryId: entry.categoryId,
+    ...fieldRanges(ranges, entry),
+  };
 }
 
-// === Derived State ===
+/** Every fuzzy match, unranked and uncapped, keyed by id: the in-page filter keeps its own order. */
+function fuzzyMatches(needle: string): Record<string, SearchResult> {
+  const q = needle.trim();
+  if (!q) return {};
+  const { strings } = haystack;
+  const [idxs, info] = uf.search(strings, q, OUT_OF_ORDER, strings.length);
+  // A multi-term miss returns an info object with no idx, so the empty case must return first.
+  if (!idxs || idxs.length === 0) return {};
+  const hits = info?.idx
+    ? info.idx.map((idx, i) => toResult(idx, info.ranges[i] ?? []))
+    : idxs.map((idx) => toResult(idx, []));
+  return Object.fromEntries(hits.map((hit) => [hit.id, hit]));
+}
 
-const hasResults = $derived(results.length > 0);
+function rank(needle: string): SearchResult[] {
+  const { strings } = haystack;
+  if (strings.length === 0) return [];
+  const [idxs, info, order] = uf.search(strings, needle, OUT_OF_ORDER, INFO_THRESHOLD);
+  if (!idxs || idxs.length === 0) return [];
+  if (info && order) {
+    return order.slice(0, MAX_RESULTS).map((i) => toResult(info.idx[i], info.ranges[i] || []));
+  }
+  // Past INFO_THRESHOLD: filtered, unranked, no highlights.
+  return idxs.slice(0, MAX_RESULTS).map((idx) => toResult(idx, []));
+}
+
+const outcome = $derived.by((): { results: SearchResult[]; error: string | null } => {
+  void runs;
+  if (!searchedQuery) return { results: [], error: null };
+  try {
+    return { results: rank(searchedQuery), error: null };
+  } catch (error) {
+    logError("Search failed", error);
+    return { results: [], error: errorMessage(error) };
+  }
+});
+
 const isActive = $derived(query.trim().length > 0);
-const resultCount = $derived(results.length);
 
-// === Export ===
+function search() {
+  searchedQuery = query.trim();
+  runs++;
+}
 
 export const searchStore = {
-  // --- Getters ---
-
   get query() {
     return query;
   },
 
+  /** Recomputed when the query is searched or the model reloads. */
   get results() {
-    return results;
+    return outcome.results;
   },
 
-  get isSearching() {
-    return isSearching;
+  /** The query the current results answer; lags `query` while a search is debounced. */
+  get searchedQuery() {
+    return searchedQuery;
   },
 
   get error() {
-    return error;
-  },
-
-  get hasResults() {
-    return hasResults;
+    return outcome.error;
   },
 
   get isActive() {
     return isActive;
   },
 
-  get resultCount() {
-    return resultCount;
-  },
-
-  get highlightTweakId() {
-    return highlightTweakId;
-  },
-
-  // --- Actions ---
-
-  /**
-   * Set search query and trigger debounced search.
-   * @param newQuery - The search query string
-   */
+  /** Searches after a debounce; an empty query clears at once. */
   setQuery(newQuery: string) {
     query = newQuery;
     const trimmed = newQuery.trim();
 
-    // Clear any pending debounced search
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
-
-    // Clear for empty query immediately (no debounce needed)
     if (!trimmed) {
-      results = [];
-      cachedQuery = "";
-      error = null;
+      searchedQuery = "";
       return;
     }
+    if (trimmed === searchedQuery) return;
 
-    // Skip if query unchanged
-    if (trimmed === cachedQuery) {
-      return;
-    }
-
-    // Debounce search execution to reduce CPU usage during rapid typing
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      this.search();
-    }, DEBOUNCE_DELAY);
+      search();
+    }, DEBOUNCE_MS);
   },
 
-  /**
-   * Execute fuzzy search with current query.
-   * Uses uFuzzy's integrated search() API with out-of-order matching.
-   */
-  search() {
-    const needle = query.trim();
+  /** Searches the current query now. */
+  search,
 
-    if (!needle) {
-      results = [];
-      cachedQuery = "";
-      return;
-    }
-
-    isSearching = true;
-    error = null;
-
-    try {
-      const { strings, entries } = getHaystack();
-
-      if (strings.length === 0) {
-        results = [];
-        cachedQuery = needle;
-        isSearching = false;
-        return;
-      }
-
-      // Use integrated search with out-of-order support
-      // outOfOrder = 2 means up to 2! = 2 permutations (reasonable for most queries)
-      // infoThresh = 1000 means rank/sort up to 1000 results
-      const [idxs, info, order] = uf.search(strings, needle, 2, 1000);
-
-      // Handle no results
-      if (!idxs || idxs.length === 0) {
-        results = [];
-        cachedQuery = needle;
-        isSearching = false;
-        return;
-      }
-
-      // Build results with highlight ranges
-      const searchResults: SearchResult[] = [];
-
-      if (info && order) {
-        // We have ranked results with highlight info
-        for (let i = 0; i < order.length && i < 100; i++) {
-          const infoIdx = order[i];
-          const haystackIdx = info.idx[infoIdx];
-          const entry = entries[haystackIdx];
-          const ranges = info.ranges[infoIdx] || [];
-
-          const fieldRanges = extractFieldRanges(ranges, entry);
-
-          searchResults.push({
-            kind: entry.kind,
-            id: entry.id,
-            categoryId: entry.categoryId,
-            haystackIndex: haystackIdx,
-            ...fieldRanges,
-          });
-        }
-      } else {
-        // Only filtered results (no ranking) - rare case for very large result sets
-        for (let i = 0; i < Math.min(idxs.length, 100); i++) {
-          const haystackIdx = idxs[i];
-          const entry = entries[haystackIdx];
-
-          searchResults.push({
-            kind: entry.kind,
-            id: entry.id,
-            categoryId: entry.categoryId,
-            haystackIndex: haystackIdx,
-            nameRanges: [],
-            descriptionRanges: [],
-            infoRanges: [],
-          });
-        }
-      }
-
-      results = searchResults;
-      cachedQuery = needle;
-    } catch (e) {
-      error = errorMessage(e);
-      console.error("[search] Search failed:", e);
-    } finally {
-      isSearching = false;
-    }
-  },
-
-  /**
-   * Clear search state completely.
-   */
-  clear() {
-    query = "";
-    results = [];
-    cachedQuery = "";
-    error = null;
-    highlightTweakId = null;
-  },
-
-  /**
-   * Set tweak ID to highlight (for navigation animation).
-   */
-  setHighlight(tweakId: string | null) {
-    highlightTweakId = tweakId;
-  },
-
-  /**
-   * Clear highlight state.
-   */
-  clearHighlight() {
-    highlightTweakId = null;
-  },
-
-  /**
-   * Invalidate haystack cache (call when tweaks are modified).
-   */
-  invalidateCache() {
-    haystackCache = null;
-  },
+  fuzzyMatches,
 };

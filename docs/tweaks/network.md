@@ -21,7 +21,7 @@ This category covers network hardening (encrypted DNS, the three broadcast name-
 | [Disable wake timers](#disable-wake-timers) | `disable_wake_timers` | Switch | low | admin | no | VERIFIED-WITH-CORRECTION |
 | [Disable Modern Standby (force S3)](#disable-modern-standby-force-s3) | `disable_modern_standby` | Switch (2 options) | high | admin | yes | VERIFIED |
 
-A note on the Control column: in this app one or two authored options render as a segmented switch and three or more as a dropdown; System Default joins either while it is the live state. System Default is never written; it is what the app shows when the live machine matches none of the authored options, and selecting it walks back through the tweak's snapshot (Restore Snapshot) rather than writing a guessed "default" value.
+A note on the Control column: in this app one authored option renders as a System default | option switch, two as a segmented switch and three or more as a dropdown. System Default is never written, and only a one-option switch offers it (as a Restore); it is what the row's state line shows when the live machine matches none of the authored options, and Restore walks back through the tweak's snapshot rather than writing a guessed "default" value.
 
 ## Tweaks
 
@@ -42,7 +42,7 @@ A note on the Control column: in this app one or two authored options render as 
 | Auto-upgrade to DoH | `2` |
 | No auto-upgrade | `absent` (value deleted) |
 
-System Default: shown only if `EnableAutoDoh` holds some value other than 2 (for example 1 or 0 written by another tool); selecting it restores the snapshot. Stock Windows has no `EnableAutoDoh` value, so an untouched machine reads as "No auto-upgrade".
+System Default: shown only if `EnableAutoDoh` holds some value other than 2 (for example 1 or 0 written by another tool); the Restore button restores the snapshot. Stock Windows has no `EnableAutoDoh` value, so an untouched machine reads as "No auto-upgrade".
 
 #### How it works
 
@@ -110,7 +110,7 @@ Apply it only if you have already pointed your adapter at Cloudflare, Google, Qu
 | Require encryption | `3` |
 | Encryption optional | `absent` (value deleted) |
 
-System Default: shown when `DoHPolicy` holds 1 ("Prohibit encryption") or 2 ("Allow encryption"), for example from Group Policy or MDM; selecting it restores the snapshot. Stock Windows has no `DoHPolicy` value, so an untouched machine reads as "Encryption optional".
+System Default: shown when `DoHPolicy` holds 1 ("Prohibit encryption") or 2 ("Allow encryption"), for example from Group Policy or MDM; the Restore button restores the snapshot. Stock Windows has no `DoHPolicy` value, so an untouched machine reads as "Encryption optional".
 
 #### How it works
 
@@ -176,7 +176,7 @@ The right choice for a privacy-motivated user on a standalone Windows 11 machine
 | Disabled | `0` |
 | Enabled | `absent` (value deleted) |
 
-System Default: shown when `EnableMulticast` holds a value other than 0 (for example 1 from a policy); selecting it restores the snapshot. Stock Windows has no value (LLMNR on), so an untouched machine reads as "Enabled".
+System Default: shown when `EnableMulticast` holds a value other than 0 (for example 1 from a policy); the Restore button restores the snapshot. Stock Windows has no value (LLMNR on), so an untouched machine reads as "Enabled".
 
 #### How it works
 
@@ -308,7 +308,7 @@ Apply it on any modern network, ideally together with [Disable LLMNR](#disable-l
 | Disabled | `0` | `0` |
 | Enabled | `absent` | `absent` |
 
-System Default: shown when the two values disagree or hold anything other than the combinations above (for example only one of them set, or `EnableMDNS = 1` from a policy); selecting it restores the snapshot. Stock Windows has neither value, so an untouched machine reads as "Enabled".
+System Default: shown when the two values disagree or hold anything other than the combinations above (for example only one of them set, or `EnableMDNS = 1` from a policy); the Restore button restores the snapshot. Stock Windows has neither value, so an untouched machine reads as "Enabled".
 
 #### How it works
 
@@ -372,7 +372,7 @@ Worth applying on a hardened workstation with no `.local` dependencies and no mD
 | Disabled | `1` |
 | Enabled | `absent` (value deleted) |
 
-System Default: shown when `DisableWpad` holds a value other than 1; selecting it restores the snapshot. Stock Windows has no value (WPAD on), so an untouched machine reads as "Enabled".
+System Default: shown when `DisableWpad` holds a value other than 1; the Restore button restores the snapshot. Stock Windows has no value (WPAD on), so an untouched machine reads as "Enabled".
 
 #### How it works
 
@@ -434,7 +434,7 @@ Apply it on any home or small-office machine that does not use automatic proxy c
 | Tunnels disabled | `0x01` |
 | Enabled | `absent` (value deleted) |
 
-System Default: shown when `DisabledComponents` holds any other value, for example `0x20` (prefer IPv4) or `0xFF` (IPv6 disabled) set by another tool or admin; selecting it restores the snapshot. Stock Windows has no value (equivalent to `0x00`), so an untouched machine reads as "Enabled".
+System Default: shown when `DisabledComponents` holds any other value, for example `0x20` (prefer IPv4) or `0xFF` (IPv6 disabled) set by another tool or admin; the Restore button restores the snapshot. Stock Windows has no value (equivalent to `0x00`), so an untouched machine reads as "Enabled".
 
 #### How it works
 
@@ -574,7 +574,7 @@ Per profile (the same pattern for Domain, Private and Public; `<p>` is `domain`,
 | Log dropped packets and ignore local rules | `1` | `%SystemRoot%\System32\logfiles\firewall\<p>fw.log` | `16384` | `0` |
 | No dropped-packet logging | `absent` | `absent` | `absent` | `absent` |
 
-The three log files are `domainfw.log`, `privatefw.log` and `publicfw.log`. System Default: shown when the twelve values match none of the three rows (for example logging set by Group Policy with a different path or size); selecting it restores the snapshot. Stock Windows has none of these values, so an untouched machine reads as "No dropped-packet logging".
+The three log files are `domainfw.log`, `privatefw.log` and `publicfw.log`. System Default: shown when the twelve values match none of the three rows (for example logging set by Group Policy with a different path or size); the Restore button restores the snapshot. Stock Windows has none of these values, so an untouched machine reads as "No dropped-packet logging".
 
 #### How it works
 
@@ -713,7 +713,7 @@ The action is declared first, so `powercfg` does the real work (it writes `Hiber
 - **apply**: records `HiberFileSizePercent` from `HKLM\SYSTEM\CurrentControlSet\Control\Power` (as `SizePercent`, `-1` if absent), then runs `powercfg /hibernate off` and fails if it returns non-zero.
 - **undo**: runs `powercfg /hibernate on` and fails if that returns non-zero; then, if a size percentage above 0 was recorded, runs `powercfg /hibernate /size <percent>` (failing if that fails), and deletes the snapshot key.
 
-System Default: shown only when `HibernateEnabled` holds neither 0 nor 1 (for example it is missing); selecting it restores the snapshot. Detection reads the live value, so a machine that already had hibernation off reads as "Disabled" without any apply, and one with hibernation on reads as "Enabled", for every Windows account. Stock Windows: hibernation enabled on most machines; the research machine read `HibernateEnabled = 0` with `HibernateEnabledDefault = 1`, and that machine is owner-modified, so it is not evidence of the Windows default.
+System Default: shown only when `HibernateEnabled` holds neither 0 nor 1 (for example it is missing); the Restore button restores the snapshot. Detection reads the live value, so a machine that already had hibernation off reads as "Disabled" without any apply, and one with hibernation on reads as "Enabled", for every Windows account. Stock Windows: hibernation enabled on most machines; the research machine read `HibernateEnabled = 0` with `HibernateEnabledDefault = 1`, and that machine is owner-modified, so it is not evidence of the Windows default.
 
 #### How it works
 
@@ -735,7 +735,7 @@ Because detection follows `HibernateEnabled`, the revert stays faithful to what 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions. Requires administrator.
 - **Takes effect**: immediately.
-- **Reverting**: "Enabled", or System Default after applying, runs the undo: hibernation comes back with the recorded size percentage, or at the default size if none was recorded. On hardware or a virtual machine that does not support hibernation, `powercfg /hibernate on` fails and the change is rolled back.
+- **Reverting**: "Enabled", or Restore after applying, runs the undo: hibernation comes back with the recorded size percentage, or at the default size if none was recorded. On hardware or a virtual machine that does not support hibernation, `powercfg /hibernate on` fails and the change is rolled back.
 
 #### Interactions
 - [performance] `disable_fast_startup` (`HiberbootEnabled = 0`) turns off Fast Startup alone; with hibernation disabled here, Fast Startup is already unavailable, so that tweak changes nothing extra until hibernation is re-enabled.
@@ -915,7 +915,7 @@ Worth applying if a PC that wakes itself on mains power at night bothers you. Sk
 
 How the precondition decides: it finds the line containing `(S3)` in `powercfg /a` output. An unavailable state is followed by a more-indented reason line (such as "The system firmware does not support this standby state"); an available one is not. The check passes only when the next line is blank or not more indented, and fails if no `(S3)` line exists. When it fails, the apply fails and the engine rolls back the registry write from the snapshot, so the value is not left behind.
 
-System Default: shown when `PlatformAoAcOverride` holds a value other than 0 (for example 1 from another tool); selecting it restores the snapshot. The precondition is ephemeral and plays no part in detection. Stock Windows has no value, so an untouched machine reads as "Modern Standby" (even on a machine that uses S3 by design, since the option only describes the value).
+System Default: shown when `PlatformAoAcOverride` holds a value other than 0 (for example 1 from another tool); the Restore button restores the snapshot. The precondition is ephemeral and plays no part in detection. Stock Windows has no value, so an untouched machine reads as "Modern Standby" (even on a machine that uses S3 by design, since the option only describes the value).
 
 #### How it works
 

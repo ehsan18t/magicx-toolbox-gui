@@ -1,22 +1,33 @@
 <script lang="ts" module>
   // Only the topmost modal handles keys and focus: stacked focus traps pull focus back and forth forever.
   const openStack: object[] = [];
+
+  const FOCUSABLE = [
+    "a[href]",
+    "summary",
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(",");
 </script>
 
 <script lang="ts">
+  import { focusFallback, reclaimFocus } from "$lib/utils/focus";
   import type { Snippet } from "svelte";
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
+  import { setModalTitleId } from "./modalContext";
+  import { modal, type ModalSize } from "./variants";
 
   interface Props {
     open: boolean;
     onclose?: () => void;
-    size?: "sm" | "md" | "lg" | "xl";
+    size?: ModalSize;
     closeOnBackdrop?: boolean;
     closeOnEscape?: boolean;
-    class?: string;
     role?: "dialog" | "alertdialog";
-    /** ID of the element that labels this modal (for aria-labelledby) */
-    labelledBy?: string;
+    describedBy?: string;
     children: Snippet;
   }
 
@@ -26,18 +37,22 @@
     size = "md",
     closeOnBackdrop = true,
     closeOnEscape = true,
-    class: className = "",
     role = "dialog",
-    labelledBy,
+    describedBy,
     children,
   }: Props = $props();
 
-  // Internal state to manage exit animation
+  const titleId = $props.id();
+  setModalTitleId(titleId);
+
+  // Mounted while open or playing the exit animation.
   let isVisible = $state(false);
   let isClosing = $state(false);
 
   let modalEl = $state<HTMLElement | null>(null);
-  let previouslyFocusedEl = $state<HTMLElement | null>(null);
+  let previouslyFocusedEl: HTMLElement | null = null;
+  // A drag that starts inside (selecting text) and ends on the scrim is not a backdrop click.
+  let pressedScrim = false;
 
   const stackToken = {};
   const isTopmost = () => openStack.at(-1) === stackToken;
@@ -48,21 +63,10 @@
     return () => void openStack.splice(openStack.indexOf(stackToken), 1);
   });
 
+  // Keeps aria-disabled controls: they stay focusable to announce why they are blocked.
   function getFocusableElements(root: HTMLElement): HTMLElement[] {
-    // Keep selector intentionally conservative to avoid trapping non-interactive elements.
-    const selector = [
-      "a[href]",
-      "button:not([disabled])",
-      "input:not([disabled])",
-      "select:not([disabled])",
-      "textarea:not([disabled])",
-      "[tabindex]:not([tabindex='-1'])",
-    ].join(",");
-
-    return Array.from(root.querySelectorAll<HTMLElement>(selector)).filter((el) => {
-      // Exclude elements that are not actually focusable/visible.
+    return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => {
       if (el.hasAttribute("disabled")) return false;
-      if (el.getAttribute("aria-disabled") === "true") return false;
       if (el.closest("[inert]")) return false;
       return el.offsetParent !== null || el === document.activeElement;
     });
@@ -73,33 +77,15 @@
     await tick();
 
     const focusables = getFocusableElements(modalEl);
-    const first = focusables[0];
-
-    if (first) {
-      first.focus();
-      return;
-    }
-
-    // If there are no focusable elements, focus the modal container.
-    modalEl.tabIndex = -1;
-    modalEl.focus();
+    (focusables.find((el) => el.getAttribute("aria-disabled") !== "true") ?? focusables[0] ?? modalEl).focus();
   }
 
-  // Track open prop changes to trigger animations
   $effect(() => {
     if (open && !isVisible && !isClosing) {
-      // Opening: show immediately
+      // Kept through a reopen during the exit animation, when focus is still inside the closing panel.
+      previouslyFocusedEl ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
       isVisible = true;
-    } else if (!open && isVisible && !isClosing) {
-      // Closing: trigger exit animation
-      isClosing = true;
-    }
-  });
-
-  // Focus management (capture on open, restore on fully closed)
-  $effect(() => {
-    if (!open) return;
-    previouslyFocusedEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    } else if (!open && isVisible && !isClosing) isClosing = true;
   });
 
   $effect(() => {
@@ -107,33 +93,35 @@
     void focusInitialElement();
   });
 
-  $effect(() => {
-    if (isVisible) return;
+  function restoreFocus() {
     if (!previouslyFocusedEl) return;
     try {
+      // The opener can be gone or on its way out (a discarded entry): focus() is then a no-op.
       previouslyFocusedEl.focus();
+      reclaimFocus(focusFallback(modalEl));
     } finally {
       previouslyFocusedEl = null;
     }
+  }
+
+  $effect(() => {
+    if (!isVisible) restoreFocus();
   });
 
-  const sizeClasses: Record<string, string> = {
-    sm: "w-[min(90vw,360px)]",
-    md: "w-[min(90vw,480px)]",
-    lg: "w-[min(92vw,640px)]",
-    xl: "w-[min(92vw,900px)]",
-  };
+  // Unmounted while open, e.g. its host went away.
+  onDestroy(restoreFocus);
 
   function handleBackdropClick(e: MouseEvent) {
-    if (closeOnBackdrop && e.target === e.currentTarget && onclose) {
-      onclose();
-    }
+    if (pressedScrim && e.target === e.currentTarget && closeOnBackdrop) onclose?.();
+    pressedScrim = false;
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (!isTopmost()) return;
+    // A control inside (an open dropdown) already used this key.
+    if (e.defaultPrevented || !isTopmost()) return;
     if (closeOnEscape && e.key === "Escape" && isVisible && !isClosing && onclose) {
-      e.stopPropagation();
+      // Lets later window listeners see the key was used.
+      e.preventDefault();
       onclose();
     }
 
@@ -142,7 +130,6 @@
     const focusables = getFocusableElements(modalEl);
     if (focusables.length === 0) {
       e.preventDefault();
-      modalEl.tabIndex = -1;
       modalEl.focus();
       return;
     }
@@ -151,7 +138,6 @@
     const last = focusables[focusables.length - 1];
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    // If focus escaped somehow, bring it back.
     if (!active || !modalEl.contains(active)) {
       e.preventDefault();
       first.focus();
@@ -188,8 +174,8 @@
   });
 
   function handleAnimationEnd(e: AnimationEvent) {
-    // Only handle our exit animation
-    if (e.animationName === "modal-out" && isClosing) {
+    // Animations inside the dialog bubble up here too.
+    if (e.target === e.currentTarget && isClosing) {
       isVisible = false;
       isClosing = false;
     }
@@ -199,20 +185,21 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if isVisible}
+  {@const styles = modal({ size, closing: isClosing })}
   <div
-    class="modal-backdrop fixed inset-0 z-1000 flex items-center justify-center backdrop-blur-sm
-      {isClosing ? 'animate-fade-out bg-black/0' : 'animate-fade-in bg-black/60'}"
+    class={styles.scrim()}
     role="presentation"
+    onpointerdown={(e) => (pressedScrim = e.target === e.currentTarget)}
     onclick={handleBackdropClick}
   >
     <div
-      class="modal-content overflow-hidden rounded-xl border border-border bg-card shadow-xl {sizeClasses[
-        size
-      ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'} {className}"
+      class={styles.panel()}
       bind:this={modalEl}
       {role}
+      tabindex="-1"
       aria-modal="true"
-      aria-labelledby={labelledBy}
+      aria-labelledby={titleId}
+      aria-describedby={describedBy}
       onanimationend={handleAnimationEnd}
     >
       {@render children()}

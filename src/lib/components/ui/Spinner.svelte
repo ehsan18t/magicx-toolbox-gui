@@ -1,23 +1,32 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-
-  type Size = "sm" | "md" | "lg";
+  import type { IconSize } from "$lib/design";
+  import { cn } from "$lib/utils/cn";
+  import type { Snippet } from "svelte";
 
   interface Props {
-    size?: Size;
+    /** On the icon scale. */
+    size?: IconSize;
+    /** `current` takes the surrounding text colour, e.g. inside a button. */
+    tone?: "accent" | "current";
+    /** Names the status; without it or `children` the spinner is decorative. */
+    label?: string;
     class?: string;
-    ariaLabel?: string;
+    /** Visible status text beside the spinner. */
+    children?: Snippet;
   }
 
-  let { size = "md", class: className = "", ariaLabel = "Loading" }: Props = $props();
+  let { size = "3xl", tone = "accent", label, class: className, children }: Props = $props();
 
-  const sizeMap: Record<Size, number> = {
-    sm: 16,
-    md: 24,
-    lg: 32,
-  };
+  const isStatus = $derived(!!label || !!children);
 </script>
 
-<span role="status" aria-label={ariaLabel} class="inline-flex {className}">
-  <Icon icon="mdi:loading" width={sizeMap[size]} class="animate-spin text-accent" />
+<span
+  role={isStatus ? "status" : undefined}
+  aria-label={label}
+  aria-hidden={isStatus ? undefined : "true"}
+  class={cn("inline-flex", children && "items-center gap-2", className)}
+>
+  <Icon icon="mdi:loading" {size} class={cn("animate-spin", tone === "accent" && "text-accent")} />
+  {@render children?.()}
 </span>

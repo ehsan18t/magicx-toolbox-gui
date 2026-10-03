@@ -1,230 +1,89 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
-  import { ThemeToggle } from "$lib/components/settings";
   import { Icon } from "$lib/components/shared";
+  import { Badge, Button, IconButton } from "$lib/components/ui";
+  import { APP_CONFIG } from "$lib/config/app";
+  import { appInfoStore } from "$lib/stores/appInfo.svelte";
+  import { elevationStore } from "$lib/stores/elevation.svelte";
   import { LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
-  import { toastStore } from "$lib/stores/toast.svelte";
-  import { systemStore } from "$lib/stores/tweaks.svelte";
-  import { errorMessage, isAppExiting } from "$lib/utils/error";
-  import { getName, getVersion } from "@tauri-apps/api/app";
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
-  import WindowControlButton from "./WindowControlButton.svelte";
+  import { sidebarStore } from "$lib/stores/sidebar.svelte";
+  import ThemeToggle from "./ThemeToggle.svelte";
+  import TitleBarSearch from "./TitleBarSearch.svelte";
+  import WindowControls from "./WindowControls.svelte";
 
-  let appWindow: ReturnType<typeof getCurrentWindow>;
-  let appName = $state("");
-  let appVersion = $state("");
-  let isMaximized = $state(false);
-  let isLoaded = $state(false);
-  let appIcon = $state("/icons/Toolbox.ico");
-  let isRestarting = $state(false);
+  let iconFailed = $state(false);
 
-  onMount(() => {
-    let unlisten: (() => void) | undefined;
-    // The backend refuses to close mid-apply, because a snapshot entry is written before the first
-    // drive and going away half-way leaves a tweak partly applied with nothing to undo it. Without
-    // this the window would just silently not close.
-    let unlistenCloseBlocked: (() => void) | undefined;
-
-    const init = async () => {
-      try {
-        appWindow = getCurrentWindow();
-
-        const [title, version, maximized] = await Promise.allSettled([
-          getName(),
-          getVersion(),
-          appWindow.isMaximized(),
-        ]);
-
-        appName = title.status === "fulfilled" ? title.value : "MagicX Toolbox";
-        appVersion = version.status === "fulfilled" ? version.value : "1.0.0";
-        isMaximized = maximized.status === "fulfilled" ? maximized.value : false;
-
-        isLoaded = true;
-
-        unlistenCloseBlocked = await listen<string>("close-blocked", (event) => {
-          toastStore.show("warning", event.payload);
-        });
-
-        unlisten = await appWindow.onResized(async () => {
-          try {
-            isMaximized = await appWindow.isMaximized();
-          } catch (error) {
-            console.warn("Failed to check maximized state:", error);
-          }
-        });
-      } catch (error) {
-        console.error("Failed to initialize titlebar:", error);
-        appName = "MagicX Toolbox";
-        appVersion = "1.0.0";
-        isLoaded = true;
-      }
-    };
-
-    init();
-
-    return () => {
-      if (unlisten) unlisten();
-      if (unlistenCloseBlocked) unlistenCloseBlocked();
-    };
-  });
-
-  const minimize = async () => {
-    try {
-      await appWindow?.minimize();
-    } catch (error) {
-      console.error("Failed to minimize:", error);
-    }
-  };
-
-  const maximize = async () => {
-    if (!appWindow) return;
-    try {
-      isMaximized ? await appWindow.unmaximize() : await appWindow.maximize();
-    } catch (error) {
-      console.error("Failed to maximize/restore:", error);
-    }
-  };
-
-  const close = async () => {
-    try {
-      await appWindow?.close();
-    } catch (error) {
-      console.error("Failed to close:", error);
-    }
-  };
-
-  // Restart the app as admin
-  const restartAsAdmin = async () => {
-    if (isRestarting) return;
-    isRestarting = true;
-    try {
-      await invoke("restart_as_admin");
-    } catch (error) {
-      const message = errorMessage(error);
-      console.error("Failed to restart as admin:", message);
-      if (isAppExiting(error)) toastStore.warning(message);
-      else toastStore.error(message);
-      isRestarting = false;
-    }
-  };
+  const isAdmin = $derived(elevationStore.isAdmin);
+  const navLabel = $derived(sidebarStore.isOpen ? "Collapse navigation" : "Expand navigation");
 </script>
 
-{#if isLoaded}
-  <div
-    class="titlebar flex h-10 items-center justify-between border-b border-border bg-elevated pr-1 pl-1.5 text-foreground backdrop-blur-sm select-none drag-enable"
-  >
-    <div class="app-info flex items-center gap-3">
-      <div class="icon-container flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 p-1">
-        <img
-          src={appIcon}
-          alt="App Icon"
-          class="h-full w-full rounded-sm object-contain"
-          onerror={() => {
-            appIcon = "";
-          }}
-        />
-        {#if !appIcon}
-          <Icon icon="tabler:app-window" width="16" height="16" class="text-accent" />
-        {/if}
-      </div>
+<header class="flex h-titlebar shrink-0 items-stretch bg-background text-foreground select-none drag-enable">
+  <div class="flex min-w-0 shrink items-center gap-1 pl-1">
+    <IconButton
+      icon="fluent:navigation-20-regular"
+      tooltip={navLabel}
+      aria-expanded={sidebarStore.isOpen}
+      class="drag-disable"
+      onclick={() => sidebarStore.toggle()}
+    />
 
-      <div class="app-details flex items-center gap-2">
-        <span class="font-semibold tracking-tight text-foreground">
-          {appName}
-          <span class="text-xs font-medium text-foreground-subtle">
-            v{appVersion}
-          </span>
-        </span>
-
-        <!-- Admin Status Indicator -->
-        {#if systemStore.info?.is_admin}
-          <span
-            class="flex items-center gap-1 rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success uppercase"
-            use:tooltip={"Running as Administrator"}
-          >
-            <Icon icon="tabler:shield-check-filled" width="12" height="12" />
-            Admin
-          </span>
-        {:else if systemStore.info !== null}
-          <span
-            class="flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold text-warning uppercase"
-            use:tooltip={"Running as Standard User - Some features require Administrator"}
-          >
-            <Icon icon="tabler:shield-x" width="12" height="12" />
-            User
-          </span>
-        {/if}
-      </div>
-    </div>
-
-    <div class="window-controls flex items-center drag-disable">
-      <button
-        type="button"
-        id={LOGS_TOGGLE_ID}
-        aria-label="Logs"
-        aria-expanded={logsStore.isPanelOpen}
-        aria-controls={LOGS_PANEL_ID}
-        use:tooltip={"Logs"}
-        onclick={() => logsStore.togglePanel()}
-        class="relative flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 hover:bg-foreground/10 {logsStore.isPanelOpen
-          ? 'text-accent'
-          : 'text-foreground-muted'}"
-      >
-        <Icon icon="tabler:file-text" width="18" height="18" />
-      </button>
-
-      <!-- Restart as Admin button (only shown if not running as admin) -->
-      {#if systemStore.info !== null && !systemStore.info.is_admin}
-        <button
-          type="button"
-          use:tooltip={"Restart as Administrator"}
-          onclick={restartAsAdmin}
-          disabled={isRestarting}
-          class="relative flex h-8 w-8 items-center justify-center rounded-md text-warning transition-all duration-150 hover:bg-foreground/10 hover:text-warning {isRestarting
-            ? 'cursor-not-allowed opacity-50'
-            : ''}"
-        >
-          <Icon
-            icon={isRestarting ? "tabler:loader-2" : "tabler:shield-up"}
-            width="18"
-            height="18"
-            class={isRestarting ? "animate-spin" : ""}
-          />
-        </button>
+    <div class="flex min-w-0 items-center gap-2.5 pl-1.5">
+      {#if !iconFailed}
+        <img src={APP_CONFIG.appIcon} alt="" class="h-4 w-4 shrink-0" onerror={() => (iconFailed = true)} />
       {/if}
-
-      <ThemeToggle />
-
-      <!-- Divider -->
-      <div class="mx-2 h-4 w-px bg-foreground-muted/20"></div>
-
-      <WindowControlButton title="Minimize" icon="fluent:minimize-20-filled" onclick={minimize} variant="default" />
-      <WindowControlButton
-        title={isMaximized ? "Restore" : "Maximize"}
-        icon={isMaximized ? "tabler:copy" : "fluent:maximize-20-filled"}
-        onclick={maximize}
-        variant="default"
-      />
-      <WindowControlButton title="Close" icon="tabler:x" onclick={close} variant="danger" />
+      <span class="hidden truncate text-xs text-foreground titlebar-name:inline">{appInfoStore.name}</span>
+      {#if appInfoStore.version}
+        <span class="hidden shrink-0 text-xs text-foreground-subtle titlebar-version:inline"
+          >{appInfoStore.version}</span
+        >
+      {/if}
+      {#if isAdmin !== null}
+        <Badge
+          tone={isAdmin ? "success" : "warning"}
+          size="caption"
+          case="none"
+          class="shrink-0 animate-fade-in"
+          tooltip={isAdmin ? "Running as administrator" : "Running as a standard user: some tweaks need administrator"}
+        >
+          <Icon icon={isAdmin ? "fluent:shield-checkmark-16-filled" : "fluent:shield-error-16-filled"} size="3xs" />
+          {isAdmin ? "Admin" : "Standard user"}
+        </Badge>
+      {/if}
     </div>
   </div>
-{:else}
-  <!-- Loading state with proper theme colors -->
-  <div class="titlebar h-12 border-b border-border bg-elevated drag-enable">
-    <div class="flex h-full items-center justify-center">
-      <div class="animate-pulse text-xs text-foreground-muted">Loading...</div>
-    </div>
-  </div>
-{/if}
 
-<style>
-  .titlebar {
-    /* Add subtle glass effect */
-    background-color: hsl(var(--elevated) / 0.9);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid hsl(var(--border) / 0.5);
-  }
-</style>
+  <div class="flex min-w-36 flex-1 items-center justify-center px-3">
+    <TitleBarSearch />
+  </div>
+
+  <div class="flex shrink-0 items-center gap-0.5 pr-0 drag-disable">
+    {#if isAdmin === false}
+      <Button
+        variant="ghost"
+        size="sm"
+        tone="warning"
+        icon="fluent:shield-keyhole-16-regular"
+        loading={elevationStore.isRestarting}
+        tooltip="Restart as administrator"
+        aria-label="Restart as administrator"
+        class="animate-fade-in"
+        onclick={() => elevationStore.restartAsAdmin()}
+      >
+        <span class="hidden titlebar-admin:inline">Restart as admin</span>
+      </Button>
+    {/if}
+
+    <IconButton
+      id={LOGS_TOGGLE_ID}
+      icon="fluent:bug-20-regular"
+      tooltip="Logs"
+      active={logsStore.isPanelOpen}
+      aria-expanded={logsStore.isPanelOpen}
+      aria-controls={LOGS_PANEL_ID}
+      onclick={() => logsStore.togglePanel()}
+    />
+
+    <ThemeToggle />
+
+    <WindowControls />
+  </div>
+</header>

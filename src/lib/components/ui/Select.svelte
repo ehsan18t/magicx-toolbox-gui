@@ -1,89 +1,83 @@
-<script lang="ts">
-  import { Icon } from "$lib/components/shared";
-  import { cn } from "@/utils";
-  import { tick } from "svelte";
-  import { cubicOut } from "svelte/easing";
-  import { scale } from "svelte/transition";
-  import Spinner from "./Spinner.svelte";
+<script lang="ts" module>
+  import type { FlyoutPlacement } from "$lib/utils/flyout";
 
-  interface Option {
-    value: string | number;
-    label: string;
-    disabled?: boolean;
-  }
+  const PLACEMENT: FlyoutPlacement = { side: "below", align: "start", gap: 4, inset: 8 };
+</script>
+
+<script lang="ts" generics="T extends string | number">
+  import { Icon } from "$lib/components/shared";
+  import { cn } from "$lib/utils/cn";
+  import { placeFlyout } from "$lib/utils/flyout";
+  import { pop } from "$lib/utils/motion";
+  import { tick } from "svelte";
+  import { PENDING_TINT } from "$lib/design";
+  import DisabledReason from "./DisabledReason.svelte";
+  import { blockedReason, reasonAttrs } from "./disabledReason";
+  import { nextEnabledIndex } from "./listNav";
+  import Spinner from "./Spinner.svelte";
+  import type { SelectOption } from "./types";
+  import { BUSY, card, DIMMED, DISABLED, field, indicator } from "./variants";
 
   interface Props {
-    value: string | number | null;
-    options: Option[];
+    value: T | null;
+    options: SelectOption<T>[];
+    label: string;
     placeholder?: string;
     pending?: boolean;
     loading?: boolean;
     disabled?: boolean;
+    /** Why it is disabled: keeps the trigger focusable and describes it. */
+    disabledReason?: string | null;
     class?: string;
-    onchange?: (value: string | number) => void;
+    onchange?: (value: T) => void;
   }
 
   let {
-    value = $bindable(),
+    value,
     options,
-    placeholder = "Select...",
+    label,
+    placeholder = "Select…",
     pending = false,
     loading = false,
     disabled = false,
-    class: className = "",
+    disabledReason,
+    class: className,
     onchange,
   }: Props = $props();
 
-  const instanceId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? `select-${crypto.randomUUID()}`
-      : `select-${Math.random().toString(36).slice(2)}`;
-  const listboxId = `${instanceId}-listbox`;
-  const optionId = (opt: Option) => `${instanceId}-option-${String(opt.value)}`;
+  const id = $props.id();
+  const listboxId = `${id}-listbox`;
+  const reasonId = `${id}-reason`;
+  // Index, not value: labels carry spaces and colons, which break the id reference.
+  const optionId = (i: number) => `${id}-option-${i}`;
 
   let isOpen = $state(false);
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let menuEl = $state<HTMLDivElement | null>(null);
   let highlightedIndex = $state(-1);
-  let menuPosition = $state({ top: 0, left: 0, width: 0 });
+  let menuPosition = $state({ top: 0, left: 0, minWidth: 0, maxWidth: 0, above: false });
 
+  const reason = $derived(blockedReason(disabled, loading, disabledReason));
   const selectedOption = $derived(options.find((o) => o.value === value));
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
-  const isPlaceholder = $derived(!selectedOption);
   const highlightedOptionId = $derived(
-    highlightedIndex >= 0 && options[highlightedIndex] ? optionId(options[highlightedIndex]) : undefined,
+    isOpen && highlightedIndex >= 0 && options[highlightedIndex] ? optionId(highlightedIndex) : undefined,
   );
 
   async function updatePosition() {
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
 
-    // Initial position (downwards)
-    let top = rect.bottom + 4;
-    const left = rect.left;
-    const width = rect.width;
+    const maxWidth = window.innerWidth - PLACEMENT.inset * 2;
+    const below = rect.bottom + PLACEMENT.gap;
+    menuPosition = { top: below, left: rect.left, minWidth: Math.min(rect.width, maxWidth), maxWidth, above: false };
 
-    // Wait for the menu to be rendered to measure its height
     await tick();
-
-    if (menuEl) {
-      const menuRect = menuEl.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-
-      // Check if it overflows the bottom
-      if (top + menuRect.height > viewportHeight) {
-        // Check if there is enough space above
-        if (rect.top - menuRect.height - 4 > 0) {
-          top = rect.top - menuRect.height - 4;
-        }
-      }
-    }
-
-    menuPosition = {
-      top,
-      left,
-      width,
-    };
+    if (!menuEl) return;
+    // Offset size, not the bounding rect: the opening pop scales the menu.
+    const size = { width: menuEl.offsetWidth, height: menuEl.offsetHeight };
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    menuPosition = { ...menuPosition, ...placeFlyout(rect, size, viewport, PLACEMENT) };
   }
 
   async function open() {
@@ -91,7 +85,7 @@
     isOpen = true;
     await updatePosition();
     const selectedIdx = options.findIndex((o) => o.value === value);
-    highlightedIndex = selectedIdx >= 0 ? selectedIdx : options.findIndex((o) => !o.disabled);
+    highlightedIndex = selectedIdx >= 0 ? selectedIdx : nextEnabledIndex(options, -1, 1);
   }
 
   function close() {
@@ -101,17 +95,19 @@
 
   function toggle() {
     if (isOpen) close();
-    else open();
+    else void open();
   }
 
-  function selectOption(opt: Option) {
+  function selectOption(opt: SelectOption<T>) {
     if (opt.disabled) return;
-    if (opt.value !== value) {
-      value = opt.value;
-      onchange?.(opt.value);
-    }
+    // Controlled: the parent may decline the change, so the trigger shows only what it passes back.
+    if (opt.value !== value) onchange?.(opt.value);
     close();
     triggerEl?.focus();
+  }
+
+  function highlight(index: number) {
+    if (index >= 0) highlightedIndex = index;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -121,28 +117,22 @@
       case "Enter":
       case " ":
         e.preventDefault();
-        if (isOpen && highlightedIndex >= 0) {
-          const opt = options[highlightedIndex];
-          if (opt && !opt.disabled) selectOption(opt);
-        } else {
-          open();
-        }
+        if (isOpen && highlightedIndex >= 0) selectOption(options[highlightedIndex]);
+        else void open();
         break;
       case "ArrowDown":
+      case "ArrowUp": {
         e.preventDefault();
-        if (!isOpen) {
-          open();
-        } else {
-          moveHighlight(1);
-        }
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        if (isOpen) highlight(nextEnabledIndex(options, highlightedIndex, step));
+        else void open();
         break;
-      case "ArrowUp":
+      }
+      case "Home":
+      case "End":
+        if (!isOpen) break;
         e.preventDefault();
-        if (!isOpen) {
-          open();
-        } else {
-          moveHighlight(-1);
-        }
+        highlight(e.key === "Home" ? nextEnabledIndex(options, -1, 1) : nextEnabledIndex(options, options.length, -1));
         break;
       case "Escape":
         if (isOpen) {
@@ -157,66 +147,44 @@
     }
   }
 
-  function moveHighlight(direction: number) {
-    const len = options.length;
-    let next = highlightedIndex;
-    for (let i = 0; i < len; i++) {
-      next = (next + direction + len) % len;
-      if (!options[next]?.disabled) {
-        highlightedIndex = next;
-        break;
-      }
-    }
-  }
-
-  function handleClickOutside(e: MouseEvent) {
-    if (!isOpen) return;
-    const target = e.target as Node;
-    if (!triggerEl?.contains(target) && !menuEl?.contains(target)) {
-      close();
-    }
-  }
-
   // Keep the highlighted option in view while navigating.
   $effect(() => {
     if (!isOpen || !menuEl || highlightedIndex < 0) return;
-    const opt = options[highlightedIndex];
-    if (!opt) return;
-    const el = menuEl.querySelector<HTMLElement>(`#${CSS.escape(optionId(opt))}`);
-    el?.scrollIntoView({ block: "nearest" });
+    menuEl
+      .querySelector<HTMLElement>(`#${CSS.escape(optionId(highlightedIndex))}`)
+      ?.scrollIntoView({ block: "nearest" });
   });
 
-  // Set up scroll listeners on scrollable ancestors
+  // The menu is fixed-position: a click outside, a scroll that moves the trigger, a resize, or the control going inert closes it.
   $effect(() => {
-    if (!triggerEl) return;
-
-    let el: HTMLElement | null = triggerEl.parentElement;
-    const scrollListeners: Array<{ el: Element; handler: EventListener }> = [];
-
-    while (el) {
-      const style = window.getComputedStyle(el);
-      const isScrollable = /(auto|scroll)/.test(style.overflow + style.overflowY + style.overflowX);
-
-      if (isScrollable) {
-        const handler = () => {
-          if (isOpen) close();
-        };
-        el.addEventListener("scroll", handler, { passive: true });
-        scrollListeners.push({ el, handler });
-      }
-
-      el = el.parentElement;
+    if (!isOpen || !triggerEl) return;
+    if (disabled || loading) {
+      close();
+      return;
     }
 
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!triggerEl?.contains(target) && !menuEl?.contains(target)) close();
+    };
+    // Compared, not closed outright: a scroll queued at open (focus scrolling the trigger into view) moved nothing since.
+    const anchor = triggerEl.getBoundingClientRect();
+    const onScroll = () => {
+      const now = triggerEl?.getBoundingClientRect();
+      if (now?.top !== anchor.top || now.left !== anchor.left) close();
+    };
+
+    // Capture: scroll does not bubble, so this sees every scroller, the menu's own included (it moves no trigger).
+    window.addEventListener("click", onClick);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return () => {
-      scrollListeners.forEach(({ el, handler }) => {
-        el.removeEventListener("scroll", handler);
-      });
+      window.removeEventListener("click", onClick);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", onScroll, { capture: true });
     };
   });
 </script>
-
-<svelte:window onclick={handleClickOutside} onscroll={() => isOpen && close()} />
 
 <div class={cn("relative", className)}>
   <button
@@ -225,71 +193,80 @@
     role="combobox"
     onclick={toggle}
     onkeydown={handleKeydown}
-    disabled={disabled || loading}
+    disabled={(disabled && !reason) || loading}
+    {...reasonAttrs(reason, reasonId)}
+    aria-label="{label}: {displayLabel}"
     aria-haspopup="listbox"
     aria-expanded={isOpen}
     aria-controls={listboxId}
     aria-activedescendant={highlightedOptionId}
-    class={cn(
-      "flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border bg-surface px-3 text-sm transition-all duration-150",
-      "border-border text-foreground",
-      "hover:border-border-hover",
-      "focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none",
-      isOpen && "border-accent ring-2 ring-accent/20",
-      pending && "border-warning/60 bg-warning/5 text-warning",
-      loading && "cursor-wait opacity-70",
-      disabled && "cursor-not-allowed opacity-60",
-    )}
+    class={field({
+      focus: "none",
+      class: [
+        "flex w-full cursor-pointer items-center justify-between gap-2 px-3 hover:border-border-hover hover:bg-secondary-hover",
+        isOpen && "border-accent",
+        pending && [PENDING_TINT, "text-warning"],
+        loading && BUSY,
+        // Not unconditional: loading sets the attribute too, and keeps BUSY's look.
+        disabled && DISABLED,
+      ],
+    })}
   >
-    <span class={cn("truncate", isPlaceholder && "text-foreground-muted")}>
+    <span class={cn("truncate", !selectedOption && "text-foreground-muted")}>
       {displayLabel}
     </span>
-    <div class="flex shrink-0 items-center gap-1">
+    <span class="flex shrink-0 items-center gap-1">
       {#if loading}
-        <Spinner size="sm" class="text-foreground-muted" />
+        <Spinner size="md" />
       {:else}
         <Icon
           icon="mdi:chevron-down"
-          class={cn("h-4 w-4 text-foreground-muted transition-transform duration-150", isOpen && "rotate-180")}
+          size="md"
+          class={cn("text-foreground-muted transition-transform duration-normal", isOpen && "rotate-180")}
         />
       {/if}
-    </div>
+    </span>
+    <DisabledReason id={reasonId} {reason} />
   </button>
 </div>
 
-<!-- Dropdown rendered with fixed position to escape overflow:hidden containers -->
+<!-- Fixed, so an overflow-hidden ancestor cannot clip it. -->
 {#if isOpen}
   <div
     bind:this={menuEl}
     id={listboxId}
     role="listbox"
-    transition:scale={{ duration: 120, start: 0.95, opacity: 0, easing: cubicOut }}
-    class="fixed z-9999 max-h-60 w-fit space-y-1 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-lg"
-    style="top: {menuPosition.top}px; left: {menuPosition.left}px;"
+    transition:pop
+    class={card({
+      elevation: "flyout",
+      class: [
+        "fixed z-popover max-h-72 space-y-0.5 overflow-auto p-1",
+        menuPosition.above ? "origin-bottom" : "origin-top",
+      ],
+    })}
+    style="top: {menuPosition.top}px; left: {menuPosition.left}px; min-width: {menuPosition.minWidth}px; max-width: {menuPosition.maxWidth}px;"
   >
     {#each options as opt, i (opt.value)}
       <button
         type="button"
         role="option"
-        id={optionId(opt)}
+        id={optionId(i)}
         aria-selected={opt.value === value}
-        aria-disabled={opt.disabled}
         disabled={opt.disabled}
         tabindex={-1}
         onclick={() => selectOption(opt)}
         onmouseenter={() => (highlightedIndex = i)}
         class={cn(
-          "flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors duration-100",
-          "text-foreground",
-          highlightedIndex === i && "bg-accent/10",
-          opt.value === value && "bg-accent/15 font-medium text-accent",
-          opt.disabled && "cursor-not-allowed text-foreground-muted opacity-50",
+          "relative flex w-full cursor-pointer items-center rounded px-3 py-1.5 text-left text-ui text-foreground",
+          highlightedIndex === i && "bg-muted",
+          opt.value === value && "font-medium",
+          opt.disabled && ["cursor-not-allowed text-foreground-muted", DIMMED],
         )}
       >
-        <span>{opt.label}</span>
         {#if opt.value === value}
-          <Icon icon="mdi:check" class="h-4 w-4 shrink-0 text-accent" />
+          <span class={indicator({ class: "top-1/2" })}></span>
         {/if}
+        <span class="min-w-0 wrap-break-word">{opt.label}</span>
       </button>
     {/each}
   </div>
