@@ -6,7 +6,6 @@
     description?: string;
     /** `padded`: inside a bordered card list; `flush`: between bare dividers. */
     density?: "padded" | "flush";
-    /** The control. */
     children: Snippet;
   }
 

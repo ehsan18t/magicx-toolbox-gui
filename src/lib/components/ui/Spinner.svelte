@@ -1,28 +1,32 @@
-<script lang="ts" module>
-  import type { IconSize } from "$lib/design";
-
-  const GLYPH = { sm: "md", md: "3xl", lg: "6xl" } as const satisfies Record<string, IconSize>;
-</script>
-
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import type { IconSize } from "$lib/design";
   import { cn } from "$lib/utils/cn";
+  import type { Snippet } from "svelte";
 
   interface Props {
-    size?: keyof typeof GLYPH;
-    /** Announces the spinner as a status; without it the spinner is decorative. */
+    /** On the icon scale. */
+    size?: IconSize;
+    /** `current` takes the surrounding text colour, e.g. inside a button. */
+    tone?: "accent" | "current";
+    /** Names the status; without it or `children` the spinner is decorative. */
     label?: string;
     class?: string;
+    /** Visible status text beside the spinner. */
+    children?: Snippet;
   }
 
-  let { size = "md", label, class: className }: Props = $props();
+  let { size = "3xl", tone = "accent", label, class: className, children }: Props = $props();
+
+  const isStatus = $derived(!!label || !!children);
 </script>
 
 <span
-  role={label ? "status" : undefined}
+  role={isStatus ? "status" : undefined}
   aria-label={label}
-  aria-hidden={label ? undefined : "true"}
-  class={cn("inline-flex text-accent", className)}
+  aria-hidden={isStatus ? undefined : "true"}
+  class={cn("inline-flex", children && "items-center gap-2", className)}
 >
-  <Icon icon="mdi:loading" size={GLYPH[size]} class="animate-spin" />
+  <Icon icon="mdi:loading" {size} class={cn("animate-spin", tone === "accent" && "text-accent")} />
+  {@render children?.()}
 </span>

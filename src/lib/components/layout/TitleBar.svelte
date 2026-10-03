@@ -1,9 +1,7 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { Button, IconButton } from "$lib/components/ui";
+  import { Badge, Button, IconButton } from "$lib/components/ui";
   import { APP_CONFIG } from "$lib/config/app";
-  import { TONE_SOFT } from "$lib/design";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
@@ -40,17 +38,16 @@
         >
       {/if}
       {#if isAdmin !== null}
-        <span
-          class="inline-flex shrink-0 animate-fade-in items-center gap-1 rounded px-1.5 py-0.5 text-caption font-semibold {TONE_SOFT[
-            isAdmin ? 'success' : 'warning'
-          ]}"
-          use:tooltip={isAdmin
-            ? "Running as administrator"
-            : "Running as a standard user: some tweaks need administrator"}
+        <Badge
+          tone={isAdmin ? "success" : "warning"}
+          size="caption"
+          case="none"
+          class="shrink-0 animate-fade-in"
+          tooltip={isAdmin ? "Running as administrator" : "Running as a standard user: some tweaks need administrator"}
         >
           <Icon icon={isAdmin ? "fluent:shield-checkmark-16-filled" : "fluent:shield-error-16-filled"} size="3xs" />
           {isAdmin ? "Admin" : "Standard user"}
-        </span>
+        </Badge>
       {/if}
     </div>
   </div>

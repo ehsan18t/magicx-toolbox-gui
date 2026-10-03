@@ -4,10 +4,12 @@
 
   interface Props {
     tweakId: string;
+    /** The tweak's name, so each row's toggle is told apart. */
+    name: string;
     size?: IconButtonSize;
   }
 
-  let { tweakId, size = "sm" }: Props = $props();
+  let { tweakId, name, size = "sm" }: Props = $props();
 
   const isFavorite = $derived(favoritesStore.isFavorite(tweakId));
 </script>
@@ -15,7 +17,7 @@
 <IconButton
   {size}
   icon={isFavorite ? "mdi:star" : "mdi:star-outline"}
-  label="Favorite"
+  label="Favorite {name}"
   tooltip={isFavorite ? "Remove from favorites" : "Add to favorites"}
   aria-pressed={isFavorite}
   active={isFavorite}

@@ -12,7 +12,7 @@ export const autoScroll: Attachment<HTMLElement> = (node) => {
   const track = () => {
     stuck = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_THRESHOLD_PX;
   };
-  // characterData: a <pre> grows by rewriting one text node, not by adding children.
+  // characterData too: a line keyed by index can be rewritten in place.
   const mutate = new MutationObserver(pin);
   mutate.observe(node, { childList: true, subtree: true, characterData: true });
   node.addEventListener("scroll", track, { passive: true });

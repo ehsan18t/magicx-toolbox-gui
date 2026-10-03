@@ -66,7 +66,7 @@
   <ModalFooter>
     <Button variant="secondary" onclick={onclose}>Back</Button>
     <Button variant="warning" onclick={onapply} disabled={busy}>
-      Apply {count === 1 ? "change" : `${count} changes`}
+      Apply {plural(count, "change")}
     </Button>
   </ModalFooter>
 </Modal>

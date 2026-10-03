@@ -9,6 +9,7 @@
   import { tooltip as tooltipAction } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import type { HTMLButtonAttributes } from "svelte/elements";
+  import Spinner from "./Spinner.svelte";
   import { iconButton, type IconButtonVariants } from "./variants";
 
   // The name is `label`, else the tooltip; given both, the tooltip becomes the description.
@@ -46,5 +47,9 @@
   use:tooltipAction={tooltip}
   {...rest}
 >
-  <Icon icon={loading ? "mdi:loading" : icon} size={GLYPH[size]} class={loading ? "animate-spin" : undefined} />
+  {#if loading}
+    <Spinner size={GLYPH[size]} tone="current" />
+  {:else}
+    <Icon {icon} size={GLYPH[size]} />
+  {/if}
 </button>

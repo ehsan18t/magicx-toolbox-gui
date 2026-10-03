@@ -62,7 +62,7 @@ Tauri calls live in `src/lib/api/`, one module per command group, and are called
 
 ### UI Components
 
-Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons (`Button`, `IconButton`, `LinkButton`), surfaces (`Card`, `SectionCard`, `Callout`, `EmptyState`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Meter`, `ProgressBar`, `Spinner`, `SkeletonList`). Their class recipes are in `ui/variants.ts`. Design data (the icon registry, `ICON_SIZE`, tone maps) lives in `$lib/design`; a new icon is registered in `$lib/design/icons.ts`.
+Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons and links (`Button`, `IconButton`, `LinkButton`, `ExternalLink`), surfaces (`Card`, `SectionCard`, `Callout`, `CodeBlock`, `EmptyState`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Dot`, `Meter`, `ProgressBar`, `Spinner`, `SkeletonList`). Their class recipes are in `ui/variants.ts`, and the barrel exports the ones other folders style their own elements with (`button`, `card`, `rowButton`, `indicator` and the like). Import a folder through its barrel: ESLint rejects a deep path such as `$lib/components/ui/variants` from outside the folder. Design data (the icon registry, `ICON_SIZE`, tone maps, the `HEADING` type scale) lives in `$lib/design`; a new icon is registered in `$lib/design/icons.ts`.
 
 ### Component Structure
 
@@ -72,11 +72,12 @@ src/lib/components/
 ├── items/     # Tweak and app rows: TweakRow, AppRow, TweakControl, GroupedTweakList, Restore buttons
 │   └── details/   # Tweak and app details windows: change matrix, scripts, snapshot history
 ├── views/     # Overview, Category, Search, Favorites, Snapshots, Profiles, Settings, Manual Tests
-├── layout/    # TitleBar (search box, Ctrl+K), Sidebar, LogsPanel, PageLayout, SummaryPanel, AppliedMeter
-├── feedback/  # PendingBar, PendingReviewModal, RebootBanner, ApplyingOverlay, LoadError, toasts
+│   └── settings/  # Settings-only controls: the accent colour picker
+├── layout/    # TitleBar (search box, Ctrl+K), Sidebar (nav item, footer), LogsPanel, PageLayout, SummaryPanel, AppliedMeter
+├── feedback/  # PendingBar, PendingReviewModal, RebootBanner, ApplyingOverlay, LoadError, NoMatches, toasts
 ├── modals/    # About, Update, ConfirmDialog
 │   └── profile/   # Profile export and import dialogs
-└── shared/    # Icon, ExternalLink, MarkdownText
+└── shared/    # Icon, MarkdownText
 ```
 
 The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. The Logs panel docks under the content column, beside the navigation pane rather than under it. `src/routes/+page.svelte` renders it, and the error screens of `+page.svelte` and `+layout.svelte` render their own, so it stays reachable when loading fails. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.

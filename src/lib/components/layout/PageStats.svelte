@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SEP } from "$lib/utils/tweakPresentation";
+  import { SEP } from "$lib/utils/format";
 
   interface Props {
     /** Rendered as "12 starred · 3 applied". */

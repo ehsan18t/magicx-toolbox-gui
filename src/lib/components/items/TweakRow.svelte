@@ -7,20 +7,13 @@
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { expand, pop } from "$lib/utils/motion";
-  import {
-    isHighRisk,
-    type MetaFact,
-    pendingFact,
-    restoreState,
-    rowDomId,
-    tweakMeta,
-    usesDropdown,
-  } from "$lib/utils/tweakPresentation";
+  import { type MetaFact, pendingFact, rowDomId, tweakMeta, usesDropdown } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
   import AttentionNotice from "./AttentionNotice.svelte";
   import FavoriteButton from "./FavoriteButton.svelte";
   import ItemRow, { type RowStripe } from "./ItemRow.svelte";
   import MetaItem from "./MetaItem.svelte";
+  import RestoreButton from "./RestoreButton.svelte";
   import RowAction from "./RowAction.svelte";
   import TweakControl from "./TweakControl.svelte";
   import WarningNotice from "./WarningNotice.svelte";
@@ -37,7 +30,6 @@
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
   const facts = $derived(tweakMeta(tweak, tweaksStore.tweak));
-  const restore = $derived(restoreState(def, status, tweakActionsStore.isRunning(def.id)));
   const warningId = $derived(`${rowDomId("tweak", def.id)}-warning`);
 
   const pendingChange = $derived(pendingChangesStore.change(def.id));
@@ -124,17 +116,8 @@
   {/snippet}
 
   {#snippet actions()}
-    {#if status.hasHistory && !status.attention}
-      <RowAction
-        icon="mdi:history"
-        label={restore.label}
-        tooltip={restore.tip}
-        disabled={restore.disabled}
-        collapses
-        onclick={() => tweakActionsStore.restoreWithConfirm(def, isHighRisk(def.riskLevel))}
-      />
-    {/if}
-    <FavoriteButton tweakId={def.id} />
+    {#if status.hasHistory && !status.attention}<RestoreButton {tweak} row />{/if}
+    <FavoriteButton tweakId={def.id} name={def.name} />
     <RowAction
       icon="mdi:chevron-right"
       label="Details"

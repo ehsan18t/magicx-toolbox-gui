@@ -12,8 +12,6 @@ import type {
 } from "$lib/types";
 import { plural } from "$lib/utils/format";
 
-/** Joins the parts of a one-line summary. */
-export const SEP = " · ";
 export const SYSTEM_DEFAULT_LABEL = "System default";
 
 /** One fact on an item's meta line: MetaItem's props. */
@@ -177,11 +175,12 @@ function stateLook(status: TweakStatus): MetaFact {
       return { label: SYSTEM_DEFAULT_LABEL, tone: "neutral", icon: "mdi:monitor" };
     case "unavailable":
       return { label: "Unavailable", tone: "neutral", icon: "mdi:cancel" };
-    case "unknown":
-      return { label: status.needsElevation ? UNKNOWN_NEEDS_ADMIN : "Unknown", tone: "warning", icon: UNKNOWN_ICON };
     case "loading":
-    default:
       return CHECKING;
+    // A state this build does not know is not still loading: a static label, not a spinner.
+    case "unknown":
+    default:
+      return { label: status.needsElevation ? UNKNOWN_NEEDS_ADMIN : "Unknown", tone: "warning", icon: UNKNOWN_ICON };
   }
 }
 

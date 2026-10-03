@@ -1,11 +1,6 @@
-<script lang="ts" module>
-  // Windows 11 caption buttons: close turns red, the rest take the hover wash; a press deepens either.
-  const CLOSE = "hover:bg-caption-close hover:text-caption-close-foreground active:bg-caption-close/85";
-  const OTHER = "hover:bg-muted hover:text-foreground active:bg-foreground/10";
-</script>
-
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
+  import { CAPTION_BUTTON } from "$lib/design";
 
   interface Props {
     label: string;
@@ -17,9 +12,9 @@
 </script>
 
 <button
-  class="flex h-8 w-10 cursor-default items-center justify-center rounded-md text-foreground-muted {glyph === 'close'
-    ? CLOSE
-    : OTHER}"
+  class="flex h-8 w-10 cursor-default items-center justify-center rounded-md text-foreground-muted {CAPTION_BUTTON[
+    glyph === 'close' ? 'close' : 'other'
+  ]}"
   type="button"
   aria-label={label}
   use:tooltip={label}

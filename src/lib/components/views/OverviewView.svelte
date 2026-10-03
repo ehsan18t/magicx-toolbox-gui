@@ -3,15 +3,17 @@
 </script>
 
 <script lang="ts">
+  import { textIfCut, tooltip } from "$lib/actions/tooltip";
   import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Card, IconButton, Meter, SectionCard } from "$lib/components/ui";
+  import { Card, IconButton, Meter, rowButton, SectionCard } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { isComplete } from "$lib/utils/categoryStats";
+  import { SEP } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
   import { systemInfoRows, type HardwareRow } from "$lib/utils/systemInfoRows";
   import { CHECKING, tallies } from "$lib/utils/tweakPresentation";
@@ -87,9 +89,9 @@
         <dt class="truncate text-xs text-foreground-muted">{row.label}</dt>
         <dd class="m-0 min-w-0 text-ui wrap-break-word select-text">
           <span class="font-medium">{row.value}</span>
-          {#if row.detail}<span class="text-xs text-foreground-muted"> · {row.detail}</span>{/if}
+          {#if row.detail}<span class="text-xs text-foreground-muted">{SEP}{row.detail}</span>{/if}
           {#if row.status}
-            <span class="text-xs font-medium {TONE_TEXT[row.status.tone]}"> · {row.status.text}</span>
+            <span class="text-xs font-medium {TONE_TEXT[row.status.tone]}">{SEP}{row.status.text}</span>
           {/if}
         </dd>
       </div>
@@ -100,7 +102,7 @@
 <PageLayout
   title="Overview"
   description={info
-    ? `${info.computer_name} · ${info.username} (${info.is_admin ? "Administrator" : "Standard user"})`
+    ? `${info.computer_name}${SEP}${info.username} (${info.is_admin ? "Administrator" : "Standard user"})`
     : "Your PC at a glance"}
 >
   <Card as="section" class="grid grid-cols-2 gap-px overflow-hidden bg-border sm:grid-cols-4" aria-label="Your tweaks">
@@ -112,7 +114,7 @@
         </span>
         <span class="mt-1 flex w-full min-w-0 items-baseline gap-1.5">
           <span class="font-display text-xl leading-none font-semibold tabular-nums">{t.value}</span>
-          <span class="truncate text-xs text-foreground-muted" title={t.sub}>{t.sub}</span>
+          <span class="truncate text-xs text-foreground-muted" use:tooltip={textIfCut(t.sub)}>{t.sub}</span>
         </span>
         {#if t.meter}
           <Meter {...t.meter} label={t.label} class="mt-2 w-full" />
@@ -121,7 +123,7 @@
       {#if t.onclick}
         <button
           type="button"
-          class="flex min-w-0 cursor-pointer flex-col items-start bg-card px-3 py-2.5 text-left hover:bg-muted"
+          class={rowButton({ radius: "none", class: "flex min-w-0 flex-col items-start bg-card px-3 py-2.5" })}
           onclick={t.onclick}
         >
           {@render tileBody()}
@@ -141,7 +143,9 @@
             <li>
               <button
                 type="button"
-                class="grid w-full cursor-pointer grid-cols-icon-label-meter-value items-center gap-x-2.5 rounded-md px-2 py-2 text-left hover:bg-muted"
+                class={rowButton({
+                  class: "grid w-full grid-cols-icon-label-meter-value items-center gap-x-2.5 px-2 py-2",
+                })}
                 onclick={() =>
                   s.attention
                     ? navigationStore.navigateToAttention(category.id)

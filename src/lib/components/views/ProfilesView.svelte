@@ -4,17 +4,17 @@
 
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { DROP_VEIL, TONE_WASH } from "$lib/design";
+  import { DROP_VEIL, HEADING, TONE_WASH } from "$lib/design";
   import { PageLayout, PageStats } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Badge, Button, Callout, EmptyState, IconButton, IconTile } from "$lib/components/ui";
-  import { card } from "$lib/components/ui/variants";
+  import { Badge, Button, Callout, card, EmptyState, IconButton, IconTile } from "$lib/components/ui";
   import { PROFILE_EXT } from "$lib/config/app";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { PROFILE_FILE_REJECTED, profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { listenFileDrop } from "$lib/utils/fileDrop";
+  import { SEP } from "$lib/utils/format";
   import { fade, pop, reflow } from "$lib/utils/motion";
   import { formatDate } from "$lib/utils/time";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -135,6 +135,7 @@
         description="Profiles you export are kept here for quick access."
       />
     {:else}
+      <h2 class="sr-only">Saved profiles</h2>
       <div class="grid animate-fade-in grid-cols-cards gap-2">
         <!-- The card() look, not Card: animate: needs an element as the each block's only child. -->
         {#each profiles as profile (profile.name + profile.created_at)}
@@ -146,7 +147,7 @@
             <div class="flex items-start gap-2.5">
               <IconTile icon="mdi:file-cog" size="sm" />
               <div class="min-w-0 flex-1">
-                <h3 class="m-0 text-sm font-semibold wrap-break-word">{profile.name}</h3>
+                <h3 class={["m-0 wrap-break-word", HEADING.item]}>{profile.name}</h3>
                 <p class="m-0 mt-0.5 line-clamp-2 text-xs text-foreground-muted">
                   {profile.description || "No description"}
                 </p>
@@ -155,7 +156,7 @@
             </div>
             <div class="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
               <span class="text-xs text-foreground-muted">
-                Windows {profile.source_windows_version} · {formatDate(profile.created_at)}
+                Windows {profile.source_windows_version}{SEP}{formatDate(profile.created_at)}
               </span>
               <div class="flex gap-1.5">
                 <IconButton
@@ -188,7 +189,7 @@
       transition:fade={{ speed: "fast" }}
     >
       <IconTile icon="mdi:file-import" size="4xl" />
-      <h2 class="mt-6 text-xl font-semibold">Drop to import profile</h2>
+      <h2 class={["mt-6", HEADING.prompt]}>Drop to import profile</h2>
       <p class="mt-1 text-sm text-foreground-muted">Release the file to start importing</p>
     </div>
   {/if}

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { PanelHeading } from "$lib/components/ui";
-  import { card } from "$lib/components/ui/variants";
+  import { card, CodeBlock, PanelHeading } from "$lib/components/ui";
   import type { TweakEffectOption } from "$lib/types";
   import { plural } from "$lib/utils/format";
 
@@ -26,10 +25,7 @@
         </summary>
         <div class="space-y-1.5 border-t border-border p-3">
           {#each option.commands as cmd, idx (idx)}
-            <code
-              class="block rounded-md border border-border bg-background px-3 py-2 font-mono text-caption break-all whitespace-pre-wrap text-foreground-soft"
-              >{cmd}</code
-            >
+            <CodeBlock kind="command">{cmd}</CodeBlock>
           {/each}
         </div>
       </details>

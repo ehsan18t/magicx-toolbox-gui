@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { MATCH_HIGHLIGHT } from "$lib/design";
+
   interface Props {
     text: string;
     /** uFuzzy match ranges, flat: [start, end, start, end, …]. */
@@ -37,7 +39,7 @@
 </script>
 
 <span class={className}
-  >{#each segments as segment, i (i)}{#if segment.highlighted}<mark class="rounded-sm bg-accent/25 text-foreground"
+  >{#each segments as segment, i (i)}{#if segment.highlighted}<mark class="rounded-sm {MATCH_HIGHLIGHT} text-foreground"
         >{segment.text}</mark
       >{:else}{segment.text}{/if}{/each}</span
 >

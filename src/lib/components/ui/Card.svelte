@@ -1,18 +1,17 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { HTMLAttributes } from "svelte/elements";
-  import { card, type CardElevation } from "./variants";
+  import { card, type CardVariants } from "./variants";
 
-  interface Props extends Omit<HTMLAttributes<HTMLElement>, "class"> {
+  interface Props extends Omit<HTMLAttributes<HTMLElement>, "class">, CardVariants {
     as?: "div" | "section";
-    elevation?: CardElevation;
     class?: string;
     children: Snippet;
   }
 
-  let { as = "div", elevation, class: className, children, ...rest }: Props = $props();
+  let { as = "div", radius, elevation, class: className, children, ...rest }: Props = $props();
 </script>
 
-<svelte:element this={as} class={card({ elevation, class: className })} {...rest}>
+<svelte:element this={as} class={card({ radius, elevation, class: className })} {...rest}>
   {@render children()}
 </svelte:element>

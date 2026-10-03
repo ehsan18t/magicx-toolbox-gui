@@ -15,7 +15,7 @@
   import { themeStore, type Theme } from "$lib/stores/theme.svelte";
   import { formatBytes, plural } from "$lib/utils/format";
   import { onMount } from "svelte";
-  import ColorSchemePicker from "./ColorSchemePicker.svelte";
+  import ColorSchemePicker from "./settings/ColorSchemePicker.svelte";
 
   const THEMES: SegmentOption<Theme>[] = [
     { value: "light", label: "Light", icon: "tabler:sun" },
@@ -124,7 +124,7 @@
           </div>
         </div>
       {:else}
-        <div class="flex justify-center py-3"><Spinner size="sm" label="Loading log settings" /></div>
+        <div class="flex justify-center py-3"><Spinner size="md" label="Loading log settings" /></div>
       {/if}
     </SectionCard>
   </div>

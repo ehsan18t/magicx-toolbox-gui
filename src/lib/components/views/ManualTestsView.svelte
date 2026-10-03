@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { Tone } from "$lib/design";
+  import { HEADING, type Tone } from "$lib/design";
   import type { ManualTestStatus } from "$lib/types";
 
   const MIN_MINUTES = 1;
@@ -18,7 +18,7 @@
 <script lang="ts">
   import { autoScroll } from "$lib/actions/autoScroll";
   import { PageLayout } from "$lib/components/layout";
-  import { Badge, Button, Card, InlineCode, Spinner, TextField } from "$lib/components/ui";
+  import { Badge, Button, Card, CodeBlock, InlineCode, Spinner, TextField } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -73,7 +73,7 @@
     {@const titleId = `${uid}-${test.id}`}
     <Card as="section" class="flex flex-col gap-3 p-4" aria-labelledby={titleId}>
       <div class="flex flex-wrap items-center gap-2">
-        <h2 id={titleId} class="m-0 text-base font-semibold text-foreground">{test.title}</h2>
+        <h2 id={titleId} class={["m-0 text-foreground", HEADING.section]}>{test.title}</h2>
         <Badge tone={test.changes_system ? "warning" : "neutral"}>
           {test.changes_system ? "Changes this PC" : "Read-only"}
         </Badge>
@@ -135,10 +135,7 @@
           </Button>
         {/if}
         {#if isRunning}
-          <span class="flex items-center gap-2 text-sm text-foreground-muted">
-            <Spinner size="sm" label="Running {test.title}" />
-            Running
-          </span>
+          <Spinner size="md" label="Running {test.title}" class="flex text-sm text-foreground-muted">Running</Spinner>
         {/if}
       </div>
 
@@ -165,12 +162,10 @@
       {/if}
 
       {#if log.length > 0}
-        <pre
-          class="m-0 max-h-72 overflow-auto rounded-md border border-border bg-surface p-3 font-mono text-caption leading-relaxed whitespace-pre-wrap text-foreground"
-          role="log"
-          aria-live="polite"
-          aria-label="Log for {test.title}"
-          {@attach autoScroll}>{log.join("\n")}</pre>
+        <!-- One text node per line, so the live region reads out only the lines added. -->
+        <CodeBlock kind="log" role="log" aria-live="polite" aria-label="Log for {test.title}" {@attach autoScroll}
+          >{#each log as line, i (i)}{i > 0 ? "\n" : ""}{line}{/each}</CodeBlock
+        >
       {/if}
     </Card>
   {/each}

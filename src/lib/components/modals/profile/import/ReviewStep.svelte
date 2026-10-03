@@ -13,6 +13,7 @@
     SettingRow,
     Switch,
   } from "$lib/components/ui";
+  import { HEADING } from "$lib/design";
   import type { ConfigurationProfile, ProfileValidation, TweakChangePreview } from "$lib/types";
   import { plural } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
@@ -55,7 +56,7 @@
   <Card class="flex items-start gap-3 p-4">
     <IconTile icon="mdi:file-document" size="lg" />
     <div class="min-w-0 flex-1">
-      <h3 class="m-0 truncate text-base font-semibold">{meta.name}</h3>
+      <h3 class={["m-0 truncate", HEADING.section]}>{meta.name}</h3>
       {#if meta.description}<p class="m-0 mt-1 text-sm text-foreground-muted">{meta.description}</p>{/if}
       <p class="m-0 mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-foreground-muted">
         <MetaItem size="md" icon="mdi:calendar" label={formatDate(meta.created_at, { month: "short" })} />

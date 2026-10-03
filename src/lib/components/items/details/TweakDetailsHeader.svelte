@@ -33,7 +33,7 @@
       <p class="m-0 mt-1 text-ui leading-relaxed text-foreground-muted">{def.description}</p>
     </div>
     <div class="flex shrink-0 items-center gap-0.5">
-      <FavoriteButton tweakId={def.id} size="md" />
+      <FavoriteButton tweakId={def.id} name={def.name} size="md" />
       <IconButton icon="mdi:close" label="Close details" onclick={onclose} />
     </div>
   </div>

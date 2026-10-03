@@ -94,7 +94,7 @@ export default [
     },
   },
 
-  // The unconfigured merge drops app.css's custom names (`text-ui` read as a colour).
+  // The unconfigured merge drops app.css's custom names (`text-ui` read as a colour); barrels keep folders' insides private.
   {
     files: ["src/**/*.{js,ts,svelte}"],
     ignores: ["src/lib/utils/cn.ts"],
@@ -106,7 +106,11 @@ export default [
             { name: "tailwind-merge", message: "Use cn from $lib/utils/cn." },
             { name: "tailwind-variants", message: "Use tv from $lib/utils/cn." },
           ],
-          patterns: [{ group: ["tailwind-merge/*", "tailwind-variants/*"], message: "Use $lib/utils/cn." }],
+          patterns: [
+            { group: ["tailwind-merge/*", "tailwind-variants/*"], message: "Use $lib/utils/cn." },
+            // Inside a folder, import siblings relatively.
+            { group: ["$lib/components/*/*"], message: "Import from the folder's barrel, e.g. $lib/components/ui." },
+          ],
         },
       ],
     },

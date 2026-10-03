@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
+  import Spinner from "./Spinner.svelte";
   import { DISABLED } from "./variants";
 
   interface Props {
@@ -47,7 +48,7 @@
         {loading ? 'text-foreground-muted' : 'text-accent'}"
     >
       {#if loading}
-        <Icon icon="mdi:loading" size="xs" class="animate-spin" />
+        <Spinner size="xs" tone="current" />
       {:else if checked}
         <Icon icon="mdi:check" size="xs" class="animate-pop-in" />
       {/if}

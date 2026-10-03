@@ -4,8 +4,11 @@ export { default as Button } from "./Button.svelte";
 export { default as Callout } from "./Callout.svelte";
 export { default as Card } from "./Card.svelte";
 export { default as Checkbox } from "./Checkbox.svelte";
+export { default as CodeBlock } from "./CodeBlock.svelte";
 export { default as Count } from "./Count.svelte";
+export { default as Dot } from "./Dot.svelte";
 export { default as EmptyState } from "./EmptyState.svelte";
+export { default as ExternalLink } from "./ExternalLink.svelte";
 export { default as HighlightedText } from "./HighlightedText.svelte";
 export { default as IconButton } from "./IconButton.svelte";
 export { default as IconTile } from "./IconTile.svelte";
@@ -30,5 +33,17 @@ export { default as Switch } from "./Switch.svelte";
 export { default as TextArea } from "./TextArea.svelte";
 export { default as TextField } from "./TextField.svelte";
 export { default as ToggleChip } from "./ToggleChip.svelte";
-export type { SegmentOption, SelectOption } from "./types";
-export { DISABLED, iconButton, textLink, type ButtonVariants, type IconButtonSize } from "./variants";
+export type { MeterSegment, SegmentOption, SelectOption } from "./types";
+export {
+  button,
+  type ButtonVariants,
+  card,
+  DIMMED,
+  DISABLED,
+  FLOATING_CLOSE,
+  HELD,
+  iconButton,
+  type IconButtonSize,
+  indicator,
+  rowButton,
+} from "./variants";

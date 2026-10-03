@@ -1,6 +1,9 @@
 const KIB = 1024;
 const MIB = KIB * KIB;
 
+/** Joins the parts of a one-line summary. */
+export const SEP = " · ";
+
 export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

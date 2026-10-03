@@ -1,36 +1,21 @@
+<script lang="ts" module>
+  const SKELETON_ROWS = 6;
+  const SCROLL_PAGE_FRACTION = 0.6;
+</script>
+
 <script lang="ts">
   import { overflowHints } from "$lib/actions/overflowHints";
-  import { tooltip } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
-  import { IconButton } from "$lib/components/ui";
-  import { card } from "$lib/components/ui/variants";
-  import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
+  import { card, IconButton, indicator as indicatorBar } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { modalStore } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
-  import { updateStore } from "$lib/stores/update.svelte";
   import { isComplete } from "$lib/utils/categoryStats";
   import { plural } from "$lib/utils/format";
-  import { SEP } from "$lib/utils/tweakPresentation";
   import { fade, reducedMotion } from "$lib/utils/motion";
-
-  interface NavItem {
-    label: string;
-    icon: IconName;
-    active: boolean;
-    onclick: () => void;
-    trailing?: string;
-    trailingTone?: TextTone;
-    alert?: string;
-    pending?: string;
-  }
-
-  const SKELETON_ROWS = 6;
-  const SCROLL_PAGE_FRACTION = 0.6;
-  const RAIL_MARKER = "absolute -top-0.5 -right-1 ring-2 ring-background";
+  import SidebarFooter from "./SidebarFooter.svelte";
+  import SidebarNavItem from "./SidebarNavItem.svelte";
 
   const isOpen = $derived(sidebarStore.isOpen);
   let moreAbove = $state(false);
@@ -38,6 +23,8 @@
   let scrollEl = $state<HTMLElement | null>(null);
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(categoriesStore.stats);
+  const pendingByCategory = $derived(pendingChangesStore.countByCategory);
+  const fadeFrom = $derived(sidebarStore.isOverlay ? "from-elevated" : "from-background");
 
   // One shared indicator glides between pages; when items shift under it (the pane opening, categories
   // loading) it jumps with them instead.
@@ -50,9 +37,18 @@
     indicatorTab = activeTab;
     indicator = item ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight / 2, glide } : null;
   });
-  const fadeFrom = $derived(sidebarStore.isOverlay ? "from-elevated" : "from-background");
-  // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
-  const pendingByCategory = $derived(pendingChangesStore.countByCategory);
+
+  // The drawer takes focus while open and hands it back on close, unless the reader moved it elsewhere.
+  $effect(() => {
+    if (!sidebarStore.isOverlay || !scrollEl) return;
+    const nav = scrollEl;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    (nav.querySelector<HTMLElement>('[aria-current="page"]') ?? nav.querySelector<HTMLElement>("button"))?.focus();
+    return () => {
+      const focused = document.activeElement;
+      if (opener?.isConnected && (focused === document.body || nav.contains(focused))) opener.focus();
+    };
+  });
 
   function go(tab: TabDefinition) {
     navigationStore.navigateToTab(tab.id);
@@ -65,30 +61,6 @@
     return 0;
   }
 
-  const footerItems: { label: string; icon: IconName; open: () => void; dot: boolean; active: boolean }[] = $derived([
-    {
-      label: updateStore.isAvailable ? "Update available" : "Updates",
-      icon: "mdi:update",
-      open: () => modalStore.open("update"),
-      dot: updateStore.isAvailable,
-      active: false,
-    },
-    {
-      label: "Settings",
-      icon: "mdi:cog-outline",
-      open: () => navigationStore.navigateToTab("settings"),
-      dot: false,
-      active: activeTab === "settings",
-    },
-    {
-      label: "About",
-      icon: "mdi:information-outline",
-      open: () => modalStore.open("about"),
-      dot: false,
-      active: false,
-    },
-  ]);
-
   function handleKeydown(e: KeyboardEvent) {
     if (e.key !== "Escape" || e.defaultPrevented || !sidebarStore.isOverlay) return;
     // An open dialog takes Escape, whichever window listener runs first.
@@ -99,55 +71,6 @@
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
-
-{#snippet dot(classes: string)}
-  <span class={["h-2 w-2 rounded-full", classes]} aria-hidden="true"></span>
-{/snippet}
-
-{#snippet navItem({
-  label,
-  icon,
-  active,
-  onclick,
-  trailing = "",
-  trailingTone = "subtle",
-  alert = "",
-  pending = "",
-}: NavItem)}
-  <button
-    type="button"
-    class="group relative flex h-9 w-full shrink-0 cursor-pointer items-center gap-3 rounded-md px-3 text-left text-sm text-foreground {active
-      ? 'bg-muted'
-      : 'hover:bg-muted'}"
-    aria-current={active ? "page" : undefined}
-    aria-label={[label, trailing, alert, pending].filter(Boolean).join(", ")}
-    use:tooltip={isOpen
-      ? [alert, pending].filter(Boolean).join(SEP) || null
-      : [label, trailing, alert, pending].filter(Boolean).join(SEP)}
-    {onclick}
-  >
-    <span class="relative flex w-5 shrink-0 justify-center">
-      <Icon {icon} size="lg" class={active ? "text-accent" : "text-foreground-muted group-hover:text-foreground"} />
-      {#if alert && !isOpen}
-        {@render dot(`${RAIL_MARKER} bg-error`)}
-      {:else if pending && !isOpen}
-        {@render dot(`${RAIL_MARKER} bg-warning`)}
-      {/if}
-    </span>
-    {#if isOpen}
-      <span class="min-w-0 flex-1 truncate">{label}</span>
-      {#if alert}
-        <Icon icon="mdi:alert-circle" size="xs" class="shrink-0 text-error" />
-      {/if}
-      {#if pending}
-        {@render dot("shrink-0 bg-warning")}
-      {/if}
-      {#if trailing}
-        <span class="shrink-0 text-xs tabular-nums {TONE_TEXT[trailingTone]}">{trailing}</span>
-      {/if}
-    {/if}
-  </button>
-{/snippet}
 
 {#if sidebarStore.isOverlay}
   <button
@@ -185,22 +108,25 @@
       >
         {#if indicator}
           <span
-            class="pointer-events-none absolute top-0 left-0 h-4 w-0.75 -translate-y-1/2 animate-fade-in rounded-full bg-accent {indicator.glide
-              ? 'transition-transform duration-slow'
-              : ''}"
+            class={indicatorBar({
+              class: [
+                "pointer-events-none top-0 animate-fade-in",
+                indicator.glide && "transition-transform duration-slow",
+              ],
+            })}
             style:transform="translate({indicator.x}px, {indicator.y}px)"
             aria-hidden="true"
           ></span>
         {/if}
         {#each navigationStore.fixedTabs as tab (tab.id)}
           {@const count = fixedCount(tab.id)}
-          {@render navItem({
-            label: tab.name,
-            icon: tab.icon,
-            active: activeTab === tab.id,
-            onclick: () => go(tab),
-            trailing: count > 0 ? String(count) : "",
-          })}
+          <SidebarNavItem
+            label={tab.name}
+            icon={tab.icon}
+            active={activeTab === tab.id}
+            onclick={() => go(tab)}
+            trailing={count > 0 ? String(count) : ""}
+          />
         {/each}
 
         <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
@@ -210,16 +136,16 @@
 
         {#each navigationStore.categoryTabs as tab (tab.id)}
           {@const s = categoryStats[tab.id]}
-          {@render navItem({
-            label: tab.name,
-            icon: tab.icon,
-            active: activeTab === tab.id,
-            onclick: () => go(tab),
-            trailing: s ? `${s.applied}/${s.total}` : "",
-            trailingTone: s && isComplete(s) ? "success" : undefined,
-            alert: s?.attention ? `${plural(s.attention, "needs", "need")} attention` : "",
-            pending: pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
-          })}
+          <SidebarNavItem
+            label={tab.name}
+            icon={tab.icon}
+            active={activeTab === tab.id}
+            onclick={() => go(tab)}
+            trailing={s ? `${s.applied}/${s.total}` : ""}
+            trailingTone={s && isComplete(s) ? "success" : undefined}
+            alert={s?.attention ? `${plural(s.attention, "needs", "need")} attention` : ""}
+            pending={pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : ""}
+          />
         {/each}
 
         {#if tweaksStore.isLoading}
@@ -259,31 +185,6 @@
       {/if}
     </div>
 
-    <div
-      class="flex shrink-0 gap-0.5 border-t border-border px-1.5 py-1.5 {isOpen
-        ? 'flex-row justify-around'
-        : 'flex-col'}"
-    >
-      {#each footerItems as item (item.label)}
-        <div class="relative shrink-0 {isOpen ? 'flex-1' : ''}">
-          <IconButton
-            icon={item.icon}
-            tooltip={item.label}
-            active={item.active}
-            aria-current={item.active ? "page" : undefined}
-            class="h-9 w-full {item.active ? 'bg-muted' : ''}"
-            onclick={() => {
-              sidebarStore.closeOverlay();
-              item.open();
-            }}
-          />
-          {#if item.dot}
-            {@render dot(
-              "pointer-events-none absolute top-1.5 right-1/2 translate-x-3 animate-pop-in bg-success ring-2 ring-background",
-            )}
-          {/if}
-        </div>
-      {/each}
-    </div>
+    <SidebarFooter />
   </div>
 </nav>

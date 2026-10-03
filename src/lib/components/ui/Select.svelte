@@ -12,7 +12,7 @@
   import { nextEnabledIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
   import type { SelectOption } from "./types";
-  import { BUSY, DIMMED } from "./variants";
+  import { BUSY, card, DIMMED, field, indicator } from "./variants";
 
   interface Props {
     value: T | null;
@@ -192,21 +192,23 @@
     aria-expanded={isOpen}
     aria-controls={listboxId}
     aria-activedescendant={highlightedOptionId}
-    class={cn(
-      "flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border bg-secondary px-3 text-ui",
-      "border-border text-foreground hover:border-border-hover hover:bg-secondary-hover",
-      isOpen && "border-accent",
-      pending && [PENDING_TINT, "text-warning"],
-      loading && BUSY,
-      disabled && ["cursor-not-allowed", DIMMED],
-    )}
+    class={field({
+      focus: "none",
+      class: [
+        "flex w-full cursor-pointer items-center justify-between gap-2 px-3 hover:border-border-hover hover:bg-secondary-hover",
+        isOpen && "border-accent",
+        pending && [PENDING_TINT, "text-warning"],
+        loading && BUSY,
+        disabled && ["cursor-not-allowed", DIMMED],
+      ],
+    })}
   >
     <span class={cn("truncate", !selectedOption && "text-foreground-muted")}>
       {displayLabel}
     </span>
     <span class="flex shrink-0 items-center gap-1">
       {#if loading}
-        <Spinner size="sm" />
+        <Spinner size="md" />
       {:else}
         <Icon
           icon="mdi:chevron-down"
@@ -225,9 +227,13 @@
     id={listboxId}
     role="listbox"
     transition:pop
-    class="fixed z-popover max-h-72 space-y-0.5 overflow-auto rounded-lg border border-border bg-elevated p-1 shadow-flyout {menuPosition.above
-      ? 'origin-bottom'
-      : 'origin-top'}"
+    class={card({
+      elevation: "flyout",
+      class: [
+        "fixed z-popover max-h-72 space-y-0.5 overflow-auto p-1",
+        menuPosition.above ? "origin-bottom" : "origin-top",
+      ],
+    })}
     style="top: {menuPosition.top}px; left: {menuPosition.left}px; min-width: {menuPosition.minWidth}px; max-width: {menuPosition.maxWidth}px;"
   >
     {#each options as opt, i (opt.value)}
@@ -248,7 +254,7 @@
         )}
       >
         {#if opt.value === value}
-          <span class="absolute top-1/2 left-0 h-4 w-0.75 -translate-y-1/2 rounded-full bg-accent"></span>
+          <span class={indicator({ class: "top-1/2" })}></span>
         {/if}
         <span class="min-w-0 wrap-break-word">{opt.label}</span>
       </button>

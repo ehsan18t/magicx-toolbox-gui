@@ -1,3 +1,4 @@
+// Each alpha step is a look from the shipped design, kept apart on purpose: do not merge near neighbours.
 export type Tone = "accent" | "success" | "warning" | "error" | "info" | "neutral";
 /** Text only: `subtle` is a de-emphasised neutral with no fill of its own. */
 export type TextTone = Tone | "subtle";
@@ -11,6 +12,15 @@ export const TONE_TEXT: Record<TextTone, string> = {
   info: "text-info",
   neutral: "text-foreground-muted",
   subtle: "text-foreground-subtle",
+};
+
+/** Solid fill with no text colour: stripes, dots, bar segments. */
+export const TONE_FILL: Record<Exclude<Tone, "neutral">, string> = {
+  accent: "bg-accent",
+  success: "bg-success",
+  warning: "bg-warning",
+  error: "bg-error",
+  info: "bg-info",
 };
 
 /** Soft fill with tone text: badges, status chips. */
@@ -32,7 +42,6 @@ export const TONE_TINT: Record<TintTone, string> = {
   neutral: "border-border bg-muted",
 };
 
-/** A staged value not applied yet. */
 export const PENDING_TINT = "border-warning/50 bg-warning/10";
 
 /** Tones a control can be filled with: each has a matching `-foreground` text token. */
@@ -45,7 +54,7 @@ export const CHIP_TINT: Record<FillTone, string> = {
   error: "border-error/40 bg-error/10 text-error enabled:hover:bg-error/15",
 };
 
-/** A chip switched on: solid fill. */
+/** Switched on: solid fill with its foreground text, e.g. a chip or a count pill. */
 export const CHIP_SOLID: Record<FillTone, string> = {
   accent: "border-accent bg-accent text-accent-foreground",
   warning: "border-warning bg-warning text-warning-foreground",
@@ -75,8 +84,22 @@ export const COLUMN_TINT: Record<ColumnTone, { head: string; cell: string }> = {
   pending: { head: "bg-warning/10", cell: "bg-warning/6" },
 };
 
-/** A table's header row. */
 export const TABLE_HEAD = "bg-muted/40";
 
 /** Veils the page under a dragged file, leaving it faintly visible. */
 export const DROP_VEIL = "bg-background/85";
+
+/** A search match inside text. */
+export const MATCH_HIGHLIGHT = "bg-accent/25";
+
+/** A skeleton's secondary lines, a step fainter than its first. */
+export const SKELETON_SOFT = "bg-muted/60";
+
+/** A link's resting underline in rendered Markdown. */
+export const PROSE_LINK_UNDERLINE = "decoration-accent/40";
+
+/** Windows 11 caption buttons: close turns red, the rest take the hover wash; a press deepens either. */
+export const CAPTION_BUTTON = {
+  close: "hover:bg-caption-close hover:text-caption-close-foreground active:bg-caption-close/85",
+  other: "hover:bg-muted hover:text-foreground active:bg-foreground/10",
+} as const;

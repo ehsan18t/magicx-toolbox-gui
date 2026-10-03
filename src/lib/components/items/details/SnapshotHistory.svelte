@@ -1,11 +1,11 @@
 <script lang="ts">
   import { TONE_WASH } from "$lib/design";
-  import { Button, Callout, PanelHeading, Spinner } from "$lib/components/ui";
+  import { Button, Callout, card, PanelHeading, Spinner } from "$lib/components/ui";
   import type { SnapshotHistory } from "$lib/stores/snapshotHistory.svelte";
   import type { EntrySummary } from "$lib/types";
   import { expand } from "$lib/utils/motion";
+  import { SEP } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
-  import { SEP } from "$lib/utils/tweakPresentation";
 
   interface Props {
     history: SnapshotHistory;
@@ -25,10 +25,7 @@
 <section aria-labelledby={headingId} class={className}>
   <PanelHeading id={headingId} icon="mdi:history" class="mb-2.5">Snapshot history</PanelHeading>
   {#if history.loading}
-    <div class="flex items-center gap-2 text-ui text-foreground-muted">
-      <Spinner size="sm" class="text-current" />
-      Loading…
-    </div>
+    <Spinner size="md" tone="current" class="flex text-ui text-foreground-muted">Loading…</Spinner>
   {:else}
     {#if history.error}
       <Callout tone="error" density="compact" icon="mdi:alert-circle" class="mb-1.5">
@@ -39,7 +36,7 @@
       <div class="animate-fade-in space-y-1.5">
         {#each history.entries as entry (entry.seq)}
           <div
-            class="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2"
+            class={card({ radius: "md", class: "flex items-center justify-between gap-3 px-3 py-2" })}
             transition:expand
           >
             <div class="min-w-0 text-xs wrap-break-word">

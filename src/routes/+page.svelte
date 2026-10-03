@@ -16,6 +16,7 @@
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { isPageId, navigationStore, type PageId } from "$lib/stores/navigation.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { remToken } from "$lib/utils/cssToken";
   import { errorMessage } from "$lib/utils/error";
   import { logError } from "$lib/utils/logger";
   import { onMount, type Component } from "svelte";
@@ -48,6 +49,10 @@
     navigationStore.isOnCategoryTab ? navigationStore.categoryTabs.find((t) => t.id === activeTab) : undefined,
   );
 
+  // Mounted only once it fits: hidden by CSS alone, it would still recompute on every status change.
+  let workspaceWidth = $state(0);
+  const summaryFits = $derived(workspaceWidth >= remToken("--container-summary-panel"));
+
   const summary = $derived.by(() => {
     if (categoryTab) return { title: categoryTab.name, tweaks: tweaksStore.byCategory[categoryTab.id] ?? [] };
     if (activeTab === "favorites") return { title: "Favorites", tweaks: tweaksStore.favorites };
@@ -66,7 +71,7 @@
     <Sidebar />
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-lg border-t border-l border-border bg-surface">
       <RebootBanner />
-      <div class="@container relative flex min-h-0 flex-1">
+      <div class="relative flex min-h-0 flex-1" bind:clientWidth={workspaceWidth}>
         <div class="relative flex min-w-0 flex-1 flex-col">
           {#key activeTab}
             <div class="min-h-0 flex-1 animate-rise-in">
@@ -79,7 +84,7 @@
           {/key}
           <PendingBar />
         </div>
-        {#if summary}
+        {#if summary && summaryFits}
           <!-- Keyed: switching pages remounts it rather than animating every group out and in. -->
           {#key summary.title}
             <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />

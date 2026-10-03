@@ -13,3 +13,10 @@ export interface SegmentOption<T extends string | number = string | number> exte
   /** Choosing it asks first, so arrow keys focus it without choosing it. */
   confirms?: boolean;
 }
+
+export interface MeterSegment {
+  key: string;
+  value: number;
+  /** A fill class, e.g. from TONE_FILL. */
+  fill: string;
+}

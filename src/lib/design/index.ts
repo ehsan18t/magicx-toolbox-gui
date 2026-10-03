@@ -2,6 +2,7 @@ export { type IconName, iconRegistry, isIconName } from "./icons";
 export { ICON_SIZE, type IconSize } from "./size";
 export { INLINE_CODE } from "./surface";
 export {
+  CAPTION_BUTTON,
   CHIP_SOLID,
   CHIP_TINT,
   COLUMN_TINT,
@@ -9,8 +10,12 @@ export {
   DROP_VEIL,
   EMPHASIS_BORDER,
   type FillTone,
+  MATCH_HIGHLIGHT,
   PENDING_TINT,
+  PROSE_LINK_UNDERLINE,
+  SKELETON_SOFT,
   TABLE_HEAD,
+  TONE_FILL,
   TONE_SOFT,
   TONE_TEXT,
   TONE_TINT,
@@ -19,3 +24,4 @@ export {
   type TintTone,
   type Tone,
 } from "./tone";
+export { HEADING } from "./type";

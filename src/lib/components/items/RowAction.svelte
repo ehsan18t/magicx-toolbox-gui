@@ -2,7 +2,7 @@
   import { tooltip as tooltipAction } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import type { IconName } from "$lib/design";
-  import { button } from "$lib/components/ui/variants";
+  import { button } from "$lib/components/ui";
   import { cn } from "$lib/utils/cn";
   import type { HTMLButtonAttributes } from "svelte/elements";
 

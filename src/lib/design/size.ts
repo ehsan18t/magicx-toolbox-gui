@@ -1,3 +1,4 @@
+// Each step is a size from the shipped design, kept apart on purpose: do not merge near neighbours.
 /** Icon widths in px; components map their own size names onto these. */
 export const ICON_SIZE = {
   "3xs": 12,

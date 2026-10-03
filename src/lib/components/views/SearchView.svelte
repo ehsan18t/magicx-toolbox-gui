@@ -45,7 +45,8 @@
   <MetaItem icon={categoriesStore.icon(result.searchResult.categoryId)} label={result.categoryName} tone="neutral" />
   <LinkButton
     variant="hover"
-    class="inline-flex items-center gap-1 text-accent"
+    tone="accent"
+    class="inline-flex items-center gap-1"
     aria-label="Go to {result.name} in {result.categoryName}"
     onclick={() => goToItem(result.searchResult)}
   >
@@ -54,7 +55,7 @@
   </LinkButton>
 {/snippet}
 
-<PageLayout title="Search" {description}>
+<PageLayout title="Search" {description} announce>
   {#if tweaksStore.isLoading && !searchStore.isActive}
     <EmptyState loading description="Loading tweaks…" />
   {:else if searchStore.error}
@@ -81,6 +82,7 @@
       action={{ label: "Clear search", onclick: () => searchStore.setQuery("") }}
     />
   {:else}
+    <h2 class="sr-only">Results</h2>
     <div class="flex animate-fade-in flex-col gap-2">
       {#each mappedResults as result (result.searchResult.id)}
         {#if result.kind === "tweak"}

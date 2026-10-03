@@ -7,7 +7,7 @@ export interface BackendError {
   message: string;
 }
 
-export function asBackendError(error: unknown): BackendError | null {
+function asBackendError(error: unknown): BackendError | null {
   const candidate = error as Partial<BackendError> | null | undefined;
   return typeof candidate?.code === "string" && typeof candidate.message === "string"
     ? (candidate as BackendError)

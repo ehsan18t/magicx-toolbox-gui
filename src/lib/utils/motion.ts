@@ -4,6 +4,7 @@
 import { flip } from "svelte/animate";
 import type { AnimationConfig } from "svelte/animate";
 import { slide, type EasingFunction, type TransitionConfig } from "svelte/transition";
+import { token } from "./cssToken";
 
 type Speed = "fast" | "normal" | "slow" | "slower" | "highlight";
 type Delay = "reveal" | "settle" | "tooltip" | "feedback";
@@ -13,17 +14,6 @@ type Direction = "above" | "below" | "left" | "right";
 
 interface MotionParams {
   speed?: Speed;
-}
-
-const tokens = new Map<string, string>();
-
-function token(name: string): string {
-  let value = tokens.get(name);
-  if (value === undefined) {
-    value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    if (value) tokens.set(name, value);
-  }
-  return value;
 }
 
 // WAAPI-driven Svelte transitions ignore the CSS reduced-motion override, so each preset checks it.

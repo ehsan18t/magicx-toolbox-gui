@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { NoMatches, PageLayout, PageStats } from "$lib/components/layout";
+  import { NoMatches } from "$lib/components/feedback";
+  import { PageLayout, PageStats } from "$lib/components/layout";
   import { GroupedTweakList, RestoreAllButton } from "$lib/components/items";
   import { EmptyState, SkeletonList } from "$lib/components/ui";
   import type { IconName } from "$lib/design";

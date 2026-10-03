@@ -30,10 +30,7 @@
   </button>
 
   {#if isImporting}
-    <p class="m-0 flex items-center justify-center gap-2 py-4 text-sm text-foreground-muted">
-      <Spinner />
-      Loading profile…
-    </p>
+    <Spinner class="flex justify-center py-4 text-sm text-foreground-muted">Loading profile…</Spinner>
   {/if}
 
   <ProfileFileNote>

@@ -1,11 +1,12 @@
 <script lang="ts" module>
+  import { TONE_FILL } from "$lib/design";
   import { CHECKING, SYSTEM_DEFAULT_LABEL, type Tallies } from "$lib/utils/tweakPresentation";
 
   // Bar and legend order.
   const SEGMENTS: { state: keyof Tallies["byState"]; label: string; fill: string }[] = [
-    { state: "active", label: "Applied", fill: "bg-accent" },
+    { state: "active", label: "Applied", fill: TONE_FILL.accent },
     { state: "system_default", label: SYSTEM_DEFAULT_LABEL, fill: "bg-foreground-subtle" },
-    { state: "unknown", label: "Unknown", fill: "bg-warning" },
+    { state: "unknown", label: "Unknown", fill: TONE_FILL.warning },
     { state: "unavailable", label: "Unavailable", fill: "bg-border-hover" },
     { state: "loading", label: CHECKING.label, fill: "bg-border" },
   ];
@@ -13,9 +14,8 @@
 
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import type { IconName, TextTone } from "$lib/design";
-  import { Card, Count, PanelHeading } from "$lib/components/ui";
-  import { toPercent } from "$lib/components/ui/percent";
+  import { HEADING, type IconName, type TextTone } from "$lib/design";
+  import { Card, Count, Dot, PanelHeading, rowButton } from "$lib/components/ui";
   import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
@@ -32,7 +32,9 @@
   let { label, tweaks }: Props = $props();
 
   const stats = $derived(tallies(tweaks));
-  const breakdown = $derived(SEGMENTS.map((s) => ({ ...s, value: stats.byState[s.state] })).filter((s) => s.value > 0));
+  const breakdown = $derived(
+    SEGMENTS.map((s) => ({ ...s, key: s.state, value: stats.byState[s.state] })).filter((s) => s.value > 0),
+  );
 
   const attention = $derived(tweaks.filter((t) => t.status.attention));
   const pending = $derived(tweaks.filter((t) => pendingChangesStore.has(t.definition.id)));
@@ -70,7 +72,7 @@
           <li>
             <button
               type="button"
-              class="group flex w-full cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+              class={rowButton({ class: "group flex w-full items-start gap-2 px-2 py-1.5" })}
               onclick={() => reveal(t.definition.id)}
             >
               <span class="min-w-0 flex-1">
@@ -91,33 +93,22 @@
 {/snippet}
 
 <aside
-  class="hidden w-summary-panel shrink-0 animate-fade-in flex-col border-l border-border bg-surface @min-summary-panel:flex"
+  class="flex w-summary-panel shrink-0 animate-fade-in flex-col border-l border-border bg-surface"
   aria-label={label}
 >
   <header class="shrink-0 border-b border-border px-5 pt-4 pb-3">
-    <h2 class="m-0 font-display text-lg font-semibold">At a glance</h2>
-    <p class="m-0 mt-0.5 text-ui text-foreground-muted">Select a tweak to see its details here.</p>
+    <h2 class={["m-0", HEADING.pane]}>At a glance</h2>
+    <p class="m-0 mt-0.5 text-ui text-foreground-muted">Select a tweak to open its details.</p>
   </header>
 
   <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
     {#if stats.total > 0}
       <Card as="section" class="p-3">
-        <AppliedMeter applied={stats.applied} total={stats.total}>
-          {#snippet bar()}
-            <div class="flex h-1.5 overflow-hidden rounded-full bg-muted">
-              {#each breakdown as b (b.state)}
-                <div
-                  class="transition-[width] duration-slower ease-out {b.fill}"
-                  style:width="{toPercent(b.value, stats.total)}%"
-                ></div>
-              {/each}
-            </div>
-          {/snippet}
-        </AppliedMeter>
+        <AppliedMeter applied={stats.applied} total={stats.total} segments={breakdown} />
         <ul class="m-0 mt-2.5 flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
           {#each breakdown as b (b.state)}
             <li class="flex items-center gap-1.5 text-xs text-foreground-muted">
-              <span class="h-2 w-2 rounded-full {b.fill}"></span>
+              <Dot fill={b.fill} />
               {b.label}
               <span class="text-foreground tabular-nums">{b.value}</span>
             </li>

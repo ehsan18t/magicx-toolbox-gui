@@ -18,5 +18,5 @@
 </script>
 
 {#if IconComponent}
-  <IconComponent width={ICON_SIZE[size]} height={ICON_SIZE[size]} class={className} />
+  <IconComponent width={ICON_SIZE[size]} height={ICON_SIZE[size]} class={className} aria-hidden="true" />
 {/if}

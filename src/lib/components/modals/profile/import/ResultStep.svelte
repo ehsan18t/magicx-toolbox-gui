@@ -9,6 +9,7 @@
 
 <script lang="ts">
   import { Button, Callout, IconTile, ModalBody, ModalFooter } from "$lib/components/ui";
+  import { HEADING } from "$lib/design";
   import type { ProfileApplyResult } from "$lib/types";
   import { plural } from "$lib/utils/format";
   import IssueList, { type Issue } from "./IssueList.svelte";
@@ -30,7 +31,7 @@
   <IconTile icon={outcome.icon} size="3xl" shape="circle" tone={outcome.tone} iconSize="7xl" />
 
   <div>
-    <h3 class="m-0 text-xl font-bold">{outcome.title}</h3>
+    <h3 class={["m-0", HEADING.outcome]}>{outcome.title}</h3>
     <p class="m-0 mt-2 text-foreground-muted">
       Applied {plural(result.applied_count, "tweak")}{#if result.skipped_count > 0}, skipped {result.skipped_count}{/if}.
     </p>

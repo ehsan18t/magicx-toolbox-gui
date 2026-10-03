@@ -4,6 +4,7 @@
   import type { IconName } from "$lib/design";
   import type { Snippet } from "svelte";
   import type { HTMLButtonAttributes } from "svelte/elements";
+  import Spinner from "./Spinner.svelte";
   import { button, type ButtonVariants } from "./variants";
 
   interface Props extends Omit<HTMLButtonAttributes, "class">, ButtonVariants {
@@ -40,7 +41,7 @@
   {...rest}
 >
   {#if loading}
-    <Icon icon="mdi:loading" size="md" class="animate-spin" />
+    <Spinner size="md" tone="current" />
   {:else if icon}
     <Icon {icon} size="md" />
   {/if}

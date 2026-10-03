@@ -1,20 +1,15 @@
 <script lang="ts" module>
   const SHRINK_LABEL_CHARS = 16;
-
-  // A label cut short shows in full on hover.
-  const labelIfCut = (label: string) => (node: HTMLElement) => {
-    const text = node.lastElementChild;
-    return text && text.scrollWidth > text.clientWidth ? label : null;
-  };
 </script>
 
 <script lang="ts" generics="T extends string | number">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { textIfCut, tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import { glide } from "$lib/utils/motion";
   import { PENDING_TINT } from "$lib/design";
   import { nextEnabledIndex } from "./listNav";
+  import Spinner from "./Spinner.svelte";
   import type { SegmentOption } from "./types";
   import { DIMMED } from "./variants";
 
@@ -124,10 +119,10 @@
             ),
       )}
       onclick={() => choose(opt)}
-      use:tooltip={opt.tooltip ?? labelIfCut(opt.label)}
+      use:tooltip={opt.tooltip ?? textIfCut(opt.label, (node) => node.lastElementChild)}
     >
       {#if loading && isSelected}
-        <Icon icon="mdi:loading" size="xs" class="shrink-0 animate-spin" />
+        <Spinner size="xs" tone="current" class="shrink-0" />
       {:else if opt.icon}
         <Icon icon={opt.icon} size="xs" class="shrink-0" />
       {/if}

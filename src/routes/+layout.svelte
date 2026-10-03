@@ -2,7 +2,7 @@
   import * as systemApi from "$lib/api/system";
   import { ApplyingOverlay, LoadError, ToastContainer } from "$lib/components/feedback";
   import { LogsPanel, TitleBar } from "$lib/components/layout";
-  import { AboutModal, ConfirmHost, ProfileExportModal, ProfileImportModal, UpdateModal } from "$lib/components/modals";
+  import { AboutModal, ConfirmHost, ProfileImportModal, UpdateModal } from "$lib/components/modals";
   import { RETIRED_STORAGE_KEYS } from "$lib/config/app";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
@@ -19,14 +19,18 @@
   let { children }: { children: Snippet } = $props();
 
   let initError = $state<string | null>(null);
+  let shell = $state<HTMLElement | null>(null);
 
   function handleGlobalKeydown(e: KeyboardEvent) {
+    // AltGr reports Ctrl+Alt, so its characters are not Ctrl+K.
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    // A synthetic keydown can lack `key`.
+    const key = e.key ?? "";
     // `key` follows the layout (Dvorak's K is not on KeyK); `code` only when the key is no Latin letter.
-    const isK = e.key.toLowerCase() === "k" || (!/^[a-z]$/i.test(e.key) && e.code === "KeyK");
-    if ((e.ctrlKey || e.metaKey) && isK) {
-      e.preventDefault();
-      navigationStore.focusSearch();
-    }
+    const isK = key.toLowerCase() === "k" || (!/^[a-z]$/i.test(key) && e.code === "KeyK");
+    if (!isK) return;
+    e.preventDefault();
+    navigationStore.focusSearch();
   }
 
   async function init() {
@@ -74,7 +78,7 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
-<div class="flex h-dvh flex-col overflow-hidden">
+<div class="flex h-dvh flex-col overflow-hidden" bind:this={shell}>
   <TitleBar />
   <div class="min-h-0 flex-1">
     {#if initError}
@@ -89,9 +93,8 @@
 
 <AboutModal />
 <UpdateModal />
-<ProfileExportModal />
 <ProfileImportModal />
 <ConfirmHost />
 
-<ApplyingOverlay />
+<ApplyingOverlay {shell} />
 <ToastContainer />

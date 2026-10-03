@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Button, Card, IconButton } from "$lib/components/ui";
+  import { Badge, Button, Card, IconButton, rowButton } from "$lib/components/ui";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
@@ -62,7 +62,7 @@
       {#if expanded}
         <ul class="m-0 max-h-56 list-none overflow-y-auto border-b border-border p-1" transition:expand>
           {#each items as { change, name, fromArrow } (change.tweakId)}
-            <li class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted" transition:expand>
+            <li class={rowButton({ radius: "sm", class: "flex items-center gap-2 px-2 py-1.5" })} transition:expand>
               <button
                 type="button"
                 class="min-w-0 flex-1 cursor-pointer truncate text-left text-ui"
@@ -89,11 +89,9 @@
           aria-expanded={expanded}
           onclick={() => (expanded = !expanded)}
         >
-          <span
-            class="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-warning-foreground tabular-nums"
-          >
+          <Badge tone="warning" solid size="count" case="none" class="shrink-0">
             {#key count}<span class="inline-block" in:pop>{count}</span>{/key}
-          </span>
+          </Badge>
           <span class="min-w-0">
             <span class="block truncate text-ui font-semibold text-foreground">
               {plural(count, "change")} ready to apply

@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import { HEADING } from "$lib/design";
   import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
   import Card from "./Card.svelte";
@@ -26,7 +27,7 @@
 
 {#if heading === "outside"}
   <section class={className} aria-labelledby={titleId}>
-    <h2 id={titleId} class="m-0 mb-2 text-sm font-semibold text-foreground">{title}</h2>
+    <h2 id={titleId} class={["m-0 mb-2 text-foreground", HEADING.item]}>{title}</h2>
     <Card>{@render children()}</Card>
   </section>
 {:else}
@@ -39,7 +40,7 @@
           : `py-2 ${INSET[inset].bare}`,
       ]}
     >
-      <h2 id={titleId} class="m-0 text-ui font-semibold">{title}</h2>
+      <h2 id={titleId} class={["m-0", HEADING.group]}>{title}</h2>
       {@render actions?.()}
     </div>
     {@render children()}

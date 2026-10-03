@@ -1,10 +1,10 @@
 import type { IconName, TextTone } from "$lib/design";
 import type { SystemInfo } from "$lib/types";
+import { SEP } from "./format";
 import { formatDuration } from "./time";
 
 const MHZ_PER_GHZ = 1000;
 const GB_PER_TB = 1000;
-const SEP = " · ";
 
 export interface HardwareRow {
   icon: IconName;

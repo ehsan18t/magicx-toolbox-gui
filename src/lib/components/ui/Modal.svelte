@@ -26,8 +26,6 @@
     closeOnBackdrop?: boolean;
     closeOnEscape?: boolean;
     role?: "dialog" | "alertdialog";
-    /** Only without a ModalHeader, which names the dialog by its title. */
-    labelledBy?: string;
     describedBy?: string;
     children: Snippet;
   }
@@ -39,7 +37,6 @@
     closeOnBackdrop = true,
     closeOnEscape = true,
     role = "dialog",
-    labelledBy,
     describedBy,
     children,
   }: Props = $props();
@@ -203,7 +200,7 @@
       {role}
       tabindex="-1"
       aria-modal="true"
-      aria-labelledby={labelledBy ?? titleId}
+      aria-labelledby={titleId}
       aria-describedby={describedBy}
       onanimationend={handleAnimationEnd}
     >

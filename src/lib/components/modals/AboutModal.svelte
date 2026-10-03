@@ -18,8 +18,8 @@
 </script>
 
 <script lang="ts">
-  import { ExternalLink, Icon } from "$lib/components/shared";
-  import { Button, IconButton, iconButton, Modal, ModalTitle, textLink } from "$lib/components/ui";
+  import { Icon } from "$lib/components/shared";
+  import { Button, ExternalLink, FLOATING_CLOSE, IconButton, iconButton, Modal, ModalTitle } from "$lib/components/ui";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { copyText } from "$lib/utils/clipboard";
@@ -48,9 +48,9 @@
 
 <Modal open={isOpen} onclose={modalStore.close} size="md">
   <div class="relative overflow-y-auto px-7 pt-7 pb-6">
-    <IconButton icon="mdi:close" label="Close" class="absolute top-3 right-3" onclick={modalStore.close} />
+    <IconButton icon="mdi:close" label="Close" class={FLOATING_CLOSE} onclick={modalStore.close} />
 
-    <img src={APP_CONFIG.appIcon} alt="" width="44" height="44" class="block" />
+    <img src={APP_CONFIG.appIcon} alt="" class="block h-11 w-11" />
     <ModalTitle size="hero" class="mt-4">{APP_CONFIG.appName}</ModalTitle>
     <p class="m-0 mt-2 text-sm text-foreground-muted">{versionLabel()}</p>
 
@@ -84,14 +84,14 @@
 
     <nav class="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-4 text-ui" aria-label="Project links">
       {#each PROJECT_LINKS as link (link.label)}
-        <ExternalLink href={link.href} class="text-foreground {textLink}">{link.label}</ExternalLink>
+        <ExternalLink href={link.href} variant="underline" tone="foreground">{link.label}</ExternalLink>
       {/each}
     </nav>
 
     <footer class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs">
       <p class="m-0 text-foreground-muted">
         Made by {author.name}. Free and open source under the
-        <ExternalLink href="{repo}/blob/main/LICENSE" class="text-foreground {textLink}">MIT License</ExternalLink>.
+        <ExternalLink href="{repo}/blob/main/LICENSE" variant="underline" tone="foreground">MIT License</ExternalLink>.
       </p>
       <div class="flex gap-0.5">
         {#each AUTHOR_LINKS as link (link.href)}

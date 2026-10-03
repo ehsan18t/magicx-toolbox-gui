@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
+  import { field } from "./variants";
 
   interface Props {
     value: string;
@@ -48,13 +48,7 @@
   }
 </script>
 
-<label
-  for={inputId}
-  class={cn(
-    "flex h-8 min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-2.5 transition-colors focus-within:border-accent",
-    className,
-  )}
->
+<label for={inputId} class={field({ focus: "within", class: className })}>
   <Icon icon="mdi:magnify" size="md" class="shrink-0 text-foreground-muted" />
   <input
     bind:this={inputRef}

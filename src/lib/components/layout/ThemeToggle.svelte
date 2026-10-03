@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { iconButton } from "$lib/components/ui/variants";
+  import { iconButton } from "$lib/components/ui";
   import type { IconName } from "$lib/design";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { duration } from "$lib/utils/motion";

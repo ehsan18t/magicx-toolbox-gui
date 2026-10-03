@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { AppliedMeter, NoMatches, PageLayout } from "$lib/components/layout";
+  import { NoMatches } from "$lib/components/feedback";
+  import { AppliedMeter, PageLayout } from "$lib/components/layout";
   import { AppRow, RestoreAllButton, TweakRow } from "$lib/components/items";
   import { Button, Callout, EmptyState, SkeletonList, ToggleChip } from "$lib/components/ui";
+  import { HEADING } from "$lib/design";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
@@ -97,6 +99,7 @@
     {/if}
   {:else}
     {#if filteredTweaks.length > 0}
+      <h2 class="sr-only">Tweaks</h2>
       <div class="flex animate-fade-in flex-col gap-2">
         {#each filteredTweaks as tweak (tweak.definition.id)}
           <TweakRow {tweak} />
@@ -106,7 +109,7 @@
 
     {#if filteredApps.length > 0}
       <section aria-labelledby={appsHeadingId} class="mt-4 flex animate-fade-in flex-col gap-2">
-        <h2 id={appsHeadingId} class="m-0 flex items-baseline gap-2 text-base font-semibold">
+        <h2 id={appsHeadingId} class={["m-0 flex items-baseline gap-2", HEADING.section]}>
           Apps
           <span class="text-xs font-normal text-foreground-muted">{installedAppCount} installed</span>
         </h2>

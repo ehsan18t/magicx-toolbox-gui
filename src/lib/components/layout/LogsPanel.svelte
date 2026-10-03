@@ -2,7 +2,7 @@
   import { autoScroll } from "$lib/actions/autoScroll";
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
-  import { type TextTone, TONE_TEXT } from "$lib/design";
+  import { HEADING, type TextTone, TONE_TEXT } from "$lib/design";
   import { formatLogLine, gapLabel, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import type { LogLevel, LogSource } from "$lib/types";
@@ -86,7 +86,7 @@
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
       <div class="flex items-center gap-2">
         <Icon icon="tabler:file-text" size="lg" class="text-accent" />
-        <h2 class="m-0 text-sm font-semibold">Logs</h2>
+        <h2 class={["m-0", HEADING.item]}>Logs</h2>
         {#if logsStore.settings?.detailed}
           <Badge tone="info">Detailed</Badge>
         {/if}

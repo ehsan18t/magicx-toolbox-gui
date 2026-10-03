@@ -223,8 +223,6 @@
   --container-dialog-lg: 42.5rem;
   --container-dialog-full: 75rem;
   --container-page: 68.75rem;
-  /* The workspace width at which the summary panel fits beside the page. */
-  --container-summary-panel: 87.5rem;
 
   --width-toast: min(22rem, calc(100vw - 2rem));
   --width-sidebar: 16rem;
@@ -306,6 +304,11 @@
   /* Windows caption close red, the same in both themes. */
   --color-caption-close: #c42b1c;
   --color-caption-close-foreground: #fff;
+}
+
+/* The workspace width at which the summary panel fits beside the page. Static: +page reads it at runtime. */
+@theme static {
+  --container-summary-panel: 87.5rem;
 }
 
 /* Motion tokens. Static: $lib/utils/motion reads the durations, delays, easings and distances at runtime.

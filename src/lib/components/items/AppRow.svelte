@@ -107,7 +107,11 @@
     {#if operation}
       <div class="flex items-center gap-3 text-xs text-foreground-muted" role="status" transition:expand>
         <ActivityBar class="flex-1" />
-        <span class="tabular-nums">{APP_OPERATION_LABEL[operation.kind]}… {elapsedClock(operation.startedAt, now)}</span
+        <!-- The clock stays out of the live region, which would otherwise re-announce every second. -->
+        <span class="tabular-nums"
+          >{APP_OPERATION_LABEL[operation.kind]}…<span aria-hidden="true">
+            {elapsedClock(operation.startedAt, now)}</span
+          ></span
         >
       </div>
     {/if}

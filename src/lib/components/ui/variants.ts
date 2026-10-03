@@ -6,6 +6,8 @@ export const DISABLED = "disabled:cursor-not-allowed disabled:opacity-50";
 export const DIMMED = "opacity-50";
 /** A control busy with its own action: dimmed less, still readable. */
 export const BUSY = "cursor-wait opacity-70";
+/** Disabled because something holds it in its state, e.g. a warning kept open: dimmed like BUSY. */
+export const HELD = "disabled:cursor-default disabled:opacity-70";
 
 // `enabled:hover:`, not `hover:` plus a `disabled:hover:` reset: a disabled control never reacts.
 const GHOST = "bg-transparent text-foreground-muted enabled:hover:bg-muted enabled:hover:text-foreground";
@@ -77,7 +79,7 @@ export type IconButtonVariants = VariantProps<typeof iconButton>;
 export type IconButtonSize = NonNullable<IconButtonVariants["size"]>;
 
 export const badge = tv({
-  base: "inline-flex items-center gap-1 rounded-md font-semibold tracking-wide uppercase",
+  base: "inline-flex items-center gap-1 font-semibold",
   variants: {
     tone: {
       accent: TONE_SOFT.accent,
@@ -87,14 +89,30 @@ export const badge = tv({
       info: TONE_SOFT.info,
       neutral: TONE_SOFT.neutral,
     },
+    /** `caption`: a status chip in running text; `count`: a number in a pill. */
     size: {
-      sm: "px-1.5 py-0.5 text-badge-sm",
-      md: "px-2 py-1 text-badge-md",
+      sm: "rounded-md px-1.5 py-0.5 text-badge-sm",
+      md: "rounded-md px-2 py-1 text-badge-md",
+      caption: "rounded px-1.5 py-0.5 text-caption",
+      count: "h-6 min-w-6 justify-center rounded-full px-1.5 text-xs font-bold tabular-nums",
+    },
+    case: {
+      upper: "tracking-wide uppercase",
+      none: "",
+    },
+    solid: {
+      true: "",
     },
   },
+  compoundVariants: [
+    { solid: true, tone: "accent", class: CHIP_SOLID.accent },
+    { solid: true, tone: "warning", class: CHIP_SOLID.warning },
+    { solid: true, tone: "error", class: CHIP_SOLID.error },
+  ],
   defaultVariants: {
     tone: "neutral",
     size: "sm",
+    case: "upper",
   },
 });
 
@@ -119,6 +137,8 @@ export const callout = tv({
       compact: { base: "gap-2 rounded-md px-2.5 py-2 text-xs", icon: "mt-px" },
       banner: { base: "gap-3 rounded-lg px-3 py-2.5", icon: "mt-0.5" },
       panel: { base: "gap-3 rounded-lg p-3", icon: "mt-0.5" },
+      /** A short note in a dialog. */
+      note: { base: "gap-2 rounded-lg px-3 py-2 text-sm", icon: "mt-0.5" },
     },
     withIcon: {
       true: { base: "flex items-start" },
@@ -138,8 +158,12 @@ export const callout = tv({
 export type CalloutVariants = Omit<VariantProps<typeof callout>, "withIcon">;
 
 export const card = tv({
-  base: "rounded-lg border border-border",
+  base: "border border-border",
   variants: {
+    radius: {
+      md: "rounded-md",
+      lg: "rounded-lg",
+    },
     /** Raised above the page, e.g. a toast, drawer or busy panel. */
     elevation: {
       none: "bg-card",
@@ -148,11 +172,27 @@ export const card = tv({
     },
   },
   defaultVariants: {
+    radius: "lg",
     elevation: "none",
   },
 });
 
-export type CardElevation = NonNullable<VariantProps<typeof card>["elevation"]>;
+export type CardVariants = VariantProps<typeof card>;
+
+/** A list row that is one button, e.g. a summary entry or a category link. */
+export const rowButton = tv({
+  base: "cursor-pointer text-left hover:bg-muted",
+  variants: {
+    radius: {
+      md: "rounded-md",
+      sm: "rounded",
+      none: "",
+    },
+  },
+  defaultVariants: {
+    radius: "md",
+  },
+});
 
 export const toggleChip = tv({
   base: ["inline-flex cursor-pointer items-center rounded-full border font-medium whitespace-nowrap", DISABLED],
@@ -242,27 +282,39 @@ export const link = tv({
         "underline decoration-foreground-subtle underline-offset-4 hover:text-accent hover:decoration-accent focus-visible:text-accent focus-visible:decoration-accent",
       hover: "underline-offset-2 hover:underline focus-visible:underline",
     },
+    /** `inherit` takes the surrounding text colour. */
+    tone: {
+      inherit: "",
+      foreground: "text-foreground",
+      accent: "text-accent",
+      muted: "text-foreground-muted",
+    },
   },
   defaultVariants: {
     variant: "underline",
+    tone: "inherit",
   },
 });
 
-export type LinkVariant = NonNullable<VariantProps<typeof link>["variant"]>;
+export type LinkVariants = VariantProps<typeof link>;
 
-/** One look for every free-text input, matching SearchInput and Select. */
+/** The box every input shares: TextField, TextArea, SearchInput and Select's trigger. */
 export const field = tv({
-  base: [
-    "w-full rounded-md border border-border bg-secondary px-2.5 text-ui text-foreground outline-none placeholder:text-foreground-subtle focus:border-accent",
-    DISABLED,
-  ],
+  base: "rounded-md border border-border bg-secondary text-ui text-foreground",
   variants: {
+    /** Where focus lights the border: `self` an input, `within` a box around one, `none` a trigger that shows its open state. */
+    focus: {
+      self: ["w-full px-2.5 outline-none placeholder:text-foreground-subtle focus:border-accent", DISABLED],
+      within: "flex min-w-0 items-center gap-2 px-2.5 transition-colors focus-within:border-accent",
+      none: "",
+    },
     multiline: {
       false: "h-8",
       true: "resize-none py-2",
     },
   },
   defaultVariants: {
+    focus: "self",
     multiline: false,
   },
 });
@@ -292,5 +344,19 @@ export const modal = tv({
 
 export type ModalSize = NonNullable<VariantProps<typeof modal>["size"]>;
 
-/** For anchors (ExternalLink); buttons use LinkButton. */
-export const textLink = link();
+/** A close button pinned to a dialog's corner, over a layout with no header row. */
+export const FLOATING_CLOSE = "absolute top-3 right-3";
+
+/** The bar that marks an item: a `pill` beside the current entry, a `stripe` down a row's edge. */
+export const indicator = tv({
+  base: "absolute left-0 w-0.75",
+  variants: {
+    shape: {
+      pill: "h-4 -translate-y-1/2 rounded-full bg-accent",
+      stripe: "top-3 bottom-3 rounded-r-full",
+    },
+  },
+  defaultVariants: {
+    shape: "pill",
+  },
+});

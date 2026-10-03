@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { Callout } from "$lib/components/ui";
+  import { HEADING } from "$lib/design";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { availabilityTitle, heldSharedText, residueText, UNKNOWN_ICON } from "$lib/utils/tweakPresentation";
@@ -36,7 +37,7 @@
 {#if status.state === "unknown" && status.unknownReasons.length > 0}
   <Callout tone="warning" density="panel" icon={UNKNOWN_ICON}>
     <div class="min-w-0">
-      <p class="m-0 mb-1.5 text-ui font-semibold">Could not determine state</p>
+      <p class={["m-0 mb-1.5", HEADING.group]}>Could not determine state</p>
       <ul class="m-0 list-none space-y-1 p-0">
         {#each status.unknownReasons as reason, i (`${reason.effect}-${i}`)}
           <li class="text-xs text-foreground-muted">

@@ -1,9 +1,11 @@
 <script lang="ts" module>
+  import { HEADING } from "$lib/design";
+
   const TITLE = {
-    md: "m-0 text-base font-semibold text-foreground",
-    lg: "m-0 font-display text-lg font-semibold wrap-break-word text-foreground",
-    xl: "m-0 font-display text-xl font-semibold wrap-break-word",
-    hero: "m-0 font-display text-hero leading-none font-semibold tracking-display",
+    md: HEADING.section,
+    lg: HEADING.pane,
+    xl: HEADING.dialog,
+    hero: HEADING.hero,
   };
 
   export type ModalTitleSize = keyof typeof TITLE;
@@ -27,4 +29,4 @@
   const id = getModalTitleId();
 </script>
 
-<h2 {id} class={cn(TITLE[size], className)}>{@render children()}</h2>
+<h2 {id} class={cn("m-0 wrap-break-word text-foreground", TITLE[size], className)}>{@render children()}</h2>

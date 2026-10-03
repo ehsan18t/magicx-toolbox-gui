@@ -9,6 +9,14 @@ type TooltipValue = string | undefined | null;
 /** A function is read when the tooltip opens, e.g. to show a label only while it is cut short. */
 type TooltipText = TooltipValue | ((node: HTMLElement) => TooltipValue);
 
+/** `text` only while `target` (the anchor by default) is cut short, e.g. a truncated label. */
+export const textIfCut =
+  (text: string, target: (node: HTMLElement) => Element | null = (node) => node) =>
+  (node: HTMLElement): string | null => {
+    const el = target(node);
+    return el && el.scrollWidth > el.clientWidth ? text : null;
+  };
+
 // Moving from one tooltip to the next within the delay skips it, as Windows does.
 let lastHiddenAt = -Infinity;
 let nextId = 0;

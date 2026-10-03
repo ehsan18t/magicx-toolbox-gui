@@ -1,15 +1,13 @@
 <script lang="ts" module>
-  import { EMPHASIS_BORDER, TONE_WASH, type Tone } from "$lib/design";
+  import { EMPHASIS_BORDER, type FillTone, HEADING, TONE_FILL, TONE_WASH } from "$lib/design";
 
-  export type RowStripe = Extract<Tone, "accent" | "warning" | "error">;
-
-  const STRIPE: Record<RowStripe, string> = { accent: "bg-accent", warning: "bg-warning", error: "bg-error" };
+  export type RowStripe = FillTone;
 
   const BORDER = { ...EMPHASIS_BORDER, none: "border-border hover:border-border-hover" };
 </script>
 
 <script lang="ts">
-  import { Callout, HighlightedText, IconButton } from "$lib/components/ui";
+  import { Callout, HighlightedText, IconButton, indicator } from "$lib/components/ui";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import type { SearchResult } from "$lib/stores/search.svelte";
   import type { ItemKind } from "$lib/types";
@@ -83,15 +81,13 @@
   {...rest}
 >
   <span
-    class="absolute top-3 bottom-3 left-0 w-0.75 rounded-r-full transition-colors {stripe
-      ? STRIPE[stripe]
-      : 'bg-transparent'}"
+    class={indicator({ shape: "stripe", class: ["transition-colors", stripe ? TONE_FILL[stripe] : "bg-transparent"] })}
     aria-hidden="true"
   ></span>
 
   <div class="flex flex-1 flex-col gap-2.5 py-3 pr-3 pl-4">
     <div class="grid grid-cols-item-row items-center gap-x-6 gap-y-1 @max-item-row:grid-cols-1 @max-item-row:gap-y-2">
-      <h3 class="m-0 text-sm leading-snug font-semibold wrap-break-word text-foreground">
+      <h3 class={cn(HEADING.item, "m-0 leading-snug wrap-break-word text-foreground")}>
         {#if ranges}<HighlightedText text={title} ranges={ranges.nameRanges} />{:else}{title}{/if}
       </h3>
 

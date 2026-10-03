@@ -4,19 +4,21 @@
 </script>
 
 <script lang="ts">
-  import { ExternalLink, Icon, MarkdownText } from "$lib/components/shared";
+  import { Icon, MarkdownText } from "$lib/components/shared";
   import {
     Badge,
     Button,
     Callout,
-    IconButton,
+    Card,
+    ExternalLink,
     LinkButton,
     Modal,
-    ModalTitle,
+    ModalBody,
+    ModalHeader,
     SettingRow,
     Switch,
-    textLink,
   } from "$lib/components/ui";
+  import { HEADING } from "$lib/design";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
@@ -67,20 +69,27 @@
     const at = formatDate(settingsStore.lastUpdateCheck, { month: "long", time: "minutes" });
     return at ? `Last checked ${at}` : "Not checked yet";
   });
+
+  // Read out on its own: a live region around the result would read the release notes too.
+  const status = $derived.by(() => {
+    if (isChecking) return "Checking for updates";
+    if (error) return error;
+    if (updateInfo?.available) return `Version ${updateInfo.latestVersion} is available`;
+    return updateInfo ? "You're up to date" : "";
+  });
 </script>
 
 <Modal open={isOpen} onclose={modalStore.close} size="md">
-  <div class="relative overflow-y-auto px-7 pt-6 pb-5">
-    <IconButton icon="mdi:close" label="Close" class="absolute top-3 right-3" onclick={modalStore.close} />
+  <ModalHeader title="Updates" size="xl" floating class="px-7 pt-6 pb-0" onclose={modalStore.close} />
 
-    <ModalTitle size="xl">Updates</ModalTitle>
-
-    <section class="mt-5" aria-live="polite">
+  <ModalBody class="px-7">
+    <p class="sr-only" aria-live="polite">{status}</p>
+    <div>
       {#if updateInfo?.available}
         {@const released = formatDate(updateInfo.publishedAt, { month: "long" })}
         {@const size = updateInfo.assetSize ? formatBytes(updateInfo.assetSize) : ""}
         <div class="flex animate-fade-in flex-wrap items-baseline gap-x-2 gap-y-1">
-          <p class="m-0 text-lg font-semibold">Version {updateInfo.latestVersion} is available</p>
+          <p class={["m-0", HEADING.status]}>Version {updateInfo.latestVersion} is available</p>
           {#if updateInfo.prerelease}
             <Badge tone="warning">Pre-release</Badge>
           {/if}
@@ -92,9 +101,9 @@
         </p>
 
         {#if updateInfo.releaseNotes}
-          <div class="mt-4 max-h-52 overflow-y-auto rounded-lg border border-border bg-card px-4 py-3 text-ui">
+          <Card class="mt-4 max-h-52 overflow-y-auto px-4 py-3 text-ui">
             <MarkdownText content={updateInfo.releaseNotes} />
-          </div>
+          </Card>
         {/if}
 
         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -106,13 +115,15 @@
             <span class="text-ui text-foreground-muted">No installer for this PC in the release.</span>
           {/if}
           {#if updateInfo.downloadUrl}
-            <ExternalLink href={updateInfo.downloadUrl} class="text-ui {textLink}">Download manually</ExternalLink>
+            <ExternalLink href={updateInfo.downloadUrl} variant="underline" class="text-ui"
+              >Download manually</ExternalLink
+            >
           {/if}
         </div>
       {:else}
         <div class="flex animate-fade-in flex-wrap items-center justify-between gap-4">
           <div class="min-w-0">
-            <p class="m-0 flex items-center gap-2 text-lg font-semibold">
+            <p class={["m-0 flex items-center gap-2", HEADING.status]}>
               {#if updateInfo}
                 <Icon icon="mdi:check-circle" size="xl" class="text-success" />
                 You're up to date
@@ -134,12 +145,12 @@
       {#if error}
         <Callout tone="error" icon="mdi:alert-circle" class="mt-4 animate-fade-in text-ui">
           <span class="min-w-0 flex-1">{error}</span>
-          <LinkButton class="shrink-0 text-xs text-foreground-muted" onclick={() => updateStore.clearError()}>
+          <LinkButton tone="muted" class="shrink-0 text-xs" onclick={() => updateStore.clearError()}>
             Dismiss
           </LinkButton>
         </Callout>
       {/if}
-    </section>
+    </div>
 
     <section class="mt-6 divide-y divide-border border-t border-border" aria-label="Update settings">
       <SettingRow
@@ -168,5 +179,5 @@
         <Switch checked={false} label="Install updates automatically" disabled />
       </SettingRow>
     </section>
-  </div>
+  </ModalBody>
 </Modal>

@@ -1,4 +1,4 @@
-import { INLINE_CODE } from "$lib/design";
+import { INLINE_CODE, PROSE_LINK_UNDERLINE } from "$lib/design";
 type ListType = "ul" | "ol";
 
 const LIST_OPEN: Record<ListType, string> = {
@@ -33,7 +33,7 @@ function inline(text: string): string {
     // & < > are already escaped; quotes are the only attribute breakout left.
     const href = trimmed.replace(/"/g, "%22").replace(/'/g, "%27");
     links.push(
-      `<a href="${href}" rel="noopener noreferrer" class="cursor-pointer font-medium text-accent underline decoration-accent/40 underline-offset-2 transition-colors hover:decoration-accent">${emphasis(label)}</a>`,
+      `<a href="${href}" rel="noopener noreferrer" class="cursor-pointer font-medium text-accent underline ${PROSE_LINK_UNDERLINE} underline-offset-2 transition-colors hover:decoration-accent">${emphasis(label)}</a>`,
     );
     return `@@LINK${links.length - 1}@@`;
   });
