@@ -173,8 +173,7 @@ pub(crate) fn current_app_level() -> Level {
     }
 }
 
-/// Whether the current app elevation/SID state permits applying/restoring a tweak right now
-/// (ADR-0005). Detection itself never consults this -- only `apply_tweak`/`restore_tweak` refuse on it.
+/// Whether elevation and SID permit apply or restore now (ADR-0005); detection never consults it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Availability {
@@ -1237,7 +1236,7 @@ pub async fn get_statuses_stream(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// The full re-scan run after the user Elevates (the moment Unknowns become readable) -- reuses the exact same scan path as `get_statuses_stream`.
+/// Full re-scan after Elevate, when Unknowns become readable.
 #[tauri::command]
 pub async fn rescan_after_elevation(app: AppHandle) -> Result<()> {
     log::info!("rescan_after_elevation: kicking a full re-scan after an elevation change");
