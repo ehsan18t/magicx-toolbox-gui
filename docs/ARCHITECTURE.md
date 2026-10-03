@@ -45,7 +45,7 @@ const derived = $derived(store.value);
 | `apps` | `appsStore` | App items, their presence, and Remove, Install and Get in Store (ADR-0009) |
 | `boot` | `bootStore` | The launch sequence after the tweak model: system info, elevation, app presence, the status stream |
 | `system` | `systemStore` | Windows and hardware info, cached across launches |
-| `elevation` | `elevationStore` | The app's elevation ceiling and Restart as admin |
+| `elevation` | `elevationStore` | The app's elevation ceiling, whether it runs as admin, and Restart as admin |
 | `favorites` | `favoritesStore` | Starred tweak ids |
 | `snapshotHistory` | `createSnapshotHistory()` | One details window's snapshot entries and discard |
 | `profile` | `profileStore` | Profile export, import and apply |
@@ -55,6 +55,7 @@ const derived = $derived(store.value);
 | `modal`, `confirm`, `toast` | `modalStore`, `confirmStore`, `toastStore` | The open dialog, the shared confirmation dialog, toasts (`toastStore.failure` logs and toasts an error) |
 | `settings`, `theme`, `colorScheme`, `sidebar` | `settingsStore`, `themeStore`, `colorSchemeStore`, `sidebarStore` | Persisted preferences and the navigation pane state |
 | `logs` | `logsStore` | The Logs panel, logging settings and diagnostics export |
+| `diagnostics` (plain module) | `diagnosticsHeader`, `diagnosticsFacts`, `versionLabel` | The bug-report header and the facts About lists, read from the app info, system and elevation stores |
 | `update`, `appInfo` | `updateStore`, `appInfoStore` | Update checks and installs, and the app's version facts |
 | `manualTests` | `manualTestsStore` | The Manual Tests view (test build only) |
 
@@ -62,7 +63,7 @@ Tauri calls live in `src/lib/api/`, one module per command group. They are calle
 
 ### UI Components
 
-Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons and links (`Button`, `IconButton`, `LinkButton`, `ExternalLink`), surfaces (`Card`, `SectionCard`, `Callout`, `CodeBlock`, `EmptyState`, `IconTile`, `SettingRow`), text (`PanelHeading`, `InlineCode`, `HighlightedText`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Dot`, `Meter`, `ProgressBar`, `ActivityBar`, `Spinner`, `SkeletonList`). Their class recipes are in `ui/variants.ts`, and the barrel exports the ones other folders style their own elements with (`button`, `card`, `rowButton`, `indicator` and the like). Import a folder through its barrel: ESLint rejects a deep path such as `$lib/components/ui/variants` from outside the folder. Class merging goes through `$lib/utils/cn` only (ESLint rejects importing `tailwind-merge` or `tailwind-variants` directly); its `cn` and `tv` mirror the custom theme names in `src/app.css`, which `cn.test.ts` enforces. Design data lives in `$lib/design`: the icon registry (`icons.ts`, where a new icon is registered), `ICON_SIZE` (`size.ts`), tone maps (`tone.ts`), shared surface classes (`surface.ts`) and the `HEADING` type scale (`type.ts`).
+Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons and links (`Button`, `IconButton`, `LinkButton`, `ExternalLink`), surfaces (`Card`, `SectionCard`, `PanelSection`, `Callout`, `CodeBlock`, `EmptyState`, `IconTile`, `SettingRow`), text (`PanelHeading`, `InlineCode`, `HighlightedText`, `MetaItem`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Dot`, `Meter`, `ProgressBar`, `ActivityBar`, `Spinner`, `Skeleton`, `SkeletonList`). Their class recipes are in `ui/variants.ts`, and the barrel exports the ones other folders style their own elements with (`button`, `card`, `rowButton`, `indicator`, `META_LINE` and the like). Import a folder through its barrel: ESLint rejects a deep path such as `$lib/components/ui/variants` from outside the folder. Class merging goes through `$lib/utils/cn` only (ESLint rejects importing `tailwind-merge` or `tailwind-variants` directly); its `cn` and `tv` mirror the custom theme names in `src/app.css`, which `cn.test.ts` enforces. Design data lives in `$lib/design`: the icon registry (`icons.ts`, where a new icon is registered), `ICON_SIZE` (`size.ts`), tone maps (`tone.ts`), shared surface classes (`surface.ts`) and the `HEADING` type scale (`type.ts`).
 
 ### Component Structure
 
