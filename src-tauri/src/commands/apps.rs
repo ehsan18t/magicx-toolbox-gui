@@ -1,14 +1,14 @@
 //! Tauri commands for app items (ADR-0009). Removal and install run under the same per-id
 //! lifecycle lock as an apply, so close, restart and update wait for them.
 
-use rayon::prelude::*;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::apps::{self, install_route, AppPresence, AppsState, InstallRoute, Machine};
 use crate::commands::logging::log_outcome;
 use crate::commands::tweaks::{
-    blocking, compute_availability, current_app_level, next_status_stamp, run_locked, Availability,
+    blocking, compute_availability, current_app_level, next_status_stamp, run_locked, scan_split,
+    Availability,
 };
 use crate::error::{Error, Result};
 use crate::tweaks::compiled_apps;
@@ -23,12 +23,32 @@ const OTHER_ACCOUNT: &str =
     "Another account elevated this app, so this check would read that account's install";
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct InstallView {
-    pub kind: &'static str,
+    pub kind: InstallKind,
     pub id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum InstallKind {
+    Store,
+    Winget,
+    StorePage,
+}
+
+/// `appx` removes for every account; `script` acts on the running account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "lowercase")]
+pub enum AppSourceKind {
+    Appx,
+    Script,
+}
+
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct AppView {
     pub id: String,
     pub name: String,
@@ -37,8 +57,7 @@ pub struct AppView {
     pub warning: Option<String>,
     pub category: String,
     pub risk: RiskLevel,
-    /// `appx` removes for every account; `script` acts on the running account.
-    pub source: &'static str,
+    pub source: AppSourceKind,
     pub install: Option<InstallView>,
     pub remove_availability: Availability,
     pub install_availability: Availability,
@@ -47,6 +66,7 @@ pub struct AppView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct AppStatusView {
     pub app_id: String,
     pub presence: AppPresence,
@@ -110,18 +130,22 @@ pub(super) fn app_view(app: &AppDef, level: Level, sid: SidCheck, winver: &WinVe
         category: app.category.clone(),
         risk: app.risk_level,
         supported: in_scope(app, winver),
-        source: if is_script(app) { "script" } else { "appx" },
+        source: if is_script(app) {
+            AppSourceKind::Script
+        } else {
+            AppSourceKind::Appx
+        },
         install: app.install.as_ref().map(|i| match i {
             InstallSource::Store(id) => InstallView {
-                kind: "store",
+                kind: InstallKind::Store,
                 id: id.clone(),
             },
             InstallSource::Winget(id) => InstallView {
-                kind: "winget",
+                kind: InstallKind::Winget,
                 id: id.clone(),
             },
             InstallSource::StorePage(id) => InstallView {
-                kind: "store_page",
+                kind: InstallKind::StorePage,
                 id: id.clone(),
             },
         }),
@@ -157,8 +181,11 @@ fn scan(
             log::warn!("app scan: {e}");
         }
     }
-    apps.par_iter()
-        .filter_map(|app| {
+    let mut statuses = Vec::with_capacity(apps.len());
+    scan_split(
+        apps,
+        is_script,
+        |app| {
             // Stamped before the check: a removal that locks after it stamps higher and wins.
             let stamp = next_status_stamp();
             if is_locked(&app.id) {
@@ -182,8 +209,10 @@ fn scan(
                 install_route: install_route(app.install.as_ref(), winget, store),
                 stamp,
             })
-        })
-        .collect()
+        },
+        |batch| statuses.extend(batch),
+    );
+    statuses
 }
 
 fn refusal(app: &AppDef, availability: Availability, winver: &WinVer) -> Result<()> {
@@ -222,22 +251,32 @@ fn find_app(app_id: &str) -> Result<&'static AppDef> {
         .ok_or_else(|| Error::NotFound(format!("app '{app_id}'")))
 }
 
-/// `remove_app`'s whole path for any definition, so the test build's manual test runs it too.
-pub(crate) async fn remove_gated(handle: AppHandle, app: &'static AppDef) -> Result<AppStatusView> {
-    gate(app, false).await?;
-    run_locked(&app.id, move || {
+/// Runs a removal or install under the app's lock, with the taskbar showing it.
+async fn change_tracked(
+    handle: AppHandle,
+    app: &'static AppDef,
+    change: fn(&AppDef, &dyn Machine) -> Result<AppPresence>,
+) -> Result<AppStatusView> {
+    let host = handle.clone();
+    let work = run_locked(&app.id, move || {
         let stamp = next_status_stamp();
         let state = handle.state::<AppsState>();
         let m = state.machine();
-        let presence = apps::remove(app, &m)?;
+        let presence = change(app, &m)?;
         Ok(AppStatusView {
             app_id: app.id.clone(),
             presence,
             install_route: route(app, &m),
             stamp,
         })
-    })
-    .await
+    });
+    crate::taskbar::track(&host, work).await
+}
+
+/// `remove_app`'s whole path for any definition, so the test build's manual test runs it too.
+pub(crate) async fn remove_gated(handle: AppHandle, app: &'static AppDef) -> Result<AppStatusView> {
+    gate(app, false).await?;
+    change_tracked(handle, app, apps::remove).await
 }
 
 /// `install_app`'s whole path, as [`remove_gated`].
@@ -246,19 +285,7 @@ pub(crate) async fn install_gated(
     app: &'static AppDef,
 ) -> Result<AppStatusView> {
     gate(app, true).await?;
-    run_locked(&app.id, move || {
-        let stamp = next_status_stamp();
-        let state = handle.state::<AppsState>();
-        let m = state.machine();
-        let presence = apps::install(app, &m)?;
-        Ok(AppStatusView {
-            app_id: app.id.clone(),
-            presence,
-            install_route: route(app, &m),
-            stamp,
-        })
-    })
-    .await
+    change_tracked(handle, app, apps::install).await
 }
 
 #[tauri::command]

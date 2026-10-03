@@ -1,4 +1,3 @@
-import { browser } from "$app/environment";
 import { STORAGE_KEYS } from "$lib/config/app";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
@@ -34,13 +33,12 @@ export const colorSchemeStore = {
   },
 
   init() {
-    if (!browser) return;
     paint(schemeState.value);
   },
 
   set(scheme: ColorSchemeId) {
     if (!isScheme(scheme)) return;
     schemeState.value = scheme;
-    if (browser) paint(scheme);
+    paint(scheme);
   },
 };

@@ -60,6 +60,7 @@ pub(super) fn take_batches() -> Vec<BatchRecord> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, rename = "ManualTestStatus"))]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Pass,
@@ -98,6 +99,7 @@ impl Verdict {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ManualTestReport {
     pub test_id: &'static str,
     pub status: Status,
@@ -108,6 +110,7 @@ pub struct ManualTestReport {
 }
 
 #[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, rename = "ManualTestLogEvent"))]
 struct LogEvent<'a> {
     test_id: &'a str,
     line: &'a str,
@@ -172,7 +175,7 @@ fn publish_status(app: &AppHandle, tweak: &Tweak) {
             tweak_id: tweak.id.clone(),
             status,
         };
-        Ok(app.emit("tweak-status", event)?)
+        Ok(app.emit("tweak-status", [event])?)
     });
     if let Err(e) = emitted {
         log::warn!(

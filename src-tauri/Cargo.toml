@@ -14,11 +14,8 @@ rust-version = "1.92.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "app_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [features]
 # The Manual Tests view (`pnpm run build:test`); never enabled in a release build.
@@ -43,16 +40,19 @@ serde_yaml_bw = "2.5"
 # runtime + `#[tokio::test]`) — kept off the shipped binary's [dependencies] entry above, which
 # only needs the `Mutex` type itself, never a runtime to drive one.
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
+# IPC types export to src/lib/types/generated/ during `cargo test`; never linked into the app.
+ts-rs = "^12.0.1"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# Defaults minus `dynamic-acl` (runtime capabilities) and the Linux-only `x11` and `dbus`.
+tauri = { version = "2", default-features = false, features = ["wry", "compression", "common-controls-v6"] }
 tauri-plugin-opener = "2"
 tauri-plugin-prevent-default = "6"
 tauri-plugin-dialog = "2"
-tauri-plugin-process = "2"
+tauri-plugin-window-state = "2.5"
 
-# Async runtime (for sleep in watchdog, and the engine's per-tweak lock) - minimal features only
-tokio = { version = "1", default-features = false, features = ["time", "sync"] }
+# The engine's per-tweak lock.
+tokio = { version = "1", default-features = false, features = ["sync"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -91,6 +91,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Services",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_Shell",
+    # SHELLEXECUTEINFOW (ShellExecuteExW) carries an HKEY field.
+    "Win32_System_Registry",
+    "Win32_System_Shutdown",
+    # CoTaskMemFree for SHGetKnownFolderPath's string.
+    "Win32_System_Com",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
     # ReplaceFileW (atomic, ACL-preserving hosts-file replace -- see services/hosts_service.rs)
@@ -117,7 +122,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_RemoteDesktop",
     # GetUserNameExW(NameSamCompatible) -- the same guard's directory-free fallback when
     # LookupAccountNameW cannot resolve a SID (domain-joined with an unreachable DC, Entra-joined).
+    # Also AuditQuerySystemPolicy/AuditSetSystemPolicy for the audit_policy effect kind.
     "Win32_Security_Authentication_Identity",
+    # PowerReadACValueIndex and friends for the power_setting effect kind.
+    "Win32_System_Power",
 ] }
 # High-level COM wrappers (Task Scheduler, Windows Firewall rule lookup). Coexists with windows-sys; the elevated broker (TI
 # stage) reuses this crate for Owned<HANDLE> cleanup.
@@ -137,7 +145,6 @@ lto = true
 codegen-units = 1
 # Strip symbols from release binary for smaller size
 strip = true
-# Optimize for size with performance (balanced)
 opt-level = 3
 # Abort on panic for smaller binary (no unwinding code)
 panic = "abort"

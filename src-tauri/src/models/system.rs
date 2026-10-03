@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// Windows version information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct WindowsInfo {
     /// Product name (e.g., "Windows 11 Pro")
     pub product_name: String,
@@ -21,6 +21,7 @@ pub struct WindowsInfo {
 
 /// System/device information from Win32_ComputerSystem
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct DeviceInfo {
     /// System manufacturer (e.g., "Dell Inc.", "ASUS")
     pub manufacturer: String,
@@ -51,8 +52,8 @@ impl WindowsInfo {
     }
 }
 
-/// CPU information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct CpuInfo {
     /// CPU name (e.g., "Intel Core i7-12700K")
     pub name: String,
@@ -66,14 +67,13 @@ pub struct CpuInfo {
     pub max_clock_mhz: u32,
 }
 
-/// GPU information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct GpuInfo {
     /// GPU name (e.g., "NVIDIA GeForce RTX 3080")
     pub name: String,
     /// GPU memory in GB
     pub memory_gb: f64,
-    /// Driver version
     pub driver_version: String,
     /// Video processor/chip name
     pub processor: String,
@@ -83,8 +83,8 @@ pub struct GpuInfo {
     pub video_mode: String,
 }
 
-/// Memory (RAM) information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct MemoryInfo {
     /// Total physical memory in GB
     pub total_gb: f64,
@@ -96,34 +96,28 @@ pub struct MemoryInfo {
     pub slots_used: u32,
 }
 
-/// Motherboard information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct MotherboardInfo {
     /// Manufacturer (e.g., "ASUS", "MSI", "Gigabyte")
     pub manufacturer: String,
-    /// Product name/model
     pub product: String,
-    /// BIOS version
     pub bios_version: String,
 }
 
-/// Network adapter information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct NetworkInfo {
     /// Adapter name / description
     pub name: String,
-    /// MAC Address
     pub mac_address: String,
-    /// IPv4 Address
     pub ip_address: String,
-    /// DHCP Enabled
     pub dhcp_enabled: bool,
 }
 
-/// Disk/Storage information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct DiskInfo {
-    /// Drive model name
     pub model: String,
     /// Total size in GB
     pub size_gb: f64,
@@ -135,8 +129,8 @@ pub struct DiskInfo {
     pub health_status: Option<String>,
 }
 
-/// Monitor/Display information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct MonitorInfo {
     /// Monitor name (e.g., "Dell U2415")
     pub name: String,
@@ -146,8 +140,8 @@ pub struct MonitorInfo {
     pub refresh_rate: u32,
 }
 
-/// Hardware information
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct HardwareInfo {
     pub cpu: CpuInfo,
     pub gpu: Vec<GpuInfo>,
@@ -160,14 +154,29 @@ pub struct HardwareInfo {
     pub total_storage_gb: f64,
 }
 
-/// System information
+/// Read on every call, without WMI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemInfo {
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct LiveSystemInfo {
     pub windows: WindowsInfo,
     pub computer_name: String,
     pub username: String,
     pub is_admin: bool,
+}
+
+/// The WMI-read part: slow, so the frontend shows its cached copy while it rereads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct MachineHardware {
     pub hardware: HardwareInfo,
-    /// Device information (manufacturer, model)
     pub device: DeviceInfo,
+    /// A WMI class failed to read and shows its default.
+    pub partial: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct SystemReading {
+    pub live: LiveSystemInfo,
+    pub machine: Option<MachineHardware>,
 }

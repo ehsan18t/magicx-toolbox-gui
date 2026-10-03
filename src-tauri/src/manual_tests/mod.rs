@@ -119,6 +119,7 @@ pub const TESTS: &[ManualTest] = &[
 ];
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ManualTestView {
     pub id: &'static str,
     pub title: &'static str,

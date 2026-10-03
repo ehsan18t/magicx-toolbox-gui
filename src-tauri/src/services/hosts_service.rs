@@ -4,7 +4,6 @@
 
 use crate::error::Error;
 use std::fs;
-use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -12,20 +11,17 @@ use std::sync::Mutex;
 
 use windows_sys::core::PWSTR;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_LOCK_VIOLATION, ERROR_NOT_ALL_ASSIGNED,
-    ERROR_SHARING_VIOLATION, HANDLE, LUID,
+    GetLastError, LocalFree, ERROR_LOCK_VIOLATION, ERROR_SHARING_VIOLATION,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
     SetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT,
 };
 use windows_sys::Win32::Security::{
-    AdjustTokenPrivileges, EqualSid, LookupPrivilegeValueW, ACL, DACL_SECURITY_INFORMATION,
-    LUID_AND_ATTRIBUTES, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-    SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
+    EqualSid, ACL, DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+    PSID,
 };
 use windows_sys::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
-use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 /// AV real-time protection briefly holds `hosts` open, failing `ReplaceFileW` with
 /// `ERROR_SHARING_VIOLATION`; an immediate retry succeeds. Safe to repeat: the replacement is
@@ -43,22 +39,6 @@ static HOSTS_EDIT: Mutex<()> = Mutex::new(());
 /// Resolved via `GetSystemDirectoryW`: Windows is not always installed on `C:`.
 fn get_hosts_path() -> Result<PathBuf, Error> {
     Ok(crate::services::system32::system_dir()?.join(r"drivers\etc\hosts"))
-}
-
-/// Null-terminated UTF-16 encoding of a path, for the `PCWSTR` params the file-replace APIs take.
-/// Widens straight from `OsStr` (never through a lossy `&str`/`to_string_lossy` step), matching
-/// this codebase's existing `wide`/`to_wide_string` helpers (`service_control.rs`,
-/// `elevation/common.rs`) but path-typed since both inputs here are always `Path`s.
-fn wide_path(p: &Path) -> Vec<u16> {
-    p.as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect()
-}
-
-/// Null-terminated UTF-16 encoding of a plain string (the one privilege name this file widens).
-fn wide_str(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 /// A call-unique (not just process-unique) temp filename in the hosts directory. Process id alone
@@ -99,7 +79,7 @@ impl Drop for SecurityCapture {
 /// contract (`replace_hosts_file_atomically`) is to fail closed on `None` for an existing file,
 /// never to proceed with an irreversible swap whose permission side effect it could not correct.
 fn capture_security(path: &Path) -> Option<SecurityCapture> {
-    let wide = wide_path(path);
+    let wide = crate::services::wide(path);
     let mut owner: PSID = ptr::null_mut();
     let mut dacl: *mut ACL = ptr::null_mut();
     let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
@@ -124,59 +104,11 @@ fn capture_security(path: &Path) -> Option<SecurityCapture> {
     Some(SecurityCapture { sd, owner, dacl })
 }
 
-/// Best-effort: enables `SeRestorePrivilege` on the current process token. Reassigning an
-/// arbitrary captured owner (`apply_security`, below) can require it when that owner isn't a group
-/// the token already belongs to — it has worked without this on this machine only because the
-/// captured owner happens to be the freely-assignable `BUILTIN\Administrators`, which is not
-/// guaranteed on every machine. Not enabling it here is never itself a failure:
-/// `apply_security`'s own `SetNamedSecurityInfoW` call afterward is the real, typed pass/fail gate.
+/// Setting an owner the token is not a member of needs `SeRestorePrivilege`. Best-effort: the
+/// `SetNamedSecurityInfoW` in `apply_security` is the real pass/fail gate.
 fn try_enable_restore_privilege() {
-    // SAFETY: standard token-privilege-adjustment sequence; the token handle is closed before
-    // returning, on every path.
-    unsafe {
-        let mut token: HANDLE = ptr::null_mut();
-        if OpenProcessToken(
-            GetCurrentProcess(),
-            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
-            &mut token,
-        ) == 0
-        {
-            log::debug!(
-                "OpenProcessToken failed while enabling SeRestorePrivilege: {}",
-                GetLastError()
-            );
-            return;
-        }
-
-        let name = wide_str("SeRestorePrivilege");
-        let mut luid: LUID = std::mem::zeroed();
-        if LookupPrivilegeValueW(ptr::null(), name.as_ptr(), &mut luid) == 0 {
-            log::debug!(
-                "LookupPrivilegeValueW(SeRestorePrivilege) failed: {}",
-                GetLastError()
-            );
-            CloseHandle(token);
-            return;
-        }
-
-        let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0] = LUID_AND_ATTRIBUTES {
-            Luid: luid,
-            Attributes: SE_PRIVILEGE_ENABLED,
-        };
-
-        let adjusted = AdjustTokenPrivileges(token, 0, &tp, 0, ptr::null_mut(), ptr::null_mut());
-        let err = GetLastError();
-        CloseHandle(token);
-
-        if adjusted == 0 {
-            log::debug!("AdjustTokenPrivileges(SeRestorePrivilege) failed: {err}");
-        } else if err == ERROR_NOT_ALL_ASSIGNED {
-            log::debug!("SeRestorePrivilege is not held by this token; proceeding without it");
-        } else {
-            log::trace!("SeRestorePrivilege enabled");
-        }
+    if let Err(e) = crate::services::privilege::adjust("SeRestorePrivilege", true) {
+        log::debug!("SeRestorePrivilege not enabled, proceeding without it: {e}");
     }
 }
 
@@ -186,7 +118,7 @@ fn try_enable_restore_privilege() {
 /// `replace_hosts_file_atomically`), so a failure here costs nothing — the real hosts file has not
 /// been touched yet, and the caller deletes the temp file and bails.
 fn apply_security(path: &Path, capture: &SecurityCapture) -> Result<(), Error> {
-    let wide = wide_path(path);
+    let wide = crate::services::wide(path);
     // SAFETY: `wide` is valid and NUL-terminated; `capture.owner`/`capture.dacl` are still valid
     // because `capture.sd` (which they point into) has not been freed yet.
     let err = unsafe {
@@ -334,8 +266,8 @@ fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
         return Err(e);
     }
 
-    let replaced = wide_path(&hosts_path);
-    let replacement = wide_path(&tmp_path);
+    let replaced = crate::services::wide(&hosts_path);
+    let replacement = crate::services::wide(&tmp_path);
 
     let mut last_err = 0u32;
     for attempt in 1..=REPLACE_RETRY_ATTEMPTS {

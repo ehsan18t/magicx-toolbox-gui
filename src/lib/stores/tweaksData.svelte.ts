@@ -40,8 +40,8 @@ function mapView(view: TweakView): TweakDefinition {
     availability: view.availability,
     supported: view.supported,
     options: view.options,
-    info: view.info ?? undefined,
-    warning: view.warning ?? undefined,
+    info: view.info,
+    warning: view.warning,
   };
 }
 
@@ -197,7 +197,7 @@ async function loadModel(): Promise<void> {
   }
 }
 
-// A full scan emits one event per tweak; replacing `tweaks` per event re-derives every list each time.
+// A full scan emits a batch per ~16 ms; replacing `tweaks` per batch re-derives every list each time.
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a queue, never rendered
 let queuedStatuses = new Map<string, TweakStatusView>();
 let flushFrame = 0;
@@ -272,7 +272,9 @@ export const tweaksStore = {
   async streamStatuses(): Promise<void> {
     // Shared, so a concurrent call also waits for it; reset on failure, so a retry registers again.
     listening ??= tweaksApi
-      .onTweakStatus((event) => queueStatus(event.tweak_id, event.status))
+      .onTweakStatus((events) => {
+        for (const event of events) queueStatus(event.tweak_id, event.status);
+      })
       .catch((error: unknown) => {
         listening = null;
         throw error;

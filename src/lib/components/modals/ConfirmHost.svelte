@@ -6,12 +6,8 @@
 </script>
 
 <ConfirmDialog
+  {...shown}
   open={confirmStore.current !== null}
-  title={shown.title}
-  message={shown.message}
-  confirmText={shown.confirmText}
-  cancelText={shown.cancelText}
-  variant={shown.variant}
   onconfirm={() => confirmStore.settle(true)}
   oncancel={() => confirmStore.settle(false)}
 />

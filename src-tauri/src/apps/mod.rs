@@ -15,7 +15,9 @@ use crate::services::system_info_service;
 use crate::tweaks::kinds::action::{run_script, ScriptRun};
 use crate::tweaks::model::{InstallSource, Shell};
 
+/// Unknown is never Absent: an unreadable app stays visible with its actions disabled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum AppPresence {
     Installed {
@@ -28,7 +30,9 @@ pub enum AppPresence {
     },
 }
 
+/// `None` makes a removal permanent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum InstallRoute {
     Winget,

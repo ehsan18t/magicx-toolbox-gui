@@ -31,11 +31,7 @@ impl EffectKind for TaskKind {
     fn read(&self, s: &Setting, _cx: &ExecCx) -> Result<Value, Error> {
         match s {
             Setting::Task(addr) => read_task(addr),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Hosts(_)
-            | Setting::Firewall(_) => Err(Error::Invalid("TaskKind cannot read this Setting")),
+            _ => Err(Error::Invalid("TaskKind cannot read this Setting")),
         }
     }
 
@@ -43,11 +39,7 @@ impl EffectKind for TaskKind {
         guard_level(cx)?;
         match s {
             Setting::Task(addr) => drive_task(addr, target),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Hosts(_)
-            | Setting::Firewall(_) => Err(Error::Invalid("TaskKind cannot drive this Setting")),
+            _ => Err(Error::Invalid("TaskKind cannot drive this Setting")),
         }
     }
 }

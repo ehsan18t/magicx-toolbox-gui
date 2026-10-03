@@ -12,8 +12,6 @@
 use crate::error::Error;
 use crate::models::{RegistryHive, ServiceStartupType};
 use crate::services::registry_service;
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
 use windows_sys::Win32::Foundation::GetLastError;
@@ -75,13 +73,6 @@ impl Drop for ScHandle {
     }
 }
 
-fn wide(s: &str) -> Vec<u16> {
-    OsStr::new(s)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect()
-}
-
 /// Open the SCM and a service handle. `Ok(None)` means the service does not exist; `Err` is a real
 /// SCM/open failure. The returned SCM guard is kept alive alongside the service guard.
 fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>, Error> {
@@ -93,7 +84,7 @@ fn open_service(name: &str, access: u32) -> Result<Option<(ScHandle, ScHandle)>,
         }
         let scm = ScHandle(scm);
 
-        let wname = wide(name);
+        let wname = super::wide(name);
         let svc = OpenServiceW(scm.0, wname.as_ptr(), access);
         if svc.is_null() {
             let err = GetLastError();

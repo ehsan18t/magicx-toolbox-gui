@@ -73,6 +73,7 @@ import MdiOpenInNew from "~icons/mdi/open-in-new";
 import MdiPackageVariant from "~icons/mdi/package-variant";
 import MdiPlay from "~icons/mdi/play";
 import MdiPlus from "~icons/mdi/plus";
+import MdiPowerPlugOutline from "~icons/mdi/power-plug-outline";
 import MdiRefresh from "~icons/mdi/refresh";
 import MdiRestart from "~icons/mdi/restart";
 import MdiRobotOutline from "~icons/mdi/robot-outline";
@@ -176,6 +177,7 @@ export const iconRegistry = {
   "mdi:package-variant": MdiPackageVariant,
   "mdi:play": MdiPlay,
   "mdi:plus": MdiPlus,
+  "mdi:power-plug-outline": MdiPowerPlugOutline,
   "mdi:refresh": MdiRefresh,
   "mdi:restart": MdiRestart,
   "mdi:robot-outline": MdiRobotOutline,

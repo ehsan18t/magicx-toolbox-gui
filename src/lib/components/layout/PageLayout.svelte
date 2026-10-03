@@ -4,11 +4,11 @@
 
   interface Props {
     title: string;
-    description?: string;
+    description?: string | undefined;
     /** Reads description changes out, e.g. a result count. */
     announce?: boolean;
     /** A row under the title: the page's stats, then its actions. */
-    aside?: Snippet;
+    aside?: Snippet | undefined;
     children: Snippet;
   }
 

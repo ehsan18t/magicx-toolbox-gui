@@ -53,6 +53,32 @@ pub enum ParseError {
 
     #[error("`format` only applies with `field`: add the `field` it packs, or drop `format`")]
     FormatWithoutField,
+
+    #[error(
+        "{raw:?} is not a GUID: write it as xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, braces optional"
+    )]
+    InvalidGuid { raw: String },
+}
+
+/// Lowercase, hyphenated, no braces: one GUID has one spelling, so ownership keys compare equal.
+pub fn parse_guid(raw: &str) -> Result<String, ParseError> {
+    let inner = raw
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+        .unwrap_or(raw);
+    let well_formed = inner.split('-').map(str::len).eq([8, 4, 4, 4, 12])
+        && inner.chars().all(|c| c == '-' || c.is_ascii_hexdigit());
+    if !well_formed {
+        return Err(ParseError::InvalidGuid {
+            raw: raw.to_string(),
+        });
+    }
+    Ok(inner.to_ascii_lowercase())
+}
+
+/// The numeric value of a GUID [`parse_guid`] accepted.
+pub fn guid_u128(canonical: &str) -> Option<u128> {
+    u128::from_str_radix(&canonical.replace('-', ""), 16).ok()
 }
 
 /// YAML-agnostic input to [`parse_value_literal`] (spec §6.2). `schema.rs` picks the variant from
@@ -360,6 +386,35 @@ pub fn serialize_packed(format: PackedFormat, fields: &PackedFields) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_guid_has_one_canonical_spelling() {
+        let braced = parse_guid("{0CCE9215-69AE-11D9-BED3-505054503030}").unwrap();
+        let bare = parse_guid("0cce9215-69ae-11d9-bed3-505054503030").unwrap();
+        assert_eq!(braced, bare);
+        assert_eq!(
+            guid_u128(&bare),
+            Some(0x0cce9215_69ae_11d9_bed3_505054503030)
+        );
+    }
+
+    #[test]
+    fn a_malformed_guid_is_rejected() {
+        for raw in [
+            "",
+            "SUB_SLEEP",
+            "{0cce9215-69ae-11d9-bed3-505054503030",
+            "0cce921569ae11d9bed3505054503030",
+            "0cce9215-69ae-11d9-bed3-50505450303g",
+            "0cce9215-69ae-11d9-bed35-05054503030",
+            "+cce9215-69ae-11d9-bed3-505054503030",
+        ] {
+            assert!(
+                matches!(parse_guid(raw), Err(ParseError::InvalidGuid { .. })),
+                "{raw:?} must be rejected"
+            );
+        }
+    }
 
     // --- §5.1 registry paths ---------------------------------------------------------------
 

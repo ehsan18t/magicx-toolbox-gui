@@ -21,7 +21,7 @@
     /** Shows `tone` while on, e.g. an open panel or a starred item; pair with aria-pressed or aria-expanded. */
     active?: boolean;
     tone?: IconButtonVariants["tone"];
-    class?: string;
+    class?: string | undefined;
   } & ({ label: string; tooltip?: string } | { label?: string; tooltip: string });
 
   let {

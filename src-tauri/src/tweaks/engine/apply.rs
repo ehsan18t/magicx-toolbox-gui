@@ -4,6 +4,7 @@
 //! excludes them), then drives the whole captured state back; only a verified rollback consumes it.
 //! Drives route per effect ([`context::route`]); reads never escalate ([`context::read_route`]).
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::tweaks::kinds::{BatchFailure, BatchItem, Error as KindError, ExecCx};
@@ -1400,13 +1401,15 @@ pub(crate) fn drive_to_captured(
                     continue;
                 };
                 let cx = context::route(effect, tweak, corpus);
-                // An upgrade that scoped the effect out and removed its resource leaves nothing here
-                // to put back.
-                if !surface.iter().any(|e| e.id == effect.id)
-                    && matches!(deps.kinds.read(setting, &cx), Ok(Value::Missing))
+                let setting = setting.pinned_to(value);
+                // A pinned power plan deleted since capture, or an upgrade that scoped the effect
+                // out and removed its resource, leaves nothing here to put back.
+                let pinned = matches!(setting, Cow::Owned(_));
+                if (pinned || !surface.iter().any(|e| e.id == effect.id))
+                    && matches!(deps.kinds.read(&setting, &cx), Ok(Value::Missing))
                 {
                     log::info!(
-                        "'{effect_id}' is scoped out and absent on this build; nothing to restore"
+                        "'{effect_id}' no longer has its captured resource; nothing to restore"
                     );
                     continue;
                 }
@@ -1438,7 +1441,7 @@ pub(crate) fn drive_to_captured(
                 }
                 plan.push(Restorable {
                     effect,
-                    setting,
+                    setting: Cow::Borrowed(setting),
                     value: &scoped.value,
                     cx: context::route(effect, tweak, corpus),
                 });
@@ -1465,7 +1468,7 @@ pub(crate) fn drive_to_captured(
 /// of consecutive elevated ones can be recognised and share a single child.
 struct Restorable<'a> {
     effect: &'a EffectDef,
-    setting: &'a Setting,
+    setting: Cow<'a, Setting>,
     value: &'a Value,
     cx: ExecCx,
 }
@@ -1473,7 +1476,7 @@ struct Restorable<'a> {
 /// An effect the failed drive never moved reads back as its captured value, which is the verify;
 /// re-driving it can only fail again (a task Windows refuses to toggle) and fake a lost rollback.
 fn already_there(item: &Restorable<'_>, deps: &Deps) -> bool {
-    match deps.kinds.read(item.setting, &item.cx) {
+    match deps.kinds.read(&item.setting, &item.cx) {
         Ok(live) if &live == item.value => true,
         read => {
             log::info!(
@@ -1500,7 +1503,7 @@ fn refused_but_restored(failure: &EngineError, plan: &[Restorable<'_>], deps: &D
         return false;
     }
     let restored = plan.iter().filter(|item| &item.effect.id == effect).any(
-        |item| matches!(deps.kinds.read(item.setting, &item.cx), Ok(live) if &live == item.value),
+        |item| matches!(deps.kinds.read(&item.setting, &item.cx), Ok(live) if &live == item.value),
     );
     if restored {
         log::info!("'{effect}' refused its drive-back but reads as captured, so it is verified");
@@ -1520,7 +1523,7 @@ fn describe_read(read: &Result<Value, KindError>) -> String {
 fn absent_optional(item: &Restorable<'_>, deps: &Deps) -> bool {
     item.effect.optional
         && item.effect.if_missing.as_ref() == Some(item.value)
-        && matches!(deps.kinds.read(item.setting, &item.cx), Ok(Value::Missing))
+        && matches!(deps.kinds.read(&item.setting, &item.cx), Ok(Value::Missing))
 }
 
 /// Drives the whole plan back, each run of consecutive elevated Settings through ONE child. Runs
@@ -1545,10 +1548,7 @@ fn drive_back(plan: &[Restorable<'_>], deps: &Deps, failures: &mut Vec<EngineErr
 fn brokerable_undo_run(plan: &[Restorable<'_>], from: usize) -> usize {
     plan[from..]
         .iter()
-        .take_while(|item| {
-            item.cx.level() == Level::Ti
-                && !matches!(item.setting, Setting::Hosts(_) | Setting::Firewall(_))
-        })
+        .take_while(|item| item.cx.level() == Level::Ti && item.setting.has_broker_op())
         .count()
 }
 
@@ -1567,7 +1567,7 @@ fn drive_back_run(run: &[Restorable<'_>], deps: &Deps, failures: &mut Vec<Engine
     let items: Vec<BatchItem> = run
         .iter()
         .map(|i| BatchItem {
-            setting: i.setting,
+            setting: &i.setting,
             target: i.value,
             seen_present: false,
         })
@@ -1597,7 +1597,7 @@ fn drive_back_run(run: &[Restorable<'_>], deps: &Deps, failures: &mut Vec<Engine
 }
 
 fn drive_and_verify(item: &Restorable<'_>, deps: &Deps, failures: &mut Vec<EngineError>) {
-    if let Err(e) = deps.kinds.drive(item.setting, item.value, &item.cx) {
+    if let Err(e) = deps.kinds.drive(&item.setting, item.value, &item.cx) {
         failures.push(map_drive_err(&item.effect.id, e));
         return;
     }
@@ -1605,7 +1605,7 @@ fn drive_and_verify(item: &Restorable<'_>, deps: &Deps, failures: &mut Vec<Engin
 }
 
 fn verify_restored(item: &Restorable<'_>, deps: &Deps, failures: &mut Vec<EngineError>) {
-    match deps.kinds.read(item.setting, &item.cx) {
+    match deps.kinds.read(&item.setting, &item.cx) {
         Ok(actual) if &actual == item.value => {}
         Ok(actual) => failures.push(EngineError::VerifyMismatch {
             effect: item.effect.id.clone(),
@@ -1641,7 +1641,7 @@ fn brokerable_run(ctx: &DriveCtx, surface: &[&EffectDef], from: usize) -> usize 
             let Effect::Setting(setting) = &effect.kind else {
                 return false;
             };
-            if matches!(setting, Setting::Hosts(_) | Setting::Firewall(_)) {
+            if !setting.has_broker_op() {
                 return false;
             }
             if !matches!(setting_target(ctx, effect), Ok(Some(_))) {
@@ -3520,6 +3520,67 @@ mod tests {
             .is_none());
     }
 
+    #[test]
+    fn a_power_capture_restores_to_its_own_plan_or_to_nothing_once_deleted() {
+        use crate::tweaks::kinds::power::{fake::Plans, PowerKind};
+        use crate::tweaks::model::{PlanTag, PowerAddr};
+        const BALANCED: &str = "381b4222-f694-41f0-9685-ff5bb260df2e";
+        const HIGH: &str = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c";
+        let effect = EffectDef {
+            id: EffectId("wake".into()),
+            kind: Effect::Setting(Setting::Power(PowerAddr {
+                subgroup: "238c9fa8-0aad-41ed-83f4-97be242c8f20".into(),
+                setting: "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d".into(),
+                label: "Allow wake timers".into(),
+                scheme: None,
+            })),
+            elevation: None,
+            optional: false,
+            if_missing: None,
+            windows: None,
+        };
+        let off = Value::PowerIndex {
+            ac: 0,
+            dc: 0,
+            plan: PlanTag(None),
+        };
+        let t = tweak(
+            "wake",
+            vec![effect],
+            vec![opt("Off", vec![("wake", set(off))])],
+        );
+        let c = corpus(vec![t], vec![]);
+        let captured = Captured::Values(BTreeMap::from([(
+            EffectId("wake".into()),
+            Value::PowerIndex {
+                ac: 2,
+                dc: 0,
+                plan: PlanTag(Some(BALANCED.into())),
+            },
+        )]));
+        let h = Harness::new();
+
+        let plans = Plans::new(&[(BALANCED, (0, 0)), (HIGH, (1, 1))], HIGH);
+        let kind = PowerKind(&plans);
+        let deps = Deps {
+            kinds: &kind,
+            ..h.deps()
+        };
+        drive_to_captured(&captured, "wake", &c, &deps).expect("verified against Balanced");
+        assert_eq!(plans.holding(BALANCED), Some((2, 0)));
+        assert_eq!(plans.holding(HIGH), Some((1, 1)));
+        assert!(plans.activations.lock().unwrap().is_empty());
+
+        let deleted = Plans::new(&[(HIGH, (1, 1))], HIGH);
+        let kind = PowerKind(&deleted);
+        let deps = Deps {
+            kinds: &kind,
+            ..h.deps()
+        };
+        drive_to_captured(&captured, "wake", &c, &deps).expect("nothing to restore");
+        assert_eq!(deleted.holding(HIGH), Some((1, 1)));
+    }
+
     /// A failed acquisition is charged to the run's first item but reached none of them, so that
     /// item reading as captured proves nothing about the rest; a plain refusal of it does.
     #[test]
@@ -3535,7 +3596,7 @@ mod tests {
         let captured = Value::Startup(StartupType::Manual);
         let plan = [Restorable {
             effect: &effect,
-            setting,
+            setting: Cow::Borrowed(setting),
             value: &captured,
             cx: ExecCx::new(Level::Ti),
         }];
@@ -5283,7 +5344,7 @@ mod tests {
 
     /// An Action's undo routes from the tweak's floor, never from what the app currently holds,
     /// while its verify probe only reads and so stays at `Deps.level` (invariant 24). `ti` is not
-    /// tested here: validation forbids a ti-routed action outright (`check_action_never_ti`).
+    /// tested here: validation forbids a ti-routed action outright (`check_unbrokered_never_ti`).
     #[test]
     fn an_action_undo_routes_from_the_floor_not_the_run_level() {
         let h = Harness::new();

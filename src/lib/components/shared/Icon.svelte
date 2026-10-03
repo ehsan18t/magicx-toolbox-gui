@@ -4,7 +4,7 @@
   interface Props {
     icon: IconName;
     size?: IconSize;
-    class?: string;
+    class?: string | undefined;
   }
 
   let { icon, size = "3xl", class: className }: Props = $props();

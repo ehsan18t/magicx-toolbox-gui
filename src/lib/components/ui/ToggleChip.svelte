@@ -11,7 +11,7 @@
     icon?: IconName;
     /** Shows on hover even while disabled, e.g. why the chip is held. */
     tooltip?: string | null;
-    class?: string;
+    class?: string | undefined;
     children: Snippet;
   }
 

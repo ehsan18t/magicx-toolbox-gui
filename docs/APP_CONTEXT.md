@@ -16,7 +16,7 @@ MagicX Toolbox is a Windows system optimization app built with Tauri, Rust, Svel
 - Revert tweaks from snapshots; a partial revert enters "Needs Attention" (snapshot kept for retry or explicit keep-current-state).
 - Press Restore to return to the most recent snapshot; each Restore steps one entry further back.
 - Display Windows/system/hardware details.
-- Check for GitHub releases and launch official installers.
+- Check for GitHub releases and replace the portable exe in place with a verified new version.
 - Progress and toast feedback for long operations.
 - An on-device log: the Logs panel in the title bar shows this session, Settings > Diagnostics controls saving and Detailed logging, and Export diagnostics writes one redacted text file for a bug report. Nothing is uploaded (ADR-0010, `docs/architecture/logging.md`).
 

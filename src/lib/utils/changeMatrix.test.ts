@@ -10,6 +10,8 @@ const option = (label: string, parts: Partial<TweakEffectOption> = {}): TweakEff
   scheduler_changes: [],
   hosts_changes: [],
   firewall_changes: [],
+  power_changes: [],
+  audit_changes: [],
   commands: [],
   ...parts,
 });
@@ -21,6 +23,7 @@ const reg = (change: Partial<RegistryChange>): RegistryChange => ({
   action: "set",
   value_type: "REG_DWORD",
   value: 1,
+  skip_validation: false,
   ...change,
 });
 
@@ -62,10 +65,10 @@ test("registry cells describe each action and value shape", () => {
   )[0].cells;
   assert.deepEqual(cells, [
     { text: "255 (0xFF)", note: "Win 11" },
-    { text: "Not set", removal: true, note: undefined },
-    { text: '""', note: undefined },
-    { text: '["x","y"]', note: undefined },
-    { text: "(empty)", note: undefined },
+    { text: "Not set", removal: true },
+    { text: '""' },
+    { text: '["x","y"]' },
+    { text: "(empty)" },
   ]);
 });
 
@@ -79,19 +82,26 @@ test("a key action gets its own row, apart from values under that key", () => {
   assert.ok(key);
   assert.equal(key.name, "Test");
   assert.equal(key.type, undefined);
-  assert.deepEqual(key.cells[0], { text: "Key removed", removal: true, note: undefined });
+  assert.deepEqual(key.cells[0], { text: "Key removed", removal: true });
 });
 
 test("an untouched setting leaves the option's cell null, and rows sort by kind", () => {
   const rows = buildMatrix(
     [
       option("a", {
-        firewall_changes: [{ name: "Rule", operation: "create", action: "block", direction: "outbound" }],
-        hosts_changes: [{ ip: "0.0.0.0", domain: "ads.example", action: "add" }],
-        scheduler_changes: [{ task_path: "\\Microsoft\\Windows\\Task", action: "disable" }],
-        service_changes: [{ name: "Svc", startup: "automatic_delayed" }],
+        firewall_changes: [
+          { name: "Rule", operation: "create", action: "block", direction: "outbound", skip_validation: false },
+        ],
+        hosts_changes: [{ ip: "0.0.0.0", domain: "ads.example", action: "add", skip_validation: false }],
+        scheduler_changes: [{ task_path: "\\Microsoft\\Windows\\Task", action: "disable", skip_validation: false }],
+        service_changes: [{ name: "Svc", startup: "automatic_delayed", skip_validation: false }],
       }),
-      option("b", { registry_changes: [reg({})], firewall_changes: [{ name: "rule", operation: "delete" }] }),
+      option("b", {
+        registry_changes: [reg({})],
+        firewall_changes: [
+          { name: "rule", operation: "delete", direction: "inbound", action: "block", skip_validation: false },
+        ],
+      }),
     ],
     null,
   );
@@ -109,12 +119,49 @@ test("an untouched setting leaves the option's cell null, and rows sort by kind"
   assert.deepEqual(firewall.cells, [{ text: "Block outbound" }, { text: "Removed", removal: true }]);
 });
 
+test("power and audit rows sort last, one per setting or flag, named as the engine names them", () => {
+  const wake = { name: "Allow wake timers", subgroup: "238c9fa8", setting: "bd3b718a" };
+  const logon = (event: "success" | "failure", audited: boolean) => ({
+    name: `Logon (${event})`,
+    subcategory: "0cce9215",
+    event,
+    audited,
+  });
+  const rows = buildMatrix(
+    [
+      option("Off", {
+        power_changes: [{ ...wake, ac: 0, dc: 0 }],
+        audit_changes: [logon("success", true), logon("failure", true)],
+      }),
+      option("On", { power_changes: [{ ...wake, ac: 1, dc: 0 }], audit_changes: [logon("success", false)] }),
+    ],
+    option("now", { power_changes: [{ ...wake, ac: 2, dc: 0 }], registry_changes: [reg({})] }),
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.kind, r.name]),
+    [
+      ["registry", "Flag"],
+      ["power", "Allow wake timers"],
+      ["audit", "Logon (success)"],
+      ["audit", "Logon (failure)"],
+    ],
+  );
+  const [, power, success, failure] = rows;
+  assert.deepEqual(power.cells, [{ text: "Plugged in 0, on battery 0" }, { text: "Plugged in 1, on battery 0" }]);
+  assert.deepEqual(power.now, { text: "Plugged in 2, on battery 0" });
+  assert.deepEqual(success.cells, [{ text: "Audited" }, { text: "Not audited" }]);
+  assert.deepEqual(failure.cells, [{ text: "Audited" }, null]);
+});
+
 test("the observed state fills the now column and can add a row", () => {
   const rows = buildMatrix(
     [option("On", { registry_changes: [reg({ value: 1 })] })],
-    option("now", { registry_changes: [reg({ value: 0 })], service_changes: [{ name: "Svc", startup: "manual" }] }),
+    option("now", {
+      registry_changes: [reg({ value: 0 })],
+      service_changes: [{ name: "Svc", startup: "manual", skip_validation: false }],
+    }),
   );
-  assert.deepEqual(rows[0].now, { text: "0 (0x0)", note: undefined });
+  assert.deepEqual(rows[0].now, { text: "0 (0x0)" });
   assert.deepEqual(rows[1].cells, [null]);
   assert.deepEqual(rows[1].now, { text: "Manual" });
 });

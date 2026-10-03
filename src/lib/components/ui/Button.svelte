@@ -15,7 +15,7 @@
     loading?: boolean;
     /** Shows on hover and focus; while disabled, it is the reason and the button stays focusable. */
     tooltip?: string | null;
-    class?: string;
+    class?: string | undefined;
     children: Snippet;
   }
 

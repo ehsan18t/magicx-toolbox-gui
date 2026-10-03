@@ -15,6 +15,8 @@ const definition = (availability: Availability = { state: "available" }): TweakD
   availability,
   supported: true,
   options: [],
+  info: null,
+  warning: null,
 });
 
 const status = (patch: Partial<TweakStatus> = {}): TweakStatus => ({

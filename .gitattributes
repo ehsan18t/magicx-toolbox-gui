@@ -7,6 +7,9 @@
 # which is what keeps diffs, merges and blame readable.
 * text=auto eol=crlf
 
+# ts-rs always writes LF; checking the bindings out LF too keeps a regeneration clean in git status.
+src/lib/types/generated/** text eol=lf
+
 # Binary assets — never touch these.
 *.woff2 binary
 *.png   binary

@@ -652,7 +652,7 @@ tweaks:
       - Only the active power plan changes. Switching plans (including to Ultimate Performance) brings selective suspend back, and the tweak shows System Default; applying again covers the new plan too.
 
       ## Notes
-      - Reverting restores the exact previous values on every plan the tweak changed, without switching your active plan.
+      - Restore writes the values recorded before you applied back to the plan they came from, without switching your active plan.
 
       ## Recommendation
       Apply it if you have USB dropouts, audio glitches or slow wake-ups. If your USB devices behave, leave selective suspend on and keep the power saving.
@@ -664,32 +664,14 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
+      - id: usb_selective_suspend
+        power_setting:
+          { subgroup: '2a737441-1930-4402-8d77-b2bebba308a3', setting: '48e6b7a6-50f5-4782-a5d4-53bb8f07e226', label: "USB selective suspend" }
+      # Reverses a snapshot entry that journals this script: no option runs it, so `apply` never
+      # runs and only Restore reaches `undo`, which writes back the values the script recorded.
       - id: usb_suspend_off
         action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
-            $set = '48e6b7a6-50f5-4782-a5d4-53bb8f07e226'
-            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend'
-            $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
-            if (-not $scheme) { exit 1 }
-            # One record per plan, named by its GUID and never overwritten: re-applying on another plan keeps the first plan's values.
-            $rec = Join-Path $snap $scheme
-            if (-not (Test-Path $rec)) {
-              # AC then DC are the query's last two hex numbers; the labels beside them are translated.
-              $ix = [regex]::Matches(((powercfg /QUERY $scheme $sub $set) -join "`n"), '0x([0-9a-fA-F]+)')
-              if ($ix.Count -lt 2) { exit 1 }
-              New-Item -Path $rec -Force | Out-Null
-              Set-ItemProperty -Path $rec -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
-              Set-ItemProperty -Path $rec -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
-            }
-            powercfg /SETACVALUEINDEX $scheme $sub $set 0
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            powercfg /SETDCVALUEINDEX $scheme $sub $set 0
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            powercfg /SETACTIVE $scheme
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            exit 0
+          apply: "exit 1"
           undo: |
             $ErrorActionPreference = 'Stop'
             $sub = '2a737441-1930-4402-8d77-b2bebba308a3'
@@ -716,15 +698,10 @@ tweaks:
               Remove-Item -Path $snap -Recurse -Force
             }
             exit 0
-          probe: |
-            $ix = [regex]::Matches(((powercfg /QUERY SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226) -join "`n"), '0x([0-9a-fA-F]+)')
-            if ($ix.Count -lt 2) { exit 1 }
-            if ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16) -eq 0 -and [Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16) -eq 0) { exit 0 }
-            exit 1
           shell: powershell
     options:
       - label: "Disabled"
-        values: { usb_suspend_off: run }
+        values: { usb_selective_suspend: { ac: 0, dc: 0 } }
 
   - id: disable_wake_timers
     name: "Disable wake timers"
@@ -745,7 +722,7 @@ tweaks:
       - Keyboard, mouse, network and lid wakes are not timers and still wake the PC.
 
       ## Notes
-      - Reverting restores the exact previous values on every plan the tweak changed, without switching your active plan.
+      - Restore writes the values recorded before you applied back to the plan they came from, without switching your active plan.
 
       ## Recommendation
       Worth applying if a plugged-in PC waking at night bothers you. Skip it if scheduled overnight work, such as backups, needs to wake the machine.
@@ -757,32 +734,14 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
+      - id: wake_timers
+        power_setting:
+          { subgroup: '238c9fa8-0aad-41ed-83f4-97be242c8f20', setting: 'bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d', label: "Allow wake timers" }
+      # Reverses a snapshot entry that journals this script: no option runs it, so `apply` never
+      # runs and only Restore reaches `undo`, which writes back the values the script recorded.
       - id: wake_timers_off
         action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            $sub = 'SUB_SLEEP'
-            $set = 'RTCWAKE'
-            $snap = 'HKLM:\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers'
-            $scheme = [regex]::Match(((powercfg /GETACTIVESCHEME) -join ' '), '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}').Value
-            if (-not $scheme) { exit 1 }
-            # One record per plan, named by its GUID and never overwritten: re-applying on another plan keeps the first plan's values.
-            $rec = Join-Path $snap $scheme
-            if (-not (Test-Path $rec)) {
-              # AC then DC are the query's last two hex numbers; the labels beside them are translated.
-              $ix = [regex]::Matches(((powercfg /QUERY $scheme $sub $set) -join "`n"), '0x([0-9a-fA-F]+)')
-              if ($ix.Count -lt 2) { exit 1 }
-              New-Item -Path $rec -Force | Out-Null
-              Set-ItemProperty -Path $rec -Name Ac -Value ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16)) -Type DWord
-              Set-ItemProperty -Path $rec -Name Dc -Value ([Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16)) -Type DWord
-            }
-            powercfg /SETACVALUEINDEX $scheme $sub $set 0
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            powercfg /SETDCVALUEINDEX $scheme $sub $set 0
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            powercfg /SETACTIVE $scheme
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            exit 0
+          apply: "exit 1"
           undo: |
             $ErrorActionPreference = 'Stop'
             $sub = 'SUB_SLEEP'
@@ -809,15 +768,10 @@ tweaks:
               Remove-Item -Path $snap -Recurse -Force
             }
             exit 0
-          probe: |
-            $ix = [regex]::Matches(((powercfg /QUERY SCHEME_CURRENT SUB_SLEEP RTCWAKE) -join "`n"), '0x([0-9a-fA-F]+)')
-            if ($ix.Count -lt 2) { exit 1 }
-            if ([Convert]::ToInt32($ix[$ix.Count - 2].Groups[1].Value, 16) -eq 0 -and [Convert]::ToInt32($ix[$ix.Count - 1].Groups[1].Value, 16) -eq 0) { exit 0 }
-            exit 1
           shell: powershell
     options:
       - label: "Disabled"
-        values: { wake_timers_off: run }
+        values: { wake_timers: { ac: 0, dc: 0 } }
 
   - id: disable_modern_standby
     name: "Disable Modern Standby (force S3)"

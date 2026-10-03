@@ -1,0 +1,19 @@
+category:
+  id: power_scheme_as_raw_registry
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A power scheme index written as a raw registry value."
+
+tweaks:
+  - id: t
+    name: "t"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: r
+        registry: { key: 'HKLM\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\381b4222-f694-41f0-9685-ff5bb260df2e\238c9fa8-0aad-41ed-83f4-97be242c8f20\bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d', name: ACSettingIndex, type: REG_DWORD }
+    options:
+      - label: "Off"
+        values: { r: 0 }

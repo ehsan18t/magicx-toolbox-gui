@@ -1461,7 +1461,7 @@ tweaks:
       **Records every successful and failed sign-in in the Security event log, so password guessing and intrusions leave a trail.**
 
       ## Mechanism
-      - Sets the Logon audit subcategory (events 4624 and 4625, among others) to Success and Failure. It is addressed by ID, so it works in any display language.
+      - Turns on success and failure auditing for the Logon audit subcategory (events 4624 and 4625, among others). It is addressed by ID, so it works in any display language.
 
       ## Caveats
       - On a managed PC, an audit Group Policy overwrites it at the next refresh.
@@ -1469,7 +1469,8 @@ tweaks:
 
       ## Notes
       - Windows clients are documented to audit this already; such a PC shows as applied and nothing changes.
-      - Reverting restores the exact setting recorded before you applied.
+      - Restore returns both flags to the setting recorded before you applied.
+      - Reading the audit policy needs administrator rights, so until the app runs as administrator the tweak's state shows as unknown.
 
       ## Related
       - **Event log retention size** enlarges the Security log so these events are not overwritten.
@@ -1484,30 +1485,17 @@ tweaks:
     elevation: admin
     reversible: true
     effects:
-      # The apply stashes the pre-apply setting so the undo can restore it instead of hardcoding
-      # Success-only. Settings are read as the numeric Setting Value (1 success, 2 failure) from
-      # `auditpol /backup`: the /get text ("Success and Failure") is translated.
+      - id: logon_success
+        audit_policy:
+          { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: success, label: "Logon" }
+      - id: logon_failure
+        audit_policy:
+          { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: failure, label: "Logon" }
+      # Reverses a snapshot entry that journals this script: no option runs it, so `apply` never
+      # runs and only Restore reaches `undo`, which writes back the values the script recorded.
       - id: audit_logon
         action:
-          apply: |
-            $ErrorActionPreference = 'Stop'
-            $sub = '{0CCE9215-69AE-11D9-BED3-505054503030}'
-            $store = 'HKLM:\SOFTWARE\MagicXToolbox\State'
-            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
-            auditpol /backup /file:$f | Out-Null
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            $v = $null
-            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
-            Remove-Item -LiteralPath $f -Force
-            if ($null -eq $v) { exit 1 }
-            # New-Item -Force on an existing key deletes its values.
-            if (-not (Test-Path $store)) { New-Item -Path $store -Force | Out-Null }
-            # Keep the first stash: a re-apply must not replace the pre-tweak setting with this tweak's own.
-            if ($null -eq (Get-ItemProperty -Path $store -Name AuditLogonPriorSetting -ErrorAction SilentlyContinue)) {
-              New-ItemProperty -Path $store -Name AuditLogonPriorSetting -Value $v -PropertyType DWord -Force | Out-Null
-            }
-            auditpol /set /subcategory:"$sub" /success:enable /failure:enable
-            exit $LASTEXITCODE
+          apply: "exit 1"
           undo: |
             $sub = '{0CCE9215-69AE-11D9-BED3-505054503030}'
             $store = 'HKLM:\SOFTWARE\MagicXToolbox\State'
@@ -1518,21 +1506,12 @@ tweaks:
             $code = $LASTEXITCODE
             if ($code -eq 0) { Remove-ItemProperty -Path $store -Name AuditLogonPriorSetting -Force -ErrorAction SilentlyContinue }
             exit $code
-          probe: |
-            $sub = '{0CCE9215-69AE-11D9-BED3-505054503030}'
-            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
-            auditpol /backup /file:$f | Out-Null
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            $v = $null
-            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
-            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
-            if ($v -eq 3) { exit 0 } else { exit 1 }
           shell: powershell
     options:
       # One authored option: Windows clients already audit Success and Failure here, so an authored
       # "stock" option would be undetectable. Default restores the captured setting from the snapshot.
       - label: "Success and failure"
-        values: { audit_logon: run }
+        values: { logon_success: enabled, logon_failure: enabled }
 
   - id: lock_on_inactivity
     name: "Lock the screen when idle"
@@ -2559,11 +2538,12 @@ tweaks:
       - The Security log fills faster; pair it with a larger log.
 
       ## Caveats
-      - If the app's record of the previous audit setting is lost, reverting turns process-creation auditing off entirely.
+      - Off turns process-creation success auditing off even if it was on before you applied (for example by Group Policy). Use Restore to return to the setting recorded before you applied.
 
       ## Notes
-      - Off deletes the command-line value and restores the audit setting recorded before you applied.
-      - If process-creation auditing was already on (for example by Group Policy), applying only adds the command lines and leaves the audit setting alone, and reverting leaves it on.
+      - Only success auditing is managed; failure auditing for process creation is left as it is.
+      - If process-creation auditing was already on, applying adds only the command lines.
+      - Reading the audit policy needs administrator rights, so until the app runs as administrator the tweak's state shows as unknown.
 
       ## Related
       - **Event log retention size** enlarges the Security log.
@@ -2583,9 +2563,12 @@ tweaks:
       - id: include_cmdline
         registry:
           { key: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit', name: ProcessCreationIncludeCmdLine_Enabled, type: REG_DWORD }
-      # auditpol state is not a registry value, so the apply stashes the prior setting and the undo
-      # restores it. Settings are read as the numeric Setting Value (1 success, 2 failure) from
-      # `auditpol /backup`: the /get text ("No Auditing") is translated.
+      - id: process_creation_success
+        audit_policy:
+          { subcategory: '{0CCE922B-69AE-11D9-BED3-505054503030}', event: success, label: "Process Creation" }
+      # Reverses a snapshot entry that journals this script: no option runs it, so only Restore
+      # reaches it. Kept exactly as it shipped: `undo` reads the setting `apply` records, so `apply`
+      # must keep recording it.
       - id: audit_process_creation
         action:
           apply: |
@@ -2617,22 +2600,12 @@ tweaks:
             $code = $LASTEXITCODE
             if ($code -eq 0) { Remove-ItemProperty -Path $store -Name AuditProcessCreationPriorSetting -Force -ErrorAction SilentlyContinue }
             exit $code
-          probe: |
-            $sub = '{0CCE922B-69AE-11D9-BED3-505054503030}'
-            $f = Join-Path $env:TEMP ('mxt-audit-' + [guid]::NewGuid() + '.csv')
-            auditpol /backup /file:$f | Out-Null
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            $v = $null
-            foreach ($l in Get-Content -LiteralPath $f) { if ($l -match ([regex]::Escape($sub) + '.*,(\d+)\s*$')) { $v = [int]$Matches[1] } }
-            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
-            if ($v -band 1) { exit 0 } else { exit 1 }
           shell: powershell
     options:
       - label: "Enabled"
-        values: { include_cmdline: 1, audit_process_creation: run }
-      # Omitting the action drives its undo, which restores the captured subcategory setting.
+        values: { include_cmdline: 1, process_creation_success: enabled }
       - label: "Off"
-        values: { include_cmdline: absent }
+        values: { include_cmdline: absent, process_creation_success: disabled }
 
   - id: spooler_remote_rpc_off
     name: "Turn off the spooler's remote RPC endpoint"

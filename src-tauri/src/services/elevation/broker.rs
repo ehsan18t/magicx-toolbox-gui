@@ -110,6 +110,7 @@ pub struct OpFailure {
 /// the key, the value or the path, so it crosses only as a Debug log line the parent redacts
 /// (ADR-0010). The op index and the effect id join a report back to the tweak's YAML.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum OpFailureClass {
     AccessDenied,
@@ -1714,7 +1715,7 @@ mod tests {
         use windows_sys::Win32::Foundation::LocalFree;
         use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
 
-        let wide = super::super::common::to_wide_string(cmdline);
+        let wide = crate::services::wide(cmdline);
         let mut argc = 0;
         // SAFETY: `wide` is NUL-terminated; each entry is a NUL-terminated string inside the one
         // allocation, freed once all are copied out.

@@ -13,11 +13,9 @@
 //! (§5.1) holds relative to what the author declared, never relative to whatever Windows Firewall
 //! state existed before a prior deletion this system never captured.
 
-use crate::models::win_types::{
-    FirewallChange, FirewallDirection, FirewallOperation, FirewallProtocol, FirewallRuleAction,
-};
+use crate::models::win_types::{FirewallChange, FirewallOperation};
 use crate::services::firewall_service;
-use crate::tweaks::model::{FwAction, FwDirection, FwProtocol, RuleAddr, Setting, Value};
+use crate::tweaks::model::{RuleAddr, Setting, Value};
 
 use super::{guard_level, map_backend_error, EffectKind, Error, ExecCx};
 
@@ -29,11 +27,7 @@ impl EffectKind for FirewallKind {
         // Reads never escalate (spec invariant 24) -- `cx` is unused here on purpose.
         match s {
             Setting::Firewall(addr) => read_firewall(addr),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Task(_)
-            | Setting::Hosts(_) => Err(Error::Invalid("FirewallKind cannot read this Setting")),
+            _ => Err(Error::Invalid("FirewallKind cannot read this Setting")),
         }
     }
 
@@ -41,11 +35,7 @@ impl EffectKind for FirewallKind {
         guard_level(cx)?;
         match s {
             Setting::Firewall(addr) => drive_firewall(addr, target),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Task(_)
-            | Setting::Hosts(_) => Err(Error::Invalid("FirewallKind cannot drive this Setting")),
+            _ => Err(Error::Invalid("FirewallKind cannot drive this Setting")),
         }
     }
 }
@@ -70,30 +60,6 @@ fn drive_firewall(addr: &RuleAddr, target: &Value) -> Result<(), Error> {
     }
 }
 
-fn old_direction(d: FwDirection) -> FirewallDirection {
-    match d {
-        FwDirection::Inbound => FirewallDirection::Inbound,
-        FwDirection::Outbound => FirewallDirection::Outbound,
-    }
-}
-
-fn old_action(a: FwAction) -> FirewallRuleAction {
-    match a {
-        FwAction::Block => FirewallRuleAction::Block,
-        FwAction::Allow => FirewallRuleAction::Allow,
-    }
-}
-
-fn old_protocol(p: FwProtocol) -> FirewallProtocol {
-    match p {
-        FwProtocol::Any => FirewallProtocol::Any,
-        FwProtocol::Tcp => FirewallProtocol::Tcp,
-        FwProtocol::Udp => FirewallProtocol::Udp,
-        FwProtocol::Icmpv4 => FirewallProtocol::Icmpv4,
-        FwProtocol::Icmpv6 => FirewallProtocol::Icmpv6,
-    }
-}
-
 /// `RuleAddr` -> the `FirewallChange` shape the `firewall_service` primitive speaks (same
 /// translation `RegistryKind`/`ServiceKind` do for their primitives).
 /// Always `FirewallOperation::Create`: `Value::Present(bool)` alone carries the create/delete
@@ -102,9 +68,9 @@ fn to_firewall_change(addr: &RuleAddr) -> FirewallChange {
     FirewallChange {
         name: addr.name.clone(),
         operation: FirewallOperation::Create,
-        direction: Some(old_direction(addr.direction)),
-        action: Some(old_action(addr.action)),
-        protocol: addr.protocol.map(old_protocol),
+        direction: Some(addr.direction.into()),
+        action: Some(addr.action.into()),
+        protocol: addr.protocol.map(Into::into),
         program: addr.program.clone(),
         service: addr.service.clone(),
         remote_addresses: addr.remote_addresses.clone(),
@@ -118,7 +84,8 @@ fn to_firewall_change(addr: &RuleAddr) -> FirewallChange {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tweaks::model::Level;
+    use crate::models::win_types::{FirewallDirection, FirewallProtocol, FirewallRuleAction};
+    use crate::tweaks::model::{FwAction, FwDirection, FwProtocol, Level};
 
     fn user_cx() -> ExecCx {
         ExecCx::new(Level::User)

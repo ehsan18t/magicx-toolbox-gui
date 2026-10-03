@@ -18,7 +18,7 @@
 
   interface Props {
     /** `md` for confirmations, `lg` for content dialogs, `xl` for detail views, `hero` for About. */
-    size?: ModalTitleSize;
+    size?: ModalTitleSize | undefined;
     class?: string;
     children: Snippet;
   }

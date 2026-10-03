@@ -1,0 +1,19 @@
+category:
+  id: audit_policy_bad_value
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "An audit flag given a non-keyword value."
+
+tweaks:
+  - id: t
+    name: "t"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: a
+        audit_policy: { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: success, label: "Logon" }
+    options:
+      - label: "On"
+        values: { a: true }

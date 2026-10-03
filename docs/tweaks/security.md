@@ -2340,25 +2340,25 @@ Apply it; the firewall on with default-block inbound is baseline security. Be re
 
 | Effect | Kind | Target | Notes |
 |---|---|---|---|
-| `audit_logon` | action (PowerShell) | apply: reads the numeric setting of the Logon subcategory `{0CCE9215-69AE-11D9-BED3-505054503030}` from an `auditpol /backup` file (fails if it cannot), stores it as `AuditLogonPriorSetting` (REG_DWORD) under `HKLM\SOFTWARE\MagicXToolbox\State` unless a stash is already there, then runs `auditpol /set /subcategory:"{0CCE9215-...}" /success:enable /failure:enable`; undo: sets Success and Failure back from the stash (Success and Failure if there is none) and deletes the stash once `auditpol` succeeds; probe: exits 0 only when the numeric setting is 3 (Success and Failure) | default 30 s timeout; exit codes are `auditpol`'s own |
+| `logon_success` | audit_policy | success flag of the Logon subcategory `{0CCE9215-69AE-11D9-BED3-505054503030}` | needs administrator to read and write |
+| `logon_failure` | audit_policy | failure flag of the same subcategory | needs administrator to read and write |
+| `audit_logon` | action (PowerShell, `undo` only; no option runs it) | reverses a snapshot taken while this tweak was a script: sets Success and Failure back from the `AuditLogonPriorSetting` stash under `HKLM\SOFTWARE\MagicXToolbox\State` (Success and Failure if there is none) and deletes the stash; `apply` exits 1 and never runs | exit codes are `auditpol`'s own |
 
-| Option | `audit_logon` |
-|---|---|
-| Success and failure | run |
+| Option | `logon_success` | `logon_failure` |
+|---|---|---|
+| Success and failure | enabled | enabled |
 
-This is a toggle: On is the option above, and Off is System Default. System Default is shown whenever the probe does not see both Success and Failure. A machine already auditing Success and Failure, which Windows clients are documented to ship with (and which the research machine showed), reads as "Success and failure" without any apply, so there is nothing to revert. Turning the toggle off after applying restores the snapshot: the action's undo puts the Logon subcategory back to the captured pre-apply setting. Windows 10 and 11 clients are documented as shipping with Logon auditing at Success and Failure, but that has not been confirmed on a clean 26100 image.
+This is a toggle: On is the option above, and Off is System Default. System Default is shown whenever either flag is off. A machine already auditing Success and Failure, which Windows clients are documented to ship with (and which the research machine showed), reads as "Success and failure" without any apply, so there is nothing to revert. Turning the toggle off after applying restores the snapshot, which puts both flags back to their captured pre-apply state. Windows 10 and 11 clients are documented as shipping with Logon auditing at Success and Failure, but that has not been confirmed on a clean 26100 image.
 
 #### How it works
 
 The advanced audit policy (the `auditpol` subcategories) decides which security events the Local Security Authority writes to the Security event log. The Logon subcategory of Logon/Logoff, GUID `{0CCE9215-69AE-11D9-BED3-505054503030}`, produces event 4624 (successful logon), 4625 (failed logon), 4648 (logon attempted with explicit credentials) and 4675. These are the events that brute-force, password-spray and lateral-movement detection is built on.
 
-The tweak addresses the subcategory by GUID, not by its name, because `auditpol` subcategory names are translated on non-English Windows and a name-based command would fail there. `auditpol.exe` needs administrator rights.
+The tweak addresses the subcategory by GUID through the native audit policy API (`AuditQuerySystemPolicy`, `AuditSetSystemPolicy`), so no translated subcategory name or `auditpol` output is involved. Both calls need `SeSecurityPrivilege`, which only an administrator holds: the app enables it around each call. Unelevated, the tweak's state reads Unknown with the needs-elevation hint.
 
-The revert is designed not to leave the machine auditing less than before. The apply captures the pre-apply setting as a number (bit 1 Success, bit 2 Failure) before changing anything, and the undo writes each half back from it; with no stash it enables both, the documented client default. The number is read from the `Setting Value` column of `auditpol /backup`, because the text `auditpol /get` prints ("Success and Failure", "No Auditing") is translated on non-English Windows. A stash already present is kept, so re-applying never replaces the pre-tweak setting with this tweak's own. If the capture fails, the apply fails rather than guessing. This matters because a hardcoded Success-only revert would silently switch off failure auditing that Windows ships with.
+Each flag is its own effect, so the snapshot captures both before anything changes and Restore writes both back. A drive changes only its own flag. "No auditing" is written as the API's explicit none flag, because a written 0 means "leave unchanged"; so a captured "not audited" really comes back. This matters because a hardcoded Success-only revert would silently switch off failure auditing that Windows ships with.
 
-The probe follows the fail-safe pattern: only a parsed setting of exactly 3 (Success and Failure) exits 0; anything else, including a failed read, exits 1.
-
-Two things can override the setting. On a managed machine, an audit-policy Group Policy object overwrites whatever `auditpol` set at the next refresh. And the legacy (category-level) audit policy can override subcategory settings unless *Audit: Force audit policy subcategory settings to override audit policy category settings* (`SCENoApplyLegacyAuditPolicy`) is enabled.
+Two things can override the setting. On a managed machine, an audit-policy Group Policy object overwrites it at the next refresh. And the legacy (category-level) audit policy can override subcategory settings unless *Audit: Force audit policy subcategory settings to override audit policy category settings* (`SCENoApplyLegacyAuditPolicy`) is enabled.
 
 #### Benefits
 - **Backbone of detection**: 4624 and 4625 are what brute-force, password-spray and lateral-movement detection relies on.
@@ -2369,24 +2369,25 @@ Two things can override the setting. On a managed machine, an audit-policy Group
 #### Drawbacks
 - **Security log fills faster**: Microsoft's guidance is to raise the log's maximum size, which this tweak does not do.
 - **No value if nobody looks**: it adds evidence, not protection.
-- **Managed machines override it**: an audit-policy GPO overwrites the `auditpol` setting at the next refresh.
+- **Managed machines override it**: an audit-policy GPO overwrites the setting at the next refresh.
 - **Legacy audit policy can override it**: unless `SCENoApplyLegacyAuditPolicy` is enabled.
 - **Often no visible change**: if the machine already audits Success and Failure, the tweak only pins that state.
+- **Unknown until elevated**: reading the audit policy needs administrator rights.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer; also Windows 10 22H2 and Windows 10 IoT Enterprise LTSC 2021. All editions.
 - **Takes effect**: immediately; the next sign-in event is audited. No reboot.
-- **Reverting**: turning the toggle off after applying runs the undo, which restores the captured setting and removes the `AuditLogonPriorSetting` stash. If a Group Policy object has changed the subcategory since the apply, the undo still writes the captured pre-apply setting.
+- **Reverting**: turning the toggle off after applying runs Restore, which writes both captured flags back. If a Group Policy object has changed the subcategory since the apply, Restore still writes the captured pre-apply setting. A snapshot taken while this tweak was a script restores through that script's undo (`audit_logon` above).
 
 #### Interactions
 - [Event log retention size](#event-log-retention-size): sizes the Security log this tweak fills. Pair them so events are not overwritten before you read them.
-- [Log command lines in process-creation events](#log-command-lines-in-process-creation-events): uses `auditpol` on a different subcategory (Process Creation, `{0CCE922B-...}`) with the same capture-and-restore pattern; no collision.
+- [Log command lines in process-creation events](#log-command-lines-in-process-creation-events): uses the same kind on a different subcategory (Process Creation, `{0CCE922B-...}`); no collision.
 
 #### Validation
 - **Verdict**: VERIFIED-WITH-CORRECTION. The research established that the revert must restore the captured pre-apply inclusion setting (Windows clients ship auditing Success and Failure, so a Success-only undo lowers the audit level), and that a per-user marker cannot track a machine-wide change. The shipped tweak reads its state from the audit policy itself, with no marker, so a stock machine that already audits Success and Failure is never applied to or reverted.
-- **Confidence**: Microsoft-documented. The Audit Logon article documents the events, the recommended Success and Failure setting and the volume; the `auditpol set` reference documents the command.
-- **Reasoning**: The GUID, the event list and the admin requirement held under the adversarial pass. The probe was independently reviewed and has the correct fail-safe polarity. Open question: the exact shipped inclusion setting of the Logon subcategory on a clean 26100 install was not read (research UNKNOWN 8); the capture-and-restore design makes the revert correct regardless.
-- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 the probe reads the machine's Success and Failure setting (3) as applied under Windows PowerShell 5.1.
+- **Confidence**: Microsoft-documented. The Audit Logon article documents the events, the recommended Success and Failure setting and the volume; the `auditpol set` reference documents the subcategory GUID.
+- **Reasoning**: The GUID, the event list and the admin requirement held under the adversarial pass. Open question: the exact shipped inclusion setting of the Logon subcategory on a clean 26100 install was not read (research UNKNOWN 8); the capture-and-restore design makes the revert correct regardless.
+- **Tested**: Build validation (schema, ownership and conflict checks). Unit tests drive the audit kind through a fake audit API that both replaces and adds flags on write (capture, drive, verify, restore, and a "no auditing" round trip). A live elevated read on build 26100 returned success and failure both audited. Apply and Restore on a real machine are pending a manual elevated check.
 
 #### Recommendation
 Enable it if you want visibility into access attempts, and pair it with a larger Security log. If you never review event logs the benefit is limited, but the cost is close to zero.
@@ -3818,57 +3819,52 @@ Apply "Standard" if you have enabled any auditing or PowerShell logging. Take "L
 | Effect | Kind | Target |
 |---|---|---|
 | `include_cmdline` | registry | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit` → `ProcessCreationIncludeCmdLine_Enabled` (REG_DWORD) |
-| `audit_process_creation` | action (PowerShell, `apply` / `undo` / `probe`) | Advanced audit policy subcategory Detailed Tracking > Process Creation, `{0CCE922B-69AE-11D9-BED3-505054503030}`, via `auditpol`; stashes the prior setting in `HKLM\SOFTWARE\MagicXToolbox\State`, value `AuditProcessCreationPriorSetting` (REG_DWORD) |
+| `process_creation_success` | audit_policy | success flag of the advanced audit subcategory Detailed Tracking > Process Creation, `{0CCE922B-69AE-11D9-BED3-505054503030}`; failure auditing is not managed |
+| `audit_process_creation` | action (PowerShell; no option runs it) | reverses a snapshot taken while this tweak was a script: `undo` sets Success and Failure back from the `AuditProcessCreationPriorSetting` stash under `HKLM\SOFTWARE\MagicXToolbox\State` (both off if there is none) and deletes the stash; `apply` turns success auditing back on, for a snapshot that recorded the script's undo |
 
-| Option | `include_cmdline` | `audit_process_creation` |
+| Option | `include_cmdline` | `process_creation_success` |
 |---|---|---|
-| Enabled | `1` | run |
-| Off | absent | not run (its undo restores the stashed setting) |
+| Enabled | `1` | enabled |
+| Off | absent | disabled |
 
-The action's scripts:
+The audit flag is read and written through the native audit policy API, which needs `SeSecurityPrivilege`, so the tweak's state reads Unknown until the app runs as administrator.
 
-- **apply**: reads the subcategory's current setting as a number (bit 1 Success, bit 2 Failure) from the `Setting Value` column of an `auditpol /backup` file, failing if it cannot; stores it as `AuditProcessCreationPriorSetting` unless a stash is already there (so a re-apply never replaces the pre-tweak setting with this tweak's own); then runs `auditpol /set /subcategory:{0CCE922B-...} /success:enable` and exits with `auditpol`'s exit code. Failure auditing is left as it was.
-- **undo**: sets Success and Failure back from the stashed number (both off if there is no stash, the Windows default), deletes the stash once `auditpol` succeeds, and exits with `auditpol`'s exit code.
-- **probe**: reports present when the subcategory's numeric setting has the Success bit.
-
-The setting is read as a number because the text `auditpol /get` prints ("No Auditing", "Success") is translated on non-English Windows.
-
-System Default is shown when the live state matches neither option: for example `ProcessCreationIncludeCmdLine_Enabled` = 1 while process-creation success auditing is off, or the value absent while success auditing is on (set by another tool or policy). The Restore button restores the snapshot. "Enabled" expects the value at 1 and the probe present; "Off" expects the value absent and the probe absent. The shipped default of the Process Creation subcategory was not established by the research.
+System Default is shown when the live state matches neither option: for example `ProcessCreationIncludeCmdLine_Enabled` = 1 while process-creation success auditing is off, or the value absent while success auditing is on (set by another tool or policy). The Restore button restores the snapshot. The shipped default of the Process Creation subcategory was not established by the research; this machine (26100) reads No Auditing.
 
 #### How it works
 
-Two pieces are needed, and each alone does nothing useful. The shipped `AuditSettings.admx` (26100) defines policy `IncludeCmdLine` ("Include command line in process creation events"), class Machine, key `Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit`, value `ProcessCreationIncludeCmdLine_Enabled`, enabled 1, disabled 0, supported from Windows 8.1 (`SUPPORTED_Windows_6_3`). That value only adds the command line to event 4688 in the Security log. Event 4688 itself is generated only when the Detailed Tracking > Process Creation audit subcategory is enabled for success, which is what the `auditpol` action does.
+Two pieces are needed, and each alone does nothing useful. The shipped `AuditSettings.admx` (26100) defines policy `IncludeCmdLine` ("Include command line in process creation events"), class Machine, key `Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit`, value `ProcessCreationIncludeCmdLine_Enabled`, enabled 1, disabled 0, supported from Windows 8.1 (`SUPPORTED_Windows_6_3`). That value only adds the command line to event 4688 in the Security log. Event 4688 itself is generated only when the Detailed Tracking > Process Creation audit subcategory is enabled for success, which is what the audit flag effect does.
 
-Audit subcategory state is not a registry value the snapshot can capture, so the action stashes the prior inclusion setting in HKLM before changing it and its undo restores that setting. Deleting only the DWORD on revert would leave process-creation auditing switched on, a silent state leak. The stash lives in HKLM because the change is machine-wide.
+Both halves are typed effects, so the snapshot captures the registry value and the success flag before anything changes, and Restore writes both back. The flag effect changes only success auditing, leaving failure auditing for process creation as it was.
 
 This uses a different audit subcategory from the logon-auditing tweak (`{0CCE9215-...}`), so the two do not collide.
 
 #### Benefits
 - Turns event 4688 into evidence: a process name alone tells you almost nothing; the command line tells you what was run.
 - The highest-value addition to the audit story: two separate DISA STIG rules (the command-line policy and the Detailed Tracking subcategory).
-- Cheap: one policy value plus one audit subcategory.
+- Cheap: one policy value plus one audit flag.
 
 #### Drawbacks
 - Command lines can contain secrets: a password passed as an argument lands in the Security log, readable by every administrator on the machine.
 - Log volume: process creation is frequent, so the Security log fills faster; pair it with a larger Security log.
-- The revert depends on the stash: if `AuditProcessCreationPriorSetting` is missing when the undo runs, it disables both success and failure auditing for the subcategory.
-- If process-creation success auditing is already on (for example by Group Policy) while the command-line value is absent, the tweak reads System Default; applying writes the value and leaves the audit action alone, because its probe already reads present, so nothing is recorded that a revert would undo.
+- "Off" turns process-creation success auditing off even if it was on before you applied (for example by Group Policy); Restore is what returns the recorded setting.
+- If process-creation success auditing is already on while the command-line value is absent, the tweak reads System Default; applying "Enabled" writes only the value.
 
 #### Applies to, takes effect, reverting
 - **Applies to**: every supported build (the ADMX supports Windows 8.1 and later).
 - **Takes effect**: immediately, no reboot.
-- **Reverting**: "Off" deletes the policy value and runs the action's undo, which restores the Process Creation subcategory to the setting stashed at apply time. The Restore button restores the registry value from the snapshot; the audit subcategory is restored by the action's undo.
+- **Reverting**: "Off" deletes the policy value and turns success auditing off. The Restore button writes back both the registry value and the success flag recorded before you applied. A snapshot taken while this tweak was a script restores through that script's `undo` or `apply` (`audit_process_creation` above).
 
 #### Interactions
-- [Enable logon/credential auditing](#enable-logoncredential-auditing) uses the same `auditpol` pattern on a different subcategory and its own stash value; no collision.
+- [Enable logon/credential auditing](#enable-logoncredential-auditing) uses the same kind on a different subcategory; no collision.
 - [Event log retention size](#event-log-retention-size) sizes the Security log these events fill.
 - [Enable PowerShell script-block logging](#enable-powershell-script-block-logging) records script content, which complements the command lines recorded here.
 
 #### Validation
-- **Verdict**: VERIFIED. Nothing in the mechanism needed correcting; the research required the `auditpol` half to revert from a captured state rather than leaving auditing on.
-- **Confidence**: Microsoft-documented: the policy was read verbatim from the shipped `AuditSettings.admx` on 26100, and Microsoft documents the Process Creation subcategory and `auditpol /set`.
-- **Reasoning**: Key, value, type, polarity and `supportedOn` survived. The pass found that the registry value alone logs nothing and that `auditpol` state is outside the registry snapshot; the shipped action captures and restores it. The privacy caution about secrets in command lines was confirmed as real.
-- **Tested**: Build validation (schema, ownership and conflict checks); on build 26100 the action applied twice and then undone under Windows PowerShell 5.1 kept the first stash and restored `No Auditing` exactly.
+- **Verdict**: VERIFIED. Nothing in the mechanism needed correcting; the research required the audit half to revert from a captured state rather than leaving auditing on, which the snapshot now does.
+- **Confidence**: Microsoft-documented: the policy was read verbatim from the shipped `AuditSettings.admx` on 26100, and Microsoft documents the Process Creation subcategory.
+- **Reasoning**: Key, value, type, polarity and `supportedOn` survived. The pass found that the registry value alone logs nothing and that audit state lives outside the registry; the audit flag is now a typed effect the snapshot captures. The privacy caution about secrets in command lines was confirmed as real.
+- **Tested**: Build validation (schema, ownership and conflict checks). Unit tests drive the audit kind through a fake audit API (capture, drive, verify, restore, and a "no auditing" round trip). Apply and Restore on a real machine are pending a manual elevated check.
 
 #### Recommendation
 Enable it if you have enabled logon auditing or care about forensic evidence; without command lines, process events are close to useless. Enlarge the Security log at the same time. Skip it if administrators on this machine should not see credentials that scripts pass as arguments.

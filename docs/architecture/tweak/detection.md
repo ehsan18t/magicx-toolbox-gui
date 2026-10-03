@@ -45,7 +45,7 @@ flowchart TD
 
 ### Reading the surface
 
-- **Settings** are read through their effect kind. A resource that does not exist reads as `Missing`. If the effect is `optional`, the reading becomes its `if_missing` value (or `Missing` if none is declared). If it is not optional, the tweak is Unknown. Access denied makes the tweak Unknown with the elevation hint. A value of the wrong registry type, or a packed string that does not parse, makes it Unknown as malformed.
+- **Settings** are read through their effect kind. A resource that does not exist reads as `Missing`. If the effect is `optional`, the reading becomes its `if_missing` value (or `Missing` if none is declared). If it is not optional, the tweak is Unknown. Access denied makes the tweak Unknown with the elevation hint; an audit policy flag always reads that way until the app runs as administrator, because reading the audit policy needs `SeSecurityPrivilege`. Power settings and audit flags are read through native APIs, so those tweaks scan on the main pool, not the script probe pool. A value of the wrong registry type, or a packed string that does not parse, makes it Unknown as malformed.
 - **Shared** effects ask the claims store for the current holders. An unreadable claims file makes the tweak Unknown.
 - **Actions** contribute only when they are scripts with a probe. The probe says whether the action's effect is present.
 
@@ -77,7 +77,7 @@ Script probes spawn a process, so their answers are cached for the app session, 
 
 | Trigger | What runs |
 | --- | --- |
-| App launch | The frontend starts a full background scan after it has the catalog. The backend detects every tweak in parallel and emits one `tweak-status` event per tweak, in completion order. |
+| App launch | The frontend starts a full background scan while it loads the catalog. The backend detects every tweak in parallel (script probes on their own small pool) and emits each ~16 ms of completed statuses as one `tweak-status` event, in completion order. |
 | After apply or restore | No full re-scan. The status comes from the operation's own reads (a no-op apply returns its own pre-detect). A restore with no valid entry returns a fresh detect, and a restore that lands on System Default runs one detect to fill in the observed readings. |
 | After a failed apply, restore or keep-current-state, or after discarding a snapshot entry | A single-tweak `get_tweak_status`. |
 | Elevate | The app relaunches elevated, and the new process runs its own launch scan. |

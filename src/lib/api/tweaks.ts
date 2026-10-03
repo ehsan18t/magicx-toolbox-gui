@@ -64,7 +64,7 @@ export async function getElevationState(): Promise<ElevationState> {
   return await invoke<ElevationState>("get_elevation_state");
 }
 
-/** Register before `getStatusesStream`/`rescanAfterElevation`, so no early event is missed. */
-export async function onTweakStatus(handler: (event: TweakStatusEvent) => void): Promise<UnlistenFn> {
-  return await listen<TweakStatusEvent>("tweak-status", (event) => handler(event.payload));
+/** Register before `getStatusesStream`/`rescanAfterElevation`, so no early event is missed. Each event is a batch. */
+export async function onTweakStatus(handler: (events: TweakStatusEvent[]) => void): Promise<UnlistenFn> {
+  return await listen<TweakStatusEvent[]>("tweak-status", (event) => handler(event.payload));
 }

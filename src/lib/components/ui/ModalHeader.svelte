@@ -11,7 +11,7 @@
     /** Before the title, e.g. an icon. */
     leading?: Snippet;
     /** Adds a close button. */
-    onclose?: () => void;
+    onclose?: (() => void) | undefined;
     /** Pins the close button to the dialog's corner instead of the title row. */
     floating?: boolean;
     class?: string;
