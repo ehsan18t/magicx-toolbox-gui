@@ -84,22 +84,39 @@
     out:expand
     class="flex h-72 max-h-9/20 min-h-40 shrink-0 flex-col border-t border-border bg-background outline-none"
   >
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3 py-1.5">
-      <div class="flex items-center gap-2">
+    <div class="flex items-center gap-x-3 border-b border-border px-3 py-1.5">
+      <div class="flex shrink-0 items-center gap-2">
         <Icon icon="tabler:file-text" size="lg" class="text-accent" />
         <h2 class={["m-0", HEADING.item]}>Logs</h2>
         {#if logsStore.settings?.detailed}
           <Badge tone="info">Detailed</Badge>
         {/if}
       </div>
-      <p class="m-0 hidden text-xs text-foreground-muted logs-hint:block">
+      <p class="m-0 hidden shrink-0 text-xs text-foreground-muted logs-hint:block">
         This session. Earlier sessions: Export or Open folder.
       </p>
 
-      <div class="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
-        <Select value={minLevel} options={LEVEL_FILTERS} label="Level" class="w-32" onchange={(v) => (minLevel = v)} />
-        <Select value={source} options={SOURCE_FILTERS} label="Source" class="w-32" onchange={(v) => (source = v)} />
-        <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" onchange={(v) => (query = v)} />
+      <div class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
+        <Select
+          value={minLevel}
+          options={LEVEL_FILTERS}
+          label="Level"
+          class="w-32 shrink-0"
+          onchange={(v) => (minLevel = v)}
+        />
+        <Select
+          value={source}
+          options={SOURCE_FILTERS}
+          label="Source"
+          class="w-32 shrink-0"
+          onchange={(v) => (source = v)}
+        />
+        <SearchInput
+          value={query}
+          placeholder="Search logs"
+          class="max-w-44 min-w-28 flex-1"
+          onchange={(v) => (query = v)}
+        />
 
         <IconButton
           icon="mdi:broom"
